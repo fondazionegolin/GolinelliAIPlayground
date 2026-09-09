@@ -18,7 +18,6 @@ async def teacher_can_access_class(db: AsyncSession, teacher: User, class_id: UU
     result = await db.execute(
         select(Class)
         .where(Class.id == class_id)
-        .where(Class.tenant_id == teacher.tenant_id)
     )
     class_ = result.scalar_one_or_none()
     if not class_:
@@ -47,7 +46,6 @@ async def teacher_can_access_session(db: AsyncSession, teacher: User, session_id
         select(Session, Class)
         .join(Class)
         .where(Session.id == session_id)
-        .where(Session.tenant_id == teacher.tenant_id)
     )
     row = result.first()
     if not row:
@@ -85,7 +83,6 @@ async def teacher_is_class_owner(db: AsyncSession, teacher: User, class_id: UUID
         select(Class)
         .where(Class.id == class_id)
         .where(Class.teacher_id == teacher.id)
-        .where(Class.tenant_id == teacher.tenant_id)
     )
     return result.scalar_one_or_none() is not None
 
@@ -99,7 +96,16 @@ async def teacher_is_session_owner(db: AsyncSession, teacher: User, session_id: 
         .join(Class)
         .where(Session.id == session_id)
         .where(Class.teacher_id == teacher.id)
-        .where(Session.tenant_id == teacher.tenant_id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def teacher_is_session_creator(db: AsyncSession, teacher: User, session_id: UUID) -> bool:
+    """Check whether the teacher created the session."""
+    result = await db.execute(
+        select(Session.id)
+        .where(Session.id == session_id)
+        .where(Session.created_by_teacher_id == teacher.id)
     )
     return result.scalar_one_or_none() is not None
 
@@ -112,7 +118,6 @@ async def get_class_with_access_check(db: AsyncSession, teacher: User, class_id:
     result = await db.execute(
         select(Class)
         .where(Class.id == class_id)
-        .where(Class.tenant_id == teacher.tenant_id)
     )
     class_ = result.scalar_one_or_none()
     if not class_:
@@ -143,7 +148,6 @@ async def get_session_with_access_check(db: AsyncSession, teacher: User, session
         select(Session, Class)
         .join(Class)
         .where(Session.id == session_id)
-        .where(Session.tenant_id == teacher.tenant_id)
     )
     row = result.first()
     if not row:

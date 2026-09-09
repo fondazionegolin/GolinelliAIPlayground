@@ -302,7 +302,8 @@ async def run_math_agent(
     messages: list[dict],
     provider: str = "openai",
     model: str = "gpt-4o-mini",
-    max_iterations: int = 5
+    max_iterations: int = 5,
+    school_grade: Optional[str] = None,
 ) -> str:
     """
     Run the math agent with tool calling capabilities.
@@ -310,12 +311,15 @@ async def run_math_agent(
     """
     from openai import AsyncOpenAI
     from app.core.config import settings
+    from app.services.education_level import get_school_grade_instruction
+
+    system_prompt = MATH_AGENT_SYSTEM_PROMPT + get_school_grade_instruction(school_grade)
     
     if provider != "openai" or not settings.OPENAI_API_KEY:
         # Fallback to regular LLM without tools
         response = await llm_service.generate(
             messages=messages,
-            system_prompt=MATH_AGENT_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             provider=provider,
             model=model,
             temperature=0.3,
@@ -326,7 +330,7 @@ async def run_math_agent(
     
     # Prepare messages with system prompt
     full_messages = [
-        {"role": "system", "content": MATH_AGENT_SYSTEM_PROMPT}
+        {"role": "system", "content": system_prompt}
     ] + messages
     
     for iteration in range(max_iterations):

@@ -11,23 +11,29 @@
       // cross-origin isolated, which blocks the Coding Lab's Sandpack bundler iframe
       // ("Couldn't connect to server / TIME_OUT"). We no longer register the coi-serviceworker.
       // Clients that already installed it stay isolated, so proactively unregister it once.
-      if ('serviceWorker' in navigator) {
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        // Guard lives in localStorage, NOT sessionStorage: dropping COOP/COEP swaps the
+        // browsing context group, and a per-session flag can be lost across that reload —
+        // which turned this cleanup into an infinite refresh loop (Chrome/Windows).
+        var GUARD = 'coi-sw-removed-v2';
         navigator.serviceWorker.getRegistrations().then(function (regs) {
-          var removedCoi = false;
-          regs.forEach(function (reg) {
+          var coi = regs.filter(function (reg) {
             var sw = reg.active || reg.waiting || reg.installing;
-            if (sw && /coi-serviceworker/.test(sw.scriptURL)) {
-              removedCoi = true;
-              reg.unregister();
-            }
+            return sw && /coi-serviceworker/.test(sw.scriptURL);
           });
-          // One reload after unregister drops the isolated context; guard against loops.
-          if (removedCoi && !sessionStorage.getItem('coi-sw-removed')) {
-            sessionStorage.setItem('coi-sw-removed', '1');
-            location.reload();
-          }
+          if (!coi.length) return;
+          // Await the unregister: reloading first can abort it and leave the SW installed.
+          return Promise.all(coi.map(function (reg) { return reg.unregister(); })).then(function () {
+            var alreadyReloaded = true;
+            try {
+              alreadyReloaded = localStorage.getItem(GUARD) === '1';
+              localStorage.setItem(GUARD, '1');
+            } catch (e) { /* site data blocked: never reload, so we can never loop */ }
+            if (!alreadyReloaded) location.reload();
+          });
         }).catch(function (e) { console.warn('[COI-SW cleanup]', e); });
-      }
+      })();
     </script>
   </head>
   <body>

@@ -30,6 +30,11 @@ import { useTranslation } from 'react-i18next'
 interface VoiceRecorderProps {
   onInsertText: (text: string) => void
   compact?: boolean
+  /** Override the transcription endpoint — used by the anonymous public teacherbot share-link
+   *  page, which has no student/teacher auth token and hits a link-scoped public route instead. */
+  transcribeUrl?: string
+  /** Hide the translate-to-language control (the /stt/translate endpoint also requires auth). */
+  allowTranslate?: boolean
 }
 
 type RecorderState = 'idle' | 'recording' | 'processing' | 'review'
@@ -49,7 +54,7 @@ const LANGUAGES = [
 
 const NUM_BARS = 12
 
-export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderProps) {
+export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '/api/v1/stt/transcribe', allowTranslate = true }: VoiceRecorderProps) {
   const { t } = useTranslation()
   const [recorderState, setRecorderState] = useState<RecorderState>('idle')
   const [transcription, setTranscription] = useState('')
@@ -159,7 +164,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
       const fd = new FormData()
       fd.append('file', blob, `recording.${ext}`)
 
-      const resp = await fetch('/api/v1/stt/transcribe', {
+      const resp = await fetch(transcribeUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
         body: fd,
@@ -288,33 +293,35 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
           />
 
           {/* Translation controls */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            <Languages className="h-4 w-4 text-slate-400 flex-shrink-0" />
-            <span className="text-xs text-slate-500">{t('voice_recorder.translate_label')}</span>
-            <select
-              value={translateTarget}
-              onChange={(e) => setTranslateTarget(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.flag} {l.label}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleTranslate}
-              disabled={translating || !transcription.trim()}
-              className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {translating ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5" />
-              )}
-              {translating ? t('voice_recorder.translating') : t('voice_recorder.translate_btn')}
-            </button>
-          </div>
+          {allowTranslate && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <Languages className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              <span className="text-xs text-slate-500">{t('voice_recorder.translate_label')}</span>
+              <select
+                value={translateTarget}
+                onChange={(e) => setTranslateTarget(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.flag} {l.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleTranslate}
+                disabled={translating || !transcription.trim()}
+                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {translating ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
+                {translating ? t('voice_recorder.translating') : t('voice_recorder.translate_btn')}
+              </button>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">

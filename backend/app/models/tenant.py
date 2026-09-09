@@ -43,7 +43,12 @@ class Tenant(Base):
     # Relationships
     users = relationship("User", back_populates="tenant", lazy="dynamic",
                          foreign_keys="User.tenant_id")
+    teacher_memberships = relationship(
+        "TeacherSchoolMembership",
+        back_populates="school",
+        cascade="all, delete-orphan",
+    )
     owner = relationship("User", foreign_keys=[owner_user_id], lazy="select",
                          primaryjoin="Tenant.owner_user_id == User.id")
-    classes = relationship("Class", back_populates="tenant", lazy="dynamic")
+    classes = relationship("Class", back_populates="tenant", lazy="dynamic", foreign_keys="Class.tenant_id")
     sessions = relationship("Session", back_populates="tenant", lazy="dynamic")

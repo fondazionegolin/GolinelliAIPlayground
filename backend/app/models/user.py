@@ -35,7 +35,18 @@ class User(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
-    classes = relationship("Class", back_populates="teacher", lazy="dynamic")
+    school_memberships = relationship(
+        "TeacherSchoolMembership",
+        back_populates="teacher",
+        foreign_keys="TeacherSchoolMembership.teacher_id",
+        cascade="all, delete-orphan",
+    )
+    classes = relationship(
+        "Class",
+        back_populates="teacher",
+        foreign_keys="Class.teacher_id",
+        lazy="dynamic",
+    )
     reviewed_requests = relationship("TeacherRequest", back_populates="reviewed_by_admin", lazy="dynamic")
     legal_acceptances = relationship("LegalDocumentAcceptance", back_populates="user", lazy="dynamic", cascade="all, delete-orphan")
 

@@ -9,6 +9,7 @@ import {
   Brush,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Code2,
   Download,
@@ -24,6 +25,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -144,30 +146,21 @@ type UpstreamStatus = {
 type PreviewApiRequest = {
   source?: 'golinelli-coding-preview'
   id?: string
-  action?: 'chat' | 'generateImage' | 'askAgent' | 'openExternalLink'
+  action?: 'chat' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink'
   payload?: Record<string, unknown>
 }
 
-const DESCRIPTION_TEMPLATE = `# Nuovo progetto
-
-## Istruzioni di progetto
-Queste istruzioni vengono passate all'AI a ogni generazione. Modificale liberamente
-e aggiungi file di contesto con il pulsante "+ File".
-
-Descrivi qui l'obiettivo del progetto e le regole da rispettare sempre.
-
-## Richieste
-`
-
 type InterviewQuestion = { question: string; suggestions: string[] }
+type ModelProvider = 'anthropic' | 'openai' | 'deepseek'
+type ModelOption = { key: string; label: string; hint: string; provider: ModelProvider }
 
 // Selectable generation models. Keys must match CODING_MODEL_CHOICES on the backend.
-const MODEL_OPTIONS: { key: string; label: string; hint: string }[] = [
-  { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità' },
-  { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce' },
-  { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'OpenAI, economico' },
-  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico' },
-  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata' },
+const MODEL_OPTIONS: ModelOption[] = [
+  { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità', provider: 'anthropic' },
+  { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce', provider: 'anthropic' },
+  { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'Economico', provider: 'openai' },
+  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico', provider: 'deepseek' },
+  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata', provider: 'deepseek' },
 ]
 // Claude models are temporarily disabled for students: they may only generate with DeepSeek.
 // (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
@@ -175,6 +168,7 @@ const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro'])
 const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
 const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-flash'
 const STUDENT_FLASH_DEFAULT_MIGRATION_KEY = 'coding_student_flash_default_v1'
+const PROJECT_MODEL_DATA_KEY = '_golinelli_generation_model'
 function modelOptionsFor(isTeacher: boolean) {
   return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
 }
@@ -188,6 +182,123 @@ function initialModelKey(isTeacher: boolean): string {
   }
   return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
 }
+
+const MODEL_PROVIDER_ASSETS: Record<ModelProvider, { src: string; alt: string }> = {
+  anthropic: { src: '/icone_ai/anthropic.svg', alt: 'Anthropic' },
+  openai: { src: '/icone_ai/OpenAI_logo_2025_(symbol).svg.png', alt: 'OpenAI' },
+  deepseek: { src: '/icone_ai/deepseek-logo-icon.svg', alt: 'DeepSeek' },
+}
+
+function ModelProviderIcon({ provider, className = 'h-4 w-4' }: { provider: ModelProvider; className?: string }) {
+  const asset = MODEL_PROVIDER_ASSETS[provider]
+  return <img src={asset.src} alt={asset.alt} className={`${className} shrink-0 object-contain`} />
+}
+
+function CodingModelSelector({
+  value,
+  options,
+  onChange,
+  compact = false,
+}: {
+  value: string
+  options: ModelOption[]
+  onChange: (value: string) => void
+  compact?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const selected = options.find((option) => option.key === value) ?? options[0]
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  if (!selected) return null
+
+  return (
+    <div ref={rootRef} className={compact ? 'relative inline-block shrink-0' : 'relative min-w-0 flex-1'}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} flex items-center gap-1.5 border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] font-semibold text-[var(--logo-violet-strong)] outline-none transition hover:border-[var(--logo-violet)] focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Modello usato per generare il codice"
+      >
+        <ModelProviderIcon provider={selected.provider} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+        <span className="min-w-0 flex-1 truncate text-left">{compact ? selected.label : `${selected.label} · ${selected.hint}`}</span>
+        <ChevronDown className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Seleziona il modello"
+          className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-white p-1.5 shadow-[var(--shadow-lg)]`}
+        >
+          {options.map((option) => {
+            const active = option.key === selected.key
+            return (
+              <button
+                key={option.key}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(option.key)
+                  setOpen(false)
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active ? 'bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]' : 'text-[var(--text-primary)] hover:bg-[var(--surface-subtle)]'}`}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-white">
+                  <ModelProviderIcon provider={option.provider} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{option.label}</span>
+                  <span className="block truncate text-xs text-[var(--text-muted)]">{MODEL_PROVIDER_ASSETS[option.provider].alt} · {option.hint}</span>
+                </span>
+                {active && <Check className="h-4 w-4 shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+// Resizes an image file/blob to a JPEG data URL capped at `maxDimension` on its longest side, so
+// pasted screenshots stay a few hundred KB instead of multi-megabyte PNGs.
+function downscaleImageToDataUrl(blob: Blob, maxDimension = 1280, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(blob)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(img.width * scale))
+      canvas.height = Math.max(1, Math.round(img.height * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('canvas 2d context unavailable')); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('immagine non valida')) }
+    img.src = objectUrl
+  })
+}
+
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
@@ -197,10 +308,19 @@ function composeDescription(title: string, prompt: string, answersText: string) 
 export default function StudentCodingLabModule({ sessionId, sharedProject, isTeacher = false }: { sessionId: string; sharedProject?: { projectId: string; nonce: number } | null; isTeacher?: boolean }) {
   const [projects, setProjects] = useState<CodingProject[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  // Kept in sync below so the message-bridge handler (mounted once, deps []) always reads the
+  // currently active project instead of a stale closure value.
+  const selectedProjectIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedProjectIdRef.current = selectedProjectId }, [selectedProjectId])
   const [projectDetail, setProjectDetail] = useState<CodingProjectDetail | null>(null)
-  const [title, setTitle] = useState('Mini app di prova')
-  const [prompt, setPrompt] = useState('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
+  const [title, setTitle] = useState('')
+  const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
+  // Screenshots pasted (Ctrl+V) or picked into the prompt box, downscaled client-side and sent as
+  // data URLs — the backend describes them with a vision model so any codegen model can use them.
+  const [attachedImages, setAttachedImages] = useState<{ id: string; dataUrl: string; name: string }[]>([])
+  const attachmentFileInputRef = useRef<HTMLInputElement>(null)
+  const MAX_ATTACHMENTS = 3
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const [selectedPath, setSelectedPath] = useState('index.html')
   const [loading, setLoading] = useState(true)
@@ -254,6 +374,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [liveFiles, setLiveFiles] = useState<{ path: string; lines: number; status: 'writing' | 'done' }[]>([])
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
+  const [imageJobStatus, setImageJobStatus] = useState<{ status: 'generating' | 'optimizing' | 'ready' | 'error'; message: string } | null>(null)
   const [showTutorial, setShowTutorial] = useState(false)
   const conversationEndRef = useRef<HTMLDivElement>(null)
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -284,6 +405,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     [projects, selectedProjectId],
   )
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null
+  const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
   const previewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: true })), [files, isReactPreview])
   const fullscreenPreviewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: false })), [files, isReactPreview])
@@ -296,6 +418,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     [files],
   )
   const previewKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}:${filesSignature}`
+  // Identity key for the live Sandpack bundler: deliberately excludes filesSignature. Sandpack already
+  // applies file-content changes reactively (see CodingSandpackPreview's `files` prop + recompileMode:
+  // 'delayed'), so keying on content would force a full bundler/iframe remount on every keystroke —
+  // wiping in-memory state and any data the generated app persisted. Only remount for a genuinely
+  // different project/version/commit.
+  const previewIdentityKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}`
 
   // New preview content (or forced remount) resets the per-mount load counters.
   useEffect(() => { previewLoads.current = 0 }, [previewNonce])
@@ -345,11 +473,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     detailLoadSeq.current += 1
     setSelectedProjectId(null)
     setProjectDetail(null)
-    setFiles([{ path: 'description.md', content: DESCRIPTION_TEMPLATE, language: 'markdown' }])
-    setSelectedPath('description.md')
+    setFiles([])
+    setSelectedPath('')
     setMessage('')
-    setTitle('Mini app di prova')
-    setPrompt('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
+    setTitle('')
+    setPrompt('')
     setCreatePanelOpen(true)
     setPromptPanelOpen(true)
     setActiveWorkbench('code')
@@ -363,6 +491,42 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setDraftDirty(false)
     setDraftSaving(false)
     setDraftSavedAt(null)
+  }
+
+  const handleStartNewProject = async () => {
+    if (!selectedProjectId || creating || generating || draftSaving) return
+    if (draftDirty && files.length > 0 && !previewingCommitId && !previewingVersionId) {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+      setDraftSaving(true)
+      try {
+        const projectId = selectedProjectId
+        const collaboration = latestVersion?.source_manifest_json?.collaboration
+        const response = await codingApi.saveDraft(projectId, {
+          parent_version_id: selectedProject?.current_version_id || null,
+          source_manifest_json: {
+            files,
+            summary: 'Bozza salvata prima di creare un nuovo progetto.',
+            ...(collaboration ? { collaboration } : {}),
+          },
+          artifact_manifest_json: {},
+          build_status: 'ready',
+          review_status: 'pending',
+        })
+        const versionId = response.data?.id
+        const now = new Date().toISOString()
+        setProjects((prev) => prev.map((project) => (
+          project.id === projectId
+            ? { ...project, current_version_id: versionId || project.current_version_id, updated_at: now }
+            : project
+        )))
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || 'Salvataggio del progetto non riuscito. Riprova prima di crearne uno nuovo.')
+        return
+      } finally {
+        setDraftSaving(false)
+      }
+    }
+    startNewProject()
   }
 
   const loadProjects = async () => {
@@ -399,9 +563,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewingVersionId(null)
     setPreviewErrors([])
     try {
-      const response = await codingApi.getProject(projectId)
+      const [response, savedModelResponse] = await Promise.all([
+        codingApi.getProject(projectId),
+        codingApi.getProjectData(projectId, PROJECT_MODEL_DATA_KEY).catch((err: any) => {
+          if (err?.response?.status !== 404) console.warn('Impossibile caricare il modello del progetto:', err)
+          return null
+        }),
+      ])
       if (seq !== detailLoadSeq.current) return
       const detail = response.data as CodingProjectDetail
+      const savedModelKey = savedModelResponse?.data?.value?.model_key
+      if (
+        typeof savedModelKey === 'string'
+        && modelOptions.some((option) => option.key === savedModelKey)
+      ) {
+        setModelKey(savedModelKey)
+      }
       setProjectDetail(detail)
       const latestFiles = [...(detail.versions || [])]
         .sort((a, b) => b.version_number - a.version_number)
@@ -636,10 +813,52 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
         if (data.action === 'generateImage') {
           const payload = data.payload || {}
-          // Coding Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
+          // Vibe Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
           // ignoring any provider the generated mini-app may pass.
+          setImageJobStatus({ status: 'generating', message: 'Genero l’immagine sul server…' })
           const response = await llmApi.generateImage(String(payload.prompt || ''), 'gpt-image-1')
-          reply({ ok: true, result: response.data })
+          const result = response.data
+          // The backend returns a path relative to the platform's own origin (e.g.
+          // /uploads/generated/xxx.png). That resolves fine in the main app, but the sandboxed
+          // preview iframe runs on a different origin (Sandpack's external bundler domain, or a
+          // null origin for the legacy srcDoc preview) — a relative <img src> there 404s silently.
+          // Resolve it against the platform's origin before handing it back to the sandbox.
+          const imageUrl = typeof result?.image_url === 'string' && result.image_url.startsWith('/')
+            ? `${window.location.origin}${result.image_url}`
+            : result?.image_url
+          setImageJobStatus({ status: 'optimizing', message: 'Ottimizzo e preparo il file…' })
+          if (typeof imageUrl === 'string') {
+            await waitForImageUrl(imageUrl)
+          }
+          setImageJobStatus({ status: 'ready', message: 'Immagine pronta.' })
+          window.setTimeout(() => setImageJobStatus(null), 1800)
+          reply({ ok: true, result: { ...result, image_url: imageUrl } })
+          return
+        }
+
+        if (data.action === 'saveData' || data.action === 'loadData' || data.action === 'deleteData') {
+          const projectId = selectedProjectIdRef.current
+          if (!projectId) { reply({ ok: false, error: 'Nessun progetto attivo.' }); return }
+          const key = String(data.payload?.key || '').trim()
+          if (!key) { reply({ ok: false, error: 'Chiave dati mancante.' }); return }
+
+          if (data.action === 'saveData') {
+            const response = await codingApi.putProjectData(projectId, key, data.payload?.value ?? null)
+            reply({ ok: true, result: response.data })
+            return
+          }
+          if (data.action === 'deleteData') {
+            await codingApi.deleteProjectData(projectId, key)
+            reply({ ok: true, result: {} })
+            return
+          }
+          try {
+            const response = await codingApi.getProjectData(projectId, key)
+            reply({ ok: true, result: response.data })
+          } catch (err: any) {
+            if (err?.response?.status === 404) { reply({ ok: true, result: { key, value: null } }); return }
+            throw err
+          }
           return
         }
 
@@ -664,6 +883,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           return
         }
       } catch (err: any) {
+        if (data.action === 'generateImage') {
+          setImageJobStatus({ status: 'error', message: err?.response?.data?.detail || err?.message || 'Generazione immagine non riuscita.' })
+          window.setTimeout(() => setImageJobStatus(null), 5000)
+        }
         reply({
           ok: false,
           error: err?.response?.data?.detail || err?.message || 'Chiamata AI non riuscita.',
@@ -709,6 +932,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         initial_prompt: prompt.trim(),
       })
       const project = response.data as CodingProject
+      void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
+        setError('Progetto creato, ma non è stato possibile salvare la preferenza del modello.')
+      })
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
@@ -739,7 +965,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     await createAndGenerate(answersText)
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false) => {
+  const handleModelChange = (nextModelKey: string) => {
+    if (!modelOptions.some((option) => option.key === nextModelKey)) return
+    setModelKey(nextModelKey)
+    if (selectedProjectId) {
+      void codingApi.putProjectData(selectedProjectId, PROJECT_MODEL_DATA_KEY, { model_key: nextModelKey }).catch(() => {
+        setError('Non è stato possibile salvare il modello scelto per questo progetto.')
+      })
+    }
+  }
+
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false, attachmentsOverride?: string[]) => {
     setGenerating(true)
     setError(null)
     setLiveReasoning('')
@@ -766,6 +1002,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           prompt: nextPrompt,
           files: baseFiles.length ? baseFiles : undefined,
           model_key: modelKey,
+          attachments: attachmentsOverride?.length ? attachmentsOverride : undefined,
         }),
       })
       if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
@@ -869,7 +1106,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setError(null)
     try {
       const nextPrompt = message.trim()
+      const nextAttachments = attachedImages.map((a) => a.dataUrl)
       setMessage('')
+      setAttachedImages([])
       // Show the student's message immediately; the generate-stream endpoint persists it as the
       // codegen request, and loadProjectDetail reconciles this optimistic bubble afterwards.
       const optimistic: CodingMessage = {
@@ -878,14 +1117,50 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         role: 'user',
         content: nextPrompt,
         created_at: new Date().toISOString(),
+        metadata_json: nextAttachments.length ? { attachments: nextAttachments } : undefined,
       }
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
-      await generateCode(selectedProjectId, nextPrompt)
+      await generateCode(selectedProjectId, nextPrompt, undefined, false, nextAttachments)
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile salvare il messaggio.')
     } finally {
       setSending(false)
     }
+  }
+
+  const addAttachments = async (blobs: (File | Blob)[]) => {
+    const room = Math.max(0, MAX_ATTACHMENTS - attachedImages.length)
+    if (room <= 0) return
+    const accepted = blobs.filter((b) => b.type.startsWith('image/')).slice(0, room)
+    for (const blob of accepted) {
+      try {
+        const dataUrl = await downscaleImageToDataUrl(blob)
+        setAttachedImages((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [
+          ...prev,
+          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl, name: (blob as File).name || 'screenshot.png' },
+        ])
+      } catch {
+        setError('Non è stato possibile leggere una delle immagini allegate.')
+      }
+    }
+  }
+
+  const handlePromptPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(event.clipboardData?.items || [])
+    const imageFiles = items.filter((item) => item.type.startsWith('image/')).map((item) => item.getAsFile()).filter((f): f is File => !!f)
+    if (imageFiles.length === 0) return
+    event.preventDefault()
+    void addAttachments(imageFiles)
+  }
+
+  const handleAttachmentFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (picked.length) void addAttachments(picked)
+  }
+
+  const removeAttachment = (id: string) => {
+    setAttachedImages((prev) => prev.filter((a) => a.id !== id))
   }
 
   const saveCurrentFilesVersion = async (reason: string) => {
@@ -915,7 +1190,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     try {
       await saveCurrentFilesVersion('Versione salvata prima della condivisione in classe.')
       await codingApi.shareToClass(selectedProjectId)
-      setShareUrl('Progetto condiviso nella chat di classe. I compagni lo aprono nel Coding Lab e lavorano su una copia.')
+      setShareUrl('Progetto condiviso nella chat di classe. I compagni lo aprono nel Vibe Lab e lavorano su una copia.')
       await loadProjects()
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Condivisione non riuscita.')
@@ -1026,6 +1301,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   const updateSelectedFile = (content: string) => {
     if (!selectedFile) return
+    if (selectedFile.path === 'description.md') return
     setFiles((prev) => prev.map((file) => file.path === selectedFile.path ? { ...file, content } : file))
     if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
   }
@@ -1061,7 +1337,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     } else {
       // No project context yet: start a fresh project pre-loaded with this design system.
       startNewProject()
-      setFiles([{ path: 'description.md', content: DESCRIPTION_TEMPLATE, language: 'markdown' }, file])
+      setFiles([file])
     }
     setSelectedPath(file.path)
     setActiveWorkbench('code')
@@ -1127,7 +1403,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <Code2 className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-black text-[var(--text-primary)]">Coding Lab</h2>
+              <h2 className="truncate text-sm font-black text-[var(--text-primary)]">Vibe Lab</h2>
               <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">{projects.length} progetti</p>
             </div>
           </div>
@@ -1144,10 +1420,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         {projectsPanelOpen ? (
         <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2">
-            <Button
+          <div className={`${selectedProjectId && !createPanelOpen ? 'grid grid-cols-[1fr_auto]' : 'flex justify-end'} gap-2`}>
+            {selectedProjectId && !createPanelOpen && <Button
               type="button"
-              onClick={startNewProject}
+              onClick={handleStartNewProject}
+              disabled={creating || generating || draftSaving}
               density="compact"
               tone="accent"
               surface="solid"
@@ -1155,36 +1432,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             >
               <Plus className="h-3.5 w-3.5" />
               Nuovo
-            </Button>
-            <Button
-              type="button"
-              onClick={loadProjects}
-              variant="outline"
-              density="compact"
-              className="px-3"
-              title="Aggiorna progetti"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setShowDesignStudio(true)}
-              variant="outline"
-              density="compact"
-              className="px-3"
-              title="Design System"
-            >
-              <Palette className="h-3.5 w-3.5" />
-            </Button>
+            </Button>}
             <Button
               type="button"
               onClick={() => setShowTutorial(true)}
               variant="outline"
               density="compact"
-              className="px-3"
-              title="Tutorial Coding Lab"
+              className="gap-1.5 px-3 text-xs font-bold"
+              title="Tutorial Vibe Lab"
             >
               <HelpCircle className="h-3.5 w-3.5" />
+              Tutorial
             </Button>
           </div>
           <div className="my-3 flex items-center justify-between px-1">
@@ -1274,30 +1532,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         </div>
         ) : (
           <div className="flex flex-1 flex-col items-center gap-2 p-2">
-            <button
+            {selectedProjectId && !createPanelOpen && <button
               type="button"
-              onClick={startNewProject}
+              onClick={handleStartNewProject}
+              disabled={creating || generating || draftSaving}
               className="rounded-lg bg-slate-950 p-2 text-white hover:bg-slate-800"
               title="Nuovo progetto"
             >
               <Plus className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={loadProjects}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-              title="Aggiorna progetti"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowDesignStudio(true)}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-              title="Design System"
-            >
-              <Palette className="h-4 w-4" />
-            </button>
+            </button>}
             {projects.slice(0, 5).map((project) => (
               <button
                 key={project.id}
@@ -1326,9 +1569,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           </div>
         )}
 
-        <div className={`${promptPanelOpen ? 'lg:grid-cols-[minmax(300px,0.7fr)_minmax(520px,1.3fr)]' : 'lg:grid-cols-[3.5rem_minmax(520px,1fr)]'} grid min-h-0 flex-1 grid-cols-1 overflow-hidden transition-[grid-template-columns]`}>
-          <section className="flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
-            <PanelHeader
+        <div className={createPanelOpen
+          ? 'flex min-h-0 flex-1 items-center justify-center overflow-y-auto bg-[var(--surface-subtle)] p-4 sm:p-8'
+          : `${promptPanelOpen ? 'lg:grid-cols-[minmax(300px,0.7fr)_minmax(520px,1.3fr)]' : 'lg:grid-cols-[3.5rem_minmax(520px,1fr)]'} grid min-h-0 flex-1 grid-cols-1 overflow-hidden transition-[grid-template-columns]`
+        }>
+          <section className={createPanelOpen
+            ? 'flex w-full max-w-2xl flex-col rounded-[28px] border border-[color:var(--border-subtle)] bg-white shadow-[var(--shadow-lg)]'
+            : 'flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r'
+          }>
+            {!createPanelOpen && <PanelHeader
               icon={MessageSquare}
               title="Prompt"
               action={(
@@ -1342,12 +1591,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </button>
               )}
               compact={!promptPanelOpen}
-            />
+            />}
             {promptPanelOpen ? (
             <>
-            <div className="flex-1 space-y-3 overflow-y-auto p-3">
+            <div className={createPanelOpen ? 'space-y-3 p-5 sm:p-7' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
               {createPanelOpen && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div>
+                <div className="mb-6 text-center">
+                  <h2 className="text-xl font-black text-[var(--text-primary)]">Crea un nuovo progetto</h2>
+                  <p className="mt-1 text-sm text-[var(--text-muted)]">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
+                </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
@@ -1368,6 +1621,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Dai un nome al progetto"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                 />
                 <label className="mb-1 mt-3 block text-xs font-bold text-slate-600">Prompt iniziale</label>
@@ -1375,8 +1629,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
                   rows={5}
+                  placeholder="Descrivi l'app che vuoi creare, cosa deve fare e per chi è pensata..."
                   className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                 />
+                <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
+                <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
                 {!interviewQuestions ? (
                   <button
                     type="button"
@@ -1384,8 +1641,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     disabled={interviewing || creating || !title.trim() || !prompt.trim()}
                     className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40"
                   >
-                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                    {interviewing ? 'Preparo le domande...' : 'Avanti: qualche domanda'}
+                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    {interviewing ? 'Creo...' : 'Crea'}
                   </button>
                 ) : (
                   <div className="mt-3 space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
@@ -1426,7 +1683,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         disabled={creating || generating}
                         className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-bold text-white transition disabled:opacity-40"
                       >
-                        {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                         Genera progetto
                       </button>
                       <button
@@ -1466,23 +1723,46 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </div>
               )}
             </div>
-            <div className="border-t border-slate-100 bg-white/90 p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Modello</label>
-                <select
-                  value={modelKey}
-                  onChange={(event) => setModelKey(event.target.value)}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
-                  title="Modello usato per generare il codice"
-                >
-                  {modelOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label} · {option.hint}
-                    </option>
-                  ))}
-                </select>
+            {!createPanelOpen && <div className="border-t border-slate-100 bg-white/90 p-3">
+              <div className="mb-2 flex items-center justify-end gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Modello</span>
+                <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
               </div>
-              <div className="flex items-end gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
+              {attachedImages.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachedImages.map((att) => (
+                    <div key={att.id} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={att.dataUrl} alt={att.name} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-80 hover:opacity-100"
+                        title="Rimuovi allegato"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
+                <input
+                  ref={attachmentFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleAttachmentFilePick}
+                />
+                <button
+                  type="button"
+                  onClick={() => attachmentFileInputRef.current?.click()}
+                  disabled={!selectedProjectId || attachedImages.length >= MAX_ATTACHMENTS}
+                  title="Allega uno screenshot (o incollalo con Ctrl+V nel campo di testo)"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -1492,6 +1772,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       handleSendMessage()
                     }
                   }}
+                  onPaste={handlePromptPaste}
                   disabled={!selectedProjectId}
                   rows={2}
                   placeholder="Chiedi una modifica al progetto..."
@@ -1506,7 +1787,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   {sending || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
               </div>
-            </div>
+            </div>}
             </>
             ) : (
               <div className="hidden flex-1 items-center justify-center lg:flex">
@@ -1522,7 +1803,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             )}
           </section>
 
-          <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
+          {!createPanelOpen && <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
             <div className={`flex min-h-12 items-center justify-between gap-3 border-b px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
               <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
                 <CodingToolbarIconButton
@@ -1622,8 +1903,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 Stai visualizzando una versione storica. Usa Rollback per renderla la versione corrente.
               </div>
             )}
-            {activeWorkbench === 'code' ? (
-            <div className="flex min-h-0 flex-1 flex-col">
+            {/* Both panels stay mounted and are toggled via CSS (not conditional rendering) so
+                switching Code <-> Preview never tears down the live Sandpack bundler/iframe. */}
+            <div className={activeWorkbench === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
               <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-slate-900 p-2">
                 {files.length === 0 && (
                   <span className="px-2 py-1 text-xs text-slate-500">Nessun file — aggiungi contesto o genera</span>
@@ -1637,7 +1919,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       selectedFile?.path === file.path ? 'bg-white text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    {file.path}
+                    <span>{file.path}</span>
+                    {file.path === 'description.md' && (
+                      <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                        selectedFile?.path === file.path ? 'bg-slate-200 text-slate-700' : 'bg-white/10 text-slate-400'
+                      }`}>
+                        auto
+                      </span>
+                    )}
                   </button>
                 ))}
                 <button
@@ -1652,7 +1941,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
               <div className="min-h-0 flex-1 p-3">
                 {selectedFile ? (
-                  <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} />
+                  selectedFileIsGeneratedDescription ? (
+                    <GeneratedDescriptionPreview file={selectedFile} />
+                  ) : (
+                    <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} />
+                  )
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-slate-500">
                     Crea un progetto per vedere il codice.
@@ -1660,12 +1953,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 )}
               </div>
             </div>
-            ) : (
-            <div className={`flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}`}>
+            <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
             {isReactPreview && files.length > 0 ? (
               <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
-                  key={previewKey}
+                  key={previewIdentityKey}
                   files={files}
                   enableInspector
                   className="h-full w-full"
@@ -1689,19 +1981,21 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     </div>
                   </div>
                 )}
+                {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : previewHtml ? (
               <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <iframe
                   key={`${previewKey}:${previewNonce}`}
-                  title="Anteprima Coding Lab"
+                  title="Anteprima Vibe Lab"
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-forms"
                   referrerPolicy="no-referrer"
                   onLoad={handlePreviewLoad}
                   className="min-h-0 flex-1 border-0 bg-white"
                 />
+                {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : (
@@ -1721,8 +2015,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
             )}
             </div>
-            )}
-          </section>
+          </section>}
         </div>
       </main>
       {previewFullscreen && hasPreview && (
@@ -1742,11 +2035,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </button>
           </div>
           {isReactPreview ? (
-            <CodingSandpackPreview key={`fullscreen:${previewKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
+            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
           ) : (
             <iframe
               key={`fullscreen:${previewKey}:${fullscreenNonce}`}
-              title="Anteprima Coding Lab a pagina intera"
+              title="Anteprima Vibe Lab a pagina intera"
               srcDoc={fullscreenPreviewHtml}
               sandbox="allow-scripts allow-forms"
               referrerPolicy="no-referrer"
@@ -1781,7 +2074,7 @@ const CODING_TUTORIAL_STEPS = [
     ring: 'ring-sky-300/40',
     glow: 'shadow-sky-500/25',
     label: 'Panoramica',
-    title: 'Benvenuto nel Coding Lab',
+    title: 'Benvenuto nel Vibe Lab',
     desc: 'Qui trasformi un’idea in una mini app: descrivi il progetto, scegli uno stile, guarda l’anteprima e chiedi modifiche al chatbot finché il risultato funziona.',
     tips: ['Prompt e cronologia stanno al centro', 'I progetti e le versioni restano nella sidebar', 'Codice e anteprima si alternano a destra'],
     visual: () => (
@@ -1975,7 +2268,7 @@ function CodingLabTutorialModal({
       <motion.div
         role="dialog"
         aria-modal="true"
-        aria-label="Tutorial Coding Lab"
+        aria-label="Tutorial Vibe Lab"
         initial={{ opacity: 0, y: 18, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 18, scale: 0.97 }}
@@ -1999,7 +2292,7 @@ function CodingLabTutorialModal({
             <div className="mb-6">
               <div className="mb-2 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-sky-300" />
-                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Coding Lab</span>
+                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Vibe Lab</span>
               </div>
               <h2 className="text-3xl font-black leading-tight text-white">
                 Costruisci mini app con metodo
@@ -2155,6 +2448,31 @@ function PreviewLoadingSplash() {
           <p className="text-sm font-black text-[var(--text-primary)]">Caricamento anteprima</p>
           <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">Preparo il sandbox del progetto</p>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ImageJobStatusOverlay({ status, message }: { status: 'generating' | 'optimizing' | 'ready' | 'error'; message: string }) {
+  const done = status === 'ready'
+  const failed = status === 'error'
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+      <div className={`pointer-events-auto flex max-w-[min(92%,420px)] items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-xl ${
+        failed
+          ? 'border-rose-200 bg-rose-50/95 text-rose-700'
+          : done
+            ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700'
+            : 'border-sky-200 bg-white/95 text-sky-700'
+      }`}>
+        {failed ? (
+          <X className="h-3.5 w-3.5 shrink-0" />
+        ) : done ? (
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        )}
+        <span className="truncate">{message}</span>
       </div>
     </div>
   )
@@ -2473,6 +2791,13 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
         <div className={`mb-1 text-[11px] font-black uppercase tracking-wide ${isUser ? 'text-[var(--logo-blue-strong)]/70' : 'text-[color:var(--text-secondary)]'}`}>
           {label}
         </div>
+        {Array.isArray(item.metadata_json?.attachments) && item.metadata_json.attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {item.metadata_json.attachments.map((src: string, idx: number) => (
+              <img key={idx} src={src} alt={`Allegato ${idx + 1}`} className="h-14 w-14 rounded-lg border border-white/40 object-cover" />
+            ))}
+          </div>
+        )}
         <p className="whitespace-pre-wrap text-xs leading-relaxed">{item.content}</p>
       </div>
     </div>
@@ -2502,6 +2827,26 @@ function isReactProject(files: GeneratedFile[]): boolean {
   const pkg = files.find((f) => f.path.replace(/^\.?\//, '') === 'package.json')
   if (pkg && /"react"\s*:/.test(pkg.content)) return true
   return false
+}
+
+async function waitForImageUrl(url: string, timeoutMs = 12000): Promise<void> {
+  if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) return
+  const started = Date.now()
+  let delay = 250
+  while (Date.now() - started < timeoutMs) {
+    try {
+      let response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+      if (response.status === 405 || response.status === 501) {
+        response = await fetch(url, { method: 'GET', cache: 'no-store' })
+      }
+      const contentType = response.headers.get('content-type') || ''
+      if (response.ok && contentType.startsWith('image/')) return
+    } catch {
+      // Static files can lag behind the API response briefly; retry below.
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, delay))
+    delay = Math.min(delay + 250, 1500)
+  }
 }
 
 function buildPreviewHtml(files: GeneratedFile[], options: { enableInspector?: boolean } = {}) {
@@ -2551,7 +2896,7 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
     pending.delete(data.id);
     data.ok ? resolve(data.result) : reject(new Error(data.error || 'Chiamata AI non riuscita.'));
   });
-  function callHost(action, payload) {
+  function callHost(action, payload, timeoutMs = 60000) {
     return new Promise((resolve, reject) => {
       const id = 'coding_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       pending.set(id, { resolve, reject });
@@ -2560,14 +2905,34 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
         if (!pending.has(id)) return;
         pending.delete(id);
         reject(new Error('La chiamata AI ha impiegato troppo tempo.'));
-      }, 45000);
+      }, timeoutMs);
     });
   }
   window.GolinelliAI = {
     chat: ({ content, history = [], profileKey = 'tutor', provider, model } = {}) =>
       callHost('chat', { content, history, profileKey, provider, model }),
-    generateImage: ({ prompt, provider = 'gpt-image-1' } = {}) =>
-      callHost('generateImage', { prompt, provider })
+    generateImage: (args = {}) => {
+      const payload = typeof args === 'string'
+        ? { prompt: args, provider: 'gpt-image-1' }
+        : { prompt: args.prompt, provider: args.provider || 'gpt-image-1' };
+      const notify = (status, message, result) => {
+        if (typeof args === 'object' && typeof args.onStatus === 'function') args.onStatus({ status, message, result });
+        window.dispatchEvent(new CustomEvent('golinelli:image-status', { detail: { status, message, result } }));
+      };
+      notify('generating', 'Genero l’immagine…');
+      return callHost('generateImage', payload, 180000)
+        .then((result) => {
+          notify('ready', 'Immagine pronta.', result);
+          return result;
+        })
+        .catch((error) => {
+          notify('error', error && error.message ? error.message : 'Generazione immagine non riuscita.');
+          throw error;
+        });
+    },
+    saveData: ({ key, value } = {}) => callHost('saveData', { key, value }),
+    loadData: ({ key } = {}) => callHost('loadData', { key }),
+    deleteData: ({ key } = {}) => callHost('deleteData', { key }),
   };
   function cssPathFor(node) {
     if (!node || node.nodeType !== 1) return '';
@@ -2790,6 +3155,30 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
     return html.replace(/<\/head>/i, `${runtime}</head>`)
   }
   return `${runtime}${html}`
+}
+
+function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
+  const lineCount = file.content.split('\n').length
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
+        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-100">
+          markdown generato · {lineCount} ln
+        </span>
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Compilato dal prompt
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-50">
+          Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100">
+          <ReasoningMarkdown dark>{file.content}</ReasoningMarkdown>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChange: (content: string) => void }) {

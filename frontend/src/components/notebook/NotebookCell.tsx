@@ -186,7 +186,7 @@ export default function NotebookCell({
 
   return (
     <div
-      className={`group relative flex items-stretch gap-2 rounded-xl transition-all ${isCompact ? 'h-full' : ''} ${
+      className={`group relative flex min-h-0 items-stretch gap-2 rounded-xl transition-all ${isCompact ? 'h-full' : ''} ${
         isActive ? surface.activeRing : ''
       }`}
       onClick={onActivate}
@@ -204,7 +204,7 @@ export default function NotebookCell({
         </div>
       )}
 
-      <div className={`relative min-w-0 flex-1 overflow-hidden ${isCompact ? 'flex h-full flex-col rounded-none shadow-none' : 'rounded-xl shadow-sm'} ${surface.shell}`}>
+      <div className={`relative min-h-0 min-w-0 flex-1 overflow-hidden ${isCompact ? 'flex h-full flex-col rounded-none shadow-none' : 'rounded-xl shadow-sm'} ${surface.shell}`}>
         <div className={`absolute inset-y-0 left-0 z-10 w-1.5 ${surface.accent}`} />
         {!isCompact && (
         <div className={`flex flex-shrink-0 items-center justify-between border-b px-3 py-2 ${surface.toolbar}`}>

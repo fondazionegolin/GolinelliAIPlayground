@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, desc
 from typing import Annotated
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 from pydantic import BaseModel
 
@@ -23,6 +23,7 @@ from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.services.credit_service import credit_service
+from app.core.task_dates import task_due_at_iso
 from app.schemas.auth import (
     StudentAccessCheckRequest,
     StudentAccessCheckResponse,
@@ -31,9 +32,18 @@ from app.schemas.auth import (
 )
 from app.schemas.session import SessionResponse, SessionModuleResponse
 from app.schemas.credits import CreditUsageHistoryItem
-from app.realtime.gateway import sio
+from app.realtime.gateway import notify_session_teacher, sio
 
 router = APIRouter()
+
+
+def _quiz_score_from_submission(content: str | None) -> str | None:
+    if not content:
+        return None
+    parts = content.strip().split("/")
+    if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+        return f"{parts[0].strip()}/{parts[1].strip()}"
+    return None
 
 STUDENT_ACCENTS = {"cyan", "orange", "black", "red"}
 
@@ -55,6 +65,23 @@ class CanvasUpsertRequest(BaseModel):
     base_version: int | None = None
 
 
+def _submission_correction(submission: TaskSubmission) -> dict | None:
+    if not submission.corrections_json:
+        return None
+    try:
+        return json.loads(submission.corrections_json)
+    except (TypeError, ValueError):
+        return None
+
+
+def _published_answer_feedback(submission: TaskSubmission) -> dict:
+    if not submission.answer_feedback_json:
+        return {}
+    try:
+        parsed = json.loads(submission.answer_feedback_json)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError):
+        return {}
 def _normalize_join_code(value: str) -> str:
     return (value or "").strip().upper()
 
@@ -687,6 +714,10 @@ async def get_student_tasks(
                 "submitted_at": sub.submitted_at.isoformat(),
                 "score": sub.score,
                 "feedback": sub.feedback,
+                "answer_feedback": _published_answer_feedback(sub),
+                "feedback_published_at": sub.feedback_published_at.isoformat() if sub.feedback_published_at else None,
+                "feedback_read_at": sub.feedback_read_at.isoformat() if sub.feedback_read_at else None,
+                "correction": _submission_correction(sub),
             }
 
     # ── 4. Build response ────────────────────────────────────────────────────
@@ -700,7 +731,7 @@ async def get_student_tasks(
             "title": t.title,
             "description": t.description,
             "task_type": task_type,
-            "due_at": t.due_at.isoformat() if t.due_at else None,
+            "due_at": task_due_at_iso(t.due_at),
             "points": t.points,
             "content_json": content_json,
             "created_at": t.created_at.isoformat(),
@@ -755,16 +786,55 @@ async def submit_task(
         select(TaskSubmission)
         .where(TaskSubmission.task_id == task_id)
         .where(TaskSubmission.student_id == student.id)
+        .order_by(TaskSubmission.submitted_at.desc())
     )
-    existing = result.scalar_one_or_none()
+    previous_submissions = list(result.scalars().all())
+    existing = previous_submissions[0] if previous_submissions else None
     
     if existing:
         # Update existing submission
+        for duplicate in previous_submissions[1:]:
+            await db.delete(duplicate)
         existing.content = content
         existing.content_json = content_json
+        existing.corrections_json = None
+        existing.feedback = None
+        existing.feedback_draft_json = None
+        existing.answer_feedback_json = None
+        existing.feedback_published_at = None
+        if task.task_type == TaskType.QUIZ:
+            existing.score = _quiz_score_from_submission(content)
         existing.submitted_at = datetime.utcnow()
         await db.commit()
         await db.refresh(existing)
+
+        # A resubmission replaces the previous version, so notify the teacher
+        # just like a first submission and refresh the open task detail live.
+        await sio.emit(
+            "task_submission",
+            {
+                "task_id": str(task_id),
+                "task_title": task.title,
+                "student_id": str(student.id),
+                "student_name": student.nickname,
+                "submission_id": str(existing.id),
+                "is_update": True,
+            },
+            room=f"session:{student.session_id}",
+        )
+        await notify_session_teacher(
+            str(student.session_id),
+            {
+                "type": "task_submitted",
+                "session_id": str(student.session_id),
+                "student_id": str(student.id),
+                "nickname": student.nickname,
+                "task_id": str(task_id),
+                "task_title": task.title,
+                "message": f'{student.nickname} ha aggiornato il compito "{task.title}"',
+                "timestamp": existing.submitted_at.isoformat(),
+            },
+        )
         return {
             "id": str(existing.id),
             "content": existing.content,
@@ -778,6 +848,7 @@ async def submit_task(
         student_id=student.id,
         content=content,
         content_json=content_json,
+        score=_quiz_score_from_submission(content) if task.task_type == TaskType.QUIZ else None,
     )
     db.add(submission)
     await db.commit()
@@ -797,8 +868,8 @@ async def submit_task(
     )
     
     # Send teacher notification for task submission
-    await sio.emit(
-        "teacher_notification",
+    await notify_session_teacher(
+        str(student.session_id),
         {
             "type": "task_submitted",
             "session_id": str(student.session_id),
@@ -809,7 +880,6 @@ async def submit_task(
             "message": f"{student.nickname} ha completato il compito \"{task.title}\"",
             "timestamp": datetime.utcnow().isoformat(),
         },
-        room=f"session:{student.session_id}",
     )
     
     return {
@@ -818,6 +888,106 @@ async def submit_task(
         "content_json": submission.content_json,
         "submitted_at": submission.submitted_at.isoformat(),
     }
+
+
+@router.post("/documents/submissions/{submission_id}/correction/accept")
+async def accept_document_correction(
+    submission_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(TaskSubmission)
+        .where(TaskSubmission.id == submission_id)
+        .where(TaskSubmission.student_id == student.id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+
+    correction = _submission_correction(submission)
+    if not correction or correction.get("status") != "pending" or not correction.get("suggested_content_json"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No pending correction")
+
+    submission.content_json = correction["suggested_content_json"]
+    correction["status"] = "accepted"
+    correction["accepted_at"] = datetime.utcnow().isoformat()
+    submission.corrections_json = json.dumps(correction, ensure_ascii=False)
+    submission.submitted_at = datetime.utcnow()
+    await db.commit()
+    return {
+        "id": str(submission.id),
+        "content_json": submission.content_json,
+        "correction": correction,
+    }
+
+
+@router.post("/tasks/{task_id}/correction/read")
+async def acknowledge_exercise_correction(
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Confirm that the student has read the teacher's exercise correction."""
+    result = await db.execute(
+        select(TaskSubmission, Task)
+        .join(Task, TaskSubmission.task_id == Task.id)
+        .where(TaskSubmission.task_id == task_id)
+        .where(TaskSubmission.student_id == student.id)
+        .where(Task.task_type == TaskType.EXERCISE)
+        .order_by(TaskSubmission.submitted_at.desc())
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+
+    submission, task = row
+    correction = _submission_correction(submission)
+    if not correction or correction.get("kind") != "exercise_inline":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No correction available")
+
+    if correction.get("status") != "read":
+        correction["status"] = "read"
+        correction["read_at"] = datetime.utcnow().isoformat()
+        submission.corrections_json = json.dumps(correction, ensure_ascii=False)
+        await db.commit()
+
+        await sio.emit(
+            "task_correction_read",
+            {
+                "task_id": str(task.id),
+                "submission_id": str(submission.id),
+                "student_id": str(student.id),
+                "student_name": student.nickname,
+                "read_at": correction["read_at"],
+            },
+            room=f"session:{student.session_id}",
+        )
+
+    return {"correction": correction}
+
+
+@router.post("/tasks/{task_id}/feedback/read")
+async def acknowledge_task_feedback(
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Mark published feedback as read without exposing another student's submission."""
+    result = await db.execute(
+        select(TaskSubmission)
+        .join(Task, TaskSubmission.task_id == Task.id)
+        .where(TaskSubmission.task_id == task_id)
+        .where(TaskSubmission.student_id == student.id)
+        .where(Task.session_id == student.session_id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission or not submission.feedback_published_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
+    if submission.feedback_read_at is None:
+        submission.feedback_read_at = datetime.now(timezone.utc)
+        await db.commit()
+    return {"feedback_read_at": submission.feedback_read_at.isoformat()}
 
 
 @router.post("/documents/submit")
@@ -835,6 +1005,7 @@ async def submit_document(
 
     # Create a task for this submission
     task = Task(
+        tenant_id=student.tenant_id,
         session_id=student.session_id,
         title=f"[Studente] {request.title}",
         description=f"Documento inviato da {student.nickname}",
@@ -858,8 +1029,8 @@ async def submit_document(
     await db.refresh(submission)
 
     # Notify teacher about new student document
-    await sio.emit(
-        "teacher_notification",
+    await notify_session_teacher(
+        str(student.session_id),
         {
             "type": "student_document",
             "session_id": str(student.session_id),
@@ -871,7 +1042,6 @@ async def submit_document(
             "message": f"{student.nickname} ha inviato un {request.content_type}: \"{request.title}\"",
             "timestamp": datetime.utcnow().isoformat(),
         },
-        room=f"session:{student.session_id}",
     )
 
     return {

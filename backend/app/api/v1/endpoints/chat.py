@@ -22,6 +22,10 @@ router = APIRouter()
 MAX_SESSION_MESSAGE_PREVIEW_CHARS = 4000
 
 
+def _teacher_display_name(teacher: User) -> str:
+    return f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email or "Docente"
+
+
 def _compact_session_message_text(text: str | None) -> tuple[str, bool, int]:
     raw = text or ""
     if len(raw) <= MAX_SESSION_MESSAGE_PREVIEW_CHARS:
@@ -107,6 +111,12 @@ async def get_session_messages(
     nicknames = {}
     avatars = {}
     accents = {}
+    owner_result = await db.execute(
+        select(Class.teacher_id)
+        .join(Session, Session.class_id == Class.id)
+        .where(Session.id == session_id)
+    )
+    class_owner_id = owner_result.scalar_one_or_none()
     if student_ids:
         result = await db.execute(
             select(SessionStudent).where(SessionStudent.id.in_(student_ids))
@@ -122,6 +132,9 @@ async def get_session_messages(
             select(User).where(User.id.in_(teacher_ids))
         )
         for teacher_user in result.scalars().all():
+            nicknames[str(teacher_user.id)] = _teacher_display_name(teacher_user)
+            if teacher_user.avatar_url:
+                avatars[str(teacher_user.id)] = teacher_user.avatar_url
             if teacher_user.ui_accent:
                 accents[str(teacher_user.id)] = teacher_user.ui_accent
     
@@ -147,13 +160,18 @@ async def get_session_messages(
     formatted_messages = []
     for m in reversed(messages):
         is_notif, notif_type, notif_data = extract_notification_info(m.attachments)
+        if auth.is_student and isinstance(notif_data, dict):
+            recipient_id = notif_data.get("student_id")
+            if recipient_id and str(recipient_id) != str(auth.student.id):
+                continue
         compact_text, text_truncated, text_length = _compact_session_message_text(m.message_text)
         formatted_messages.append({
             "id": str(m.id),
             "sender_type": m.sender_type.value,
             "sender_id": str(m.sender_student_id or m.sender_teacher_id or "system"),
-            "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
-            "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
+            "sender_name": nicknames.get(str(m.sender_student_id or m.sender_teacher_id), "Docente"),
+            "sender_avatar_url": avatars.get(str(m.sender_student_id or m.sender_teacher_id)),
+            "sender_is_class_owner": bool(m.sender_teacher_id and m.sender_teacher_id == class_owner_id),
             "sender_accent": accents.get(str(m.sender_student_id or m.sender_teacher_id)),
             "text": compact_text,
             "text_truncated": text_truncated,
@@ -202,8 +220,16 @@ async def send_session_message(
         sender_type = SenderType.TEACHER
         sender_teacher_id = auth.teacher.id
         sender_student_id = None
-        sender_name = "Docente"
+        sender_name = _teacher_display_name(auth.teacher)
+        sender_avatar_url = auth.teacher.avatar_url
         sender_accent = auth.teacher.ui_accent
+
+    owner_result = await db.execute(
+        select(Class.teacher_id)
+        .join(Session, Session.class_id == Class.id)
+        .where(Session.id == session_id)
+    )
+    class_owner_id = owner_result.scalar_one_or_none()
     
     # Get or create public room
     room = await get_or_create_public_room(db, session_id, tenant_id)
@@ -232,6 +258,11 @@ async def send_session_message(
         parent_msg = parent_res.scalar_one_or_none()
         if parent_msg:
             parent_name = "Docente" if parent_msg.sender_type == SenderType.TEACHER else "Studente"
+            if parent_msg.sender_teacher_id:
+                teacher_res = await db.execute(select(User).where(User.id == parent_msg.sender_teacher_id))
+                parent_teacher = teacher_res.scalar_one_or_none()
+                if parent_teacher:
+                    parent_name = _teacher_display_name(parent_teacher)
             if parent_msg.sender_student_id:
                 ss_res = await db.execute(select(SessionStudent).where(SessionStudent.id == parent_msg.sender_student_id))
                 ss = ss_res.scalar_one_or_none()
@@ -260,6 +291,8 @@ async def send_session_message(
         "sender_type": sender_type.value,
         "sender_id": str(sender_student_id or sender_teacher_id),
         "sender_name": sender_name,
+        "sender_avatar_url": sender_avatar_url if not auth.is_student else auth.student.avatar_url,
+        "sender_is_class_owner": bool(sender_teacher_id and sender_teacher_id == class_owner_id),
         "sender_accent": sender_accent,
         "text": request.text,
         "attachments": attachments,

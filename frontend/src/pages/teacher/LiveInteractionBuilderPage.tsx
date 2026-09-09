@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  Plus, Trash2, Play, ChevronDown, ChevronUp,
+  Plus, Minus, Trash2, Play, ChevronDown,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
-  ArrowRight, CheckCircle2, Zap,
+  ArrowRight, CheckCircle2, Zap, Pause,
 } from 'lucide-react'
 
 // ── Types ──
@@ -29,6 +29,18 @@ interface Slide {
   show_ranking?: boolean
   max_words?: number
 }
+
+interface EditableSlide {
+  key: string
+  slide: Slide
+}
+
+const editableSlide = (slide: Slide): EditableSlide => ({
+  key: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  slide,
+})
 
 interface LiveInteractionItem {
   id: string
@@ -276,18 +288,26 @@ const TUTORIAL_STEPS = [
 
 function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
   const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
 
   useEffect(() => {
+    if (paused) return
     const id = setInterval(() => setActive(prev => (prev + 1) % TUTORIAL_STEPS.length), 3000)
     return () => clearInterval(id)
-  }, [])
+  }, [paused])
 
   const step = TUTORIAL_STEPS[active]
   const StepIcon = step.icon
   const Visual = step.visual
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8">
+    <div
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-72 h-72 bg-white/[0.02] rounded-full -translate-y-24 translate-x-20 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/[0.02] rounded-full translate-y-16 -translate-x-10 pointer-events-none" />
@@ -299,6 +319,13 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
         title="Chiudi tutorial"
       >
         <X className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => setPaused(prev => !prev)}
+        className="absolute top-4 right-14 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+        title={paused ? 'Riprendi tutorial' : 'Ferma tutorial'}
+      >
+        {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
       </button>
 
       {/* Header */}
@@ -539,23 +566,46 @@ function FeedbackEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide
 }
 
 function SlideCard({
-  slide, index, total, expanded, onToggle, onChange, onDelete, onMoveUp, onMoveDown,
+  item, index, expanded, onToggle, onChange, onDelete, onDragStart,
 }: {
-  slide: Slide; index: number; total: number; expanded: boolean
+  item: EditableSlide; index: number; expanded: boolean
   onToggle: () => void; onChange: (s: Slide) => void; onDelete: () => void
-  onMoveUp: () => void; onMoveDown: () => void
+  onDragStart: () => void
 }) {
+  const slide = item.slide
+  const dragControls = useDragControls()
   const Icon = SLIDE_ICONS[slide.type]
   const colorCls = SLIDE_COLORS[slide.type]
   const title = slide.question || slide.prompt || `Slide ${index + 1}`
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={onDragStart}
+      whileDrag={{ scale: 1.015, boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16)' }}
+      className="relative z-0 list-none rounded-xl data-[dragging=true]:z-20"
+    >
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={onToggle}
       >
-        <GripVertical className="h-4 w-4 text-slate-300 flex-shrink-0" />
+        <button
+          type="button"
+          aria-label={`Trascina per riordinare la slide ${index + 1}`}
+          title="Trascina per cambiare posizione"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            dragControls.start(event)
+          }}
+          onClick={event => event.stopPropagation()}
+          className="-ml-1 flex h-8 w-7 flex-shrink-0 touch-none items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+          style={{ cursor: 'grab' }}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${colorCls}`}>
           <Icon className="h-3 w-3" />
           {SLIDE_LABELS[slide.type]}
@@ -563,21 +613,33 @@ function SlideCard({
         <span className="flex-1 text-sm text-slate-700 truncate">{title}</span>
         <span className="text-xs text-slate-400">{slide.max_seconds}s</span>
         <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
-          <button disabled={index === 0} onClick={onMoveUp} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <button disabled={index === total - 1} onClick={onMoveDown} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronDown className="h-4 w-4" />
-          </button>
           <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-500">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          className="flex h-4 w-4 items-center justify-center text-slate-400"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </motion.span>
       </div>
 
+      <AnimatePresence initial={false}>
       {expanded && (
-        <div className="border-t border-slate-100 px-4 py-4 bg-slate-50/50">
+        <motion.div
+          key="slide-editor"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{
+            height: { duration: 0.24, ease: [0.4, 0, 0.2, 1] },
+            opacity: { duration: 0.16, ease: 'easeOut' },
+          }}
+          className="overflow-hidden"
+        >
+        <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-4">
           <div className="space-y-4">
             {slide.type === 'mcq'      && <McqEditor slide={slide} onChange={onChange} />}
             {slide.type === 'wordwall' && <WordwallEditor slide={slide} onChange={onChange} />}
@@ -585,17 +647,51 @@ function SlideCard({
             {slide.type === 'feedback' && <FeedbackEditor slide={slide} onChange={onChange} />}
             <div>
               <label className="text-xs font-medium text-slate-600 mb-1 block">Tempo massimo (secondi)</label>
-              <Input
-                type="number" min={10} max={600}
-                value={slide.max_seconds}
-                onChange={e => onChange({ ...slide, max_seconds: parseInt(e.target.value) || 60 })}
-                className="w-28 h-8 text-sm"
-              />
+              <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.max(10, slide.max_seconds - 5) })}
+                  disabled={slide.max_seconds <= 10}
+                  className="flex w-9 items-center justify-center border-r border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Riduci il tempo massimo di 5 secondi"
+                  title="Riduci di 5 secondi"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <Input
+                  type="number"
+                  min={10}
+                  max={600}
+                  step={5}
+                  value={slide.max_seconds}
+                  onChange={event => {
+                    const nextValue = Number.parseInt(event.target.value, 10)
+                    if (Number.isFinite(nextValue)) {
+                      onChange({ ...slide, max_seconds: Math.min(600, Math.max(10, nextValue)) })
+                    }
+                  }}
+                  className="h-full w-16 rounded-none border-0 px-2 text-center text-sm shadow-none focus-visible:ring-0"
+                  aria-label="Tempo massimo in secondi"
+                />
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.min(600, slide.max_seconds + 5) })}
+                  disabled={slide.max_seconds >= 600}
+                  className="flex w-9 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Aumenta il tempo massimo di 5 secondi"
+                  title="Aumenta di 5 secondi"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
+    </Reorder.Item>
   )
 }
 
@@ -654,7 +750,7 @@ function InteractionEditor({
   const navigate = useNavigate()
 
   const [title, setTitle] = useState('')
-  const [slides, setSlides] = useState<Slide[]>([])
+  const [slides, setSlides] = useState<EditableSlide[]>([])
   const [expandedIdx, setExpandedIdx] = useState<number | null>(0)
   const [showTypeMenu, setShowTypeMenu] = useState(false)
 
@@ -665,13 +761,17 @@ function InteractionEditor({
   })
 
   useEffect(() => {
-    if (existing) { setTitle(existing.title); setSlides(existing.slides_json || []) }
+    if (existing) {
+      setTitle(existing.title)
+      setSlides(((existing.slides_json || []) as Slide[]).map(editableSlide))
+    }
   }, [existing])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slides })
-      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slides })
+      const slidesJson = slides.map(item => item.slide)
+      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slidesJson })
+      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slidesJson })
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', sessionId] })
@@ -683,19 +783,12 @@ function InteractionEditor({
   })
 
   const addSlide = (type: SlideType) => {
-    setSlides(prev => [...prev, defaultSlide(type)])
+    setSlides(prev => [...prev, editableSlide(defaultSlide(type))])
     setExpandedIdx(slides.length)
     setShowTypeMenu(false)
   }
-  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((x, j) => j === i ? s : x))
+  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((item, j) => j === i ? { ...item, slide: s } : item))
   const deleteSlide = (i: number) => setSlides(prev => prev.filter((_, j) => j !== i))
-  const moveSlide = (i: number, dir: -1 | 1) => {
-    setSlides(prev => {
-      const next = [...prev]; const j = i + dir
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
-    })
-  }
 
   if (isLoading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>
 
@@ -711,21 +804,21 @@ function InteractionEditor({
         />
       </div>
 
-      <div className="space-y-2">
-        {slides.map((slide, i) => (
+      <Reorder.Group axis="y" values={slides} onReorder={setSlides} className="space-y-2">
+        {slides.map((item, i) => (
           <SlideCard
-            key={i}
-            slide={slide} index={i} total={slides.length}
+            key={item.key}
+            item={item} index={i}
             expanded={expandedIdx === i}
             onToggle={() => setExpandedIdx(expandedIdx === i ? null : i)}
             onChange={s => updateSlide(i, s)}
             onDelete={() => deleteSlide(i)}
-            onMoveUp={() => moveSlide(i, -1)}
-            onMoveDown={() => moveSlide(i, 1)}
+            onDragStart={() => setExpandedIdx(null)}
           />
         ))}
-      </div>
+      </Reorder.Group>
 
+      <div className="sticky bottom-0 z-30 space-y-3 border-t border-slate-100 bg-white/95 py-3 backdrop-blur">
       <div className="relative">
         <Button
           variant="outline"
@@ -735,7 +828,7 @@ function InteractionEditor({
           <Plus className="h-4 w-4 mr-2" /> Aggiungi slide
         </Button>
         {showTypeMenu && (
-          <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
+          <div className="absolute bottom-full mb-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
             {(Object.keys(SLIDE_LABELS) as SlideType[]).map(type => {
               const Icon = SLIDE_ICONS[type]
               return (
@@ -752,7 +845,7 @@ function InteractionEditor({
         )}
       </div>
 
-      <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+      <div className="flex justify-end gap-3">
         <Button tone="neutral" surface="ghost" onClick={onCancel}>Annulla</Button>
         <Button
           tone="accent" surface="solid"
@@ -761,6 +854,7 @@ function InteractionEditor({
         >
           {saveMutation.isPending ? 'Salvataggio...' : interactionId ? 'Salva modifiche' : 'Salva e vai al pannello →'}
         </Button>
+      </div>
       </div>
     </div>
   )

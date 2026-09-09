@@ -14,12 +14,20 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Public platform-health indicator. Set PLATFORM_HEALTH_OVERRIDE to
+    # green/yellow/red during planned maintenance when automatic probes cannot
+    # observe the host orchestration layer directly.
+    PLATFORM_HEALTH_OVERRIDE: Optional[str] = None
+    PLATFORM_HEALTH_MESSAGE: Optional[str] = None
+    PLATFORM_GPU_REQUIRED: bool = False
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     STUDENT_TOKEN_EXPIRE_HOURS: int = 24
+    FEEDBACK_MCP_TOKEN_EXPIRE_DAYS: int = 180
     
     # MinIO / S3
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -122,6 +130,8 @@ class Settings(BaseSettings):
     OCR_TROCR_MODEL: str = "microsoft/trocr-base-handwritten"
     ALLOWED_MIME_TYPES: list[str] = [
         "application/pdf",
+        "application/msword",
+        "text/markdown",
         "text/html",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",

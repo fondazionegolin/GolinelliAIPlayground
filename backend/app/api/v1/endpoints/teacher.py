@@ -1,11 +1,14 @@
+import json
+from html import escape
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
-from datetime import datetime, timedelta
-from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
+from pydantic import BaseModel, EmailStr, Field
 
 from app.core.database import get_db
 from app.core.security import generate_join_code, verify_password, get_password_hash, create_student_join_token
@@ -14,18 +17,21 @@ from app.core.permissions import (
     teacher_can_access_session,
     teacher_is_class_owner,
     teacher_is_session_owner,
+    teacher_is_session_creator,
     get_class_with_access_check,
     get_session_with_access_check,
 )
 from app.api.deps import get_current_teacher
 from app.models.user import User
+from app.models.tenant import Tenant
+from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 from app.models.llm import AuditEvent
 from app.models.chat import ChatRoom, ChatMessage
-from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole
+from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole, TenantType
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
-from app.models.document_draft import DocumentDraft
+from app.models.document_draft import DocumentDraft, DocumentDraftVersion
 from app.models.session_canvas import SessionCanvas
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.realtime.gateway import sio
@@ -44,18 +50,255 @@ from app.schemas.invitation import (
     ClassTeacherResponse,
     SessionTeacherResponse,
     InvitationsListResponse,
+    SchoolInvitationResponse,
     TeacherBasicInfo,
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
+from app.core.task_dates import task_due_at_for_storage, task_due_at_iso
 from app.services.storage_service import storage_service
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.ocr_service import OCRUnavailableError, SUPPORTED_IMAGE_TYPES, ocr_service
+from app.services.email_service import email_service
 from app.core.config import settings
 
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
+
+
+async def _emit_platform_change(
+    db: AsyncSession,
+    *,
+    entity: str,
+    action: str,
+    entity_id: UUID | str,
+    class_id: UUID | None = None,
+    session_id: UUID | None = None,
+    include_session_room: bool = False,
+    data: dict | None = None,
+) -> None:
+    """Broadcast a post-commit cache hint without changing persisted state.
+
+    Personal rooms cover every teacher allowed on the class/session, including
+    collaborators who are not currently inside the live session. The optional
+    session room reaches students. Duplicate delivery is harmless because each
+    payload carries a stable event id and clients deduplicate it.
+    """
+    resolved_class_id = class_id
+    teacher_ids: set[UUID] = set()
+
+    if session_id:
+        session_row = (await db.execute(
+            select(Session.class_id).where(Session.id == session_id)
+        )).scalar_one_or_none()
+        resolved_class_id = resolved_class_id or session_row
+        teacher_ids.update((await db.execute(
+            select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session_id)
+        )).scalars().all())
+
+    if resolved_class_id:
+        owner_id = (await db.execute(
+            select(Class.teacher_id).where(Class.id == resolved_class_id)
+        )).scalar_one_or_none()
+        if owner_id:
+            teacher_ids.add(owner_id)
+        teacher_ids.update((await db.execute(
+            select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == resolved_class_id)
+        )).scalars().all())
+
+    payload = {
+        "event_id": str(uuid4()),
+        "entity": entity,
+        "action": action,
+        "entity_id": str(entity_id),
+        "class_id": str(resolved_class_id) if resolved_class_id else None,
+        "session_id": str(session_id) if session_id else None,
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "data": data or {},
+    }
+    for teacher_id in teacher_ids:
+        await sio.emit("platform_change", payload, room=f"user:{teacher_id}")
+    if include_session_room and session_id:
+        await sio.emit("platform_change", payload, room=f"session:{session_id}")
+
+
+async def _find_teacher_for_school_context(
+    db: AsyncSession, email: str, tenant_id: UUID, class_owner_id: UUID
+) -> User | None:
+    """Resolve an invitee and require membership in the class/session school.
+
+    Legacy INDIVIDUAL tenants keep the old primary-tenant behavior. SCHOOL tenants
+    use the explicit many-to-many membership, so one teacher can collaborate in
+    classes belonging to any school they have been assigned to.
+    """
+    invitee = (await db.execute(
+        select(User).where(
+            User.email == email,
+            User.role.in_([UserRole.TEACHER, UserRole.ADMIN]),
+            User.is_active == True,
+        )
+    )).scalar_one_or_none()
+    if not invitee:
+        return None
+
+    # Platform administrators can collaborate in any class/session without a
+    # school membership. Teachers remain constrained to the class institution.
+    if invitee.role == UserRole.ADMIN:
+        return invitee
+
+    target_tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+    if target_tenant and target_tenant.tenant_type == TenantType.SCHOOL:
+        membership = (await db.execute(
+            select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == invitee.id,
+                TeacherSchoolMembership.school_tenant_id == tenant_id,
+            )
+        )).scalar_one_or_none()
+        return invitee if membership else None
+    owner_school_ids = set((await db.execute(
+        select(TeacherSchoolMembership.school_tenant_id).where(
+            TeacherSchoolMembership.teacher_id == class_owner_id
+        )
+    )).scalars().all())
+    if owner_school_ids:
+        shared_school = (await db.execute(
+            select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == invitee.id,
+                TeacherSchoolMembership.school_tenant_id.in_(owner_school_ids),
+            ).limit(1)
+        )).scalar_one_or_none()
+        return invitee if shared_school else None
+
+    # Compatibility for classes created before explicit school memberships.
+    return invitee if invitee.tenant_id == tenant_id else None
+
+
+class DocumentVersionCreate(BaseModel):
+    label: Optional[str] = None
+
+
+def _display_submission_score(task_type: TaskType | None, content: str | None, score: str | None) -> str | None:
+    if score:
+        return score
+    if task_type == TaskType.QUIZ and content:
+        parts = content.strip().split("/")
+        if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+            return f"{parts[0].strip()}/{parts[1].strip()}"
+    return None
+
+
+def _parse_submission_score(value: str | None) -> tuple[int, int] | None:
+    if not value:
+        return None
+    parts = value.strip().split("/")
+    if len(parts) != 2 or not all(part.strip().isdigit() for part in parts):
+        return None
+    correct, total = (int(part.strip()) for part in parts)
+    if total <= 0 or correct < 0 or correct > total:
+        return None
+    return correct, total
+
+
+def _json_object(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _task_score_summary(task: Task, submissions: list[TaskSubmission]) -> dict:
+    if task.task_type != TaskType.QUIZ:
+        return {
+            "kind": "completion",
+            "completed_count": len(submissions),
+            "submission_count": len(submissions),
+        }
+
+    parsed_scores = [
+        parsed
+        for submission in submissions
+        if (
+            parsed := _parse_submission_score(
+                _display_submission_score(task.task_type, submission.content, submission.score)
+            )
+        )
+    ]
+    average_percent = (
+        round(sum(correct / total for correct, total in parsed_scores) / len(parsed_scores) * 100)
+        if parsed_scores
+        else None
+    )
+    return {
+        "kind": "quiz",
+        "average_percent": average_percent,
+        "scored_count": len(parsed_scores),
+        "submission_count": len(submissions),
+    }
+
+
+def _latest_submissions_by_student(submissions: list[TaskSubmission]) -> list[TaskSubmission]:
+    latest: dict[UUID, TaskSubmission] = {}
+    for submission in submissions:
+        previous = latest.get(submission.student_id)
+        if previous is None or (submission.submitted_at or datetime.min) > (previous.submitted_at or datetime.min):
+            latest[submission.student_id] = submission
+    return list(latest.values())
+
+
+def _submission_correction(submission: TaskSubmission) -> dict | None:
+    if not submission.corrections_json:
+        return None
+    try:
+        parsed = json.loads(submission.corrections_json)
+        return parsed if isinstance(parsed, dict) else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def _create_student_task_notification(
+    db: AsyncSession,
+    *,
+    task: Task,
+    student_id: UUID,
+    teacher_id: UUID,
+    notification_type: str,
+    text: str,
+) -> None:
+    """Persist a task notification in class chat while limiting it to its recipient."""
+    result = await db.execute(
+        select(ChatRoom)
+        .where(ChatRoom.session_id == task.session_id)
+        .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+        .limit(1)
+    )
+    room = result.scalar_one_or_none()
+    if room is None:
+        room = ChatRoom(tenant_id=task.tenant_id, session_id=task.session_id, room_type=ChatRoomType.PUBLIC)
+        db.add(room)
+        await db.flush()
+    db.add(ChatMessage(
+        tenant_id=task.tenant_id,
+        session_id=task.session_id,
+        room_id=room.id,
+        sender_type=SenderType.TEACHER,
+        sender_teacher_id=teacher_id,
+        message_text=text,
+        attachments={
+            "is_notification": True,
+            "notification_type": notification_type,
+            "notification_data": {
+                "task_id": str(task.id),
+                "title": task.title,
+                "task_type": task.task_type.value if task.task_type else "exercise",
+                "student_id": str(student_id),
+            },
+        },
+    ))
+    await db.commit()
 
 
 # Profile schemas
@@ -81,6 +324,14 @@ class CanvasUpsertRequest(BaseModel):
     content_json: str
     base_version: int | None = None
     students_can_write: bool | None = None
+
+
+class DocumentCorrectionUpdate(BaseModel):
+    content_json: str
+
+
+class ExerciseCorrectionUpdate(BaseModel):
+    content: str
 
 
 class OCRTranscriptionResponse(BaseModel):
@@ -223,24 +474,43 @@ class ClassWithRoleResponse(BaseModel):
     session_count: int = 0
     role: str  # 'owner' or 'invited'
     owner_name: Optional[str] = None
+    school_tenant_id: Optional[UUID] = None
+    school_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+@router.get("/schools")
+async def list_teacher_schools(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    rows = (await db.execute(
+        select(Tenant)
+        .join(TeacherSchoolMembership, TeacherSchoolMembership.school_tenant_id == Tenant.id)
+        .where(TeacherSchoolMembership.teacher_id == teacher.id)
+        .order_by(Tenant.name.asc())
+    )).scalars().all()
+    return [{"id": str(school.id), "name": school.name, "slug": school.slug} for school in rows]
 
 
 @router.get("/classes")
 async def list_classes(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    include_archived: bool = False,
 ):
     """List all classes the teacher owns or has been invited to"""
     # Get owned classes
-    result = await db.execute(
+    owned_query = (
         select(Class)
         .where(Class.teacher_id == teacher.id)
-        .where(Class.tenant_id == teacher.tenant_id)
         .order_by(Class.created_at.desc())
     )
+    if not include_archived:
+        owned_query = owned_query.where(Class.archived_at.is_(None))
+    result = await db.execute(owned_query)
     owned_classes = result.scalars().all()
 
     classes_response = []
@@ -252,19 +522,23 @@ async def list_classes(
             "name": cls.name,
             "school_grade": cls.school_grade,
             "created_at": cls.created_at,
+            "archived_at": cls.archived_at,
             "role": "owner",
             "owner_name": None,
+            "school_tenant_id": cls.school_tenant_id,
         })
 
     # Get shared classes (via ClassTeacher)
-    result = await db.execute(
+    shared_query = (
         select(Class, User)
         .join(ClassTeacher, ClassTeacher.class_id == Class.id)
         .join(User, Class.teacher_id == User.id)
         .where(ClassTeacher.teacher_id == teacher.id)
-        .where(Class.tenant_id == teacher.tenant_id)
         .order_by(Class.created_at.desc())
     )
+    if not include_archived:
+        shared_query = shared_query.where(Class.archived_at.is_(None))
+    result = await db.execute(shared_query)
     for cls, owner in result.all():
         owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or owner.email
         classes_response.append({
@@ -274,8 +548,10 @@ async def list_classes(
             "name": cls.name,
             "school_grade": cls.school_grade,
             "created_at": cls.created_at,
+            "archived_at": cls.archived_at,
             "role": "invited",
             "owner_name": owner_name,
+            "school_tenant_id": cls.school_tenant_id,
         })
 
     class_ids = [cls["id"] for cls in classes_response]
@@ -284,6 +560,7 @@ async def list_classes(
         counts_result = await db.execute(
             select(Session.class_id, func.count(Session.id))
             .where(Session.class_id.in_(class_ids))
+            .where(Session.deleted_at.is_(None))
             .group_by(Session.class_id)
         )
         session_counts = {class_id: count for class_id, count in counts_result.all()}
@@ -291,10 +568,73 @@ async def list_classes(
     for cls in classes_response:
         cls["session_count"] = session_counts.get(cls["id"], 0)
 
+    school_ids = {cls["school_tenant_id"] for cls in classes_response if cls.get("school_tenant_id")}
+    school_names = {}
+    if school_ids:
+        school_names = {
+            school.id: school.name
+            for school in (await db.execute(select(Tenant).where(Tenant.id.in_(school_ids)))).scalars().all()
+        }
+    for cls in classes_response:
+        cls["school_name"] = school_names.get(cls.get("school_tenant_id"))
+
     # Sort by created_at desc
     classes_response.sort(key=lambda x: x["created_at"], reverse=True)
 
     return classes_response
+
+
+@router.post("/classes/{class_id}/archive")
+async def archive_class(
+    class_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_class_owner(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can archive it")
+    class_ = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if not class_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+    sessions = list((await db.execute(select(Session).where(Session.class_id == class_id))).scalars().all())
+    if any(session.status in {SessionStatus.ACTIVE, SessionStatus.PAUSED} for session in sessions):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stop all class sessions before archiving the class")
+    now = datetime.now(timezone.utc)
+    class_.archived_at = now
+    class_.archived_by_id = teacher.id
+    for session in sessions:
+        if session.deleted_at is None:
+            session.status = SessionStatus.ENDED
+            session.deleted_at = now
+            session.deleted_by_id = teacher.id
+            session.purge_after = now + timedelta(days=30)
+    await db.commit()
+    await _emit_platform_change(db, entity="class", action="archived", entity_id=class_id, class_id=class_id)
+    return {"message": "Class archived", "class_id": str(class_id), "archived_at": now}
+
+
+@router.post("/classes/{class_id}/restore")
+async def restore_class(
+    class_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_class_owner(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can restore it")
+    class_ = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if not class_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+    class_.archived_at = None
+    class_.archived_by_id = None
+    sessions = list((await db.execute(select(Session).where(Session.class_id == class_id))).scalars().all())
+    for session in sessions:
+        session.deleted_at = None
+        session.deleted_by_id = None
+        session.purge_after = None
+        if session.status == SessionStatus.ENDED:
+            session.status = SessionStatus.DRAFT
+    await db.commit()
+    await _emit_platform_change(db, entity="class", action="restored", entity_id=class_id, class_id=class_id)
+    return {"message": "Class restored", "class_id": str(class_id)}
 
 
 @router.post("/classes", response_model=ClassResponse)
@@ -306,8 +646,17 @@ async def create_class(
     if request.school_grade and request.school_grade not in SCHOOL_GRADES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid school_grade")
 
+    if request.school_tenant_id:
+        membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+            TeacherSchoolMembership.teacher_id == teacher.id,
+            TeacherSchoolMembership.school_tenant_id == request.school_tenant_id,
+        ))).scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Non appartieni all'istituto selezionato")
+
     class_ = Class(
         tenant_id=teacher.tenant_id,
+        school_tenant_id=request.school_tenant_id,
         teacher_id=teacher.id,
         name=request.name,
         school_grade=request.school_grade,
@@ -315,6 +664,7 @@ async def create_class(
     db.add(class_)
     await db.commit()
     await db.refresh(class_)
+    await _emit_platform_change(db, entity="class", action="created", entity_id=class_.id, class_id=class_.id)
     return class_
 
 
@@ -335,8 +685,18 @@ async def update_class(
 
     class_.name = request.name
     class_.school_grade = request.school_grade
+    if request.school_tenant_id != class_.school_tenant_id:
+        if request.school_tenant_id:
+            membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == teacher.id,
+                TeacherSchoolMembership.school_tenant_id == request.school_tenant_id,
+            ))).scalar_one_or_none()
+            if not membership:
+                raise HTTPException(status_code=403, detail="Non appartieni all'istituto selezionato")
+        class_.school_tenant_id = request.school_tenant_id
     await db.commit()
     await db.refresh(class_)
+    await _emit_platform_change(db, entity="class", action="updated", entity_id=class_.id, class_id=class_.id)
     return class_
 
 
@@ -345,17 +705,17 @@ async def list_sessions(
     class_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    include_deleted: bool = False,
 ):
     # Verify class access (owner or invited)
     class_ = await get_class_with_access_check(db, teacher, class_id)
     if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
-    result = await db.execute(
-        select(Session)
-        .where(Session.class_id == class_id)
-        .order_by(Session.created_at.desc())
-    )
+    query = select(Session).where(Session.class_id == class_id)
+    if not include_deleted:
+        query = query.where(Session.deleted_at.is_(None))
+    result = await db.execute(query.order_by(Session.created_at.desc()))
     return result.scalars().all()
 
 
@@ -380,8 +740,9 @@ async def create_session(
         join_code = generate_join_code()
     
     session = Session(
-        tenant_id=teacher.tenant_id,
+        tenant_id=class_.tenant_id,
         class_id=class_id,
+        created_by_teacher_id=teacher.id,
         title=request.title,
         join_code=join_code,
         is_persistent=request.is_persistent,
@@ -394,7 +755,7 @@ async def create_session(
     # Create default modules
     for module_key in DEFAULT_MODULES:
         module = SessionModule(
-            tenant_id=teacher.tenant_id,
+            tenant_id=class_.tenant_id,
             session_id=session.id,
             module_key=module_key,
             is_enabled=True,
@@ -404,6 +765,15 @@ async def create_session(
     
     await db.commit()
     await db.refresh(session)
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="created",
+        entity_id=session.id,
+        class_id=class_id,
+        session_id=session.id,
+        data={"title": session.title, "status": session.status.value},
+    )
     return session
 
 
@@ -465,6 +835,17 @@ async def update_session(
                 "La sessione è terminata. Il codice di accesso non è più disponibile.",
                 session.status.value,
             )
+
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="updated",
+        entity_id=session.id,
+        class_id=session.class_id,
+        session_id=session.id,
+        include_session_room=True,
+        data={"title": session.title, "status": session.status.value},
+    )
 
     return session
 
@@ -846,30 +1227,9 @@ async def remove_student(
     return {"message": "Student removed", "student_id": str(student_id), "nickname": student_nickname}
 
 
-@router.delete("/sessions/{session_id}")
-async def delete_session(
-    session_id: UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
-    confirm: bool = False,
-):
-    if not confirm:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Confirmation required. Set confirm=true to delete.",
-        )
+async def _hard_delete_session(db: AsyncSession, session: Session) -> None:
+    session_id = session.id
 
-    # Only owner can delete sessions
-    if not await teacher_is_session_owner(db, teacher, session_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can delete sessions")
-
-    result = await db.execute(
-        select(Session).where(Session.id == session_id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
     # Delete all related records that don't have DB-level cascade.
     # Order matters: delete leaf tables first, then tables with FKs pointing at them.
     from app.models.task import Task, TaskSubmission
@@ -884,76 +1244,241 @@ async def delete_session(
     from app.models.document_draft import DocumentDraft
     from app.models.file import File
     from app.models.teacherbot import TeacherbotConversation, TeacherbotMessage
+    from app.models.session import SessionProfileOverride
+    from app.models.shared_chat import SharedChatRoom
 
-    # Subquery helpers
     conv_ids = select(Conversation.id).where(Conversation.session_id == session_id)
     task_ids = select(Task.id).where(Task.session_id == session_id)
     doc_ids = select(RAGDocument.id).where(RAGDocument.session_id == session_id)
     chunk_ids = select(RAGChunk.id).where(RAGChunk.document_id.in_(doc_ids))
     tc_ids = select(TeacherbotConversation.id).where(TeacherbotConversation.session_id == session_id)
     ml_exp_ids = select(MLExperiment.id).where(MLExperiment.session_id == session_id)
+    student_ids = select(SessionStudent.id).where(SessionStudent.session_id == session_id)
 
-    # 1. rag_citations (→ conversation_messages, rag_chunks)
     await db.execute(RAGCitation.__table__.delete().where(
         RAGCitation.conversation_message_id.in_(
             select(ConversationMessage.id).where(ConversationMessage.conversation_id.in_(conv_ids))
         )
     ))
-    # 2. conversation_messages (→ conversations)
     await db.execute(ConversationMessage.__table__.delete().where(
         ConversationMessage.conversation_id.in_(conv_ids)
     ))
-    # 3. ml_results (→ ml_experiments)
+    await db.execute(Conversation.__table__.delete().where(Conversation.session_id == session_id))
     await db.execute(MLResult.__table__.delete().where(MLResult.experiment_id.in_(ml_exp_ids)))
-    # 4. ml_experiments (→ sessions)
     await db.execute(MLExperiment.__table__.delete().where(MLExperiment.session_id == session_id))
-    # 5. ml_datasets (→ sessions)
     await db.execute(MLDataset.__table__.delete().where(MLDataset.session_id == session_id))
-    # 6. rag_embeddings (→ rag_chunks)
     await db.execute(RAGEmbedding.__table__.delete().where(RAGEmbedding.chunk_id.in_(chunk_ids)))
-    # 7. rag_chunks (→ rag_documents)
     await db.execute(RAGChunk.__table__.delete().where(RAGChunk.document_id.in_(doc_ids)))
-    # 8. rag_documents (→ sessions, session_students)
     await db.execute(RAGDocument.__table__.delete().where(RAGDocument.session_id == session_id))
-    # 9. audit_events (→ sessions, session_students)
     await db.execute(AuditEvent.__table__.delete().where(AuditEvent.session_id == session_id))
-    # 10. teacherbot_messages (→ teacherbot_conversations)
     await db.execute(TeacherbotMessage.__table__.delete().where(
         TeacherbotMessage.conversation_id.in_(tc_ids)
     ))
-    # 11. teacherbot_conversations (→ sessions)
     await db.execute(TeacherbotConversation.__table__.delete().where(
         TeacherbotConversation.session_id == session_id
     ))
-    # 12. content_alerts
     await db.execute(ContentAlert.__table__.delete().where(ContentAlert.session_id == session_id))
-    # 13. quiz_attempts
     await db.execute(QuizAttempt.__table__.delete().where(QuizAttempt.session_id == session_id))
-    # 14. badge_awards
     await db.execute(BadgeAward.__table__.delete().where(BadgeAward.session_id == session_id))
-    # 15. credit_transactions
-    await db.execute(CreditTransaction.__table__.delete().where(CreditTransaction.session_id == session_id))
-    # 16. credit_limits
-    await db.execute(CreditLimit.__table__.delete().where(CreditLimit.session_id == session_id))
-    # 17. session_canvas
+    # Student-level credit rows are not guaranteed to repeat the session_id.
+    # Remove them by student ownership as well before deleting session_students.
+    await db.execute(CreditTransaction.__table__.delete().where(or_(
+        CreditTransaction.session_id == session_id,
+        CreditTransaction.student_id.in_(student_ids),
+    )))
+    await db.execute(CreditLimit.__table__.delete().where(or_(
+        CreditLimit.session_id == session_id,
+        CreditLimit.student_id.in_(student_ids),
+    )))
     await db.execute(SessionCanvas.__table__.delete().where(SessionCanvas.session_id == session_id))
-    # 18. document_drafts
     await db.execute(DocumentDraft.__table__.delete().where(DocumentDraft.session_id == session_id))
-    # 19. files (ml_datasets already deleted)
     await db.execute(File.__table__.delete().where(File.session_id == session_id))
-    # 20. chat_messages (→ chat_rooms, sessions)
+    await db.execute(SharedChatRoom.__table__.delete().where(SharedChatRoom.session_id == session_id))
+    await db.execute(SessionProfileOverride.__table__.delete().where(SessionProfileOverride.session_id == session_id))
     await db.execute(ChatMessage.__table__.delete().where(ChatMessage.session_id == session_id))
-    # 21. task_submissions (→ tasks)
-    await db.execute(TaskSubmission.__table__.delete().where(TaskSubmission.task_id.in_(task_ids)))
-    # 22. tasks (→ sessions)
+    await db.execute(ChatRoom.__table__.delete().where(ChatRoom.session_id == session_id))
+    await db.execute(TaskSubmission.__table__.delete().where(or_(
+        TaskSubmission.task_id.in_(task_ids),
+        TaskSubmission.student_id.in_(student_ids),
+    )))
     await db.execute(Task.__table__.delete().where(Task.session_id == session_id))
+    # Do not rely on async ORM relationship loading during a destructive cascade.
+    # Removing these direct children explicitly also keeps the deletion order stable
+    # as new session-scoped features are introduced.
+    await db.execute(SessionModule.__table__.delete().where(SessionModule.session_id == session_id))
+    await db.execute(SessionStudent.__table__.delete().where(SessionStudent.session_id == session_id))
 
-    # Now delete the session — ORM cascade handles:
-    # session_modules, session_students, chat_rooms, conversations, session_teachers, invitations
     await db.delete(session)
-    await db.commit()
 
-    return {"message": "Session deleted", "session_id": str(session_id)}
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    confirm: bool = False,
+):
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation required. Set confirm=true to delete.",
+        )
+
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può archiviarla")
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.status != SessionStatus.ENDED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stop the session before archiving it",
+        )
+
+    now = datetime.now(timezone.utc)
+    session.deleted_at = now
+    session.deleted_by_id = teacher.id
+    session.purge_after = now + timedelta(days=30)
+    await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="archived",
+        entity_id=session_id,
+        class_id=session.class_id,
+        session_id=session_id,
+    )
+
+    return {
+        "message": "Session moved to trash",
+        "session_id": str(session_id),
+        "deleted_at": session.deleted_at,
+        "purge_after": session.purge_after,
+    }
+
+
+@router.post("/sessions/{session_id}/restore", response_model=SessionResponse)
+async def restore_session(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può ripristinarla")
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session.deleted_at = None
+    session.deleted_by_id = None
+    session.purge_after = None
+    if session.status == SessionStatus.ENDED:
+        session.status = SessionStatus.DRAFT
+    await db.commit()
+    await db.refresh(session)
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="restored",
+        entity_id=session_id,
+        class_id=session.class_id,
+        session_id=session_id,
+    )
+    return session
+
+
+@router.delete("/sessions/{session_id}/permanent")
+async def permanently_delete_session(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    confirm: bool = False,
+):
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation required. Set confirm=true to permanently delete.",
+        )
+
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può eliminarla definitivamente")
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    await _hard_delete_session(db, session)
+    await db.commit()
+    return {"message": "Session permanently deleted", "session_id": str(session_id)}
+
+
+@router.delete("/classes/{class_id}/permanent")
+async def permanently_delete_class(
+    class_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    confirm: bool = False,
+):
+    if not confirm:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Confirmation required")
+    if not await teacher_is_class_owner(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can permanently delete it")
+    class_ = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if not class_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+    if class_.archived_at is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Archive the class before permanently deleting it")
+
+    sessions = list((await db.execute(select(Session).where(Session.class_id == class_id))).scalars().all())
+    for session in sessions:
+        await _hard_delete_session(db, session)
+
+    from app.models.teacherbot import Teacherbot, TeacherbotPublication
+    from app.models.rag import RAGDocument
+    from app.models.credits import CreditLimit, CreditTransaction
+    from app.models.file import File
+    from app.models.ml import MLDataset
+
+    class_task_ids = select(Task.id).where(Task.class_id == class_id)
+    await db.execute(TaskSubmission.__table__.delete().where(TaskSubmission.task_id.in_(class_task_ids)))
+    await db.execute(Task.__table__.delete().where(Task.class_id == class_id).where(Task.parent_uda_id.is_not(None)))
+    await db.execute(Task.__table__.delete().where(Task.class_id == class_id))
+    await db.execute(TeacherbotPublication.__table__.delete().where(TeacherbotPublication.class_id == class_id))
+    # Account-level assets and accounting records are retained but detached from the deleted class.
+    await db.execute(Teacherbot.__table__.update().where(Teacherbot.class_id == class_id).values(class_id=None))
+    await db.execute(RAGDocument.__table__.update().where(RAGDocument.class_id == class_id).values(class_id=None))
+    await db.execute(CreditLimit.__table__.update().where(CreditLimit.class_id == class_id).values(class_id=None))
+    await db.execute(CreditTransaction.__table__.update().where(CreditTransaction.class_id == class_id).values(class_id=None))
+    await db.execute(File.__table__.update().where(File.class_id == class_id).values(class_id=None))
+    await db.execute(MLDataset.__table__.update().where(MLDataset.class_id == class_id).values(class_id=None))
+    await db.delete(class_)
+    await db.commit()
+    return {"message": "Class permanently deleted", "class_id": str(class_id)}
+
+
+@router.post("/sessions/trash/purge-expired")
+async def purge_expired_sessions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(Session)
+        .join(Class, Session.class_id == Class.id)
+        .where(Class.teacher_id == teacher.id)
+        .where(Session.deleted_at.is_not(None))
+        .where(Session.purge_after <= now)
+    )
+    sessions = result.scalars().all()
+    for session in sessions:
+        await _hard_delete_session(db, session)
+    await db.commit()
+    return {"message": "Expired sessions purged", "count": len(sessions)}
 
 
 @router.post("/sessions/{session_id}/export")
@@ -1021,6 +1546,55 @@ async def get_session_audit(
 
 # ==================== DOCUMENT DRAFTS ====================
 
+
+def _document_version_response(version: DocumentDraftVersion) -> dict:
+    return {
+        "id": str(version.id),
+        "draft_id": str(version.draft_id),
+        "title": version.title,
+        "doc_type": version.doc_type,
+        "content_json": version.content_json,
+        "label": version.label,
+        "created_at": version.created_at.isoformat(),
+    }
+
+
+async def _snapshot_document_draft(
+    db: AsyncSession,
+    draft: DocumentDraft,
+    *,
+    label: str,
+    force: bool = False,
+) -> DocumentDraftVersion | None:
+    latest_result = await db.execute(
+        select(DocumentDraftVersion)
+        .where(DocumentDraftVersion.draft_id == draft.id)
+        .where(DocumentDraftVersion.owner_teacher_id == draft.owner_teacher_id)
+        .order_by(DocumentDraftVersion.created_at.desc())
+        .limit(1)
+    )
+    latest = latest_result.scalar_one_or_none()
+    if latest and not force and latest.title == draft.title and latest.doc_type == draft.doc_type and latest.content_json == draft.content_json:
+        return latest
+    if latest and not force:
+        created_at = latest.created_at
+        now = datetime.now(timezone.utc)
+        if created_at.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        if now - created_at < timedelta(minutes=5):
+            return None
+    version = DocumentDraftVersion(
+        draft_id=draft.id,
+        owner_teacher_id=draft.owner_teacher_id,
+        title=draft.title,
+        doc_type=draft.doc_type,
+        content_json=draft.content_json,
+        label=label[:120],
+    )
+    db.add(version)
+    await db.flush()
+    return version
+
 @router.get("/documents/drafts")
 async def list_document_drafts(
     session_id: UUID | None = None,
@@ -1048,6 +1622,147 @@ async def list_document_drafts(
     ]
 
 
+@router.get("/documents/shared")
+async def list_shared_documents(
+    class_id: UUID | None = None,
+    session_id: UUID | None = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    teacher: Annotated[User, Depends(get_current_teacher)] = None,
+):
+    """List documents shared by the teacher and submitted by students."""
+    if session_id and not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if class_id and not await teacher_can_access_class(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    base_conditions = []
+    if session_id:
+        base_conditions.append(Task.session_id == session_id)
+    if class_id:
+        base_conditions.append(Session.class_id == class_id)
+    base_conditions.extend([
+        Session.tenant_id == teacher.tenant_id,
+        or_(
+            Class.teacher_id == teacher.id,
+            Class.id.in_(select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id)),
+            Session.id.in_(select(SessionTeacher.session_id).where(SessionTeacher.teacher_id == teacher.id)),
+        ),
+    ])
+
+    teacher_result = await db.execute(
+        select(Task, Session, Class, User.first_name, User.last_name)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .join(User, Class.teacher_id == User.id)
+        .where(Task.task_type.in_([TaskType.LESSON, TaskType.PRESENTATION]))
+        .where(Task.content_json.is_not(None))
+        .where(*base_conditions)
+        .order_by(Task.created_at.desc())
+    )
+
+    student_result = await db.execute(
+        select(Task, TaskSubmission, SessionStudent, Session, Class)
+        .join(TaskSubmission, TaskSubmission.task_id == Task.id)
+        .join(SessionStudent, TaskSubmission.student_id == SessionStudent.id)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .where(Task.task_type == TaskType.STUDENT_SUBMISSION)
+        .where(TaskSubmission.content_json.is_not(None))
+        .where(*base_conditions)
+        .order_by(TaskSubmission.submitted_at.desc())
+    )
+
+    documents = []
+    for task, session, class_, first_name, last_name in teacher_result.all():
+        documents.append({
+            "id": str(task.id),
+            "task_id": str(task.id),
+            "submission_id": None,
+            "source": "teacher",
+            "title": task.title,
+            "doc_type": "presentation" if task.task_type == TaskType.PRESENTATION else "document",
+            "content_json": task.content_json,
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat() if task.updated_at else task.created_at.isoformat(),
+            "session_id": str(session.id),
+            "session_name": session.title,
+            "class_id": str(class_.id),
+            "class_name": class_.name,
+            "author_name": f"{first_name} {last_name}".strip() or "Docente",
+        })
+
+    for task, submission, student, session, class_ in student_result.all():
+        title = task.title.replace("[Studente] ", "", 1)
+        documents.append({
+            "id": str(submission.id),
+            "task_id": str(task.id),
+            "submission_id": str(submission.id),
+            "source": "student",
+            "title": title,
+            "doc_type": submission.content.split(":", 1)[0] if submission.content and ":" in submission.content else "document",
+            "content_json": submission.content_json,
+            "correction": _submission_correction(submission),
+            "created_at": submission.submitted_at.isoformat(),
+            "updated_at": submission.submitted_at.isoformat(),
+            "session_id": str(session.id),
+            "session_name": session.title,
+            "class_id": str(class_.id),
+            "class_name": class_.name,
+            "author_name": student.nickname,
+        })
+
+    documents.sort(key=lambda item: item["updated_at"], reverse=True)
+    return documents
+
+
+@router.put("/documents/submissions/{submission_id}/correction")
+async def upsert_document_correction(
+    submission_id: UUID,
+    request: DocumentCorrectionUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    result = await db.execute(
+        select(TaskSubmission, Task)
+        .join(Task, TaskSubmission.task_id == Task.id)
+        .where(TaskSubmission.id == submission_id)
+        .where(Task.task_type == TaskType.STUDENT_SUBMISSION)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    submission, task = row
+    if not await teacher_can_access_session(db, teacher, task.session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+
+    try:
+        json.loads(request.content_json)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid document JSON") from exc
+
+    previous = _submission_correction(submission) or {}
+    correction = {
+        "status": "pending",
+        "original_content_json": previous.get("original_content_json") or submission.content_json,
+        "suggested_content_json": request.content_json,
+        "teacher_id": str(teacher.id),
+        "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or "Docente",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    submission.corrections_json = json.dumps(correction, ensure_ascii=False)
+    await db.commit()
+
+    await _create_student_task_notification(
+        db,
+        task=task,
+        student_id=submission.student_id,
+        teacher_id=teacher.id,
+        notification_type="task_correction",
+        text=f"📝 Il docente ha preparato una correzione per: {task.title}",
+    )
+    return correction
+
+
 @router.post("/documents/drafts")
 async def create_document_draft(
     request: DocumentDraftCreate,
@@ -1065,6 +1780,8 @@ async def create_document_draft(
         content_json=request.content_json,
     )
     db.add(draft)
+    await db.flush()
+    await _snapshot_document_draft(db, draft, label="Versione iniziale", force=True)
     await db.commit()
     await db.refresh(draft)
     return {
@@ -1095,6 +1812,14 @@ async def update_document_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
     if request.session_id and not await teacher_can_access_session(db, teacher, request.session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    has_changes = any([
+        request.title is not None and request.title != draft.title,
+        request.doc_type is not None and request.doc_type != draft.doc_type,
+        request.content_json is not None and request.content_json != draft.content_json,
+        request.session_id is not None and request.session_id != draft.session_id,
+    ])
+    if has_changes:
+        await _snapshot_document_draft(db, draft, label="Salvataggio automatico")
     if request.title is not None:
         draft.title = request.title
     if request.doc_type is not None:
@@ -1103,6 +1828,98 @@ async def update_document_draft(
         draft.content_json = request.content_json
     if request.session_id is not None:
         draft.session_id = request.session_id
+    await db.commit()
+    await db.refresh(draft)
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.get("/documents/drafts/{draft_id}/versions")
+async def list_document_draft_versions(
+    draft_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    draft_result = await db.execute(
+        select(DocumentDraft.id)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_teacher_id == teacher.id)
+    )
+    if draft_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    result = await db.execute(
+        select(DocumentDraftVersion)
+        .where(DocumentDraftVersion.draft_id == draft_id)
+        .where(DocumentDraftVersion.owner_teacher_id == teacher.id)
+        .order_by(DocumentDraftVersion.created_at.desc())
+        .limit(50)
+    )
+    return [_document_version_response(version) for version in result.scalars().all()]
+
+
+@router.post("/documents/drafts/{draft_id}/versions")
+async def create_document_draft_version(
+    draft_id: UUID,
+    request: DocumentVersionCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_teacher_id == teacher.id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    version = await _snapshot_document_draft(
+        db,
+        draft,
+        label=(request.label or "Versione manuale").strip() or "Versione manuale",
+        force=True,
+    )
+    await db.commit()
+    if version is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Version unchanged")
+    await db.refresh(version)
+    return _document_version_response(version)
+
+
+@router.post("/documents/drafts/{draft_id}/versions/{version_id}/restore")
+async def restore_document_draft_version(
+    draft_id: UUID,
+    version_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    draft_result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_teacher_id == teacher.id)
+    )
+    draft = draft_result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    version_result = await db.execute(
+        select(DocumentDraftVersion)
+        .where(DocumentDraftVersion.id == version_id)
+        .where(DocumentDraftVersion.draft_id == draft_id)
+        .where(DocumentDraftVersion.owner_teacher_id == teacher.id)
+    )
+    version = version_result.scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Version not found")
+    await _snapshot_document_draft(db, draft, label="Prima del ripristino", force=True)
+    draft.title = version.title
+    draft.doc_type = version.doc_type
+    draft.content_json = version.content_json
     await db.commit()
     await db.refresh(draft)
     return {
@@ -1249,6 +2066,18 @@ async def list_tasks(
         .order_by(Task.created_at.desc())
     )
     rows = result.all()
+    task_ids = [t.id for t, _, _ in rows]
+    submissions_by_task: dict[UUID, list[TaskSubmission]] = {}
+    if task_ids:
+        submissions_result = await db.execute(
+            select(TaskSubmission).where(TaskSubmission.task_id.in_(task_ids))
+        )
+        for submission in submissions_result.scalars().all():
+            submissions_by_task.setdefault(submission.task_id, []).append(submission)
+        submissions_by_task = {
+            task_id: _latest_submissions_by_student(submissions)
+            for task_id, submissions in submissions_by_task.items()
+        }
     
     return [
         {
@@ -1257,11 +2086,21 @@ async def list_tasks(
             "description": t.description,
             "task_type": t.task_type.value if t.task_type else "exercise",
             "status": t.status.value if t.status else "draft",
-            "due_at": t.due_at.isoformat() if t.due_at else None,
+            "due_at": task_due_at_iso(t.due_at),
             "points": t.points,
             "content_json": t.content_json,
             "created_at": t.created_at.isoformat(),
             "author_name": f"{fn} {ln}".strip() or "Docente",
+            "submission_count": len(submissions_by_task.get(t.id, [])),
+            "score_summary": _task_score_summary(t, submissions_by_task.get(t.id, [])),
+            "submission_scores": [
+                {
+                    "student_id": str(sub.student_id),
+                    "score": display_score,
+                }
+                for sub in submissions_by_task.get(t.id, [])
+                if (display_score := _display_submission_score(t.task_type, sub.content, sub.score))
+            ],
         }
         for t, fn, ln in rows
     ]
@@ -1292,7 +2131,7 @@ async def create_task(
         description=request.description,
         task_type=task_type,
         status=TaskStatus.PUBLISHED if auto_publish else TaskStatus.DRAFT,
-        due_at=request.due_at,
+        due_at=task_due_at_for_storage(request.due_at),
         points=request.points,
         content_json=request.content_json,
     )
@@ -1372,13 +2211,24 @@ async def create_task(
             room=f"session:{session_id}",
         )
 
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="published" if task.status == TaskStatus.PUBLISHED else "created",
+        entity_id=task.id,
+        class_id=session.class_id,
+        session_id=session_id,
+        include_session_room=True,
+        data={"title": task.title, "task_type": task.task_type.value, "status": task.status.value},
+    )
+
     return {
         "id": str(task.id),
         "title": task.title,
         "description": task.description,
         "task_type": task.task_type.value,
         "status": task.status.value,
-        "due_at": task.due_at.isoformat() if task.due_at else None,
+        "due_at": task_due_at_iso(task.due_at),
         "points": task.points,
         "content_json": task.content_json,
         "created_at": task.created_at.isoformat(),
@@ -1395,6 +2245,7 @@ async def update_task(
     description: str = None,
     new_status: str = None,
     due_at: datetime = None,
+    clear_due_at: bool = False,
     points: str = None,
     content_json: str = None,
 ):
@@ -1422,8 +2273,10 @@ async def update_task(
         task.description = description
     if new_status is not None and new_status in [s.value for s in TaskStatus]:
         task.status = TaskStatus(new_status)
-    if due_at is not None:
-        task.due_at = due_at
+    if clear_due_at:
+        task.due_at = None
+    elif due_at is not None:
+        task.due_at = task_due_at_for_storage(due_at)
     if points is not None:
         task.points = points
     if content_json is not None:
@@ -1484,6 +2337,17 @@ async def update_task(
             },
             room=f"session:{session_id}",
         )
+
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="published" if old_status != TaskStatus.PUBLISHED and task.status == TaskStatus.PUBLISHED else "updated",
+        entity_id=task.id,
+        class_id=session.class_id,
+        session_id=session_id,
+        include_session_room=True,
+        data={"title": task.title, "task_type": task.task_type.value, "status": task.status.value},
+    )
     
     return {
         "id": str(task.id),
@@ -1491,7 +2355,7 @@ async def update_task(
         "description": task.description,
         "task_type": task.task_type.value,
         "status": task.status.value,
-        "due_at": task.due_at.isoformat() if task.due_at else None,
+        "due_at": task_due_at_iso(task.due_at),
         "points": task.points,
         "content_json": task.content_json,
     }
@@ -1520,6 +2384,14 @@ async def delete_task(
     
     await db.delete(task)
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="deleted",
+        entity_id=task_id,
+        session_id=session_id,
+        include_session_room=True,
+    )
     
     return {"message": "Task deleted"}
 
@@ -1536,6 +2408,15 @@ async def get_task_submissions(
     if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
+    task_result = await db.execute(
+        select(Task)
+        .where(Task.id == task_id)
+        .where(Task.session_id == session_id)
+    )
+    task = task_result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
     result = await db.execute(
         select(TaskSubmission, SessionStudent)
         .join(SessionStudent, TaskSubmission.student_id == SessionStudent.id)
@@ -1543,20 +2424,94 @@ async def get_task_submissions(
         .order_by(TaskSubmission.submitted_at.desc())
     )
     rows = result.all()
-    
-    return [
-        {
+    latest_rows = []
+    seen_students: set[UUID] = set()
+    for sub, student in rows:
+        if sub.student_id in seen_students:
+            continue
+        seen_students.add(sub.student_id)
+        latest_rows.append((sub, student))
+
+    response = []
+    for sub, student in latest_rows:
+        display_score = _display_submission_score(task.task_type, sub.content, sub.score)
+        parsed_score = _parse_submission_score(display_score) if task.task_type == TaskType.QUIZ else None
+        response.append({
             "id": str(sub.id),
             "student_id": str(sub.student_id),
             "student_nickname": student.nickname,
             "content": sub.content,
             "content_json": sub.content_json,
             "submitted_at": sub.submitted_at.isoformat(),
-            "score": sub.score,
+            "score": display_score,
+            "score_percent": round(parsed_score[0] / parsed_score[1] * 100) if parsed_score else None,
+            "result_kind": "quiz" if task.task_type == TaskType.QUIZ else "completion",
             "feedback": sub.feedback,
-        }
-        for sub, student in rows
-    ]
+            "feedback_draft": _json_object(sub.feedback_draft_json),
+            "answer_feedback": _json_object(sub.answer_feedback_json),
+            "feedback_published_at": sub.feedback_published_at.isoformat() if sub.feedback_published_at else None,
+            "correction": _submission_correction(sub),
+        })
+    return response
+
+
+@router.put("/sessions/{session_id}/tasks/{task_id}/submissions/{submission_id}/correction")
+async def upsert_exercise_correction(
+    session_id: UUID,
+    task_id: UUID,
+    submission_id: UUID,
+    request: ExerciseCorrectionUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Store a tracked, read-only correction for an open exercise response."""
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(TaskSubmission, Task)
+        .join(Task, TaskSubmission.task_id == Task.id)
+        .where(TaskSubmission.id == submission_id)
+        .where(TaskSubmission.task_id == task_id)
+        .where(Task.session_id == session_id)
+        .where(Task.task_type == TaskType.EXERCISE)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+
+    submission, task = row
+    original_content = (submission.content or "").strip()
+    corrected_content = request.content.strip()
+    if not corrected_content:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Correction content required")
+    if corrected_content == original_content:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Correction has no changes")
+
+    previous = _submission_correction(submission) or {}
+    correction = {
+        "kind": "exercise_inline",
+        "status": "pending",
+        "original_content": previous.get("original_content") or submission.content or "",
+        "suggested_content": corrected_content,
+        "teacher_id": str(teacher.id),
+        "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or "Docente",
+        "updated_at": datetime.utcnow().isoformat(),
+        "read_at": None,
+    }
+    submission.corrections_json = json.dumps(correction, ensure_ascii=False)
+    await db.commit()
+
+    await sio.emit(
+        "task_correction",
+        {
+            "task_id": str(task.id),
+            "submission_id": str(submission.id),
+            "student_id": str(submission.student_id),
+        },
+        room=f"session:{session_id}",
+    )
+    return correction
 
 
 def _parse_quiz_questions(data: dict) -> list:
@@ -1674,6 +2629,92 @@ class TaskAnalyzeRequest(BaseModel):
     question: str = ""
 
 
+def _parse_structured_task_analysis(content: str, students: list[SessionStudent]) -> dict:
+    fallback = {
+        "overview": {
+            "summary": content.strip(),
+            "completion_summary": "",
+            "strengths": [],
+            "gaps": [],
+            "suggestions": [],
+        },
+        "student_flags": [],
+    }
+    if not content.strip():
+        return fallback
+
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end <= start:
+        return fallback
+
+    try:
+        payload = json.loads(cleaned[start:end + 1])
+    except (TypeError, ValueError):
+        return fallback
+    if not isinstance(payload, dict):
+        return fallback
+
+    overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
+    allowed_flag_types = {
+        "incomplete",
+        "misconception",
+        "off_topic",
+        "similar_answer",
+        "strong_reasoning",
+    }
+    students_by_nickname = {student.nickname.strip().casefold(): student for student in students}
+    student_flags = []
+    for group in payload.get("student_flags") or []:
+        if not isinstance(group, dict):
+            continue
+        nickname = str(group.get("student_nickname") or "").strip()
+        student = students_by_nickname.get(nickname.casefold())
+        if not student:
+            continue
+        flags = []
+        for flag in group.get("flags") or []:
+            if not isinstance(flag, dict) or flag.get("type") not in allowed_flag_types:
+                continue
+            try:
+                confidence = max(0.0, min(1.0, float(flag.get("confidence", 0))))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            flags.append({
+                "type": flag["type"],
+                "title": str(flag.get("title") or "Indicatore formativo").strip(),
+                "reason": str(flag.get("reason") or "").strip(),
+                "evidence": str(flag.get("evidence") or "").strip(),
+                "confidence": confidence,
+            })
+        if flags:
+            student_flags.append({
+                "student_id": str(student.id),
+                "student_nickname": student.nickname,
+                "flags": flags,
+            })
+
+    def _string_list(key: str) -> list[str]:
+        values = overview.get(key) or []
+        return [str(value).strip() for value in values if str(value).strip()] if isinstance(values, list) else []
+
+    return {
+        "overview": {
+            "summary": str(overview.get("summary") or fallback["overview"]["summary"]).strip(),
+            "completion_summary": str(overview.get("completion_summary") or "").strip(),
+            "strengths": _string_list("strengths"),
+            "gaps": _string_list("gaps"),
+            "suggestions": _string_list("suggestions"),
+        },
+        "student_flags": student_flags,
+    }
+
+
 @router.post("/sessions/{session_id}/tasks/{task_id}/analyze")
 async def analyze_task_submissions(
     session_id: UUID,
@@ -1727,9 +2768,21 @@ async def analyze_task_submissions(
         select(TaskSubmission, SessionStudent)
         .join(SessionStudent, TaskSubmission.student_id == SessionStudent.id)
         .where(TaskSubmission.task_id == task_id)
-        .order_by(SessionStudent.nickname)
+        .order_by(SessionStudent.nickname, TaskSubmission.submitted_at.desc())
     )
-    submissions = subs_res.all()
+    raw_submissions = subs_res.all()
+    submissions = []
+    seen_student_ids: set[UUID] = set()
+    for submission, submission_student in raw_submissions:
+        if submission.student_id in seen_student_ids:
+            continue
+        seen_student_ids.add(submission.student_id)
+        submissions.append((submission, submission_student))
+    if not submissions:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Non ci sono ancora consegne da analizzare.",
+        )
 
     # Build context
     lines = []
@@ -1812,7 +2865,34 @@ Per i **quiz**: fai riferimento alla struttura domanda-per-domanda fornita; indi
 ogni domanda e quale risposta errata era più comune.
 Per gli **esercizi aperti**: confronta esplicitamente ciò che lo studente ha scritto con la consegna originale.
 
-Usa **tabelle markdown** per dati comparabili. Sii diretto e specifico — mai generico.
+Non assegnare voti e non formulare giudizi definitivi. I flag sono indicatori di supporto che il docente deve verificare.
+
+Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza markdown, con questa struttura:
+{{
+  "overview": {{
+    "summary": "sintesi dell'andamento della classe",
+    "completion_summary": "consegne ricevute e mancanti",
+    "strengths": ["punto di forza comune"],
+    "gaps": ["difficoltà ricorrente"],
+    "suggestions": ["azione didattica concreta"]
+  }},
+  "student_flags": [
+    {{
+      "student_nickname": "nickname esatto",
+      "flags": [
+        {{
+          "type": "incomplete|misconception|off_topic|similar_answer|strong_reasoning",
+          "title": "titolo breve e prudente",
+          "reason": "motivazione verificabile",
+          "evidence": "citazione verbatim della risposta",
+          "confidence": 0.0
+        }}
+      ]
+    }}
+  ]
+}}
+
+Inserisci un flag solo quando esiste un'evidenza concreta. Usa confidence tra 0 e 1. Per similar_answer indica nella motivazione gli altri nickname coinvolti.
 
 ---
 
@@ -1822,6 +2902,20 @@ Usa **tabelle markdown** per dati comparabili. Sii diretto e specifico — mai g
         "Fornisci un'analisi critica e dettagliata delle risposte degli studenti, "
         "evidenziando debiti formativi, punti di forza, criticità individuali e suggerimenti didattici."
     )
+
+    credits_available = await credit_service.check_availability(
+        db,
+        teacher.tenant_id,
+        estimated_cost=0.0001,
+        teacher_id=teacher.id,
+        class_id=session.class_id,
+        session_id=session.id,
+    )
+    if not credits_available:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Crediti AI docente esauriti. Attendi il rinnovo del plafond o contatta l'amministratore.",
+        )
 
     llm_response = await llm_service.generate(
         messages=[{"role": "user", "content": user_msg}],
@@ -1841,13 +2935,17 @@ Usa **tabelle markdown** per dati comparabili. Sii diretto e specifico — mai g
             db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
             {"type": "task_analysis", "task_id": str(task_id)},
             teacher_id=teacher.id,
+            class_id=session.class_id,
+            session_id=session.id,
             context="task_analysis",
         )
     except Exception:
         pass
 
+    structured_analysis = _parse_structured_task_analysis(llm_response.content, all_students)
     return {
         "analysis": llm_response.content,
+        **structured_analysis,
         "task_title": task.title,
         "task_type": task.task_type.value,
         "submission_count": len(submissions),
@@ -1889,7 +2987,121 @@ async def grade_submission(
     return {"message": "Submission graded", "score": score, "feedback": feedback}
 
 
+class SubmissionFeedbackUpdate(BaseModel):
+    overall_feedback: str = ""
+    answer_feedback: dict[str, str] = Field(default_factory=dict)
+    score: Optional[str] = None
+    publish: bool = False
+
+
+@router.put("/sessions/{session_id}/tasks/{task_id}/submissions/{submission_id}/feedback")
+async def update_submission_feedback(
+    session_id: UUID,
+    task_id: UUID,
+    submission_id: UUID,
+    request: SubmissionFeedbackUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    result = await db.execute(
+        select(TaskSubmission, Task)
+        .join(Task, TaskSubmission.task_id == Task.id)
+        .where(TaskSubmission.id == submission_id)
+        .where(TaskSubmission.task_id == task_id)
+        .where(Task.session_id == session_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    submission, task = row
+    clean_answers = {
+        str(key)[:40]: str(value).strip()[:2000]
+        for key, value in request.answer_feedback.items()
+        if str(value).strip()
+    }
+    overall = request.overall_feedback.strip()[:8000]
+    draft = {"overall_feedback": overall, "answer_feedback": clean_answers}
+    submission.feedback_draft_json = json.dumps(draft, ensure_ascii=False)
+    if request.score is not None:
+        submission.score = request.score.strip()[:50] or None
+    if request.publish:
+        submission.feedback = overall or None
+        submission.answer_feedback_json = json.dumps(clean_answers, ensure_ascii=False) if clean_answers else None
+        submission.feedback_published_at = datetime.now(timezone.utc)
+        submission.feedback_read_at = None
+    await db.commit()
+    if request.publish:
+        await _create_student_task_notification(
+            db,
+            task=task,
+            student_id=submission.student_id,
+            teacher_id=teacher.id,
+            notification_type="task_feedback",
+            text=f"💬 Il docente ha pubblicato un feedback per: {task.title}",
+        )
+        await sio.emit(
+            "task_feedback_published",
+            {
+                "task_id": str(task_id),
+                "submission_id": str(submission_id),
+                "student_id": str(submission.student_id),
+            },
+            room=f"session:{session_id}",
+        )
+    return {
+        "message": "Feedback published" if request.publish else "Feedback draft saved",
+        "feedback": submission.feedback,
+        "feedback_draft": draft,
+        "answer_feedback": _json_object(submission.answer_feedback_json),
+        "feedback_published_at": submission.feedback_published_at,
+    }
+
+
 # ==================== INVITATION ENDPOINTS ====================
+
+async def _send_collaboration_invitation_email(
+    invitee: User,
+    inviter: User,
+    target_type: str,
+    target_name: str,
+) -> None:
+    inviter_name = f"{inviter.first_name or ''} {inviter.last_name or ''}".strip() or inviter.email
+    target_label = "classe" if target_type == "class" else "sessione"
+    link = f"{settings.FRONTEND_URL.rstrip('/')}/teacher/classes?invitations=open"
+    safe_target = escape(target_name)
+    safe_inviter = escape(inviter_name or "Un docente")
+    await email_service.send_email(
+        to_email=invitee.email,
+        subject=f"Invito alla {target_label} {target_name} su Golinelli.ai",
+        html_content=(
+            "<div style=\"font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px\">"
+            "<h2>Hai ricevuto un invito su Golinelli.ai</h2>"
+            f"<p><strong>{safe_inviter}</strong> ti ha invitato alla {target_label} <strong>{safe_target}</strong>.</p>"
+            "<p>Accedi alla piattaforma e scegli <strong>Accetta</strong> oppure <strong>Rifiuta</strong> dal pannello notifiche.</p>"
+            f"<p><a href=\"{link}\" style=\"display:inline-block;padding:12px 20px;background:#111827;color:white;text-decoration:none;border-radius:10px\">Apri invito</a></p>"
+            "</div>"
+        ),
+        text_content=(
+            f"{inviter_name} ti ha invitato alla {target_label} {target_name} su Golinelli.ai. "
+            f"Accedi per accettare o rifiutare: {link}"
+        ),
+    )
+
+
+async def _emit_collaboration_invitation(invitee_id: UUID, target_type: str, target_name: str) -> None:
+    await sio.emit(
+        "teacher_notification",
+        {
+            "type": "collaboration_invitation",
+            "message": f"Nuovo invito alla {'classe' if target_type == 'class' else 'sessione'} {target_name}",
+            "target_type": target_type,
+            "target_name": target_name,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+        room=f"user:{invitee_id}",
+    )
 
 def _teacher_to_basic_info(user: User) -> TeacherBasicInfo:
     """Convert User to TeacherBasicInfo"""
@@ -1908,6 +3120,27 @@ async def get_invitations(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """Get all pending invitations for the current teacher"""
+    school_rows = (await db.execute(
+        select(TeacherSchoolInvitation, Tenant, User)
+        .join(Tenant, Tenant.id == TeacherSchoolInvitation.school_tenant_id)
+        .join(User, User.id == TeacherSchoolInvitation.invited_by_admin_id)
+        .where(TeacherSchoolInvitation.teacher_id == teacher.id)
+        .where(TeacherSchoolInvitation.status == InvitationStatus.PENDING)
+        .order_by(TeacherSchoolInvitation.created_at.desc())
+    )).all()
+    school_invitations = [
+        SchoolInvitationResponse(
+            id=invitation.id,
+            school_tenant_id=school.id,
+            school_name=school.name,
+            inviter=_teacher_to_basic_info(inviter),
+            status=invitation.status.value,
+            created_at=invitation.created_at,
+            responded_at=invitation.responded_at,
+        )
+        for invitation, school, inviter in school_rows
+    ]
+
     # Get pending class invitations
     result = await db.execute(
         select(ClassInvitation, Class, User)
@@ -1915,7 +3148,6 @@ async def get_invitations(
         .join(User, ClassInvitation.inviter_id == User.id)
         .where(ClassInvitation.invitee_id == teacher.id)
         .where(ClassInvitation.status == InvitationStatus.PENDING)
-        .where(ClassInvitation.tenant_id == teacher.tenant_id)
         .order_by(ClassInvitation.created_at.desc())
     )
     class_invitations_data = result.all()
@@ -1941,7 +3173,6 @@ async def get_invitations(
         .join(User, SessionInvitation.inviter_id == User.id)
         .where(SessionInvitation.invitee_id == teacher.id)
         .where(SessionInvitation.status == InvitationStatus.PENDING)
-        .where(SessionInvitation.tenant_id == teacher.tenant_id)
         .order_by(SessionInvitation.created_at.desc())
     )
     session_invitations_data = result.all()
@@ -1961,10 +3192,58 @@ async def get_invitations(
     ]
 
     return InvitationsListResponse(
+        school_invitations=school_invitations,
         class_invitations=class_invitations,
         session_invitations=session_invitations,
-        total_pending=len(class_invitations) + len(session_invitations),
+        total_pending=len(school_invitations) + len(class_invitations) + len(session_invitations),
     )
+
+
+@router.post("/invitations/school/{invitation_id}/respond")
+async def respond_to_school_invitation(
+    invitation_id: UUID,
+    request: InvitationResponseRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    invitation = (await db.execute(
+        select(TeacherSchoolInvitation).where(
+            TeacherSchoolInvitation.id == invitation_id,
+            TeacherSchoolInvitation.teacher_id == teacher.id,
+        )
+    )).scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invito non trovato")
+    if invitation.status != InvitationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Invito già gestito")
+
+    invitation.responded_at = datetime.now(timezone.utc)
+    invitation.status = InvitationStatus.ACCEPTED if request.accept else InvitationStatus.DECLINED
+    if request.accept:
+        membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+            TeacherSchoolMembership.teacher_id == teacher.id,
+            TeacherSchoolMembership.school_tenant_id == invitation.school_tenant_id,
+        ))).scalar_one_or_none()
+        if not membership:
+            db.add(TeacherSchoolMembership(
+                teacher_id=teacher.id,
+                school_tenant_id=invitation.school_tenant_id,
+                added_by_admin_id=invitation.invited_by_admin_id,
+            ))
+    await db.commit()
+    await sio.emit(
+        "platform_change",
+        {
+            "event_id": str(uuid4()),
+            "entity": "invitation",
+            "action": "accepted" if request.accept else "declined",
+            "entity_id": str(invitation.id),
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "data": {"target_type": "school", "status": invitation.status.value},
+        },
+        room=f"user:{teacher.id}",
+    )
+    return {"message": "Invito accettato" if request.accept else "Invito rifiutato", "status": invitation.status.value}
 
 
 @router.post("/invitations/class/{invitation_id}/respond")
@@ -1979,7 +3258,6 @@ async def respond_to_class_invitation(
         select(ClassInvitation)
         .where(ClassInvitation.id == invitation_id)
         .where(ClassInvitation.invitee_id == teacher.id)
-        .where(ClassInvitation.tenant_id == teacher.tenant_id)
     )
     invitation = result.scalar_one_or_none()
     if not invitation:
@@ -1994,7 +3272,7 @@ async def respond_to_class_invitation(
         invitation.status = InvitationStatus.ACCEPTED
         # Add teacher to class
         class_teacher = ClassTeacher(
-            tenant_id=teacher.tenant_id,
+            tenant_id=invitation.tenant_id,
             class_id=invitation.class_id,
             teacher_id=teacher.id,
             added_by_id=invitation.inviter_id,
@@ -2004,6 +3282,14 @@ async def respond_to_class_invitation(
         invitation.status = InvitationStatus.DECLINED
 
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="invitation",
+        action="accepted" if request.accept else "declined",
+        entity_id=invitation.id,
+        class_id=invitation.class_id,
+        data={"target_type": "class", "status": invitation.status.value},
+    )
 
     return {
         "message": "Invitation accepted" if request.accept else "Invitation declined",
@@ -2023,7 +3309,6 @@ async def respond_to_session_invitation(
         select(SessionInvitation)
         .where(SessionInvitation.id == invitation_id)
         .where(SessionInvitation.invitee_id == teacher.id)
-        .where(SessionInvitation.tenant_id == teacher.tenant_id)
     )
     invitation = result.scalar_one_or_none()
     if not invitation:
@@ -2038,7 +3323,7 @@ async def respond_to_session_invitation(
         invitation.status = InvitationStatus.ACCEPTED
         # Add teacher to session
         session_teacher = SessionTeacher(
-            tenant_id=teacher.tenant_id,
+            tenant_id=invitation.tenant_id,
             session_id=invitation.session_id,
             teacher_id=teacher.id,
             added_by_id=invitation.inviter_id,
@@ -2048,6 +3333,14 @@ async def respond_to_session_invitation(
         invitation.status = InvitationStatus.DECLINED
 
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="invitation",
+        action="accepted" if request.accept else "declined",
+        entity_id=invitation.id,
+        session_id=invitation.session_id,
+        data={"target_type": "session", "status": invitation.status.value},
+    )
 
     return {
         "message": "Invitation accepted" if request.accept else "Invitation declined",
@@ -2133,6 +3426,7 @@ async def get_class_teachers(
 async def invite_teacher_to_class(
     class_id: UUID,
     request: InviteTeacherRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
@@ -2143,15 +3437,9 @@ async def invite_teacher_to_class(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
     # Find the teacher to invite by email
-    result = await db.execute(
-        select(User)
-        .where(User.email == request.email)
-        .where(User.tenant_id == teacher.tenant_id)
-        .where(User.role == UserRole.TEACHER)
-    )
-    invitee = result.scalar_one_or_none()
+    invitee = await _find_teacher_for_school_context(db, request.email, class_.school_tenant_id or class_.tenant_id, class_.teacher_id)
     if not invitee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utente non trovato oppure docente non appartenente all'istituto della classe")
 
     # Cannot invite self
     if invitee.id == teacher.id:
@@ -2170,30 +3458,73 @@ async def invite_teacher_to_class(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher is already a member")
 
-    # Check if there's a pending invitation
+    # Reuse a previous declined invitation so the unique class/invitee pair remains valid.
     result = await db.execute(
         select(ClassInvitation)
         .where(ClassInvitation.class_id == class_id)
         .where(ClassInvitation.invitee_id == invitee.id)
-        .where(ClassInvitation.status == InvitationStatus.PENDING)
     )
-    if result.scalar_one_or_none():
+    previous_invitation = result.scalar_one_or_none()
+    if previous_invitation and previous_invitation.status == InvitationStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already pending")
 
-    # Create invitation
-    invitation = ClassInvitation(
-        tenant_id=teacher.tenant_id,
-        class_id=class_id,
-        inviter_id=teacher.id,
-        invitee_id=invitee.id,
-    )
-    db.add(invitation)
+    if previous_invitation:
+        previous_invitation.status = InvitationStatus.PENDING
+        previous_invitation.inviter_id = teacher.id
+        previous_invitation.responded_at = None
+        previous_invitation.created_at = datetime.now(timezone.utc)
+    else:
+        invitation = ClassInvitation(
+            tenant_id=class_.tenant_id,
+            class_id=class_id,
+            inviter_id=teacher.id,
+            invitee_id=invitee.id,
+        )
+        db.add(invitation)
     await db.commit()
+    background_tasks.add_task(
+        _send_collaboration_invitation_email,
+        invitee,
+        teacher,
+        "class",
+        class_.name,
+    )
+    await _emit_collaboration_invitation(invitee.id, "class", class_.name)
 
     return {
         "message": "Invitation sent",
         "invitee": _teacher_to_basic_info(invitee),
     }
+
+
+@router.post("/classes/{class_id}/teachers/invitations/{invitation_id}/resend")
+async def resend_class_teacher_invitation(
+    class_id: UUID,
+    invitation_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_class_owner(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can resend invitations")
+    result = await db.execute(
+        select(ClassInvitation, Class, User)
+        .join(Class, ClassInvitation.class_id == Class.id)
+        .join(User, ClassInvitation.invitee_id == User.id)
+        .where(ClassInvitation.id == invitation_id)
+        .where(ClassInvitation.class_id == class_id)
+        .where(ClassInvitation.status == InvitationStatus.PENDING)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending invitation not found")
+    invitation, class_, invitee = row
+    invitation.created_at = datetime.now(timezone.utc)
+    invitation.inviter_id = teacher.id
+    await db.commit()
+    background_tasks.add_task(_send_collaboration_invitation_email, invitee, teacher, "class", class_.name)
+    await _emit_collaboration_invitation(invitee.id, "class", class_.name)
+    return {"message": "Invitation resent", "created_at": invitation.created_at}
 
 
 @router.delete("/classes/{class_id}/teachers/{teacher_id}")
@@ -2334,6 +3665,7 @@ async def get_session_teachers(
 async def invite_teacher_to_session(
     session_id: UUID,
     request: InviteTeacherRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
@@ -2346,15 +3678,9 @@ async def invite_teacher_to_session(
     session, class_ = session_data
 
     # Find the teacher to invite by email
-    result = await db.execute(
-        select(User)
-        .where(User.email == request.email)
-        .where(User.tenant_id == teacher.tenant_id)
-        .where(User.role == UserRole.TEACHER)
-    )
-    invitee = result.scalar_one_or_none()
+    invitee = await _find_teacher_for_school_context(db, request.email, class_.school_tenant_id or class_.tenant_id, class_.teacher_id)
     if not invitee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utente non trovato oppure docente non appartenente all'istituto della classe")
 
     # Cannot invite self
     if invitee.id == teacher.id:
@@ -2381,30 +3707,73 @@ async def invite_teacher_to_session(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher is already a member")
 
-    # Check if there's a pending invitation
+    # Reuse a previous declined invitation so the unique session/invitee pair remains valid.
     result = await db.execute(
         select(SessionInvitation)
         .where(SessionInvitation.session_id == session_id)
         .where(SessionInvitation.invitee_id == invitee.id)
-        .where(SessionInvitation.status == InvitationStatus.PENDING)
     )
-    if result.scalar_one_or_none():
+    previous_invitation = result.scalar_one_or_none()
+    if previous_invitation and previous_invitation.status == InvitationStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already pending")
 
-    # Create invitation
-    invitation = SessionInvitation(
-        tenant_id=teacher.tenant_id,
-        session_id=session_id,
-        inviter_id=teacher.id,
-        invitee_id=invitee.id,
-    )
-    db.add(invitation)
+    if previous_invitation:
+        previous_invitation.status = InvitationStatus.PENDING
+        previous_invitation.inviter_id = teacher.id
+        previous_invitation.responded_at = None
+        previous_invitation.created_at = datetime.now(timezone.utc)
+    else:
+        invitation = SessionInvitation(
+            tenant_id=class_.tenant_id,
+            session_id=session_id,
+            inviter_id=teacher.id,
+            invitee_id=invitee.id,
+        )
+        db.add(invitation)
     await db.commit()
+    background_tasks.add_task(
+        _send_collaboration_invitation_email,
+        invitee,
+        teacher,
+        "session",
+        session.title,
+    )
+    await _emit_collaboration_invitation(invitee.id, "session", session.title)
 
     return {
         "message": "Invitation sent",
         "invitee": _teacher_to_basic_info(invitee),
     }
+
+
+@router.post("/sessions/{session_id}/teachers/invitations/{invitation_id}/resend")
+async def resend_session_teacher_invitation(
+    session_id: UUID,
+    invitation_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_session_owner(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can resend invitations")
+    result = await db.execute(
+        select(SessionInvitation, Session, User)
+        .join(Session, SessionInvitation.session_id == Session.id)
+        .join(User, SessionInvitation.invitee_id == User.id)
+        .where(SessionInvitation.id == invitation_id)
+        .where(SessionInvitation.session_id == session_id)
+        .where(SessionInvitation.status == InvitationStatus.PENDING)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending invitation not found")
+    invitation, session, invitee = row
+    invitation.created_at = datetime.now(timezone.utc)
+    invitation.inviter_id = teacher.id
+    await db.commit()
+    background_tasks.add_task(_send_collaboration_invitation_email, invitee, teacher, "session", session.title)
+    await _emit_collaboration_invitation(invitee.id, "session", session.title)
+    return {"message": "Invitation resent", "created_at": invitation.created_at}
 
 
 @router.delete("/sessions/{session_id}/teachers/{teacher_id}")

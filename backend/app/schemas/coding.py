@@ -50,6 +50,10 @@ class CodingGenerateRequest(BaseModel):
     # Which generation model to use ("sonnet" | "haiku" | "gpt-mini"). Resolved to a
     # provider/model pair server-side; unknown/empty falls back to the configured default.
     model_key: Optional[str] = Field(default=None, max_length=40)
+    # Pasted/attached screenshots as data URLs ("data:image/png;base64,..."). Described by a
+    # vision model server-side and folded into the prompt, so they work regardless of which
+    # codegen model is selected (some, like DeepSeek, have no vision support at all).
+    attachments: Optional[list[str]] = Field(default=None, max_length=3)
 
 
 class CodingMessageResponse(BaseModel):
@@ -200,3 +204,19 @@ class CodingBriefResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CodingProjectDataPut(BaseModel):
+    value: Any = None
+
+
+class CodingProjectDataResponse(BaseModel):
+    key: str
+    value: Any = None
+    updated_at: datetime
+
+
+class CodingProjectDataListResponse(BaseModel):
+    items: list[CodingProjectDataResponse]
+    total_size_bytes: int
+    max_size_bytes: int

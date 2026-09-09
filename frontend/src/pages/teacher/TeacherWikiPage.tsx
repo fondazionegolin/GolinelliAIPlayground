@@ -228,7 +228,7 @@ function getTeacherWikiSections(isEnglish: boolean): WikiSection[] {
             outputFormat: 'Document, canvas, or structured teaching material ready for classroom use.',
           },
           {
-            title: 'Notebook',
+            title: 'Coding Lab',
             path: 'Teacher / Notebook',
             description: 'Notebook environment for coding, teaching prototypes, and technical activities.',
             examples: [
@@ -237,7 +237,7 @@ function getTeacherWikiSections(isEnglish: boolean): WikiSection[] {
               'Check small scripts or data flows.',
             ],
             standardFlow: [
-              'Open Notebook.',
+              'Open Coding Lab.',
               'Create or select a project.',
               'Write, run, and update the cells until the notebook is ready.',
             ],
@@ -513,7 +513,7 @@ function getTeacherWikiSections(isEnglish: boolean): WikiSection[] {
           outputFormat: 'Documento, canvas o materiale strutturato pronto per uso didattico.',
         },
         {
-          title: 'Notebook',
+          title: 'Coding Lab',
           path: 'Docente / Notebook',
           description: 'Ambiente di notebook per coding, prototipi didattici e attivita tecniche.',
           examples: [
@@ -522,7 +522,7 @@ function getTeacherWikiSections(isEnglish: boolean): WikiSection[] {
             'Verificare piccoli script o flussi dati.',
           ],
           standardFlow: [
-            'Apri Notebook.',
+            'Apri Coding Lab.',
             'Crea o seleziona un progetto.',
             'Scrivi, esegui e aggiorna le celle fino alla versione finale.',
           ],

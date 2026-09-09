@@ -66,7 +66,7 @@ window.addEventListener('message', (event: MessageEvent) => {
   pending.delete(data.id)
   data.ok ? entry.resolve(data.result) : entry.reject(new Error(data.error || 'Chiamata AI non riuscita.'))
 })
-function callHost(action: string, payload: any): Promise<any> {
+function callHost(action: string, payload: any, timeoutMs = 60000): Promise<any> {
   return new Promise((resolve, reject) => {
     const id = 'coding_' + Date.now() + '_' + Math.random().toString(36).slice(2)
     pending.set(id, { resolve, reject })
@@ -75,14 +75,34 @@ function callHost(action: string, payload: any): Promise<any> {
       if (!pending.has(id)) return
       pending.delete(id)
       reject(new Error('La chiamata AI ha impiegato troppo tempo.'))
-    }, 45000)
+    }, timeoutMs)
   })
 }
 ;(window as any).GolinelliAI = {
   chat: ({ content, history = [], profileKey = 'tutor', provider, model }: any = {}) =>
     callHost('chat', { content, history, profileKey, provider, model }),
-  generateImage: ({ prompt, provider = 'gpt-image-1' }: any = {}) =>
-    callHost('generateImage', { prompt, provider }),
+  generateImage: (args: any = {}) => {
+    const payload = typeof args === 'string'
+      ? { prompt: args, provider: 'gpt-image-1' }
+      : { prompt: args.prompt, provider: args.provider || 'gpt-image-1' }
+    const notify = (status: string, message: string, result?: any) => {
+      if (typeof args === 'object' && typeof args.onStatus === 'function') args.onStatus({ status, message, result })
+      window.dispatchEvent(new CustomEvent('golinelli:image-status', { detail: { status, message, result } }))
+    }
+    notify('generating', 'Genero l’immagine…')
+    return callHost('generateImage', payload, 180000)
+      .then((result) => {
+        notify('ready', 'Immagine pronta.', result)
+        return result
+      })
+      .catch((error) => {
+        notify('error', error?.message || 'Generazione immagine non riuscita.')
+        throw error
+      })
+  },
+  saveData: ({ key, value }: any = {}) => callHost('saveData', { key, value }),
+  loadData: ({ key }: any = {}) => callHost('loadData', { key }),
+  deleteData: ({ key }: any = {}) => callHost('deleteData', { key }),
 }
 export const ENABLE_INSPECTOR = ${enableInspector ? 'true' : 'false'}
 export {}

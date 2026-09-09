@@ -3,12 +3,14 @@ from dataclasses import dataclass
 import httpx
 import base64
 import uuid
-import aiofiles
 import re
+import io
+import asyncio
 from pathlib import Path
 import logging
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
+from PIL import Image, ImageOps
 
 from app.core.config import settings
 
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.4-mini"
 LEGACY_OPENAI_CHAT_MODELS = {"gpt-5-mini", "gpt-5-nano"}
+GENERATED_IMAGE_MAX_SIDE = 1280
+GENERATED_IMAGE_WEBP_QUALITY = 82
 
 
 def normalize_llm_model(provider: Optional[str], model: Optional[str]) -> Optional[str]:
@@ -32,6 +36,40 @@ class LLMResponse:
     prompt_tokens: int
     completion_tokens: int
     confidence_score: Optional[float] = None
+
+
+def _save_optimized_generated_image_sync(image_bytes: bytes, upload_dir: Path) -> str:
+    """Persist a generated image in a web-friendly format and return its public path."""
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image = ImageOps.exif_transpose(image)
+            if max(image.size) > GENERATED_IMAGE_MAX_SIDE:
+                image.thumbnail((GENERATED_IMAGE_MAX_SIDE, GENERATED_IMAGE_MAX_SIDE), Image.Resampling.LANCZOS)
+            has_alpha = image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info)
+            if has_alpha:
+                image = image.convert("RGBA")
+            else:
+                image = image.convert("RGB")
+            filename = f"{uuid.uuid4()}.webp"
+            file_path = upload_dir / filename
+            image.save(
+                file_path,
+                format="WEBP",
+                quality=GENERATED_IMAGE_WEBP_QUALITY,
+                method=6,
+            )
+            return f"/uploads/generated/{filename}"
+    except Exception:
+        logger.exception("Failed to optimize generated image; saving original bytes")
+        filename = f"{uuid.uuid4()}.png"
+        file_path = upload_dir / filename
+        file_path.write_bytes(image_bytes)
+        return f"/uploads/generated/{filename}"
+
+
+async def _save_optimized_generated_image(image_bytes: bytes, upload_dir: Path) -> str:
+    return await asyncio.to_thread(_save_optimized_generated_image_sync, image_bytes, upload_dir)
 
 
 # ── Web-search intent detection ──────────────────────────────────────────────
@@ -395,10 +433,11 @@ class LLMService:
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        allow_web_search: bool = True,
     ) -> AsyncGenerator[str, None]:
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
-        use_web_search = _needs_web_search(messages)
+        use_web_search = allow_web_search and _needs_web_search(messages)
         if use_web_search:
             logger.info("Web search enabled (stream) for %s/%s", provider, model)
 
@@ -717,13 +756,7 @@ class LLMService:
                     upload_dir = Path("/app/uploads/generated")
                     upload_dir.mkdir(parents=True, exist_ok=True)
                     
-                    filename = f"{uuid.uuid4()}.png"
-                    file_path = upload_dir / filename
-                    
-                    async with aiofiles.open(file_path, 'wb') as f:
-                        await f.write(img_response.content)
-                    
-                    return f"/uploads/generated/{filename}"
+                    return await _save_optimized_generated_image(img_response.content, upload_dir)
         except Exception as e:
             logger.error(f"Failed to save image locally: {e}")
         return url
@@ -759,14 +792,7 @@ class LLMService:
                     upload_dir = Path("/app/uploads/generated")
                     upload_dir.mkdir(parents=True, exist_ok=True)
                     
-                    filename = f"{uuid.uuid4()}.png"
-                    file_path = upload_dir / filename
-                    
-                    async with aiofiles.open(file_path, 'wb') as f:
-                        await f.write(img_response.content)
-                    
-                    # Return persistent URL
-                    return f"/uploads/generated/{filename}"
+                    return await _save_optimized_generated_image(img_response.content, upload_dir)
         except Exception as e:
             print(f"Failed to save DALL-E image locally: {e}")
         
@@ -803,12 +829,8 @@ class LLMService:
             import base64 as _base64
             upload_dir = Path("/app/uploads/generated")
             upload_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{uuid.uuid4()}.png"
-            file_path = upload_dir / filename
             img_bytes = _base64.b64decode(b64_data)
-            async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(img_bytes)
-            return f"/uploads/generated/{filename}"
+            return await _save_optimized_generated_image(img_bytes, upload_dir)
         except Exception as e:
             logger.error(f"Failed to save GPT-Image-1 result: {e}")
             return f"data:image/png;base64,{b64_data}"
@@ -873,14 +895,7 @@ class LLMService:
                 upload_dir = Path("/app/uploads/generated")
                 upload_dir.mkdir(parents=True, exist_ok=True)
                 
-                filename = f"{uuid.uuid4()}.png"
-                file_path = upload_dir / filename
-                
-                async with aiofiles.open(file_path, 'wb') as f:
-                    await f.write(image_bytes)
-                
-                # Return persistent URL
-                return f"/uploads/generated/{filename}"
+                return await _save_optimized_generated_image(image_bytes, upload_dir)
             except Exception as e:
                 print(f"Failed to save Flux image locally: {e}")
                 # Fallback to base64 data URL

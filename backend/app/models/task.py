@@ -90,6 +90,11 @@ class TaskSubmission(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow)
     score = Column(String(50), nullable=True)
     feedback = Column(Text, nullable=True)
+    feedback_draft_json = Column(Text, nullable=True)
+    answer_feedback_json = Column(Text, nullable=True)
+    feedback_published_at = Column(DateTime(timezone=True), nullable=True)
+    feedback_read_at = Column(DateTime(timezone=True), nullable=True)
+    corrections_json = Column(Text, nullable=True)
     
     # Relationships
     task = relationship("Task", back_populates="submissions")

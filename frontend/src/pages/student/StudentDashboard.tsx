@@ -1,18 +1,18 @@
-import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, useCallback, useRef, lazy, Suspense, type ComponentType, type SVGProps } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
-import { studentApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
+import { boardsApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
-  Home, FileCode2, Menu, BookOpen, Code2, KanbanSquare
+  Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi
 } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
 const ClassificationModule  = lazy(() => import('./ClassificationModule'))
@@ -32,6 +32,7 @@ import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
+import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 interface SessionInfo {
   session: {
@@ -51,14 +52,22 @@ interface SessionInfo {
   } | null
   enabled_modules: Array<{
     key: string
+    is_enabled?: boolean
     config: Record<string, unknown>
   }>
 }
 
+type StudentTaskSummary = {
+  task_type: string
+  submission: { id: string } | null
+}
+
+const NON_SUBMITTABLE_TASK_TYPES = new Set(['lesson', 'presentation', 'student_submission'])
+
 type ModuleConfig = {
   label: string
   description: string
-  icon: typeof Bot
+  icon: ComponentType<SVGProps<SVGSVGElement>>
   colorClass: string
   bgClass: string
   borderClass: string
@@ -79,7 +88,7 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     chatbot: {
       label: t('student_dashboard.chatbot_label'),
       description: t('student_dashboard.chatbot_desc'),
-      icon: Bot,
+      icon: AcademicAiIcon,
       colorClass: 'text-indigo-700',
       bgClass: 'bg-indigo-100',
       borderClass: 'border-indigo-200/70',
@@ -160,18 +169,21 @@ const pageVariants = {
   exit: { opacity: 0, x: -20 },
 }
 
+const MOBILE_MODULE_ORDER: Array<string | null> = [null, 'chatbot', 'live', 'classe', 'self_assessment', 'documents']
+
 export default function StudentDashboard() {
-  const { t } = useTranslation()
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  usePlatformRealtimeSync(queryClient)
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeModule, setActiveModule] = useState<string | null>('chatbot')
+  const [activeModule, setActiveModule] = useState<string | null>(() => (
+    typeof window !== 'undefined' && window.innerWidth < 768 ? null : 'chatbot'
+  ))
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
-  const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [lastDocument] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
@@ -179,6 +191,21 @@ export default function StudentDashboard() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
   const [sharedCodingProject, setSharedCodingProject] = useState<{ projectId: string; nonce: number } | null>(null)
+  const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
+
+  const { data: studentTasks = [] } = useQuery<StudentTaskSummary[]>({
+    queryKey: ['student-tasks'],
+    queryFn: async () => (await studentApi.getTasks()).data,
+    enabled: Boolean(studentSession),
+  })
+  const pendingTasksCount = studentTasks.filter(
+    (task) => !task.submission && !NON_SUBMITTABLE_TASK_TYPES.has(task.task_type),
+  ).length
+  const { data: sharedBoards = [] } = useQuery<{ id: string; title: string; visibility: string }[]>({
+    queryKey: ['student-shared-boards', sessionInfo?.session.id],
+    queryFn: async () => (await boardsApi.list()).data,
+    enabled: Boolean(sessionInfo?.session.id),
+  })
 
   const exitStudentSession = useCallback(() => {
     localStorage.removeItem('student_token')
@@ -290,14 +317,6 @@ export default function StudentDashboard() {
           setOpenTaskId(taskId)
         }
 
-        // Fetch pending tasks count for the home card
-        try {
-          const tasksResponse = await studentApi.getTasks()
-          const pending = tasksResponse.data.filter((t: { status: string }) => t.status === 'pending').length
-          setPendingTasksCount(pending)
-        } catch {
-          // Ignore if tasks API fails
-        }
       } catch {
         exitStudentSession()
       } finally {
@@ -332,8 +351,17 @@ export default function StudentDashboard() {
   }, [])
 
   useEffect(() => {
+    const refreshTasks = () => {
+      queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
+    }
+    window.addEventListener('student-task-published', refreshTasks)
+    return () => window.removeEventListener('student-task-published', refreshTasks)
+  }, [queryClient])
+
+  useEffect(() => {
     const studentToken = localStorage.getItem('student_token')
-    if (!studentToken || !sessionInfo?.session?.id) return
+    const studentId = studentSession?.student_id
+    if (!studentToken || !studentId || !sessionInfo?.session?.id) return
 
     const socket = io(window.location.origin, {
       path: '/socket.io',
@@ -347,7 +375,35 @@ export default function StudentDashboard() {
     })
 
     socket.on('session_access_revoked', () => exitStudentSession())
+    socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {
+      publishRealtimeEvent('document_uploaded', data)
+      window.dispatchEvent(new CustomEvent('student-document-uploaded', { detail: data }))
+    })
+    socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {
+      publishRealtimeEvent('task_published', data)
+      window.dispatchEvent(new CustomEvent('student-task-published', { detail: data }))
+    })
+    socket.on('board_shared', (data: Record<string, any>) => publishRealtimeEvent('board_shared', data))
+    socket.on('task_correction', (data: Record<string, any>) => {
+      if (data.student_id === studentId) publishRealtimeEvent('task_correction', data)
+    })
+    socket.on('task_feedback_published', (data: Record<string, any>) => {
+      if (data.student_id === studentId) publishRealtimeEvent('task_feedback_published', data)
+    })
+    socket.on('platform_change', (data: Record<string, any>) => publishRealtimeEvent('platform_change', data))
+    socket.on('share_chat_invite', (data: Record<string, any>) => publishRealtimeEvent('share_chat_invite', data))
+    socket.on('share_chat_mention', (data: Record<string, any>) => publishRealtimeEvent('share_chat_mention', data))
     socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
+      publishRealtimeEvent('module_toggled', data)
+      setSessionInfo((previous) => {
+        if (!previous) return previous
+        const modules = previous.enabled_modules || []
+        const existing = modules.find((module) => module.key === data.module_key)
+        const enabled_modules = existing
+          ? modules.map((module) => module.key === data.module_key ? { ...module, is_enabled: data.is_enabled } : module)
+          : [...modules, { key: data.module_key, is_enabled: data.is_enabled, config: {} }]
+        return { ...previous, enabled_modules }
+      })
       if (data.module_key === 'chat' && !data.is_enabled) {
         window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
       }
@@ -356,7 +412,7 @@ export default function StudentDashboard() {
     return () => {
       socket.disconnect()
     }
-  }, [sessionInfo?.session?.id, exitStudentSession])
+  }, [sessionInfo?.session?.id, studentSession?.student_id, exitStudentSession])
 
   useEffect(() => {
     const handleResize = () => {
@@ -380,10 +436,23 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('oggi-imparo:expand', handler)
   }, [])
 
-  const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
-  const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration') ?? false
-  const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents'])]
+  const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat' && m.is_enabled !== false) ?? false
+  const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration' && m.is_enabled !== false) ?? false
+  const sessionModules = sessionInfo?.enabled_modules?.filter((m) => m.is_enabled !== false).map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', ...(sharedBoards.length ? ['boards'] : [])])]
+  const chatbotEnabled = enabledModules.includes('chatbot')
+
+  const dockStudentChat = () => {
+    setStudentChatSidebarOpen(true)
+    if (activeModule === 'chatbot') {
+      setActiveModule(null)
+    }
+  }
+
+  const expandStudentChat = () => {
+    setStudentChatSidebarOpen(false)
+    setActiveModule('chatbot')
+  }
 
   if (loading) {
     return (
@@ -408,7 +477,6 @@ export default function StudentDashboard() {
         activeModule={activeModule}
         onNavigate={setActiveModule}
         pendingTasksCount={pendingTasksCount}
-        lastDocument={lastDocument}
         openTaskId={openTaskId}
         privateChatEnabled={privateChatEnabled}
         collaborationEnabled={collaborationEnabled}
@@ -447,13 +515,14 @@ export default function StudentDashboard() {
           accent={studentAccent}
           onAccentChange={setStudentAccent}
           enabledModules={enabledModules}
+          pendingTasksCount={pendingTasksCount}
         />
       </div>
 
       {/* Main Layout with Chat Sidebar */}
       <div className="flex flex-1 overflow-hidden md:pl-16 xl:pl-0">
         {/* Main Content Area */}
-        <main className={`flex-1 min-h-0 relative ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`min-h-0 relative ${activeModule === 'chatbot' ? 'hidden' : 'flex-1'} ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -476,16 +545,6 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-                  <div className="absolute left-4 top-4 z-40 hidden md:block">
-                    <Button
-                      variant="ghost"
-                      className="h-9 gap-2 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-white"
-                      onClick={() => setActiveModule(null)}
-                    >
-                      ← {t('student_dashboard.back_home')}
-                    </Button>
-                  </div>
-
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[40vh]">
                       <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -512,6 +571,7 @@ export default function StudentDashboard() {
                       privateChatEnabled={privateChatEnabled}
                       collaborationEnabled={collaborationEnabled}
                       sharedCodingProject={sharedCodingProject}
+                      onModuleBack={() => setActiveModule(null)}
                     />
                   </Suspense>
                 </div>
@@ -520,6 +580,41 @@ export default function StudentDashboard() {
           </AnimatePresence>
         </main>
 
+        {chatbotEnabled && sessionInfo && (
+          <motion.div
+            layout
+            transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+            className={`overflow-hidden bg-white ${
+              activeModule === 'chatbot'
+                ? 'relative flex-1 h-full border-l-0 opacity-100'
+                : studentChatSidebarOpen
+                  ? 'relative flex-shrink-0 h-full border-l border-slate-200 opacity-100'
+                  : 'pointer-events-none flex-shrink-0 h-full border-l-0 opacity-0'
+            }`}
+            style={{
+              width: activeModule === 'chatbot' ? 'auto' : studentChatSidebarOpen ? 460 : 0,
+              transformOrigin: 'right bottom',
+            }}
+            aria-hidden={activeModule !== 'chatbot' && !studentChatSidebarOpen}
+          >
+            <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+              <ChatbotModule
+                sessionId={sessionInfo.session.id}
+                studentId={sessionInfo.student.id}
+                initialTeacherbotId={selectedTeacherbotId}
+                oggiImparoContext={oggiImparoLesson ?? undefined}
+                onOggiImparoContextConsumed={() => setOggiImparoLesson(null)}
+                studentAccent={studentAccent}
+                collaborationEnabled={collaborationEnabled}
+                onMinimize={dockStudentChat}
+                onExpand={expandStudentChat}
+                onClose={() => setStudentChatSidebarOpen(false)}
+                sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
+                dockArmed={studentChatSidebarOpen}
+              />
+            </Suspense>
+          </motion.div>
+        )}
         {sessionInfo ? (
           <div
             className={`hidden h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 lg:block ${
@@ -561,7 +656,6 @@ function StudentMobileShell({
   activeModule,
   onNavigate,
   pendingTasksCount,
-  lastDocument,
   openTaskId,
   privateChatEnabled,
   collaborationEnabled,
@@ -580,7 +674,6 @@ function StudentMobileShell({
   activeModule: string | null
   onNavigate: (module: string | null) => void
   pendingTasksCount: number
-  lastDocument: string | null
   openTaskId: string | null
   privateChatEnabled: boolean
   collaborationEnabled: boolean
@@ -596,41 +689,65 @@ function StudentMobileShell({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
+  const previousModule = useRef<string | null>(activeModule)
+  const previousIndex = MOBILE_MODULE_ORDER.indexOf(previousModule.current)
+  const currentIndex = MOBILE_MODULE_ORDER.indexOf(activeModule)
+  const slideDirection = currentIndex >= previousIndex ? 1 : -1
   const studentTheme = getStudentAccentTheme(studentAccent)
   const bgGradient = getAppBackgroundGradient(studentTheme)
   const moduleConfig = getModuleConfig(t)
   const topNav = [
-    { key: null as string | null, label: t('student_dashboard.back_home'), icon: Home },
-    { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
-    { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare },
-    { key: 'documents', label: t('navbar.nav_documents'), icon: FileText },
-    { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2 },
-    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
-    { key: 'boards', label: 'Board', icon: KanbanSquare },
-    { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
-    { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList },
-    { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
-  ].filter((item) => item.key === null || enabledModules.includes(item.key))
-  const activeTitle = activeModule ? (moduleConfig[activeModule]?.label || activeModule) : t('student_dashboard.back_home')
-  const isImmersiveModule = !!activeModule && ['chatbot', 'wiki', 'classification', 'notebook', 'documents', 'desktop', 'coding', 'boards'].includes(activeModule)
-  const homeTiles = [
-    { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot, meta: t('chatbot.profile_tutor'), tint: 'from-sky-500/22 to-cyan-400/8' },
-    { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare, meta: 'Chat', tint: 'from-indigo-500/22 to-sky-400/8' },
-    { key: 'documents', label: t('navbar.nav_documents'), icon: FileText, meta: t('documents.new_document'), tint: 'from-violet-500/22 to-fuchsia-400/8' },
-    { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2, meta: 'Python', tint: 'from-emerald-500/22 to-teal-400/8' },
-    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2, meta: 'Web app', tint: 'from-slate-500/18 to-sky-400/8' },
-    { key: 'boards', label: 'Board', icon: KanbanSquare, meta: 'Task', tint: 'from-cyan-500/18 to-blue-400/8' },
-    { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain, meta: 'Lab', tint: 'from-amber-400/22 to-orange-400/8' },
-    { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList, meta: pendingTasksCount > 0 ? `${pendingTasksCount}` : 'OK', tint: 'from-rose-400/20 to-amber-300/10' },
-  ].filter((item) => enabledModules.includes(item.key))
+    { key: null as string | null, label: 'Home', detail: sessionInfo.session.title, icon: Home },
+    { key: 'chatbot', label: 'Tutor AI', detail: 'Il tuo chatbot personale', icon: AcademicAiIcon },
+    { key: 'live', label: 'Sessione live', detail: 'Attività in tempo reale', icon: Radio },
+    { key: 'classe', label: 'Classe', detail: 'Chat e videocall', icon: Video },
+    { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : 'Tutto in ordine', icon: ClipboardList },
+    { key: 'documents', label: t('navbar.nav_documents'), detail: 'Materiali in sola lettura', icon: FileText },
+  ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents'].includes(item.key) || enabledModules.includes(item.key))
+  const activeItem = topNav.find((item) => item.key === activeModule)
+  const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
+  const isImmersiveModule = !!activeModule && activeModule !== 'live'
+  const primaryTiles = topNav.filter((item) => item.key && item.key !== 'documents')
+
+  useEffect(() => {
+    if (activeModule && !MOBILE_MODULE_ORDER.includes(activeModule)) onNavigate(null)
+  }, [activeModule, onNavigate])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const previousOverflow = document.body.style.overflow
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
 
   const handleNavigate = (module: string | null) => {
+    previousModule.current = activeModule
     onNavigate(module)
     setMenuOpen(false)
   }
 
+  const dockStudentChat = () => {
+    setStudentChatSidebarOpen(true)
+    if (activeModule === 'chatbot') {
+      onNavigate(null)
+    }
+  }
+
+  const expandStudentChat = () => {
+    setStudentChatSidebarOpen(false)
+    onNavigate('chatbot')
+  }
+
   return (
-    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
+    <AppBackground className="mobile-student-app h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
       {swipeState.isActive && (
         <motion.div
           className="fixed inset-0 z-40 bg-slate-950/10 pointer-events-none"
@@ -639,35 +756,49 @@ function StudentMobileShell({
         />
       )}
 
-      <header className="fixed inset-x-0 top-0 z-50 px-2 pt-[env(safe-area-inset-top)]">
-        <div className="mx-auto max-w-screen-sm rounded-[16px] border border-slate-900/10 bg-white/82 backdrop-blur-xl shadow-[0_12px_32px_rgba(15,23,42,0.14)]">
-          <div className="flex h-13 items-center gap-2 px-2.5">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur-2xl">
+        <div className="mx-auto flex h-16 max-w-screen-sm items-center gap-3 px-4">
             <button
               onClick={() => setMenuOpen((value) => !value)}
-              className="flex h-10 items-center gap-2 rounded-[12px] border border-slate-200 bg-slate-950 px-2.5 text-white shadow-sm"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-950/15 active:scale-95"
               aria-label={t('student_dashboard.explore')}
             >
-              <LogoMark className="h-5 w-auto" />
-              <Menu className="h-4 w-4" />
+              <Menu className="h-6 w-6" />
             </button>
-            <button
-              onClick={() => handleNavigate(null)}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-left"
-            >
-              <div className="truncate text-sm font-semibold text-slate-950">{activeTitle === t('student_dashboard.back_home') ? sessionInfo.session.title : activeTitle}</div>
-            </button>
-          </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">{sessionInfo.session.title}</p>
+              <h1 className="truncate text-lg font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
+            </div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sm font-black text-sky-800 ring-1 ring-sky-100">
+              {sessionInfo.student.nickname.slice(0, 2).toUpperCase()}
+            </div>
         </div>
-        <AnimatePresence>
-          {menuOpen && (
+      </header>
+
+      <AnimatePresence>
+        {menuOpen && (
+          <>
             <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.16 }}
-              className="mx-auto mt-2 max-w-screen-sm rounded-[18px] border border-slate-900/10 bg-white/92 p-2 backdrop-blur-xl shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+              className="fixed inset-0 z-[60] bg-slate-950/45 backdrop-blur-sm"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setMenuOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+              className="fixed inset-y-0 left-0 z-[70] flex w-[min(88vw,360px)] flex-col bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] shadow-2xl"
             >
-              <div className="grid grid-cols-4 gap-2">
+              <div className="mb-6 flex items-center gap-3 px-1">
+                <LogoMark className="h-11 w-11" />
+                <div className="min-w-0 flex-1">
+                  <div className="brand-wordmark text-lg">Golinelli<span className="brand-wordmark-ai">.ai</span></div>
+                  <p className="truncate text-xs font-semibold text-slate-500">{sessionInfo.student.nickname}</p>
+                </div>
+                <button onClick={() => setMenuOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700" aria-label="Chiudi menu">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <nav className="flex-1 space-y-2 overflow-y-auto" aria-label="Navigazione studente">
                 {topNav.map((item) => {
                   const Icon = item.icon
                   const isActive = activeModule === item.key || (item.key === null && activeModule === null)
@@ -675,92 +806,104 @@ function StudentMobileShell({
                     <button
                       key={item.label}
                       onClick={() => handleNavigate(item.key)}
-                      className={`flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-[14px] border px-2 py-2 text-[11px] font-semibold transition ${
-                        isActive ? 'border-slate-950 bg-slate-950 text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-700'
+                      className={`flex min-h-[64px] w-full items-center gap-4 rounded-[20px] px-4 py-3 text-left transition active:scale-[0.98] ${
+                        isActive ? 'bg-slate-950 text-white shadow-lg shadow-slate-950/15' : 'bg-slate-50 text-slate-800'
                       }`}
                     >
-                      <Icon className="h-4 w-4" />
-                      <span className="truncate">{item.label}</span>
+                      <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isActive ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}>
+                        <Icon className="h-5 w-5" />
+                        {item.key === 'self_assessment' && pendingTasksCount > 0 && (
+                          <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">
+                            {pendingTasksCount > 9 ? '9+' : pendingTasksCount}
+                          </span>
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-extrabold">{item.label}</span>
+                        <span className={`block truncate text-xs ${isActive ? 'text-white/60' : 'text-slate-500'}`}>{item.detail}</span>
+                      </span>
+                      <ChevronRight className="h-5 w-5 opacity-40" />
                     </button>
                   )
                 })}
-                <button
-                  onClick={onLogout}
-                  className="col-span-4 flex min-h-[48px] items-center justify-center rounded-[14px] border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700"
-                >
-                  {t('navbar.logout')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
+              </nav>
+              <button onClick={onLogout} className="mt-4 flex min-h-[56px] w-full items-center justify-center gap-3 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]">
+                <LogOut className="h-5 w-5" /> {t('navbar.logout')}
+              </button>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
 
-      <main className={`flex-1 min-h-0 ${menuOpen ? 'pt-[calc(env(safe-area-inset-top)+8.9rem)]' : 'pt-[calc(env(safe-area-inset-top)+4.1rem)]'}`}>
-        <AnimatePresence mode="wait">
+      <main className="min-h-0 flex-1 pt-[calc(env(safe-area-inset-top)+4rem)]">
+        <AnimatePresence mode="popLayout" custom={slideDirection}>
           <motion.div
             key={activeModule || 'mobile-home'}
-            variants={pageVariants}
+            custom={slideDirection}
+            variants={{
+              initial: (direction: number) => ({ opacity: 0, x: direction * 72 }),
+              animate: { opacity: 1, x: 0 },
+              exit: (direction: number) => ({ opacity: 0, x: direction * -56 }),
+            }}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={{ duration: 0.22, ease: 'easeInOut' }}
-            className={`h-full min-h-0 ${isImmersiveModule ? 'px-0 pb-0' : 'px-2 pb-2'}`}
+            transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.75 }}
+            className={`h-full min-h-0 ${isImmersiveModule ? 'px-0' : 'px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}
             style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
           >
             {!activeModule ? (
-              <div className="mx-auto flex h-full max-w-screen-sm flex-col gap-2 overflow-hidden pb-16">
-                <section className="rounded-[16px] border border-slate-900/10 bg-white/86 p-3 shadow-[0_10px_26px_rgba(15,23,42,0.10)]">
-                  <div className="flex items-center gap-2">
-                    <LogoMark className="h-9 w-auto" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-slate-950">{sessionInfo.session.title}</div>
-                      <div className="truncate text-[11px] font-medium text-slate-600">{sessionInfo.student.nickname}</div>
+              <div className="mx-auto h-full max-w-screen-sm overflow-y-auto overscroll-contain py-4">
+                <section className="relative overflow-hidden rounded-[30px] bg-slate-950 p-6 text-white shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+                  <div className="absolute -right-14 -top-16 h-44 w-44 rounded-full bg-sky-400/25 blur-2xl" />
+                  <div className="relative">
+                    <div className="mb-8 flex items-center gap-2 text-xs font-bold text-emerald-300">
+                      <Wifi className="h-4 w-4" /> Sessione connessa
                     </div>
-                    <button
-                      onClick={() => handleNavigate('documents')}
-                      className="rounded-[12px] border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-800"
-                    >
-                      {t('navbar.nav_documents')}
+                    <p className="text-sm font-semibold text-white/60">Ciao, {sessionInfo.student.nickname}</p>
+                    <h2 className="mt-1 text-3xl font-black leading-tight tracking-tight">Cosa facciamo<br />oggi?</h2>
+                    <button onClick={() => handleNavigate('chatbot')} className="mt-6 flex min-h-[58px] w-full items-center justify-between rounded-[20px] bg-white px-5 text-left text-slate-950 shadow-lg active:scale-[0.98]">
+                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-extrabold">Apri il Tutor AI</span></span>
+                      <ChevronRight className="h-5 w-5" />
                     </button>
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <CompactStat label={t('navbar.nav_tasks')} value={pendingTasksCount > 0 ? `${pendingTasksCount}` : '0'} />
-                    <CompactStat label={t('navbar.nav_documents')} value={lastDocument ? 'Doc' : 'AI'} />
-                    <CompactStat label={t('student_dashboard.module_active')} value="Full" />
-                  </div>
                 </section>
-
-                <section className="grid flex-1 auto-rows-fr grid-cols-2 gap-2">
-                  {homeTiles.map((tile) => {
+                <section className="mt-4 grid grid-cols-2 gap-3 pb-4">
+                  {primaryTiles.map((tile, index) => {
                     const Icon = tile.icon
+                    const wide = tile.key === 'live' || tile.key === 'classe'
                     return (
                       <button
-                      key={tile.key}
-                      onClick={() => handleNavigate(tile.key)}
-                        className={`rounded-[16px] border p-3 text-left shadow-sm ${getMobileTileClass(tile.key, tile.tint)}`}
+                        key={tile.key}
+                        onClick={() => handleNavigate(tile.key)}
+                        className={`${wide ? 'col-span-2' : ''} group relative min-h-[142px] overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-5 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl active:scale-[0.98]`}
                       >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-black/5 bg-white/75 text-slate-900 shadow-sm">
-                          <Icon className="h-4 w-4" />
+                        <div className="flex items-start justify-between">
+                          <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${index === 1 ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700'}`}>
+                            <Icon className="h-6 w-6" />
+                          </div>
+                          {tile.key === 'self_assessment' && pendingTasksCount > 0 && <span className="rounded-full bg-[#fe004d] px-2.5 py-1 text-xs font-black text-white">{pendingTasksCount}</span>}
                         </div>
-                        <div className="mt-4 text-sm font-semibold text-slate-900">{tile.label}</div>
-                        <div className="mt-1 text-[11px] font-medium text-slate-700">{tile.meta}</div>
+                        <div className="mt-5 text-lg font-extrabold text-slate-950">{tile.label}</div>
+                        <div className="mt-1 text-sm font-medium text-slate-500">{tile.detail}</div>
                       </button>
                     )
                   })}
-                  {enabledModules.includes('desktop') && (
-                    <button
-                      onClick={() => handleNavigate('desktop')}
-                      className="col-span-2 flex items-center justify-between rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-left shadow-sm"
-                    >
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">{t('student_nav.desktop_label')}</div>
-                        <div className="text-[11px] font-medium text-slate-600">{t('student_nav.desktop_desc')}</div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-slate-400" />
-                    </button>
-                  )}
+                  <button onClick={() => handleNavigate('documents')} className="col-span-2 flex min-h-[82px] items-center gap-4 rounded-[24px] border border-violet-100 bg-violet-50/90 px-5 text-left active:scale-[0.98]">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white text-violet-700 shadow-sm"><FileText className="h-6 w-6" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-base font-extrabold text-slate-950">{t('navbar.nav_documents')}</span><span className="block truncate text-sm font-medium text-slate-500">Materiali da consultare</span></span>
+                    <ChevronRight className="h-5 w-5 text-violet-400" />
+                  </button>
                 </section>
+              </div>
+            ) : activeModule === 'live' ? (
+              <div className="mx-auto flex h-full max-w-screen-sm items-center justify-center">
+                <div className="w-full rounded-[30px] border border-white/80 bg-white/85 p-7 text-center shadow-xl backdrop-blur-xl">
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-rose-50 text-rose-600"><Radio className="h-9 w-9" /></div>
+                  <h2 className="mt-6 text-2xl font-black text-slate-950">Sessione live</h2>
+                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">Quando il docente avvia un'attività, comparirà automaticamente qui a schermo intero.</p>
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" /> In attesa del docente</div>
+                </div>
               </div>
             ) : (
               <div className={`mx-auto flex h-full min-h-0 flex-col overflow-hidden ${isImmersiveModule ? 'w-full max-w-none rounded-none border-0 bg-transparent shadow-none' : 'max-w-screen-sm rounded-[16px] border border-slate-900/10 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.14)]'}`}>
@@ -796,6 +939,9 @@ function StudentMobileShell({
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
                       collaborationEnabled={collaborationEnabled}
+                      onModuleBack={() => handleNavigate(null)}
+                      documentsReadOnly
+                      tasksReadOnly
                     />
                   </Suspense>
                 </div>
@@ -805,40 +951,36 @@ function StudentMobileShell({
         </AnimatePresence>
       </main>
 
-      {activeModule !== 'chatbot' && (
-        <button
-          onClick={() => handleNavigate('chatbot')}
-          className="fixed bottom-4 right-3 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)]"
-        >
-          <Bot className="h-4.5 w-4.5" />
-        </button>
-      )}
-      <FloatingHelper module={activeModule} />
+      <div
+        className={
+          activeModule === 'chatbot'
+            ? 'fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+4.1rem)] z-40 overflow-hidden bg-white'
+            : studentChatSidebarOpen
+              ? 'fixed inset-y-0 right-0 z-40 w-[min(92vw,420px)] overflow-hidden border-l border-slate-200 bg-white shadow-2xl'
+              : 'pointer-events-none fixed bottom-0 right-0 h-px w-px overflow-hidden opacity-0'
+        }
+        aria-hidden={activeModule !== 'chatbot' && !studentChatSidebarOpen}
+      >
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <ChatbotModule
+            sessionId={sessionInfo.session.id}
+            studentId={sessionInfo.student.id}
+            initialTeacherbotId={selectedTeacherbotId}
+            oggiImparoContext={oggiImparoLesson ?? undefined}
+            onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
+            studentAccent={studentAccent}
+            collaborationEnabled={collaborationEnabled}
+            onMinimize={dockStudentChat}
+            onExpand={expandStudentChat}
+            onClose={() => setStudentChatSidebarOpen(false)}
+            sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
+          />
+        </Suspense>
+      </div>
+
       <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
     </AppBackground>
   )
-}
-
-function CompactStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/35 bg-white/45 px-3 py-2 backdrop-blur-xl">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-slate-900">{value}</div>
-    </div>
-  )
-}
-
-function getMobileTileClass(key: string, tint: string) {
-  const base = 'bg-gradient-to-br'
-  if (key === 'chatbot') return `${base} from-sky-100 to-cyan-50 border-sky-200`
-  if (key === 'classe') return `${base} from-indigo-100 to-sky-50 border-indigo-200`
-  if (key === 'documents') return `${base} from-violet-100 to-fuchsia-50 border-violet-200`
-  if (key === 'notebook') return `${base} from-emerald-100 to-teal-50 border-emerald-200`
-  if (key === 'coding') return `${base} from-slate-100 to-sky-50 border-slate-200`
-  if (key === 'boards') return `${base} from-cyan-100 to-blue-50 border-cyan-200`
-  if (key === 'classification') return `${base} from-amber-100 to-orange-50 border-amber-200`
-  if (key === 'self_assessment') return `${base} from-rose-100 to-amber-50 border-rose-200`
-  return `${base} ${tint} border-slate-200`
 }
 
 // Home View Component
@@ -1018,7 +1160,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, collaborationEnabled, sharedCodingProject }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack, documentsReadOnly = false, tasksReadOnly = false }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1036,12 +1178,15 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   privateChatEnabled?: boolean;
   collaborationEnabled?: boolean;
   sharedCodingProject?: { projectId: string; nonce: number } | null;
+  onModuleBack?: () => void;
+  documentsReadOnly?: boolean;
+  tasksReadOnly?: boolean;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-[calc(100vh-6rem)] -mx-4 md:mx-0">
+      <div className="h-full min-h-0 md:h-[calc(100vh-6rem)]">
         <ChatSidebar
           sessionId={sessionId}
           userType="student"
@@ -1060,16 +1205,10 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'chatbot') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden">
-        <ChatbotModule
-          sessionId={sessionId}
-          studentId={studentId}
-          initialTeacherbotId={selectedTeacherbotId}
-          oggiImparoContext={oggiImparoLesson ?? undefined}
-          onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
-          studentAccent={studentAccent}
-          collaborationEnabled={collaborationEnabled}
-        />
+      <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden bg-neutral-100">
+        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+          {t('common.loading')}
+        </div>
       </div>
     )
   }
@@ -1080,7 +1219,9 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
         <CardContent className="h-full p-0">
           <TasksModule 
             openTaskId={openTaskId} 
+            studentId={studentId}
             onOpenDocument={onOpenDocument}
+            readOnly={tasksReadOnly}
           />
         </CardContent>
       </Card>
@@ -1097,8 +1238,8 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'documents') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full">
-        <StudentDocumentsModule sessionId={sessionId} openLessonTaskId={openDocumentTaskId} />
+      <div className="h-full min-h-0">
+        <StudentDocumentsModule sessionId={sessionId} openLessonTaskId={openDocumentTaskId} readOnlyCatalog={documentsReadOnly} />
       </div>
     )
   }
@@ -1106,7 +1247,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   if (moduleKey === 'notebook') {
     return (
       <div className="h-full min-h-0 flex flex-col overflow-hidden">
-        <StudentNotebookModule />
+        <StudentNotebookModule onBack={onModuleBack} />
       </div>
     )
   }

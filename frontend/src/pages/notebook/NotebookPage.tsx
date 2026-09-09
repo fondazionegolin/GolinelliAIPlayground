@@ -1,9 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
-  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, History, Loader2,
-  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Square, Terminal, Trash2, Wrench, Zap,
+  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
+  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Square, Terminal, Trash2, Wrench, X, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -66,6 +66,10 @@ function isDeviceNotebook(projectType: NotebookProjectType) {
   return projectType === 'microbit' || projectType === 'circuitplayground'
 }
 
+function supportsAgentChat(projectType: NotebookProjectType) {
+  return isDeviceNotebook(projectType) || projectType === 'python' || projectType === 'p5js'
+}
+
 function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
   if (isDeviceNotebook(projectType)) {
     const cells = nextCells.length > 0 ? nextCells : [newCell('main.py')]
@@ -100,6 +104,7 @@ function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
 
 interface Props {
   notebookIdOverride?: string
+  onBack?: () => void
 }
 
 const STRUDEL_TEMPLATES = [
@@ -173,11 +178,12 @@ const previewFallback = (
   </div>
 )
 
-export default function NotebookPage({ notebookIdOverride }: Props = {}) {
+export default function NotebookPage({ notebookIdOverride, onBack }: Props = {}) {
   const { i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { notebookId: notebookIdParam } = useParams<{ notebookId: string }>()
   const notebookId = notebookIdOverride ?? notebookIdParam
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const [cells, setCells] = useState<Cell[]>([])
@@ -225,14 +231,24 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null)
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null)
   const p5IframeWindowRef = useRef<Window | null>(null)
   const gameIframeWindowRef = useRef<Window | null>(null)
   const strudelRef = useRef<StrudelPreviewHandle>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ultimo payload di salvataggio pendente (già normalizzato): serve a poterlo scaricare
+  // subito su navigazione/chiusura, invece di perderlo quando il timer di debounce viene
+  // azzerato — è la causa del "resta indietro di qualche versione".
+  const pendingSaveRef = useRef<{ title: string; cells: Cell[]; editor_settings: NotebookEditorSettings } | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const strudelAutoEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const strudelPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!localStorage.getItem('notebook-onboarding-v1')) setOnboardingStep(0)
+  }, [])
   const titleRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -255,6 +271,38 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     staleTime: Infinity,
+  })
+
+  const { data: notebookAssignments = [] } = useQuery({
+    queryKey: ['notebook-assignments'],
+    queryFn: async () => (await notebooksApi.listAssignments()).data,
+    enabled: !!notebookId,
+  })
+  const assignedCopy = notebookAssignments.find(assignment => assignment.fork_notebook_id === notebookId)
+  const isResubmittingAssignedCopy = Boolean(assignedCopy?.submitted_at)
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const pending = pendingSaveRef.current
+      if (pending && notebookId) {
+        await notebooksApi.update(notebookId, {
+          title: pending.title,
+          cells: pending.cells,
+          editor_settings: pending.editor_settings as unknown as Record<string, unknown>,
+        })
+        isDirtyRef.current = false
+        pendingSaveRef.current = null
+      }
+      return notebooksApi.submit(notebookId!)
+    },
+    onSuccess: () => {
+      setSubmitNotice(isResubmittingAssignedCopy
+        ? (isEnglish ? 'A new version was shared with your teacher.' : 'Una nuova versione è stata ricondivisa con il docente.')
+        : (isEnglish ? 'Notebook submitted to your teacher.' : 'Notebook consegnato al docente.'))
+      queryClient.invalidateQueries({ queryKey: ['notebook-assignments'] })
+      queryClient.invalidateQueries({ queryKey: ['notebook-versions', notebookId] })
+      window.setTimeout(() => setSubmitNotice(null), 3500)
+    },
   })
 
   useEffect(() => {
@@ -293,6 +341,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       }),
     onSuccess: () => {
       isDirtyRef.current = false
+      pendingSaveRef.current = null
       setSaveStatus('saved')
       // Only invalidate the list so the sidebar/list page stays fresh.
       // Do NOT invalidate ['notebook', notebookId] — that would re-fetch and
@@ -307,16 +356,62 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const scheduleSave = useCallback((updatedCells: Cell[], updatedTitle = title, updatedSettings = editorSettings) => {
     isDirtyRef.current = true
     setSaveStatus('unsaved')
+    // Memorizza SEMPRE il payload più fresco: così un flush immediato (navigazione,
+    // chiusura tab, unmount) salva l'ultima versione anche se il debounce non è scattato.
+    pendingSaveRef.current = {
+      cells: normalizeCells(projectType, updatedCells),
+      title: updatedTitle,
+      editor_settings: updatedSettings,
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current)
+    // Debounce più corto (900ms) così l'autosave resta al passo con le modifiche.
     saveTimer.current = setTimeout(() => {
+      if (!pendingSaveRef.current) return
       setSaveStatus('saving')
-      saveMutation.mutate({
-        cells: normalizeCells(projectType, updatedCells),
-        title: updatedTitle,
-        editor_settings: updatedSettings,
-      })
-    }, 2000)
+      saveMutation.mutate(pendingSaveRef.current)
+    }, 900)
   }, [editorSettings, projectType, saveMutation, title])
+
+  // Salva SUBITO l'eventuale payload pendente (navigazione via tasto Indietro, unmount,
+  // chiusura tab): evita di perdere l'ultima modifica quando il debounce non è ancora scattato.
+  const flushSave = useCallback(() => {
+    if (!isDirtyRef.current || !pendingSaveRef.current || !notebookId) return
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setSaveStatus('saving')
+    saveMutation.mutate(pendingSaveRef.current)
+  }, [notebookId, saveMutation])
+
+  // Lo studente passa onBack; il docente apre il notebook via router senza prop, quindi
+  // ripieghiamo sulla lista notebook del docente — così il tasto Indietro c'è per entrambi.
+  // In ogni caso salviamo SUBITO prima di uscire.
+  const handleBack = useCallback(() => {
+    flushSave()
+    if (onBack) onBack()
+    else navigate('/teacher/notebooks')
+  }, [flushSave, onBack, navigate])
+
+  // Salvataggio finale garantito: chiusura tab (beforeunload), cambio tab
+  // (visibilitychange) e uscita dalla pagina (unmount). Usa l'API diretta per non
+  // dipendere dal ciclo di vita di react-query durante lo smontaggio del componente.
+  useEffect(() => {
+    const persistNow = () => {
+      const p = pendingSaveRef.current
+      if (!isDirtyRef.current || !p || !notebookId) return
+      notebooksApi.update(notebookId, {
+        title: p.title,
+        cells: p.cells,
+        editor_settings: p.editor_settings as unknown as Record<string, unknown>,
+      }).catch(() => { /* best-effort */ })
+    }
+    const onHide = () => { if (document.visibilityState === 'hidden') persistNow() }
+    window.addEventListener('beforeunload', persistNow)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('beforeunload', persistNow)
+      document.removeEventListener('visibilitychange', onHide)
+      persistNow()
+    }
+  }, [notebookId])
 
   // ── Version history ────────────────────────────────────────────────────────
   // Crea uno snapshot del notebook. Best-effort: non blocca l'editor se fallisce.
@@ -594,7 +689,15 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     const onMessage = (event: MessageEvent) => {
       if (!event.data) return
       if (event.data.source === 'p5-preview') {
-        if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
+        if (event.data.type === 'runtime-error') {
+          const message = String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime'))
+          setPreviewRuntimeError(message)
+          // L'errore va anche nel log persistente della console: il banner in fondo
+          // sparisce al prossimo "ready" (nuova esecuzione), il log no — così lo
+          // studente può sempre scorrere indietro e vedere cosa si è rotto e quando.
+          setConsoleEntries((prev) => [...prev, { id: uuidv4(), level: 'error', args: [message], ts: Date.now() }])
+          setConsoleOpen(true)
+        }
         if (event.data.type === 'ready') setPreviewRuntimeError(null)
         if (event.data.type === 'console') {
           const { level, args } = event.data.payload as { level: 'log' | 'warn' | 'error'; args: string[] }
@@ -691,12 +794,34 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       scheduleSave(next)
       return next
     })
-    setAssistantProposals((prev) => ({
-      ...prev,
-      [cellId]: (prev[cellId] || []).filter((item) => item.id !== proposalId),
-    }))
+    // Le altre proposte pendenti sulla stessa cella hanno line_start/line_end calcolati
+    // sulla sorgente ORIGINALE (tutte generate dalla stessa risposta LLM). Applicandone una
+    // il numero di righe della cella cambia: senza ribasare le altre, il prossimo "Applica"
+    // sostituirebbe le righe sbagliate e romperebbe lo script. Ricalcoliamo l'offset e
+    // scartiamo le proposte che si sovrappongono a quella appena applicata (ormai stale).
+    const oldLineCount = proposal.line_end - proposal.line_start + 1
+    const newLineCount = proposal.replacement.replace(/\r\n/g, '\n').split('\n').length
+    const delta = newLineCount - oldLineCount
+    setAssistantProposals((prev) => {
+      const rebased = (prev[cellId] || [])
+        .filter((item) => item.id !== proposalId)
+        .filter((item) => item.line_end < proposal.line_start || item.line_start > proposal.line_end)
+        .map((item) => (
+          item.line_start > proposal.line_end
+            ? { ...item, line_start: item.line_start + delta, line_end: item.line_end + delta }
+            : item
+        ))
+      return { ...prev, [cellId]: rebased }
+    })
+    if (proposal.required_libraries && proposal.required_libraries.length > 0) {
+      const current = editorSettings.libraries ?? []
+      const missing = proposal.required_libraries.filter((id) => !current.includes(id))
+      if (missing.length > 0) {
+        updateEditorSettings({ libraries: [...current, ...missing] })
+      }
+    }
     setAssistantSummary('Ho preparato una proposta didattica applicata al codice. Se vuoi, chiedimi nel tutor perché questa modifica è utile.')
-  }, [assistantProposals, createSnapshot, replaceLineRange, scheduleSave])
+  }, [assistantProposals, createSnapshot, editorSettings.libraries, replaceLineRange, scheduleSave, updateEditorSettings])
 
   const rejectProposal = useCallback((cellId: string, proposalId: string) => {
     setAssistantProposals((prev) => ({
@@ -906,8 +1031,19 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     <div className="flex h-full min-h-0 gap-3 bg-slate-100 p-4">
       {/* ── Main notebook card ───────────────────────────────────────────── */}
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
-        {/* Unified toolbar */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 bg-white/70 px-4 py-2 backdrop-blur-sm">
+        {/* Unified toolbar — riga singola, scorre in orizzontale su finestre strette */}
+        <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:thin]">
+          <IconButton
+            type="button"
+            size="sm"
+            surface="soft"
+            tone="neutral"
+            className="shrink-0"
+            onClick={handleBack}
+            title={isEnglish ? 'Back to notebooks' : 'Torna ai notebook'}
+          >
+            <ArrowLeft />
+          </IconButton>
           {editingTitle ? (
             <input
               ref={titleRef}
@@ -915,7 +1051,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleSave}
               onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()}
-              className="max-w-sm flex-1 rounded-xl border border-slate-300/80 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-900 outline-none"
+              className="w-40 shrink-0 rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1 text-xs font-semibold text-slate-900 outline-none"
               autoFocus
             />
           ) : (
@@ -925,101 +1061,90 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               tone="neutral"
               density="compact"
               onClick={() => setEditingTitle(true)}
-              className="max-w-[220px] justify-start truncate px-2 text-sm font-semibold"
+              className="max-w-[150px] shrink-0 justify-start truncate px-1.5 text-xs font-semibold"
               title={isEnglish ? 'Edit title' : 'Modifica titolo'}
             >
-              {title || (isEnglish ? 'Untitled notebook' : 'Notebook senza titolo')}
+              {title || (isEnglish ? 'Untitled' : 'Senza titolo')}
             </Button>
           )}
 
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${
             `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
           }`}>
             {projectType}
           </span>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-              {isEnglish ? 'Theme' : 'Tema'}
-              <Select
-                value={editorSettings.theme}
-                onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
-                density="compact"
-                surface="glass"
-                className="w-[112px]"
-              >
-                <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
-                <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
-                <option value="fancy">Fancy</option>
-                <option value="dracula">Dracula</option>
-                <option value="p5js">P5.js</option>
-              </Select>
-            </label>
+          <div className="flex shrink-0 items-center gap-1">
+            <Select
+              value={editorSettings.theme}
+              onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
+              density="compact"
+              surface="glass"
+              className="w-[86px] h-8 px-2 pr-6 text-[11px]"
+              title={isEnglish ? 'Theme' : 'Tema'}
+            >
+              <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
+              <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
+              <option value="fancy">Fancy</option>
+              <option value="dracula">Dracula</option>
+              <option value="p5js">P5.js</option>
+            </Select>
 
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-              {isEnglish ? 'Size' : 'Dim.'}
-              <Select
-                value={editorSettings.font_size}
-                onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
-                density="compact"
-                surface="glass"
-                className="w-[82px]"
-              >
-                {[12, 14, 16, 18, 20].map((size) => (
-                  <option key={size} value={size}>{size}px</option>
-                ))}
-              </Select>
-            </label>
+            <Select
+              value={editorSettings.font_size}
+              onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
+              density="compact"
+              surface="glass"
+              className="w-[58px] h-8 px-2 pr-6 text-[11px]"
+              title={isEnglish ? 'Font size' : 'Dimensione'}
+            >
+              {[12, 14, 16, 18, 20].map((size) => (
+                <option key={size} value={size}>{size}px</option>
+              ))}
+            </Select>
 
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-              Font
-              <Select
-                value={editorSettings.font_family}
-                onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
-                density="compact"
-                surface="glass"
-                className="w-[142px]"
-              >
-                <option value="jetbrains">JetBrains Mono</option>
-                <option value="space">Space Mono</option>
-                <option value="courier">Courier Prime</option>
-                <option value="victor">Victor Mono</option>
-                <option value="plex">IBM Plex Mono</option>
-              </Select>
-            </label>
+            <Select
+              value={editorSettings.font_family}
+              onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
+              density="compact"
+              surface="glass"
+              className="w-[110px] h-8 px-2 pr-6 text-[11px]"
+              title="Font"
+            >
+              <option value="jetbrains">JetBrains Mono</option>
+              <option value="space">Space Mono</option>
+              <option value="courier">Courier Prime</option>
+              <option value="victor">Victor Mono</option>
+              <option value="plex">IBM Plex Mono</option>
+            </Select>
 
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500" title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}>
-              {isEnglish ? 'Weight' : 'Peso'}
-              <input
-                type="range"
-                min={100}
-                max={900}
-                step={100}
-                value={fontWeight}
-                onChange={(e) => updateEditorSettings({ font_weight: Number(e.target.value) })}
-                className="w-16 accent-[var(--selection-border-hover)]"
-              />
-              <span className="w-7 text-right text-slate-400">{fontWeight}</span>
-            </label>
+            <input
+              type="range"
+              min={100}
+              max={900}
+              step={100}
+              value={fontWeight}
+              onChange={(e) => updateEditorSettings({ font_weight: Number(e.target.value) })}
+              className="w-14 accent-[var(--selection-border-hover)]"
+              title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}
+            />
 
             {isDeviceNotebook(projectType) && projectType === 'circuitplayground' ? (
-              <span className="rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)]">
+              <span className="rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-2 py-1 text-[11px] font-semibold text-[var(--text-primary)]">
                 CircuitPython
               </span>
             ) : isDeviceNotebook(projectType) && (
-              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                Linguaggio
-                <Select
-                  value={deviceLanguage}
-                  onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
-                  density="compact"
-                  surface="glass"
-                  className="w-[112px]"
-                >
-                  <option value="python">Python</option>
-                  <option value="javascript">JavaScript</option>
-                </Select>
-              </label>
+              <Select
+                value={deviceLanguage}
+                onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
+                density="compact"
+                surface="glass"
+                className="w-[100px] h-8 px-2 pr-6 text-[11px]"
+                title={isEnglish ? 'Language' : 'Linguaggio'}
+              >
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+              </Select>
             )}
 
             {projectType === 'microbit' && (
@@ -1036,7 +1161,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             )}
 
             {(projectType === 'p5js' || projectType === 'game2d') && (
-              <label className="flex h-9 items-center gap-2 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-3 text-xs font-semibold text-[var(--text-primary)]">
+              <label className="flex h-8 items-center gap-1.5 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-2 text-[11px] font-semibold text-[var(--text-primary)]" title="Live preview">
                 <input
                   type="checkbox"
                   checked={editorSettings.live_preview}
@@ -1048,22 +1173,9 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             )}
           </div>
 
-          <div className="flex-1" />
+          <div className="ml-auto shrink-0" />
 
-          <div className="flex flex-wrap items-center gap-1">
-            {projectType === 'python' && (
-              <Button
-                type="button"
-                density="compact"
-                tone="neutral"
-                surface="soft"
-                onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
-                title={isEnglish ? 'Add cell' : 'Aggiungi cella'}
-              >
-                <Plus />
-                {isEnglish ? 'Cell' : 'Cella'}
-              </Button>
-            )}
+          <div className="flex shrink-0 items-center gap-1">
             {projectType === 'strudel' && (
               <>
                 <div className="relative">
@@ -1168,43 +1280,31 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           </div>
 
           {projectType === 'python' ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <div className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500" title={pyStatusText}>
               {pyStatusIcon}
-              <span>{pyStatusText}</span>
             </div>
           ) : isDeviceNotebook(projectType) ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+            <div className="flex shrink-0 items-center gap-1 text-[11px] text-slate-600" title={`${deviceShortLabel} · Web Serial`}>
               <Cpu className="h-3.5 w-3.5" />
-              <span>{deviceShortLabel} · Web Serial</span>
             </div>
           ) : projectType === 'strudel' ? (
-            <div className={`flex items-center gap-1.5 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`}>
+            <div className={`flex shrink-0 items-center gap-1 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`} title={strudelPlaying ? 'Suonando' : 'Live Music'}>
               <Music2 className="h-3.5 w-3.5" />
-              <span>{strudelPlaying ? '♪ Suonando' : 'Live Music'}</span>
             </div>
           ) : projectType === 'game2d' ? (
-            <div className={`flex items-center gap-1.5 text-[11px] ${gamePlaying ? 'text-cyan-700' : 'text-slate-500'}`}>
+            <div className={`flex shrink-0 items-center gap-1 text-[11px] ${gamePlaying ? 'text-cyan-700' : 'text-slate-500'}`} title={isEnglish ? 'Phaser runner' : 'Runner Phaser'}>
               <Gamepad2 className="h-3.5 w-3.5" />
-              <span>{isEnglish ? 'Phaser runner' : 'Runner Phaser'}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
+            <div className="flex shrink-0 items-center gap-1 text-[11px] text-emerald-700" title={isEnglish ? 'Interactive preview' : 'Preview interattiva'}>
               <Monitor className="h-3.5 w-3.5" />
-              <span>{isEnglish ? 'Interactive preview' : 'Preview interattiva'}</span>
             </div>
           )}
 
-          <div className="flex items-center gap-1 text-[11px]">
-            {saveStatus === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
-            {saveStatus === 'saved' && <CheckCircle className="h-3 w-3 text-emerald-500" />}
-            {saveStatus === 'unsaved' && <Save className="h-3 w-3 text-amber-400" />}
-            <span className={saveStatus === 'unsaved' ? 'text-amber-500' : 'text-slate-500'}>
-              {saveStatus === 'saving'
-                ? (isEnglish ? 'Saving…' : 'Salvataggio…')
-                : saveStatus === 'saved'
-                  ? (isEnglish ? 'Saved' : 'Salvato')
-                  : (isEnglish ? 'Unsaved' : 'Da salvare')}
-            </span>
+          <div className="flex shrink-0 items-center text-[11px]" title={saveStatus === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…') : saveStatus === 'saved' ? (isEnglish ? 'Saved' : 'Salvato') : (isEnglish ? 'Unsaved' : 'Da salvare')}>
+            {saveStatus === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            {saveStatus === 'saved' && <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />}
+            {saveStatus === 'unsaved' && <Save className="h-3.5 w-3.5 text-amber-400" />}
           </div>
 
           {notebookId && (
@@ -1213,11 +1313,43 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               size="sm"
               tone="neutral"
               surface="ghost"
+              className="shrink-0"
               onClick={() => setVersionsOpen(true)}
               title={isEnglish ? 'Version history' : 'Cronologia versioni'}
             >
               <History />
             </IconButton>
+          )}
+
+          <IconButton
+            type="button"
+            size="sm"
+            tone="neutral"
+            surface="ghost"
+            className="shrink-0"
+            onClick={() => setOnboardingStep(0)}
+            title={isEnglish ? 'Review the tutorial' : 'Rivedi tutorial'}
+          >
+            <HelpCircle />
+          </IconButton>
+
+          {assignedCopy && (
+            <Button
+              type="button"
+              density="compact"
+              tone="accent"
+              surface="soft"
+              disabled={submitMutation.isPending}
+              onClick={() => submitMutation.mutate()}
+              title={isResubmittingAssignedCopy
+                ? (isEnglish ? 'Share a new version with your teacher' : 'Ricondividi una nuova versione con il docente')
+                : (isEnglish ? 'Submit this notebook to your teacher' : 'Consegna questo notebook al docente')}
+            >
+              {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send />}
+              {isResubmittingAssignedCopy
+                ? (isEnglish ? 'Share again' : 'Ricondividi')
+                : (isEnglish ? 'Submit' : 'Consegna')}
+            </Button>
           )}
 
           {notebookId && (
@@ -1226,6 +1358,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               size="sm"
               tone={chatSidebarOpen ? 'accent' : 'neutral'}
               surface={chatSidebarOpen ? 'soft' : 'ghost'}
+              className="shrink-0"
               onClick={() => setChatSidebarOpen((v) => !v)}
               title={chatSidebarOpen
                 ? (isEnglish ? 'Close tutor sidebar' : 'Chiudi sidebar tutor')
@@ -1597,17 +1730,6 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           {isEnglish ? 'Analyze' : 'Analizza'}
                         </button>
                       )}
-                      {hasErrors && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); proposeConsoleFix() }}
-                          disabled={assistantLoading}
-                          title={isEnglish ? 'Generate a code fix proposal' : 'Genera proposta di correzione del codice'}
-                          className="flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
-                        >
-                          {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                          {isEnglish ? 'Fix' : 'Correggi'}
-                        </button>
-                      )}
                       {consoleEntries.length > 0 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setConsoleEntries([]); setConsoleAiResponse(null) }}
@@ -1667,14 +1789,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                               </div>
                             )}
                             {consoleAiResponse && (
-                              <button
-                                onClick={() => { proposeConsoleFix(); setConsoleAiResponse(null) }}
-                                disabled={assistantLoading}
-                                className="mt-3 flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
-                              >
-                                {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                                {isEnglish ? 'Generate fix proposal' : 'Genera proposta di correzione'}
-                              </button>
+                              <p className="mt-3 text-[11px] text-slate-500">
+                                {isEnglish
+                                  ? 'Ask the tutor on the right to fix it — corrections now happen only through the chat.'
+                                  : 'Chiedi al tutor a destra di correggerlo — le correzioni ora avvengono solo tramite la chat.'}
+                              </p>
                             )}
                           </div>
                         )}
@@ -1784,10 +1903,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             }`} />
           </div>
 	          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
-            {isDeviceNotebook(projectType) && activeCell ? (
+            {supportsAgentChat(projectType) && activeCell ? (
               <NotebookMicrobitAgentChat
                 notebookId={notebookId}
-                device={deviceKind}
+                device={isDeviceNotebook(projectType) ? deviceKind : (projectType as 'python' | 'p5js')}
                 currentCellSource={activeCell.source}
                 lastOutput={lastOutput}
                 pendingProposals={assistantProposals[activeCell.id] || []}
@@ -2107,6 +2226,60 @@ while True:
         </DialogBody>
       </DialogContent>
     </Dialog>
+    {submitNotice && (
+      <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+        {submitNotice}
+      </div>
+    )}
+    {submitMutation.isError && (
+      <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+        {isResubmittingAssignedCopy
+          ? (isEnglish ? 'Sharing failed. Try again.' : 'Ricondivisione non riuscita. Riprova.')
+          : (isEnglish ? 'Submission failed. Try again.' : 'Consegna non riuscita. Riprova.')}
+      </div>
+    )}
+    {onboardingStep !== null && (() => {
+      const steps = isEnglish
+        ? [
+            ['Write your code', 'Use the central editor. Each block is an independent cell.'],
+            ['Run and inspect', 'Run one cell or the whole notebook and read the output directly below the code.'],
+            ['Add cells', 'Use “Add cell” at the bottom to extend the notebook in a clear order.'],
+            ['Ask the tutor', 'Open the tutor sidebar for explanations or a proposed change you can review before applying.'],
+          ]
+        : [
+            ['Scrivi il codice', 'Usa l’editor centrale. Ogni blocco è una cella indipendente.'],
+            ['Esegui e controlla', 'Esegui una cella o tutto il notebook e leggi il risultato direttamente sotto il codice.'],
+            ['Aggiungi celle', 'Usa “Aggiungi cella” in fondo per estendere il notebook in modo ordinato.'],
+            ['Chiedi al tutor', 'Apri la sidebar del tutor per ricevere spiegazioni o una modifica da controllare prima di applicarla.'],
+          ]
+      const step = steps[onboardingStep]
+      const finish = () => {
+        localStorage.setItem('notebook-onboarding-v1', 'done')
+        setOnboardingStep(null)
+      }
+      return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-500">
+                {onboardingStep + 1} / {steps.length}
+              </span>
+              <button onClick={finish} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <h3 className="mt-4 text-xl font-black text-slate-950">{step[0]}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{step[1]}</p>
+            <div className="mt-6 flex items-center justify-between">
+              <Button type="button" tone="neutral" surface="ghost" disabled={onboardingStep === 0} onClick={() => setOnboardingStep(value => Math.max(0, (value ?? 1) - 1))}>
+                {isEnglish ? 'Back' : 'Indietro'}
+              </Button>
+              <Button type="button" tone="accent" surface="solid" onClick={() => onboardingStep === steps.length - 1 ? finish() : setOnboardingStep(onboardingStep + 1)}>
+                {onboardingStep === steps.length - 1 ? (isEnglish ? 'Start' : 'Inizia') : (isEnglish ? 'Next' : 'Avanti')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
     {notebookId && (
       <NotebookVersionHistoryModal
         notebookId={notebookId}

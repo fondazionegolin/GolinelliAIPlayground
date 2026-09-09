@@ -73,13 +73,22 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[]) {
       const notifyParent = (type, payload) => {
         window.parent.postMessage({ source: 'p5-preview', type, payload }, '*')
       }
-      window.onerror = function(message, source, lineno, colno) {
-        notifyParent('runtime-error', String(message) + ' (' + lineno + ':' + colno + ')')
+      window.onerror = function(message, source, lineno, colno, error) {
+        var stack = error && error.stack ? '\\n' + error.stack : ''
+        notifyParent('runtime-error', String(message) + ' (riga ' + lineno + ':' + colno + ')' + stack)
       }
+      // Le Promise rifiutate senza .catch() (comuni con async/await in librerie come
+      // MediaPipe/ml5) non passano da window.onerror: senza questo listener sparivano
+      // in silenzio e la console non segnalava nulla allo studente.
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason
+        var message = reason instanceof Error ? (reason.message + (reason.stack ? '\\n' + reason.stack : '')) : String(reason)
+        notifyParent('runtime-error', 'Promise non gestita: ' + message)
+      })
       const _origError = console.error.bind(console)
       console.error = function(...args) {
         _origError(...args)
-        notifyParent('runtime-error', args.map((a) => String(a)).join(' '))
+        notifyParent('runtime-error', args.map((a) => (a instanceof Error ? (a.message + (a.stack ? '\\n' + a.stack : '')) : (typeof a === 'object' ? JSON.stringify(a) : String(a)))).join(' '))
       }
       const _origLog = console.log.bind(console)
       console.log = function(...args) {

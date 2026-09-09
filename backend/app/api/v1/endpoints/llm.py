@@ -14,6 +14,8 @@ import json
 import asyncio
 import aiofiles
 import httpx
+import uuid
+import re
 from pathlib import Path
 
 from app.core.config import settings
@@ -47,12 +49,371 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _extract_json_object(raw: str) -> dict:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.removeprefix("```json").removeprefix("```").strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(text[start:end + 1])
+        raise
+
+
+def _bounded_number(value, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def _parse_submission_score(value) -> tuple[Optional[float], bool]:
+    """Return a numeric score and whether it represents a fraction/percentage.
+
+    Quiz submissions store results such as ``5/8`` while manually assigned
+    grades are plain numbers.  Teacher context generation must support both
+    formats without allowing one malformed historical value to abort a chat.
+    """
+    if value is None:
+        return None, False
+
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None, False
+
+    try:
+        if text.endswith("%"):
+            return float(text[:-1].strip()), True
+        if "/" in text:
+            numerator_text, denominator_text = (part.strip() for part in text.split("/", 1))
+            numerator = float(numerator_text)
+            denominator = float(denominator_text)
+            if denominator == 0:
+                return None, True
+            return numerator / denominator * 100, True
+        return float(text), False
+    except (TypeError, ValueError):
+        return None, False
+
+
+def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
+    width = float(dims.get("width") or 960)
+    height = float(dims.get("height") or 540)
+    allowed_types = {"text", "image", "rectangle", "ellipse", "line"}
+    allowed_align = {"left", "center", "right", "justify"}
+
+    title = str(payload.get("title") or "Presentazione").strip()[:120]
+    slides = payload.get("slides") if isinstance(payload.get("slides"), list) else []
+    clean_slides = []
+
+    for slide_index, slide in enumerate(slides[:18]):
+        if not isinstance(slide, dict):
+            continue
+        blocks = slide.get("blocks") if isinstance(slide.get("blocks"), list) else []
+        clean_blocks = []
+
+        for layer, block in enumerate(blocks[:28]):
+            if not isinstance(block, dict):
+                continue
+            block_type = str(block.get("type") or "").strip()
+            if block_type not in allowed_types:
+                continue
+
+            block_width = _bounded_number(block.get("width"), 220, 1 if block_type == "line" else 24, width)
+            block_height = _bounded_number(block.get("height"), 80, 0 if block_type == "line" else 24, height)
+            x = _bounded_number(block.get("x"), 80, -width * 0.2, width - min(block_width, width * 0.05))
+            y = _bounded_number(block.get("y"), 80, -height * 0.2, height - min(block_height, height * 0.05))
+            style = block.get("style") if isinstance(block.get("style"), dict) else {}
+            clean_style = {}
+
+            if block_type == "text":
+                text = str(block.get("content") or "").strip()
+                if not text:
+                    continue
+                align = style.get("textAlign")
+                if not isinstance(align, str) or align not in allowed_align:
+                    align = "left"
+                clean_style = {
+                    "fontFamily": str(style.get("fontFamily") or "Inter, Arial, sans-serif")[:80],
+                    "fontSize": int(_bounded_number(style.get("fontSize"), 22, 10, 72)),
+                    "color": str(style.get("color") or "#111827")[:32],
+                    "backgroundColor": str(style.get("backgroundColor") or "transparent")[:32],
+                    "fontWeight": str(style.get("fontWeight") or "normal")[:24],
+                    "textAlign": str(align),
+                    "lineHeight": _bounded_number(style.get("lineHeight"), 1.25, 0.9, 2.0),
+                    "padding": int(_bounded_number(style.get("padding"), 0, 0, 40)),
+                    "borderRadius": int(_bounded_number(style.get("borderRadius"), 0, 0, 48)),
+                }
+                content = text[:900]
+            elif block_type == "image":
+                content = str(block.get("content") or "").strip()
+                if not (content.startswith("http://") or content.startswith("https://") or content.startswith("/") or content.startswith("data:image/")):
+                    content = "https://placehold.co/640x360?text=Visual"
+                clean_style = {
+                    "borderRadius": int(_bounded_number(style.get("borderRadius"), 12, 0, 48)),
+                    "padding": int(_bounded_number(style.get("padding"), 0, 0, 40)),
+                    "backgroundColor": str(style.get("backgroundColor") or "transparent")[:32],
+                }
+            else:
+                content = ""
+                clean_style = {
+                    "fill": str(style.get("fill") or ("transparent" if block_type == "line" else "#f8fafc"))[:32],
+                    "stroke": str(style.get("stroke") or "#0f172a")[:32],
+                    "strokeWidth": int(_bounded_number(style.get("strokeWidth"), 1, 0, 16)),
+                }
+                if block_type == "rectangle":
+                    clean_style["cornerRadius"] = int(_bounded_number(style.get("cornerRadius"), 12, 0, 64))
+
+            clean_blocks.append({
+                "id": str(uuid.uuid4()),
+                "type": block_type,
+                "content": content,
+                "x": x,
+                "y": y,
+                "width": block_width,
+                "height": block_height,
+                "rotation": _bounded_number(block.get("rotation"), 0, -360, 360),
+                "zIndex": int(block.get("zIndex") if isinstance(block.get("zIndex"), int) else layer),
+                "style": clean_style,
+            })
+
+        if clean_blocks:
+            clean_slides.append({
+                "id": str(uuid.uuid4()),
+                "title": str(slide.get("title") or f"Slide {slide_index + 1}").strip()[:120],
+                "blocks": clean_blocks,
+                "speakerNotes": str(slide.get("speakerNotes") or slide.get("notes") or "").strip()[:1200],
+            })
+
+    if not clean_slides:
+        raise ValueError("Presentation agent returned no renderable slides")
+
+    return {
+        "title": title,
+        "format": str(payload.get("format") or "16:9"),
+        "slides": clean_slides,
+        "agent_steps": payload.get("agent_steps") if isinstance(payload.get("agent_steps"), list) else [],
+    }
+
+
+def _fallback_presentation_strategy(prompt: str) -> dict:
+    cleaned_title = re.sub(
+        r"^(crea|creami|genera|generami|prepara|preparami|realizza|fammi)\s+(una\s+)?(presentazione|slide)\s+(sulla|sulle|sugli|sullo|sul|su|riguardo|about)?\s*",
+        "",
+        prompt.strip(),
+        flags=re.IGNORECASE,
+    ).strip(" .:;-")
+    title = (cleaned_title or prompt.strip() or "Presentazione")[:100]
+    return {
+        "title": title,
+        "audience": "Studenti",
+        "core_message": f"Comprendere i concetti essenziali di {title}",
+        "narrative_arc": "Contesto, concetti chiave, approfondimento, applicazioni e sintesi.",
+        "slides": [
+            {"title": title, "role": "cover", "purpose": "Introdurre il tema", "key_points": [title], "visual_idea": "Copertina essenziale", "speaker_notes": "Presentare obiettivi e percorso."},
+            {"title": "Contesto", "role": "concept", "purpose": "Inquadrare l'argomento", "key_points": [f"Che cos'è {title}", "Perché è importante", "Concetti di partenza"], "visual_idea": "Schema introduttivo", "speaker_notes": "Collegare il tema alle conoscenze pregresse."},
+            {"title": "Concetti chiave", "role": "evidence", "purpose": "Evidenziare gli elementi fondamentali", "key_points": ["Idea fondamentale", "Elementi principali", "Relazioni da ricordare"], "visual_idea": "Tre card concettuali", "speaker_notes": "Approfondire con esempi pertinenti al tema."},
+            {"title": "Esempi e applicazioni", "role": "process", "purpose": "Rendere concreto il contenuto", "key_points": ["Esempio guidato", "Applicazione pratica", "Domanda per la classe"], "visual_idea": "Percorso in tre passaggi", "speaker_notes": "Coinvolgere gli studenti con una breve attività."},
+            {"title": "In sintesi", "role": "summary", "purpose": "Consolidare l'apprendimento", "key_points": ["Concetto centrale", "Collegamento principale", "Spunto di approfondimento"], "visual_idea": "Mappa riepilogativa", "speaker_notes": "Riprendere gli obiettivi iniziali."},
+        ],
+    }
+
+
+def _fallback_presentation_style() -> dict:
+    return {
+        "palette": {"background": "#F8FAFC", "surface": "#FFFFFF", "primary": "#4F46E5", "accent": "#06B6D4", "text": "#0F172A"},
+        "typography": {"heading": "Inter", "body": "Inter", "title_size": 34, "body_size": 20},
+        "layout": "Titolo forte, griglia ariosa, massimo tre nuclei informativi per slide",
+        "components": ["accent_bar", "content_cards", "summary_panel"],
+    }
+
+
+def _fallback_presentation_payload(strategy: dict, fmt: str, width: int, height: int) -> dict:
+    title = str(strategy.get("title") or "Presentazione")[:100]
+    source_slides = strategy.get("slides") if isinstance(strategy.get("slides"), list) else []
+    palette = {
+        "ink": "#111827",
+        "muted": "#475569",
+        "paper": "#F4F7FB",
+        "white": "#FFFFFF",
+        "indigo": "#4F46E5",
+        "violet": "#8B5CF6",
+        "cyan": "#06B6D4",
+        "emerald": "#10B981",
+        "amber": "#F59E0B",
+        "coral": "#F97316",
+        "line": "#DCE4F0",
+    }
+
+    def rectangle(x, y, block_width, block_height, fill, radius=0, stroke=None, stroke_width=0):
+        return {
+            "type": "rectangle", "content": "", "x": x, "y": y, "width": block_width, "height": block_height,
+            "style": {"fill": fill, "stroke": stroke or fill, "strokeWidth": stroke_width, "cornerRadius": radius},
+        }
+
+    def ellipse(x, y, block_width, block_height, fill):
+        return {
+            "type": "ellipse", "content": "", "x": x, "y": y, "width": block_width, "height": block_height,
+            "style": {"fill": fill, "stroke": fill, "strokeWidth": 0},
+        }
+
+    def text_block(content, x, y, block_width, block_height, size=20, color=None, weight="400", align="left", background="transparent", radius=0, padding=0, line_height=1.22):
+        return {
+            "type": "text", "content": str(content)[:900], "x": x, "y": y, "width": block_width, "height": block_height,
+            "style": {
+                "fontFamily": "Inter", "fontSize": size, "color": color or palette["ink"], "fontWeight": weight,
+                "textAlign": align, "backgroundColor": background, "borderRadius": radius, "padding": padding,
+                "lineHeight": line_height,
+            },
+        }
+
+    slides = []
+    for index, source in enumerate(source_slides[:12]):
+        source = source if isinstance(source, dict) else {}
+        slide_title = str(source.get("title") or f"Slide {index + 1}")[:100]
+        points = source.get("key_points") if isinstance(source.get("key_points"), list) else []
+        points = [str(point)[:150] for point in points[:4] if str(point).strip()]
+        if not points:
+            points = [str(source.get("purpose") or "Concetto essenziale")[:150]]
+        role = str(source.get("role") or "concept")
+        is_cover = index == 0 or role == "cover"
+
+        if is_cover:
+            topic_labels = [
+                str(item.get("title") or "")[:35]
+                for item in source_slides[1:4]
+                if isinstance(item, dict) and item.get("title")
+            ] or ["Contesto", "Concetti chiave", "Sintesi"]
+            blocks = [
+                rectangle(0, 0, width, height, palette["ink"]),
+                ellipse(width - 210, -80, 300, 300, "#312E81"),
+                ellipse(width - 110, height - 105, 180, 180, "#164E63"),
+                rectangle(62, 58, 150, 34, palette["cyan"], 17),
+                text_block("PERCORSO DIDATTICO", 74, 65, 130, 22, 12, palette["ink"], "700", "center"),
+                text_block(slide_title, 62, 126, width - 180, 150, 46, palette["white"], "800", line_height=1.05),
+                text_block(strategy.get("core_message") or source.get("purpose") or "Una presentazione chiara, visuale e pronta da personalizzare.", 66, 300, width - 260, 82, 21, "#CBD5E1", "400", line_height=1.3),
+            ]
+            label_width = min(210, (width - 156) / max(1, len(topic_labels)))
+            for label_index, label in enumerate(topic_labels[:3]):
+                label_x = 62 + label_index * (label_width + 16)
+                blocks.extend([
+                    rectangle(label_x, height - 104, label_width, 48, "#1E293B", 14, "#334155", 1),
+                    text_block(f"0{label_index + 1}  {label}", label_x + 14, height - 91, label_width - 28, 24, 13, palette["white"], "600"),
+                ])
+        elif role in {"process", "timeline"}:
+            blocks = [
+                rectangle(0, 0, width, height, palette["paper"]),
+                text_block("PROCESSO", 62, 40, 150, 24, 12, palette["indigo"], "800"),
+                text_block(slide_title, 62, 72, width - 124, 76, 32, palette["ink"], "800"),
+                rectangle(105, 270, width - 210, 5, palette["line"], 3),
+            ]
+            step_colors = [palette["indigo"], palette["cyan"], palette["coral"], palette["emerald"]]
+            step_width = (width - 140) / max(1, len(points))
+            for point_index, point in enumerate(points):
+                center_x = 70 + step_width * point_index + step_width / 2
+                blocks.extend([
+                    ellipse(center_x - 24, 248, 48, 48, step_colors[point_index % len(step_colors)]),
+                    text_block(str(point_index + 1), center_x - 12, 258, 24, 24, 15, palette["white"], "800", "center"),
+                    text_block(point, 70 + step_width * point_index, 320, step_width - 18, 105, 17, palette["ink"], "600", "center", palette["white"], 16, 14, 1.25),
+                ])
+        elif role == "summary" or index == len(source_slides[:12]) - 1:
+            blocks = [
+                rectangle(0, 0, width, height, "#0F172A"),
+                rectangle(0, 0, width, 12, palette["cyan"]),
+                text_block("DA RICORDARE", 62, 48, 180, 24, 12, palette["cyan"], "800"),
+                text_block(slide_title, 62, 82, width - 124, 72, 34, palette["white"], "800"),
+            ]
+            card_width = (width - 156) / min(3, max(1, len(points)))
+            summary_colors = ["#312E81", "#164E63", "#7C2D12"]
+            for point_index, point in enumerate(points[:3]):
+                card_x = 62 + point_index * (card_width + 16)
+                blocks.extend([
+                    rectangle(card_x, 190, card_width, 245, summary_colors[point_index % len(summary_colors)], 20),
+                    text_block(f"0{point_index + 1}", card_x + 20, 215, 54, 34, 15, palette["cyan"], "800"),
+                    text_block(point, card_x + 20, 275, card_width - 40, 125, 19, palette["white"], "600", line_height=1.3),
+                ])
+        else:
+            accent_colors = [palette["indigo"], palette["cyan"], palette["coral"], palette["emerald"]]
+            tint_colors = ["#EEF2FF", "#ECFEFF", "#FFF7ED", "#ECFDF5"]
+            blocks = [
+                rectangle(0, 0, width, height, palette["paper"]),
+                rectangle(0, 0, 235, height, palette["ink"]),
+                text_block(f"{index + 1:02d}", 46, 42, 80, 52, 28, palette["cyan"], "800"),
+                text_block(slide_title, 42, 125, 155, 170, 28, palette["white"], "800", line_height=1.12),
+                text_block(source.get("purpose") or "Esploriamo i punti fondamentali", 44, 350, 150, 92, 15, "#94A3B8", "400", line_height=1.3),
+            ]
+            card_x = 270
+            card_width = width - card_x - 52
+            card_height = min(88, (height - 112) / max(1, len(points)) - 12)
+            for point_index, point in enumerate(points):
+                card_y = 52 + point_index * (card_height + 14)
+                blocks.extend([
+                    rectangle(card_x, card_y, card_width, card_height, tint_colors[point_index % len(tint_colors)], 18),
+                    rectangle(card_x, card_y, 8, card_height, accent_colors[point_index % len(accent_colors)], 4),
+                    text_block(f"0{point_index + 1}", card_x + 26, card_y + 18, 42, 26, 13, accent_colors[point_index % len(accent_colors)], "800"),
+                    text_block(point, card_x + 82, card_y + 15, card_width - 108, card_height - 24, 18, palette["ink"], "600", line_height=1.22),
+                ])
+        slides.append({"title": slide_title, "speakerNotes": str(source.get("speaker_notes") or "")[:1000], "blocks": blocks})
+    return {"title": title, "format": fmt, "slides": slides}
+
+
 def get_ui_language(request: Optional[Request]) -> str:
     if request is None:
         return "it"
     return resolve_ui_language(
         request.headers.get("x-app-language") or request.headers.get("accept-language")
     )
+
+
+async def _build_teacher_url_context(content: str) -> str:
+    """Extract readable page text from URLs pasted into teacher chat messages."""
+    try:
+        from app.services.web_search_service import web_search_service
+        return await web_search_service.build_url_context(content or "")
+    except Exception as e:
+        logger.warning("Teacher URL context build failed: %s", e)
+        return ""
+
+
+async def _augment_teacher_messages_with_url_context(messages: list[dict]) -> list[dict]:
+    """Append URL context from recent teacher messages, preserving stored history."""
+    if not messages:
+        return messages
+
+    last_user_index = None
+    recent_user_texts: list[str] = []
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].get("role") != "user":
+            continue
+        content = messages[index].get("content") or ""
+        if isinstance(content, str):
+            recent_user_texts.append(content)
+        if last_user_index is None:
+            last_user_index = index
+        if len(recent_user_texts) >= 8:
+            break
+    if last_user_index is None:
+        return messages
+
+    source_text = "\n\n".join(reversed(recent_user_texts))
+    url_context = await _build_teacher_url_context(source_text)
+    if not url_context:
+        return messages
+
+    augmented = [dict(message) for message in messages]
+    content = augmented[last_user_index].get("content") or ""
+    augmented[last_user_index]["content"] = (
+        f"{content}\n\n--- CONTESTO ESTRATTO DAI LINK INCOLLATI ---\n"
+        f"{url_context}\n"
+        f"--- FINE CONTESTO LINK ---"
+    )
+    return augmented
 
 
 async def safe_track_usage(
@@ -1604,6 +1965,438 @@ async def student_chat(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.post("/presentations/agent")
+async def presentation_agent(
+    request: dict,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Agentic presentation generator: strategy -> visual direction -> editable slide JSON."""
+    prompt = str(request.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+
+    provider = request.get("provider")
+    model = normalize_llm_model(provider, request.get("model"))
+    language = get_ui_language(http_request)
+    fmt = str(request.get("format") or "16:9")
+    dims = request.get("dims") if isinstance(request.get("dims"), dict) else {"width": 960, "height": 540}
+    current_presentation = request.get("current_presentation") if isinstance(request.get("current_presentation"), dict) else {}
+    mode = str(request.get("mode") or "create")
+
+    tenant_id = None
+    teacher_id = None
+    class_id = None
+    session_id = None
+    student_id = None
+    school_grade = None
+
+    if auth.is_student:
+        tenant_id = auth.student.tenant_id
+        student_id = auth.student.id
+        session_id = auth.student.session_id
+        session_result = await db.execute(
+            select(Session, Class)
+            .join(Class, Session.class_id == Class.id)
+            .where(Session.id == auth.student.session_id)
+        )
+        session_row = session_result.first()
+        if session_row:
+            session_obj, class_obj = session_row
+            teacher_id = class_obj.teacher_id
+            class_id = class_obj.id
+            school_grade = class_obj.school_grade
+            session_id = session_obj.id
+    else:
+        tenant_id = auth.teacher.tenant_id
+        teacher_id = auth.teacher.id
+
+    allowed = await credit_service.check_availability(
+        db, tenant_id, 0.002, teacher_id, class_id, session_id, student_id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    school_grade_instruction = get_school_grade_instruction(school_grade) if school_grade else ""
+    canvas_width = int(_bounded_number(dims.get("width"), 960, 320, 1600))
+    canvas_height = int(_bounded_number(dims.get("height"), 540, 240, 1400))
+    current_summary = json.dumps(current_presentation, ensure_ascii=False)[:7000]
+
+    strategy_system = (
+        "Sei un presentation strategist per una piattaforma didattica. "
+        "Trasforma input anche grezzi in una tesi chiara, un arco narrativo e una scaletta didattica. "
+        "Non copiare il testo dell'utente nelle slide: estrai, organizza, sintetizza, decidi cosa merita spazio. "
+        "Rispondi solo con JSON valido."
+    )
+    strategy_user = (
+        f"Lingua output: {language}\n"
+        f"Formato: {fmt}, canvas {canvas_width}x{canvas_height}\n"
+        f"Modalita: {mode}\n"
+        f"{school_grade_instruction}\n\n"
+        f"Richiesta utente:\n{prompt}\n\n"
+        f"Presentazione corrente, se da modificare:\n{current_summary}\n\n"
+        "Produci JSON con questa forma:\n"
+        "{\"title\":\"...\",\"audience\":\"...\",\"core_message\":\"...\",\"narrative_arc\":\"...\","
+        "\"slides\":[{\"title\":\"...\",\"role\":\"cover|concept|evidence|comparison|process|summary\","
+        "\"purpose\":\"...\",\"key_points\":[\"...\"],\"visual_idea\":\"...\",\"speaker_notes\":\"...\"}]}"
+    )
+
+    style_system = (
+        "Sei un art director per presentazioni in stile Gamma/Keynote: sistemi visuali puliti, coerenti, moderni. "
+        "Definisci palette, gerarchie tipografiche, ritmo, pattern layout e componenti. "
+        "Evita palette monotone e slide piene di testo. Rispondi solo con JSON valido, compatto e senza spiegazioni."
+    )
+
+    compose_system = (
+        "Sei un presentation composer. Devi restituire una presentazione completa come JSON renderizzabile "
+        "nell'editor Golinelli. Usi SOLO blocchi editabili: text, rectangle, ellipse, line, image. "
+        "Tutto il contenuto verbale visibile deve stare in blocchi text separati e modificabili. "
+        "Non usare markdown né elenchi multipli dentro un unico blocco testo. Ogni slide deve avere gerarchia visuale, respiro, "
+        "contrasto WCAG, almeno due superfici colore e forme o diagrammi quando utili. Alterna layout: cover, split, card, timeline, bento, summary. "
+        "Evita la gabbia ripetitiva titolo+riquadro bianco+lista. Non incollare paragrafi lunghi: massimo 16 parole per blocco testo, "
+        "salvo note relatore. Titoli 30-48px, corpo 17-22px, lineHeight 1.15-1.4. Rispondi solo con JSON valido."
+    )
+
+    try:
+        strategy_resp = None
+        style_resp = None
+        compose_resp = None
+        try:
+            strategy_resp = await llm_service.generate(
+                messages=[{"role": "user", "content": strategy_user}],
+                system_prompt=strategy_system,
+                provider=provider,
+                model=model,
+                temperature=0.45,
+                max_tokens=2600,
+                allow_web_search=False,
+            )
+            strategy = _extract_json_object(strategy_resp.content)
+            if not isinstance(strategy.get("slides"), list) or not strategy["slides"]:
+                raise ValueError("Strategist returned no slide outline")
+        except Exception as strategy_error:
+            logger.warning("Presentation strategist fallback: %s", strategy_error)
+            strategy = _fallback_presentation_strategy(prompt)
+
+        style_user = (
+            f"Strategia:\n{json.dumps(strategy, ensure_ascii=False)[:7000]}\n\n"
+            "Restituisci ESATTAMENTE un JSON compatto con questo schema e nessun altro campo:\n"
+            "{\"palette\":{\"background\":\"#...\",\"surface\":\"#...\",\"primary\":\"#...\",\"accent\":\"#...\",\"text\":\"#...\"},"
+            "\"typography\":{\"heading\":\"Inter\",\"body\":\"Inter\",\"title_size\":34,\"body_size\":20},"
+            "\"layout\":\"una frase breve\",\"components\":[\"massimo\",\"quattro\",\"elementi\"]}. "
+            "Massimo 900 caratteri complessivi."
+        )
+        try:
+            style_resp = await llm_service.generate(
+                messages=[{"role": "user", "content": style_user}],
+                system_prompt=style_system,
+                provider=provider,
+                model=model,
+                temperature=0.4,
+                max_tokens=900,
+                allow_web_search=False,
+            )
+            style = _extract_json_object(style_resp.content)
+        except Exception as style_error:
+            logger.warning("Presentation art director fallback: %s", style_error)
+            style = _fallback_presentation_style()
+
+        compose_user = (
+            f"Canvas: {canvas_width}x{canvas_height}. Formato: {fmt}. Lingua: {language}.\n"
+            "Schema blocchi:\n"
+            "text: {type:'text', content, x,y,width,height, style:{fontFamily,fontSize,color,backgroundColor,fontWeight,textAlign,lineHeight,padding,borderRadius}}\n"
+            "rectangle/ellipse: {type, content:'', x,y,width,height, style:{fill,stroke,strokeWidth,cornerRadius}}\n"
+            "line: {type:'line', content:'', x,y,width,height, style:{stroke,strokeWidth}}\n"
+            "image: usa solo placeholder https://placehold.co/... descrittivi se serve una visuale.\n\n"
+            "STRATEGIA:\n"
+            f"{json.dumps(strategy, ensure_ascii=False)}\n\n"
+            "DIREZIONE VISIVA:\n"
+            f"{json.dumps(style, ensure_ascii=False)}\n\n"
+            "VINCOLI DI COMPOSIZIONE:\n"
+            "- Ogni informazione o punto deve essere un blocco text autonomo e quindi modificabile.\n"
+            "- Metti forme di sfondo prima dei testi nell'array blocks, così i livelli restano corretti.\n"
+            "- Inserisci un blocco titolo nativo nella slide; non creare due blocchi titolo sovrapposti.\n"
+            "- Usa contrasti netti, blocchi colore, numeri/etichette e spaziatura coerente.\n"
+            "- Varia davvero il layout tra slide consecutive.\n\n"
+            "Restituisci JSON finale:\n"
+            "{\"title\":\"...\",\"format\":\"" + fmt + "\",\"slides\":[{\"title\":\"...\",\"speakerNotes\":\"...\",\"blocks\":[...]}]}"
+        )
+        try:
+            compose_resp = await llm_service.generate(
+                messages=[{"role": "user", "content": compose_user}],
+                system_prompt=compose_system,
+                provider=provider,
+                model=model,
+                temperature=0.5,
+                max_tokens=7000,
+                allow_web_search=False,
+            )
+            payload = _extract_json_object(compose_resp.content)
+        except Exception as compose_error:
+            logger.warning("Presentation composer fallback: %s", compose_error)
+            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height)
+        payload["format"] = fmt
+        payload["agent_steps"] = [
+            {"agent": "Strategist", "summary": str(strategy.get("core_message") or strategy.get("narrative_arc") or "")[:500]},
+            {"agent": "Art director", "summary": json.dumps(style, ensure_ascii=False)[:500]},
+            {"agent": "Composer", "summary": "Ha prodotto slide editabili con layout, gerarchie e blocchi nativi." if compose_resp else "Ha applicato il layout editabile di fallback."},
+        ]
+        try:
+            result = _sanitize_slide_agent_payload(payload, {"width": canvas_width, "height": canvas_height})
+        except (TypeError, ValueError, KeyError) as sanitize_error:
+            logger.warning("Presentation payload sanitizer fallback: %s", sanitize_error)
+            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height)
+            payload["agent_steps"] = [
+                {"agent": "Strategist", "summary": str(strategy.get("core_message") or strategy.get("narrative_arc") or "")[:500]},
+                {"agent": "Composer", "summary": "Ha applicato il layout editabile di fallback."},
+            ]
+            result = _sanitize_slide_agent_payload(payload, {"width": canvas_width, "height": canvas_height})
+
+        responses = [response for response in (strategy_resp, style_resp, compose_resp) if response is not None]
+        total_prompt = sum(response.prompt_tokens for response in responses)
+        total_completion = sum(response.completion_tokens for response in responses)
+        last_response = responses[-1] if responses else None
+        real_provider = (last_response.provider if last_response else None) or provider or settings.DEFAULT_LLM_PROVIDER
+        real_model = (last_response.model if last_response else None) or model or settings.DEFAULT_LLM_MODEL
+        cost = credit_service.calculate_cost_for_model(real_provider, real_model, total_prompt, total_completion)
+        await safe_track_usage(
+            db,
+            tenant_id,
+            real_provider,
+            real_model,
+            cost,
+            enrich_usage_with_environmental_impact(
+                {
+                    "type": "presentation_agent",
+                    "prompt": prompt[:1000],
+                    "agent_steps": ["strategy", "style", "compose"],
+                    "slides": len(result["slides"]),
+                    "prompt_tokens": total_prompt,
+                    "completion_tokens": total_completion,
+                    "total_tokens": total_prompt + total_completion,
+                },
+                provider=real_provider,
+                model=real_model,
+            ),
+            teacher_id,
+            class_id,
+            session_id,
+            student_id,
+            context="presentation_agent",
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Presentation agent failed")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Presentation agent failed: {e}")
+
+
+@router.post("/documents/assist")
+async def document_context_assist(
+    request: dict,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Return a contextual, reviewable proposal for a document selection or slide target."""
+    prompt = str(request.get("prompt") or "").strip()
+    target = request.get("target") if isinstance(request.get("target"), dict) else {}
+    target_kind = str(target.get("kind") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+    if target_kind not in {"selected_text", "slide_block", "slide", "presentation"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select text, a slide object, a slide, or the presentation first")
+
+    provider = request.get("provider")
+    model = normalize_llm_model(provider, request.get("model"))
+    language = get_ui_language(http_request)
+    dims = request.get("dims") if isinstance(request.get("dims"), dict) else {"width": 960, "height": 540}
+    canvas_width = int(_bounded_number(dims.get("width"), 960, 320, 1600))
+    canvas_height = int(_bounded_number(dims.get("height"), 540, 240, 1400))
+
+    tenant_id = auth.student.tenant_id if auth.is_student else auth.teacher.tenant_id
+    student_id = auth.student.id if auth.is_student else None
+    teacher_id = None if auth.is_student else auth.teacher.id
+    class_id = None
+    session_id = auth.student.session_id if auth.is_student else None
+    if auth.is_student:
+        session_result = await db.execute(
+            select(Session, Class)
+            .join(Class, Session.class_id == Class.id)
+            .where(Session.id == auth.student.session_id)
+        )
+        session_row = session_result.first()
+        if session_row:
+            session_obj, class_obj = session_row
+            teacher_id = class_obj.teacher_id
+            class_id = class_obj.id
+            session_id = session_obj.id
+
+    allowed = await credit_service.check_availability(
+        db, tenant_id, 0.0005, teacher_id, class_id, session_id, student_id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    target_payload = json.dumps(target, ensure_ascii=False)[:60000 if target_kind == "presentation" else 10000]
+    document_context = json.dumps(request.get("document_context") or {}, ensure_ascii=False)[:5000]
+    if target_kind == "selected_text":
+        response_schema = '{"summary":"breve descrizione della modifica","replacement_text":"testo sostitutivo, senza commenti"}'
+        target_rules = (
+            "Modifica soltanto il testo selezionato. Mantieni lingua, significato e tono del documento, salvo richiesta esplicita. "
+            "replacement_text deve contenere esclusivamente il testo pronto da inserire."
+        )
+    elif target_kind == "slide_block":
+        response_schema = '{"summary":"breve descrizione della modifica","replacement_block":{"type":"text|image|rectangle|ellipse|line","content":"...","x":0,"y":0,"width":100,"height":100,"style":{}}}'
+        target_rules = (
+            "Modifica soltanto l'oggetto selezionato. Conserva posizione, dimensioni e tipo quando la richiesta non li riguarda. "
+            "Per immagini non inventare URL esterni: conserva content se non viene chiesta una sostituzione."
+        )
+    elif target_kind == "slide":
+        response_schema = '{"summary":"breve descrizione della modifica","replacement_slide":{"title":"...","blocks":[...]}}'
+        target_rules = (
+            "Modifica soltanto la slide corrente. Restituisci tutti i suoi blocchi, inclusi quelli invariati. "
+            "Usa solo blocchi text, image, rectangle, ellipse e line."
+        )
+    else:
+        response_schema = '{"summary":"breve descrizione della modifica","replacement_presentation":{"title":"...","format":"16:9|4:3","slides":[{"title":"...","blocks":[...],"speakerNotes":"..."}]}}'
+        target_rules = (
+            "Puoi modificare l'intera presentazione: titolo, ordine, numero e contenuto delle slide. "
+            "Restituisci sempre la presentazione completa, incluse le slide rimaste invariate. "
+            "Mantieni il formato corrente salvo richiesta esplicita e usa solo blocchi text, image, rectangle, ellipse e line."
+        )
+
+    system_prompt = (
+        "Sei Document Builder, un assistente agentico per un editor didattico. "
+        "Ricevi un bersaglio preciso già selezionato dall'utente e produci una proposta reversibile. "
+        "Non modificare parti fuori dal bersaglio. Non applicare la modifica: il client chiederà conferma. "
+        "Rispondi esclusivamente con JSON valido, compatto e senza Markdown. "
+        "Evita ripetizioni e mantieni la risposta entro i limiti strettamente necessari."
+    )
+    user_prompt = (
+        f"Lingua interfaccia: {language}\nCanvas slide: {canvas_width}x{canvas_height}\n"
+        f"Istruzione utente:\n{prompt}\n\nBersaglio selezionato:\n{target_payload}\n\n"
+        f"Contesto documento:\n{document_context}\n\nRegole:\n{target_rules}\n\nSchema risposta obbligatorio:\n{response_schema}"
+    )
+
+    try:
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=0.25,
+            max_tokens=8000 if target_kind == "presentation" else 3200,
+            allow_web_search=False,
+        )
+        usage_responses = [response]
+        try:
+            payload = _extract_json_object(response.content)
+        except (json.JSONDecodeError, ValueError):
+            # Some providers can stop a long structured answer before the final quote/braces.
+            # Give the model one bounded repair pass and account for both calls in one usage event.
+            logger.warning(
+                "Repairing truncated document assist response (target_kind=%s, chars=%s)",
+                target_kind,
+                len(response.content or ""),
+            )
+            repair_response = await llm_service.generate(
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Ripara e completa il seguente output interrotto. Restituisci un solo oggetto JSON "
+                        "valido e compatto, conforme allo schema indicato. Non aggiungere Markdown o spiegazioni. "
+                        "Mantieni il contenuto già prodotto e chiudi correttamente stringhe, array e oggetti.\n\n"
+                        f"Schema:\n{response_schema}\n\nOutput da riparare:\n{(response.content or '')[:30000]}"
+                    ),
+                }],
+                system_prompt="Sei un riparatore di JSON. Produci esclusivamente JSON valido e compatto.",
+                provider=provider,
+                model=model,
+                temperature=0,
+                max_tokens=10000 if target_kind == "presentation" else 5000,
+                allow_web_search=False,
+            )
+            usage_responses.append(repair_response)
+            response = repair_response
+            payload = _extract_json_object(response.content)
+        summary = str(payload.get("summary") or "Ho preparato una modifica contestuale.").strip()[:500]
+
+        if target_kind == "selected_text":
+            replacement_text = str(payload.get("replacement_text") or "").strip()
+            if not replacement_text:
+                raise ValueError("No replacement text returned")
+            proposal = {"kind": target_kind, "replacement_text": replacement_text[:12000]}
+        elif target_kind == "slide_block":
+            replacement_block = payload.get("replacement_block")
+            if not isinstance(replacement_block, dict):
+                raise ValueError("No replacement block returned")
+            sanitized = _sanitize_slide_agent_payload(
+                {"title": "Proposal", "slides": [{"title": "Target", "blocks": [replacement_block]}]},
+                {"width": canvas_width, "height": canvas_height},
+            )
+            blocks = sanitized.get("slides", [{}])[0].get("blocks", [])
+            if not blocks:
+                raise ValueError("Replacement block is not renderable")
+            proposal = {"kind": target_kind, "replacement_block": blocks[0]}
+        elif target_kind == "slide":
+            replacement_slide = payload.get("replacement_slide")
+            if not isinstance(replacement_slide, dict):
+                raise ValueError("No replacement slide returned")
+            sanitized = _sanitize_slide_agent_payload(
+                {"title": "Proposal", "slides": [replacement_slide]},
+                {"width": canvas_width, "height": canvas_height},
+            )
+            slides = sanitized.get("slides", [])
+            if not slides:
+                raise ValueError("Replacement slide is not renderable")
+            proposal = {"kind": target_kind, "replacement_slide": slides[0]}
+        else:
+            replacement_presentation = payload.get("replacement_presentation")
+            if not isinstance(replacement_presentation, dict):
+                raise ValueError("No replacement presentation returned")
+            sanitized = _sanitize_slide_agent_payload(
+                replacement_presentation,
+                {"width": canvas_width, "height": canvas_height},
+            )
+            proposal = {"kind": target_kind, "replacement_presentation": sanitized}
+
+        real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER
+        real_model = response.model or model or settings.DEFAULT_LLM_MODEL
+        prompt_tokens = sum(item.prompt_tokens for item in usage_responses)
+        completion_tokens = sum(item.completion_tokens for item in usage_responses)
+        cost = credit_service.calculate_cost_for_model(real_provider, real_model, prompt_tokens, completion_tokens)
+        await safe_track_usage(
+            db, tenant_id, real_provider, real_model, cost,
+            enrich_usage_with_environmental_impact({
+                "type": "document_context_assist",
+                "target_kind": target_kind,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "repair_attempted": len(usage_responses) > 1,
+            }, provider=real_provider, model=real_model),
+            teacher_id, class_id, session_id, student_id,
+            context="document_context_assist",
+        )
+        return {
+            "summary": summary,
+            "proposal": proposal,
+            "agent_steps": [
+                {"agent": "Context Analyst", "summary": "Ha isolato il contenuto selezionato."},
+                {"agent": "Document Builder", "summary": summary},
+                {"agent": "Reviewer", "summary": "La proposta è pronta per la conferma."},
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Document context assist failed")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
+
+
 @router.post("/generate-image")
 async def generate_image(
     request: dict,
@@ -2102,8 +2895,19 @@ async def load_session_context(db: AsyncSession, session_id_str: str, teacher: U
         if submissions:
             scored = [sub for sub in submissions if sub.score is not None]
             if scored:
-                avg_score = sum(float(sub.score) for sub in scored) / len(scored)
-                parts.append(f"  - media voti: {avg_score:.2f} su {len(scored)} consegne valutate")
+                parsed_scores = [_parse_submission_score(sub.score) for sub in scored]
+                numeric_scores = [score for score, is_ratio in parsed_scores if score is not None and not is_ratio]
+                ratio_scores = [score for score, is_ratio in parsed_scores if score is not None and is_ratio]
+                if numeric_scores:
+                    avg_score = sum(numeric_scores) / len(numeric_scores)
+                    parts.append(
+                        f"  - media voti: {avg_score:.2f} su {len(numeric_scores)} consegne valutate"
+                    )
+                if ratio_scores:
+                    avg_percentage = sum(ratio_scores) / len(ratio_scores)
+                    parts.append(
+                        f"  - media risposte corrette: {avg_percentage:.1f}% su {len(ratio_scores)} consegne"
+                    )
             for sub in submissions[:20]:
                 nickname = student_map.get(str(sub.student_id), "Studente")
                 score_info = f"voto {sub.score}" if sub.score is not None else "non valutato"
@@ -2310,6 +3114,7 @@ async def teacher_chat(
             "content": msg.get("content", ""),
         })
     messages.append({"role": "user", "content": content})
+    llm_messages = await _augment_teacher_messages_with_url_context(messages)
 
     try:
         # Load database context (used by analytics mode)
@@ -2321,7 +3126,7 @@ async def teacher_chat(
             from app.services.teacher_agent import run_teacher_agent
 
             llm_response_content = await run_teacher_agent(
-                messages=messages,
+                messages=llm_messages,
                 context=context,
                 structured_context=structured_context,
                 provider=provider or "openai",
@@ -2365,7 +3170,7 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
             temperature = profile.get("temperature", 0.7)
 
             llm_response = await llm_service.generate(
-                messages=messages,
+                messages=llm_messages,
                 system_prompt=system_prompt,
                 provider=provider,
                 model=model,
@@ -2448,10 +3253,22 @@ async def teacher_chat_stream(
             generate_with_analytics,
             TeacherIntent,
         )
+        from app.services.web_search_service import web_search_service
+
+        recent_user_text = "\n\n".join(
+            str(msg.get("content") or "")
+            for msg in messages[-16:]
+            if msg.get("role") == "user"
+        )
+        if web_search_service.extract_urls(recent_user_text):
+            yield f"data: {json.dumps({'type': 'status', 'message': '🔗 Lettura dei link in corso...'})}\n\n"
+        llm_messages = await _augment_teacher_messages_with_url_context(messages)
 
         async def build_done_event(result_content: str, stream_type: str) -> str:
+            if not result_content or not result_content.strip():
+                raise RuntimeError("Il modello non ha restituito alcun contenuto")
             estimated_usage = enrich_usage_with_environmental_impact(
-                build_estimated_token_usage(messages, result_content),
+                build_estimated_token_usage(llm_messages, result_content),
                 provider=provider,
                 model=model,
             )
@@ -2491,7 +3308,7 @@ async def teacher_chat_stream(
                 session_id_str = request.get("session_id")
 
                 # Yield status immediately so NGINX/client know the connection is alive
-                if _needs_web_search(messages):
+                if _needs_web_search(llm_messages):
                     yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
                 else:
                     yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
@@ -2523,7 +3340,7 @@ async def teacher_chat_stream(
 
                 full_content = ''
                 async for chunk in generate_with_analytics_stream(
-                    messages, context + cal_addendum, provider, model,
+                    llm_messages, context + cal_addendum, provider, model,
                     custom_system_prompt=teacher.support_chat_system_prompt or None,
                     ui_language=ui_language,
                     max_tokens=max_tokens,
@@ -2564,6 +3381,9 @@ async def teacher_chat_stream(
                     except Exception as _exc:
                         logging.warning(f"Failed to create calendar event from chat: {_exc}")
 
+                if not clean_content and _matches:
+                    clean_content = "Ho elaborato la richiesta relativa al calendario."
+
                 yield f"data: {await build_done_event(clean_content, 'teacher_chat_stream_default')}\n\n"
                 return
 
@@ -2592,28 +3412,28 @@ async def teacher_chat_stream(
                 # Web search removed — fall through to analytics/generic response
                 context, _ = await load_teacher_context(db, teacher)
                 from app.services.teacher_agent import generate_with_analytics
-                result = await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
+                result = await generate_with_analytics(llm_messages, context, provider, model, ui_language=ui_language)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_web_fallback')}\n\n"
 
             elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '❓ Modalità: Generazione Quiz'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione domande...'})}\n\n"
 
-                result = await generate_quiz_with_tools(messages, provider, model)
+                result = await generate_quiz_with_tools(llm_messages, provider, model)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_quiz')}\n\n"
 
             elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '💪 Modalità: Generazione Esercizio'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
 
-                result = await generate_exercise_with_tools(messages, provider, model)
+                result = await generate_exercise_with_tools(llm_messages, provider, model)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_exercise')}\n\n"
 
             elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Dataset'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione dataset CSV...'})}\n\n"
 
-                result = await generate_dataset(messages, provider, model)
+                result = await generate_dataset(llm_messages, provider, model)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_dataset')}\n\n"
 
             elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
@@ -2630,7 +3450,7 @@ async def teacher_chat_stream(
                         report_context = selected_session_ctx
                 result = await generate_report_widgets(
                     content, structured_context,
-                    full_context=report_context, messages=messages,
+                    full_context=report_context, messages=llm_messages,
                     provider=provider, model=model,
                 )
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_report')}\n\n"
@@ -2647,7 +3467,7 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Elaborazione risposta...'})}\n\n"
 
                 context, _ = await load_teacher_context(db, teacher)
-                result = await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
+                result = await generate_with_analytics(llm_messages, context, provider, model, ui_language=ui_language)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_analytics')}\n\n"
 
         except Exception as e:
@@ -2749,12 +3569,13 @@ async def teacher_chat_with_files(
             "content": msg.get("content", ""),
         })
     messages.append({"role": "user", "content": full_content})
+    llm_messages = await _augment_teacher_messages_with_url_context(messages)
 
     temperature = profile.get("temperature", 0.7)
 
     try:
         llm_response = await llm_service.generate(
-            messages=messages,
+            messages=llm_messages,
             system_prompt=base_system_prompt,
             provider=provider,
             model=model,

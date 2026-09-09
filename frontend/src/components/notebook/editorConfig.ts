@@ -257,15 +257,25 @@ export function proposalDecorationExtension(source: string, proposals: NotebookC
   const offsets = getLineOffsets(source)
   const builder = new RangeSetBuilder<Decoration>()
 
-  for (const proposal of proposals) {
+  // RangeSetBuilder.add() richiede range aggiunti in ordine strettamente crescente di
+  // `from`, senza sovrapposizioni. Le proposte arrivano dal backend (o da uno stato
+  // React non ancora aggiornato dopo un "Applica") e non è garantito che siano già
+  // ordinate/disgiunte: senza questa difesa un ordine sbagliato fa esplodere l'intero
+  // editor con un errore non catturato (pagina bianca), per un problema puramente
+  // cosmetico (la sottolineatura del diff, non l'applicazione del codice).
+  const sorted = [...proposals].sort((a, b) => a.line_start - b.line_start)
+  let lastTo = -1
+  for (const proposal of sorted) {
     const from = offsets[Math.max(0, proposal.line_start - 1)] ?? 0
     const lineEndOffset = offsets[Math.max(0, proposal.line_end)] ?? source.length
     const to = Math.max(from, Math.min(source.length, lineEndOffset > 0 ? lineEndOffset - 1 : source.length))
+    if (from <= lastTo) continue // si sovrappone alla precedente già aggiunta: la saltiamo invece di crashare
     const decoration = Decoration.mark({
       class: `cm-ai-proposal cm-ai-proposal-${proposal.severity}`,
       attributes: { 'data-ai-proposal': proposal.message },
     })
     builder.add(from, to, decoration)
+    lastTo = to
   }
 
   return EditorView.decorations.of(builder.finish())

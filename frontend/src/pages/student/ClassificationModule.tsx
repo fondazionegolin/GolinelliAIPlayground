@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,7 @@ import {
   Camera, Type, Database, Play, Square, Trash2, Plus,
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
   TrendingUp, Tags, AlertCircle, Lightbulb, ArrowLeft,
-  Sparkles, Download, Clipboard, ChevronRight, Paperclip, Share2, FolderOpen
+  Sparkles, Download, Clipboard, ChevronDown, ChevronRight, ChevronUp, Paperclip, Share2, FolderOpen
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
@@ -24,6 +24,16 @@ interface ImageClass {
   name: string
   samples: string[] // base64 images
   color: string
+}
+
+interface ImageClassifierSample {
+  classIndex: number
+  pixels: Float32Array
+}
+
+interface ImageClassifierSnapshot {
+  classNames: string[]
+  samples: ImageClassifierSample[]
 }
 
 interface TextSample {
@@ -82,6 +92,40 @@ const DOT_COLORS = [
   'bg-orange-500',
   'bg-teal-500',
 ]
+
+const TEXT_CLASSIFICATION_EXAMPLE_CSV = `testo,etichetta
+"Mi piace molto questa lezione",positivo
+"L'attività è chiara e utile",positivo
+"Non ho capito la consegna",negativo
+"Il testo è troppo difficile",negativo
+"Vorrei un esempio in più",neutro
+"La spiegazione è abbastanza chiara",neutro
+"Il laboratorio è interessante",positivo
+"Mi sento bloccato",negativo
+"Serve più tempo per provare",neutro
+"Ho completato il compito senza problemi",positivo`
+
+const DATA_CLASSIFICATION_EXAMPLE_CSV = `ore_studio,quiz_completati,partecipazione,esito
+2,1,bassa,da_rinforzare
+5,3,media,in_crescita
+8,5,alta,autonomo
+1,0,bassa,da_rinforzare
+6,4,media,in_crescita
+9,6,alta,autonomo
+3,2,media,in_crescita
+7,5,alta,autonomo
+2,1,bassa,da_rinforzare
+6,3,media,in_crescita`
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ─── Dataset generation algorithm ─────────────────────────────────────────────
 
@@ -505,6 +549,76 @@ function uid(): string {
   return String(Date.now()) + String(Math.random()).slice(2, 8)
 }
 
+function normalizedPixelsFromImageData(imageData: ImageData): Float32Array {
+  const pixels = new Float32Array(imageData.width * imageData.height * 3)
+  let sum = 0
+  let idx = 0
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const r = imageData.data[i] / 255
+    const g = imageData.data[i + 1] / 255
+    const b = imageData.data[i + 2] / 255
+    pixels[idx++] = r
+    pixels[idx++] = g
+    pixels[idx++] = b
+    sum += r + g + b
+  }
+
+  const mean = sum / pixels.length
+  let variance = 0
+  for (let i = 0; i < pixels.length; i++) {
+    const delta = pixels[i] - mean
+    variance += delta * delta
+  }
+  const std = Math.sqrt(variance / pixels.length) || 1
+  for (let i = 0; i < pixels.length; i++) {
+    pixels[i] = (pixels[i] - mean) / std
+  }
+  return pixels
+}
+
+function squaredDistance(a: Float32Array, b: Float32Array): number {
+  let distance = 0
+  for (let i = 0; i < a.length; i++) {
+    const delta = a[i] - b[i]
+    distance += delta * delta
+  }
+  return distance / a.length
+}
+
+function predictImageByNearestClass(
+  pixels: Float32Array,
+  classifier: ImageClassifierSnapshot
+): { className: string; confidence: number }[] {
+  const distancesByClass = classifier.classNames.map(() => [] as number[])
+
+  for (const sample of classifier.samples) {
+    const distance = squaredDistance(pixels, sample.pixels)
+    distancesByClass[sample.classIndex]?.push(distance)
+  }
+
+  const classDistances = distancesByClass.map((distances) => {
+    if (distances.length === 0) return Number.POSITIVE_INFINITY
+    const nearest = distances.sort((a, b) => a - b).slice(0, Math.min(5, distances.length))
+    return nearest.reduce((sum, distance) => sum + distance, 0) / nearest.length
+  })
+  const finiteDistances = classDistances.filter(Number.isFinite)
+  const minDistance = Math.min(...finiteDistances)
+  const maxDistance = Math.max(...finiteDistances)
+  const range = maxDistance - minDistance
+
+  const scores = classDistances.map((distance) => {
+    if (!Number.isFinite(distance)) return 0
+    if (range < 1e-6) return 1
+    return Math.exp(((maxDistance - distance) / range) * 6)
+  })
+  const total = scores.reduce((sum, score) => sum + score, 0) || 1
+
+  return classifier.classNames.map((className, i) => ({
+    className,
+    confidence: (scores[i] / total) * 100,
+  }))
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ClassificationModule({ sessionId }: { sessionId?: string } = {}) {
@@ -568,7 +682,7 @@ export default function ClassificationModule({ sessionId }: { sessionId?: string
 // Inline SVG illustrations for each mode
 function ImagesIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(244,63,94,0.16)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
       <rect width="200" height="130" rx="12" fill="#fff1f2" />
       {/* Camera body */}
@@ -599,7 +713,7 @@ function ImagesIllustration() {
 
 function TextIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(59,130,246,0.16)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="200" height="130" rx="12" fill="#eff6ff" />
       {/* Document */}
       <rect x="30" y="20" width="100" height="90" rx="8" fill="white" />
@@ -630,7 +744,7 @@ function TextIllustration() {
 
 function DataIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(16,185,129,0.18)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="200" height="130" rx="12" fill="#f0fdf4" />
       {/* Bar chart */}
       <rect x="25" y="90" width="20" height="30" rx="3" fill="#34d399" opacity="0.8" />
@@ -676,6 +790,7 @@ function MLLabHome({
   t: (key: string) => string
   isEnglish: boolean
 }) {
+  const [tutorialOpen, setTutorialOpen] = useState(true)
   const modes = [
     {
       key: 'images' as const,
@@ -714,6 +829,29 @@ function MLLabHome({
       illustration: DataIllustration,
     },
   ]
+  const tutorialSteps = [
+    {
+      icon: Database,
+      number: '01',
+      title: isEnglish ? 'Collect examples' : 'Raccogli esempi',
+      body: isEnglish ? 'Give the model images, text, or rows of data to learn from.' : 'Fornisci al modello immagini, testi o righe di dati da cui imparare.',
+      style: 'border-sky-200 bg-sky-50 text-sky-800',
+    },
+    {
+      icon: Sparkles,
+      number: '02',
+      title: isEnglish ? 'Train the model' : 'Addestra il modello',
+      body: isEnglish ? 'The model searches for recurring patterns in your examples.' : 'Il modello cerca schemi ricorrenti negli esempi che hai preparato.',
+      style: 'border-violet-200 bg-violet-50 text-violet-800',
+    },
+    {
+      icon: CheckCircle,
+      number: '03',
+      title: isEnglish ? 'Test a prediction' : 'Verifica la previsione',
+      body: isEnglish ? 'Try a new example and compare the prediction with what you expected.' : 'Prova un nuovo esempio e confronta la previsione con ciò che ti aspettavi.',
+      style: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    },
+  ]
 
   return (
     <div className="min-h-full bg-white px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
@@ -722,41 +860,84 @@ function MLLabHome({
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="border-b border-slate-200 py-6 md:py-7"
+          className="border-b border-slate-200 py-7"
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-violet-600" />
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Machine Learning Lab</span>
-              </div>
-              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 md:text-4xl">
-                {t('classification.title')}
-              </h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                {t('classification.subtitle')}
-              </p>
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Machine Learning Lab</span>
             </div>
+            <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 md:text-4xl">
+              {t('classification.title')}
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-slate-600">
+              {t('classification.subtitle')}
+            </p>
 
-            <div className="max-w-md rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
-                  <Lightbulb className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{isEnglish ? 'Recommended flow' : 'Flusso consigliato'}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                    {isEnglish
-                      ? 'Prepare data or examples, choose the right mode, and validate the results directly in the browser. You can also generate datasets in the chatbot and import them here.'
-                      : 'Prepara dati o esempi, scegli la modalita giusta e verifica i risultati direttamente nel browser. Puoi anche generare dataset dal chatbot e importarli qui.'}
-                  </p>
-                </div>
-              </div>
+            <div className="mx-auto mt-6 max-w-3xl text-left">
+              <button
+                type="button"
+                onClick={() => setTutorialOpen((open) => !open)}
+                className="mx-auto flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                aria-expanded={tutorialOpen}
+              >
+                <Lightbulb className="h-4 w-4" />
+                {isEnglish ? 'How the lab works' : 'Come funziona il laboratorio'}
+                {tutorialOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              <AnimatePresence initial={false}>
+                {tutorialOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, y: -8 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -8 }}
+                    transition={{ duration: 0.28, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="relative mt-3 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 shadow-sm md:grid-cols-3">
+                      <motion.div
+                        aria-hidden="true"
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: 0.8, delay: 0.25 }}
+                        className="absolute left-[18%] right-[18%] top-9 hidden h-px origin-left bg-gradient-to-r from-sky-300 via-violet-300 to-emerald-300 md:block"
+                      />
+                      {tutorialSteps.map((step, index) => {
+                        const StepIcon = step.icon
+                        return (
+                          <motion.div
+                            key={step.number}
+                            initial={{ opacity: 0, y: 14 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.12 + index * 0.12 }}
+                            className="relative rounded-xl border border-white bg-white/90 p-3 shadow-sm"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <motion.div
+                                animate={{ y: [0, -3, 0] }}
+                                transition={{ duration: 2.2, delay: index * 0.35, repeat: Infinity, ease: 'easeInOut' }}
+                                className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${step.style}`}
+                              >
+                                <StepIcon className="h-5 w-5" />
+                              </motion.div>
+                              <div>
+                                <span className="text-[9px] font-black tracking-[0.18em] text-slate-400">{step.number}</span>
+                                <p className="text-xs font-black text-slate-900">{step.title}</p>
+                              </div>
+                            </div>
+                            <p className="mt-2 text-[11px] leading-5 text-slate-600">{step.body}</p>
+                          </motion.div>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 gap-4 py-5 md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 py-5 md:grid-cols-3">
           {modes.map((m, i) => {
             const Illustration = m.illustration
             return (
@@ -768,10 +949,20 @@ function MLLabHome({
                 whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => onSelect(m.key)}
-                className={`group relative cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-250 ${m.cardBorder}`}
+                className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(15,23,42,0.13)] ${m.cardBorder}`}
               >
-                <div className={`relative h-40 overflow-hidden border-b border-slate-200 p-4 ${m.panelBg}`}>
-                  <Illustration />
+                <div className={`relative h-48 overflow-hidden border-b border-slate-200 p-3 ${m.panelBg}`}>
+                  <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/70 blur-2xl" />
+                  <motion.div
+                    className="relative h-full rounded-xl border border-white/80 bg-white/35 p-1.5 shadow-inner transition-transform duration-500 group-hover:scale-[1.035]"
+                    animate={{ y: [0, -3, 0] }}
+                    transition={{ duration: 3.4, delay: i * 0.45, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <Illustration />
+                  </motion.div>
+                  <span className={`absolute bottom-4 left-4 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide backdrop-blur-sm ${m.badgeBg}`}>
+                    {isEnglish ? 'Interactive lab' : 'Laboratorio interattivo'}
+                  </span>
                 </div>
 
                 <div className="p-5">
@@ -866,8 +1057,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { toast } = useToast()
   const [classes, setClasses] = useState<ImageClass[]>([
-    { id: '1', name: isEnglish ? 'Class 1' : 'Classe 1', samples: [], color: CLASS_COLORS[0] },
-    { id: '2', name: isEnglish ? 'Class 2' : 'Classe 2', samples: [], color: CLASS_COLORS[1] },
+    { id: '1', name: isEnglish ? 'Pens' : 'Penne', samples: [], color: CLASS_COLORS[0] },
+    { id: '2', name: isEnglish ? 'Notebooks' : 'Quaderni', samples: [], color: CLASS_COLORS[1] },
   ])
   const [isCapturing, setIsCapturing] = useState<string | null>(null)
   const [isTraining, setIsTraining] = useState(false)
@@ -883,6 +1074,22 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const predictionIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const classifierRef = useRef<ImageClassifierSnapshot | null>(null)
+  const isPredictionFrameRunningRef = useRef(false)
+
+  const extractCurrentFramePixels = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return null
+    }
+
+    const ctx = canvasRef.current.getContext('2d')
+    if (!ctx) return null
+
+    canvasRef.current.width = 64
+    canvasRef.current.height = 64
+    ctx.drawImage(videoRef.current, 0, 0, 64, 64)
+    return normalizedPixelsFromImageData(ctx.getImageData(0, 0, 64, 64))
+  }, [])
 
   useEffect(() => {
     const initWebcam = async () => {
@@ -1076,6 +1283,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
         weightSpecs: data.weightSpecs,
         weightData: bytes.buffer,
       }))
+      classifierRef.current = null
       setModel(loadedModel)
       setClasses((data.classNames as string[]).map((name, i) => ({
         id: String(i + 1), name, samples: [], color: CLASS_COLORS[i % CLASS_COLORS.length],
@@ -1090,12 +1298,21 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       alert(t('classification.min_samples_image'))
       return
     }
+    const underSampledClasses = classes.filter(c => c.samples.length < 3)
+    if (underSampledClasses.length > 0) {
+      alert(isEnglish
+        ? `Add at least 3 samples for each class before training. Missing: ${underSampledClasses.map(c => c.name).join(', ')}`
+        : `Aggiungi almeno 3 esempi per ogni classe prima dell'addestramento. Mancano: ${underSampledClasses.map(c => c.name).join(', ')}`)
+      return
+    }
 
     setIsTraining(true)
 
     try {
       const xs: number[][] = []
       const ys: number[] = []
+      const classifierSamples: ImageClassifierSample[] = []
+      const classNames = classes.map(c => c.name)
 
       for (let classIdx = 0; classIdx < classes.length; classIdx++) {
         const cls = classes[classIdx]
@@ -1111,13 +1328,9 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           ctx.drawImage(img, 0, 0, 64, 64)
 
           const imageData = ctx.getImageData(0, 0, 64, 64)
-          const pixels: number[] = []
-          for (let i = 0; i < imageData.data.length; i += 4) {
-            pixels.push(imageData.data[i] / 255)
-            pixels.push(imageData.data[i + 1] / 255)
-            pixels.push(imageData.data[i + 2] / 255)
-          }
-          xs.push(pixels)
+          const pixels = normalizedPixelsFromImageData(imageData)
+          classifierSamples.push({ classIndex: classIdx, pixels })
+          xs.push(Array.from(pixels))
           ys.push(classIdx)
         }
       }
@@ -1149,6 +1362,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       })
 
       setModel(newModel)
+      classifierRef.current = { classNames, samples: classifierSamples }
+      setPredictions([])
       xTensor.dispose()
       yTensor.dispose()
 
@@ -1162,37 +1377,37 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
 
   const startPrediction = () => {
     if (!model) return
+    if (predictionIntervalRef.current) clearInterval(predictionIntervalRef.current)
     setIsPredicting(true)
 
     predictionIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current || !model) return
+      if (!model || isPredictionFrameRunningRef.current) return
 
-      const ctx = canvasRef.current.getContext('2d')
-      if (!ctx) return
+      const pixels = extractCurrentFramePixels()
+      if (!pixels) return
 
-      canvasRef.current.width = 64
-      canvasRef.current.height = 64
-      ctx.drawImage(videoRef.current, 0, 0, 64, 64)
-
-      const imageData = ctx.getImageData(0, 0, 64, 64)
-      const pixels: number[] = []
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        pixels.push(imageData.data[i] / 255)
-        pixels.push(imageData.data[i + 1] / 255)
-        pixels.push(imageData.data[i + 2] / 255)
+      const classifier = classifierRef.current
+      if (classifier) {
+        setPredictions(predictImageByNearestClass(pixels, classifier))
+        return
       }
 
-      const input = tf.tensor2d([pixels])
-      const prediction = model.predict(input) as tf.Tensor
-      const probs = await prediction.data()
+      isPredictionFrameRunningRef.current = true
+      try {
+        const input = tf.tensor2d([Array.from(pixels)])
+        const prediction = model.predict(input) as tf.Tensor
+        const probs = await prediction.data()
 
-      const results = classes.map((c, i) => ({
-        className: c.name,
-        confidence: probs[i] * 100
-      }))
-      setPredictions(results)
-      input.dispose()
-      prediction.dispose()
+        const results = classes.map((c, i) => ({
+          className: c.name,
+          confidence: probs[i] * 100
+        }))
+        setPredictions(results)
+        input.dispose()
+        prediction.dispose()
+      } finally {
+        isPredictionFrameRunningRef.current = false
+      }
     }, 200)
   }
 
@@ -1202,6 +1417,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       clearInterval(predictionIntervalRef.current)
       predictionIntervalRef.current = null
     }
+    isPredictionFrameRunningRef.current = false
     setPredictions([])
   }
 
@@ -1220,6 +1436,22 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           iconBg="bg-rose-100"
           iconColor="text-rose-600"
         />
+
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+            <div>
+              <p className="text-sm font-semibold text-rose-900">
+                {isEnglish ? 'How this activity works' : 'Come funziona questa attivita'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-rose-800">
+                {isEnglish
+                  ? 'Choose what each class represents, then collect many examples for every class. While you hold the capture button, the webcam saves repeated frames that become the training examples.'
+                  : 'Scegli cosa rappresenta ogni classe, poi raccogli molti esempi per ciascuna. Quando tieni premuto il pulsante di acquisizione, la webcam salva più fotogrammi che diventano esempi di addestramento.'}
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-20 lg:pb-0">
           {/* Webcam Panel */}
@@ -1291,7 +1523,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => { setModel(null); stopPrediction() }}
+                    onClick={() => { classifierRef.current = null; setModel(null); stopPrediction() }}
                   >
                     {t('classification.reset_model')}
                   </Button>
@@ -1349,6 +1581,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     <Input
                       value={cls.name}
                       onChange={(e) => updateClassName(cls.id, e.target.value)}
+                      placeholder={isEnglish ? 'e.g. pens, notebooks, hands' : 'es. penne, quaderni, mani'}
                       className="h-8 flex-1"
                     />
                     <span className="text-sm text-muted-foreground">
@@ -1372,6 +1605,11 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     )}
                   </div>
+                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                    {isEnglish
+                      ? 'Rename the class with the object or situation you are showing to the webcam.'
+                      : "Rinomina la classe con l'oggetto o la situazione che mostri alla webcam."}
+                  </p>
 
                   <div className="flex items-center gap-2 mb-2">
                     <Button
@@ -1411,6 +1649,11 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     </div>
                   </div>
+                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                    {isEnglish
+                      ? 'Hold to capture repeated frames. Aim for at least 10 varied examples per class.'
+                      : 'Tieni premuto per registrare più fotogrammi. Punta ad almeno 10 esempi vari per classe.'}
+                  </p>
 
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {cls.samples.map((sample, idx) => (
@@ -1466,7 +1709,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     <div className="text-xs text-amber-800">
                       <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
                         ? `The model analyzes image pixels (64x64, ${64*64*3} normalized RGB values) through a neural network with 2 dense layers. The class "${topPrediction?.className}" has the highest confidence (${topPrediction?.confidence.toFixed(1)}%) because the captured visual patterns are more similar to the ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} training samples of that class.`
-                        : `Il modello analizza i pixel dell'immagine (64x64, ${64*64*3} valori RGB normalizzati) attraverso una rete neurale con 2 layer densi. La classe "${topPrediction?.className}" ha la confidenza più alta (${topPrediction?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} samples di training di quella classe.`}
+                        : `Il modello analizza i pixel dell'immagine (64 × 64, ${64*64*3} valori RGB normalizzati) attraverso una rete neurale con due livelli densi. La classe "${topPrediction?.className}" ha la confidenza più alta (${topPrediction?.confidence.toFixed(1)}%) perché le caratteristiche visive rilevate sono più simili ai ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} esempi di addestramento di quella classe.`}
                     </div>
                   </div>
                 </div>
@@ -1764,10 +2007,30 @@ function TextClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  {t('classification.select_csv')}
-                </Button>
+                <div className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-left">
+                  <p className="text-xs font-semibold text-blue-900">
+                    {isEnglish ? 'CSV structure' : 'Struttura del CSV'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-blue-800">
+                    {isEnglish
+                      ? 'Each row contains the text to learn from and the final label. Example: "This lesson is clear,positive".'
+                      : 'Ogni riga contiene il testo da cui imparare e l’etichetta finale. Esempio: "Questa lezione è chiara,positivo".'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t('classification.select_csv')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => downloadCsv(isEnglish ? 'text-classification-example.csv' : 'esempio-classificazione-testo.csv', TEXT_CLASSIFICATION_EXAMPLE_CSV)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {isEnglish ? 'Download example' : 'Scarica esempio'}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {t('classification.format_hint')}
                 </p>
@@ -1861,7 +2124,7 @@ function TextClassification({
                           <div className="text-xs text-amber-800">
                             <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
                               ? `The model uses a Bag-of-Words approach with ${vocabulary.size} words in the vocabulary. The input text is converted into a normalized frequency vector and then processed by a neural network with 2 dense layers. The class "${prediction.label}" is selected because the words in the text are statistically more associated with that label in the ${samples.filter(s => s.label === prediction.label).length} training examples of that category.`
-                              : `Il modello usa un approccio Bag-of-Words con ${vocabulary.size} parole nel vocabolario. Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale con 2 layer densi. La classe "${prediction.label}" è stata scelta perché le parole nel testo sono statisticamente più associate a questa etichetta nei ${samples.filter(s => s.label === prediction.label).length} esempi di training di quella categoria.`}
+                              : `Il modello usa un approccio Bag-of-Words con ${vocabulary.size} parole nel vocabolario. Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale con due livelli densi. La classe "${prediction.label}" è stata scelta perché le parole nel testo sono statisticamente più associate a questa etichetta nei ${samples.filter(s => s.label === prediction.label).length} esempi di addestramento di quella categoria.`}
                           </div>
                         </div>
                       </div>
@@ -1869,9 +2132,23 @@ function TextClassification({
                   )}
                 </>
               ) : (
-                <p className="text-center text-muted-foreground py-8">
-                  {t('classification.no_model_hint')}
-                </p>
+                <div className="space-y-3 py-2">
+                  <textarea
+                    disabled
+                    placeholder={isEnglish
+                      ? 'After training, write a new sentence here to see which label the model assigns.'
+                      : 'Dopo l’addestramento, scrivi qui una nuova frase per vedere quale etichetta assegna il modello.'}
+                    className="h-32 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-400"
+                  />
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                    <p className="font-semibold text-slate-700">{t('classification.no_model_hint')}</p>
+                    <p className="mt-1 text-xs leading-5">
+                      {isEnglish
+                        ? 'This area becomes active after the model is trained. It will classify text you write, based only on the labels found in the CSV.'
+                        : "Questa area si attiva dopo l'addestramento. Classificherà il testo che scrivi usando solo le etichette trovate nel CSV."}
+                    </p>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2194,6 +2471,22 @@ function DataClassification({
           iconColor="text-emerald-600"
         />
 
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                {isEnglish ? 'What happens after upload' : 'Cosa succede dopo il caricamento'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-emerald-800">
+                {isEnglish
+                  ? 'ML Lab reads the CSV columns, helps you choose the target to predict, suggests classification or regression, then enables a test form with the remaining columns.'
+                  : 'ML Lab legge le colonne del CSV, ti aiuta a scegliere la colonna da predire, suggerisce classificazione o regressione e poi abilita un modulo di test con le altre colonne.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="space-y-4">
           {/* Upload Panel */}
           <Card className="rounded-xl border-slate-200">
@@ -2273,10 +2566,31 @@ function DataClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button onClick={() => fileInputRef.current?.click()} className="w-full">
-                  <Upload className="h-4 w-4 mr-2" />
-                  {t('classification.select_csv')}
-                </Button>
+                <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-left">
+                  <p className="text-xs font-semibold text-emerald-900">
+                    {isEnglish ? 'CSV file expected' : 'File CSV richiesto'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">
+                    {isEnglish
+                      ? 'Use one header row and at least 10 data rows. One column should be the value or category you want the model to predict.'
+                      : 'Usa una riga di intestazione e almeno 10 righe di dati. Una colonna deve essere il valore o la categoria che vuoi far predire al modello.'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button onClick={() => fileInputRef.current?.click()} className="flex-1">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t('classification.select_csv')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => downloadCsv(isEnglish ? 'tabular-classification-example.csv' : 'esempio-dati-tabellari.csv', DATA_CLASSIFICATION_EXAMPLE_CSV)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {isEnglish ? 'Download example' : 'Scarica esempio'}
+                  </Button>
+                </div>
                 <p className="text-xs text-emerald-500 mt-2">
                   {isEnglish ? 'You can also drag a CSV here' : 'Puoi anche trascinare un CSV qui'}
                 </p>
@@ -2368,6 +2682,26 @@ function DataClassification({
             </Card>
           )}
 
+          {data.length > 0 && !targetColumn && (
+            <Card className="rounded-xl border-dashed border-slate-200 bg-slate-50">
+              <CardContent className="py-4">
+                <div className="flex items-start gap-3 text-sm text-slate-600">
+                  <ChevronRight className="mt-0.5 h-4 w-4 text-slate-400" />
+                  <div>
+                    <p className="font-semibold text-slate-800">
+                      {isEnglish ? 'Next step: choose the target column' : 'Prossimo passaggio: scegli la colonna target'}
+                    </p>
+                    <p className="mt-1 text-xs leading-5">
+                      {isEnglish
+                        ? 'The target is what the model will try to predict. All other columns become the input clues.'
+                        : 'La variabile target è ciò che il modello proverà a predire. Tutte le altre colonne diventano gli indizi di input.'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Training */}
           {targetColumn && (
             <Card className="rounded-xl border-slate-200">
@@ -2404,6 +2738,32 @@ function DataClassification({
                     </p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {targetColumn && !model && (
+            <Card className="rounded-xl border-dashed border-slate-200 bg-slate-50">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-700">
+                  <AlertCircle className="h-5 w-5" />
+                  {t('classification.prediction_title')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 opacity-60">
+                  {columns.filter(c => c.name !== targetColumn).slice(0, 3).map(col => (
+                    <div key={col.name}>
+                      <label className="text-xs font-medium text-gray-600">{col.name}</label>
+                      <Input disabled value={String(col.sampleValues[0] || '')} className="mt-1 bg-white" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-slate-500">
+                  {isEnglish
+                    ? 'After training, this test area will let you enter new values and see the predicted result.'
+                    : 'Dopo l’addestramento, questa area di test ti permetterà di inserire nuovi valori e vedere il risultato predetto.'}
+                </p>
               </CardContent>
             </Card>
           )}

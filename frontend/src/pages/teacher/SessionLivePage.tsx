@@ -20,7 +20,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, Send, ChevronRight, LayoutGrid, List, FileCode2, Code2
+  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
@@ -28,6 +28,7 @@ import TaskBuilder from '@/components/TaskBuilder'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { MessageBubble } from '@/components/student/ChatConversationView'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { TrackedCorrectionText } from '@/components/tasks/TrackedCorrectionText'
 // TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
@@ -50,6 +51,30 @@ interface TaskData {
   points: string | null
   content_json?: string | null
   created_at: string
+  submission_count?: number
+  submission_scores?: Array<{ student_id: string; score: string }>
+  score_summary?: {
+    kind: 'quiz' | 'completion'
+    average_percent?: number | null
+    scored_count?: number
+    completed_count?: number
+    submission_count: number
+  }
+}
+
+interface SharedDocumentData {
+  id: string
+  task_id: string
+  submission_id: string | null
+  source: 'teacher' | 'student'
+  title: string
+  doc_type: string
+  content_json: string
+  updated_at: string
+  session_id: string
+  session_name: string
+  class_name: string
+  author_name: string
 }
 
 interface SessionLiveData {
@@ -72,19 +97,18 @@ interface SessionLiveData {
 export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { t } = useTranslation()
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
-    return tab === 'tasks' || tab === 'history' ? tab : 'modules'
+    return tab === 'tasks' || tab === 'history' || tab === 'documents' ? tab : 'modules'
   })
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'tasks' || tab === 'history') setActiveTab(tab)
+    if (tab === 'tasks' || tab === 'history' || tab === 'documents') setActiveTab(tab)
   }, [searchParams])
   const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
@@ -95,20 +119,6 @@ export default function SessionLivePage() {
 
   // Demo mode: teacherbot slide-over
   const [demoBotId, setDemoBotId] = useState<string | null>(null)
-
-  // Per-student push: which student has the bot picker open
-  const [pushBotStudentId, setPushBotStudentId] = useState<string | null>(null)
-  const pushPopoverRef = useRef<HTMLDivElement>(null)
-
-  // Fetch teacher's teacherbots for demo mode and push
-  const { data: teacherbots } = useQuery({
-    queryKey: ['teacherbots'],
-    queryFn: async () => {
-      const res = await teacherbotsApi.list()
-      return res.data as { id: string; name: string; color: string; icon: string | null; synopsis: string | null; status: string }[]
-    },
-    staleTime: 1000 * 60 * 5,
-  })
 
   // Fetch available LLM models
   const { data: modelsData } = useQuery({
@@ -127,6 +137,15 @@ export default function SessionLivePage() {
     queryKey: ['session-tasks', sessionId],
     queryFn: async () => {
       const res = await teacherApi.getTasks(sessionId!)
+      return res.data
+    },
+    enabled: !!sessionId,
+  })
+
+  const { data: documentsData = [] } = useQuery<SharedDocumentData[]>({
+    queryKey: ['session-documents', sessionId],
+    queryFn: async () => {
+      const res = await teacherApi.listSharedDocuments({ session_id: sessionId! })
       return res.data
     },
     enabled: !!sessionId,
@@ -164,11 +183,37 @@ export default function SessionLivePage() {
       })
     }
 
+    const handleTeacherNotification = (d: { type?: string }) => {
+      if (d.type === 'student_document') {
+        queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] })
+      }
+    }
+
+    const handleTaskSubmission = (d: { task_id?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
+      if (d.task_id) {
+        queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, d.task_id] })
+        queryClient.invalidateQueries({ queryKey: ['task-overview', sessionId, d.task_id] })
+      }
+    }
+
+    const handleTaskCorrectionRead = (d: { task_id?: string }) => {
+      if (d.task_id) {
+        queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, d.task_id] })
+      }
+    }
+
     socket.on('student_frozen_status', handleFrozenStatus)
     socket.on('module_toggled', handleModuleToggled)
+    socket.on('teacher_notification', handleTeacherNotification)
+    socket.on('task_submission', handleTaskSubmission)
+    socket.on('task_correction_read', handleTaskCorrectionRead)
     return () => {
       socket.off('student_frozen_status', handleFrozenStatus)
       socket.off('module_toggled', handleModuleToggled)
+      socket.off('teacher_notification', handleTeacherNotification)
+      socket.off('task_submission', handleTaskSubmission)
+      socket.off('task_correction_read', handleTaskCorrectionRead)
     }
   }, [socket, sessionId, queryClient])
 
@@ -215,7 +260,7 @@ export default function SessionLivePage() {
   })
 
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string }) =>
+    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string; due_at?: string | null }) =>
       teacherApi.createTask(sessionId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
@@ -240,37 +285,12 @@ export default function SessionLivePage() {
     },
   })
 
-  const pushTeacherbotMutation = useMutation({
-    mutationFn: ({ studentId, teacherbotId }: { studentId: string; teacherbotId: string }) =>
-      teacherApi.pushTeacherbotToStudent(sessionId!, studentId, teacherbotId),
-    onSuccess: (_, { studentId }) => {
-      const student = data?.students.find(s => s.id === studentId)
-      toast({ title: `Bot inviato a ${student?.nickname ?? 'studente'}` })
-      setPushBotStudentId(null)
-    },
-    onError: () => {
-      toast({ title: 'Errore invio bot', variant: 'destructive' })
-    },
-  })
-
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
     toast({ title: 'Codice copiato!' })
   }
 
 
-
-  // Close bot popover when clicking outside
-  useEffect(() => {
-    if (!pushBotStudentId) return
-    const handler = (e: MouseEvent) => {
-      if (pushPopoverRef.current && !pushPopoverRef.current.contains(e.target as Node)) {
-        setPushBotStudentId(null)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [pushBotStudentId])
 
   // All hooks must be before any conditional returns (Rules of Hooks)
   const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
@@ -354,7 +374,7 @@ export default function SessionLivePage() {
       <div>
         {/* Header */}
         <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-4">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+          <div className="mx-auto flex max-w-6xl flex-col items-stretch gap-4 md:flex-row md:items-center md:justify-between">
             {/* Left: back + title */}
             <div className="flex items-center gap-3 min-w-0">
               <Link
@@ -381,7 +401,7 @@ export default function SessionLivePage() {
             </div>
 
             {/* Center: join code */}
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 shadow-[var(--shadow-sm)]">
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 shadow-[var(--shadow-sm)] md:justify-start">
               <span className="text-xs text-slate-500">Codice:</span>
               {joinCodeAvailable ? (
                 <>
@@ -402,7 +422,7 @@ export default function SessionLivePage() {
             </div>
 
             {/* Right: actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {session.status === 'draft' && (
                 <Button size="sm" tone="accent" surface="solid" onClick={() => updateStatusMutation.mutate('active')}>
                   <Play className="h-3.5 w-3.5 mr-1.5" />
@@ -432,11 +452,11 @@ export default function SessionLivePage() {
 
         {/* Main Layout: Sidebar + Content */}
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-5">
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 md:flex-row">
 
             {/* ── Left Sidebar: Students ── */}
-            <div className="w-60 shrink-0">
-              <Card surface="glass" className="sticky top-4 overflow-visible rounded-xl border-slate-200 bg-white/95">
+            <div className="w-full md:w-60 md:shrink-0">
+              <Card surface="glass" className="overflow-visible rounded-xl border-slate-200 bg-white/95 md:sticky md:top-4">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 px-3 py-3">
                   <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
@@ -457,7 +477,7 @@ export default function SessionLivePage() {
                       </span>
                     </div>
                   ) : (
-                    <div className="space-y-1 max-h-[65vh] overflow-y-auto pr-1">
+                    <div className="max-h-56 space-y-1 overflow-y-auto pr-1 md:max-h-[65vh]">
                       {onlineStudents.map((student) => (
                         <div
                           key={student.id}
@@ -483,44 +503,6 @@ export default function SessionLivePage() {
                             >
                               <MessageSquare className="h-3 w-3" />
                             </button>
-                            <div className="relative">
-                              <button
-                                onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
-                                title="Invia bot"
-                                className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-[var(--logo-violet)] hover:bg-violet-50 transition-colors"
-                              >
-                                <Bot className="h-3 w-3" />
-                              </button>
-                              {pushBotStudentId === student.id && (
-                                <div
-                                  ref={pushPopoverRef}
-                                  className="absolute left-0 top-6 z-50 w-52 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
-                                >
-                                  <div className="px-3 py-2 border-b border-slate-100 text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                                    <Send className="h-3 w-3" />
-                                    Invia bot a {student.nickname}
-                                  </div>
-                                  {!teacherbots || teacherbots.length === 0 ? (
-                                    <div className="px-3 py-3 text-xs text-slate-400 text-center">Nessun bot disponibile</div>
-                                  ) : (
-                                    <div className="max-h-48 overflow-y-auto">
-                                      {teacherbots.map(bot => (
-                                        <button
-                                          key={bot.id}
-                                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 transition-colors text-left"
-                                          onClick={() => pushTeacherbotMutation.mutate({ studentId: student.id, teacherbotId: bot.id })}
-                                          disabled={pushTeacherbotMutation.isPending}
-                                        >
-                                          <BotColorDot color={bot.color} />
-                                          <span className="truncate flex-1 text-slate-800">{bot.name}</span>
-                                          <ChevronRight className="h-3 w-3 text-slate-300 shrink-0" />
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
                             <button
                               onClick={() => student.is_frozen ? unfreezeMutation.mutate(student.id) : freezeMutation.mutate(student.id)}
                               title={student.is_frozen ? 'Sblocca' : 'Blocca'}
@@ -567,10 +549,11 @@ export default function SessionLivePage() {
             <div className="flex-1 min-w-0">
 
               <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-4">
-                <TabsList surface="muted" className="grid h-auto w-full grid-cols-3 rounded-xl">
+                <TabsList surface="muted" className="grid h-auto w-full grid-cols-2 rounded-xl sm:grid-cols-4">
                   {([
                     { key: 'modules', icon: Brain, label: 'Moduli' },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
+                    { key: 'documents', icon: FileText, label: 'Documenti' },
                     { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
                   ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
                     <TabsTrigger key={tab.key} value={tab.key} className="gap-2">
@@ -598,8 +581,8 @@ export default function SessionLivePage() {
                           classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
                           self_assessment: { tone: 'amber',   iconTone: 'bg-[var(--logo-violet)]', icon: ClipboardList, label: 'Autovalutazione',     desc: 'Quiz e autovalutazione' },
                           chat:            { tone: 'slate',   iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
-                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Notebook',             desc: 'Notebook di coding e attività guidate' },
-                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Coding Lab',           desc: 'Mini app web con prompt, codice e anteprima' },
+                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Coding Lab',           desc: 'Notebook di coding e attività guidate' },
+                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Vibe Lab',             desc: 'Mini app web con prompt, codice e anteprima' },
                           chat_collaboration: { tone: 'teal', iconTone: 'bg-[var(--logo-blue)]',   icon: Users,         label: 'Collaborazione chat',  desc: 'Gli studenti condividono una chat con il bot e i compagni' },
                         }
                         const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
@@ -682,26 +665,15 @@ export default function SessionLivePage() {
 
               {/* ── Compiti ── */}
               {activeTab === 'tasks' && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-                    <ClipboardList className="h-4 w-4 text-slate-500" />
-                    <span className="font-semibold text-sm text-slate-800">{t('teacher_dashboard.session_tasks')}</span>
+                <div className="bg-[var(--surface-base)] rounded-2xl border border-[var(--border-subtle)] shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[var(--border-subtle)] flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-[var(--text-muted)]" />
+                    <span className="font-semibold text-sm text-[var(--text-primary)]">{t('teacher_dashboard.session_tasks')}</span>
                     <div className="ml-auto flex gap-2">
-                      {data?.session?.class_id && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/teacher/classes/${data.session.class_id}/uda`)}
-                          className="h-7 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                        >
-                          <BookOpen className="h-3 w-3 mr-1" />
-                          UDA
-                        </Button>
-                      )}
                       {!showTaskBuilder && (
                         <Button size="sm" onClick={() => setShowTaskBuilder(true)} className="h-7 text-xs">
                           <Plus className="h-3 w-3 mr-1" />
-                          Nuovo
+                          Nuovo compito
                         </Button>
                       )}
                     </div>
@@ -719,32 +691,32 @@ export default function SessionLivePage() {
                     {tasksData && tasksData.length > 0 && (
                       <div className="mb-3 flex items-center gap-2">
                         <div className="relative flex-1 max-w-sm">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-muted)] pointer-events-none" />
                           <input
                             type="text"
                             placeholder="Cerca compiti..."
                             value={taskSearch}
                             onChange={e => setTaskSearch(e.target.value)}
-                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors"
+                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-full focus:outline-none focus:ring-2 focus:ring-[var(--border-strong)] transition-colors"
                           />
                           {taskSearch && (
-                            <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
                               <X className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
                         {/* View mode toggle */}
-                        <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                        <div className="flex items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-0.5">
                           <button
                             onClick={() => setTaskViewMode('grid')}
-                            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'grid' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'grid' ? 'bg-[var(--surface-base)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                             title="Vista griglia"
                           >
                             <LayoutGrid className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => setTaskViewMode('list')}
-                            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'list' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'list' ? 'bg-[var(--surface-base)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                             title="Vista elenco"
                           >
                             <List className="h-3.5 w-3.5" />
@@ -805,6 +777,11 @@ export default function SessionLivePage() {
                 </div>
               )}
 
+              {/* ── Documenti ── */}
+              {activeTab === 'documents' && (
+                <SessionDocumentsPanel documents={documentsData} />
+              )}
+
               {/* ── Storico ── */}
               {activeTab === 'history' && (
                 <>
@@ -827,17 +804,235 @@ export default function SessionLivePage() {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function BotColorDot({ color, large }: { color: string; large?: boolean }) {
-  const colorMap: Record<string, string> = {
-    indigo: 'bg-[#181b1e]', blue: 'bg-blue-500', green: 'bg-green-500',
-    red: 'bg-red-500', purple: 'bg-purple-500', pink: 'bg-pink-500',
-    orange: 'bg-orange-500', teal: 'bg-teal-500', cyan: 'bg-cyan-500',
+function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] }) {
+  const navigate = useNavigate()
+  const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
+  const [documentSearch, setDocumentSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'student' | 'teacher'>('all')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'az' | 'za'>('newest')
+  const visibleDocuments = useMemo(() => {
+    const sourceFiltered = sourceFilter === 'all'
+      ? documents
+      : documents.filter((doc) => doc.source === sourceFilter)
+    const terms = documentSearch.trim().toLocaleLowerCase('it').split(/\s+/).filter(Boolean)
+    const filtered = terms.length === 0
+      ? sourceFiltered
+      : sourceFiltered.filter((doc) => {
+          const searchableText = [doc.title, doc.author_name, doc.doc_type]
+            .join(' ')
+            .toLocaleLowerCase('it')
+          return terms.every((term) => searchableText.includes(term))
+        })
+    return [...filtered].sort((left, right) => {
+      if (sortOrder === 'az' || sortOrder === 'za') {
+        const comparison = left.title.localeCompare(right.title, 'it', { sensitivity: 'base' })
+        return sortOrder === 'az' ? comparison : -comparison
+      }
+      const comparison = new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
+      return sortOrder === 'oldest' ? comparison : -comparison
+    })
+  }, [documentSearch, documents, sortOrder, sourceFilter])
+  const teacherDocuments = visibleDocuments.filter((doc) => doc.source === 'teacher')
+  const studentDocuments = visibleDocuments.filter((doc) => doc.source === 'student')
+  const formatPublishedAt = (value: string) =>
+    new Date(value).toLocaleString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  const openDocument = (doc: SharedDocumentData) => {
+    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}`)
   }
-  const bg = colorMap[color] || 'bg-[#181b1e]'
-  const size = large ? 'w-8 h-8 rounded-lg' : 'w-5 h-5 rounded-md'
+  const renderCard = (doc: SharedDocumentData) => (
+    <button
+      key={doc.id}
+      type="button"
+      onClick={() => openDocument(doc)}
+      className="group rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+    >
+      <div className="flex items-start gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-800">{doc.title}</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+            <User className="h-3 w-3" />
+            Autore: {doc.author_name}
+          </p>
+          <p className="mt-1 text-[10px] text-slate-400">
+            {doc.doc_type || 'documento'} · {formatPublishedAt(doc.updated_at)}
+          </p>
+        </div>
+      </div>
+    </button>
+  )
+
   return (
-    <div className={`${size} ${bg} flex items-center justify-center shrink-0`}>
-      <Bot className={`${large ? 'h-4 w-4' : 'h-3 w-3'} text-white`} />
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <FileText className="h-4 w-4 text-slate-500" />
+        <span className="text-sm font-semibold text-slate-800">Documenti</span>
+        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+          {visibleDocuments.length === documents.length
+            ? documents.length
+            : `${visibleDocuments.length}/${documents.length}`}
+        </span>
+      </div>
+      <div className="space-y-5 p-4">
+        {documents.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">
+            Nessun documento condiviso o inviato in questa sessione.
+          </p>
+        ) : (
+          <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={documentSearch}
+                onChange={(event) => setDocumentSearch(event.target.value)}
+                placeholder="Cerca per titolo, autore o tipo…"
+                aria-label="Cerca documenti per titolo, autore o tipo"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              />
+              {documentSearch && (
+                <button
+                  type="button"
+                  onClick={() => setDocumentSearch('')}
+                  aria-label="Cancella ricerca documenti"
+                  className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
+                <Filter className="h-4 w-4 shrink-0 text-slate-400" />
+                <span>Filtra</span>
+                <select
+                  value={sourceFilter}
+                  onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">Tutti</option>
+                  <option value="student">Studenti</option>
+                  <option value="teacher">Docente</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
+                <ArrowUpDown className="h-4 w-4 shrink-0 text-slate-400" />
+                <span>Ordina</span>
+                <select
+                  value={sortOrder}
+                  onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="newest">Più recenti</option>
+                  <option value="oldest">Meno recenti</option>
+                  <option value="az">Titolo A–Z</option>
+                  <option value="za">Titolo Z–A</option>
+                </select>
+              </label>
+            </div>
+
+            {visibleDocuments.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                Nessun documento corrisponde alla ricerca e ai filtri selezionati.
+              </div>
+            )}
+
+            {sourceFilter !== 'teacher' && visibleDocuments.length > 0 && (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Condivisi dagli studenti</h3>
+                  <p className="mt-1 text-xs text-emerald-700/70">{studentDocuments.length} documenti ricevuti</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStudentDocsCollapsed(value => !value)}
+                  className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                >
+                  {studentDocsCollapsed ? 'Espandi' : 'Comprimi'}
+                </button>
+              </div>
+              {studentDocuments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-emerald-200 bg-white/55 px-4 py-5 text-center text-xs text-emerald-700/60">
+                  Nessun documento inviato dagli studenti.
+                </div>
+              ) : studentDocsCollapsed ? (
+                <div className="flex min-h-10 items-center gap-2 overflow-x-auto rounded-xl bg-white/65 px-2 py-2">
+                  {studentDocuments.map((doc) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => openDocument(doc)}
+                      title={`${doc.title} · ${doc.author_name}`}
+                      className="flex h-9 max-w-56 shrink-0 items-center gap-2 rounded-lg bg-emerald-100 px-2.5 text-emerald-800 shadow-sm transition-transform hover:-translate-y-0.5"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span className="min-w-0 truncate text-left text-[11px] font-bold">{doc.title}</span>
+                      <span className="max-w-20 truncate text-[10px] text-emerald-700/70">{doc.author_name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {studentDocuments.map(renderCard)}
+                </div>
+              )}
+            </section>
+            )}
+            {sourceFilter !== 'student' && visibleDocuments.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dal docente</h3>
+              {teacherDocuments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
+                  Nessun documento docente in questa sessione.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {teacherDocuments.map(renderCard)}
+                </div>
+              )}
+            </section>
+            )}
+            {visibleDocuments.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Tutti i documenti</h3>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {visibleDocuments.map((doc) => (
+                  <button
+                    key={`list-${doc.id}`}
+                    type="button"
+                    onClick={() => openDocument(doc)}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
+                  >
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                      <FileText className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-slate-800">{doc.title}</p>
+                      <p className="truncate text-[10px] text-slate-500">
+                        {doc.source === 'student' ? 'Studente' : 'Docente'} · {doc.author_name}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-medium text-slate-400">
+                      {formatPublishedAt(doc.updated_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -857,11 +1052,27 @@ interface SubmissionData {
   id: string
   student_id: string
   student_nickname: string
-  content: string
+  content: string | null
   content_json?: string | null
   submitted_at: string
   score: string | null
+  score_percent?: number | null
+  result_kind?: 'quiz' | 'completion'
   feedback: string | null
+  feedback_draft?: { overall_feedback?: string; answer_feedback?: Record<string, string> }
+  answer_feedback?: Record<string, string>
+  feedback_published_at?: string | null
+  correction?: ExerciseCorrection | null
+}
+
+interface ExerciseCorrection {
+  kind: 'exercise_inline'
+  status: 'pending' | 'read'
+  original_content: string
+  suggested_content: string
+  teacher_name?: string
+  updated_at: string
+  read_at?: string | null
 }
 
 interface QuizQuestion {
@@ -877,13 +1088,377 @@ interface QuizWrongAnswerDetail {
   correctAnswer: string
 }
 
+type FormativeFlagType = 'incomplete' | 'misconception' | 'off_topic' | 'similar_answer' | 'strong_reasoning'
+
+interface FormativeFlag {
+  type: FormativeFlagType
+  title: string
+  reason: string
+  evidence: string
+  confidence: number
+}
+
+interface TaskAnalysisData {
+  overview: {
+    summary: string
+    completion_summary: string
+    strengths: string[]
+    gaps: string[]
+    suggestions: string[]
+  }
+  student_flags: Array<{
+    student_id: string
+    student_nickname: string
+    flags: FormativeFlag[]
+  }>
+  submission_count: number
+  total_students: number
+}
+
+const FORMATIVE_FLAG_META: Record<FormativeFlagType, { label: string; className: string }> = {
+  incomplete: { label: 'Risposta incompleta', className: 'border-amber-200 bg-amber-50 text-amber-900' },
+  misconception: { label: 'Possibile fraintendimento', className: 'border-orange-200 bg-orange-50 text-orange-900' },
+  off_topic: { label: 'Possibile fuori tema', className: 'border-rose-200 bg-rose-50 text-rose-900' },
+  similar_answer: { label: 'Risposte molto simili', className: 'border-violet-200 bg-violet-50 text-violet-900' },
+  strong_reasoning: { label: 'Ragionamento solido', className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
+}
+
+function parseTaskContent(raw?: string | null): Record<string, any> | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function TaskContentPreview({ task }: { task: TaskData }) {
+  const content = parseTaskContent(task.content_json)
+  if (!task.content_json) return null
+
+  if (content) {
+    const html = content.html || content.htmlContent || content.content
+    if (typeof html === 'string' && /<\/?[a-z][\s\S]*>/i.test(html)) {
+      return (
+        <div className="overflow-hidden rounded-lg border bg-white">
+          <iframe
+            srcDoc={html}
+            sandbox="allow-same-origin"
+            className="h-80 w-full border-0"
+            title={`Contenuto ${task.title}`}
+          />
+        </div>
+      )
+    }
+
+    const slides = Array.isArray(content.slides) ? content.slides : null
+    if (slides) {
+      return (
+        <div className="rounded-lg border bg-white p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Presentazione · {slides.length} slide
+          </p>
+          <div className="space-y-2">
+            {slides.map((slide: any, index: number) => (
+              <div key={slide.id || index} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-sm font-semibold text-slate-800">{index + 1}. {slide.title || `Slide ${index + 1}`}</p>
+                {Array.isArray(slide.blocks) && slide.blocks.length > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">{slide.blocks.length} elementi</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (Array.isArray(content.questions)) {
+      return (
+        <div className="rounded-lg border bg-white p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Quiz · {content.questions.length} domande
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            {content.questions.map((question: any, index: number) => (
+              <li key={index}>{question.question || question.text || `Domanda ${index + 1}`}</li>
+            ))}
+          </ol>
+        </div>
+      )
+    }
+
+    const exerciseText = content.instructions || content.text || content.description
+    if (typeof exerciseText === 'string' && exerciseText.trim()) {
+      return (
+        <div className="rounded-lg border bg-white p-3 text-sm leading-6 text-slate-700">
+          {content.title && <p className="mb-2 font-semibold text-slate-900">{content.title}</p>}
+          <p className="whitespace-pre-wrap">{exerciseText}</p>
+        </div>
+      )
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+      Il contenuto è disponibile, ma non può essere mostrato in anteprima.
+    </div>
+  )
+}
+
+function SubmissionContentPreview({ submission, task }: { submission: SubmissionData; task: TaskData }) {
+  const text = submission.content?.trim()
+  const submissionContent = parseTaskContent(submission.content_json)
+  const taskContent = parseTaskContent(task.content_json)
+
+  if (task.task_type === 'quiz' && Array.isArray(submissionContent?.answers)) {
+    const questions = Array.isArray(taskContent?.questions) ? taskContent.questions : []
+    return (
+      <div className="space-y-2">
+        {text && <p className="text-sm text-slate-700">{text}</p>}
+        <div className="rounded-lg border border-slate-200 bg-white p-2">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Risposte quiz
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            {submissionContent.answers.map((answer: any, index: number) => {
+              const questionIndex = Number(answer.questionIndex ?? index)
+              const selectedIndex = Number(answer.selectedIndex)
+              const question = questions[questionIndex]
+              const selectedAnswer = Array.isArray(question?.options)
+                ? question.options[selectedIndex]
+                : `Opzione ${Number.isFinite(selectedIndex) ? selectedIndex + 1 : '-'}`
+              return (
+                <li key={`${submission.id}-answer-${index}`}>
+                  <span className="font-medium">{question?.question || `Domanda ${questionIndex + 1}`}</span>
+                  <span className="block text-slate-600">Risposta: {selectedAnswer || 'Non disponibile'}</span>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      </div>
+    )
+  }
+
+  const structuredText = submissionContent?.text || submissionContent?.content || submissionContent?.description
+  if (typeof structuredText === 'string' && structuredText.trim()) {
+    return <p className="whitespace-pre-wrap text-sm text-slate-700">{structuredText}</p>
+  }
+
+  if (text) {
+    return <p className="whitespace-pre-wrap text-sm text-slate-700">{text}</p>
+  }
+
+  if (submission.content_json) {
+    return (
+      <details className="rounded-lg border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Mostra dati consegna</summary>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs">{submission.content_json}</pre>
+      </details>
+    )
+  }
+
+  return <p className="text-sm text-muted-foreground">Risposta vuota.</p>
+}
+
+function ExerciseCorrectionPanel({
+  submission,
+  task,
+  sessionId,
+}: {
+  submission: SubmissionData
+  task: TaskData
+  sessionId: string
+}) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const correction = submission.correction?.kind === 'exercise_inline' ? submission.correction : null
+  const original = correction?.original_content ?? submission.content ?? ''
+  const [isEditing, setIsEditing] = useState(false)
+  const [correctedText, setCorrectedText] = useState(correction?.suggested_content ?? original)
+
+  useEffect(() => {
+    if (!isEditing) setCorrectedText(correction?.suggested_content ?? original)
+  }, [correction?.suggested_content, original, isEditing])
+
+  const saveCorrection = useMutation({
+    mutationFn: () => teacherApi.correctExerciseSubmission(sessionId, task.id, submission.id, correctedText),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, task.id] })
+      setIsEditing(false)
+      toast({ title: 'Correzione inviata allo studente' })
+    },
+    onError: (error: any) => {
+      const noChanges = error?.response?.status === 409
+      toast({
+        title: noChanges ? 'Nessuna modifica da inviare' : 'Impossibile salvare la correzione',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-amber-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-amber-100 bg-amber-50/70 px-3 py-2">
+        <div>
+          <p className="text-xs font-bold text-amber-950">Correzione in linea</p>
+          <p className="text-[11px] text-amber-800">Le modifiche vengono evidenziate automaticamente.</p>
+        </div>
+        {correction && (
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+            correction.status === 'read'
+              ? 'bg-emerald-100 text-emerald-800'
+              : 'bg-amber-100 text-amber-900'
+          }`}>
+            {correction.status === 'read'
+              ? `Letto${correction.read_at ? ` · ${new Date(correction.read_at).toLocaleString('it-IT')}` : ''}`
+              : 'Inviata · da leggere'}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3 p-3">
+        {isEditing ? (
+          <>
+            <textarea
+              value={correctedText}
+              onChange={(event) => setCorrectedText(event.target.value)}
+              className="min-h-[150px] w-full resize-y rounded-lg border border-amber-200 bg-amber-50/30 p-3 text-sm leading-6 text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+              aria-label={`Correzione della risposta di ${submission.student_nickname}`}
+            />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Anteprima per lo studente</p>
+              <TrackedCorrectionText original={original} corrected={correctedText} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCorrectedText(correction?.suggested_content ?? original)
+                  setIsEditing(false)
+                }}
+              >
+                Annulla
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => saveCorrection.mutate()}
+                disabled={saveCorrection.isPending || !correctedText.trim() || correctedText.trim() === original.trim()}
+                className="bg-amber-600 text-white hover:bg-amber-700"
+              >
+                {saveCorrection.isPending ? 'Invio…' : 'Invia correzione'}
+              </Button>
+            </div>
+          </>
+        ) : correction ? (
+          <>
+            <TrackedCorrectionText original={original} corrected={correction.suggested_content} />
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+                Modifica correzione
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-600">La risposta originale non verrà modificata.</p>
+            <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} disabled={!original.trim()}>
+              Correggi risposta
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SubmissionFeedbackEditor({ submission, task, sessionId }: { submission: SubmissionData; task: TaskData; sessionId: string }) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const taskContent = parseTaskContent(task.content_json)
+  const submissionContent = parseTaskContent(submission.content_json)
+  const questions = Array.isArray(taskContent?.questions) ? taskContent.questions : []
+  const answers = Array.isArray(submissionContent?.answers) ? submissionContent.answers : []
+  const initialOverall = submission.feedback_draft?.overall_feedback ?? submission.feedback ?? ''
+  const initialAnswers = submission.feedback_draft?.answer_feedback ?? submission.answer_feedback ?? {}
+  const [overallFeedback, setOverallFeedback] = useState(initialOverall)
+  const [answerFeedback, setAnswerFeedback] = useState<Record<string, string>>(initialAnswers)
+  const [score, setScore] = useState(submission.score || '')
+
+  useEffect(() => {
+    setOverallFeedback(submission.feedback_draft?.overall_feedback ?? submission.feedback ?? '')
+    setAnswerFeedback(submission.feedback_draft?.answer_feedback ?? submission.answer_feedback ?? {})
+    setScore(submission.score || '')
+  }, [submission.answer_feedback, submission.feedback, submission.feedback_draft, submission.score])
+
+  const save = useMutation({
+    mutationFn: (publish: boolean) => teacherApi.updateSubmissionFeedback(sessionId, task.id, submission.id, {
+      overall_feedback: overallFeedback,
+      answer_feedback: answerFeedback,
+      score: score || undefined,
+      publish,
+    }),
+    onSuccess: (_, publish) => {
+      queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, task.id] })
+      toast({ title: publish ? 'Feedback pubblicato allo studente' : 'Bozza feedback salvata' })
+    },
+    onError: () => toast({ title: 'Impossibile salvare il feedback', variant: 'destructive' }),
+  })
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-sky-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-sky-100 bg-sky-50/70 px-3 py-2">
+        <div>
+          <p className="text-xs font-bold text-sky-950">Feedback del docente</p>
+          <p className="text-[11px] text-sky-800">Salva in bozza oppure pubblica quando è pronto.</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${submission.feedback_published_at ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+          {submission.feedback_published_at ? `Pubblicato · ${new Date(submission.feedback_published_at).toLocaleDateString('it-IT')}` : 'Non pubblicato'}
+        </span>
+      </div>
+      <div className="space-y-3 p-3">
+        {task.task_type === 'quiz' && answers.map((answer: any, index: number) => {
+          const questionIndex = Number(answer.questionIndex ?? index)
+          const question = questions[questionIndex]
+          return (
+            <label key={`${submission.id}-feedback-${questionIndex}`} className="block rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+              <span className="mb-1.5 block text-[11px] font-bold text-slate-700">{questionIndex + 1}. {question?.question || 'Risposta'}</span>
+              <textarea value={answerFeedback[String(questionIndex)] || ''} onChange={(event) => setAnswerFeedback(current => ({ ...current, [String(questionIndex)]: event.target.value }))} rows={2} placeholder="Commento su questa risposta…" className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-sky-300" />
+            </label>
+          )
+        })}
+        <label className="block">
+          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">Feedback complessivo</span>
+          <textarea value={overallFeedback} onChange={(event) => setOverallFeedback(event.target.value)} rows={3} placeholder="Scrivi il riepilogo per lo studente…" className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300" />
+        </label>
+        <label className="block max-w-40">
+          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">Voto (opzionale)</span>
+          <input value={score} onChange={(event) => setScore(event.target.value)} placeholder="es. 8/10" className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-sky-300" />
+        </label>
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <Button size="sm" variant="outline" onClick={() => save.mutate(false)} disabled={save.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Salva bozza</Button>
+          <Button size="sm" onClick={() => save.mutate(true)} disabled={save.isPending || (!overallFeedback.trim() && !Object.values(answerFeedback).some(value => value.trim()))}><Send className="mr-1.5 h-3.5 w-3.5" />Pubblica feedback</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function toDateTimeLocalValue(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }: TaskCardProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [isEditingDraft, setIsEditingDraft] = useState(false)
-  const [editTitle, setEditTitle] = useState(task.title)
-  const [editDescription, setEditDescription] = useState(task.description || '')
-  const [editContentJson, setEditContentJson] = useState(task.content_json || '')
+  const [editDueAt, setEditDueAt] = useState(() => toDateTimeLocalValue(task.due_at))
 
   const getWrongQuizAnswers = (submission: SubmissionData): QuizWrongAnswerDetail[] => {
     if (task.task_type !== 'quiz') return []
@@ -924,57 +1499,146 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
     enabled: isExpanded && task.status === 'published',
   })
 
+  const {
+    data: taskAnalysis,
+    dataUpdatedAt: taskAnalysisUpdatedAt,
+    isError: taskAnalysisError,
+    isFetching: isAnalyzingTask,
+    isStale: isTaskAnalysisStale,
+    refetch: runTaskAnalysis,
+  } = useQuery<TaskAnalysisData>({
+    queryKey: ['task-overview', sessionId, task.id],
+    queryFn: async () => {
+      const response = await teacherApi.analyzeTask(sessionId, task.id)
+      return response.data
+    },
+    enabled: false,
+    staleTime: Infinity,
+    retry: false,
+  })
+  const [ignoredFormativeFlags, setIgnoredFormativeFlags] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setIgnoredFormativeFlags(new Set())
+  }, [taskAnalysisUpdatedAt])
+
   const updateTaskMutation = useMutation({
-    mutationFn: (payload: { title?: string; description?: string; content_json?: string }) =>
+    mutationFn: (payload: { title?: string; description?: string; due_at?: string | null; content_json?: string }) =>
       teacherApi.updateTask(sessionId, task.id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
       setIsEditingDraft(false)
-      toast({ title: 'Bozza aggiornata' })
+      toast({ title: 'Compito aggiornato' })
     },
     onError: () => {
-      toast({ title: 'Errore aggiornamento bozza', variant: 'destructive' })
+      toast({ title: 'Errore aggiornamento compito', variant: 'destructive' })
     },
   })
 
+  const statusLabel = task.status === 'published' ? 'Pubblicato' : 'Bozza'
+  const typeLabel = task.task_type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  const dueLabel = task.due_at
+    ? new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(task.due_at))
+    : 'Senza scadenza'
+  const submissionCount = task.submission_count ?? 0
+  const scoreSummary = task.score_summary
+  const resultLabel = submissionCount === 0
+    ? 'Nessuna consegna'
+    : task.task_type === 'quiz'
+      ? scoreSummary?.average_percent != null
+        ? `Media ${scoreSummary.average_percent}%`
+        : 'Risultati non disponibili'
+      : `${submissionCount} ${submissionCount === 1 ? 'completamento' : 'completamenti'}`
+  const visibleFormativeFlags = (taskAnalysis?.student_flags || []).flatMap((student) =>
+    student.flags.map((flag, index) => ({
+      ...flag,
+      studentId: student.student_id,
+      studentNickname: student.student_nickname,
+      key: `${student.student_id}:${flag.type}:${index}:${flag.evidence}`,
+    }))
+  ).filter(flag => !ignoredFormativeFlags.has(flag.key))
+
   return (
-    <div className={`rounded-xl border transition-colors ${
+    <div className={`overflow-hidden rounded-2xl border transition-colors ${
       task.status === 'published'
-        ? 'bg-emerald-50/50 border-emerald-200'
-        : 'bg-white border-slate-200'
+        ? 'border-emerald-200 bg-emerald-50/50'
+        : 'border-slate-200 bg-white'
     }`}>
-      <div className="flex items-center justify-between px-4 py-3 gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-slate-800 truncate">{task.title}</span>
-            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+      <div className="grid min-h-[168px] grid-rows-[1fr_auto] gap-4 p-4">
+        <div className="min-w-0 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{task.title}</h3>
+              {task.description && (
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{task.description}</p>
+              )}
+            </div>
+            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
               task.status === 'published'
                 ? 'bg-emerald-100 text-emerald-700'
                 : 'bg-slate-100 text-slate-600'
             }`}>
-              {task.status === 'published' ? 'Pubblicato' : 'Bozza'}
-            </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium capitalize flex-shrink-0">
-              {task.task_type}
+              {statusLabel}
             </span>
           </div>
-          {task.description && (
-            <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
-          )}
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+            <span>{typeLabel}</span>
+            <span aria-hidden="true" className="text-slate-300">•</span>
+            <span>{dueLabel}</span>
+            <span aria-hidden="true" className="text-slate-300">•</span>
+            <span>{submissionCount} {submissionCount === 1 ? 'consegna' : 'consegne'}</span>
+          </div>
+
+          <div className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${
+            task.task_type === 'quiz'
+              ? 'border-indigo-200 bg-indigo-50/80'
+              : 'border-slate-200 bg-white/80'
+          }`}>
+            <div className="min-w-0">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {task.task_type === 'quiz' ? 'Indicatore quiz' : 'Avanzamento'}
+              </span>
+              <span className={`block truncate text-sm font-bold ${task.task_type === 'quiz' ? 'text-indigo-800' : 'text-slate-700'}`}>
+                {resultLabel}
+              </span>
+            </div>
+            {task.task_type === 'quiz' && scoreSummary?.scored_count != null && scoreSummary.scored_count > 0 && (
+              <span className="shrink-0 text-[10px] font-semibold text-indigo-600">
+                {scoreSummary.scored_count} {scoreSummary.scored_count === 1 ? 'risultato' : 'risultati'}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
-          <Button size="sm" variant="outline" onClick={onToggle} className="text-xs">
-            {isExpanded ? <ChevronUp className="h-3.5 w-3.5 mr-1" /> : <ChevronDown className="h-3.5 w-3.5 mr-1" />}
+
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={onToggle} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+            {isExpanded ? <ChevronUp className="mr-1.5 h-3.5 w-3.5" /> : <ChevronDown className="mr-1.5 h-3.5 w-3.5" />}
             {isExpanded ? 'Chiudi' : 'Dettagli'}
           </Button>
           {task.status === 'draft' && (
-            <Button size="sm" variant="outline" onClick={onPublish} className="text-xs">
-              <Check className="h-3.5 w-3.5 mr-1" />
+            <Button size="sm" variant="outline" onClick={onPublish} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+              <Check className="mr-1.5 h-3.5 w-3.5" />
               Pubblica
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onDelete} className="h-8 w-8 p-0">
-            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (window.confirm(`Eliminare definitivamente il compito "${task.title}"? Questa azione non può essere annullata.`)) {
+                onDelete()
+              }
+            }}
+            className="h-9 w-9 shrink-0 rounded-full p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
+            title="Elimina compito"
+            aria-label={`Elimina compito ${task.title}`}
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -985,72 +1649,194 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
             <Eye className="h-4 w-4" />
             Dettagli Compito
           </h4>
-          {task.status === 'draft' && (
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm text-slate-600">Questa attività è in bozza: puoi modificarla prima della pubblicazione.</p>
-              <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
-                {isEditingDraft ? 'Annulla Modifica' : 'Modifica Bozza'}
-              </Button>
-            </div>
-          )}
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-slate-600">
+              {task.status === 'draft'
+                ? 'Questa attività è in bozza: puoi modificarla prima della pubblicazione.'
+                : 'Puoi aggiornare la scadenza anche dopo la pubblicazione.'}
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
+              {isEditingDraft ? 'Annulla Modifica' : task.status === 'draft' ? 'Modifica Bozza' : 'Modifica Scadenza'}
+            </Button>
+          </div>
 
           {isEditingDraft ? (
-            <div className="space-y-3 border rounded-lg p-3 bg-slate-50">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Titolo</label>
-                <input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                />
+            task.status === 'draft' ? (
+              <TaskBuilder
+                mode="edit"
+                initialData={task}
+                onSubmit={(data) => updateTaskMutation.mutate({
+                  title: data.title,
+                  description: data.description,
+                  due_at: data.due_at,
+                  content_json: data.content_json,
+                })}
+                onCancel={() => setIsEditingDraft(false)}
+                isLoading={updateTaskMutation.isPending}
+              />
+            ) : (
+              <div className="space-y-3 rounded-lg border bg-slate-50 p-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Scadenza</label>
+                  <input
+                    type="datetime-local"
+                    value={editDueAt}
+                    onChange={(e) => setEditDueAt(e.target.value)}
+                    className="mt-1 h-10 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => updateTaskMutation.mutate({
+                      due_at: editDueAt ? new Date(editDueAt).toISOString() : null,
+                    })}
+                    disabled={updateTaskMutation.isPending}
+                  >
+                    Salva modifiche
+                  </Button>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Descrizione</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm min-h-[70px]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contenuto (JSON)</label>
-                <textarea
-                  value={editContentJson}
-                  onChange={(e) => setEditContentJson(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-mono min-h-[180px]"
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  onClick={() => updateTaskMutation.mutate({
-                    title: editTitle,
-                    description: editDescription,
-                    content_json: editContentJson,
-                  })}
-                  disabled={updateTaskMutation.isPending}
-                >
-                  Salva Bozza
-                </Button>
-              </div>
-            </div>
+            )
           ) : (
             <div className="space-y-3">
               {task.description && (
                 <p className="text-sm text-slate-700"><span className="font-medium">Descrizione:</span> {task.description}</p>
               )}
-              {task.content_json && (
-                <details className="border rounded-lg bg-slate-50">
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Apri contenuto del compito</summary>
-                  <pre className="text-xs p-3 overflow-x-auto whitespace-pre-wrap break-all">{task.content_json}</pre>
-                </details>
-              )}
+              {task.content_json && <TaskContentPreview task={task} />}
             </div>
           )}
 
           {task.status === 'published' && (
             <div className="mt-6">
-              <h5 className="font-medium mb-3 text-sm">Risposte degli studenti</h5>
+              <div className="mb-3">
+                <h5 className="text-sm font-semibold text-slate-900">Consegne degli studenti</h5>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {task.task_type === 'quiz'
+                    ? 'I risultati automatici sono indicatori di supporto alla valutazione del docente.'
+                  : 'Il completamento segnala la consegna e non costituisce una valutazione.'}
+                </p>
+              </div>
+              {task.task_type === 'exercise' && (
+                <div className="mb-4 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/60">
+                  <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <h6 className="flex items-center gap-2 text-sm font-bold text-indigo-950">
+                        <Brain className="h-4 w-4 text-indigo-600" />
+                        Overview formativa
+                      </h6>
+                      <p className="mt-1 text-xs leading-5 text-indigo-800/80">
+                        Analizza le consegne e propone indicatori documentati. Non assegna voti e non sostituisce il giudizio del docente.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => void runTaskAnalysis()}
+                      disabled={isAnalyzingTask || submissionCount === 0}
+                      className="shrink-0 rounded-full bg-indigo-700 text-white hover:bg-indigo-800"
+                    >
+                      <Brain className="mr-1.5 h-3.5 w-3.5" />
+                      {isAnalyzingTask
+                        ? 'Analisi in corso…'
+                        : taskAnalysis
+                          ? 'Rigenera overview'
+                          : 'Analizza le risposte'}
+                    </Button>
+                  </div>
+
+                  {taskAnalysisError && (
+                    <div className="border-t border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700">
+                      Analisi non disponibile. Verifica i crediti docente e riprova.
+                    </div>
+                  )}
+
+                  {taskAnalysis && (
+                    <div className="space-y-4 border-t border-indigo-200 bg-white/80 p-4">
+                      {isTaskAnalysisStale && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                          Le consegne sono cambiate: rigenera l’overview per aggiornare gli indicatori.
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-slate-900">Panoramica della classe</p>
+                          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                            {taskAnalysis.submission_count}/{taskAnalysis.total_students} consegne
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm leading-6 text-slate-700">{taskAnalysis.overview.summary}</p>
+                        {taskAnalysis.overview.completion_summary && (
+                          <p className="mt-1 text-xs text-slate-500">{taskAnalysis.overview.completion_summary}</p>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {[
+                          { title: 'Punti di forza', values: taskAnalysis.overview.strengths, tone: 'border-emerald-200 bg-emerald-50/70' },
+                          { title: 'Da approfondire', values: taskAnalysis.overview.gaps, tone: 'border-amber-200 bg-amber-50/70' },
+                          { title: 'Azioni suggerite', values: taskAnalysis.overview.suggestions, tone: 'border-sky-200 bg-sky-50/70' },
+                        ].map(section => (
+                          <div key={section.title} className={`rounded-lg border p-3 ${section.tone}`}>
+                            <p className="text-xs font-bold text-slate-800">{section.title}</p>
+                            {section.values.length > 0 ? (
+                              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                {section.values.map((value, index) => <li key={`${section.title}-${index}`}>{value}</li>)}
+                              </ul>
+                            ) : (
+                              <p className="mt-2 text-xs text-slate-500">Nessun elemento rilevato.</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-slate-900">Flag sulle consegne</p>
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Da verificare dal docente</span>
+                        </div>
+                        {visibleFormativeFlags.length === 0 ? (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                            Nessun flag attivo. Gli indicatori ignorati restano esclusi fino alla prossima analisi.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {visibleFormativeFlags.map(flag => {
+                              const meta = FORMATIVE_FLAG_META[flag.type]
+                              return (
+                                <div key={flag.key} className={`rounded-lg border p-3 ${meta.className}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-black">{flag.studentNickname}</span>
+                                        <span className="rounded-full border border-current/20 bg-white/50 px-2 py-0.5 text-[10px] font-bold">{meta.label}</span>
+                                        <span className="text-[10px] font-semibold opacity-70">Confidenza {Math.round(flag.confidence * 100)}%</span>
+                                      </div>
+                                      <p className="mt-2 text-xs font-semibold">{flag.title}</p>
+                                      <p className="mt-1 text-xs leading-5 opacity-90">{flag.reason}</p>
+                                      {flag.evidence && (
+                                        <blockquote className="mt-2 border-l-2 border-current/30 pl-2 text-xs italic opacity-80">“{flag.evidence}”</blockquote>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIgnoredFormativeFlags(previous => new Set(previous).add(flag.key))}
+                                      className="shrink-0 rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-[10px] font-bold hover:bg-white"
+                                      title="Nascondi questo indicatore"
+                                    >
+                                      Ignora
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {isLoading ? (
                 <p className="text-sm text-muted-foreground">Caricamento...</p>
               ) : !submissions || submissions.length === 0 ? (
@@ -1058,21 +1844,38 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
               ) : (
                 <div className="space-y-3">
                   {submissions.map((sub) => (
-                    <div key={sub.id} className="p-3 bg-gray-50 rounded-lg border">
+                    <div key={sub.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{sub.student_nickname}</span>
                         <span className="text-xs text-muted-foreground">
                           {new Date(sub.submitted_at).toLocaleString('it-IT')}
                         </span>
                       </div>
-                      <p className="text-sm mb-2">{sub.content}</p>
-                      {sub.score && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
-                            Punteggio: {sub.score}
+                      <div className="mb-2">
+                        <SubmissionContentPreview submission={sub} task={task} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {task.task_type === 'quiz' ? (
+                          <span className="rounded-full border border-indigo-200 bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
+                            {sub.score
+                              ? `${sub.score}${sub.score_percent != null ? ` · ${sub.score_percent}%` : ''}`
+                              : 'Risultato non disponibile'}
                           </span>
-                        </div>
+                        ) : (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                            <Check className="mr-1 inline h-3 w-3" />
+                            Completato
+                          </span>
+                        )}
+                      </div>
+                      {task.task_type === 'exercise' && (
+                        <ExerciseCorrectionPanel
+                          submission={sub}
+                          task={task}
+                          sessionId={sessionId}
+                        />
                       )}
+                      <SubmissionFeedbackEditor submission={sub} task={task} sessionId={sessionId} />
                       {task.task_type === 'quiz' && (() => {
                         const wrongAnswers = getWrongQuizAnswers(sub)
                         if (wrongAnswers.length === 0) return null
@@ -1428,10 +2231,10 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
   ]
 
   return (
-    <div className="flex h-[calc(100vh-320px)] min-h-[480px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-320px)] lg:min-h-[480px] lg:flex-row">
 
       {/* ── Left panel ── */}
-      <div className="w-72 flex-shrink-0 border-r border-slate-200 flex flex-col bg-slate-50">
+      <div className="flex max-h-80 w-full flex-shrink-0 flex-col border-b border-slate-200 bg-slate-50 lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r">
 
         {/* Sub-tab bar */}
         <div className="flex bg-slate-100 rounded-xl m-2 p-0.5 gap-0.5 flex-shrink-0">
@@ -1517,35 +2320,31 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                     const hasSelected = convs.some(c => c.id === selectedTBConvId)
                     const latestConv = [...convs].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
                     return (
-                      <div key={studentId} className="px-3 py-2">
+                      <div key={studentId} className="border-b border-slate-100 last:border-b-0">
                         <button
                           onClick={() => toggleStudent(studentId)}
-                          className={`w-full rounded-2xl border px-4 py-4 flex items-center gap-3 text-left transition-all ${
-                            hasSelected
-                              ? 'bg-white shadow-sm ring-1 ring-violet-100'
-                              : 'bg-white/80 hover:bg-white hover:shadow-sm'
-                          }`}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${hasSelected ? 'bg-slate-100' : 'hover:bg-slate-100'}`}
                         >
-                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-slate-300/60 flex-shrink-0">
+                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-700 to-slate-900 text-[10px] font-bold text-white">
                             {nickname.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-[15px] font-semibold text-slate-900 truncate">{nickname}</span>
-                              <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                              <span className="truncate text-xs font-semibold text-slate-800">{nickname}</span>
+                              <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">
                                 {convs.length} chat
                               </span>
                             </div>
                             {latestConv && (
-                              <p className="mt-1 text-[12px] text-slate-500 truncate">
+                              <p className="truncate text-[10px] text-slate-400">
                                 Ultima attivita {new Date(latestConv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                               </p>
                             )}
                           </div>
-                          {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-500 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />}
+                          {isExpanded ? <ChevronUp className="h-3 w-3 flex-shrink-0 text-slate-400" /> : <ChevronDown className="h-3 w-3 flex-shrink-0 text-slate-400" />}
                         </button>
                         {isExpanded && (
-                          <div className="mt-2 space-y-2 pl-2">
+                          <div>
                             {convs.map((conv) => {
                           const isActive = selectedTBConvId === conv.id
                           const color = tbColor(conv.teacherbot_color)
@@ -1553,32 +2352,29 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                             <button
                               key={conv.id}
                               onClick={() => setSelectedTBConvId(conv.id)}
-                              className={`w-full rounded-2xl text-left px-4 py-3.5 flex items-center gap-3 transition-all border ${
+                              className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 pl-4 text-left transition-colors ${
                                 isActive
-                                  ? 'bg-gradient-to-r from-violet-50 via-white to-indigo-50 border-violet-200 shadow-sm'
-                                  : 'bg-white/90 border-slate-200 hover:bg-white hover:border-slate-300'
+                                  ? 'border-l-violet-500 bg-white'
+                                  : 'border-l-transparent hover:border-l-slate-300 hover:bg-white'
                               }`}
                             >
-                              <div className={`w-10 h-10 rounded-2xl ${color} flex items-center justify-center flex-shrink-0 shadow-md`}>
-                                <Bot className="h-4 w-4 text-white" />
+                              <div className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${color}`}>
+                                <Bot className="h-2.5 w-2.5 text-white" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="text-[14px] font-semibold text-slate-900 truncate">{conv.teacherbot_name}</p>
+                                  <p className="truncate text-[11px] font-semibold text-slate-700">{conv.teacherbot_name}</p>
                                   {isActive && (
-                                    <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                    <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
                                       Aperta
                                     </span>
                                   )}
                                 </div>
-                                <p className="mt-1 text-[12px] font-medium text-slate-600">
-                                  {conv.message_count} messaggi
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  Aggiornata il {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                <p className="text-[10px] text-slate-400">
+                                  {conv.message_count} msg · {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}
                                 </p>
                               </div>
-                              <ChevronRight className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-slate-300'}`} />
+                              <ChevronRight className={`h-3 w-3 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-slate-300'}`} />
                             </button>
                           )
                             })}

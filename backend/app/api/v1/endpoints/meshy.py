@@ -8,7 +8,7 @@ import httpx
 from app.core.database import get_db
 from app.api.deps import get_current_teacher
 from app.models.user import User
-from app.services.meshy_service import meshy_service
+from app.services.meshy_service import OPENAI_IMAGE_MODEL, meshy_service
 from app.services.credit_service import credit_service
 from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,7 @@ async def proxy_meshy_asset(url: str):
     )
 
 
-# ── Text-to-Image (DALL-E 3) ──────────────────────────────────────────────────
+# ── Text-to-Image ──────────────────────────────────────────────────────────────
 
 @router.post("/text-to-image")
 async def generate_image(
@@ -75,7 +75,7 @@ async def generate_image(
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt required")
 
-    estimated_cost = credit_service.calculate_cost_for_model("openai", "dall-e-3", 0, 0, image_count=1)
+    estimated_cost = credit_service.calculate_cost_for_model("openai", OPENAI_IMAGE_MODEL, 0, 0, image_count=1)
     allowed = await credit_service.check_availability(
         db,
         teacher.tenant_id,
@@ -96,7 +96,7 @@ async def generate_image(
             db,
             teacher.tenant_id,
             "openai",
-            "dall-e-3",
+            OPENAI_IMAGE_MODEL,
             estimated_cost,
             {
                 "image_count": 1,
@@ -108,7 +108,7 @@ async def generate_image(
         )
         return result
     except Exception as e:
-        logger.error(f"DALL-E image generation error: {e}")
+        logger.error(f"OpenAI image generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

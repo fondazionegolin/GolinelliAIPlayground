@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-06-27T18:42:18.718350+00:00",
-  "version_label": "2026.06.27-5749905c",
-  "title": "Aggiornamenti branch testing",
+  "generated_at": "2026-07-22T14:05:34.056984+00:00",
+  "version_label": "2026.07.22-e86fd1e0",
+  "title": "Aggiornamenti branch feat/platform-realtime",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "5749905c2653921927c498802d43ad07452083da",
+  "git_ref": "e86fd1e06354aefdc0aa2f8d6f02336c73625ace",
   "items": [
     {
       "category": "improved",
-      "title": "Finalize changelog draft",
-      "description": "Finalize changelog draft"
+      "title": "Update documents changelog",
+      "description": "Update documents changelog"
     }
   ]
 }

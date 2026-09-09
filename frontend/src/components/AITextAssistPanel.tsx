@@ -15,7 +15,7 @@ type AssistAction = 'expand' | 'reformat' | 'generate' | 'formula' | 'custom'
 
 export function AITextAssistPanel({
   selectedText,
-  position: _position,
+  position,
   onClose,
   onApply,
   context,
@@ -292,12 +292,16 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
     )
   }
 
+  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight
+  const floatingLeft = Math.max(12, Math.min(position?.x ?? (viewportWidth - 420) / 2, viewportWidth - 432))
+  const floatingTop = Math.max(12, Math.min(position?.y ?? 80, viewportHeight - 520))
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20 backdrop-blur-sm">
     <div
       ref={panelRef}
-      className='bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden w-full'
-      style={{ minWidth: 280, maxWidth: 420 }}
+      className="fixed z-[9999] max-h-[calc(100vh-24px)] overflow-y-auto rounded-2xl border border-[color:var(--selection-border)] bg-white shadow-2xl"
+      style={{ left: floatingLeft, top: floatingTop, width: 'min(420px, calc(100vw - 24px))' }}
     >
       {/* Header */}
       <div className='bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2 flex items-center justify-between'>
@@ -442,7 +446,6 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
           </div>
         </div>
       )}
-    </div>
     </div>
   )
 }

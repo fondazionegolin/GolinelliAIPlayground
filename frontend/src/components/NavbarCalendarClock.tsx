@@ -3,9 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { calendarApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 
-const DAYS_ABR = ['dom','lun','mar','mer','gio','ven','sab']
 const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
-const MONTHS_ABR = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic']
 const WEEKDAYS_SHORT = ['L','M','M','G','V','S','D']
 
 export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = false }: { sessionId?: string; accentColor: string; inNavCluster?: boolean }) {
@@ -62,12 +60,7 @@ export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = fal
         className={`${inNavCluster ? 'navbar-inline-control h-9' : 'navbar-widget-control navbar-widget-control-inset h-auto'} flex cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 transition-colors`}
         style={{ '--btn-tone': accentColor } as CSSProperties}
       >
-        <div className="text-left">
-          <div className="text-[13px] font-semibold text-slate-700 tabular-nums leading-tight">{hh}:{mm}</div>
-          <div className="text-[9px] text-slate-400 leading-tight">
-            {DAYS_ABR[now.getDay()]} {now.getDate()} {MONTHS_ABR[now.getMonth()]}
-          </div>
-        </div>
+        <div className="text-[13px] font-semibold leading-tight text-slate-700 tabular-nums">{hh}:{mm}</div>
       </button>
 
       {open && (

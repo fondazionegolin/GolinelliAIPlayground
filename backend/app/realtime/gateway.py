@@ -74,7 +74,6 @@ async def can_user_access_session(user: dict, session_id: str) -> bool:
                 select(Session, Class)
                 .join(Class, Session.class_id == Class.id)
                 .where(Session.id == session_id)
-                .where(Session.tenant_id == tenant_id)
             )
             row = result.first()
             if not row:
@@ -213,8 +212,33 @@ async def revoke_student_session_access(session_id: str, reason: str, revoked_st
 
 # Helper to send teacher notification
 async def notify_session_teacher(session_id: str, notification_data: dict):
-    teacher_id = await get_session_teacher_id(session_id)
-    if teacher_id:
+    """Notify every teacher who can collaborate in the session navbar."""
+    teacher_ids: set[str] = set()
+    try:
+        async with AsyncSessionLocal() as db:
+            row = (await db.execute(
+                select(Session.class_id, Class.teacher_id)
+                .join(Class, Session.class_id == Class.id)
+                .where(Session.id == session_id)
+            )).first()
+            if row:
+                class_id, owner_id = row
+                teacher_ids.add(str(owner_id))
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == class_id)
+                )).scalars().all())
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session_id)
+                )).scalars().all())
+    except Exception as exc:
+        print(f"[Gateway] Error resolving session teachers for {session_id}: {exc}")
+
+    if not teacher_ids:
+        owner_id = await get_session_teacher_id(session_id)
+        if owner_id:
+            teacher_ids.add(owner_id)
+
+    for teacher_id in teacher_ids:
         print(f"[Gateway] Sending notification to teacher {teacher_id} for session {session_id}")
         await sio.emit(
             "teacher_notification",
@@ -265,6 +289,7 @@ async def connect(sid, environ, auth):
     await sio.enter_room(sid, f"user:{user_id}")
 
     if user["type"] == "student":
+        sender_is_class_owner = False
         session_id = user["session_id"]
         student_id = user["id"]
         nickname = user.get("nickname", "Studente")
@@ -617,6 +642,7 @@ async def chat_public_message(sid, data):
     attachments = data.get("attachments", [])
     reply_to_id = data.get("reply_to_id")
     reply_preview = data.get("reply_preview")
+    sender_is_class_owner = False
     
     # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
@@ -640,18 +666,26 @@ async def chat_public_message(sid, data):
             print(f"[Gateway] Error refreshing student sender metadata: {e}")
     else:
         sender_name = "Docente"
-        sender_avatar_url = None  # TODO: Add teacher avatar support
+        sender_avatar_url = None
         sender_accent = teacher_accents.get(user["id"])
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(select(User).where(User.id == user["id"]))
                 teacher_obj = result.scalar_one_or_none()
                 if teacher_obj:
+                    sender_name = f"{teacher_obj.first_name or ''} {teacher_obj.last_name or ''}".strip() or teacher_obj.email or "Docente"
+                    sender_avatar_url = teacher_obj.avatar_url
                     sender_accent = teacher_obj.ui_accent
                     if sender_accent:
                         teacher_accents[user["id"]] = sender_accent
+                owner_result = await db.execute(
+                    select(Class.teacher_id)
+                    .join(Session, Session.class_id == Class.id)
+                    .where(Session.id == session_id)
+                )
+                sender_is_class_owner = str(owner_result.scalar_one_or_none() or "") == str(user["id"])
         except Exception as e:
-            print(f"[Gateway] Error refreshing teacher sender accent: {e}")
+            print(f"[Gateway] Error refreshing teacher sender metadata: {e}")
     
     # Note: Message persistence is handled by the API endpoint (sendSessionMessage)
     # which is called before this socket event. This socket event only broadcasts
@@ -664,6 +698,7 @@ async def chat_public_message(sid, data):
         "sender_id": user["id"],
         "sender_name": sender_name,
         "sender_avatar_url": sender_avatar_url,
+        "sender_is_class_owner": sender_is_class_owner,
         "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,

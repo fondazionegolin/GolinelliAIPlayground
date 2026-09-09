@@ -33,33 +33,21 @@ _LANG_NAMES: dict[str, str] = {
 }
 
 
-@router.post("/transcribe")
-async def transcribe_audio(
-    file: UploadFile = File(...),
-    language: Optional[str] = Form(None),
-    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
-):
-    """
-    Transcribe audio using OpenAI Whisper.
-
-    Accepts any audio format supported by Whisper (webm, mp4, mp3, wav, ogg…).
-    Returns detected language, transcription text, and duration.
-    """
+async def transcribe_with_whisper(
+    audio_bytes: bytes, filename: str, content_type: str, language: Optional[str] = None,
+) -> dict:
+    """Shared Whisper call used by both the authenticated /stt/transcribe endpoint and the
+    public teacherbot share-link transcribe endpoint."""
     api_key = getattr(settings, "OPENAI_API_KEY", None)
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API not configured",
         )
-
-    audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio file"
         )
-
-    filename = file.filename or "recording.webm"
-    content_type = file.content_type or "audio/webm"
 
     extra: dict = {}
     if language and language != "auto":
@@ -88,11 +76,31 @@ async def transcribe_audio(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Transcription service error",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("[STT] Transcription error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+
+@router.post("/transcribe")
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
+):
+    """
+    Transcribe audio using OpenAI Whisper.
+
+    Accepts any audio format supported by Whisper (webm, mp4, mp3, wav, ogg…).
+    Returns detected language, transcription text, and duration.
+    """
+    audio_bytes = await file.read()
+    filename = file.filename or "recording.webm"
+    content_type = file.content_type or "audio/webm"
+    return await transcribe_with_whisper(audio_bytes, filename, content_type, language)
 
 
 @router.post("/translate")

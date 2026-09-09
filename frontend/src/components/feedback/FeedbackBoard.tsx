@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { ZoomableImage } from '@/components/ui/ZoomableImage'
+import { Button, SearchPill } from '@/design'
 import {
   Bug, Sparkles, Palette, MousePointerClick, AlertTriangle, Wand2, Wrench,
   CheckCircle, Mail, Globe, Monitor, ImageIcon, X, Share2, Trash2, Plus, Loader2,
-  Send, Inbox, LayoutTemplate, Columns3,
+  Send, Columns3, Settings2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -91,6 +92,46 @@ function timeAgo(isoString: string): string {
   return `${days}g fa`
 }
 
+function matchesSearch(card: BoardCard, query: string, columns: BoardColumn[]): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return true
+
+  const categoryLabel = card.category ? CATEGORY_META[card.category]?.label : ''
+  const urgencyLabel = card.urgency ? URGENCY_META[card.urgency]?.label : ''
+  const columnLabel = columns.find((col) => col.id === card.board_status)?.label || card.board_status
+  const browserInfo = card.browser_info
+    ? Object.entries(card.browser_info)
+        .filter(([key]) => key !== 'screenshot_base64')
+        .map(([key, value]) => `${key} ${String(value ?? '')}`)
+        .join(' ')
+    : ''
+
+  const target = [
+    card.id,
+    card.user_type,
+    card.user_display_name,
+    card.user_email,
+    card.message,
+    card.page_url,
+    browserInfo,
+    ...(card.console_errors || []),
+    card.status,
+    card.source,
+    card.created_by_display_name,
+    card.last_actor_display_name,
+    card.board_status,
+    columnLabel,
+    card.category,
+    categoryLabel,
+    card.urgency,
+    urgencyLabel,
+    card.internal_note,
+    card.created_at,
+  ].filter(Boolean).join(' ').toLowerCase()
+
+  return terms.every((term) => target.includes(term))
+}
+
 // ── Small presentational helpers ──────────────────────────────────────────────
 function CategoryBadge({ category }: { category: string | null }) {
   if (!category || !CATEGORY_META[category]) {
@@ -132,7 +173,7 @@ function Card({
       draggable
       onDragStart={(e) => onDragStart(e, card.id)}
       onClick={onClick}
-      className="group cursor-pointer border border-slate-200 border-l-2 bg-white p-3 shadow-sm transition-all hover:border-slate-300 hover:shadow-md active:cursor-grabbing"
+      className="group w-[280px] shrink-0 cursor-pointer border border-slate-200 border-l-2 bg-white p-3 shadow-sm transition-all hover:border-slate-300 hover:shadow-md active:cursor-grabbing lg:w-auto"
     >
       <div className="flex items-center gap-1.5 flex-wrap mb-2">
         <CategoryBadge category={card.category} />
@@ -510,6 +551,9 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   const [showCollaborators, setShowCollaborators] = useState(false)
   const [newTaskText, setNewTaskText] = useState('')
   const [newColumnName, setNewColumnName] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [inlineColumnId, setInlineColumnId] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
 
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ['feedback-board'],
@@ -569,10 +613,12 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   })
 
   const createCardMutation = useMutation({
-    mutationFn: (message: string) => feedbackApi.createBoardCard({ message, board_status: columns[0]?.id || 'inbox' }),
+    mutationFn: ({ message, boardStatus }: { message: string; boardStatus: string }) =>
+      feedbackApi.createBoardCard({ message, board_status: boardStatus }),
     onSuccess: (res) => {
       const created = res.data as BoardCard
       setNewTaskText('')
+      setInlineColumnId(null)
       queryClient.setQueryData<BoardCard[]>(['feedback-board'], (old) => [created, ...(old || [])])
       toast({ title: 'Task creato' })
     },
@@ -590,11 +636,15 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   })
 
   const unclassifiedCount = useMemo(() => cards.filter((c) => !c.category || !c.urgency).length, [cards])
+  const filteredCards = useMemo(
+    () => cards.filter((card) => matchesSearch(card, searchQuery, columns)),
+    [cards, columns, searchQuery],
+  )
 
   const grouped = useMemo(() => {
     const map: Record<string, BoardCard[]> = {}
     for (const col of columns) map[col.id] = []
-    for (const card of cards) {
+    for (const card of filteredCards) {
       const key = map[card.board_status] ? card.board_status : (columns[0]?.id || 'inbox')
       map[key].push(card)
     }
@@ -607,7 +657,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
       })
     }
     return map
-  }, [cards, columns])
+  }, [filteredCards, columns])
 
   const moveCard = (id: string, target: string) => {
     const card = cards.find((c) => c.id === id)
@@ -642,7 +692,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   const addColumn = () => {
     const label = newColumnName.trim()
     if (!label) return
-    const id = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`
+    const id = (label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`).slice(0, 20)
     updateConfigMutation.mutate({
       columns: [...columns, { id, label, hint: 'Colonna personalizzata', color: '#64748b' }],
     })
@@ -650,110 +700,106 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-            <Inbox className="h-6 w-6 text-slate-600" />
-            {config?.title || 'Board sviluppo'}
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-500">Task da feedback, attività manuali e flusso di sviluppo condiviso</p>
+    <div className={`flex min-h-0 flex-col overflow-hidden bg-[var(--surface-page)] ${
+      isAdmin ? 'h-[calc(100dvh-6rem)] lg:h-[calc(100dvh-3.5rem)]' : 'h-full'
+    }`}>
+      <header className="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 shadow-[var(--shadow-sm)] sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-bold text-[var(--text-primary)]">{config?.title || 'Board di sviluppo'}</h1>
+          <p className="text-xs text-[var(--text-secondary)]">{cards.length} task · {columns.length} colonne</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select
-            onChange={(e) => applyTemplate(e.target.value)}
-            defaultValue=""
-            disabled={updateConfigMutation.isPending}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50"
-            title="Carica template board"
-          >
-            <option value="" disabled>Template</option>
-            {(config?.templates || []).map((template) => (
-              <option key={template.id} value={template.id}>{template.label}</option>
-            ))}
-          </select>
-          <button
+        <SearchPill
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          placeholder="Cerca task, etichette o persone…"
+          className="col-span-2 row-start-2 w-full sm:col-span-1 sm:col-start-2 sm:row-start-1"
+        />
+        <div className="flex min-w-0 items-center justify-end gap-2 sm:col-start-3">
+          <Button
+            type="button"
+            tone="warning"
+            surface="soft"
+            density="compact"
             onClick={() => classifyAllMutation.mutate()}
             disabled={classifyAllMutation.isPending || unclassifiedCount === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             title={unclassifiedCount === 0 ? 'Tutti i feedback sono già etichettati' : `${unclassifiedCount} feedback da valutare`}
           >
-            {classifyAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            Valuta tutti con AI
+            {classifyAllMutation.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
+            <span className="hidden xl:inline">Valuta con AI</span>
             {unclassifiedCount > 0 && (
-              <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">{unclassifiedCount}</span>
+              <span className="rounded-full bg-[var(--surface-base)] px-1.5 py-0.5 text-[10px] font-bold">{unclassifiedCount}</span>
             )}
-          </button>
+          </Button>
           {isAdmin && (
-            <button
-              onClick={() => setShowCollaborators(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              <Share2 className="h-4 w-4" /> Condividi
-            </button>
+            <Button type="button" tone="neutral" surface="soft" density="compact" onClick={() => setShowCollaborators(true)}>
+              <Share2 /> <span className="hidden xl:inline">Condividi</span>
+            </Button>
           )}
+          <div className="relative">
+            <Button
+              type="button"
+              tone="neutral"
+              surface="soft"
+              density="compact"
+              onClick={() => setShowSettings((visible) => !visible)}
+              aria-expanded={showSettings}
+            >
+              <Settings2 /> <span className="hidden xl:inline">Configura</span>
+            </Button>
+            {showSettings && (
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-[min(360px,calc(100vw-2rem))] space-y-3 rounded-[var(--card-radius)] border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3 text-[var(--text-primary)] shadow-[var(--shadow-xl)]">
+              <div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">Template board</label>
+                <select
+                  onChange={(e) => applyTemplate(e.target.value)}
+                  defaultValue=""
+                  disabled={updateConfigMutation.isPending}
+                  className="h-9 w-full rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 text-sm font-medium text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--selection-border)]"
+                >
+                  <option value="" disabled>Seleziona un template</option>
+                  {(config?.templates || []).map((template) => (
+                    <option key={template.id} value={template.id}>{template.label}</option>
+                  ))}
+                </select>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  addColumn()
+                }}
+                className="space-y-1"
+              >
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">Nuova colonna</label>
+                <div className="flex gap-2">
+                  <input
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    placeholder="Nome colonna"
+                    className="h-9 min-w-0 flex-1 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-secondary)] focus:ring-2 focus:ring-[var(--selection-border)]"
+                  />
+                  <Button
+                    type="submit"
+                    tone="neutral"
+                    surface="soft"
+                    density="compact"
+                    disabled={updateConfigMutation.isPending || !newColumnName.trim()}
+                  >
+                    <Columns3 /> Aggiungi
+                  </Button>
+                </div>
+              </form>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:grid-cols-[1fr_auto_auto]">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (newTaskText.trim()) createCardMutation.mutate(newTaskText.trim())
-          }}
-          className="flex min-w-0 gap-2"
-        >
-          <input
-            value={newTaskText}
-            onChange={(e) => setNewTaskText(e.target.value)}
-            placeholder="Nuovo task o attività della board"
-            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <button
-            type="submit"
-            disabled={createCardMutation.isPending || !newTaskText.trim()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-45"
-          >
-            {createCardMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Task
-          </button>
-        </form>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            addColumn()
-          }}
-          className="flex gap-2"
-        >
-          <input
-            value={newColumnName}
-            onChange={(e) => setNewColumnName(e.target.value)}
-            placeholder="Nome colonna"
-            className="w-40 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <button
-            type="submit"
-            disabled={updateConfigMutation.isPending || !newColumnName.trim()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-45"
-          >
-            <Columns3 className="h-4 w-4" />
-            Colonna
-          </button>
-        </form>
-        <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500">
-          <LayoutTemplate className="h-4 w-4" />
-          {columns.length} colonne
-        </div>
-      </div>
-
-      {/* Columns */}
       {isLoading ? (
-        <div className="flex justify-center py-16">
+        <div className="flex flex-1 items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 overflow-x-auto pb-4 sm:grid-cols-2 xl:flex">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
           {columns.map((col) => {
             const colCards = grouped[col.id]
             return (
@@ -762,26 +808,78 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                 onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.id) }}
                 onDragLeave={() => setDragOverCol((c) => (c === col.id ? null : c))}
                 onDrop={(e) => handleDrop(e, col.id)}
-                className={`flex min-w-[280px] flex-col border bg-slate-50/70 transition-colors xl:w-[320px] ${
+                className={`group/column flex min-h-[210px] w-full shrink-0 flex-row overflow-hidden rounded-xl border bg-slate-50/70 transition-colors lg:h-full lg:min-h-0 lg:w-[320px] lg:flex-col lg:rounded-none ${
                   dragOverCol === col.id ? 'border-slate-400 bg-slate-100' : 'border-slate-200'
                 }`}
               >
-                <div className="border-b border-slate-200 px-3 py-2.5" style={{ borderTop: `3px solid ${col.color}` }}>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[13px] font-bold uppercase tracking-wide text-slate-700">{col.label}</h3>
-                    <span className="border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500">
-                      {colCards.length}
-                    </span>
+                <div
+                  className="flex w-[150px] shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-3 lg:w-auto lg:flex-row lg:items-start lg:border-b lg:border-r-0"
+                  style={{ borderTop: `3px solid ${col.color}` }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-[12px] font-bold uppercase leading-tight tracking-wide text-slate-700">{col.label}</h3>
+                    <p className="mt-1 line-clamp-3 text-[10px] leading-tight text-slate-400 lg:line-clamp-2">{col.hint}</p>
                   </div>
-                  <p className="mt-0.5 text-[10px] leading-tight text-slate-400 line-clamp-2">{col.hint}</p>
+                  <div className="mt-auto flex items-center gap-1.5 pt-3 lg:mt-0 lg:pt-0">
+                    <span className="border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500">{colCards.length}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewTaskText('')
+                        setInlineColumnId((current) => current === col.id ? null : col.id)
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 opacity-100 shadow-sm transition hover:border-slate-300 hover:text-slate-800 lg:opacity-0 lg:group-hover/column:opacity-100 lg:focus-visible:opacity-100"
+                      title={`Aggiungi task in ${col.label}`}
+                      aria-label={`Aggiungi task in ${col.label}`}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex min-h-[140px] flex-1 flex-col gap-2 p-2">
+                <div className="flex min-w-0 flex-1 flex-row items-stretch gap-2 overflow-x-auto overflow-y-hidden p-2 lg:min-h-0 lg:flex-col lg:items-stretch lg:overflow-x-hidden lg:overflow-y-auto">
+                  {inlineColumnId === col.id && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        if (newTaskText.trim()) {
+                          createCardMutation.mutate({ message: newTaskText.trim(), boardStatus: col.id })
+                        }
+                      }}
+                      className="w-[280px] shrink-0 space-y-2 border border-slate-200 bg-white p-3 shadow-sm lg:w-auto"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">Nuovo task</span>
+                        <button type="button" onClick={() => setInlineColumnId(null)} className="text-slate-400 hover:text-slate-700" aria-label="Annulla">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <textarea
+                        autoFocus
+                        value={newTaskText}
+                        onChange={(e) => setNewTaskText(e.target.value)}
+                        placeholder="Descrivi il task o l'attività…"
+                        rows={3}
+                        className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                      />
+                      <Button
+                        type="submit"
+                        tone="accent"
+                        surface="solid"
+                        density="compact"
+                        fullWidth
+                        disabled={createCardMutation.isPending || !newTaskText.trim()}
+                      >
+                        {createCardMutation.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+                        Crea task
+                      </Button>
+                    </form>
+                  )}
                   {colCards.map((card) => (
                     <Card key={card.id} card={card} onDragStart={handleDragStart} onClick={() => setSelectedId(card.id)} />
                   ))}
-                  {colCards.length === 0 && (
-                    <div className="flex flex-1 items-center justify-center py-6 text-[11px] text-slate-300">
-                      Trascina qui
+                  {colCards.length === 0 && inlineColumnId !== col.id && (
+                    <div className="flex min-w-[160px] flex-1 items-center justify-center py-6 text-center text-[11px] text-slate-300">
+                      {searchQuery.trim() ? 'Nessun risultato' : 'Trascina qui'}
                     </div>
                   )}
                 </div>

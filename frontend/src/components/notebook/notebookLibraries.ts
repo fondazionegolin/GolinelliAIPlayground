@@ -708,6 +708,94 @@ async function mousePressed() {
     ],
   },
 
+  // ─── MediaPipe (API raw Google) ──────────────────────────────────────────────
+  {
+    id: 'mediapipe-hands',
+    name: 'MediaPipe Hands',
+    description: 'Tracciamento mani raw con API ufficiale Google MediaPipe (alternativa più avanzata a ml5 handPose)',
+    icon: '✋',
+    category: 'ml',
+    cdnUrls: [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js',
+    ],
+    requiresCamera: true,
+    templates: [
+      {
+        id: 'mediapipe-hands-basic',
+        name: 'Riconoscimento mani — API raw',
+        description: 'Scheletro delle mani con la libreria ufficiale MediaPipe (classe Hands + Camera)',
+        code: `// MediaPipe Hands — API raw (window.Hands, window.Camera)
+// Richiede: webcam attiva
+${HAND_CONNECTIONS}
+
+let video, hands, camera;
+let results = null;
+
+function setup() {
+  createCanvas(640, 480);
+  textFont('monospace');
+
+  video = createCapture(VIDEO);
+  video.size(640, 480);
+  video.hide();
+
+  hands = new Hands({
+    locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file,
+  });
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6,
+  });
+  hands.onResults((res) => { results = res; });
+
+  // Camera di MediaPipe: pesca un frame dal video e lo invia al modello
+  camera = new Camera(video.elt, {
+    onFrame: async () => { await hands.send({ image: video.elt }); },
+    width: 640,
+    height: 480,
+  });
+  camera.start();
+}
+
+function draw() {
+  push();
+  translate(width, 0);
+  scale(-1, 1);
+  image(video, 0, 0, width, height);
+  pop();
+
+  if (!results || !results.multiHandLandmarks) {
+    fill(0, 190); noStroke(); rect(0, 0, width, 52);
+    fill(255); textSize(14); textAlign(CENTER);
+    text('Caricamento MediaPipe Hands...', width / 2, 30);
+    textAlign(LEFT);
+    return;
+  }
+
+  for (let kps of results.multiHandLandmarks) {
+    stroke(0, 230, 120); strokeWeight(2); noFill();
+    for (let [a, b] of HAND_CONNECTIONS) {
+      let pa = kps[a], pb = kps[b];
+      line(width - pa.x * width, pa.y * height, width - pb.x * width, pb.y * height);
+    }
+    noStroke();
+    for (let i = 0; i < kps.length; i++) {
+      fill(i === 0 ? color(255, 100, 50) : color(255, 220, 0));
+      circle(width - kps[i].x * width, kps[i].y * height, i === 0 ? 14 : 8);
+    }
+  }
+
+  noStroke(); fill(0, 180); rect(8, 8, 220, 22, 4);
+  fill(255); textSize(11);
+  text('Mani rilevate: ' + results.multiHandLandmarks.length, 14, 23);
+}`,
+      },
+    ],
+  },
+
   // ─── p5.sound ──────────────────────────────────────────────────────────────
   {
     id: 'p5sound',

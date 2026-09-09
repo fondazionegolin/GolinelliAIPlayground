@@ -18,6 +18,7 @@ from app.schemas.assessment import (
     QuizAttemptCreate, QuizAttemptResponse,
     BadgeResponse, BadgeAwardResponse,
 )
+from app.realtime.gateway import notify_session_teacher
 
 router = APIRouter()
 
@@ -208,8 +209,6 @@ async def submit_quiz_attempt(
     await db.refresh(attempt)
     
     # Send detailed quiz notification to teacher
-    from app.realtime.gateway import sio
-    
     # Prepare quiz answer details for notification
     quiz_answers = []
     for detail in details:
@@ -254,8 +253,8 @@ async def submit_quiz_attempt(
         )
         session = sess_result.scalar_one_or_none()
         
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            str(student.session_id),
             {
                 "type": "quiz_completed",
                 "session_id": str(student.session_id),
@@ -271,7 +270,6 @@ async def submit_quiz_attempt(
                 },
                 "timestamp": datetime.utcnow().isoformat(),
             },
-            room=f"session:{student.session_id}",
         )
     except Exception as e:
         print(f"Error emitting quiz notification: {e}")

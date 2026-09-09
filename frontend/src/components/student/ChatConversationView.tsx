@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check } from 'lucide-react'
+import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
-import { useKeyboard } from '@/hooks/useMobile'
+import { VoiceRecorder } from '@/components/VoiceRecorder'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -40,6 +40,7 @@ interface ChatConversationViewProps {
   isLoading: boolean
   suggestedPrompts?: string[]
   isTeacherbot?: boolean
+  onMinimize?: () => void
 }
 
 export function ChatConversationView({
@@ -54,6 +55,7 @@ export function ChatConversationView({
   isLoading,
   suggestedPrompts = [],
   isTeacherbot: _isTeacherbot = false,
+  onMinimize,
 }: ChatConversationViewProps) {
   // Get the appropriate color class for avatars
   const avatarColorClass = profileColor.startsWith('bg-')
@@ -63,10 +65,43 @@ export function ChatConversationView({
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { isOpen: isKeyboardOpen, height: keyboardHeight } = useKeyboard()
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [viewport, setViewport] = useState(() => ({
+    height: typeof window === 'undefined' ? 0 : window.visualViewport?.height || window.innerHeight,
+    offsetTop: typeof window === 'undefined' ? 0 : window.visualViewport?.offsetTop || 0,
+  }))
+
+  // Keep the whole chat inside the visible area when the mobile keyboard opens.
+  // The header and composer remain fixed while only the message list scrolls.
+  useEffect(() => {
+    const visualViewport = window.visualViewport
+    const syncViewport = () => setViewport({
+      height: visualViewport?.height || window.innerHeight,
+      offsetTop: visualViewport?.offsetTop || 0,
+    })
+    syncViewport()
+    visualViewport?.addEventListener('resize', syncViewport)
+    visualViewport?.addEventListener('scroll', syncViewport)
+    window.addEventListener('resize', syncViewport)
+    return () => {
+      visualViewport?.removeEventListener('resize', syncViewport)
+      visualViewport?.removeEventListener('scroll', syncViewport)
+      window.removeEventListener('resize', syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    const previousOverscroll = document.body.style.overscrollBehavior
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.body.style.overscrollBehavior = previousOverscroll
+    }
+  }, [])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -78,15 +113,6 @@ export function ChatConversationView({
     }
   }, [messages.length, isLoading])
 
-  // Auto-focus input after assistant replies
-  useEffect(() => {
-    if (isLoading) return
-    const last = messages[messages.length - 1]
-    if (last && last.role === 'assistant') {
-      inputRef.current?.focus()
-    }
-  }, [messages, isLoading])
-
   // Handle send
   const handleSend = useCallback(() => {
     if ((!input.trim() && attachedFiles.length === 0) || isLoading) return
@@ -95,6 +121,7 @@ export function ChatConversationView({
     onSend(input.trim(), attachedFiles.map(f => f.file))
     setInput('')
     setAttachedFiles([])
+    if (inputRef.current) inputRef.current.style.height = '44px'
   }, [input, attachedFiles, isLoading, onSend])
 
   // Handle file selection
@@ -130,9 +157,12 @@ export function ChatConversationView({
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50">
+    <div
+      className="fixed inset-x-0 top-0 z-[80] flex min-h-0 flex-col overflow-hidden bg-slate-50"
+      style={{ height: `${viewport.height}px`, transform: `translateY(${viewport.offsetTop}px)` }}
+    >
       {/* Mobile Header */}
-      <div className="md:hidden flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-2.5">
+      <div className="flex h-16 flex-shrink-0 items-center gap-2.5 border-b border-slate-200 bg-white/95 px-3 shadow-sm backdrop-blur-xl">
         <Button
           variant="ghost"
           size="sm"
@@ -155,15 +185,29 @@ export function ChatConversationView({
             <p className="text-[11px] text-slate-500">Sta scrivendo...</p>
           )}
         </div>
+        {onMinimize && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              triggerHaptic('light')
+              onMinimize()
+            }}
+            className="h-8 w-8 p-0 rounded-xl"
+            title="Riduci a icona"
+          >
+            <Minimize2 className="h-4 w-4 text-slate-700" />
+          </Button>
+        )}
       </div>
 
       {/* Messages area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto px-3 md:px-6 py-3 md:py-4 space-y-3 md:space-y-4"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4 md:space-y-4 md:px-6"
         style={{
-          paddingBottom: isKeyboardOpen ? keyboardHeight + 88 : 88,
           WebkitOverflowScrolling: 'touch',
+          overflowAnchor: 'none',
         }}
       >
         {/* Empty state with suggestions */}
@@ -238,13 +282,10 @@ export function ChatConversationView({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area - Fixed at bottom */}
+      {/* Composer: part of the viewport flex layout, never underneath the keyboard. */}
       <div
-        className={`
-          fixed left-0 right-0 bg-white/96 border-t border-slate-200 px-3 py-2 z-40 backdrop-blur-xl
-          transition-all duration-200
-          bottom-0
-        `}
+        className="z-10 flex-shrink-0 border-t border-slate-200 bg-white/95 px-3 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur-xl"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
         {/* Attached files preview */}
         <AnimatePresence>
@@ -302,12 +343,28 @@ export function ChatConversationView({
             <Paperclip className="h-5 w-5" />
           </Button>
 
+          {/* Voice input */}
+          <div onPointerDown={() => inputRef.current?.blur()}>
+            <VoiceRecorder
+              compact
+              onInsertText={(text) => {
+                setInput((current) => `${current}${current.trim() ? ' ' : ''}${text}`)
+                requestAnimationFrame(() => inputRef.current?.focus())
+              }}
+            />
+          </div>
+
           {/* Text input */}
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onInput={(e) => {
+              const element = e.currentTarget
+              element.style.height = '44px'
+              element.style.height = `${Math.min(element.scrollHeight, 112)}px`
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -316,7 +373,7 @@ export function ChatConversationView({
             }}
             placeholder={attachedFiles.length > 0 ? "Aggiungi una descrizione..." : "Scrivi un messaggio..."}
             disabled={isLoading}
-            className="flex-1 px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+            className="h-11 max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
           />
 
           {/* Send button */}
@@ -378,18 +435,18 @@ export const MessageBubble = memo(function MessageBubble({
         `}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap text-[15px] leading-6">{message.content}</p>
+          <p className="whitespace-pre-wrap text-[16px] leading-7">{message.content}</p>
         ) : (
-          <div className="chat-markdown prose prose-slate max-w-none">
+          <div className="chat-markdown prose prose-slate max-w-none text-[16px] leading-7">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
               components={{
-                p: ({ children }) => <p className="mb-2 last:mb-0 text-[15px] leading-6 text-slate-800">{children}</p>,
+                p: ({ children }) => <p className="mb-2 last:mb-0 text-[16px] leading-7 text-slate-800">{children}</p>,
                 ...markdownCodeComponents(),
                 ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1.5">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1.5">{children}</ol>,
-                li: ({ children }) => <li className="text-[15px] leading-6 text-slate-800">{children}</li>,
+                li: ({ children }) => <li className="text-[16px] leading-7 text-slate-800">{children}</li>,
               }}
             >
               {message.content}

@@ -12,14 +12,18 @@ class Class(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    school_tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     school_grade = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    archived_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="classes")
-    teacher = relationship("User", back_populates="classes")
+    tenant = relationship("Tenant", back_populates="classes", foreign_keys=[tenant_id])
+    school = relationship("Tenant", foreign_keys=[school_tenant_id])
+    teacher = relationship("User", back_populates="classes", foreign_keys=[teacher_id])
     sessions = relationship("Session", back_populates="class_", lazy="dynamic")
     teachers = relationship("ClassTeacher", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")
     invitations = relationship("ClassInvitation", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")
@@ -31,6 +35,7 @@ class Session(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False, index=True)
+    created_by_teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String, nullable=False)
     join_code = Column(String(5), unique=True, nullable=False, index=True)
     status = Column(Enum(SessionStatus, values_callable=lambda x: [e.value for e in x]), default=SessionStatus.DRAFT, nullable=False)
@@ -40,10 +45,14 @@ class Session(Base):
     default_llm_provider = Column(String, nullable=True)  # Default LLM provider for this session
     default_llm_model = Column(String, nullable=True)  # Default LLM model for this session
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    purge_after = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="sessions")
     class_ = relationship("Class", back_populates="sessions")
+    created_by_teacher = relationship("User", foreign_keys=[created_by_teacher_id])
     modules = relationship("SessionModule", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
     students = relationship("SessionStudent", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
     chat_rooms = relationship("ChatRoom", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")

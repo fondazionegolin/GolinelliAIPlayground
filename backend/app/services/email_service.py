@@ -147,11 +147,10 @@ Se non hai richiesto questo account, puoi ignorare questa email.
 
     @staticmethod
     def _render_template(template: str, context: dict) -> str:
-        class _SafeDict(dict):
-            def __missing__(self, key):
-                return "{" + key + "}"
-
-        return template.format_map(_SafeDict(**context))
+        rendered = template
+        for key, value in context.items():
+            rendered = rendered.replace("{" + str(key) + "}", "" if value is None else str(value))
+        return rendered
 
     async def send_invitation_email(
         self,

@@ -6,6 +6,7 @@ type CreditBalance = {
   credits_remaining: number | null
   credits_used: number
   credits_cap: number | null
+  limit_level?: string | null
 }
 
 type CreditHistoryItem = {
@@ -120,9 +121,22 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
   const isLow = typeof credits === 'number' && credits < 20
   const label = typeof credits === 'number' ? credits.toLocaleString('it-IT') : '--'
   const isPool = audience === 'studentPool'
-  const mainColor = isPool ? poolCreditColor : teacherCreditColor
-  const title = isPool ? 'Pool crediti studenti' : 'Crediti AI docente'
-  const Icon = isPool ? Users : Moon
+  // For a student's own pill, the binding cap can be their individual quota OR the shared class
+  // pool (whichever is smaller — see credit_service.get_balance). Read limit_level back from the
+  // balance payload instead of hardcoding "docente" for every non-teacher audience.
+  const isStudentPoolLimiting = audience === 'student' && balance?.limit_level === 'STUDENT_POOL'
+  const mainColor = isPool || isStudentPoolLimiting ? poolCreditColor : teacherCreditColor
+  const title = isPool
+    ? 'Pool crediti studenti'
+    : audience === 'student'
+      ? (isStudentPoolLimiting ? 'Pool della classe' : 'I tuoi crediti')
+      : 'Crediti AI docente'
+  const shortLabel = isPool
+    ? 'pool'
+    : audience === 'student'
+      ? (isStudentPoolLimiting ? 'pool' : 'tuoi')
+      : 'docente'
+  const Icon = isPool || isStudentPoolLimiting ? Users : Moon
 
   return (
     <div className="relative" ref={panelRef}>
@@ -143,7 +157,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
           {label}
           <Icon className="h-3 w-3" strokeWidth={2.5} aria-hidden />
         </span>
-        <span className="text-[7px] font-bold uppercase tracking-[0.08em] opacity-75">{isPool ? 'pool' : 'docente'}</span>
+        <span className="text-[7px] font-bold uppercase tracking-[0.08em] opacity-75">{shortLabel}</span>
       </button>
 
       {open && (

@@ -135,18 +135,24 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" onClick={onBack} className="text-slate-600">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Indietro
+      <div className="mb-4 flex items-center gap-2 sm:mb-6 sm:gap-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          className="h-9 w-9 shrink-0 rounded-xl text-slate-600"
+          title="Indietro"
+          aria-label="Indietro"
+        >
+          <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1 flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-lg ${getColorClass(teacherbot?.color)} flex items-center justify-center`}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${getColorClass(teacherbot?.color)}`}>
             <FileText className="h-5 w-5 text-white" />
           </div>
-          <div>
-            <h2 className="font-bold text-slate-800">Storico: {teacherbot?.name}</h2>
-            <p className="text-xs text-slate-500">
+          <div className="min-w-0">
+            <h2 className="truncate font-bold text-slate-800">Storico: {teacherbot?.name}</h2>
+            <p className="truncate text-xs text-slate-500">
               {reports?.length ?? 0} conversazioni · {withReport} con report
             </p>
           </div>

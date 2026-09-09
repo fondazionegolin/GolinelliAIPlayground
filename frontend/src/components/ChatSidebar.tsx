@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink
+  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -964,7 +964,10 @@ export default function ChatSidebar({
 
         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
           {showAvatar && (
-            <span className="text-[10px] font-bold text-slate-400 mb-1 mx-1 uppercase tracking-tighter">
+            <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-400">
+              {msg.sender_is_class_owner && (
+                <GraduationCap className="h-3 w-3 text-violet-600" aria-label="Docente proprietario della classe" />
+              )}
               {msg.sender_name || 'User'}
             </span>
           )}
@@ -1021,8 +1024,8 @@ export default function ChatSidebar({
                         <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">Toy LM condiviso</p>
-                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello Toy LM'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">ToyGPT condiviso</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello ToyGPT'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} parametri · vocab {att.vocab_size ?? 0}
                         </p>
@@ -1057,7 +1060,7 @@ export default function ChatSidebar({
                         <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Coding Lab</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.file_count ?? 0} file · {att.total_lines ?? 0} righe
@@ -1065,7 +1068,7 @@ export default function ChatSidebar({
                       </div>
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-sky-700">
-                      Apri nel Coding Lab
+                      Apri nel Vibe Lab
                     </span>
                   </button>
                 ))}
@@ -1092,7 +1095,7 @@ export default function ChatSidebar({
                         <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Coding Lab</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">
                           {att.contributor_name || 'Studente'} ha inviato una proposta
                         </p>
@@ -1679,7 +1682,8 @@ export default function ChatSidebar({
             <div className="relative group">
               <Button
                 size="icon"
-                variant="outline"
+                tone="accent"
+                surface="solid"
                 onClick={() => libraryFileInputRef.current?.click()}
                 className="h-8 w-8"
                 title={sidebarLabels.uploadFiles}
@@ -1693,7 +1697,8 @@ export default function ChatSidebar({
             <div className="relative group">
               <Button
                 size="icon"
-                variant="outline"
+                tone="accent"
+                surface="soft"
                 onClick={createFolderWithKeep}
                 className="h-8 w-8"
                 title={sidebarLabels.newFolder}
@@ -2090,7 +2095,7 @@ export default function ChatSidebar({
                   <Brain className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello Toy LM'}</p>
+                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello ToyGPT'}</p>
                   <p className="text-xs text-slate-500">
                     {activeToyLMModel.saved_epoch ?? 0} epoch · {Number(activeToyLMModel.param_count || 0).toLocaleString()} parametri
                   </p>

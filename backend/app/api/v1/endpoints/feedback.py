@@ -2,14 +2,18 @@ from typing import Annotated, List, Optional
 import asyncio
 import json
 import uuid as _uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Cookie, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from pydantic import BaseModel
 import logging
 
 from app.core.database import get_db
-from app.api.deps import get_current_admin, get_current_teacher, get_current_user, get_student_or_teacher, StudentOrTeacher
+from app.api.deps import get_current_admin, get_current_teacher, get_current_user, get_student_or_teacher, security, StudentOrTeacher
+from app.core.config import settings
+from app.core.security import create_access_token, decode_token
 from app.models.feedback import FeedbackReport, FeedbackBoardCollaborator, FeedbackBoardConfig
 from app.models.user import User
 from app.models.enums import UserRole
@@ -116,10 +120,7 @@ async def classify_feedback(message: str, page_url: Optional[str]) -> tuple[Opti
         return _heuristic()
 
 
-async def get_feedback_board_member(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
+async def _ensure_feedback_board_member(db: AsyncSession, current_user: User) -> User:
     """Allow admins, or teachers explicitly invited as board collaborators."""
     if current_user.role == UserRole.ADMIN:
         return current_user
@@ -130,6 +131,31 @@ async def get_feedback_board_member(
         if res.scalar_one_or_none():
             return current_user
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accesso alla board non consentito")
+
+
+async def get_feedback_board_member(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)] = None,
+    access_token: Annotated[Optional[str], Cookie()] = None,
+) -> User:
+    """Authenticate board calls with a normal login or a scoped MCP token."""
+    token = credentials.credentials if credentials else access_token
+    payload = decode_token(token) if token else None
+    token_type = payload.get("type") if payload else None
+    if token_type not in {"access", "feedback_board_mcp"}:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    if token_type == "feedback_board_mcp" and payload.get("scope") != "feedback_board":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token scope")
+
+    try:
+        user_id = _uuid.UUID(str(payload.get("sub")))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload") from exc
+
+    current_user = await db.get(User, user_id)
+    if not current_user or not current_user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+    return await _ensure_feedback_board_member(db, current_user)
 
 
 class BrowserInfo(BaseModel):
@@ -239,7 +265,7 @@ def _normalize_board_columns(columns: list[dict] | None) -> list[dict]:
             col_id = f"col_{idx + 1}"
         seen.add(col_id)
         normalized.append({
-            "id": col_id[:48],
+            "id": col_id[:20],
             "label": label[:80] or f"Colonna {idx + 1}",
             "hint": str(col.get("hint") or "")[:180],
             "color": str(col.get("color") or "#64748b")[:24],
@@ -289,6 +315,9 @@ async def submit_feedback(
     if body.screenshot_base64:
         browser_info_dict['screenshot_base64'] = body.screenshot_base64
 
+    config = await _get_board_config(db)
+    board_status = _normalize_board_columns(config.columns_json)[0]["id"]
+
     report = FeedbackReport(
         user_type=user_type,
         user_id_ref=user_id_ref,
@@ -298,6 +327,10 @@ async def submit_feedback(
         page_url=body.page_url,
         browser_info=browser_info_dict,
         console_errors=body.console_errors or [],
+        source="feedback",
+        created_by_display_name=user_display_name,
+        last_actor_display_name=user_display_name,
+        board_status=board_status,
     )
     db.add(report)
     await db.commit()
@@ -494,6 +527,33 @@ async def _get_report_or_404(db: AsyncSession, feedback_id: str) -> FeedbackRepo
     if not report:
         raise HTTPException(status_code=404, detail="Feedback non trovato")
     return report
+
+
+@router.post("/board/mcp-token")
+async def create_feedback_board_mcp_token(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Exchange a normal login for a long-lived, board-scoped MCP token."""
+    await _ensure_feedback_board_member(db, current_user)
+    expires_delta = timedelta(days=settings.FEEDBACK_MCP_TOKEN_EXPIRE_DAYS)
+    token = create_access_token(
+        subject=str(current_user.id),
+        token_type="feedback_board_mcp",
+        expires_delta=expires_delta,
+        extra_claims={
+            "scope": "feedback_board",
+            "role": current_user.role.value,
+            "tenant_id": str(current_user.tenant_id) if current_user.tenant_id else None,
+        },
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "scope": "feedback_board",
+        "expires_in_days": settings.FEEDBACK_MCP_TOKEN_EXPIRE_DAYS,
+        "expires_at": (datetime.utcnow() + expires_delta).isoformat(),
+    }
 
 
 @router.get("/board/access")

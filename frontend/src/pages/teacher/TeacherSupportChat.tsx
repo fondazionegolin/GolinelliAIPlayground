@@ -3,9 +3,9 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
+  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Video, ScanText, Youtube
+  Video, ScanText, Youtube, PanelRightClose, Square
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -20,15 +20,13 @@ import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
 import DataFileCard from '@/components/DataFileCard'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
-import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
-import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
-import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import {
   parseBrochurePayload,
   parseDispensaPayload,
@@ -98,6 +96,12 @@ interface LessonData {
   title: string
   description?: string
   content: string
+}
+
+interface PresentationDocumentData {
+  draft_id: string
+  title: string
+  slide_count: number
 }
 
 interface ExerciseData {
@@ -230,6 +234,19 @@ function isAgentMode(value: string | null | undefined): value is AgentMode {
   return AGENT_MODES.some((mode) => mode.id === value) || value === 'web_search'
 }
 
+function isAbortLikeError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const error = err as { name?: string; code?: string; message?: string }
+  return error.name === 'AbortError' || error.code === 'ERR_CANCELED' || error.message === 'canceled'
+}
+
+function isPresentationCreationRequest(value: string): boolean {
+  const normalized = value.toLocaleLowerCase('it-IT')
+  const asksForPresentation = /\b(presentazione|presentazioni|slide|diapositive|deck)\b/.test(normalized)
+  const asksToCreate = /\b(crea|creami|genera|generami|prepara|preparami|realizza|realizzami|costruisci|fammi|produce|build|create|generate)\b/.test(normalized)
+  return asksForPresentation && asksToCreate
+}
+
 function OcrImageOverlay({ overlay }: { overlay: OcrOverlayData }) {
   const boxes = overlay.lines.filter((line) => line.bbox && line.text)
   if (boxes.length === 0) return null
@@ -325,11 +342,13 @@ async function consumeSseStream(
         .trim()
 
       if (payload) {
+        let parsed: any = null
         try {
-          onEvent(JSON.parse(payload))
+          parsed = JSON.parse(payload)
         } catch {
           // Ignore malformed partial events
         }
+        if (parsed) onEvent(parsed)
       }
 
       normalized = buffer.replace(/\r\n/g, '\n')
@@ -346,11 +365,13 @@ async function consumeSseStream(
           .join('\n')
           .trim()
         if (payload) {
+          let parsed: any = null
           try {
-            onEvent(JSON.parse(payload))
+            parsed = JSON.parse(payload)
           } catch {
             // Ignore malformed trailing events
           }
+          if (parsed) onEvent(parsed)
         }
       }
       break
@@ -441,22 +462,27 @@ const REPORT_TYPE_OPTIONS = [
 
 
 
-export default function TeacherSupportChat() {
+export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = false, dockArmed = false }: { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { isMobile } = useMobile()
-  const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
-  const [botPanelTarget, setBotPanelTarget] = useState<'create' | string | null>(null)
+  // True once "Apri in sidebar" has been clicked but the panel is still full-page (route hasn't
+  // changed yet) — the dock only takes effect on the next navigation, so the button pulses green
+  // to confirm the click registered instead of appearing to do nothing.
+  const isDockArmed = dockArmed && !sidebarMode
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const activeGenerationAbortRef = useRef<AbortController | null>(null)
+  const lastEscapeKeyAtRef = useRef(0)
   const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
+  const [showActionMenu, setShowActionMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -541,6 +567,12 @@ export default function TeacherSupportChat() {
     backgroundColor: accentTheme.accent,
     color: '#ffffff',
   }) as CSSProperties, [accentTheme])
+  // Ghost bubble matching the violet used for buttons/badges elsewhere in this chat: transparent fill, thin violet border.
+  const userBubbleStyle = useMemo(() => ({
+    backgroundColor: 'transparent',
+    borderColor: '#c4b5fd', // violet-300
+    color: '#6d28d9', // violet-700
+  }) as CSSProperties, [])
   const accentButtonStyle = useMemo(() => ({
     backgroundColor: accentTheme.soft,
     color: accentTheme.text,
@@ -722,6 +754,34 @@ export default function TeacherSupportChat() {
     }
   }
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const stopActiveGeneration = () => {
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = null
+    setIsLoading(false)
+    setIsGeneratingDoc(false)
+    setImageGenerationProgress(null)
+    setStreamingStatus(null)
+  }
+
+  useEffect(() => {
+    if (!isLoading) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const now = Date.now()
+      if (now - lastEscapeKeyAtRef.current <= 500) {
+        event.preventDefault()
+        stopActiveGeneration()
+        lastEscapeKeyAtRef.current = 0
+      } else {
+        lastEscapeKeyAtRef.current = now
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isLoading])
 
   // Publish Modal State
   const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: PublishContentType, data: any }>({
@@ -1148,6 +1208,27 @@ export default function TeacherSupportChat() {
     }
   }
 
+  useEffect(() => {
+    const onRestore = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string | null }>).detail
+      if (!detail?.conversationId) return
+      const conversation = conversations.find((item) => item.id === detail.conversationId)
+      if (conversation) {
+        openConversation(conversation)
+      } else {
+        setCurrentConversationId(detail.conversationId)
+      }
+    }
+
+    window.addEventListener('golinelli:restore-teacher-support-chat', onRestore as EventListener)
+    return () => window.removeEventListener('golinelli:restore-teacher-support-chat', onRestore as EventListener)
+  }, [conversations])
+
+  const handleDockOrClose = () => {
+    if (sidebarMode) onClose?.()
+    else onMinimize?.()
+  }
+
   const syncConversationMode = async (conversationId: string, mode: AgentMode) => {
     setConversations((prev) => prev.map((conversation) => (
       conversation.id === conversationId
@@ -1226,28 +1307,40 @@ export default function TeacherSupportChat() {
       model?: string
       mode?: AgentMode
       sessionId?: string
+      signal?: AbortSignal
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
       onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
+      onFallback?: () => void
     }
   ): Promise<{ content: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson | null }> => {
     const modelInfo = availableModels.find(m => m.id === selectedModel)
-    try {
+    const primaryProvider = opts?.provider ?? modelInfo?.provider ?? 'openai'
+    const primaryModel = opts?.model ?? selectedModel
+    const fallbackProvider = 'anthropic'
+    const fallbackModel = 'claude-haiku-4-5-20251001'
+
+    const executeRequest = async (provider: string, model: string) => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: opts?.signal,
         body: JSON.stringify({
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
-          provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
-          model: opts?.model ?? selectedModel,
+          provider,
+          model,
           agent_mode: opts?.mode ?? agentMode,
           session_id: opts?.sessionId ?? null,
         })
       })
 
-      if (!response.ok) throw new Error('Stream request failed')
+      if (!response.ok) {
+        const error = new Error(`Stream request failed (${response.status})`) as Error & { status?: number }
+        error.status = response.status
+        throw error
+      }
 
       const reader = response.body?.getReader()
       let finalContent = ''
@@ -1275,14 +1368,33 @@ export default function TeacherSupportChat() {
         })
       }
 
+      if (!finalContent.trim()) {
+        throw new Error('Il modello non ha restituito alcun contenuto')
+      }
+
       return {
-        content: finalContent || 'Nessun risultato dalla generazione.',
-        provider: finalProvider,
-        model: finalModel,
+        content: finalContent,
+        provider: finalProvider || provider,
+        model: finalModel || model,
         token_usage_json: finalTokenUsage,
       }
-    } catch (e) {
-      throw e
+    }
+
+    try {
+      return await executeRequest(primaryProvider, primaryModel)
+    } catch (error: any) {
+      if (isAbortLikeError(error)) throw error
+      const nonRetryableStatuses = new Set([400, 401, 402, 403, 413, 422])
+      const alreadyUsingFallback = primaryProvider === fallbackProvider && primaryModel === fallbackModel
+      if (alreadyUsingFallback || nonRetryableStatuses.has(error?.status)) throw error
+
+      opts?.onFallback?.()
+      opts?.onStatus?.('⚡ Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…')
+      toast({
+        title: 'Modello temporaneamente non raggiungibile',
+        description: 'La richiesta viene completata automaticamente con Claude Haiku 4.5.',
+      })
+      return executeRequest(fallbackProvider, fallbackModel)
     }
   }
 
@@ -1293,7 +1405,8 @@ export default function TeacherSupportChat() {
     filesContext: string,
     isEdit: boolean,
     currentDoc?: GeneratedDoc | null,
-    approvedPlan?: DispensaPlan | null
+    approvedPlan?: DispensaPlan | null,
+    signal?: AbortSignal
   ): Promise<string> => {
     const historyContext = chatHistory
       .filter(m => m.role !== 'system')
@@ -1476,6 +1589,7 @@ export default function TeacherSupportChat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal,
         body: JSON.stringify({
           content: promptText,
           history: [],
@@ -1637,7 +1751,7 @@ export default function TeacherSupportChat() {
 
       // EDIT MODE: backend tool-calling agent — no free-text parsing, fully deterministic
       if (isEdit && currentHtml) {
-        const response = await llmApi.editHtmlPage(currentHtml, userRequest)
+        const response = await llmApi.editHtmlPage(currentHtml, userRequest, signal)
         return response.data.html
       }
 
@@ -1695,7 +1809,7 @@ export default function TeacherSupportChat() {
       if (isEdit && currentDoc) {
         const currentPayload = parseBrochurePayload(currentDoc.content)
         if (currentPayload) {
-          const response = await llmApi.editBrochure(currentPayload, userRequest)
+          const response = await llmApi.editBrochure(currentPayload, userRequest, signal)
           return `\`\`\`brochure_data\n${JSON.stringify(response.data.payload, null, 2)}\n\`\`\``
         }
       }
@@ -1715,7 +1829,8 @@ export default function TeacherSupportChat() {
   const generateDispensaPlan = async (
     userRequest: string,
     chatHistory: Message[],
-    filesContext: string
+    filesContext: string,
+    signal?: AbortSignal
   ): Promise<DispensaPlan | null> => {
     const historyContext = chatHistory
       .filter(m => m.role !== 'system')
@@ -1757,6 +1872,7 @@ export default function TeacherSupportChat() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      signal,
       body: JSON.stringify({
         content: prompt,
         history: [],
@@ -1833,6 +1949,10 @@ export default function TeacherSupportChat() {
     const currentYoutube = attachedYoutube
     setAttachedYoutube(null)
     setIsLoading(true)
+    const abortController = new AbortController()
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = abortController
+    const { signal } = abortController
 
     // Build LLM content: append transcript if available
     let llmContent = messageContent
@@ -1842,7 +1962,78 @@ export default function TeacherSupportChat() {
     }
 
     try {
-      if (agentMode === 'ocr') {
+      if (agentMode === 'default' && isPresentationCreationRequest(messageContent)) {
+        const assistantId = `presentation-${Date.now()}`
+        setMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant' as const,
+          content: 'Sto creando una presentazione editabile e la salverò nei Documenti…',
+          timestamp: new Date(),
+        }])
+        setStreamingStatus('Creo una presentazione editabile…')
+
+        const attachmentContext = currentFiles.length > 0
+          ? `\n\nMateriali allegati dal docente: ${currentFiles.map(item => item.file.name).join(', ')}.`
+          : ''
+        const response = await llmApi.presentationAgent({
+          prompt: `${llmContent}${attachmentContext}`,
+          mode: 'create',
+          format: '16:9',
+          dims: { width: 960, height: 540 },
+        }, signal)
+        const presentation = response.data as {
+          title?: string
+          format?: string
+          slides?: Array<Record<string, unknown>>
+        }
+        if (!Array.isArray(presentation.slides) || presentation.slides.length === 0) {
+          throw new Error('La generazione non ha prodotto slide modificabili.')
+        }
+
+        const title = presentation.title?.trim() || 'Nuova presentazione'
+        const draftResponse = await teacherApi.createDocumentDraft({
+          title,
+          doc_type: 'presentation',
+          content_json: JSON.stringify({
+            type: 'presentation_v2',
+            format: presentation.format || '16:9',
+            title,
+            slides: presentation.slides,
+          }),
+        })
+        const draftId = String(draftResponse.data?.id || '')
+        if (!draftId) throw new Error('La presentazione è stata generata, ma non è stato possibile salvarla nei Documenti.')
+
+        const presentationReference: PresentationDocumentData = {
+          draft_id: draftId,
+          title,
+          slide_count: presentation.slides.length,
+        }
+        const assistantContent = [
+          'Presentazione editabile pronta nella sezione Documenti.',
+          '',
+          '```presentation_document',
+          JSON.stringify(presentationReference),
+          '```',
+        ].join('\n')
+        setStreamingStatus(null)
+        setMessages(prev => prev.map(message => (
+          message.id === assistantId
+            ? { ...message, content: assistantContent, provider: 'anthropic', model: 'presentation-agent' }
+            : message
+        )))
+        const assistantMessage: Message = {
+          id: assistantId,
+          role: 'assistant',
+          content: assistantContent,
+          timestamp: new Date(),
+          provider: 'anthropic',
+          model: 'presentation-agent',
+        }
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'presentation-agent')
+        queryClient.invalidateQueries({ queryKey: ['teacher-document-drafts'] })
+
+      } else if (agentMode === 'ocr') {
         const imageFile = currentFiles.find(f => f.type === 'image')?.file
         const imageAttachment = currentFiles.find(f => f.type === 'image')
         if (!imageFile) {
@@ -1933,7 +2124,10 @@ REGOLE IMPORTANTI:
           expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
           'openai',
-          'gpt-5.4-mini'
+          'gpt-5.4-mini',
+          undefined,
+          undefined,
+          signal
         )
 
         const enhancedPrompt = expansionResponse.data?.response?.trim() || llmContent
@@ -1947,7 +2141,7 @@ REGOLE IMPORTANTI:
         })
 
         console.log("Generating image with prompt:", enhancedPrompt, "Provider:", imageProvider)
-        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider)
+        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider, signal)
         const imageUrl = genResponse.data?.image_url
         console.log("Image URL received:", imageUrl ? imageUrl.substring(0, 50) + "..." : "None")
 
@@ -1986,7 +2180,7 @@ REGOLE IMPORTANTI:
         setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
         setStreamingStatus(`Caricamento risposte per «${taskTitle}»...`)
 
-        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined)
+        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined, signal)
         const data = res.data
         const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
         const fullContent = submissionSummary + (data.analysis || 'Nessuna analisi disponibile.')
@@ -2022,6 +2216,8 @@ REGOLE IMPORTANTI:
             filesContext,
             isEdit,
             activeDoc,
+            null,
+            signal
           )
           clearInterval(progressTimer)
 
@@ -2065,7 +2261,7 @@ REGOLE IMPORTANTI:
           && (!pendingDispensaPlan || !/^approva/i.test(userInput))
 
         if (shouldPlanDispensa) {
-          const plan = await generateDispensaPlan(llmContent, messages, filesContext)
+          const plan = await generateDispensaPlan(llmContent, messages, filesContext, signal)
           setIsGeneratingDoc(false)
           if (!plan) {
             throw new Error('Planning dispensa non valido.')
@@ -2121,7 +2317,8 @@ REGOLE IMPORTANTI:
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaFilesContext : filesContext,
             isEdit,
             activeDoc,
-            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null
+            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null,
+            signal
           )
 
           clearInterval(progressTimer)
@@ -2167,7 +2364,7 @@ REGOLE IMPORTANTI:
           setIsGeneratingDoc(false)
         }
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'report') {
-        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage])
+        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage], { signal })
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
           && !/```session_selector[\s\S]*?```/.test(streamResult.content)
@@ -2184,7 +2381,9 @@ REGOLE IMPORTANTI:
               [...messages, userMessage],
               '',
               false,
-              null
+              null,
+              null,
+              signal
             )
             const parsedPayload = parseReportPayload(reportPayloadRaw)
             const reportDoc: GeneratedDoc = {
@@ -2237,7 +2436,8 @@ REGOLE IMPORTANTI:
             selectedModel,
             currentFiles.map(f => f.file),
             imageProvider,
-            imageSize
+            imageSize,
+            signal
           )
           const assistantMessage: Message = {
             id: `resp-${Date.now()}`,
@@ -2267,6 +2467,7 @@ REGOLE IMPORTANTI:
           // history already excludes the current user message — backend appends it via `content`
           const streamResult = await runStreamingRequest(llmContent, messages, {
             sessionId: _sessionId,
+            signal,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: m.content + chunk } : m
@@ -2274,6 +2475,11 @@ REGOLE IMPORTANTI:
             },
             onStatus: (status) => {
               setStreamingStatus(status)
+            },
+            onFallback: () => {
+              setMessages(prev => prev.map(message =>
+                message.id === assistantId ? { ...message, content: '' } : message
+              ))
             },
             onCalendarEvent: (evt) => {
               toast({
@@ -2310,6 +2516,12 @@ REGOLE IMPORTANTI:
         }
       }
     } catch (e: any) {
+      if (isAbortLikeError(e)) {
+        setImageGenerationProgress(null)
+        setStreamingStatus(null)
+        setIsGeneratingDoc(false)
+        return
+      }
       console.error("Teacher support chat error:", e)
       if (e.response) {
         console.error("Server Error Data:", e.response.data)
@@ -2332,8 +2544,11 @@ REGOLE IMPORTANTI:
       }
       setMessages(prev => [...prev, errorMsg])
     } finally {
-      setIsLoading(false)
-      setImageGenerationProgress(null)
+      if (activeGenerationAbortRef.current === abortController) {
+        activeGenerationAbortRef.current = null
+        setIsLoading(false)
+        setImageGenerationProgress(null)
+      }
     }
   }
 
@@ -2568,7 +2783,7 @@ REGOLE IMPORTANTI:
 
 
         {/* Mobile history slide-over */}
-        {isMobile && mobileHistoryOpen && (
+        {!sidebarMode && isMobile && mobileHistoryOpen && (
           <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
             <div className="w-72 h-full shadow-[var(--shadow-xl)] flex flex-col border-r border-slate-200 bg-white/92 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
               <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
@@ -2604,12 +2819,12 @@ REGOLE IMPORTANTI:
         )}
 
         {/* Main Content Area */}
-        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
-              <div className={`flex h-full ${isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
+        <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
+              <div className={`flex h-full ${sidebarMode ? 'w-full' : isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
+                <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
+                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="p-2 flex flex-col items-center gap-3 pt-3">
@@ -2625,27 +2840,11 @@ REGOLE IMPORTANTI:
                     </div>
                   ) : (
                     <>
-                      {/* Section tabs — pill switcher */}
+                      {/* Section header */}
                       <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className="flex-1 flex items-center gap-1 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
-                          <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
-                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
-                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            Cronologia
-                          </button>
-                          <button
-                            onClick={() => setActiveTab('teacherbots')}
-                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'teacherbots'
-                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
-                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Teacherbots
-                          </button>
+                        <div className="flex-1 flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-slate-600">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Cronologia
                         </div>
                         <Button
                           variant="ghost"
@@ -2658,88 +2857,77 @@ REGOLE IMPORTANTI:
                         </Button>
                       </div>
 
-                      {activeTab === 'chat' ? (
-                        <>
-                          {/* Action bar */}
-                          <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
-                            <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
-                              <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
-                            </Button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-                            {conversations.map(conv => (
+                      {/* Action bar */}
+                      <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
+                        <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
+                          <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
+                        </Button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                        {conversations.map(conv => (
+                          <button
+                            key={conv.id}
+                            onClick={() => { openConversation(conv) }}
+                            className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
+                              ? 'font-medium border shadow-sm'
+                              : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                          >
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="truncate flex-1">{conv.title}</span>
+                              {convsWithDocs.has(conv.id) && (
+                                <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
                               <button
-                                key={conv.id}
-                                onClick={() => { openConversation(conv) }}
-                                className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
-                                  ? 'font-medium border shadow-sm'
-                                  : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
-                                  }`}
-                                style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                                className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (confirm('Eliminare questa conversazione?')) {
+                                    try {
+                                      await teacherApi.deleteConversation(conv.id)
+                                    } catch (err) {
+                                      console.error('Failed to delete conv:', err)
+                                    }
+                                    setConversations(prev => prev.filter(c => c.id !== conv.id))
+                                    setConversationCache(prev => {
+                                      const next = { ...prev }
+                                      delete next[conv.id]
+                                      conversationCacheRef.current = next
+                                      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+                                      return next
+                                    })
+                                    // Remove doc from cache
+                                    delete docCacheRef.current[conv.id]
+                                    localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+                                    setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
+                                    if (currentConversationId === conv.id) handleNewChat()
+                                  }
+                                }}
                               >
-                                <div className="flex items-center gap-1 min-w-0">
-                                  <span className="truncate flex-1">{conv.title}</span>
-                                  {convsWithDocs.has(conv.id) && (
-                                    <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between mt-1">
-                                  <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                                  <button
-                                    className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                    style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      if (confirm('Eliminare questa conversazione?')) {
-                                        try {
-                                          await teacherApi.deleteConversation(conv.id)
-                                        } catch (err) {
-                                          console.error('Failed to delete conv:', err)
-                                        }
-                                        setConversations(prev => prev.filter(c => c.id !== conv.id))
-                                        setConversationCache(prev => {
-                                          const next = { ...prev }
-                                          delete next[conv.id]
-                                          conversationCacheRef.current = next
-                                          localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
-                                          return next
-                                        })
-                                        // Remove doc from cache
-                                        delete docCacheRef.current[conv.id]
-                                        localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
-                                        setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
-                                        if (currentConversationId === conv.id) handleNewChat()
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
+                                <Trash2 className="h-3 w-3" />
                               </button>
-                            ))}
-                            {conversations.length === 0 && (
-                              <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex-1 overflow-y-auto px-3 py-2 bg-white/20">
-                          <TeacherbotsPanel
-                            onOpenSettings={(id) => setBotPanelTarget(id)}
-                            onCreateNew={() => setBotPanelTarget('create')}
-                          />
-                        </div>
-                      )}
+                            </div>
+                          </button>
+                        ))}
+                        {conversations.length === 0 && (
+                          <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                        )}
+                      </div>
                     </>
                   )}
                 </aside>
 
                  {/* Chat Main + Canvas split */}
                  <div className="flex-1 flex overflow-hidden min-w-0">
-                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
+                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg && !sidebarMode ? { backgroundColor: chatBg } : undefined}>
 
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
@@ -2799,34 +2987,21 @@ REGOLE IMPORTANTI:
                     </div>
                   )}
 
-                  {/* Teacherbot config modal — full-screen centered modal */}
-                  {botPanelTarget && (
-                    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm md:p-5">
-                      <div className="my-3 h-[min(94vh,1040px)] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-white shadow-2xl md:my-5">
-                        <TeacherbotForm
-                          teacherbotId={botPanelTarget !== 'create' ? botPanelTarget : undefined}
-                          onBack={() => setBotPanelTarget(null)}
-                          onSaved={() => setBotPanelTarget(null)}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
                       /* Mobile header — essential only */
                       <>
                         <button
-                          onClick={() => setMobileHistoryOpen(true)}
+                          onClick={() => !sidebarMode && setMobileHistoryOpen(true)}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                         >
-                          <MessageCircle className="h-4 w-4 text-slate-500" />
-                          <span className="text-xs text-slate-500 font-medium">Storico</span>
+                          <AcademicAiIcon className="h-4 w-4 text-slate-500" />
+                          <span className="text-xs text-slate-500 font-medium">Chat</span>
                         </button>
 
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStyle}>
-                            <Bot className="h-3.5 w-3.5" />
+                            <AcademicAiIcon className="h-3.5 w-3.5" />
                           </div>
                           <span className="text-sm font-bold text-slate-800">AI Docente</span>
                         </div>
@@ -2838,14 +3013,23 @@ REGOLE IMPORTANTI:
                           <Plus className="h-4 w-4 text-slate-500" />
                           <span className="text-xs text-slate-500 font-medium">Nuova</span>
                         </button>
+                        {(onMinimize || onClose) && (
+                          <button
+                            onClick={handleDockOrClose}
+                            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
+                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                          >
+                            {sidebarMode ? <X className="h-4 w-4 text-slate-500" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : 'text-slate-500'}`} />}
+                          </button>
+                        )}
                       </>
                     ) : (
                       /* Desktop header — full controls */
                       <>
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
-                        <p className="text-xs text-slate-500">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="min-w-0">
+                        <h1 className="truncate text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                        <p className="truncate text-xs text-slate-500">
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
@@ -2856,7 +3040,7 @@ REGOLE IMPORTANTI:
                         </p>
                       </div>
                       {/* Reopen canvas button — shown when a doc exists for this conversation but canvas is closed */}
-                      {currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
+                      {!sidebarMode && currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
                         <button
                           onClick={() => {
                             const doc = docCacheRef.current[currentConversationId]
@@ -2872,8 +3056,21 @@ REGOLE IMPORTANTI:
 
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                        {(onMinimize || onClose) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDockOrClose}
+                            className={isDockArmed
+                              ? 'dock-armed-glow rounded-xl border border-emerald-300 text-white shadow-sm'
+                              : `rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
+                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                          >
+                            {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
+                          </Button>
+                        )}
                         {/* Generatore */}
-                        {agentMode === 'image' && (
+                        {!sidebarMode && agentMode === 'image' && (
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {([
@@ -2914,28 +3111,31 @@ REGOLE IMPORTANTI:
                         )}
 
 
-                        {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page') ? (
+                        {!sidebarMode && (agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page') ? (
                           <span className="text-[10px] bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 border border-violet-100">
                             <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
                             Claude Sonnet 4.6
                           </span>
-                        ) : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
+                        ) : !sidebarMode && (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
                         ) : (
-                          agentMode !== 'image' && (
+                          (sidebarMode || agentMode !== 'image') && (
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"
+                                className={sidebarMode
+                                  ? "flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 shadow-sm transition-all hover:bg-slate-50"
+                                  : "flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
                                 style={selectedSoftStyle}
+                                title="Seleziona modello"
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
-                                <span>{availableModels.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                <span className={sidebarMode ? 'sr-only' : ''}>{availableModels.find(m => m.id === selectedModel)?.name}</span>
+                                <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
                               {/* Dropdown */}
@@ -2997,7 +3197,7 @@ REGOLE IMPORTANTI:
                         )}
                       </div>
 
-                      <div className="hidden lg:flex items-center gap-2 relative">
+                      {!sidebarMode && <div className="hidden lg:flex items-center gap-2 relative">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -3075,7 +3275,7 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                         </div>
-                      </div>
+                      </div>}
                     </div>
                       </>
                     )}
@@ -3166,7 +3366,7 @@ REGOLE IMPORTANTI:
                         </div>
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center opacity-50">
-                          <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                          <AcademicAiIcon className="mb-4 h-12 w-12 text-slate-300" />
                           <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
                         </div>
                       )
@@ -3175,15 +3375,15 @@ REGOLE IMPORTANTI:
                         <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {msg.role === 'assistant' && (
                             <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                              <Bot className="h-4 w-4 text-red-500" />
+                              <AcademicAiIcon className="h-4 w-4 text-red-500" />
                             </div>
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
                             <div className={`teacher-support-message px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'border'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
-                              style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
+                              style={msg.role === 'user' && !chatBgIsDark ? userBubbleStyle : undefined}
                             >
                               {msg.role === 'assistant' ? (
                                 <MessageContent
@@ -3202,7 +3402,10 @@ REGOLE IMPORTANTI:
                                   darkMode={chatBgIsDark}
                                 />
                               ) : (
-                                <ReactMarkdown className={`chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
+                                <ReactMarkdown
+                                  className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-bold"
+                                  components={markdownCodeComponents()}
+                                >
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
@@ -3253,7 +3456,7 @@ REGOLE IMPORTANTI:
                     {isLoading && !isGeneratingDoc && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-red-500" />
+                          <AcademicAiIcon className="h-4 w-4 text-red-500" />
                         </div>
                         <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
                           <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-red-500'}`} />
@@ -3437,7 +3640,7 @@ REGOLE IMPORTANTI:
                                   <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
                                 </div>
                               ) : f.type === 'data' ? (
-                                <div className="w-64 md:w-80">
+                                <div className={sidebarMode ? 'w-64' : 'w-64 md:w-80'}>
                                   {f.dataPreview
                                     ? <DataFileCard preview={f.dataPreview} compact />
                                     : <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 text-xs text-emerald-700">
@@ -3525,7 +3728,115 @@ REGOLE IMPORTANTI:
                           onChange={handleFileSelect} />
 
                         {/* Mode Selector — desktop only (mobile uses pills above) */}
-                        {!isMobile && (
+                        {sidebarMode && (
+                          <div className="relative flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-full bg-slate-950 text-white hover:bg-slate-800"
+                              onClick={() => setShowActionMenu((prev) => !prev)}
+                              title="Strumenti chatbot"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            {showActionMenu && (
+                              <div className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Strumenti</div>
+                                <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
+                                  <VoiceRecorder onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)} />
+                                  <span className="text-xs font-medium text-slate-600">Dettatura vocale</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowActionMenu(false)
+                                    fileInputRef.current?.click()
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Paperclip className="h-3.5 w-3.5" />
+                                  Allegati
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowLinkModal((prev) => !prev)}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Youtube className="h-3.5 w-3.5" />
+                                  Video YouTube
+                                </button>
+                                {showLinkModal && (
+                                  <div className="mx-1 my-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                                    <input
+                                      type="url"
+                                      value={linkInputValue}
+                                      onChange={e => setLinkInputValue(e.target.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter' && linkInputValue.trim()) {
+                                          handleConfirmLink(linkInputValue.trim())
+                                          setShowActionMenu(false)
+                                        }
+                                      }}
+                                      placeholder="Incolla link..."
+                                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="mt-2 h-7 w-full text-xs bg-slate-900 text-white"
+                                      disabled={!linkInputValue.trim()}
+                                      onClick={() => {
+                                        if (!linkInputValue.trim()) return
+                                        handleConfirmLink(linkInputValue.trim())
+                                        setShowActionMenu(false)
+                                      }}
+                                    >
+                                      Aggiungi
+                                    </Button>
+                                  </div>
+                                )}
+                                <div className="my-1 h-px bg-slate-100" />
+                                {AGENT_MODES.map(m => {
+                                  const icon = m.id === 'default'
+                                    ? <MessageSquare className="h-3.5 w-3.5" />
+                                    : m.id === 'report'
+                                      ? <FileText className="h-3.5 w-3.5" />
+                                      : m.id === 'quiz'
+                                        ? <CheckSquare className="h-3.5 w-3.5" />
+                                        : m.id === 'exercise'
+                                          ? <Edit3 className="h-3.5 w-3.5" />
+                                          : m.id === 'image'
+                                            ? <ImageIcon className="h-3.5 w-3.5" />
+                                            : m.id === 'ocr'
+                                              ? <ScanText className="h-3.5 w-3.5" />
+                                              : m.id === 'analysis'
+                                                ? <BarChart2 className="h-3.5 w-3.5" />
+                                                : m.id === 'brochure'
+                                                  ? <Layout className="h-3.5 w-3.5" />
+                                                  : m.id === 'dispensa'
+                                                    ? <FileText className="h-3.5 w-3.5" />
+                                                    : <Database className="h-3.5 w-3.5" />
+                                  const isSelected = agentMode === m.id
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      onClick={() => {
+                                        handleChangeAgentMode(m.id)
+                                        setShowActionMenu(false)
+                                      }}
+                                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition-colors ${isSelected ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                      {icon}
+                                      <span className="flex-1">{m.id === 'image' ? t('teacher_chat.mode_image') : m.label}</span>
+                                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {!isMobile && !sidebarMode && (
                           <div className="relative flex-shrink-0 mb-0.5" ref={modeMenuRef}>
                             <Button
                               variant="ghost"
@@ -3600,12 +3911,12 @@ REGOLE IMPORTANTI:
                           </div>
                         )}
 
-                        <VoiceRecorder
+                        {!sidebarMode && <VoiceRecorder
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
-                        />
+                        />}
 
                         {/* Link button + popover */}
-                        <div className="relative flex-shrink-0" ref={linkModalRef}>
+                        {!sidebarMode && <div className="relative flex-shrink-0" ref={linkModalRef}>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -3668,9 +3979,9 @@ REGOLE IMPORTANTI:
                               </div>
                             </div>
                           )}
-                        </div>
+                        </div>}
 
-                        <Button
+                        {!sidebarMode && <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
@@ -3678,7 +3989,7 @@ REGOLE IMPORTANTI:
                           title="Allega"
                         >
                           <Paperclip className="h-4 w-4" />
-                        </Button>
+                        </Button>}
 
                         <textarea
                           value={inputText}
@@ -3700,23 +4011,33 @@ REGOLE IMPORTANTI:
                           }}
                         />
 
-                        {/* Mode tag — desktop only */}
-                        <Button
-                          onClick={() => { void handleSend() }}
-                          disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
-                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
-                            ? 'bg-slate-100 text-slate-300'
-                            : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
-                            }`}
-                          size="icon"
-                        >
-                          <Send className="h-4 w-4 ml-0.5" />
-                        </Button>
+                        {isLoading ? (
+                          <Button
+                            onClick={stopActiveGeneration}
+                            className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
+                            size="icon"
+                            title="Interrompi generazione"
+                          >
+                            <Square className="h-3.5 w-3.5 fill-current" />
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => { void handleSend() }}
+                            disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))}
+                            className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
+                              ? 'bg-slate-100 text-slate-300'
+                              : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                              }`}
+                            size="icon"
+                          >
+                            <Send className="h-4 w-4 ml-0.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
                 </main>
-                {showCanvas && activeDoc && !isMobile && (
+                {showCanvas && activeDoc && !isMobile && !sidebarMode && (
                   <div className="w-[55%] shrink-0 border-l border-slate-200 overflow-hidden">
                     <DocumentCanvas
                       doc={activeDoc}
@@ -3893,6 +4214,7 @@ function parseContentBlocks(content: string): {
   quiz: QuizData | null;
   exerciseData: ExerciseData | null;
   lessonData: LessonData | null;
+  presentationDocument: PresentationDocumentData | null;
   csv: string | null;
   textContent: string;
   isGenerating: boolean;
@@ -3906,6 +4228,7 @@ function parseContentBlocks(content: string): {
   let quiz: QuizData | null = null
   let exerciseData: ExerciseData | null = null
   let lessonData: LessonData | null = null
+  let presentationDocument: PresentationDocumentData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
@@ -3952,7 +4275,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, exerciseData, lessonData, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+    return { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
@@ -4068,6 +4391,21 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing lesson_data", e) }
   }
 
+  const presentationDocumentMatch = content.match(/```presentation_document\s*([\s\S]*?)```/)
+  if (presentationDocumentMatch) {
+    try {
+      const parsed = JSON.parse(presentationDocumentMatch[1].trim()) as PresentationDocumentData
+      if (parsed?.draft_id && parsed?.title) {
+        presentationDocument = {
+          draft_id: String(parsed.draft_id),
+          title: String(parsed.title),
+          slide_count: Number(parsed.slide_count || 0),
+        }
+        textContent = textContent.replace(/```presentation_document[\s\S]*?```/, '').trim()
+      }
+    } catch (e) { console.error('Error parsing presentation_document', e) }
+  }
+
   // Extract Session Selector
   const sessionMatch = content.match(/```session_selector\s*([\s\S]*?)```/)
   if (sessionMatch) {
@@ -4103,7 +4441,7 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing action menu", e) }
   }
 
-  return { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+  return { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -4264,7 +4602,8 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   toast: any;
   darkMode?: boolean
 }) {
-  const { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const [fullLessonOpen, setFullLessonOpen] = useState(false)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -4528,6 +4867,56 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         </div>
       )}
 
+      {presentationDocument && (
+        <div
+          className="mt-3 cursor-pointer overflow-hidden rounded-xl border border-indigo-200 bg-white transition hover:border-indigo-300 hover:shadow-md"
+          role="link"
+          tabIndex={0}
+          onClick={() => window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 bg-indigo-50 px-3 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-white text-indigo-700">
+              <Layout className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="m-0 truncate text-sm font-bold text-indigo-950">{presentationDocument.title}</p>
+              <p className="m-0 text-xs text-indigo-600">Presentazione editabile · {presentationDocument.slide_count} slide</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-indigo-100 px-3 py-2.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 border-indigo-200 text-xs text-indigo-700 hover:bg-indigo-50"
+              onClick={event => {
+                event.stopPropagation()
+                window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)
+              }}
+            >
+              <Edit3 className="mr-1 h-3.5 w-3.5" />
+              Apri e modifica
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 bg-indigo-600 text-xs text-white hover:bg-indigo-700"
+              onClick={event => {
+                event.stopPropagation()
+                window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}&publish=1`)
+              }}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Pubblica
+            </Button>
+          </div>
+        </div>
+      )}
+
       {lessonData && (
         <div className="mt-3 border border-emerald-200 rounded-lg overflow-hidden">
           <div className="bg-emerald-50 px-3 py-2 flex items-center justify-between">
@@ -4535,14 +4924,25 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               <FileText className="h-4 w-4" />
               Lezione: {lessonData.title}
             </span>
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => onPublish('lesson', lessonData)}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Pubblica
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-100"
+                onClick={() => setFullLessonOpen(true)}
+              >
+                <FileText className="mr-1 h-3 w-3" />
+                Apri
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onPublish('lesson', lessonData)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Pubblica
+              </Button>
+            </div>
           </div>
           {lessonData.description && (
             <div className="px-3 py-1.5 bg-emerald-50/50 border-b border-emerald-100 text-xs text-emerald-700 italic">
@@ -4558,6 +4958,34 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 ? lessonData.content.slice(0, 600) + '\n\n*...(anteprima troncata)*'
                 : lessonData.content}
             </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
+      {fullLessonOpen && lessonData && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" onClick={() => setFullLessonOpen(false)}>
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-emerald-50 px-5 py-4">
+              <div className="min-w-0">
+                <p className="m-0 text-xs font-bold uppercase tracking-wide text-emerald-600">Lezione completa</p>
+                <h2 className="m-0 truncate text-lg font-black text-emerald-950">{lessonData.title}</h2>
+              </div>
+              <button type="button" onClick={() => setFullLessonOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800" aria-label="Chiudi lezione">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {lessonData.description && <p className="m-0 border-b border-slate-100 px-5 py-3 text-sm italic text-slate-600">{lessonData.description}</p>}
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} className="prose prose-slate max-w-none">
+                {lessonData.content}
+              </ReactMarkdown>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+              <Button variant="outline" onClick={() => setFullLessonOpen(false)}>Chiudi</Button>
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onPublish('lesson', lessonData)}>
+                <Plus className="mr-1 h-4 w-4" /> Pubblica
+              </Button>
+            </div>
           </div>
         </div>
       )}

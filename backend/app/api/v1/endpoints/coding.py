@@ -2,8 +2,9 @@ import re
 import io
 import json
 import logging
+import posixpath
 import zipfile
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -16,7 +17,7 @@ from app.api.v1.endpoints.chat import get_or_create_public_room
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import ChatMessage
-from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingPublication, CodingVersion
+from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingVersion
 from app.models.enums import SenderType
 from app.models.session import Class, Session, SessionStudent
 from app.models.user import User
@@ -29,6 +30,9 @@ from app.schemas.coding import (
     CodingGenerateResponse,
     CodingGeneratedFile,
     CodingProjectCreate,
+    CodingProjectDataListResponse,
+    CodingProjectDataPut,
+    CodingProjectDataResponse,
     CodingProjectDetail,
     CodingProjectResponse,
     CodingVersionCreate,
@@ -93,12 +97,35 @@ Formato obbligatorio:
 Vincoli tecnici:
 - Non usare script remoti, iframe, tracking, cookie o localStorage.
 - Non usare fetch verso internet o API esterne.
-- Se la richiesta include chatbot, modello LLM, assistente AI o generazione immagini, usa il runtime interno gia` disponibile nella preview:
+- Se la richiesta include chatbot, modello LLM, assistente AI o generazione immagini (anche "crea un
+  generatore di immagini", "aggiungi la possibilita` di creare immagini", ecc.), usa SEMPRE ed
+  ESCLUSIVAMENTE il runtime interno gia` disponibile nella preview, che passa dal backend della
+  piattaforma (credenziali reali, es. GPT Image, gia` configurate lato server):
   - await window.GolinelliAI.chat({ content, history, profileKey, provider, model })
   - await window.GolinelliAI.generateImage({ prompt })
-- window.GolinelliAI.chat restituisce un oggetto con "response"; window.GolinelliAI.generateImage restituisce un oggetto con "image_url".
+- window.GolinelliAI.chat restituisce un oggetto con "response"; window.GolinelliAI.generateImage
+  restituisce un oggetto con "image_url" (URL gia` pronto per un tag <img src="...">).
+- ESEMPIO CORRETTO per generazione immagini:
+  async function generaImmagine(prompt) {
+    try {
+      mostraStato('Genero l immagine...')
+      const { image_url } = await window.GolinelliAI.generateImage({ prompt })
+      img.src = image_url
+      mostraStato('Immagine pronta')
+    } catch (err) { mostraErrore('Generazione immagine non riuscita: ' + err.message) }
+  }
+- VIETATO: non scrivere MAI fetch/XHR verso api.openai.com, endpoint DALL-E/Stable Diffusion/altri
+  servizi esterni, chiavi o token hardcoded, o URL immagine placeholder/finti. Anche se il modello che
+  genera questo codice e` DeepSeek o un altro provider, le immagini generate DENTRO l'app dello
+  studente devono SEMPRE passare da window.GolinelliAI.generateImage: e` la piattaforma, non il codice
+  generato, a scegliere il provider immagini reale lato server.
 - Non inventare chiavi API, token o URL esterni. Le chiamate AI devono passare solo da window.GolinelliAI.
+- Se l'app deve ricordare dati creati dall'utente (liste, note, punteggi...) usa
+  window.GolinelliAI.saveData({key, value}) / loadData({key}) (persistono sul backend, sopravvivono a
+  refresh e riapertura del progetto) — MAI localStorage, che qui e` vietato.
 - Gestisci sempre loading, errori e risposta vuota in modo comprensibile per uno studente.
+- Per generazione immagini mostra sempre feedback visibile mentre attendi il server: bottone disabilitato,
+  spinner/testo "Genero l'immagine..." e messaggio di completamento/errore. Non lasciare mai la UI muta.
 - Il progetto deve funzionare come pagina statica in iframe sandboxato.
 - Usa HTML, CSS e JavaScript vanilla. Puoi creare piu` file, ma index.html, styles.css e script.js devono esistere.
 - index.html deve linkare styles.css e script.js. Tutti i colori e stili vivono in styles.css con variabili in :root.
@@ -183,6 +210,26 @@ inline non conformi), nel formato delimitato, senza backtick e senza testo fuori
 Non ristampare i file gia` conformi. Dopo l'ultimo file scrivi ESATTAMENTE: === END ==="""
 
 
+# Deterministic safety net after generation/edits: relative imports that don't resolve to any
+# file in the project (typo, renamed file, forgotten new file) are exactly the kind of breakage
+# students can't debug themselves. This pass fixes them with the minimal change instead of a
+# full regeneration.
+IMPORT_FIX_SYSTEM_PROMPT = """Sei un senior front-end engineer dentro Golinelli.ai. Ricevi un elenco di import
+relativi che non puntano a nessun file esistente in un progetto React + TypeScript, l'elenco dei file
+realmente presenti nel progetto e il contenuto dei file coinvolti. Per ciascun import rotto scegli la
+correzione minima:
+- se nell'elenco dei file esistenti c'e` un percorso quasi omonimo (typo, maiuscole/minuscole, estensione,
+  cartella sbagliata), CORREGGI il percorso dell'import nel file che lo contiene;
+- se non esiste nulla di simile, CREA il file mancante con un'implementazione minima ma funzionante,
+  coerente con come viene importato (stesso export richiesto).
+Non toccare altro: nessuna modifica a logica, stile o file non coinvolti in un import rotto.
+
+FORMATO DI OUTPUT — restituisci SOLO i file che modifichi o crei, senza backtick e senza testo fuori:
+=== FILE: path ===
+<contenuto completo del file>
+=== END ==="""
+
+
 # --- Multi-phase streaming generation prompts (plan -> per-file) ---
 PLAN_SYSTEM_PROMPT = """Sei un senior software architect e UI/UX lead dentro Golinelli.ai.
 Progetti applicazioni web COMPLETE e ambiziose: non semplici paginette, ma vere mini-piattaforme
@@ -238,7 +285,13 @@ Tecnica:
 - index.html linka styles.css e script.js (e i moduli .js/.css del piano) con percorsi relativi;
 - TUTTI i colori e gli stili vivono in styles.css con variabili in :root, riusate ovunque;
 - per AI usa il runtime interno: await window.GolinelliAI.chat({content, history, profileKey}) che
-  restituisce {response}, e await window.GolinelliAI.generateImage({prompt}) che restituisce {image_url};
+  restituisce {response}, e await window.GolinelliAI.generateImage({prompt}) che restituisce {image_url}
+  (URL pronto per <img src>). Per generazione immagini usa SEMPRE ed ESCLUSIVAMENTE questa funzione:
+  MAI fetch/XHR verso api.openai.com o altri servizi esterni, MAI chiavi/token hardcoded;
+- quando usi generateImage mostra sempre feedback visibile fino al risultato: pulsante disabilitato,
+  spinner/testo di attesa, messaggio di immagine pronta ed errore se fallisce;
+- se l'app deve ricordare dati creati dall'utente usa window.GolinelliAI.saveData({key, value}) /
+  loadData({key}) (persistono sul backend) — MAI localStorage, qui vietato;
 - gestisci sempre stati di caricamento, errore e vuoto in modo comprensibile per studenti;
 - contenuto adatto a studenti."""
 
@@ -287,18 +340,45 @@ sue variabili :root e le sue regole sono VINCOLANTI e PREVALGONO su ogni tua sce
 - segui le ricette di bottoni/card/superfici del design-system.md. Coerenza visiva totale col contratto.
 
 PERSISTENZA DATI: se l'app gestisce dati creati dall'utente (liste, bot, note, documenti, punteggi...),
-PERSISTILI in localStorage così sopravvivono al refresh. Usa una chiave con prefisso del progetto
-(es. `golinelli:<nome-app>:<entità>`), carica all'avvio (lazy initializer di useState) e salva a ogni
-modifica (useEffect). Gestisci JSON corrotto/assente senza crashare. localStorage è permesso e consigliato.
+PERSISTILI usando window.GolinelliAI.saveData({key, value}) e window.GolinelliAI.loadData({key}) —
+salvano sul backend della piattaforma (non nel browser), quindi i dati sopravvivono a refresh, a
+riapertura del progetto in un altro momento/dispositivo e a modifiche successive del codice. Usa una
+chiave per entità con prefisso del progetto (es. `<entità>`, gestita come un'unica lista/oggetto JSON:
+carica all'avvio con loadData, salva ad ogni modifica con saveData), window.GolinelliAI.deleteData({key})
+per svuotare. Gestisci sempre il caso "nessun dato ancora" (value null) senza crashare. In alternativa
+localStorage resta permesso solo per preferenze UI effimere (es. tema chiaro/scuro), MAI per i dati che
+lo studente considera il contenuto/il "database" della sua app.
 
 RISORSE ESTERNE: l'ambiente HA rete, quindi font (Google Fonts), immagini da URL e CDN funzionano. Preferisci
-comunque SVG inline/gradienti per la grafica decorativa. Per immagini generate usa
-await window.GolinelliAI.generateImage({prompt}) -> {image_url}. Per l'AI testuale usa
-await window.GolinelliAI.chat({content, history, profileKey}) -> {response}. NON inventare chiavi API o
-endpoint backend: le chiamate AI passano SOLO da window.GolinelliAI.
+comunque SVG inline/gradienti per la grafica decorativa. Per immagini generate (anche se lo studente
+chiede "generatore di immagini" o simili) usa SEMPRE ed ESCLUSIVAMENTE
+await window.GolinelliAI.generateImage({prompt}) -> {image_url} — passa dal backend della piattaforma,
+che usa credenziali reali (GPT Image) gia` configurate lato server, qualunque sia il modello che sta
+generando questo codice. Per l'AI testuale usa
+await window.GolinelliAI.chat({content, history, profileKey}) -> {response}. NON inventare chiavi API,
+non chiamare mai fetch/XHR verso api.openai.com o altri servizi immagine esterni, non usare endpoint
+backend inventati: le chiamate AI passano SOLO da window.GolinelliAI.
+Quando generi immagini, la UI DEVE dare feedback immediato e persistente fino al completamento:
+disabilita il comando, mostra spinner/testo di stato, aggiorna l'anteprima appena arriva image_url,
+e mostra un errore chiaro se la promessa fallisce. Puoi anche passare onStatus a generateImage oppure
+ascoltare window.addEventListener('golinelli:image-status', ...) per stati globali.
+
+IMMAGINI RICHIESTE NEL PROGETTO: se lo studente chiede di inserire, sostituire o completare una o piu`
+immagini descrivendone il soggetto (per esempio "metti una rosa nel bicchiere" o "aggiungi le immagini
+mancanti"), NON inventare mai URL, ID di foto Unsplash/Pexels o percorsi locali inesistenti. Gli URL
+esterni gia` presenti nel progetto o forniti esplicitamente dallo studente possono restare invariati;
+per ogni nuova immagine richiesta usa invece window.GolinelliAI.generateImage({prompt}), mostra lo stato
+di attesa/errore e assegna image_url al relativo tag <img>. Persisti l'URL ottenuto con saveData e
+ricaricalo con loadData, cosi` l'immagine viene generata una sola volta e resta disponibile alle aperture
+successive. Per immagini puramente decorative non richieste esplicitamente preferisci SVG inline o
+gradienti: mai un URL esterno "plausibile" ma non verificato.
 
 FORMATO DI OUTPUT — rispettalo ALLA LETTERA:
 1) Prima un breve RAGIONAMENTO in italiano (markdown, elenchi ok): piano, viste, componenti, scelte di design.
+   Chiudi SEMPRE il ragionamento con un elenco "File:" che elenca ESATTAMENTE i path che scriverai qui sotto,
+   uno per riga, con 2-5 parole sul perche' (es. "- App.tsx: aggiungo la vista dettaglio"). Se stai MODIFICANDO
+   un progetto esistente, l'elenco deve contenere SOLO i file che cambiano davvero (non quelli lasciati intatti)
+   e ogni riga deve dire cosa cambia in quel file, non solo che esiste.
 2) Poi una riga con ESATTAMENTE: @@FILES@@
 3) Poi OGNI file, senza backtick e senza commenti fuori dal codice, in questo formato:
 === FILE: package.json ===
@@ -1083,6 +1163,52 @@ async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, p
             yield chunk
 
 
+MAX_CODING_ATTACHMENTS = 3
+MAX_ATTACHMENT_DATA_URL_CHARS = 2_000_000  # ~1.5MB decoded; frontend downsizes before sending
+_DATA_URL_RE = re.compile(r"^data:([\w/+.-]+);base64,(.+)$", re.DOTALL)
+
+
+async def _describe_attachments(data_urls: list[str]) -> str:
+    """Turn pasted/attached screenshots into a text description via a vision-capable model, so
+    ANY codegen model can use them as reference — including DeepSeek, which has no vision support
+    at all. Never raises: a failed/oversized image is skipped rather than blocking generation."""
+    descriptions: list[str] = []
+    for idx, data_url in enumerate((data_urls or [])[:MAX_CODING_ATTACHMENTS], start=1):
+        if not data_url or len(data_url) > MAX_ATTACHMENT_DATA_URL_CHARS or not _DATA_URL_RE.match(data_url.strip()):
+            continue
+        try:
+            response = await llm_service.generate(
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Descrivi questo screenshot per un frontend engineer che deve modificare "
+                                "un'app React in base a questo riferimento: layout, componenti visibili, "
+                                "testi, colori, e ogni difetto o elemento rilevante per la richiesta dello "
+                                "studente. Sii preciso e conciso. Rispondi in italiano."
+                            ),
+                        },
+                        {"type": "image_url", "image_url": {"url": data_url.strip()}},
+                    ],
+                }],
+                provider="openai",
+                model="gpt-4o",
+                temperature=0.2,
+                max_tokens=500,
+            )
+            descriptions.append(f"[Screenshot {idx}]\n{response.content}")
+        except Exception as exc:
+            logger.warning("attachment vision analysis skipped (%s)", exc)
+    if not descriptions:
+        return ""
+    return (
+        "\n\nScreenshot allegati dallo studente (analizzati automaticamente, usali come riferimento "
+        "visivo per la richiesta):\n\n" + "\n\n".join(descriptions)
+    )
+
+
 async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
     """Second pass: audit generated UI for contrast/overlap/readability defects and fix them.
 
@@ -1201,6 +1327,86 @@ async def _design_review_files(files: list[dict]) -> tuple[list[dict], list[str]
         return list(by_path.values()), [c["path"] for c in changed]
     except Exception as exc:
         logger.warning("design review pass skipped (%s)", exc)
+        return files, []
+
+
+_RELATIVE_IMPORT_RE = re.compile(r"""(?:from\s+|import\s+|import\s*\(\s*|require\s*\(\s*)['"](\.[^'"]+)['"]""")
+
+
+def _extract_relative_imports(content: str) -> list[str]:
+    """Relative import/require/dynamic-import targets ('./x', '../y'). Package imports and path
+    aliases are out of scope — we can only verify paths that resolve inside the project itself."""
+    return _RELATIVE_IMPORT_RE.findall(content)
+
+
+def _import_resolves(base_path: str, import_path: str, existing: set[str]) -> bool:
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(base_path), import_path))
+    if posixpath.splitext(import_path)[1]:
+        # Explicit extension (.css, .svg, .json, ...): only an exact match counts.
+        return resolved in existing
+    candidates = [f"{resolved}{ext}" for ext in (".tsx", ".ts", ".jsx", ".js")]
+    candidates += [posixpath.join(resolved, f"index{ext}") for ext in (".tsx", ".ts", ".jsx", ".js")]
+    return any(c in existing for c in candidates)
+
+
+def _check_broken_imports(files: list[dict]) -> list[dict]:
+    """Scan .ts/.tsx/.js/.jsx files for relative imports that don't resolve to any file the model
+    actually produced — the classic 'renamed/forgot a file mid-edit' breakage that otherwise only
+    surfaces once the student hits the broken preview."""
+    existing = {str(f.get("path") or "") for f in files}
+    broken: list[dict] = []
+    for f in files:
+        path = str(f.get("path") or "")
+        if not path.lower().endswith((".ts", ".tsx", ".js", ".jsx")):
+            continue
+        for imp in _extract_relative_imports(str(f.get("content") or "")):
+            if not _import_resolves(path, imp, existing):
+                broken.append({"file": path, "import": imp})
+    return broken
+
+
+async def _repair_broken_imports(files: list[dict], broken: list[dict]) -> tuple[list[dict], list[str]]:
+    """One focused repair pass for the imports _check_broken_imports flagged: either fix a
+    misspelled/misplaced import path or create the missing file with a minimal implementation.
+    Returns (files, fixed_paths). Never raises — on any problem the original files come back
+    unchanged and the caller flags the version for review instead of calling it 'ready'."""
+    affected_paths = {b["file"] for b in broken}
+    affected = [f for f in files if str(f.get("path") or "") in affected_paths]
+    if not affected:
+        return files, []
+    try:
+        broken_list = "\n".join(f"- {b['file']}: import rotto \"{b['import']}\"" for b in broken[:20])
+        existing_list = "\n".join(
+            sorted(str(f.get("path") or "") for f in files if not str(f.get("path") or "").lower().endswith(".md"))
+        )
+        bundle = "\n\n".join(
+            f"=== FILE: {f.get('path')} ===\n{str(f.get('content') or '')[:12000]}" for f in affected
+        )
+        user = (
+            f"Import rotti da correggere:\n{broken_list}\n\n"
+            f"File realmente presenti nel progetto:\n{existing_list}\n\n"
+            f"Contenuto dei file coinvolti:\n\n{bundle}"
+        )
+        response = await _coding_generate(
+            messages=[{"role": "user", "content": user}],
+            system_prompt=IMPORT_FIX_SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=8000,
+        )
+        fixed = _parse_delimited_files(response.content)
+        fixed = [
+            f for f in fixed
+            if not str(f.get("path") or "").lower().endswith((".md", ".html", ".htm"))
+            and str(f.get("path") or "").lower() not in _RESERVED_PATHS
+        ]
+        if not fixed:
+            return files, []
+        by_path = {str(f.get("path")): f for f in files}
+        for c in fixed:
+            by_path[c["path"]] = c
+        return list(by_path.values()), [c["path"] for c in fixed]
+    except Exception as exc:
+        logger.warning("import repair pass skipped (%s)", exc)
         return files, []
 
 
@@ -1482,7 +1688,10 @@ createRoot(document.getElementById('root')!).render(
   interface Window {
     GolinelliAI?: {
       chat: (args?: { content?: string; history?: unknown[]; profileKey?: string }) => Promise<{ response: string }>
-      generateImage: (args?: { prompt?: string }) => Promise<{ image_url: string }>
+      generateImage: (args?: { prompt?: string; onStatus?: (event: { status: string; message: string; result?: unknown }) => void }) => Promise<{ image_url: string }>
+      saveData: (args?: { key?: string; value?: unknown }) => Promise<{ key: string; value: unknown }>
+      loadData: (args?: { key?: string }) => Promise<{ key: string; value: unknown }>
+      deleteData: (args?: { key?: string }) => Promise<{}>
     }
   }
 }
@@ -1493,6 +1702,15 @@ window.GolinelliAI = window.GolinelliAI || {
   },
   async generateImage() {
     throw new Error('Generazione immagini non configurata in questa distribuzione standalone.')
+  },
+  async saveData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
+  },
+  async loadData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
+  },
+  async deleteData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
   },
 }
 
@@ -2313,6 +2531,126 @@ async def save_project_draft(
     return version
 
 
+# --- Project data store: backend-persisted "database" for generated apps -----------------------
+# Backs window.GolinelliAI.saveData/loadData (see coding sandbox bridge). Unlike localStorage inside
+# the Sandpack iframe, this survives version switches, device changes and browser data clearing —
+# it's stored the same way project files are (in the platform DB), scoped to the project.
+PROJECT_DATA_MAX_KEY_BYTES = 200_000
+PROJECT_DATA_MAX_TOTAL_BYTES = 2_000_000
+PROJECT_DATA_MAX_KEYS = 200
+
+
+def _json_size_bytes(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+
+@router.get("/projects/{project_id}/data", response_model=CodingProjectDataListResponse)
+async def list_project_data(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(CodingProjectData.project_id == project_id)
+    )
+    rows = list(result.scalars().all())
+    return CodingProjectDataListResponse(
+        items=[
+            CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+            for row in rows
+        ],
+        total_size_bytes=sum(row.size_bytes for row in rows),
+        max_size_bytes=PROJECT_DATA_MAX_TOTAL_BYTES,
+    )
+
+
+@router.get("/projects/{project_id}/data/{key}", response_model=CodingProjectDataResponse)
+async def get_project_data(
+    project_id: UUID,
+    key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key not found")
+    return CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+
+
+@router.put("/projects/{project_id}/data/{key}", response_model=CodingProjectDataResponse)
+async def put_project_data(
+    project_id: UUID,
+    key: str,
+    body: CodingProjectDataPut,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    if len(key) > 200:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Key too long")
+
+    new_size = _json_size_bytes(body.value)
+    if new_size > PROJECT_DATA_MAX_KEY_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Value too large")
+
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+
+    totals_result = await db.execute(
+        select(func.count(CodingProjectData.id), func.coalesce(func.sum(CodingProjectData.size_bytes), 0))
+        .where(CodingProjectData.project_id == project_id, CodingProjectData.key != key)
+    )
+    other_keys_count, other_keys_bytes = totals_result.one()
+    if row is None and other_keys_count >= PROJECT_DATA_MAX_KEYS:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Too many keys for this project")
+    if other_keys_bytes + new_size > PROJECT_DATA_MAX_TOTAL_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Project data quota exceeded")
+
+    if row is None:
+        row = CodingProjectData(project_id=project_id, key=key, value_json=body.value, size_bytes=new_size)
+        db.add(row)
+    else:
+        row.value_json = body.value
+        row.size_bytes = new_size
+        row.updated_at = func.now()
+    await db.commit()
+    await db.refresh(row)
+    return CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+
+
+@router.delete("/projects/{project_id}/data/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_data(
+    project_id: UUID,
+    key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
+
+
 @router.post("/projects/{project_id}/generate", response_model=CodingGenerateResponse)
 async def generate_project_code(
     project_id: UUID,
@@ -2580,6 +2918,7 @@ async def generate_project_code_stream(
 
     explicit_prompt = bool((body.prompt or "").strip())
     user_prompt = (body.prompt or "").strip()
+    attachments = [a for a in (body.attachments or []) if a][:MAX_CODING_ATTACHMENTS]
     prompt_message_id: UUID | None = None
 
     if user_prompt:
@@ -2589,7 +2928,7 @@ async def generate_project_code_stream(
             actor_id=actor_id,
             role="user",
             content=user_prompt,
-            metadata_json={"kind": "codegen_request"},
+            metadata_json={"kind": "codegen_request", **({"attachments": attachments} if attachments else {})},
         )
         db.add(prompt_message)
         await db.flush()
@@ -2688,6 +3027,17 @@ async def generate_project_code_stream(
             usage_prompt = 0
             usage_completion = 0
 
+            # Screenshots aren't sent to the codegen model directly (DeepSeek has no vision
+            # support at all, and Anthropic's image format is untested here) — instead a
+            # vision-capable model describes them once, and that description is folded into the
+            # prompt so it works no matter which codegen model is selected.
+            final_gen_user = gen_user
+            if attachments:
+                yield _sse({"type": "status", "message": "Analizzo gli screenshot allegati..."})
+                attachment_context = await _describe_attachments(attachments)
+                if attachment_context:
+                    final_gen_user = f"{gen_user}{attachment_context}"
+
             # ONE coherent generation. The model streams a short reasoning, then "@@FILES@@", then
             # every file as "=== FILE: path ===\n<content>" ending with "=== END ===". Parsed line by
             # line so we can show live reasoning + per-file progress, while keeping a single context
@@ -2738,7 +3088,7 @@ async def generate_project_code_stream(
                 return _sse({"type": "file_start", "path": path})
 
             async for chunk in _coding_generate_stream(
-                messages=[{"role": "user", "content": gen_user}],
+                messages=[{"role": "user", "content": final_gen_user}],
                 system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
                 provider=gen_provider,
                 model=gen_model,
@@ -2799,7 +3149,7 @@ async def generate_project_code_stream(
 
             reasoning_text = "\n".join(reasoning_parts).strip()
             est = build_estimated_token_usage(
-                [{"role": "system", "content": CODEGEN_STREAM_SYSTEM_PROMPT}, {"role": "user", "content": gen_user}],
+                [{"role": "system", "content": CODEGEN_STREAM_SYSTEM_PROMPT}, {"role": "user", "content": final_gen_user}],
                 full,
             )
             usage_prompt += est["prompt_tokens"]
@@ -2842,6 +3192,20 @@ async def generate_project_code_stream(
                 if ds_changed:
                     yield _sse({"type": "status", "message": f"Design system applicato ({len(ds_changed)} file aggiornati)."})
 
+            # Deterministic safety net: catch imports that don't resolve to any file the model
+            # actually produced (typo, renamed/forgotten file) BEFORE marking the version "ready".
+            # One focused repair attempt; if it still doesn't resolve, the version is flagged for
+            # review instead of silently handed to the student as working code.
+            broken_imports_unresolved: list[dict] = []
+            if _is_react_files(files):
+                broken = _check_broken_imports(files)
+                if broken:
+                    yield _sse({"type": "status", "message": "Verifico e correggo import non risolti..."})
+                    files, import_fixed = await _repair_broken_imports(files, broken)
+                    if import_fixed:
+                        yield _sse({"type": "status", "message": f"Import corretti ({len(import_fixed)} file)."})
+                    broken_imports_unresolved = _check_broken_imports(files)
+
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
             summary = f"Progetto aggiornato: {len(files)} file, {file_summary_json['total_lines']} righe."
 
@@ -2863,7 +3227,7 @@ async def generate_project_code_stream(
                 },
                 artifact_manifest_json={},
                 prompt_message_id=prompt_message_id,
-                build_status="ready",
+                build_status="needs_review" if broken_imports_unresolved else "ready",
                 review_status="pending",
                 created_by_actor_type="agent",
             )
@@ -2876,6 +3240,17 @@ async def generate_project_code_stream(
             if proj:
                 proj.current_version_id = new_version_id
                 proj.status = "generated"
+
+            if broken_imports_unresolved:
+                broken_summary = "; ".join(f"{b['file']} -> \"{b['import']}\"" for b in broken_imports_unresolved[:5])
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Architetto",
+                    role="assistant",
+                    content=f"Attenzione: alcuni import non si risolvono e potrebbero rompere l'anteprima ({broken_summary}). Riprova la richiesta o descrivi meglio cosa serve in quei file.",
+                    metadata_json={"kind": "import_warning", "version_id": str(new_version_id), "broken_imports": broken_imports_unresolved[:10]},
+                ))
 
             if reasoning_text:
                 db.add(CodingMessage(
@@ -2935,6 +3310,7 @@ async def generate_project_code_stream(
                 "summary": summary,
                 "version_id": str(new_version_id),
                 "version_number": new_version_number,
+                "needs_review": bool(broken_imports_unresolved),
             })
         except Exception as exc:
             logger.exception("coding generate stream failed")

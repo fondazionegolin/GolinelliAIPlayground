@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, Text, Float, func, Index
+from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, Text, Float, func, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -20,7 +20,13 @@ class Teacherbot(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    creator_student_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("session_students.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name = Column(String(100), nullable=False)
     synopsis = Column(String(255), nullable=True)  # Brief description for card display
     description = Column(Text, nullable=True)  # Full description of bot functionality
@@ -46,22 +52,29 @@ class Teacherbot(Base):
 
     # Relationships
     teacher = relationship("User", backref="teacherbots")
+    creator_student = relationship("SessionStudent", foreign_keys=[creator_student_id])
     publications = relationship("TeacherbotPublication", back_populates="teacherbot", lazy="dynamic", cascade="all, delete-orphan")
     conversations = relationship("TeacherbotConversation", back_populates="teacherbot", lazy="dynamic", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_teacherbots_teacher_status", "teacher_id", "status"),
+        Index("ix_teacherbots_student_status", "creator_student_id", "status"),
+        CheckConstraint(
+            "(teacher_id IS NOT NULL) != (creator_student_id IS NOT NULL)",
+            name="ck_teacherbots_exactly_one_creator",
+        ),
     )
 
 
 class TeacherbotPublication(Base):
-    """Publication of a teacherbot to a class"""
+    """Publication of a teacherbot to a class, or to a single student"""
     __tablename__ = "teacherbot_publications"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     teacherbot_id = Column(UUID(as_uuid=True), ForeignKey("teacherbots.id"), nullable=False, index=True)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False, index=True)
+    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     published_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     published_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -69,10 +82,16 @@ class TeacherbotPublication(Base):
     # Relationships
     teacherbot = relationship("Teacherbot", back_populates="publications")
     class_ = relationship("Class", backref="teacherbot_publications")
+    student = relationship("SessionStudent", backref="teacherbot_publications")
     published_by = relationship("User", foreign_keys=[published_by_id])
 
     __table_args__ = (
         Index("ix_teacherbot_publications_class_active", "class_id", "is_active"),
+        Index("ix_teacherbot_publications_student_active", "student_id", "is_active"),
+        CheckConstraint(
+            "(class_id IS NOT NULL) != (student_id IS NOT NULL)",
+            name="ck_teacherbot_publications_one_target",
+        ),
     )
 
 

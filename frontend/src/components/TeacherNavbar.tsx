@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -18,6 +19,8 @@ import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
+import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 interface TeacherProfile {
   firstName: string
@@ -57,6 +60,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const { data: profileData } = useTeacherProfile()
   const invalidateProfile = useInvalidateTeacherProfile()
   const queryClient = useQueryClient()
+  usePlatformRealtimeSync(queryClient)
   const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
   const isAdmin = authUser?.role === 'ADMIN'
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
@@ -66,19 +70,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showWhatsNew, setShowWhatsNew] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)
   const [chatBadge, setChatBadge] = useState(0)
-
-  // Count incoming class-chat messages on the chat icon, cleared when opened.
-  useEffect(() => {
-    let socket: any = null
-    const onChat = (d: any) => { if (d?.room_type === 'PUBLIC') setChatBadge((n) => n + 1) }
-    const attach = () => {
-      const s = (window as any).socket
-      if (s && s !== socket) { socket = s; s.on('chat_message', onChat) }
-    }
-    attach()
-    const iv = setInterval(attach, 1500)
-    return () => { clearInterval(iv); if (socket) socket.off('chat_message', onChat) }
-  }, [])
+  const processedChatBadgeIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => { if (chatSidebarOpen) setChatBadge(0) }, [chatSidebarOpen])
   const processedNotificationIdsRef = useRef<Set<string>>(new Set())
@@ -124,6 +116,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   // Connect to global WebSocket for teacher notifications (empty sessionId for global)
   const { notifications: socketNotifications } = useSocket('')
+  const { data: invitationData } = useQuery<{ total_pending: number }>({
+    queryKey: ['invitations'],
+    queryFn: async () => (await teacherApi.getInvitations()).data,
+    refetchInterval: 30_000,
+  })
+  const invitationCount = invitationData?.total_pending || 0
 
   // Convert socket notifications to teacher notifications format
   useEffect(() => {
@@ -185,6 +183,29 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     }
   }, [socketNotifications])
 
+  useEffect(() => {
+    if (socketNotifications.length === 0) return
+    const latest = socketNotifications[socketNotifications.length - 1]
+    const type = (latest.notification_data as { type?: string } | undefined)?.type
+    if (type === 'collaboration_invitation' || type === 'school_invitation') {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    }
+  }, [queryClient, socketNotifications])
+
+  // Count incoming class-chat messages on the chat icon, cleared when the chat sidebar is opened.
+  // Uses the same `teacher_notification` channel as the bell above (delivered to the teacher's
+  // personal `user:{id}` room) rather than the raw `chat_message` socket event, which only reaches
+  // sockets joined into a `session:{id}` room — this navbar's socket (useSocket('')) never joins one.
+  useEffect(() => {
+    if (socketNotifications.length === 0) return
+    const latestNotification = socketNotifications[socketNotifications.length - 1]
+    const type = (latestNotification.notification_data as { type?: string } | undefined)?.type
+    if (type !== 'public_chat') return
+    if (processedChatBadgeIdsRef.current.has(latestNotification.id)) return
+    processedChatBadgeIdsRef.current.add(latestNotification.id)
+    setChatBadge((n) => n + 1)
+  }, [socketNotifications])
+
   const handleClearNotifications = () => setTeacherNotifications([])
   const handleMarkAsRead = (id: string) => {
     setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
@@ -236,7 +257,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const loadActiveSessions = async () => {
+  const loadActiveSessions = useCallback(async () => {
     try {
       console.log('[TeacherNavbar] Loading active sessions...')
       // First, get all classes
@@ -278,7 +299,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     } catch (error) {
       console.error('Failed to load active sessions', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const handleRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<PlatformRealtimeDetail>).detail
+      if (detail?.type !== 'platform_change') return
+      if (detail.payload.entity === 'class' || detail.payload.entity === 'session') loadActiveSessions()
+    }
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+  }, [loadActiveSessions])
 
   const handleLogout = () => {
     console.log('[TeacherNavbar] Logout clicked')
@@ -323,17 +354,18 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   })
 
   const navItems = [
-    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
+    { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
+    { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/toy-lm', label: 'Toy LM', icon: Brain },
-    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Board sviluppo', icon: ShieldCheck }] : []),
+    { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
+    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', icon: ShieldCheck }] : []),
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -348,6 +380,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
         navigate(`/teacher/sessions/${notification.session_id}?tab=chat`)
+      } else if (notification.type === 'student_document') {
+        navigate(`/teacher/sessions/${notification.session_id}?tab=documents`)
       } else if (notification.type === 'task_submitted' || notification.type === 'quiz_completed') {
         navigate(`/teacher/sessions/${notification.session_id}?tab=tasks`)
       } else {
@@ -367,22 +401,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 pt-0.5">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowWhatsNew(true)
-                  }}
-                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
-                >
-                  <span className="brand-beta-badge">
-                    BETA
-                  </span>
-                </button>
+                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
               </div>
             </div>
 
@@ -397,6 +420,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       isActive={isActive(item.path)}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
                       accentTextClass="text-[var(--teacher-accent-text)]"
+                      badgeCount={item.path === '/teacher/classes' ? invitationCount : 0}
                     />
                   </Link>
                 ))
@@ -433,7 +457,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="block max-w-[190px] truncate text-[13px] font-black leading-tight text-[var(--teacher-accent-text)]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span
+                      className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
+                      title={currentSession ? currentSession.name : t('navbar.no_session')}
+                    >
+                      {currentSession ? currentSession.name : t('navbar.no_session')}
+                    </span>
                     {currentSession?.joinCode && (
                       <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
                     )}
@@ -514,9 +543,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                                   <p className={`text-sm font-medium truncate ${isSelected ? 'text-[var(--teacher-accent-text)]' : 'text-slate-700'}`}>
                                     {session.name}
                                   </p>
-                                  <p className={`text-xs truncate ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
-                                    {session.className}
-                                  </p>
+                                  <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                                    <p className={`min-w-0 truncate text-xs ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
+                                      {session.className}
+                                    </p>
+                                    {session.joinCode && (
+                                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-black leading-none tracking-widest ${isSelected ? 'bg-white/70 text-[var(--teacher-accent-text)]' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
+                                        {session.joinCode}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
@@ -644,7 +680,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     : 'text-slate-500 hover:text-[var(--teacher-accent-text)]'
                     }`}
                 >
-                  {item.label}
+                  <span className="relative">
+                    {item.label}
+                    {item.path === '/teacher/classes' && invitationCount > 0 && (
+                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                    )}
+                  </span>
                 </Button>
               </Link>
             ))}
@@ -666,7 +707,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 key={item.path}
                 to={item.path}
                 aria-label={item.label}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
                 style={isActiveItem
                   ? {
                       backgroundColor: accentTheme.accent,
@@ -679,6 +720,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     }}
               >
                 <Icon className="h-5 w-5" />
+                {item.path === '/teacher/classes' && invitationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                )}
               </Link>
             )
           })}

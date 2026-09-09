@@ -139,13 +139,13 @@ function getStudentWikiSections(isEnglish: boolean): WikiSection[] {
       },
       {
         id: 'notebook',
-        title: 'Notebook',
+        title: 'Coding Lab',
         description: 'An environment for writing code, running cells, and receiving support during computational activities.',
         icon: FileCode2,
         features: [
           {
             title: 'Coding Notebook',
-            path: 'Student / Notebook',
+            path: 'Student / Coding Lab',
             description: 'Work inside a notebook with cells, executable code, and tutorial support.',
             examples: [
               'Write Python scripts for data analysis.',
@@ -153,7 +153,7 @@ function getStudentWikiSections(isEnglish: boolean): WikiSection[] {
               'Use the notebook tutor to understand errors or complete a cell.',
             ],
             standardFlow: [
-              'Open Notebook and create or select a project.',
+              'Open Coding Lab and create or select a project.',
               'Write code in the cells and run it.',
               'Use assistive tools or tutor support if you need help with the code or output.',
             ],
@@ -393,13 +393,13 @@ function getStudentWikiSections(isEnglish: boolean): WikiSection[] {
     },
     {
       id: 'notebook',
-      title: 'Notebook',
+      title: 'Coding Lab',
       description: 'Ambiente per scrivere codice, eseguire celle e ricevere supporto su attivita computazionali.',
       icon: FileCode2,
       features: [
         {
           title: 'Notebook di coding',
-          path: 'Studente / Notebook',
+          path: 'Studente / Coding Lab',
           description: 'Permette di lavorare in un notebook con celle, codice eseguibile e supporto tutoriale.',
           examples: [
             'Scrivere script Python per analisi dati.',
@@ -407,7 +407,7 @@ function getStudentWikiSections(isEnglish: boolean): WikiSection[] {
             'Usare il tutor del notebook per capire errori o completare una cella.',
           ],
           standardFlow: [
-            'Apri Notebook e crea o seleziona un progetto.',
+            'Apri Coding Lab e crea o seleziona un progetto.',
             'Scrivi codice nelle celle e avvialo.',
             'Usa assist o tutor se serve supporto sul codice o sull output.',
           ],
