@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-10T09:04:58.976157+00:00",
-  "version_label": "2026.09.10-7af71af7",
+  "generated_at": "2026-09-10T09:06:53.170492+00:00",
+  "version_label": "2026.09.10-8dcf0f96",
   "title": "Aggiornamenti branch feature/turing-test",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "7af71af7e899baad3df4c7cc5b0b66b4a79582df",
+  "git_ref": "8dcf0f96eec0a0005dd3c976bac27834530ba0ba",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(turing): add live classroom experience",
-      "description": "Feat(turing): add live classroom experience"
+      "title": "Sync generated changelog",
+      "description": "Sync generated changelog"
     }
   ]
 }
