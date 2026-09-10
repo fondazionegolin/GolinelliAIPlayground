@@ -1,19 +1,14 @@
 {
-  "generated_at": "2026-09-09T07:38:49.311967+00:00",
-  "version_label": "2026.09.09-7c3681fa",
-  "title": "Aggiornamenti branch main",
-  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "7c3681fa1897d7c61c3d132f5f00c795f2e6c0c5",
+  "generated_at": "2026-09-10T09:04:58.976157+00:00",
+  "version_label": "2026.09.10-7af71af7",
+  "title": "Aggiornamenti branch feature/turing-test",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "7af71af7e899baad3df4c7cc5b0b66b4a79582df",
   "items": [
     {
       "category": "improved",
-      "title": "Sync generated changelog",
-      "description": "Sync generated changelog"
-    },
-    {
-      "category": "improved",
-      "title": "Chore(main): promote staging",
-      "description": "Chore(main): promote staging"
+      "title": "Feat(turing): add live classroom experience",
+      "description": "Feat(turing): add live classroom experience"
     }
   ]
 }
