@@ -611,6 +611,65 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(accentProp || DEFAULT_STUDENT_ACCENT)
+  const applyingSubjectiveStateRef = useRef(false)
+
+  useEffect(() => {
+    const applySyncedDraft = (state: { module_key?: string | null; context?: Record<string, unknown> } | null | undefined) => {
+      if (state?.module_key !== 'chatbot' || !state.context) return
+      const hasSyncedValue = typeof state.context.prompt === 'string'
+        || typeof state.context.selectedProfile === 'string'
+        || typeof state.context.conversationId === 'string'
+        || state.context.conversationId === null
+        || typeof state.context.messages === 'string'
+      if (!hasSyncedValue) return
+      applyingSubjectiveStateRef.current = true
+      if (typeof state.context.prompt === 'string') setInput(state.context.prompt)
+      if (typeof state.context.selectedProfile === 'string') setSelectedProfile(state.context.selectedProfile)
+      if (typeof state.context.conversationId === 'string' || state.context.conversationId === null) {
+        setConversationId(state.context.conversationId as string | null)
+      }
+      if (typeof state.context.messages === 'string') {
+        try {
+          const syncedMessages = JSON.parse(state.context.messages) as Array<Omit<Message, 'timestamp'> & { timestamp: string }>
+          if (Array.isArray(syncedMessages)) {
+            setMessages(syncedMessages.map((message) => ({ ...message, timestamp: new Date(message.timestamp) })))
+          }
+        } catch {
+          // Ignore a partial state snapshot; the next realtime update will replace it.
+        }
+      }
+    }
+    const handleSync = (event: Event) => applySyncedDraft((event as CustomEvent).detail)
+    applySyncedDraft((window as any).__golinelliSubjectiveState)
+    window.addEventListener('student-subjective-sync', handleSync)
+    return () => window.removeEventListener('student-subjective-sync', handleSync)
+  }, [])
+
+  useEffect(() => {
+    if (applyingSubjectiveStateRef.current) {
+      applyingSubjectiveStateRef.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      const syncedMessages = messages.slice(-6).map((message) => ({
+        ...message,
+        content: message.content.slice(0, 2500),
+        timestamp: message.timestamp.toISOString(),
+      }))
+      window.dispatchEvent(new CustomEvent('student-subjective-state', {
+        detail: {
+          module_key: 'chatbot',
+          context: {
+            prompt: input,
+            conversationId,
+            selectedProfile,
+            messages: JSON.stringify(syncedMessages),
+          },
+        },
+      }))
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [conversationId, input, messages, selectedProfile])
 
   useEffect(() => {
     if (accentProp) {

@@ -10,10 +10,13 @@ import {
   Copy,
   Edit2,
   FileText,
+  Filter,
   LayoutGrid,
   List,
+  MoreVertical,
   MonitorPlay,
   Pause,
+  Play,
   Plus,
   RotateCcw,
   School,
@@ -44,7 +47,7 @@ import {
 import { teacherApi } from '@/lib/api'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { hexToRgba } from '@/design/themes/colorUtils'
-import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
+import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
 import { InvitationsPanel } from '@/components/InvitationsPanel'
@@ -80,23 +83,13 @@ interface SessionData {
   purge_after?: string | null
 }
 
+type SessionStatusFilter = 'all' | 'active' | 'paused' | 'draft' | 'ended'
+
 export interface TeacherCurrentSession {
   id: string
   name: string
   className: string
   joinCode?: string
-}
-
-interface CurrentSessionLiveData {
-  session: {
-    id: string
-    class_id: string
-    title: string
-    join_code?: string
-    status: SessionData['status']
-    class_name: string
-  }
-  students?: unknown[]
 }
 
 export default function TeacherClassesSessionsManager({
@@ -122,6 +115,9 @@ export default function TeacherClassesSessionsManager({
   const [showTeachersModal, setShowTeachersModal] = useState(false)
   const [classSearch, setClassSearch] = useState('')
   const [sessionSearch, setSessionSearch] = useState('')
+  const [showSessionFilters, setShowSessionFilters] = useState(false)
+  const [sessionStatusFilter, setSessionStatusFilter] = useState<SessionStatusFilter>('all')
+  const [sessionDateFilter, setSessionDateFilter] = useState('')
   const [newClassName, setNewClassName] = useState('')
   const schoolGradeOptions = useMemo(() => [
     t('classes.grade_primary2'),
@@ -201,14 +197,6 @@ export default function TeacherClassesSessionsManager({
       return (await teacherApi.getSessions(selectedClassId, { include_deleted: true })).data
     },
     enabled: !!selectedClassId,
-    refetchInterval: 10000,
-    refetchOnWindowFocus: false,
-  })
-
-  const { data: currentSessionLive } = useQuery<CurrentSessionLiveData>({
-    queryKey: ['session-live', currentSession?.id],
-    queryFn: async () => (await teacherApi.getSessionLive(currentSession!.id)).data,
-    enabled: !!currentSession?.id,
     refetchInterval: 10000,
     refetchOnWindowFocus: false,
   })
@@ -364,30 +352,27 @@ export default function TeacherClassesSessionsManager({
     )
   }, [classSearch, classes])
 
-  const groupedClasses = useMemo(() => {
-    const groups = new Map<string, { id: string; name: string; classes: ClassData[] }>()
-    filteredClasses.forEach((cls) => {
-      const id = cls.school_tenant_id || 'unassigned'
-      const name = cls.school_name || (isEnglish ? 'No institution' : 'Senza istituto')
-      const group = groups.get(id) || { id, name, classes: [] }
-      group.classes.push(cls)
-      groups.set(id, group)
-    })
-    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [filteredClasses, isEnglish])
-
   const filteredOrderedSessions = useMemo(() => {
     const query = sessionSearch.trim().toLowerCase()
-    const sessionsWithoutCurrent = orderedSessions.filter((session) => session.id !== currentSession?.id)
-    if (!query) return sessionsWithoutCurrent
-    return sessionsWithoutCurrent.filter((session) =>
-      [session.title, session.join_code, statusMeta[session.status]?.label]
+    return orderedSessions.filter((session) =>
+      (!query || [session.title, session.join_code, statusMeta[session.status]?.label]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
-          .includes(query)
+          .includes(query)) &&
+      (sessionStatusFilter === 'all' ||
+        (sessionStatusFilter === 'ended'
+          ? session.status === 'ended' || session.status === 'finished'
+          : session.status === sessionStatusFilter)) &&
+      (!sessionDateFilter || (() => {
+        const date = new Date(session.created_at)
+        const localDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        return localDate === sessionDateFilter
+      })())
     )
-  }, [currentSession?.id, orderedSessions, sessionSearch, statusMeta])
+  }, [orderedSessions, sessionDateFilter, sessionSearch, sessionStatusFilter, statusMeta])
+
+  const hasSessionFilters = sessionStatusFilter !== 'all' || Boolean(sessionDateFilter)
 
   const handleSelectClass = (classId: string) => {
     setSelectedClassId(classId)
@@ -446,15 +431,15 @@ export default function TeacherClassesSessionsManager({
     : (isEnglish ? 'Select a class from the side menu to manage its sessions.' : 'Seleziona una classe dal menu laterale per gestire le sessioni in modo ordinato.')
 
   return (
-    <div className="h-full w-full bg-slate-100">
+    <div className="h-full w-full bg-[#f1f5f9]">
       <div
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-100 lg:min-h-[680px] lg:flex-row"
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#f1f5f9] lg:min-h-[680px] lg:flex-row"
         style={{
           borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
         }}
       >
         <aside
-          className="w-full shrink-0 border-b bg-white/80 lg:w-[19rem] lg:border-b-0 lg:border-r"
+          className="flex max-h-[28rem] min-h-0 w-full shrink-0 flex-col border-b bg-[#fafbfd] lg:h-full lg:max-h-none lg:w-[19rem] lg:border-b-0 lg:border-r"
           style={{
             borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
           }}
@@ -466,7 +451,7 @@ export default function TeacherClassesSessionsManager({
               backgroundColor: 'rgba(255,255,255,0.88)',
             }}
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-3">
               <div className="max-w-[14rem]">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   {isEnglish ? 'Teacher panel' : 'Pannello docente'}
@@ -478,27 +463,28 @@ export default function TeacherClassesSessionsManager({
                     : 'Classi, docenti e sessioni live in un explorer.'}
                 </p>
               </div>
+              <InvitationsPanel />
+            </div>
+            <div className="mt-3 flex justify-end">
               <Button
                 onClick={() => setShowNewClassForm((value) => !value)}
                 density="compact"
                 tone="accent"
-                surface="solid"
-                className="h-9 w-9 shrink-0 rounded-full p-0"
-                title={t('classes.new_class')}
-                aria-label={t('classes.new_class')}
+                surface="soft"
+                className="h-8 rounded-full border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm hover:bg-violet-100"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                {t('classes.new_class')}
               </Button>
-              <InvitationsPanel />
             </div>
-            <div className={`relative mt-4 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="relative mt-4 h-10 rounded-[23px] border border-[#e1e8f1] bg-[#fafbfd] shadow-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#90a5ba]" />
               <input
                 type="text"
                 value={classSearch}
                 onChange={(e) => setClassSearch(e.target.value)}
                 placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'}
-                className="w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-9 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:ring-2 focus:ring-violet-200"
               />
               {classSearch && (
                 <button
@@ -510,6 +496,7 @@ export default function TeacherClassesSessionsManager({
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
+              {!classSearch && <Filter className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#91a4bb]" />}
             </div>
           </div>
 
@@ -566,7 +553,7 @@ export default function TeacherClassesSessionsManager({
             </div>
           )}
 
-          <div className="max-h-[28rem] overflow-y-auto px-4 py-4 lg:max-h-[calc(100%-10rem)]">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
             {isClassesLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
@@ -588,47 +575,34 @@ export default function TeacherClassesSessionsManager({
                 </p>
               </div>
             ) : (
-              <div className="space-y-5">
-                {groupedClasses.map((group) => (
-                  <section key={group.id}>
-                    <div className="mb-2 flex items-center justify-between px-1">
-                      <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                        <School className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{group.name}</span>
-                      </span>
-                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{group.classes.length}</span>
-                    </div>
-                    <div className="space-y-2">
-                {group.classes.map((cls) => {
+              <div className="space-y-2.5">
+                {filteredClasses.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
-                  const cardTone: PastelTone = isSelected ? 'violet' : isShared ? 'indigo' : 'slate'
                   return (
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className={`group relative w-full overflow-hidden rounded-[18px] p-3 text-left shadow-sm transition-all ${PASTEL_SURFACES[cardTone]} ${isSelected ? 'ring-1 ring-[rgba(123,105,201,0.32)]' : ''}`}
+                      className={`group relative min-h-[94px] w-full overflow-hidden rounded-[22px] border p-2.5 text-left transition-all hover:-translate-y-px hover:bg-white hover:shadow-sm ${isSelected ? 'border-violet-300 bg-violet-100/80 shadow-sm' : 'border-[#e2e4ec] bg-[#fafbfd]'}`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[cardTone]} ${PASTEL_ICON_TEXT[cardTone]}`}
-                        >
-                          <School className="h-4 w-4" />
+                      <div className="flex h-full items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#d9dee6] bg-white text-[#475569]">
+                          <School className="h-4 w-4" strokeWidth={1.75} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <span className="block truncate text-sm font-bold text-slate-800">{cls.name}</span>
-                              <span className="mt-0.5 block text-[11px] text-slate-500">{cls.school_grade || t('classes.not_set')}</span>
+                              <span className="block truncate text-sm font-bold text-black">{cls.name}</span>
+                              <span className="mt-0.5 block text-xs font-semibold text-[#475569]">{cls.school_grade || t('classes.not_set')}</span>
                             </div>
                             <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`} />
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-                            <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[9px]">
+                            <span className="rounded-full bg-white px-2 py-1 font-bold text-[#475569]">
                               {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
                             </span>
                             {isShared && (
-                              <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">
+                              <span className="rounded-full bg-white px-2 py-1 font-bold text-[#475569]">
                                 {cls.owner_name ? (isEnglish ? `by ${cls.owner_name}` : `di ${cls.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}
                               </span>
                             )}
@@ -638,19 +612,16 @@ export default function TeacherClassesSessionsManager({
                     </button>
                   )
                 })}
-                    </div>
-                  </section>
-                ))}
               </div>
             )}
           </div>
-          <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 py-2 text-xs font-bold text-[#475569] shadow-sm hover:bg-white">
             <span className="flex items-center gap-2"><Archive className="h-3.5 w-3.5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5">{archivedClasses.length}</span>
           </button>
         </aside>
 
-        <section className="min-w-0 flex-1 bg-slate-100">
+        <section className="min-w-0 flex-1 bg-[#f1f5f9]">
           {!selectedClass ? (
             <div className="flex h-full min-h-[420px] items-center justify-center px-6">
               <div className="w-full max-w-lg">
@@ -664,13 +635,13 @@ export default function TeacherClassesSessionsManager({
           ) : (
             <div className="flex h-full flex-col">
               <div
-                className="border-b px-5 py-3"
+                className="border-b px-5 py-4"
                 style={{
                   borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
                   backgroundColor: 'rgba(255,255,255,0.88)',
                 }}
               >
-                <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       {isEnglish ? 'Selected class' : 'Classe selezionata'}
@@ -722,10 +693,7 @@ export default function TeacherClassesSessionsManager({
                           </IconButton>
                         </div>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 font-bold text-white">
-                            <School className="h-2.5 w-2.5" /> {selectedClass.school_name || (isEnglish ? 'No institution' : 'Senza istituto')}
-                          </span>
-                          <span className="rounded-full bg-white/80 px-2 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200/80">
+                          <span className="rounded-full bg-[#f1f5f9] px-2 py-1 font-bold text-[#475569] ring-1 ring-[#e1e8f1]">
                             {selectedClass.school_grade || '—'}
                           </span>
                           {selectedClass.role === 'invited' && (
@@ -751,55 +719,33 @@ export default function TeacherClassesSessionsManager({
                   </div>
 
                   {!isEditingClass && (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <IconButton onClick={() => setShowTeachersModal(true)} title={isEnglish ? 'Manage teachers' : 'Gestisci docenti'} tone="neutral" surface="soft" size="default" className="rounded-full">
-                        <UserPlus className="h-3.5 w-3.5" />
-                      </IconButton>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <Button onClick={() => setShowTeachersModal(true)} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full bg-white px-3 text-xs font-bold shadow-sm">
+                        <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                        {isEnglish ? 'Manage teachers' : 'Gestisci docenti'}
+                      </Button>
                       {selectedClass.role === 'owner' && (
-                        <IconButton
+                        <Button
                           onClick={() => {
                             if (window.confirm(`Archiviare la classe "${selectedClass.name}"? Scomparirà dalla sidebar e resterà recuperabile.`)) archiveClassMutation.mutate(selectedClass.id)
                           }}
                           disabled={archiveClassMutation.isPending}
-                          title={isEnglish ? 'Archive class' : 'Archivia classe'}
-                          tone="danger"
+                          tone="neutral"
                           surface="soft"
-                          size="default"
-                          className="rounded-full"
+                          density="compact"
+                          className="h-8 rounded-full bg-white px-3 text-xs font-bold shadow-sm"
                         >
-                          <Archive className="h-3.5 w-3.5" />
-                        </IconButton>
+                          <Archive className="mr-1.5 h-3.5 w-3.5" />
+                          {isEnglish ? 'Archive class' : 'Archivia classe'}
+                        </Button>
                       )}
-                      <Button
-                        density="compact"
-                        tone="accent"
-                        surface="solid"
-                        onClick={() => {
-                          setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
-                          setShowNewSessionDialog(true)
-                        }}
-                        className="h-9 w-9 rounded-full p-0"
-                        title={t('sessions.new_session')}
-                        aria-label={t('sessions.new_session')}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
                     </div>
                   )}
                 </div>
 
               </div>
 
-              <CurrentSessionToolbarCard
-                currentSession={currentSession}
-                liveData={currentSessionLive}
-                isEnglish={isEnglish}
-                updatePending={updateSessionMutation.isPending}
-                onCopyCode={copyCode}
-                onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-              />
-
-              <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 {isSessionsLoading ? (
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {[1, 2, 3].map((item) => (
@@ -814,49 +760,97 @@ export default function TeacherClassesSessionsManager({
                     tone="slate"
                   />
                 ) : (
-                  <div className="space-y-5">
+                  <div className="space-y-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className={`relative w-full max-w-sm rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <div className="relative h-10 w-full max-w-sm rounded-[23px] border border-[#e1e8f1] bg-[#fafbfd] shadow-sm">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#90a5ba]" />
                         <input
                           type="text"
                           value={sessionSearch}
                           onChange={(e) => setSessionSearch(e.target.value)}
                           placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'}
-                          className="w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                          className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-16 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:ring-2 focus:ring-violet-200"
                         />
                         {sessionSearch && (
                           <button
                             type="button"
                             onClick={() => setSessionSearch('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
+                            className="absolute right-9 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
                             aria-label={isEnglish ? 'Clear session search' : 'Cancella ricerca sessioni'}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setShowSessionFilters((open) => !open)}
+                          className={`absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition-colors ${showSessionFilters || hasSessionFilters ? 'bg-violet-100 text-violet-700' : 'text-[#91a4bb] hover:bg-slate-100 hover:text-[#475569]'}`}
+                          aria-label={isEnglish ? 'Filter sessions' : 'Filtra sessioni'}
+                          aria-pressed={hasSessionFilters}
+                          aria-expanded={showSessionFilters}
+                        >
+                          <Filter className="h-4 w-4" />
+                          {hasSessionFilters && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-violet-600" />}
+                        </button>
+                        {showSessionFilters && (
+                          <div className="absolute right-0 top-12 z-30 w-[min(19rem,calc(100vw-2.5rem))] rounded-2xl border border-[#e1e8f1] bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <p className="text-xs font-bold text-slate-800">{isEnglish ? 'Session filters' : 'Filtri sessione'}</p>
+                              {hasSessionFilters && (
+                                <button type="button" onClick={() => { setSessionStatusFilter('all'); setSessionDateFilter('') }} className="text-[11px] font-bold text-violet-700 hover:text-violet-900">
+                                  {isEnglish ? 'Clear' : 'Azzera'}
+                                </button>
+                              )}
+                            </div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#90a5ba]">
+                              {isEnglish ? 'Status' : 'Stato'}
+                              <select value={sessionStatusFilter} onChange={(event) => setSessionStatusFilter(event.target.value as SessionStatusFilter)} className="mt-1.5 h-10 w-full rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
+                                <option value="all">{isEnglish ? 'All statuses' : 'Tutti gli stati'}</option>
+                                <option value="active">{t('sessions.status_active')}</option>
+                                <option value="paused">{t('sessions.status_paused')}</option>
+                                <option value="draft">{t('sessions.status_draft')}</option>
+                                <option value="ended">{t('sessions.status_ended')}</option>
+                              </select>
+                            </label>
+                            <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-[#90a5ba]">
+                              {isEnglish ? 'Creation date' : 'Data di creazione'}
+                              <input type="date" value={sessionDateFilter} onChange={(event) => setSessionDateFilter(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
+                            </label>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <Button
+                        density="compact"
+                        tone="accent"
+                        surface="soft"
+                        onClick={() => {
+                          setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
+                          setShowNewSessionDialog(true)
+                        }}
+                        className="h-8 rounded-full border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm hover:bg-violet-100"
+                      >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        {t('sessions.new_session')}
+                      </Button>
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#90a5ba]">
+                          {isEnglish ? 'Class sessions' : 'Sessioni della classe'}
+                        </h3>
+                        <p className="mt-1 text-xs font-medium text-[#90a5ba]">
+                          {isEnglish ? 'Compact overview by status' : 'Panoramica compatta differenziata per stato'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#90a5ba]">
                           {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
                         </p>
-                        <div className="flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm" role="group" aria-label={isEnglish ? 'Session view' : 'Vista sessioni'}>
-                          <button
-                            type="button"
-                            onClick={() => setSessionViewMode('grid')}
-                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'grid' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`}
-                            title={isEnglish ? 'Grid view' : 'Vista griglia'}
-                            aria-pressed={sessionViewMode === 'grid'}
-                          >
+                        <div className="flex items-center rounded-xl border border-[#e1e8f1] bg-[#fafbfd] p-0.5 shadow-sm" role="group" aria-label={isEnglish ? 'Session view' : 'Vista sessioni'}>
+                          <button type="button" onClick={() => setSessionViewMode('grid')} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'grid' ? 'bg-violet-100 text-violet-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`} title={isEnglish ? 'Grid view' : 'Vista griglia'} aria-pressed={sessionViewMode === 'grid'}>
                             <LayoutGrid className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setSessionViewMode('list')}
-                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'list' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`}
-                            title={isEnglish ? 'List view' : 'Vista elenco'}
-                            aria-pressed={sessionViewMode === 'list'}
-                          >
+                          <button type="button" onClick={() => setSessionViewMode('list')} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'list' ? 'bg-violet-100 text-violet-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`} title={isEnglish ? 'List view' : 'Vista elenco'} aria-pressed={sessionViewMode === 'list'}>
                             <List className="h-4 w-4" />
                           </button>
                         </div>
@@ -864,18 +858,20 @@ export default function TeacherClassesSessionsManager({
                     </div>
                     {filteredOrderedSessions.length === 0 && trashedSessions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 text-center">
-                        {sessionSearch ? (
+                        {sessionSearch || hasSessionFilters ? (
                           <>
                             <Search className="mb-3 h-8 w-8 text-slate-200" />
                             <p className="text-sm text-slate-400">
-                              {isEnglish ? 'No session matches ' : 'Nessuna sessione corrisponde a '}<strong>"{sessionSearch}"</strong>
+                              {sessionSearch
+                                ? <>{isEnglish ? 'No session matches ' : 'Nessuna sessione corrisponde a '}<strong>"{sessionSearch}"</strong></>
+                                : (isEnglish ? 'No sessions match the selected filters.' : 'Nessuna sessione corrisponde ai filtri selezionati.')}
                             </p>
                           </>
                         ) : (
                           <>
                             <MonitorPlay className="mb-3 h-8 w-8 text-slate-200" />
                             <p className="text-sm text-slate-400">
-                              {isEnglish ? 'There are no other sessions in this class.' : 'Non ci sono altre sessioni in questa classe.'}
+                              {isEnglish ? 'There are no sessions in this class.' : 'Non ci sono sessioni in questa classe.'}
                             </p>
                           </>
                         )}
@@ -897,6 +893,7 @@ export default function TeacherClassesSessionsManager({
                           onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
                           onTrashSession={(session) => setSessionToTrash(session)}
                           currentTeacherId={currentTeacherId}
+                          currentSessionId={currentSession?.id}
                           viewMode={sessionViewMode}
                         />
                         {trashedSessions.length > 0 && (
@@ -1070,117 +1067,6 @@ export default function TeacherClassesSessionsManager({
   )
 }
 
-function CurrentSessionToolbarCard({
-  currentSession,
-  liveData,
-  isEnglish,
-  updatePending,
-  onCopyCode,
-  onStatusChange,
-}: {
-  currentSession?: TeacherCurrentSession | null
-  liveData?: CurrentSessionLiveData
-  isEnglish: boolean
-  updatePending: boolean
-  onCopyCode: (code?: string) => void
-  onStatusChange: (id: string, status: string) => void
-}) {
-  const navigate = useNavigate()
-
-  if (!currentSession) {
-    return null
-  }
-
-  const session = liveData?.session
-  const sessionId = session?.id || currentSession.id
-  const title = session?.title || currentSession.name
-  const className = session?.class_name || currentSession.className
-  const joinCode = session?.join_code || currentSession.joinCode
-  const status = session?.status || 'active'
-  const iconButtonClass = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/75 text-amber-900 ring-1 ring-amber-200 transition-all hover:bg-white hover:text-amber-950 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50'
-
-  return (
-    <div className="z-10 w-full border-b border-amber-300/80 bg-amber-100/95 px-5 py-2 shadow-sm backdrop-blur">
-      <div className="mx-auto flex min-w-0 max-w-6xl items-center gap-2">
-        <button
-          type="button"
-          onClick={() => navigate(`/teacher/sessions/${sessionId}`)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-300/70 text-amber-900">
-            <MonitorPlay className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-amber-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              {isEnglish ? 'Current session' : 'Sessione corrente'}
-            </span>
-            <span className="block truncate text-[13px] font-bold leading-4 text-slate-900">{title}</span>
-            <span className="hidden truncate text-[9px] leading-3 text-slate-500 min-[440px]:block">
-              {className}
-            </span>
-          </span>
-        </button>
-
-        <div className="flex shrink-0 items-center gap-1" onClick={(event) => event.stopPropagation()}>
-          {joinCode && (
-            <button
-              type="button"
-              onClick={() => onCopyCode(joinCode)}
-              className="hidden h-8 items-center gap-1 rounded-full bg-white/75 px-2 font-mono text-[9px] font-bold text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-white sm:inline-flex"
-              title={isEnglish ? 'Copy access code' : 'Copia codice di accesso'}
-            >
-              {joinCode}
-              <Copy className="h-3 w-3" />
-            </button>
-          )}
-          <button
-            type="button"
-            className={iconButtonClass}
-            onClick={() => navigate(`/teacher/sessions/${sessionId}`)}
-            title={isEnglish ? 'Open session' : 'Apri sessione'}
-            aria-label={isEnglish ? 'Open session' : 'Apri sessione'}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className={iconButtonClass}
-            onClick={() => navigate(`/teacher/sessions/${sessionId}?tab=documents`)}
-            title={isEnglish ? 'Session documents' : 'Documenti della sessione'}
-            aria-label={isEnglish ? 'Session documents' : 'Documenti della sessione'}
-          >
-            <FileText className="h-3.5 w-3.5" />
-          </button>
-          {status === 'active' ? (
-            <button
-              type="button"
-              className={iconButtonClass}
-              disabled={updatePending}
-              onClick={() => onStatusChange(sessionId, 'paused')}
-              title={isEnglish ? 'Pause session' : 'Metti in pausa'}
-              aria-label={isEnglish ? 'Pause session' : 'Metti in pausa'}
-            >
-              <Pause className="h-3.5 w-3.5" />
-            </button>
-          ) : (status === 'paused' || status === 'draft') ? (
-            <button
-              type="button"
-              className={iconButtonClass}
-              disabled={updatePending}
-              onClick={() => onStatusChange(sessionId, 'active')}
-              title={status === 'paused' ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
-              aria-label={status === 'paused' ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
-            >
-              <MonitorPlay className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function EmptyStateCard({
   icon,
   title,
@@ -1231,6 +1117,7 @@ function SessionList({
   onStatusChange,
   onTrashSession,
   currentTeacherId,
+  currentSessionId,
   viewMode,
 }: {
   isEnglish: boolean
@@ -1247,25 +1134,13 @@ function SessionList({
   onStatusChange: (id: string, status: string) => void
   onTrashSession: (session: SessionData) => void
   currentTeacherId?: string
+  currentSessionId?: string
   viewMode: 'grid' | 'list'
 }) {
   if (sessions.length === 0) return null
-  const activeCount = sessions.filter((session) => session.status === 'active').length
-
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {isEnglish ? 'Class sessions' : 'Sessioni della classe'}
-        </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          {activeCount > 0
-            ? (isEnglish ? `${activeCount} active sessions` : `${activeCount} sessioni attive`)
-            : (isEnglish ? 'Compact overview by status' : 'Panoramica compatta differenziata per stato')}
-        </p>
-      </div>
-
-      <div className={viewMode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'flex flex-col gap-2'}>
+    <section>
+      <div className={viewMode === 'grid' ? 'flex flex-wrap items-start gap-2.5' : 'flex flex-col gap-2'}>
         {sessions.map((session) => (
           <SessionRow
             key={session.id}
@@ -1281,6 +1156,7 @@ function SessionList({
             onStatusChange={onStatusChange}
             onTrashSession={onTrashSession}
             currentTeacherId={currentTeacherId}
+            isCurrent={session.id === currentSessionId}
             statusMeta={statusMeta}
             isEnglish={isEnglish}
             viewMode={viewMode}
@@ -1304,6 +1180,7 @@ function SessionRow({
   onStatusChange,
   onTrashSession,
   currentTeacherId,
+  isCurrent,
   statusMeta,
   isEnglish,
   viewMode,
@@ -1320,6 +1197,7 @@ function SessionRow({
   onStatusChange: (id: string, status: string) => void
   onTrashSession: (session: SessionData) => void
   currentTeacherId?: string
+  isCurrent: boolean
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   isEnglish: boolean
   viewMode: 'grid' | 'list'
@@ -1328,9 +1206,8 @@ function SessionRow({
   const isActive = session.status === 'active'
   const isPaused = session.status === 'paused'
   const isDraft = session.status === 'draft'
-  const iconTone: PastelTone = isPaused ? 'rose' : isActive ? 'violet' : 'slate'
-  const cardColor = isActive ? '#7b69c9' : isPaused ? '#fe004d' : '#64748b'
-  const cardOpacity = isActive ? 0.09 : isPaused ? 0.05 : 0.045
+  const isEnded = session.status === 'ended' || session.status === 'finished'
+  const [menuOpen, setMenuOpen] = useState(false)
   const canDelete = Boolean(currentTeacherId && session.created_by_teacher_id === currentTeacherId)
   const deleteHint = canDelete
     ? (!['ended', 'finished'].includes(session.status)
@@ -1340,139 +1217,93 @@ function SessionRow({
 
   const navigate = useNavigate()
   const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  const statusStyle = isActive
+    ? 'bg-[#ecfdf5] text-[#047857]'
+    : isPaused
+      ? 'bg-[#fff7df] text-[#b77900]'
+      : isEnded
+        ? 'bg-[#ffe4ee] text-[#e6004c]'
+        : 'bg-[#e2e8f0] text-[#475569]'
+  const cardSurface = isCurrent
+    ? 'border-emerald-300/80 bg-emerald-100/70 shadow-[0_3px_14px_rgba(16,185,129,0.14)] hover:bg-emerald-100/80'
+    : 'border-[#e0e7f1] bg-[#fafbfd] hover:bg-white'
 
   return (
     <Card
       surface="base"
       className={viewMode === 'list'
-        ? 'group flex min-h-0 cursor-pointer flex-col gap-3 rounded-xl border p-3 transition-all hover:shadow-md sm:flex-row sm:items-center'
-        : 'group flex min-h-[128px] cursor-pointer flex-col justify-between rounded-[18px] border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md'}
-      style={{
-        backgroundColor: hexToRgba(cardColor, cardOpacity),
-        borderColor: hexToRgba(cardColor, 0.13),
-        boxShadow: `0 2px 8px ${hexToRgba(cardColor, 0.035)}`,
-      }}
+        ? `group relative flex min-h-[96px] cursor-pointer flex-col gap-3 rounded-[14px] border p-[15px] transition-all hover:shadow-md xl:flex-row xl:items-center ${cardSurface}`
+        : `group relative flex min-h-[153px] w-[300px] max-w-full shrink-0 cursor-pointer flex-col justify-between rounded-[14px] border p-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md ${cardSurface}`}
+      aria-current={isCurrent ? 'true' : undefined}
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
-      <div className={viewMode === 'list' ? 'flex min-w-0 flex-1 items-center gap-3' : ''}>
-        <div className={viewMode === 'list' ? 'flex shrink-0 items-center gap-2' : 'mb-2 flex items-start justify-between gap-3'}>
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS[iconTone]} ${PASTEL_ICON_TEXT[iconTone]}`}>
-            <MonitorPlay className="h-4 w-4" />
-          </div>
-          <StatusBadge meta={meta} active={isActive} />
-        </div>
-
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
           {editingTitleId === session.id ? (
             <form className="flex min-w-0 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
-              <Input
-                autoFocus
-                value={editingTitleValue}
-                onChange={(e) => setEditingTitleValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
-                density="compact"
-                className="min-w-0 flex-1 rounded-2xl bg-white text-sm text-slate-800"
-              />
+              <Input autoFocus value={editingTitleValue} onChange={(e) => setEditingTitleValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }} density="compact" className="min-w-0 flex-1 rounded-xl bg-white text-sm text-slate-800" />
               <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm" className="rounded-full">
                 {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
               </IconButton>
-              <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm" className="rounded-full">
-                <X className="h-3.5 w-3.5" />
-              </IconButton>
             </form>
           ) : (
-            <div className="flex min-w-0 items-start gap-2">
-              <h4 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{session.title}</h4>
-              <button
-                type="button"
-                onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
-                className="rounded-full p-1 text-slate-400 opacity-0 transition-all hover:bg-white/70 hover:text-slate-700 group-hover:opacity-100"
-                title={isEnglish ? 'Rename' : 'Rinomina'}
-              >
-                <Edit2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <h4 className="truncate text-sm font-bold text-black">{session.title}</h4>
           )}
         </div>
 
-        <div className={`${viewMode === 'list' ? 'ml-auto hidden shrink-0 lg:flex' : 'mt-2 flex'} flex-wrap items-center gap-1.5 text-[10px] text-slate-500`}>
-          <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">{createdAt}</span>
-          <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">
-            {session.active_students_count ?? 0} {isActive ? (isEnglish ? 'active' : 'attivi') : (isEnglish ? 'students' : 'studenti')}
-          </span>
-          {session.join_code ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onCopyCode(session.join_code) }}
-              className="inline-flex items-center gap-1 rounded-full bg-white/55 px-2 py-0.5 font-mono font-bold text-slate-600 ring-1 ring-white/70 transition-colors hover:bg-white/90"
-            >
-              {session.join_code}
-              <Copy className="h-2.5 w-2.5" />
-            </button>
-          ) : null}
+        <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${statusStyle}`}>{meta.label}</span>
+          <button type="button" onClick={() => setMenuOpen((open) => !open)} className="flex h-6 w-6 items-center justify-center rounded-full text-[#475569] hover:bg-slate-100" aria-label={isEnglish ? 'Session options' : 'Opzioni sessione'} aria-expanded={menuOpen}>
+            <MoreVertical className="h-4 w-4" />
+          </button>
         </div>
+
+        {menuOpen && (
+          <div className="absolute right-3 top-12 z-20 w-40 overflow-hidden rounded-xl border border-[#e1e8f1] bg-white p-1.5 text-xs shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title); setMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">
+              <Edit2 className="h-3.5 w-3.5" /> {isEnglish ? 'Rename' : 'Rinomina'}
+            </button>
+            <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">
+              <FileText className="h-3.5 w-3.5" /> {isEnglish ? 'Documents' : 'Documenti'}
+            </button>
+            {(isActive || isPaused) && (
+              <button type="button" disabled={updatePending} onClick={() => { onStatusChange(session.id, 'ended'); setMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+                <Square className="h-3.5 w-3.5" /> {isEnglish ? 'Stop' : 'Termina'}
+              </button>
+            )}
+            <button type="button" disabled={!canDelete || updatePending || !isEnded} onClick={() => { onTrashSession(session); setMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" title={deleteHint}>
+              <Trash2 className="h-3.5 w-3.5" /> {isEnglish ? 'Archive' : 'Elimina'}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className={`${viewMode === 'list' ? 'mt-0 shrink-0' : 'mt-2.5'} flex flex-wrap items-center gap-1.5`} onClick={(e) => e.stopPropagation()}>
-        <Button
-          tone={isActive ? 'danger' : 'accent'}
-          surface={isActive ? 'soft' : 'solid'}
-          density="compact"
-          className="h-8 w-8 rounded-full p-0"
-          onClick={() => navigate(`/teacher/sessions/${session.id}`)}
-          title={isEnglish ? 'Configure session' : 'Configura sessione'}
-          aria-label={isEnglish ? 'Configure session' : 'Configura sessione'}
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          tone="neutral"
-          surface="soft"
-          density="compact"
-          className="h-8 w-8 rounded-full bg-white/70 p-0"
-          onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)}
-          title={isEnglish ? 'Session documents' : 'Documenti della sessione'}
-          aria-label={isEnglish ? 'Session documents' : 'Documenti della sessione'}
-        >
-          <FileText className="h-3.5 w-3.5" />
+      <div className={`${viewMode === 'list' ? 'w-full xl:min-w-[270px] xl:w-auto' : 'mt-3'} grid h-[33px] grid-cols-[auto_1fr_auto] items-center rounded-[12px] bg-[#f1f5f9] px-3 text-[13px] font-bold text-[#90a5ba]`}>
+        <span>{createdAt}</span>
+        <span className="text-center">{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'alunni attivi'}</span>
+        {session.join_code ? (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onCopyCode(session.join_code) }} className="inline-flex items-center gap-1 font-mono font-bold transition-colors hover:text-[#475569]">
+            {session.join_code}<Copy className="h-3.5 w-3.5" />
+          </button>
+        ) : <span>—</span>}
+      </div>
+
+      <div className={`${viewMode === 'list' ? 'w-full shrink-0 xl:ml-auto xl:w-auto' : 'mt-2.5'} flex items-center justify-between gap-2`} onClick={(e) => e.stopPropagation()}>
+        <Button tone="neutral" surface="ghost" density="compact" className={`h-8 rounded-full px-3 text-[13px] font-bold text-[#475569] ${isEnded ? 'ml-auto' : ''}`} onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
+          <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+          {isEnded ? (isEnglish ? 'View report' : 'Visualizza report') : (isEnglish ? 'Configure' : 'Configura')}
         </Button>
         {isActive && (
-          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 w-8 rounded-full bg-white/70 p-0" title={isEnglish ? 'Pause session' : 'Metti in pausa'} aria-label={isEnglish ? 'Pause session' : 'Metti in pausa'}>
-            <Pause className="h-3.5 w-3.5" />
-          </Button>
-        )}
-        {(isActive || isPaused) && (
-          <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="h-8 w-8 rounded-full bg-white/70 p-0" title={isEnglish ? 'Stop session' : 'Termina sessione'} aria-label={isEnglish ? 'Stop session' : 'Termina sessione'}>
-            <Square className="h-3.5 w-3.5" />
+          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full bg-[#fafbfd] px-3 text-[13px] font-bold text-black shadow-sm">
+            <Pause className="mr-1.5 h-3.5 w-3.5" /> {isEnglish ? 'Pause' : 'Pausa'}
           </Button>
         )}
         {(isPaused || isDraft) && (
-          <Button
-            onClick={() => onStatusChange(session.id, 'active')}
-            disabled={updatePending}
-            tone="accent"
-            surface="soft"
-            density="compact"
-            className="h-8 w-8 rounded-full bg-white/65 p-0"
-            title={isPaused ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
-            aria-label={isPaused ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
-          >
-            <MonitorPlay className="h-3.5 w-3.5" />
+          <Button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full bg-[#fafbfd] px-3 text-[13px] font-bold text-black shadow-sm">
+            <Play className="mr-1.5 h-3.5 w-3.5" />
+            {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Start' : 'Avvia')}
           </Button>
         )}
-        <span className="inline-flex" title={deleteHint}>
-          <Button
-            onClick={() => onTrashSession(session)}
-            disabled={!canDelete || updatePending || (!['ended', 'finished'].includes(session.status))}
-            tone="danger"
-            surface="ghost"
-            density="compact"
-            className="h-8 w-8 rounded-full p-0 disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label={deleteHint}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </span>
       </div>
     </Card>
   )
@@ -1496,7 +1327,7 @@ function SessionTrash({
   currentTeacherId?: string
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+    <section className="sticky bottom-0 z-10 rounded-2xl border border-[#e1e8f1] bg-[#f8fafc]/95 p-4 shadow-[0_-8px_24px_rgba(148,163,184,0.12)] backdrop-blur">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
@@ -1570,25 +1401,4 @@ function SessionTrash({
       </div>
     </section>
   )
-}
-
-function StatusBadge({ meta, active = false }: { meta: { label: string; tone: string }; active?: boolean }) {
-  if (active) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[11px] font-bold text-[#6753b7] ring-1 ring-white/70">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#7b69c9]" />
-        {meta.label}
-      </span>
-    )
-  }
-  if (meta.tone.includes('blue')) {
-    return <Badge tone="success" surface="soft" density="compact">{meta.label}</Badge>
-  }
-  if (meta.tone.includes('violet')) {
-    return <Badge tone="warning" surface="soft" density="compact">{meta.label}</Badge>
-  }
-  if (meta.tone.includes('pink')) {
-    return <Badge tone="danger" surface="soft" density="compact">{meta.label}</Badge>
-  }
-  return <Badge tone="neutral" surface="soft" density="compact">{meta.label}</Badge>
 }

@@ -904,6 +904,62 @@ async def create_student_preview_token(
     }
 
 
+@router.post("/sessions/{session_id}/students/{student_id}/subjective-view")
+async def create_student_subjective_view_token(
+    session_id: UUID,
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Issue a short-lived student-scoped token for an authorised teacher observer."""
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
+
+    result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.session_id == session_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in session")
+
+    token = create_student_join_token(
+        str(session_id),
+        str(student.id),
+        student.nickname,
+        extra_claims={
+            "subjective_observer": True,
+            "observer_teacher_id": str(teacher.id),
+        },
+        expires_delta=timedelta(minutes=30),
+    )
+    db.add(
+        AuditEvent(
+            tenant_id=student.tenant_id,
+            session_id=session_id,
+            actor_type="TEACHER",
+            actor_user_id=teacher.id,
+            event_type="STUDENT_SUBJECTIVE_VIEW_STARTED",
+            payload_json={
+                "student_id": str(student.id),
+                "nickname": student.nickname,
+            },
+        )
+    )
+    await db.commit()
+
+    return {
+        "token": token,
+        "student_id": str(student.id),
+        "session_id": str(session.id),
+        "session_title": session.title,
+        "nickname": student.nickname,
+    }
+
+
 @router.post("/sessions/{session_id}/modules", response_model=list[SessionModuleResponse])
 async def update_session_modules(
     session_id: UUID,

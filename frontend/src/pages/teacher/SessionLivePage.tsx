@@ -5,7 +5,6 @@ import type { Socket } from 'socket.io-client'
 import { useTranslation } from 'react-i18next'
 import { teacherApi, teacherbotsApi } from '@/lib/api'
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -18,7 +17,7 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
-  Snowflake, Sun, Bot, Brain, MessageSquare,
+  Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
   MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown
 } from 'lucide-react'
@@ -38,6 +37,7 @@ import 'katex/dist/katex.min.css'
 // TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
+import { Switch } from '@/components/ui/switch'
 
 interface StudentData {
   id: string
@@ -116,7 +116,7 @@ export default function SessionLivePage() {
     const tab = searchParams.get('tab')
     if (tab === 'tasks' || tab === 'history' || tab === 'documents') setActiveTab(tab)
   }, [searchParams])
-  const [showOfflineStudents, setShowOfflineStudents] = useState(false)
+  const [showPedagogicalAnalysis, setShowPedagogicalAnalysis] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [taskSearch, setTaskSearch] = useState('')
@@ -137,7 +137,7 @@ export default function SessionLivePage() {
   })
 
   // Get online users + socket for real-time updates
-  const { onlineUsers, socket } = useSocket(sessionId || '')
+  const { socket } = useSocket(sessionId || '')
 
   const { data: tasksData } = useQuery<TaskData[]>({
     queryKey: ['session-tasks', sessionId],
@@ -231,22 +231,6 @@ export default function SessionLivePage() {
     },
   })
 
-  const freezeMutation = useMutation({
-    mutationFn: (studentId: string) => teacherApi.freezeStudent(sessionId!, studentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: 'Studente bloccato' })
-    },
-  })
-
-  const unfreezeMutation = useMutation({
-    mutationFn: (studentId: string) => teacherApi.unfreezeStudent(sessionId!, studentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: 'Studente sbloccato' })
-    },
-  })
-
   const toggleModuleMutation = useMutation({
     mutationFn: ({ moduleKey, isEnabled }: { moduleKey: string; isEnabled: boolean }) =>
       teacherApi.toggleModule(sessionId!, moduleKey, isEnabled),
@@ -298,17 +282,6 @@ export default function SessionLivePage() {
 
 
 
-  // All hooks must be before any conditional returns (Rules of Hooks)
-  const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
-  const onlineStudents = useMemo(
-    () => (data?.students || []).filter(s => onlineStudentIds.has(s.id)),
-    [data?.students, onlineStudentIds]
-  )
-  const offlineStudents = useMemo(
-    () => (data?.students || []).filter(s => !onlineStudentIds.has(s.id)),
-    [data?.students, onlineStudentIds]
-  )
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
@@ -325,7 +298,7 @@ export default function SessionLivePage() {
     )
   }
 
-  const { session, students, modules } = data
+  const { session, modules } = data
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
@@ -456,113 +429,23 @@ export default function SessionLivePage() {
           </div>
         </div>
 
-        {/* Main Layout: Sidebar + Content */}
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-5">
-          <div className="flex flex-col gap-4 md:flex-row">
+        {/* Main control area — students live in the floating rail panel. */}
+        <div className="mx-auto max-w-7xl px-4 py-5 md:px-6">
+            <div className="min-w-0">
 
-            {/* ── Left Sidebar: Students ── */}
-            <div className="w-full md:w-60 md:shrink-0">
-              <Card surface="glass" className="overflow-visible rounded-xl border-slate-200 bg-white/95 md:sticky md:top-4">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-3">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-                    <Users className="h-3.5 w-3.5 text-slate-500" /> Studenti
-                  </span>
-                  <Badge tone="success" surface="outline" density="compact">
-                    {onlineStudents.length} online
-                  </Badge>
-                </div>
-
-                <div className="p-2.5">
-                  {students.length === 0 ? (
-                    <div className="text-center py-6">
-                      <Users className="h-7 w-7 mx-auto mb-1.5 text-slate-200" />
-                      <p className="text-xs text-slate-400">Nessuno studente</p>
-                      <span className="text-xs font-semibold text-slate-400 mt-1 block">
-                        {joinCodeAvailable ? session.join_code : session.status === 'paused' ? 'Codice non disponibile' : 'Codice dismesso'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="max-h-56 space-y-1 overflow-y-auto pr-1 md:max-h-[65vh]">
-                      {onlineStudents.map((student) => (
-                        <div
-                          key={student.id}
-                          className={`flex items-center gap-2 rounded-lg border px-2 py-2 transition-colors ${
-                            student.is_frozen ? 'border-sky-200 bg-sky-50/70' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          {/* Avatar */}
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-semibold text-white flex-shrink-0 ${
-                            student.is_frozen
-                              ? 'bg-[var(--logo-blue)]'
-                              : 'bg-[var(--logo-ink)]'
-                          }`}>
-                            {student.nickname.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="flex-1 text-xs font-medium text-slate-800 truncate min-w-0">{student.nickname}</span>
-                          {/* Actions */}
-                          <div className="flex gap-0.5 shrink-0">
-                            <button
-                              onClick={() => window.dispatchEvent(new CustomEvent('openPrivateChat', { detail: { id: student.id, nickname: student.nickname } }))}
-                              title="Chat diretta"
-                              className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-sky-500 hover:bg-sky-50 transition-colors"
-                            >
-                              <MessageSquare className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => student.is_frozen ? unfreezeMutation.mutate(student.id) : freezeMutation.mutate(student.id)}
-                              title={student.is_frozen ? 'Sblocca' : 'Blocca'}
-                              className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-amber-500 hover:bg-amber-50 transition-colors"
-                            >
-                              {student.is_frozen
-                                ? <Sun className="h-3 w-3 text-amber-400" />
-                                : <Snowflake className="h-3 w-3" />
-                              }
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-
-                      {offlineStudents.length > 0 && (
-                        <>
-                          <button
-                            onClick={() => setShowOfflineStudents(!showOfflineStudents)}
-                            className="mt-2 flex w-full items-center justify-between rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5 text-[11px] text-slate-500 transition-colors hover:border-slate-200 hover:bg-slate-100/70"
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <User className="h-3 w-3" />
-                              Disconnessi ({offlineStudents.length})
-                            </span>
-                            {showOfflineStudents ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                          </button>
-                          {showOfflineStudents && offlineStudents.map((student) => (
-                            <div key={student.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl opacity-40">
-                              <div className="w-6 h-6 rounded-lg bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500 flex-shrink-0">
-                                {student.nickname.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-xs text-slate-500 truncate">{student.nickname}</span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
-
-            {/* ── Main Content Area ── */}
-            <div className="flex-1 min-w-0">
-
-              <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-4">
-                <TabsList surface="muted" className="grid h-auto w-full grid-cols-2 rounded-xl sm:grid-cols-4">
+              <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-5">
+                <TabsList surface="base" className="grid h-auto w-full grid-cols-2 gap-1 rounded-[var(--selection-radius)] border-[color:var(--border-subtle)] bg-white p-1 shadow-none sm:grid-cols-4">
                   {([
                     { key: 'modules', icon: Brain, label: 'Moduli' },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
                     { key: 'documents', icon: FileText, label: 'Documenti' },
                     { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
                   ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
-                    <TabsTrigger key={tab.key} value={tab.key} className="gap-2">
+                    <TabsTrigger
+                      key={tab.key}
+                      value={tab.key}
+                      className="ui-control-label gap-2 rounded-[var(--selection-radius)] border px-4 py-2.5 data-[state=inactive]:border-transparent data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600 data-[state=inactive]:shadow-none data-[state=inactive]:hover:border-[color:var(--selection-border)] data-[state=inactive]:hover:bg-[image:var(--selection-bg)] data-[state=inactive]:hover:text-[var(--selection-text)] data-[state=active]:border-[color:var(--selection-border-hover)] data-[state=active]:bg-[image:var(--selection-active-bg)] data-[state=active]:text-[var(--selection-active-text)] data-[state=active]:shadow-[var(--selection-shadow)]"
+                    >
                       <tab.icon className="h-4 w-4" />
                       <span>{tab.label}</span>
                     </TabsTrigger>
@@ -608,19 +491,13 @@ export default function SessionLivePage() {
                               <p className="text-sm font-semibold text-slate-800">{c.label}</p>
                               <p className="text-[11px] text-slate-400">{c.desc}</p>
                             </div>
-                            {/* Pill toggle */}
-                            <button
-                              type="button"
-                              onClick={() => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: !mod.is_enabled })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors flex-shrink-0 ${
-                                mod.is_enabled ? 'border-[var(--logo-blue)] bg-[var(--logo-blue)]' : 'border-slate-200 bg-slate-100'
-                              }`}
-                              aria-pressed={mod.is_enabled}
-                            >
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                                mod.is_enabled ? 'translate-x-6' : 'translate-x-1'
-                              }`} />
-                            </button>
+                            <Switch
+                              checked={mod.is_enabled}
+                              disabled={toggleModuleMutation.isPending}
+                              onCheckedChange={(isEnabled) => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled })}
+                              aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
+                              className="peer-checked:bg-[var(--logo-violet)] peer-focus:ring-[var(--brand-pill-lavender)]"
+                            />
                           </Card>
                         )
                       })}
@@ -791,7 +668,19 @@ export default function SessionLivePage() {
               {/* ── Storico ── */}
               {activeTab === 'history' && (
                 <>
-                  <AnalyticsPanel sessionId={sessionId!} socket={socket} />
+                  <div className="mb-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowPedagogicalAnalysis(value => !value)}
+                      className={`app-button-chrome flex items-center gap-2 rounded-full px-3.5 py-2 text-xs ${showPedagogicalAnalysis ? 'app-button-chrome-active' : 'app-button-chrome-quiet'}`}
+                      aria-expanded={showPedagogicalAnalysis}
+                    >
+                      <Brain className="h-3.5 w-3.5" />
+                      Analisi pedagogica
+                      {showPedagogicalAnalysis ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  {showPedagogicalAnalysis && <AnalyticsPanel sessionId={sessionId!} socket={socket} />}
                   <ConversationHistoryView
                     sessionId={sessionId!}
                     selectedConversationId={selectedConversationId}
@@ -803,7 +692,6 @@ export default function SessionLivePage() {
             </div>
           </div>
         </div>
-      </div>
     </>
   )
 }
@@ -850,8 +738,9 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
       minute: '2-digit',
     })
   const openDocument = (doc: SharedDocumentData) => {
-    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}`, {
-      state: { documentReturnTo: `${location.pathname}${location.search}` },
+    const documentReturnTo = `${location.pathname}${location.search}`
+    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}&returnTo=${encodeURIComponent(documentReturnTo)}`, {
+      state: { documentReturnTo },
     })
   }
   const renderCard = (doc: SharedDocumentData) => (
@@ -2145,6 +2034,13 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
     },
   })
 
+  useEffect(() => {
+    const source = historyTab === 'teacherbot' ? (tbConversations ?? []) : (conversations ?? [])
+    const firstStudentId = source[0]?.student_id
+    if (!firstStudentId) return
+    setExpandedStudents(current => current.size === 0 ? new Set([firstStudentId]) : current)
+  }, [conversations, historyTab, tbConversations])
+
   // Selected teacherbot conv — fetch its messages
   const selectedTBConv = (tbConversations ?? []).find(c => c.id === selectedTBConvId)
   const { data: tbMessages, isLoading: loadingTBMessages } = useQuery<MessageData[]>({
@@ -2248,34 +2144,41 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
   ]
 
   return (
-    <div className="flex min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-320px)] lg:min-h-[480px] lg:flex-row">
+    <div className="flex min-h-[660px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-270px)] lg:min-h-[560px] lg:flex-row">
 
       {/* ── Left panel ── */}
-      <div className="flex max-h-80 w-full flex-shrink-0 flex-col border-b border-slate-200 bg-slate-50 lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r">
+      <div className="flex max-h-96 w-full flex-shrink-0 flex-col border-b border-slate-200 bg-white lg:max-h-none lg:w-96 lg:border-b-0 lg:border-r">
 
-        {/* Sub-tab bar */}
-        <div className="flex bg-slate-100 rounded-xl m-2 p-0.5 gap-0.5 flex-shrink-0">
-          {TAB_CONFIG.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => {
-                setHistoryTab(tab.key)
+        <div className="flex items-center gap-2 px-4 pb-1 pt-4">
+          <Search className="h-4 w-4 text-slate-400" />
+          <div>
+            <p className="text-sm font-bold text-slate-800">Esplora conversazioni</p>
+            <p className="text-[11px] text-slate-400">Seleziona uno studente e apri una chat</p>
+          </div>
+        </div>
+
+        {/* Conversation type dropdown */}
+        <div className="m-3 flex-shrink-0">
+          <label htmlFor="history-conversation-type" className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            Tipo di conversazione
+          </label>
+          <div className="relative">
+            <select
+              id="history-conversation-type"
+              value={historyTab}
+              onChange={(event) => {
+                setHistoryTab(event.target.value as typeof historyTab)
                 onSelectConversation(null)
                 setSelectedTBConvId(null)
               }}
-              className={`flex-1 flex flex-col items-center py-1.5 rounded-lg text-[10px] font-bold transition-all ${
-                historyTab === tab.key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
-              }`}
+              className="ui-control-label h-10 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-10 text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-[color:var(--selection-border-hover)] focus:ring-2 focus:ring-[color:var(--selection-border)]"
             >
-              <tab.icon className="h-3.5 w-3.5 mb-0.5" />
-              {tab.label}
-              <span className={`text-[9px] ${historyTab === tab.key ? 'text-slate-400' : 'text-slate-300'}`}>
-                {tab.count}
-              </span>
-            </button>
-          ))}
+              {TAB_CONFIG.map(tab => (
+                <option key={tab.key} value={tab.key}>{tab.label} ({tab.count})</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          </div>
         </div>
 
         {/* Conversation list */}
@@ -2294,13 +2197,13 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                       <div key={studentId} className="border-b border-slate-100 last:border-b-0">
                         <button
                           onClick={() => toggleStudent(studentId)}
-                          className={`w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-100 transition-colors ${hasSelected ? 'bg-slate-100' : ''}`}
+                          className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${hasSelected ? 'bg-[var(--brand-pill-lavender)]/45' : ''}`}
                         >
-                          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 text-xs font-bold text-white">
                             {nickname.charAt(0).toUpperCase()}
                           </div>
-                          <span className="flex-1 text-xs font-semibold text-slate-800 truncate">{nickname}</span>
-                          <span className="text-[10px] text-slate-400 mr-0.5">{convs.length}</span>
+                          <span className="flex-1 truncate text-sm font-semibold text-slate-800">{nickname}</span>
+                          <span className="mr-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{convs.length}</span>
                           {isExpanded ? <ChevronUp className="h-3 w-3 text-slate-400 flex-shrink-0" /> : <ChevronDown className="h-3 w-3 text-slate-400 flex-shrink-0" />}
                         </button>
                         {isExpanded && convs.map((conv) => {
@@ -2308,14 +2211,14 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                           const color = profileColor(conv.profile_key)
                           return (
                             <button key={conv.id} onClick={() => onSelectConversation(conv.id)}
-                              className={`w-full text-left px-3 py-1.5 pl-4 flex items-center gap-2 transition-colors border-l-2 ${isActive ? 'bg-white border-l-violet-500' : 'border-l-transparent hover:bg-white hover:border-l-slate-300'}`}
+                              className={`flex w-full items-center gap-3 border-l-2 px-4 py-2.5 pl-6 text-left transition-colors ${isActive ? 'border-l-violet-500 bg-violet-50/60' : 'border-l-transparent hover:bg-slate-50 hover:border-l-slate-300'}`}
                             >
                               <div className={`w-5 h-5 rounded-md ${color} flex items-center justify-center flex-shrink-0`}>
                                 <Bot className="h-2.5 w-2.5 text-white" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-semibold text-slate-700 capitalize truncate">{conv.profile_key}</p>
-                                <p className="text-[10px] text-slate-400">{conv.message_count} msg · {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
+                                <p className="truncate text-xs font-semibold capitalize text-slate-700">{conv.title || conv.profile_key}</p>
+                                <p className="text-[11px] text-slate-400">{conv.message_count} messaggi · {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
                               </div>
                               {isActive && <ChevronRight className="h-3 w-3 text-violet-400 flex-shrink-0" />}
                             </button>

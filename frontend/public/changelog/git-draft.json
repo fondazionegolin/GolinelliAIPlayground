@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-09T07:37:13.103466+00:00",
-  "version_label": "2026.09.09-68086a13",
-  "title": "Aggiornamenti branch staging",
+  "generated_at": "2026-09-09T07:38:49.311967+00:00",
+  "version_label": "2026.09.09-7c3681fa",
+  "title": "Aggiornamenti branch main",
   "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "68086a131f756f4a32a4296ff619b8c837330d29",
+  "git_ref": "7c3681fa1897d7c61c3d132f5f00c795f2e6c0c5",
   "items": [
     {
       "category": "improved",
-      "title": "Chore(staging): sync platform realtime",
-      "description": "Chore(staging): sync platform realtime"
+      "title": "Sync generated changelog",
+      "description": "Sync generated changelog"
     },
     {
       "category": "improved",
-      "title": "Feat(platform): expand realtime workflows",
-      "description": "Feat(platform): expand realtime workflows"
+      "title": "Chore(main): promote staging",
+      "description": "Chore(main): promote staging"
     }
   ]
 }

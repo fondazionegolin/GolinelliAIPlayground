@@ -22,6 +22,7 @@ interface AuthState {
   isAuthenticated: boolean
   setUser: (user: User, token: string) => void
   setStudentSession: (session: StudentSession, token: string) => void
+  setObservedStudentSession: (session: StudentSession, token: string) => void
   logout: () => void
 }
 
@@ -47,6 +48,13 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           isAuthenticated: false,
         })
+      },
+      setObservedStudentSession: (session, token) => {
+        localStorage.setItem('student_token', token)
+        // Keep the teacher identity alive while crossing the protected /teacher
+        // route. The student-scoped token is selected explicitly by the API
+        // interceptor whenever subjective mode is active.
+        set({ studentSession: session })
       },
       logout: () => {
         localStorage.removeItem('student_token')

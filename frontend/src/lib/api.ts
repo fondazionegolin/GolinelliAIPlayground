@@ -9,6 +9,9 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const studentToken = localStorage.getItem('student_token')
+  const isTeacherStudentMode = localStorage.getItem('_preview_mode') === 'true'
+    || Boolean(localStorage.getItem('_subjective_mode'))
+  const isStudentRoute = window.location.pathname.startsWith('/student')
   const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   let hasTeacherAuth = false
   try {
@@ -24,7 +27,7 @@ api.interceptors.request.use((config) => {
 
   // Important: don't send student-token when teacher auth is active,
   // otherwise mixed auth routes may resolve the request as student.
-  if (studentToken && !hasTeacherAuth) {
+  if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
     config.headers['student-token'] = studentToken
   }
   config.headers['Accept-Language'] = appLanguage
@@ -37,11 +40,15 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const url: string = error.config?.url ?? ''
+      const isTeacherStudentMode = localStorage.getItem('_preview_mode') === 'true'
+        || Boolean(localStorage.getItem('_subjective_mode'))
       // Only redirect for auth-critical endpoints; never for content/chat calls
       const isContentCall = url.includes('/llm/') || url.includes('/desktop')
       const isStudentAccessFlow = url.includes('/student/join') || url.includes('/student/check-access')
       const isPublicTeacherbotLink = url.includes('/public/teacherbot-links')
-      if (!url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink) {
+      // In preview/subjective mode StudentDashboard restores the backed-up teacher
+      // session. A hard redirect here would win that race and land on /login.
+      if (!isTeacherStudentMode && !url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink) {
         localStorage.removeItem('student_token')
         window.location.href = '/login'
       }
@@ -530,6 +537,8 @@ export const teacherApi = {
   // Student preview
   createStudentPreview: (sessionId: string) =>
     api.post(`/teacher/sessions/${sessionId}/student-preview`),
+  createStudentSubjectiveView: (sessionId: string, studentId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/students/${studentId}/subjective-view`),
   // Session teachers management
   getSessionTeachers: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/teachers`),
@@ -652,6 +661,36 @@ export const chatApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+}
+
+export const turingApi = {
+  getTeacherSettings: () => api.get('/turing/teacher/settings'),
+  getAvailableStudents: (sessionId: string) =>
+    api.get(`/turing/teacher/sessions/${sessionId}/available-students`),
+  getTeacherCurrent: (sessionId: string) =>
+    api.get(`/turing/teacher/sessions/${sessionId}/experiments/current`),
+  getTeacherExperiment: (sessionId: string, experimentId: string) =>
+    api.get(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}`),
+  prepare: (sessionId: string, data: { title: string; persona_prompt: string; max_questions: number; temperature: number; confidence_style: number; response_length: number; emoji_usage: number }) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments`, data),
+  reinvite: (sessionId: string, experimentId: string) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}/reinvite`),
+  start: (sessionId: string, experimentId: string) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}/start`),
+  sendTeacherMessage: (sessionId: string, experimentId: string, participantId: string, text: string) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}/participants/${participantId}/messages`, { text }),
+  complete: (sessionId: string, experimentId: string) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}/complete`),
+  cancel: (sessionId: string, experimentId: string) =>
+    api.post(`/turing/teacher/sessions/${sessionId}/experiments/${experimentId}/cancel`),
+  getStudentCurrent: () => api.get('/turing/student/experiments/current'),
+  getStudentExperiment: (experimentId: string) => api.get(`/turing/student/experiments/${experimentId}`),
+  markDelivered: (experimentId: string) => api.post(`/turing/student/experiments/${experimentId}/delivered`),
+  markReady: (experimentId: string) => api.post(`/turing/student/experiments/${experimentId}/ready`),
+  sendStudentMessage: (experimentId: string, text: string) =>
+    api.post(`/turing/student/experiments/${experimentId}/messages`, { text }),
+  submitGuess: (experimentId: string, data: { guess: 'HUMAN' | 'AI'; confidence: number; rationale?: string }) =>
+    api.post(`/turing/student/experiments/${experimentId}/guess`, data),
 }
 
 export const toyLmApi = {

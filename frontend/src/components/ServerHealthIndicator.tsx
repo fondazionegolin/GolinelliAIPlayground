@@ -8,12 +8,6 @@ const ACTIVE_CLASS: Record<ServerHealthStatus, string> = {
   red: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]',
 }
 
-const BETA_TEXT_CLASS: Record<ServerHealthStatus, string> = {
-  green: 'text-emerald-800 focus-visible:ring-emerald-300',
-  yellow: 'text-amber-800 focus-visible:ring-amber-300',
-  red: 'text-red-800 focus-visible:ring-red-300',
-}
-
 function withNetworkLatency(data: ServerHealthResponse, networkMs: number): ServerHealthResponse {
   let status = data.status
   const reasons = [...data.reasons]
@@ -65,7 +59,7 @@ function metric(value: number | null | undefined) {
   return value == null ? 'n/d' : `${Math.round(value)}%`
 }
 
-export function ServerHealthIndicator({ onBetaClick }: { onBetaClick?: () => void }) {
+export function ServerHealthIndicator() {
   const { data } = useServerHealth()
   const health: ServerHealthResponse = data ?? {
     status: 'yellow',
@@ -75,26 +69,14 @@ export function ServerHealthIndicator({ onBetaClick }: { onBetaClick?: () => voi
 
   return (
     <div className="group/health relative flex items-center" onClick={(event) => event.stopPropagation()}>
-      <div className="flex min-w-8 flex-col items-center overflow-hidden rounded-full border border-slate-200/90 bg-white/80 shadow-sm transition hover:bg-white">
-        <button
-          type="button"
-          className="flex h-3.5 w-full items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
-          aria-label={`Stato server: ${health.summary}`}
-          title={health.summary}
-        >
-          <span className={`h-2 w-2 rounded-full transition hover:brightness-95 ${ACTIVE_CLASS[health.status]}`} aria-hidden="true" />
-        </button>
-        {onBetaClick && (
-          <button
-            type="button"
-            onClick={onBetaClick}
-            className={`w-full border-t border-slate-200/80 px-1 pb-1 pt-0.5 text-center text-[7px] font-black leading-none tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${BETA_TEXT_CLASS[health.status]}`}
-            aria-label="Scopri le novità della versione beta"
-          >
-            BETA
-          </button>
-        )}
-      </div>
+      <button
+        type="button"
+        className="flex h-5 w-5 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        aria-label={`Stato server: ${health.summary}`}
+        title={health.summary}
+      >
+        <span className={`h-2.5 w-2.5 rounded-full transition hover:brightness-95 ${ACTIVE_CLASS[health.status]}`} aria-hidden="true" />
+      </button>
 
       <div className="pointer-events-none absolute left-0 top-full z-[80] mt-2 hidden w-72 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover/health:block group-focus-within/health:block">
         <div className="flex items-center gap-2">

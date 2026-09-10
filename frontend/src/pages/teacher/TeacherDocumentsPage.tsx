@@ -618,7 +618,9 @@ export default function TeacherDocumentsPage() {
   }
 
   const closeDocumentEditor = () => {
-    const returnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    const stateReturnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    const queryReturnTo = searchParams.get('returnTo')
+    const returnTo = typeof stateReturnTo === 'string' ? stateReturnTo : queryReturnTo
     if (typeof returnTo === 'string' && returnTo.startsWith('/teacher/')) {
       navigate(returnTo)
       return
@@ -626,6 +628,7 @@ export default function TeacherDocumentsPage() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('open')
     nextParams.delete('publish')
+    nextParams.delete('returnTo')
     navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true, state: null })
     setViewMode('list')
   }

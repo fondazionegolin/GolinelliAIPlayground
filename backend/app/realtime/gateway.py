@@ -25,6 +25,7 @@ socket_app = socketio.ASGIApp(sio, socketio_path="")
 connected_users: dict[str, dict] = {}  # sid -> user info
 session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info
+subjective_view_states: dict[str, dict] = {}  # student_id -> latest collaborative UI state
 student_nicknames: dict[str, str] = {}  # student_id -> nickname
 student_avatars: dict[str, str] = {}  # student_id -> avatar_url
 student_accents: dict[str, str] = {}  # student_id -> ui_accent
@@ -34,6 +35,21 @@ voice_rooms: dict[str, dict] = {}  # session_id -> active voice room state
 # Cache for session teacher IDs (session_id -> teacher_id)
 # In production with multiple workers, this should be in Redis
 session_teacher_cache: dict[str, str] = {}
+
+
+def get_online_student_ids(session_id: str) -> list[str]:
+    """Return unique, currently connected student IDs for a session."""
+    student_ids: list[str] = []
+    seen: set[str] = set()
+    for sid in list(session_presence.get(str(session_id), set())):
+        user = connected_users.get(sid)
+        if not user or user.get("type") != "student" or user.get("subjective_observer"):
+            continue
+        student_id = str(user.get("id") or "")
+        if student_id and student_id not in seen:
+            seen.add(student_id)
+            student_ids.append(student_id)
+    return student_ids
 
 async def get_session_teacher_id(session_id: str) -> Optional[str]:
     if session_id in session_teacher_cache:
@@ -259,6 +275,8 @@ def get_user_from_token(token: str) -> Optional[dict]:
             "id": payload.get("sub"),
             "session_id": payload.get("session_id"),
             "nickname": payload.get("nickname"),
+            "subjective_observer": bool(payload.get("subjective_observer")),
+            "observer_teacher_id": payload.get("observer_teacher_id"),
         }
     elif token_type == "access":
         return {
@@ -319,6 +337,12 @@ async def connect(sid, environ, auth):
         except Exception as e:
             print(f"Error fetching student avatar: {e}")
 
+        if user.get("subjective_observer"):
+            await sio.enter_room(sid, f"session:{session_id}")
+            await sio.enter_room(sid, f"subjective-observer:{student_id}")
+            print(f"[Gateway] Teacher observer joined subjective view for student {student_id}")
+            return True
+
         if session_id not in session_presence:
             session_presence[session_id] = set()
         # Whether this student already has a live connection in the session
@@ -334,6 +358,7 @@ async def connect(sid, environ, auth):
         await sio.enter_room(sid, f"session:{session_id}")
         # Also join personal room for private messages
         await sio.enter_room(sid, f"student:{student_id}")
+        await sio.enter_room(sid, f"subjective-student:{student_id}")
 
         # Notify others in session
         await sio.emit(
@@ -388,6 +413,9 @@ async def disconnect(sid):
         return
 
     print(f"[Gateway] User disconnected: {user.get('id')} ({user.get('type')}) sid={sid}")
+
+    if user.get("subjective_observer"):
+        return
 
     if user["type"] == "student":
         session_id = user["session_id"]
@@ -467,6 +495,16 @@ async def join_session(sid, data):
             print(f"[Gateway] join_session denied: student {user.get('id')} session {session_id} not active ({session_status})")
             return {"error": "Session unavailable"}
 
+    if user.get("subjective_observer"):
+        await sio.enter_room(sid, f"session:{session_id}")
+        await sio.enter_room(sid, f"subjective-observer:{user['id']}")
+        return {
+            "session_id": session_id,
+            "online_students": [],
+            "voice_room": _voice_public_state(session_id),
+            "subjective_state": subjective_view_states.get(user["id"]),
+        }
+
     print(f"[Gateway] User {user.get('id')} ({user.get('type')}) joining session {session_id}")
     await sio.enter_room(sid, f"session:{session_id}")
     
@@ -529,7 +567,7 @@ async def join_session(sid, data):
 @sio.event
 async def heartbeat_activity(sid, data):
     user = connected_users.get(sid)
-    if not user or user["type"] != "student":
+    if not user or user["type"] != "student" or user.get("subjective_observer"):
         return
     
     student_id = user["id"]
@@ -565,6 +603,66 @@ async def heartbeat_activity(sid, data):
         room=f"session:{session_id}",
         skip_sid=sid,
     )
+
+
+def _clean_subjective_state(data: dict) -> dict:
+    module_key = data.get("module_key")
+    if module_key is not None:
+        module_key = str(module_key)[:64]
+    raw_context = data.get("context")
+    context: dict = {}
+    if isinstance(raw_context, dict):
+        for key, value in raw_context.items():
+            if not isinstance(key, str) or len(key) > 64:
+                continue
+            if isinstance(value, str):
+                context[key] = value[:20000]
+            elif isinstance(value, (bool, int, float)) or value is None:
+                context[key] = value
+    return {
+        "module_key": module_key,
+        "context": context,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+@sio.event
+async def student_view_state(sid, data):
+    """Broadcast the student's current workspace to authorised subjective observers."""
+    user = connected_users.get(sid)
+    if not user or user.get("type") != "student" or user.get("subjective_observer"):
+        return {"error": "Student access required"}
+
+    state = _clean_subjective_state(data or {})
+    state["student_id"] = user["id"]
+    subjective_view_states[user["id"]] = state
+    await sio.emit("student_view_state", state, room=f"subjective-observer:{user['id']}")
+    return {"success": True}
+
+
+@sio.event
+async def subjective_observer_ready(sid, _data=None):
+    """Return cached state and ask the real student client for a fresh snapshot."""
+    user = connected_users.get(sid)
+    if not user or not user.get("subjective_observer"):
+        return {"error": "Observer access required"}
+
+    await sio.emit("subjective_state_requested", {}, room=f"subjective-student:{user['id']}")
+    return {"success": True, "state": subjective_view_states.get(user["id"])}
+
+
+@sio.event
+async def subjective_command(sid, data):
+    """Forward teacher edits/navigation to the observed student's browser."""
+    user = connected_users.get(sid)
+    if not user or not user.get("subjective_observer"):
+        return {"error": "Observer access required"}
+
+    command = _clean_subjective_state(data or {})
+    command["student_id"] = user["id"]
+    command["observer_teacher_id"] = user.get("observer_teacher_id")
+    await sio.emit("subjective_command", command, room=f"subjective-student:{user['id']}")
+    return {"success": True}
 
 
 @sio.event

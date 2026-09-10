@@ -174,6 +174,7 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
         type="button"
         role="tab"
         aria-selected={isActive}
+        data-state={isActive ? 'active' : 'inactive'}
         onClick={(event) => {
           onClick?.(event)
           if (!event.defaultPrevented) {

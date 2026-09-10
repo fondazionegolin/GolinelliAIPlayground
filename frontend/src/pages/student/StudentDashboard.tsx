@@ -33,6 +33,7 @@ import { AppBackground } from '@/components/ui/AppBackground'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
+import TuringTestPanel from '@/components/TuringTestPanel'
 
 interface SessionInfo {
   session: {
@@ -192,6 +193,20 @@ export default function StudentDashboard() {
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
   const [sharedCodingProject, setSharedCodingProject] = useState<{ projectId: string; nonce: number } | null>(null)
   const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
+  const studentRealtimeSocketRef = useRef<ReturnType<typeof io> | null>(null)
+  const [studentRealtimeSocket, setStudentRealtimeSocket] = useState<ReturnType<typeof io> | null>(null)
+  const activeModuleRef = useRef<string | null>(activeModule)
+
+  useEffect(() => {
+    activeModuleRef.current = activeModule
+    const socket = studentRealtimeSocketRef.current
+    if (!socket?.connected) return
+    const isSubjectiveObserver = Boolean(localStorage.getItem('_subjective_mode'))
+    socket.emit(isSubjectiveObserver ? 'subjective_command' : 'student_view_state', {
+      module_key: activeModule,
+      context: {},
+    })
+  }, [activeModule])
 
   const { data: studentTasks = [] } = useQuery<StudentTaskSummary[]>({
     queryKey: ['student-tasks'],
@@ -208,6 +223,23 @@ export default function StudentDashboard() {
   })
 
   const exitStudentSession = useCallback(() => {
+    const subjectiveModeRaw = localStorage.getItem('_subjective_mode')
+    const teacherToken = localStorage.getItem('_teacher_token_backup')
+    const teacherUser = localStorage.getItem('_teacher_user_backup')
+    if (subjectiveModeRaw && teacherToken && teacherUser) {
+      try {
+        const subjectiveMode = JSON.parse(subjectiveModeRaw) as { returnPath?: string }
+        useAuthStore.getState().setUser(JSON.parse(teacherUser), teacherToken)
+        localStorage.removeItem('_subjective_mode')
+        localStorage.removeItem('_teacher_token_backup')
+        localStorage.removeItem('_teacher_user_backup')
+        localStorage.removeItem('student_token')
+        navigate(subjectiveMode.returnPath || '/teacher')
+        return
+      } catch {
+        // Fall through to the regular student logout flow.
+      }
+    }
     localStorage.removeItem('student_token')
     logout()
     navigate('/join')
@@ -373,6 +405,55 @@ export default function StudentDashboard() {
       reconnectionDelayMax: 10000,
       timeout: 20000,
     })
+    studentRealtimeSocketRef.current = socket
+    setStudentRealtimeSocket(socket)
+    const isSubjectiveObserver = Boolean(localStorage.getItem('_subjective_mode'))
+
+    const applySubjectiveState = (state: { module_key?: string | null; context?: Record<string, unknown> } | null | undefined) => {
+      if (!state) return
+      ;(window as any).__golinelliSubjectiveState = state
+      if ('module_key' in state) setActiveModule(state.module_key || null)
+      window.dispatchEvent(new CustomEvent('student-subjective-sync', { detail: state }))
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('student-subjective-sync', { detail: state }))
+      }, 80)
+    }
+
+    const publishCurrentState = (context: Record<string, unknown> = {}) => {
+      socket.emit('student_view_state', {
+        module_key: activeModuleRef.current,
+        context,
+      })
+    }
+
+    socket.on('connect', () => {
+      if (isSubjectiveObserver) {
+        socket.emit('subjective_observer_ready', {}, (response: { state?: { module_key?: string | null; context?: Record<string, unknown> } }) => {
+          applySubjectiveState(response?.state)
+        })
+      } else {
+        publishCurrentState()
+      }
+    })
+
+    const handleLocalSubjectiveState = (event: Event) => {
+      const detail = (event as CustomEvent<{ module_key?: string; context?: Record<string, unknown> }>).detail || {}
+      socket.emit(isSubjectiveObserver ? 'subjective_command' : 'student_view_state', {
+        module_key: detail.module_key ?? activeModuleRef.current,
+        context: detail.context || {},
+      })
+    }
+    window.addEventListener('student-subjective-state', handleLocalSubjectiveState)
+
+    socket.on('student_view_state', (state: { module_key?: string | null; context?: Record<string, unknown> }) => {
+      if (isSubjectiveObserver) applySubjectiveState(state)
+    })
+    socket.on('subjective_command', (command: { module_key?: string | null; context?: Record<string, unknown> }) => {
+      if (!isSubjectiveObserver) applySubjectiveState(command)
+    })
+    socket.on('subjective_state_requested', () => {
+      if (!isSubjectiveObserver) publishCurrentState()
+    })
 
     socket.on('session_access_revoked', () => exitStudentSession())
     socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {
@@ -410,6 +491,9 @@ export default function StudentDashboard() {
     })
 
     return () => {
+      window.removeEventListener('student-subjective-state', handleLocalSubjectiveState)
+      studentRealtimeSocketRef.current = null
+      setStudentRealtimeSocket(null)
       socket.disconnect()
     }
   }, [sessionInfo?.session?.id, studentSession?.student_id, exitStudentSession])
@@ -503,7 +587,7 @@ export default function StudentDashboard() {
   return (
     <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
-      <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' ? 'h-24' : 'h-16'}`}>
+      <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' || localStorage.getItem('_subjective_mode') ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
           activeModule={activeModule}
           onNavigate={setActiveModule}
@@ -645,6 +729,15 @@ export default function StudentDashboard() {
       <FloatingHelper module={activeModule} />
       {sessionInfo && (
         <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
+      )}
+      {sessionInfo && (
+        <TuringTestPanel
+          sessionId={sessionInfo.session.id}
+          userType="student"
+          socket={studentRealtimeSocket}
+          onlineStudentCount={0}
+          floatingTrigger
+        />
       )}
     </AppBackground>
   )

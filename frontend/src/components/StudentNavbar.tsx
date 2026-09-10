@@ -57,6 +57,15 @@ export function StudentNavbar({
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
   const isPreviewMode = localStorage.getItem('_preview_mode') === 'true'
+  const subjectiveMode = (() => {
+    try {
+      const raw = localStorage.getItem('_subjective_mode')
+      return raw ? JSON.parse(raw) as { studentId: string; nickname: string; returnPath?: string } : null
+    } catch {
+      return null
+    }
+  })()
+  const hasTeacherModeBanner = isPreviewMode || Boolean(subjectiveMode)
 
   const handleExitPreview = () => {
     const tokenBackup = localStorage.getItem('_teacher_token_backup')
@@ -69,11 +78,13 @@ export function StudentNavbar({
         // fallback: just navigate
       }
     }
+    const returnPath = subjectiveMode?.returnPath || '/teacher/demo'
     localStorage.removeItem('_preview_mode')
+    localStorage.removeItem('_subjective_mode')
     localStorage.removeItem('_teacher_token_backup')
     localStorage.removeItem('_teacher_user_backup')
     localStorage.removeItem('student_token')
-    navigate('/teacher/demo')
+    navigate(returnPath)
   }
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -267,33 +278,47 @@ export function StudentNavbar({
 
   return (
     <>
-      {/* Preview mode banner */}
-      {isPreviewMode && (
-        <div className="fixed top-0 left-0 right-0 z-[60] bg-[var(--logo-violet)] text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
+      {/* Teacher preview / subjective-view banner */}
+      {hasTeacherModeBanner && (
+        <div className={`fixed left-0 right-0 z-[60] bg-[var(--logo-violet)] px-4 py-1.5 text-xs font-semibold text-white ${subjectiveMode ? 'top-16' : 'top-0'} flex items-center justify-center gap-3`}>
           <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
-          <span>{t('navbar.preview_banner')}</span>
+          <span>
+            {subjectiveMode
+              ? t('navbar.subjective_banner', { nickname: subjectiveMode.nickname })
+              : t('navbar.preview_banner')}
+          </span>
           <button
             onClick={handleExitPreview}
             className="ml-2 underline hover:no-underline font-bold"
           >
-            {t('navbar.preview_exit')}
+            {subjectiveMode ? t('navbar.subjective_exit') : t('navbar.preview_exit')}
           </button>
         </div>
       )}
       <nav
-        className={`fixed left-0 right-0 z-50 border-b ${isPreviewMode ? 'top-8' : 'top-0'}`}
+        className={`fixed left-0 right-0 z-50 border-b ${isPreviewMode && !subjectiveMode ? 'top-8' : 'top-0'}`}
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
-              <LogoMark className="h-9 w-9" />
+              <div className="relative shrink-0">
+                <LogoMark className="h-9 w-9" />
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
+                  className="absolute -bottom-1 -right-2 rounded-full border border-[var(--brand-yellow)] bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-sm backdrop-blur-sm transition hover:bg-[var(--brand-yellow)]"
+                  aria-label="Scopri le novità della versione beta"
+                >
+                  BETA
+                </button>
+              </div>
               <div className="flex items-center gap-1.5 pt-0.5">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
+                <ServerHealthIndicator />
               </div>
             </div>
 
@@ -511,7 +536,7 @@ export function StudentNavbar({
 
       {onNavigate && (
         <aside
-          className={`fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${isPreviewMode ? 'top-24' : 'top-16'}`}
+          className={`fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${hasTeacherModeBanner ? 'top-24' : 'top-16'}`}
           style={accentVars}
           aria-label={t('navbar.nav_desktop')}
         >

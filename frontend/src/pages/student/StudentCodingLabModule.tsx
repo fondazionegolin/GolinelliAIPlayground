@@ -366,6 +366,53 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[] | null>(null)
   const [interviewAnswers, setInterviewAnswers] = useState<Record<number, string>>({})
   const [interviewing, setInterviewing] = useState(false)
+  const applyingSubjectiveStateRef = useRef(false)
+
+  useEffect(() => {
+    const applySyncedDraft = (state: { module_key?: string | null; context?: Record<string, unknown> } | null | undefined) => {
+      if (state?.module_key !== 'coding') return
+      const hasSyncedValue = typeof state.context?.title === 'string'
+        || typeof state.context?.prompt === 'string'
+        || typeof state.context?.message === 'string'
+        || typeof state.context?.selectedProjectId === 'string'
+        || state.context?.selectedProjectId === null
+        || typeof state.context?.selectedPath === 'string'
+        || state.context?.activeWorkbench === 'code'
+        || state.context?.activeWorkbench === 'preview'
+      if (!hasSyncedValue) return
+      applyingSubjectiveStateRef.current = true
+      if (typeof state.context?.title === 'string') setTitle(state.context.title)
+      if (typeof state.context?.prompt === 'string') setPrompt(state.context.prompt)
+      if (typeof state.context?.message === 'string') setMessage(state.context.message)
+      if (typeof state.context?.selectedProjectId === 'string' || state.context?.selectedProjectId === null) {
+        setSelectedProjectId(state.context.selectedProjectId as string | null)
+      }
+      if (typeof state.context?.selectedPath === 'string') setSelectedPath(state.context.selectedPath)
+      if (state.context?.activeWorkbench === 'code' || state.context?.activeWorkbench === 'preview') {
+        setActiveWorkbench(state.context.activeWorkbench)
+      }
+    }
+    const handleSync = (event: Event) => applySyncedDraft((event as CustomEvent).detail)
+    applySyncedDraft((window as any).__golinelliSubjectiveState)
+    window.addEventListener('student-subjective-sync', handleSync)
+    return () => window.removeEventListener('student-subjective-sync', handleSync)
+  }, [])
+
+  useEffect(() => {
+    if (applyingSubjectiveStateRef.current) {
+      applyingSubjectiveStateRef.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('student-subjective-state', {
+        detail: {
+          module_key: 'coding',
+          context: { title, prompt, message, selectedProjectId, selectedPath, activeWorkbench },
+        },
+      }))
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [activeWorkbench, message, prompt, selectedPath, selectedProjectId, title])
   // Agentic auto-fix loop: real compile errors from the Sandpack runtime are fed back to the model
   // until the project builds clean (capped, so a stubborn error can't loop forever / burn credits).
   const [previewErrors, setPreviewErrors] = useState<SandpackRuntimeError[]>([])

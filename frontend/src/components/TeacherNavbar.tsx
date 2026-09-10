@@ -400,16 +400,26 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <LogoMark className="h-9 w-9" />
+              <div className="relative shrink-0">
+                <LogoMark className="h-9 w-9" />
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
+                  className="absolute -bottom-1 -right-2 rounded-full border border-[var(--brand-yellow)] bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-sm backdrop-blur-sm transition hover:bg-[var(--brand-yellow)]"
+                  aria-label="Scopri le novità della versione beta"
+                >
+                  BETA
+                </button>
+              </div>
               <div className="flex items-center gap-1.5 pt-0.5">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
+                <ServerHealthIndicator />
               </div>
             </div>
 
-            <div className="hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="hidden 2xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {(() => {
                 const activeIdx = navItems.findIndex(item => isActive(item.path))
                 return navItems.map((item, idx) => (
@@ -427,7 +437,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               })()}
             </div>
 
-            <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
+            <div className="hidden 2xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
               <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
@@ -450,25 +460,41 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
               {/* Session Selector */}
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
-                <button
-                  onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
-                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
-                >
-                  <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
-                  <div className="text-left min-w-0">
-                    <span
-                      className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
-                      title={currentSession ? currentSession.name : t('navbar.no_session')}
+                <div className="flex h-9 items-stretch overflow-hidden rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100/90 shadow-sm">
+                  <button
+                    onClick={() => setShowSessionsMenu(!showSessionsMenu)}
+                    className="flex min-w-0 items-center gap-2 px-3 transition-colors hover:bg-slate-200/60"
+                    aria-expanded={showSessionsMenu}
+                  >
+                    <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                    <div className="min-w-0 text-left">
+                      <span
+                        className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
+                        title={currentSession ? currentSession.name : t('navbar.no_session')}
+                      >
+                        {currentSession ? currentSession.name : t('navbar.no_session')}
+                      </span>
+                      {currentSession?.joinCode && (
+                        <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
+                      )}
+                    </div>
+                    <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  {currentSession && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSessionsMenu(false)
+                        navigate(`/teacher/sessions/${currentSession.id}`)
+                      }}
+                      className="flex w-8 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-white hover:text-slate-800"
+                      title={t('navbar.configure_session')}
+                      aria-label={t('navbar.configure_session')}
                     >
-                      {currentSession ? currentSession.name : t('navbar.no_session')}
-                    </span>
-                    {currentSession?.joinCode && (
-                      <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
-                    )}
-                  </div>
-                  <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
-                </button>
+                      <Settings className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 <button
                   className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
                   style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
@@ -521,53 +547,63 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                         <div className="space-y-1">
                           {activeSessions.map((session) => {
                             const isSelected = currentSession?.id === session.id
+                            const selectSession = () => {
+                              const sessionInfo = { id: session.id, name: session.name, className: session.className, joinCode: session.joinCode }
+                              onSessionChange?.(sessionInfo)
+                              localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
+                              setShowSessionsMenu(false)
+                              navigate(`/teacher/sessions/${session.id}`)
+                            }
                             return (
-                              <button
+                              <div
                                 key={session.id}
-                                onClick={() => {
-                                  const sessionInfo = { id: session.id, name: session.name, className: session.className, joinCode: session.joinCode }
-                                  onSessionChange?.(sessionInfo)
-                                  // Persist complete session info
-                                  localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
-                                  setShowSessionsMenu(false)
-                                  navigate(`/teacher/sessions/${session.id}`)
-                                }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group border ${isSelected
-                                  ? 'bg-[var(--teacher-accent-soft)] border-[var(--teacher-accent-border)]/50 shadow-sm'
-                                  : 'hover:bg-slate-100/50 border-transparent'
+                                className={`group flex w-full items-stretch overflow-hidden rounded-xl border transition-all duration-150 ${isSelected
+                                  ? 'border-slate-300 bg-slate-100 shadow-sm'
+                                  : 'border-transparent hover:bg-slate-100/50'
                                   }`}
                               >
-                                <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
-                                  }`} />
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-[var(--teacher-accent-text)]' : 'text-slate-700'}`}>
-                                    {session.name}
-                                  </p>
-                                  <div className="mt-0.5 flex min-w-0 items-center gap-2">
-                                    <p className={`min-w-0 truncate text-xs ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
-                                      {session.className}
+                                <button
+                                  type="button"
+                                  onClick={selectSession}
+                                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+                                >
+                                  <div className={`h-3 w-3 flex-shrink-0 rounded-full transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
+                                    }`} />
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`truncate text-sm font-medium ${isSelected ? 'text-slate-900' : 'text-slate-700'}`}>
+                                      {session.name}
                                     </p>
-                                    {session.joinCode && (
-                                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-black leading-none tracking-widest ${isSelected ? 'bg-white/70 text-[var(--teacher-accent-text)]' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
-                                        {session.joinCode}
-                                      </span>
-                                    )}
+                                    <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                                      <p className={`min-w-0 truncate text-xs ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>
+                                        {session.className}
+                                      </p>
+                                      {session.joinCode && (
+                                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-black leading-none tracking-widest ${isSelected ? 'bg-white text-slate-700' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
+                                          {session.joinCode}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-2">
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
-                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${isSelected
-                                      ? 'bg-slate-200 text-slate-800'
-                                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-[var(--teacher-accent-text)]'
-                                      }`}>
+                                    <span className="rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-slate-600">
                                       {session.studentCount} {t('navbar.students_label')}
                                     </span>
                                   )}
-                                  {isSelected && (
-                                    <Check className="h-4 w-4 text-[var(--teacher-accent-text)]" />
-                                  )}
-                                </div>
-                              </button>
+                                  {isSelected && <Check className="h-4 w-4 shrink-0 text-slate-700" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowSessionsMenu(false)
+                                    navigate(`/teacher/sessions/${session.id}`)
+                                  }}
+                                  className="flex w-10 shrink-0 items-center justify-center border-l border-slate-200/80 text-slate-400 transition-colors hover:bg-white hover:text-slate-800"
+                                  title={t('navbar.configure_session')}
+                                  aria-label={`${t('navbar.configure_session')}: ${session.name}`}
+                                >
+                                  <Settings className="h-4 w-4" />
+                                </button>
+                              </div>
                             )
                           })}
                         </div>
@@ -694,7 +730,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       </nav>
 
       <aside
-        className="fixed left-0 top-16 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden"
+        className="fixed left-0 top-16 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex 2xl:hidden"
         style={accentVars}
         aria-label={t('navbar.nav_support')}
       >

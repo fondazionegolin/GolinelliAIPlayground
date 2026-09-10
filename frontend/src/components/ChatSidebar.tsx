@@ -16,6 +16,7 @@ import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
+import TuringTestPanel from '@/components/TuringTestPanel'
 
 export type { ChatMessage }
 
@@ -1879,6 +1880,14 @@ export default function ChatSidebar({
           </h3>
         </div>
         <div className="flex items-center gap-1">
+          {userType === 'teacher' && (
+            <TuringTestPanel
+              sessionId={sessionId}
+              userType={userType}
+              socket={socket}
+              onlineStudentCount={onlineUsers.filter(user => user.role !== 'teacher').length}
+            />
+          )}
           {onPinToggle && (
             <Button
               variant="ghost"

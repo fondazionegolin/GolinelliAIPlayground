@@ -470,6 +470,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   // changed yet) — the dock only takes effect on the next navigation, so the button pulses green
   // to confirm the click registered instead of appearing to do nothing.
   const isDockArmed = dockArmed && !sidebarMode
+  const dockControlLabel = sidebarMode
+    ? 'Chiudi la colonna laterale della chat'
+    : isDockArmed
+      ? 'Chat ancorata: comparirà nella colonna verticale a destra quando apri un’altra sezione.'
+      : 'Ancora la chat in una colonna verticale a destra. Comparirà quando apri un’altra sezione.'
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -3029,10 +3034,14 @@ REGOLE IMPORTANTI:
                         {(onMinimize || onClose) && (
                           <button
                             onClick={handleDockOrClose}
-                            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
-                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                            className={`group/dock relative flex items-center gap-1 rounded-lg px-2 py-1.5 transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
+                            title={dockControlLabel}
+                            aria-label={dockControlLabel}
                           >
                             {sidebarMode ? <X className="h-4 w-4 text-slate-500" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : 'text-slate-500'}`} />}
+                            <span role="tooltip" className="pointer-events-none absolute right-0 top-full z-[90] mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-left text-[11px] font-medium leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/dock:opacity-100 group-focus-visible/dock:opacity-100">
+                              {dockControlLabel}
+                            </span>
                           </button>
                         )}
                       </>
@@ -3075,11 +3084,15 @@ REGOLE IMPORTANTI:
                             size="sm"
                             onClick={handleDockOrClose}
                             className={isDockArmed
-                              ? 'dock-armed-glow rounded-xl border border-emerald-300 text-white shadow-sm'
-                              : `rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
-                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                              ? 'group/dock relative dock-armed-glow rounded-xl border border-emerald-300 text-white shadow-sm'
+                              : `group/dock relative rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
+                            title={dockControlLabel}
+                            aria-label={dockControlLabel}
                           >
                             {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
+                            <span role="tooltip" className="pointer-events-none absolute right-0 top-full z-[90] mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-left text-[11px] font-medium leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/dock:opacity-100 group-focus-visible/dock:opacity-100">
+                              {dockControlLabel}
+                            </span>
                           </Button>
                         )}
                         {/* Generatore */}
