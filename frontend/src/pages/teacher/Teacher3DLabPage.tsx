@@ -349,7 +349,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
 
         {/* ── Workspace ── */}
         {(!compactUi || mode) && <div className="mx-auto max-w-5xl px-4 pb-10 pt-4 lg:px-6 lg:pt-6">
-          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white"><ArrowRight className="h-4 w-4 rotate-180" /> Cambia strumento</button>}
+          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-black text-[var(--selection-active-text)]"><ArrowRight className="h-4 w-4 rotate-180" /> Cambia strumento</button>}
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}

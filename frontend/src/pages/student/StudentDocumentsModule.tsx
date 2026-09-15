@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -169,6 +170,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const defaultPresentationTitle = t('documents.default_presentation_title')
   const defaultSheetTitle = isEnglishUi ? 'New Table' : 'Nuova Tabella'
   const filenamePlaceholder = t('documents.filename_placeholder')
+  const { isMobile } = useMobile()
+  const [headerCollapsed, setHeaderCollapsed] = useState(false)
 
   // State
   const [mode, setMode] = useState<EditorMode>('document')
@@ -1318,17 +1321,21 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           onDrop={(event) => { if (readOnlyCatalog) return; event.preventDefault(); setDocumentDragActive(false); void importDocumentFiles(Array.from(event.dataTransfer.files)) }}
         >
           {!readOnlyCatalog && <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />}
-          <section className="relative shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm shadow-sm">
-            <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
+          <section className={`relative shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm shadow-sm transition-[padding] duration-300 ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
+            <div className="mx-auto max-w-6xl px-4 md:px-6">
               <div className="mx-auto max-w-3xl text-center">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Documenti</p>
-                <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
-                <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
-                  {readOnlyCatalog
-                    ? (isEnglishUi ? 'Teacher materials and submitted work, in read-only mode' : 'Materiali del docente e consegne, in sola lettura')
-                    : (isEnglishUi ? 'Drafts, teacher materials, and deliverables' : 'Bozze, materiali del docente e consegne')}
-                </p>
-                <div className="mx-auto mt-6 flex max-w-3xl flex-col gap-2 sm:flex-row">
+                <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+                  <div className="overflow-hidden">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Documenti</p>
+                    <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
+                    <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
+                      {readOnlyCatalog
+                        ? (isEnglishUi ? 'Teacher materials and submitted work, in read-only mode' : 'Materiali del docente e consegne, in sola lettura')
+                        : (isEnglishUi ? 'Drafts, teacher materials, and deliverables' : 'Bozze, materiali del docente e consegne')}
+                    </p>
+                  </div>
+                </div>
+                <div className={`mx-auto flex max-w-3xl flex-col gap-2 transition-all duration-300 sm:flex-row ${headerCollapsed ? '' : 'mt-6'}`}>
                   <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-sm">
                     <Search className="h-4 w-4 shrink-0 text-slate-400" />
                     <input type="text" value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none" />
@@ -1339,6 +1346,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   </select>
                 </div>
                 {!readOnlyCatalog && (
+                <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+                  <div className="overflow-hidden">
                   <div className="mx-auto mt-5 grid w-full max-w-4xl grid-cols-2 gap-2.5 lg:grid-cols-4">
                     <button
                       type="button"
@@ -1376,12 +1385,17 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
                     </button>
                   </div>
+                  </div>
+                </div>
                 )}
               </div>
             </div>
           </section>
 
-          <div className="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
+          <div
+            className="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6"
+            onScroll={isMobile ? (e) => setHeaderCollapsed(e.currentTarget.scrollTop > 24) : undefined}
+          >
             <div className="mx-auto w-full max-w-6xl space-y-8">
 
               {docSearch && filteredDrafts.length === 0 && filteredSubmitted.length === 0 && filteredLessons.length === 0 && (

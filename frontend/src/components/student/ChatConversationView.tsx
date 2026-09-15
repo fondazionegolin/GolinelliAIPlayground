@@ -162,7 +162,7 @@ export function ChatConversationView({
       style={{ height: `${viewport.height}px`, transform: `translateY(${viewport.offsetTop}px)` }}
     >
       {/* Mobile Header */}
-      <div className="flex h-16 flex-shrink-0 items-center gap-2.5 border-b border-slate-200 bg-white/95 px-3 shadow-sm backdrop-blur-xl">
+      <div className="flex h-16 flex-shrink-0 items-center gap-2.5 border-b border-slate-200 bg-white px-3 shadow-sm">
         <Button
           variant="ghost"
           size="sm"
@@ -284,7 +284,7 @@ export function ChatConversationView({
 
       {/* Composer: part of the viewport flex layout, never underneath the keyboard. */}
       <div
-        className="z-10 flex-shrink-0 border-t border-slate-200 bg-white/95 px-3 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur-xl"
+        className="z-10 flex-shrink-0 border-t border-slate-200 bg-white px-3 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
         {/* Attached files preview */}
@@ -381,7 +381,7 @@ export function ChatConversationView({
             onClick={handleSend}
             disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
             size="sm"
-            className="h-10 w-10 p-0 rounded-xl bg-slate-950 hover:bg-slate-800 shadow-md transition-all disabled:opacity-50"
+            className="h-10 w-10 p-0 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)] shadow-md transition-all disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>

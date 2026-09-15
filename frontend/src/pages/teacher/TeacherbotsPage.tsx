@@ -327,14 +327,14 @@ export default function TeacherbotsPage() {
               <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
                 <button
                   onClick={() => setDisplay('grid')}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'grid' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'grid' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-400 hover:bg-slate-100'}`}
                   title="Griglia"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setDisplay('list')}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'list' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'list' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-400 hover:bg-slate-100'}`}
                   title="Elenco"
                 >
                   <List className="h-4 w-4" />

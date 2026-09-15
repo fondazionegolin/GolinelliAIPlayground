@@ -342,6 +342,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [error, setError] = useState<string | null>(null)
   const [projectListSearch, setProjectListSearch] = useState('')
   const [promptPanelOpen, setPromptPanelOpen] = useState(true)
+  const [mobilePane, setMobilePane] = useState<'prompt' | 'workbench'>('prompt')
   const [activeWorkbench, setActiveWorkbench] = useState<'code' | 'preview'>('preview')
   const [previewFullscreen, setPreviewFullscreen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop')
@@ -1013,6 +1014,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setFiles(initialFiles)
       const genPrompt = answersText ? `${prompt.trim()}\n\nDettagli dal colloquio:\n${answersText}` : prompt.trim()
       await generateCode(project.id, genPrompt, initialFiles)
+      if (isMobile) setMobilePane('workbench')
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile creare il progetto.')
     } finally {
@@ -1569,7 +1571,64 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         />
       </WorkspaceExplorerSidebar>}
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {isMobile && (
+          <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedProjectId || ''}
+                onChange={(event) => {
+                  const project = projects.find((item) => item.id === event.target.value)
+                  if (project) {
+                    void openProjectFromList(project)
+                    setMobilePane('workbench')
+                  }
+                }}
+                className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-400"
+                aria-label="Progetto Vibe Lab"
+              >
+                <option value="">{loading ? 'Caricamento…' : 'Scegli un progetto'}</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.title}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleStartNewProject()
+                  setMobilePane('prompt')
+                }}
+                disabled={creating || generating || draftSaving}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] disabled:opacity-40"
+                aria-label="Nuovo progetto"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+            {!createPanelOpen && (
+              <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Vista Vibe Lab">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mobilePane === 'prompt'}
+                  onClick={() => setMobilePane('prompt')}
+                  className={`min-h-10 rounded-lg text-xs font-black ${mobilePane === 'prompt' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+                >
+                  Prompt
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mobilePane === 'workbench'}
+                  onClick={() => setMobilePane('workbench')}
+                  className={`min-h-10 rounded-lg text-xs font-black ${mobilePane === 'workbench' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
+                >
+                  Codice e anteprima
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {error && (
           <div className="border-b border-slate-200 bg-white px-4 py-2">
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
@@ -1584,7 +1643,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         }>
           <section className={createPanelOpen
             ? 'flex w-full max-w-2xl flex-col rounded-[28px] border border-[color:var(--border-subtle)] bg-white shadow-[var(--shadow-lg)]'
-            : 'flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r'
+            : `${isMobile && mobilePane !== 'prompt' ? 'hidden' : 'flex'} min-h-0 flex-col border-b border-slate-200 bg-white lg:flex lg:border-b-0 lg:border-r`
           }>
             {!createPanelOpen && <PanelHeader
               icon={MessageSquare}
@@ -1593,7 +1652,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <button
                   type="button"
                   onClick={() => setPromptPanelOpen((value) => !value)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                  className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700 lg:block"
                   title={promptPanelOpen ? 'Comprimi prompt' : 'Espandi prompt'}
                 >
                   {promptPanelOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
@@ -1652,7 +1711,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     type="button"
                     onClick={handleStartInterview}
                     disabled={interviewing || creating || !prompt.trim()}
-                    className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto md:rounded-xl"
+                    className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto"
                   >
                     {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     {interviewing ? 'Creo...' : 'Crea'}
@@ -1694,7 +1753,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         type="button"
                         onClick={submitInterview}
                         disabled={creating || generating}
-                        className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-bold text-white transition disabled:opacity-40"
+                        className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
                       >
                         {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                         Genera progetto
@@ -1816,8 +1875,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             )}
           </section>
 
-          {!createPanelOpen && <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
-            <div className={`flex min-h-12 items-center justify-between gap-3 border-b px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
+          {!createPanelOpen && <section className={`${isMobile && mobilePane !== 'workbench' ? 'hidden' : 'flex'} min-h-0 flex-col lg:flex ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
+            <div className={`flex min-h-12 items-center justify-between gap-2 overflow-x-auto border-b px-2 md:gap-3 md:px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
               <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
                 <CodingToolbarIconButton
                   icon={<FileCode2 className="h-4 w-4" />}

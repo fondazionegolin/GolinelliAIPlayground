@@ -886,7 +886,7 @@ export default function ChatSidebar({
             </div>
             <button
               onClick={() => onNotificationClick?.(msg)}
-              className="mt-3 w-full py-2 bg-[#181b1e] hover:bg-[#0f1113] text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="mt-3 w-full py-2 border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <Wand2 className="h-3.5 w-3.5" />
               Prova ora
@@ -1377,7 +1377,7 @@ export default function ChatSidebar({
         </div>
         {isUserScrolledUp && (
           <button
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#181b1e] text-white text-[11px] font-medium shadow-lg hover:bg-[#181b1e]/80 transition-all z-10"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-bg-hover)] transition-all z-10"
             onClick={() => {
               const container = scrollRef.current
               if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
@@ -1668,7 +1668,7 @@ export default function ChatSidebar({
         onDragLeave={handleFilesDragLeave}
         onDrop={handleFilesDrop}
       >
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-100 px-4 py-3">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
@@ -1774,7 +1774,7 @@ export default function ChatSidebar({
                 key={item.key}
                 onClick={() => setActiveFilter(item.key as typeof activeFilter)}
                 className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase transition-colors ${activeFilter === item.key
-                  ? 'bg-[#181b1e] text-white'
+                  ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
               >
@@ -2078,7 +2078,7 @@ export default function ChatSidebar({
               disabled={!inputText.trim() && attachedFiles.length === 0}
               className={`h-8 w-8 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
                 ? 'bg-slate-100 text-slate-300'
-                : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                : 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] shadow-md'
                 }`}
             >
               <Send className="h-4 w-4" />

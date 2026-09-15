@@ -2372,25 +2372,27 @@ REGOLE IMPORTANTI:
     return (
       <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
         {/* Tab nav */}
-        <div className="flex items-center gap-1 px-3 pt-3 pb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
+        <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label="Sezioni Tutor AI">
           {([
-            { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3 w-3" /> },
-            { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3 w-3" />, badge: availableTeacherbots.length },
-            { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3 w-3" />, badge: studentbotsData.length },
-            { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3 w-3" /> },
+            { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3.5 w-3.5" /> },
+            { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3.5 w-3.5" />, badge: availableTeacherbots.length },
+            { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3.5 w-3.5" />, badge: studentbotsData.length },
+            { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3.5 w-3.5" /> },
           ]).map(({ key, label, icon, badge }) => (
-            <button key={key} onClick={() => setMainTab(key)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                mainTab === key ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:bg-white/60'
+            <button key={key} type="button" onClick={() => setMainTab(key)}
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-black transition-colors ${
+                mainTab === key
+                  ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
+                  : 'bg-slate-100 text-slate-600'
               }`}
             >
               {icon}{label}
               {badge !== undefined && badge > 0 && (
-                <span className={`text-[8px] font-bold px-1 py-0.5 rounded-full ${mainTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${mainTab === key ? 'bg-white/60 text-[var(--selection-active-text)]' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
               )}
             </button>
           ))}
-        </div>
+        </nav>
 
         <div className="flex-1 overflow-y-auto px-3 pb-20">
           {/* Mobile: Assistenti AI */}
@@ -2575,7 +2577,7 @@ REGOLE IMPORTANTI:
               <div className="flex gap-2 justify-end">
                 <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">Annulla</button>
                 <button onClick={handleGenerateLesson} disabled={!newLessonTopic.trim() || generatingLesson}
-                  className="px-4 py-2 text-sm font-semibold bg-slate-900 text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   Genera
@@ -2870,7 +2872,7 @@ REGOLE IMPORTANTI:
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full bg-slate-950 text-white hover:bg-slate-800"
+                className="h-9 w-9 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)]"
                 onClick={() => setShowActionMenu((prev) => !prev)}
                 title="Strumenti chatbot"
               >
@@ -2928,7 +2930,7 @@ REGOLE IMPORTANTI:
                         setChatMode(mode)
                         setShowActionMenu(false)
                       }}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition-colors ${chatMode === mode ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition-colors ${chatMode === mode ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 hover:bg-slate-100'}`}
                     >
                       {icon}
                       <span className="flex-1">{label}</span>
@@ -2981,7 +2983,7 @@ REGOLE IMPORTANTI:
               <span
                 className={`rounded-full px-3 py-1.5 text-xs font-bold ${
                   chatMode === 'normal'
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                     : chatMode === 'image'
                       ? 'bg-fuchsia-600 text-white'
                       : chatMode === 'quiz'
@@ -3011,7 +3013,7 @@ REGOLE IMPORTANTI:
                         setShowChatModeMenu(false)
                       }}
                       className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
-                        isSelected ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                        isSelected ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       {icon}
@@ -3092,7 +3094,7 @@ REGOLE IMPORTANTI:
                 <button
                   key={m.id}
                   onClick={() => setImageProvider(m.id)}
-                  className={`rounded-lg px-2 py-1 text-[10px] transition-all ${imageProvider === m.id ? 'bg-slate-900 font-bold text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`rounded-lg px-2 py-1 text-[10px] transition-all ${imageProvider === m.id ? 'bg-[image:var(--selection-active-bg)] font-bold text-[var(--selection-active-text)] shadow' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {m.label}
                 </button>
@@ -4490,7 +4492,7 @@ REGOLE IMPORTANTI:
               <button
                 onClick={handleGenerateLesson}
                 disabled={!newLessonTopic.trim() || generatingLesson}
-                className="px-4 py-2 text-sm font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
               >
                 {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Genera lezione
@@ -4708,7 +4710,7 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
                   </button>
                   <button
                     onClick={() => onGenerateQuiz?.(buildLearningQuizPrompt(topic, unit, uiLanguage))}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+                    className="rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 py-2 text-sm font-semibold text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)] transition-colors"
                   >
                     {uiLanguage === 'en' ? 'Generate quiz' : 'Genera quiz'}
                   </button>

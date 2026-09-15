@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { MessageSquare, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap } from 'lucide-react'
+import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
@@ -255,12 +256,12 @@ export default function TeacherDashboard() {
 
       {/* ── Mobile Top Bar ── */}
       {isMobile && (
-        <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl">
+        <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
           <div className="flex h-12 items-center gap-2">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-slate-950 text-white shadow-md shadow-slate-300"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-md"
               aria-label="Apri menu"
             >
               <Menu className="h-5 w-5" strokeWidth={2.5} />
@@ -302,12 +303,15 @@ export default function TeacherDashboard() {
           <button className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} aria-label="Chiudi menu" />
           <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: teacherTheme.accent }}>Golinelli.ai</span>
-                <p className="mt-1 text-lg font-black text-slate-950">{teacherProfile?.name || t('teacher_dashboard.mobile_teacher_default')}</p>
-                <p className="text-xs font-medium text-slate-400">Area docente</p>
+              <div className="flex items-center gap-3">
+                <LogoMark className="h-11 w-11 shrink-0" />
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: teacherTheme.accent }}>Golinelli.ai</span>
+                  <p className="mt-1 text-lg font-black text-slate-950">{teacherProfile?.name || t('teacher_dashboard.mobile_teacher_default')}</p>
+                  <p className="text-xs font-medium text-slate-400">Area docente</p>
+                </div>
               </div>
-              <button onClick={() => setMobileMenuOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Chiudi menu">
+              <button onClick={() => setMobileMenuOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Chiudi menu">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -315,7 +319,7 @@ export default function TeacherDashboard() {
               {mobileNav.map(({ path, label, icon: Icon, exact }) => {
                 const active = exact ? isTeacherHomeRoute : location.pathname.startsWith(path)
                 return (
-                  <Link key={path} to={path} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <Link key={path} to={path} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 hover:bg-slate-100'}`}>
                     <Icon className="h-5 w-5 shrink-0" />
                     <span className="flex-1">{label}</span>
                     <ChevronRight className="h-4 w-4 opacity-50" />

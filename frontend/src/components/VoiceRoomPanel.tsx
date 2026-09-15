@@ -1006,7 +1006,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                           title={quality === 'low' ? 'Qualità video ridotta' : 'Qualità video alta'}
                           className={`rounded-full px-2.5 text-[10px] font-black uppercase transition-colors ${
                             videoQuality === quality
-                              ? 'bg-slate-900 text-white'
+                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                               : 'text-slate-500 hover:bg-slate-100'
                           }`}
                         >

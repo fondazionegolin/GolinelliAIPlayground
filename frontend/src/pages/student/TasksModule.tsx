@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useMobile } from '@/hooks/useMobile'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -124,6 +125,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { isMobile } = useMobile()
+  const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId || null)
   const [accentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
   const [taskSearch, setTaskSearch] = useState('')
@@ -247,15 +250,19 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
 
   return (
     <div className="h-full flex flex-col relative overflow-hidden bg-slate-100">
-      <section className="relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm">
-        <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
+      <section className={`relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm transition-[padding] duration-300 ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
+        <div className="mx-auto max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Compiti</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              {readOnly ? 'Consulta attività, istruzioni e consegne in modalità sola lettura.' : t('tasks.subtitle')}
-            </p>
-            <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+              <div className="overflow-hidden">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Compiti</p>
+                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
+                <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  {readOnly ? 'Consulta attività, istruzioni e consegne in modalità sola lettura.' : t('tasks.subtitle')}
+                </p>
+              </div>
+            </div>
+            <label className={`mx-auto flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm transition-all duration-300 ${headerCollapsed ? 'py-2' : 'mt-6 py-2.5'}`}>
               <Search className="h-4 w-4 shrink-0 text-slate-400" />
               <input
                 type="text"
@@ -275,39 +282,46 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                 </button>
               )}
             </label>
-            <div className="mt-5 flex items-center justify-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  aria-label="Vista griglia"
-                  title="Vista griglia"
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  aria-label="Vista lista"
-                  title="Vista lista"
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <List className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
-                <Award className="h-3.5 w-3.5 text-emerald-700" />
-                <span className="text-xs font-bold">
-                  {tasks.filter(task => task.submission).length}/{tasks.length}
-                </span>
+            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+              <div className="overflow-hidden">
+                <div className="mt-5 flex items-center justify-center gap-2">
+                  <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('grid')}
+                      aria-label="Vista griglia"
+                      title="Vista griglia"
+                      className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      aria-label="Vista lista"
+                      title="Vista lista"
+                      className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'list' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      <List className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
+                    <Award className="h-3.5 w-3.5 text-emerald-700" />
+                    <span className="text-xs font-bold">
+                      {tasks.filter(task => task.submission).length}/{tasks.length}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8"
+        onScroll={isMobile ? (e) => setHeaderCollapsed(e.currentTarget.scrollTop > 24) : undefined}
+      >
         <div className="mx-auto w-full max-w-6xl">
           {visibleTasks.length === 0 && taskSearch ? (
             <p className="py-10 text-center text-sm text-slate-400">Nessun compito corrisponde a "{taskSearch}"</p>

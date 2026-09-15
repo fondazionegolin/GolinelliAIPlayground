@@ -171,7 +171,17 @@ const pageVariants = {
   exit: { opacity: 0, x: -20 },
 }
 
-const MOBILE_MODULE_ORDER: Array<string | null> = [null, 'chatbot', 'live', 'classe', 'self_assessment', 'documents']
+const MOBILE_MODULE_ORDER: Array<string | null> = [
+  null,
+  'chatbot',
+  'live',
+  'classe',
+  'self_assessment',
+  'documents',
+  'classification',
+  'coding',
+  'boards',
+]
 
 export default function StudentDashboard() {
   const { studentSession, logout } = useAuthStore()
@@ -805,6 +815,9 @@ function StudentMobileShell({
     { key: 'classe', label: 'Classe', detail: 'Chat e videocall', icon: Video },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : 'Tutto in ordine', icon: ClipboardList },
     { key: 'documents', label: t('navbar.nav_documents'), detail: 'Materiali in sola lettura', icon: FileText },
+    { key: 'classification', label: 'ML Lab', detail: 'Allena e prova modelli', icon: Brain },
+    { key: 'coding', label: 'Vibe Lab', detail: 'Crea app con l’AI', icon: Code2 },
+    { key: 'boards', label: 'Board', detail: 'Task e idee', icon: KanbanSquare },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -857,11 +870,11 @@ function StudentMobileShell({
         />
       )}
 
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur-2xl">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
             <button
               onClick={() => setMenuOpen((value) => !value)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-slate-950 text-white shadow-md shadow-slate-950/15 active:scale-95"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-md active:scale-95"
               aria-label={t('student_dashboard.explore')}
             >
               <Menu className="h-5 w-5" />
@@ -920,7 +933,7 @@ function StudentMobileShell({
                       key={item.label}
                       onClick={() => handleNavigate(item.key)}
                       className={`flex min-h-[64px] w-full items-center gap-4 rounded-[20px] px-4 py-3 text-left transition active:scale-[0.98] ${
-                        isActive ? 'bg-slate-950 text-white shadow-lg shadow-slate-950/15' : 'bg-slate-50 text-slate-800'
+                        isActive ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-lg' : 'bg-slate-50 text-slate-800'
                       }`}
                     >
                       <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isActive ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}>
@@ -933,7 +946,7 @@ function StudentMobileShell({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[15px] font-extrabold">{item.label}</span>
-                        <span className={`block truncate text-xs ${isActive ? 'text-white/60' : 'text-slate-500'}`}>{item.detail}</span>
+                        <span className={`block truncate text-xs ${isActive ? 'text-[var(--selection-active-text)]/70' : 'text-slate-500'}`}>{item.detail}</span>
                       </span>
                       <ChevronRight className="h-5 w-5 opacity-40" />
                     </button>
@@ -1394,7 +1407,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'coding') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full min-h-0 overflow-hidden">
+      <div className="h-full min-h-0 overflow-hidden">
         <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
       </div>
     )
@@ -1402,7 +1415,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'boards') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full min-h-0 overflow-hidden">
+      <div className="h-full min-h-0 overflow-hidden">
         <BoardManager sessionId={sessionId} isStudent />
       </div>
     )
