@@ -63,6 +63,21 @@ interface SpreadsheetEditorProps {
 type CellPos = { row: number; col: number }
 type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number }
 type SelectionMode = 'cell' | 'row' | 'column' | 'all'
+type StatFunction = 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S'
+type SmartDirection = 'row' | 'column'
+
+const FORMULA_FUNCTIONS: Array<{ name: StatFunction | 'IF' | 'ROUND' | 'COUNTA'; label: string; hint: string }> = [
+  { name: 'SUM', label: 'Somma', hint: 'Somma i valori' },
+  { name: 'AVERAGE', label: 'Media', hint: 'Calcola la media' },
+  { name: 'MIN', label: 'Minimo', hint: 'Trova il valore minimo' },
+  { name: 'MAX', label: 'Massimo', hint: 'Trova il valore massimo' },
+  { name: 'COUNT', label: 'Conta numeri', hint: 'Conta le celle numeriche' },
+  { name: 'MEDIAN', label: 'Mediana', hint: 'Calcola la mediana' },
+  { name: 'STDEV.S', label: 'Deviazione std.', hint: 'Deviazione standard campionaria' },
+  { name: 'IF', label: 'Se', hint: 'Applica una condizione' },
+  { name: 'ROUND', label: 'Arrotonda', hint: 'Arrotonda un valore' },
+  { name: 'COUNTA', label: 'Conta valori', hint: 'Conta le celle non vuote' },
+]
 
 function IconTool({ label, onClick, disabled = false, active = false, children }: { label: string; onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
   return (
@@ -119,8 +134,43 @@ function toDisplayValue(value: unknown): string {
 }
 
 function toNumber(value: string): number | null {
+  if (String(value).trim() === '') return null
   const parsed = Number(String(value).replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function gridCellFromWorksheet(cell: XLSX.CellObject | undefined): string {
+  if (!cell) return ''
+  if (cell.f) return `=${cell.f}`
+  if (cell.v === null || cell.v === undefined) return ''
+  if (cell.t === 'b') return cell.v ? 'TRUE' : 'FALSE'
+  return String(cell.v)
+}
+
+function worksheetToGrid(sheet: XLSX.WorkSheet): string[][] {
+  if (!sheet['!ref']) return [['']]
+  const range = XLSX.utils.decode_range(sheet['!ref'])
+  const endRow = Math.min(range.e.r, MAX_ROWS - 1)
+  const endCol = Math.min(range.e.c, MAX_COLS - 1)
+  return Array.from({ length: endRow + 1 }, (_, row) =>
+    Array.from({ length: endCol + 1 }, (_, col) => gridCellFromWorksheet(sheet[XLSX.utils.encode_cell({ r: row, c: col })]))
+  )
+}
+
+function xlsxCellValue(raw: string): XLSX.CellObject | string | number | boolean {
+  const value = raw.trim()
+  if (value.startsWith('=') && value.length > 1) return { t: 'n', f: value.slice(1) }
+  if (/^(TRUE|FALSE)$/i.test(value)) return value.toUpperCase() === 'TRUE'
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(value) && !/^[-+]?0\d+/.test(value)) return Number(value)
+  return raw
+}
+
+function gridToWorksheet(data: string[][], dimensions?: Partial<SheetDimensions>): XLSX.WorkSheet {
+  const typed = data.map(row => row.map(xlsxCellValue))
+  const sheet = XLSX.utils.aoa_to_sheet(typed)
+  if (dimensions?.columnWidths?.length) sheet['!cols'] = dimensions.columnWidths.map(width => ({ wpx: width }))
+  if (dimensions?.rowHeights?.length) sheet['!rows'] = dimensions.rowHeights.map(height => ({ hpx: height }))
+  return sheet
 }
 
 function normalizeRange(range: SelectionRange): SelectionRange {
@@ -197,7 +247,7 @@ export function SpreadsheetEditor({
   const [aiFillLoading, setAiFillLoading] = useState(false)
   const [operation, setOperation] = useState<'+' | '-' | '*' | '/'>('+')
   const [operationValue, setOperationValue] = useState('1')
-  const [statFunction, setStatFunction] = useState<'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S'>('SUM')
+  const [statFunction, setStatFunction] = useState<StatFunction>('SUM')
   const [editingCell, setEditingCell] = useState<string | null>(null)
 
   useEffect(() => {
@@ -227,19 +277,33 @@ export function SpreadsheetEditor({
     return rangeToA1(normalizedSelection)
   }, [normalizedSelection])
 
-  const selectionStats = useMemo(() => {
+  const smartSelection = useMemo(() => {
     if (!normalizedSelection) return null
-    const values: number[] = []
+    const numericCells: Array<CellPos & { value: number }> = []
     for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
       for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
         const numeric = toNumber(evaluatedData[row]?.[col] || '')
-        if (numeric !== null) values.push(numeric)
+        if (numeric !== null) numericCells.push({ row, col, value: numeric })
       }
     }
-    if (!values.length) return null
+    if (!numericCells.length) return null
+    const values = numericCells.map(cell => cell.value)
     const sum = values.reduce((total, value) => total + value, 0)
-    return { count: values.length, sum, average: sum / values.length }
+    const bounds: SelectionRange = {
+      startRow: Math.min(...numericCells.map(cell => cell.row)),
+      endRow: Math.max(...numericCells.map(cell => cell.row)),
+      startCol: Math.min(...numericCells.map(cell => cell.col)),
+      endCol: Math.max(...numericCells.map(cell => cell.col)),
+    }
+    const height = bounds.endRow - bounds.startRow + 1
+    const width = bounds.endCol - bounds.startCol + 1
+    const direction: SmartDirection = height === 1 || (width > 1 && width > height) ? 'row' : 'column'
+    return { count: values.length, sum, average: sum / values.length, bounds, direction }
   }, [evaluatedData, normalizedSelection])
+
+  const isMultipleSelection = Boolean(normalizedSelection && (
+    normalizedSelection.startRow !== normalizedSelection.endRow || normalizedSelection.startCol !== normalizedSelection.endCol
+  ))
 
   const setCellValue = (row: number, col: number, value: string) => {
     const next = normalizedData.map(r => [...r])
@@ -459,26 +523,27 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
   const importSheet = async (file: File) => {
     const buffer = await file.arrayBuffer()
-    const workbook = XLSX.read(buffer, { type: 'array' })
+    const workbook = XLSX.read(buffer, { type: 'array', cellFormula: true, cellDates: true })
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-    const aoa = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false }) as Array<Array<string | number | boolean | null>>
-    const asString = aoa.map(row => row.map(cell => (cell ?? '').toString()))
-    onDataChange(normalizeGrid(asString))
-    onDimensionsChange?.({ columnWidths: [], rowHeights: [] })
+    onDataChange(normalizeGrid(worksheetToGrid(firstSheet)))
+    onDimensionsChange?.({
+      columnWidths: (firstSheet['!cols'] || []).map(column => column.wpx || (column.wch ? Math.round(column.wch * 7) : 120)),
+      rowHeights: (firstSheet['!rows'] || []).map(row => row.hpx || (row.hpt ? Math.round(row.hpt * 4 / 3) : 36)),
+    })
     setSelectedCell({ row: 0, col: 0 })
     setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
     setSelectionMode('cell')
   }
 
   const exportCsv = () => {
-    const sheet = XLSX.utils.aoa_to_sheet(normalizedData)
+    const sheet = XLSX.utils.aoa_to_sheet(evaluatedData)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
     XLSX.writeFile(wb, 'tabelle.csv', { bookType: 'csv' })
   }
 
   const exportXlsx = () => {
-    const sheet = XLSX.utils.aoa_to_sheet(normalizedData)
+    const sheet = gridToWorksheet(normalizedData, { columnWidths, rowHeights })
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
     XLSX.writeFile(wb, 'tabelle.xlsx')
@@ -533,6 +598,37 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
   const selectedRawValue = selectedCell ? normalizedData[selectedCell.row]?.[selectedCell.col] ?? '' : ''
   const selectedStyle = selectedCell ? styles[`${selectedCell.row}:${selectedCell.col}`] || {} : {}
+
+  const adjacentFormulaRange = useMemo(() => {
+    if (isMultipleSelection && smartSelection) return smartSelection.bounds
+    if (!selectedCell) return null
+    const { row, col } = selectedCell
+    let startRow = row - 1
+    while (startRow >= 0 && toNumber(evaluatedData[startRow]?.[col] || '') !== null) startRow -= 1
+    if (startRow < row - 1) return { startRow: startRow + 1, endRow: row - 1, startCol: col, endCol: col }
+    let startCol = col - 1
+    while (startCol >= 0 && toNumber(evaluatedData[row]?.[startCol] || '') !== null) startCol -= 1
+    if (startCol < col - 1) return { startRow: row, endRow: row, startCol: startCol + 1, endCol: col - 1 }
+    return null
+  }, [evaluatedData, isMultipleSelection, selectedCell, smartSelection])
+
+  const formulaFunctionQuery = selectedRawValue.match(/^=([A-Za-z.]*)$/)?.[1]?.toUpperCase()
+  const formulaCompletions = formulaFunctionQuery === undefined
+    ? []
+    : FORMULA_FUNCTIONS.filter(item => item.name.startsWith(formulaFunctionQuery)).slice(0, 7)
+
+  const completeFormula = (name: typeof FORMULA_FUNCTIONS[number]['name']) => {
+    if (!selectedCell) return
+    const range = adjacentFormulaRange ? rangeToA1(adjacentFormulaRange) : ''
+    const formula = name === 'IF'
+      ? range ? `=IF(${range}>0,${range},0)` : '=IF(,,)'
+      : name === 'ROUND'
+        ? `=ROUND(${range},2)`
+        : `=${name}(${range})`
+    setCellValue(selectedCell.row, selectedCell.col, formula)
+    setEditingCell(`${selectedCell.row}:${selectedCell.col}`)
+    setTimeout(() => cellInputRefs.current[`${selectedCell.row}-${selectedCell.col}`]?.focus(), 0)
+  }
 
   const selectionMatrix = () => {
     if (!normalizedSelection) return [] as string[][]
@@ -656,18 +752,67 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     toast({ title: `${changed} ${changed === 1 ? 'cella aggiornata' : 'celle aggiornate'}` })
   }
 
-  const insertColumnStatistic = (fn: 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S') => {
-    if (!normalizedSelection) return
-    const targetRow = normalizedSelection.endRow + 1
-    if (targetRow >= MAX_ROWS) return
-    const next = normalizeGrid(normalizedData, Math.max(normalizedData.length, targetRow + 1), normalizedData[0]?.length || MIN_COLS)
-    for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
-      next[targetRow][col] = `=${fn}(${columnName(col)}${normalizedSelection.startRow + 1}:${columnName(col)}${normalizedSelection.endRow + 1})`
+  const insertSmartStatistic = (fn: StatFunction) => {
+    if (!normalizedSelection || !smartSelection) return
+    const { bounds, direction } = smartSelection
+    let next = normalizedData.map(row => [...row])
+    const targets: CellPos[] = []
+
+    if (direction === 'row') {
+      let targetCol = bounds.endCol + 1
+      while (targetCol < MAX_COLS) {
+        const occupied = Array.from({ length: bounds.endRow - bounds.startRow + 1 }, (_, offset) => next[bounds.startRow + offset]?.[targetCol]).some(Boolean)
+        if (!occupied) break
+        targetCol += 1
+      }
+      if (targetCol >= MAX_COLS) {
+        toast({ title: 'Nessuno spazio per il risultato', variant: 'destructive' })
+        return
+      }
+      next = normalizeGrid(next, next.length, Math.max(next[0]?.length || 0, targetCol + 1))
+      for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+        const numericCols = Array.from({ length: bounds.endCol - bounds.startCol + 1 }, (_, offset) => bounds.startCol + offset)
+          .filter(col => toNumber(evaluatedData[row]?.[col] || '') !== null)
+        if (!numericCols.length) continue
+        const from = Math.min(...numericCols)
+        const to = Math.max(...numericCols)
+        next[row][targetCol] = `=${fn}(${columnName(from)}${row + 1}:${columnName(to)}${row + 1})`
+        targets.push({ row, col: targetCol })
+      }
+    } else {
+      let targetRow = bounds.endRow + 1
+      while (targetRow < MAX_ROWS) {
+        const occupied = Array.from({ length: bounds.endCol - bounds.startCol + 1 }, (_, offset) => next[targetRow]?.[bounds.startCol + offset]).some(Boolean)
+        if (!occupied) break
+        targetRow += 1
+      }
+      if (targetRow >= MAX_ROWS) {
+        toast({ title: 'Nessuno spazio per il risultato', variant: 'destructive' })
+        return
+      }
+      next = normalizeGrid(next, Math.max(next.length, targetRow + 1), next[0]?.length || MIN_COLS)
+      for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+        const numericRows = Array.from({ length: bounds.endRow - bounds.startRow + 1 }, (_, offset) => bounds.startRow + offset)
+          .filter(row => toNumber(evaluatedData[row]?.[col] || '') !== null)
+        if (!numericRows.length) continue
+        const from = Math.min(...numericRows)
+        const to = Math.max(...numericRows)
+        next[targetRow][col] = `=${fn}(${columnName(col)}${from + 1}:${columnName(col)}${to + 1})`
+        targets.push({ row: targetRow, col })
+      }
     }
+
+    if (!targets.length) return
     onDataChange(next)
-    setSelectedCell({ row: targetRow, col: normalizedSelection.startCol })
-    setSelectionRange({ startRow: targetRow, endRow: targetRow, startCol: normalizedSelection.startCol, endCol: normalizedSelection.endCol })
-    toast({ title: 'Risultato inserito', description: `Riga ${targetRow + 1} · ${fn}` })
+    const first = targets[0]
+    const last = targets[targets.length - 1]
+    setSelectedCell(first)
+    setSelectionRange({ startRow: first.row, endRow: last.row, startCol: first.col, endCol: last.col })
+    setSelectionMode('cell')
+    toast({
+      title: 'Formula inserita',
+      description: `${fn} · ${direction === 'row' ? 'risultato a destra' : 'risultato sotto'} (${targets.length} ${targets.length === 1 ? 'formula' : 'formule'})`,
+    })
   }
 
   const applyStyle = (patch: SheetCellStyle) => {
@@ -808,7 +953,37 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
           <span className="flex h-8 min-w-14 items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-bold text-slate-600">{selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}</span>
           <span className="text-xs font-black text-slate-400">fx</span>
-          <Input value={selectedRawValue} onChange={(event) => { if (selectedCell) setCellValue(selectedCell.row, selectedCell.col, event.target.value) }} placeholder="Valore o formula" className="h-8 min-w-56 flex-1 text-sm" />
+          <div className="relative min-w-56 flex-1">
+            <Input
+              value={selectedRawValue}
+              onChange={(event) => { if (selectedCell) setCellValue(selectedCell.row, selectedCell.col, event.target.value) }}
+              onKeyDown={(event) => {
+                if ((event.key === 'Tab' || event.key === 'Enter') && formulaCompletions.length > 0) {
+                  event.preventDefault()
+                  completeFormula(formulaCompletions[0].name)
+                }
+              }}
+              placeholder="Valore oppure =FUNZIONE(A1:B5)"
+              aria-label="Barra della formula"
+              className="h-8 w-full font-mono text-sm"
+            />
+            {formulaCompletions.length > 0 && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-72 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+                {formulaCompletions.map(item => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => completeFormula(item.name)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-violet-50"
+                  >
+                    <span className="font-mono text-xs font-bold text-violet-700">={item.name}(...)</span>
+                    <span className="text-[11px] text-slate-500">{item.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <select className="h-8 max-w-32 rounded-md border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontFamily: event.target.value })} defaultValue="Arial"><option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>monospace</option></select>
           <select className="h-8 w-16 rounded-md border border-slate-200 bg-white px-1 text-xs" onChange={event => applyStyle({ fontSize: Number(event.target.value) })} defaultValue="14">{[10, 12, 14, 16, 18, 20, 24].map(size => <option key={size} value={size}>{size}</option>)}</select>
           <IconTool label="Grassetto" active={selectedStyle.fontWeight === 'bold'} onClick={() => applyStyle({ fontWeight: selectedStyle.fontWeight === 'bold' ? 'normal' : 'bold' })}><Bold className="h-4 w-4" /></IconTool>
@@ -824,11 +999,37 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <Input value={operationValue} onChange={event => setOperationValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') applyNumericOperation() }} className="h-8 w-20 text-xs" inputMode="decimal" />
           <IconTool label="Applica operazione ai valori selezionati" onClick={applyNumericOperation}><Check className="h-4 w-4" /></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <span className="text-[11px] font-semibold text-slate-500">Risultato sotto la selezione</span>
+          <span className="text-[11px] font-semibold text-slate-500">Formula rapida</span>
           <select value={statFunction} onChange={event => setStatFunction(event.target.value as typeof statFunction)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option>SUM</option><option>AVERAGE</option><option>MIN</option><option>MAX</option><option>COUNT</option><option>MEDIAN</option><option>STDEV.S</option></select>
-          <IconTool label="Inserisci il risultato sotto ogni colonna" onClick={() => insertColumnStatistic(statFunction)}><Sigma className="h-4 w-4" /></IconTool>
-          {selectionStats && <span className="ml-auto rounded-md bg-cyan-50 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-800">{selectionStats.count} valori · Somma {selectionStats.sum.toLocaleString('it-IT', { maximumFractionDigits: 4 })} · Media {selectionStats.average.toLocaleString('it-IT', { maximumFractionDigits: 4 })}</span>}
+          <IconTool label="Inserisci la formula nella posizione suggerita" onClick={() => insertSmartStatistic(statFunction)} disabled={!smartSelection}><Sigma className="h-4 w-4" /></IconTool>
+          {smartSelection && <span className="ml-auto rounded-md bg-cyan-50 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-800">{smartSelection.count} valori · Somma {smartSelection.sum.toLocaleString('it-IT', { maximumFractionDigits: 4 })} · Media {smartSelection.average.toLocaleString('it-IT', { maximumFractionDigits: 4 })}</span>}
         </div>
+
+        {isMultipleSelection && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800"><Sigma className="h-3.5 w-3.5" /> Operazioni suggerite</span>
+            {smartSelection ? (
+              <>
+                {FORMULA_FUNCTIONS.filter(item => ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT'].includes(item.name)).map(item => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => insertSmartStatistic(item.name as StatFunction)}
+                    className="rounded-md border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-700 shadow-sm transition hover:border-violet-400 hover:bg-violet-100"
+                    title={`${item.hint}; inserisce il risultato ${smartSelection.direction === 'row' ? 'a destra' : 'sotto'} senza includere celle vuote esterne ai dati`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <span className="ml-auto text-[11px] text-violet-700">
+                  Dati rilevati in {rangeToA1(smartSelection.bounds)} · risultato {smartSelection.direction === 'row' ? 'a destra per ogni riga' : 'sotto per ogni colonna'}
+                </span>
+              </>
+            ) : (
+              <span className="text-[11px] text-slate-600">La selezione non contiene valori numerici. Puoi comunque scrivere una formula nella barra fx.</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm">

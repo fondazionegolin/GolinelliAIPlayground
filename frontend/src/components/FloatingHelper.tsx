@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { MessageSquarePlus, X, Send, Loader2, CheckCircle, Image as ImageIcon } from 'lucide-react'
 import { feedbackApi } from '@/lib/api'
+import { useDraggableFloating } from '@/hooks/useDraggableFloating'
 
 // Collect up to N recent console errors captured since page load
 const capturedErrors: string[] = []
@@ -54,6 +56,11 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [screenshot, setScreenshot] = useState<string | null>(null) // data URI
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { position, dragProps, consumeDragClick } = useDraggableFloating('floating-feedback', 'top-left', 48)
+  const modalLeft = Math.min(Math.max(12, position.x), Math.max(12, window.innerWidth - 332))
+  const modalTop = position.y + 60 + 420 <= window.innerHeight
+    ? position.y + 60
+    : Math.max(12, position.y - 420)
 
   useEffect(() => {
     if (open && textareaRef.current) {
@@ -118,17 +125,23 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
     }
   }
 
-  return (
+  return createPortal(
     <>
-      {/* Floating button — orange glassy */}
+      {/* Draggable feedback button */}
       <button
-        onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 ${
+        type="button"
+        {...dragProps}
+        onClick={() => {
+          if (consumeDragClick()) return
+          setOpen(v => !v)
+        }}
+        className={`fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl transition-all duration-200 hover:scale-105 ${
           open
             ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
             : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
         }`}
-        title="Segnala un problema"
+        style={{ left: position.x, top: position.y }}
+        title="Segnala un problema · trascina in alto o in basso"
         aria-label="Apri feedback"
       >
         {open ? <X className="h-5 w-5" /> : <MessageSquarePlus className="h-5 w-5" />}
@@ -136,7 +149,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
 
       {/* Modal */}
       {open && (
-        <div className="fixed bottom-36 left-4 sm:bottom-20 sm:left-5 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed z-[70] w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl animate-in slide-in-from-top-4 duration-200" style={{ left: modalLeft, top: modalTop }}>
           {/* Header */}
           <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fce7f3' }}>
@@ -215,6 +228,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
           )}
         </div>
       )}
-    </>
+    </>,
+    document.body,
   )
 }

@@ -138,14 +138,14 @@ export default function TeacherbotsPage() {
   const renderActions = (bot: Teacherbot) => (
     <div className="flex items-center gap-1">
       <button
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setFormTarget(bot.id) }}
         title="Configura"
       >
         <Settings className="h-3.5 w-3.5" />
       </button>
       <button
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setTestTarget(bot.id) }}
         title="Testa"
       >
@@ -153,7 +153,7 @@ export default function TeacherbotsPage() {
       </button>
       {bot.enable_reporting && bot.conversation_count > 0 && (
         <button
-          className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+          className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
           onClick={(e) => { e.stopPropagation(); setReportsTarget(bot.id) }}
           title="Report"
         >
@@ -161,21 +161,21 @@ export default function TeacherbotsPage() {
         </button>
       )}
       <button
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setShareBot({ id: bot.id, name: bot.name }) }}
         title="Condividi con classe o studenti"
       >
         <Share2 className="h-3.5 w-3.5" />
       </button>
       <button
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setShareLinksBot({ id: bot.id, name: bot.name }) }}
         title="Link pubblico (fuori piattaforma)"
       >
         <Link2 className="h-3.5 w-3.5" />
       </button>
       <button
-        className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
+        className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 md:h-7 md:w-7 md:rounded-lg"
         onClick={(e) => { e.stopPropagation(); handleDelete(bot.id, bot.name) }}
         title="Elimina"
       >
@@ -191,7 +191,7 @@ export default function TeacherbotsPage() {
       <div
         key={bot.id}
         onClick={() => setFormTarget(bot.id)}
-        className={`group flex min-h-[220px] cursor-pointer flex-col justify-between rounded-[24px] border p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${getCardBg(bot.color)}`}
+        className={`mobile-card-standard group flex cursor-pointer flex-col justify-between overflow-hidden rounded-[24px] border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg md:min-h-[220px] md:max-h-none md:overflow-visible md:p-5 ${getCardBg(bot.color)}`}
       >
         <div>
           <div className="flex items-start justify-between gap-3">
@@ -203,20 +203,20 @@ export default function TeacherbotsPage() {
             </span>
           </div>
           <p className="mt-4 line-clamp-1 text-base font-extrabold leading-tight text-slate-950">{bot.name}</p>
-          <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-600">
+          <p className="mt-1.5 hidden line-clamp-1 text-xs leading-5 text-slate-600 md:block md:line-clamp-2">
             {bot.synopsis || 'Nessuna descrizione'}
           </p>
         </div>
 
         <div>
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3 text-xs text-slate-500">
+          <div className="mt-4 hidden items-center justify-between gap-3 border-t border-slate-200/70 pt-3 text-xs text-slate-500 md:flex">
             <span className="flex items-center gap-1">
               <MessagesSquare className="h-3 w-3" />
               {bot.conversation_count} conversazioni
             </span>
             <span className="truncate">{updatedLabel}</span>
           </div>
-          <div className="mt-3">{renderActions(bot)}</div>
+          <div className="mt-3 hidden md:block">{renderActions(bot)}</div>
         </div>
       </div>
     )
@@ -262,7 +262,7 @@ export default function TeacherbotsPage() {
           <span className="text-xs font-bold text-slate-400">{bots.length}</span>
         </div>
         {display === 'grid' ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {bots.map(renderCard)}
           </div>
         ) : (
@@ -282,15 +282,15 @@ export default function TeacherbotsPage() {
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               {t('navbar.nav_teacherbots', 'Teacherbot')}
             </p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
               Crea, condividi, osserva
             </h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+            <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
               Un teacherbot è un assistente AI personalizzato: gli dai un nome, una personalità e istruzioni (system prompt),
               e opzionalmente una base di conoscenza. Condividilo con un'intera classe, con singoli studenti, oppure genera
               un link pubblico utilizzabile anche fuori dalla piattaforma.
             </p>
-            <Button size="lg" className="mt-6" onClick={() => setFormTarget('create')}>
+            <Button size="lg" className="mt-6 min-h-12 w-full rounded-2xl sm:w-auto" onClick={() => setFormTarget('create')}>
               <Plus className="h-4 w-4 mr-2" />
               Nuovo teacherbot
             </Button>
@@ -312,7 +312,7 @@ export default function TeacherbotsPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Cerca teacherbot..."
-                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-base shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 md:h-auto md:rounded-lg md:text-sm"
                 />
                 {search && (
                   <button
@@ -327,14 +327,14 @@ export default function TeacherbotsPage() {
               <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
                 <button
                   onClick={() => setDisplay('grid')}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${display === 'grid' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'grid' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
                   title="Griglia"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setDisplay('list')}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${display === 'list' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'list' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-100'}`}
                   title="Elenco"
                 >
                   <List className="h-4 w-4" />

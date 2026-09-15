@@ -39,8 +39,11 @@ export function LegalConsentGate() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const isLegalReadRoute = location.pathname === '/terms' || location.pathname === '/privacy'
-  const shouldCheck = Boolean(isAuthenticated && user?.role === 'TEACHER' && !isLegalReadRoute)
+  // Legal consent is an authenticated teacher-area concern. In particular, do
+  // not run it on /login: persisted client state can outlive the HTTP-only auth
+  // cookie, and a 401 there must leave the login form usable.
+  const isTeacherRoute = location.pathname === '/teacher' || location.pathname.startsWith('/teacher/')
+  const shouldCheck = Boolean(isAuthenticated && user?.role === 'TEACHER' && isTeacherRoute)
 
   const { data, isLoading } = useQuery<LegalConsentStatus>({
     queryKey: ['legal-consents-me', user?.id],

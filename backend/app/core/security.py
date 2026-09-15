@@ -48,16 +48,24 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def create_student_join_token(session_id: str, student_id: str, nickname: str = None) -> str:
-    expires = timedelta(hours=settings.STUDENT_TOKEN_EXPIRE_HOURS)
-    extra_claims = {"session_id": session_id}
+def create_student_join_token(
+    session_id: str,
+    student_id: str,
+    nickname: str = None,
+    extra_claims: Optional[dict[str, Any]] = None,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    expires = expires_delta or timedelta(hours=settings.STUDENT_TOKEN_EXPIRE_HOURS)
+    token_claims: dict[str, Any] = {"session_id": session_id}
     if nickname:
-        extra_claims["nickname"] = nickname
+        token_claims["nickname"] = nickname
+    if extra_claims:
+        token_claims.update(extra_claims)
     return create_access_token(
         subject=student_id,
         token_type="student",
         expires_delta=expires,
-        extra_claims=extra_claims,
+        extra_claims=token_claims,
     )
 
 

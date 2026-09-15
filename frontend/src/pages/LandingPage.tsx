@@ -219,34 +219,15 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="mt-4 space-y-3 md:hidden">
-            <div className="grid grid-cols-1 gap-2">
-              <MobileNavButton active={activeTab === 'home'} onClick={() => switchTab('home')} tone="rose">
-                {t('landing.nav_explore')}
-              </MobileNavButton>
-              <MobileNavButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} tone="violet">
-                {t('landing.nav_teachers')}
-              </MobileNavButton>
-              <MobileNavButton active={activeTab === 'students'} onClick={() => switchTab('students')} tone="sky">
-                {t('landing.nav_students')}
-              </MobileNavButton>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setOpenDocument('privacy')}
-                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
-              >
-                <ShieldCheck size={15} />
-                Privacy
-              </button>
-              <button
-                onClick={() => setOpenDocument('ai-act')}
-                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
-              >
-                <Sparkles size={15} />
-                AI Act
-              </button>
-            </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:hidden" aria-label="Accesso alla piattaforma">
+            <MobileNavButton active={activeTab === 'students'} onClick={() => switchTab('students')} tone="sky">
+              <GraduationCap className="h-4 w-4" />
+              Studente
+            </MobileNavButton>
+            <MobileNavButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} tone="violet">
+              <School className="h-4 w-4" />
+              Docente
+            </MobileNavButton>
           </div>
         </div>
       </nav>
@@ -351,7 +332,7 @@ function MobileNavButton({
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+      className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
         active ? activeClass : `bg-white ${toneClass}`
       }`}
     >
@@ -464,7 +445,7 @@ function HomeSection({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
+      <div className="hidden grid-cols-1 gap-3 sm:grid-cols-2 md:grid md:gap-4">
         {FEATURES.map((f, i) => (
           <motion.div
             key={f.title}

@@ -1,4 +1,5 @@
 import base64
+import copy
 import io
 import json
 import zipfile
@@ -11,7 +12,7 @@ from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from pptx import Presentation
 from pptx.util import Inches as PptxInches
 
@@ -145,6 +146,22 @@ def _xlsx_bytes() -> bytes:
     return output.getvalue()
 
 
+def _xlsx_with_formula_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Calcoli"
+    sheet.append(["Voce", "Gennaio", "Febbraio", "Totale"])
+    sheet.append(["Laboratorio", 12, 18, "=SUM(B2:C2)"])
+    sheet.column_dimensions["A"].width = 24
+    sheet.row_dimensions[1].height = 30
+    bold_font = copy.copy(sheet["D2"].font)
+    bold_font.bold = True
+    sheet["D2"].font = bold_font
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 def _pdf_bytes() -> bytes:
     pdf = fitz.open()
     page = pdf.new_page()
@@ -171,6 +188,24 @@ def test_imports_supported_editable_formats_and_preserves_source_metadata():
         assert content["source"]["extension"] == filename.rsplit(".", 1)[1]
     pdf_content = json.loads(import_document("dispensa.pdf", samples["dispensa.pdf"][0]).content_json)
     assert pdf_content["previewImage"].startswith("data:image/jpeg;base64,")
+
+
+def test_xlsx_round_trip_preserves_formulas_numeric_types_and_layout():
+    imported = import_document("calcoli.xlsx", _xlsx_with_formula_bytes())
+    content = json.loads(imported.content_json)
+
+    assert content["data"][1] == ["Laboratorio", "12", "18", "=SUM(B2:C2)"]
+    assert content["dimensions"]["columnWidths"][0] >= 160
+    assert content["styles"]["1:3"]["fontWeight"] == "bold"
+
+    exported = export_document(imported.content_json, "Calcoli", "xlsx")
+    workbook = load_workbook(io.BytesIO(exported.content), data_only=False)
+    sheet = workbook.active
+    assert sheet["B2"].value == 12
+    assert sheet["B2"].data_type == "n"
+    assert sheet["D2"].value == "=SUM(B2:C2)"
+    assert sheet["D2"].data_type == "f"
+    assert sheet["D2"].font.bold is True
 
 
 def test_csv_import_detects_delimiter_and_creates_editable_cells():

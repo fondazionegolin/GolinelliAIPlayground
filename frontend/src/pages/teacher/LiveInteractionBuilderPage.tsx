@@ -336,7 +336,7 @@ const TUTORIAL_STEPS = [
           <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
           <span className="text-sm text-white/90 font-semibold">Sessione completata!</span>
         </motion.div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
             { v: '24', l: 'studenti' },
             { v: '4',  l: 'slide' },
@@ -436,7 +436,7 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
       </div>
 
       {/* Step indicators */}
-      <div className="grid grid-cols-4 gap-2 mb-6">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {TUTORIAL_STEPS.map((s, i) => {
           const Icon = s.icon
           const isActive = i === active

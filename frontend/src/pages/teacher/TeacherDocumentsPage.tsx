@@ -195,6 +195,7 @@ export default function TeacherDocumentsPage() {
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'document' | 'presentation' | 'sheet' | 'canvas'>('all')
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
   const [activePublishedTaskId, setActivePublishedTaskId] = useState<string | null>(null)
   const [activeStudentSubmissionId, setActiveStudentSubmissionId] = useState<string | null>(null)
@@ -228,6 +229,14 @@ export default function TeacherDocumentsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
+
+  const uniqueDocumentTitle = (base: string) => {
+    const used = new Set([...draftDocuments, ...storedDocuments].map(item => item.title.trim().toLocaleLowerCase()))
+    if (!used.has(base.toLocaleLowerCase())) return base
+    let suffix = 2
+    while (used.has(`${base} (${suffix})`.toLocaleLowerCase())) suffix += 1
+    return `${base} (${suffix})`
+  }
   const [documentAgentOpen, setDocumentAgentOpen] = useState(false)
   const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
@@ -397,7 +406,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: defaultDocumentTitle,
+      title: uniqueDocumentTitle(defaultDocumentTitle),
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
@@ -424,7 +433,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: defaultPresentationTitle,
+      title: uniqueDocumentTitle(defaultPresentationTitle),
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
       textContent: '',
@@ -448,7 +457,7 @@ export default function TeacherDocumentsPage() {
 
   const createNewSheet = () => {
     setDocument({
-      id: crypto.randomUUID(), title: defaultSheetTitle, format: 'a4', slides: [], textContent: '',
+      id: crypto.randomUUID(), title: uniqueDocumentTitle(defaultSheetTitle), format: 'a4', slides: [], textContent: '',
       sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
     })
     setMode('sheet')
@@ -466,7 +475,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: defaultCanvasTitle,
+      title: uniqueDocumentTitle(defaultCanvasTitle),
       format: 'a4',
       slides: [],
       textContent: '',
@@ -618,7 +627,9 @@ export default function TeacherDocumentsPage() {
   }
 
   const closeDocumentEditor = () => {
-    const returnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    const stateReturnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    const queryReturnTo = searchParams.get('returnTo')
+    const returnTo = typeof stateReturnTo === 'string' ? stateReturnTo : queryReturnTo
     if (typeof returnTo === 'string' && returnTo.startsWith('/teacher/')) {
       navigate(returnTo)
       return
@@ -626,6 +637,7 @@ export default function TeacherDocumentsPage() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('open')
     nextParams.delete('publish')
+    nextParams.delete('returnTo')
     navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true, state: null })
     setViewMode('list')
   }
@@ -1492,8 +1504,9 @@ export default function TeacherDocumentsPage() {
 
   // ── Document list view (default) ─────────────────────────────────────────
   if (!isMobile && viewMode === 'list') {
-    const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
-    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className, d.authorName))
+    const matchesType = (type: string) => docTypeFilter === 'all' || type === docTypeFilter
+    const filteredDrafts = draftDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type))
+    const filteredStored = storedDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type, d.sessionName, d.className, d.authorName))
     const filteredTeacherDocuments = filteredStored.filter(doc => doc.source === 'teacher')
     const filteredStudentDocuments = filteredStored.filter(doc => doc.source === 'student')
     const docIcon = (type: string) => {
@@ -1518,55 +1531,50 @@ export default function TeacherDocumentsPage() {
           }}
         >
           <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
-          <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
+          <div className="hidden h-14 items-center border-b border-slate-200/80 bg-white/90 px-6 shadow-sm backdrop-blur-sm md:flex">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-6xl mx-auto space-y-7">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="mx-auto max-w-6xl space-y-6 md:space-y-7">
 
-              <section className="mx-auto grid w-full max-w-6xl gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-                <button type="button" onClick={createNewDocument} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md">
+              <section className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2.5 lg:grid-cols-5">
+                <button type="button" onClick={createNewDocument} className="flex aspect-square flex-col justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><FileText className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
                 </button>
-                <button type="button" onClick={createNewPresentation} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-100/70 hover:shadow-md">
+                <button type="button" onClick={createNewPresentation} className="flex aspect-square flex-col justify-between gap-3 rounded-2xl border border-indigo-200/80 bg-indigo-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-100/70 hover:shadow-md md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Create slides.' : 'Crea slide.'}</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Create slides.' : 'Crea slide.'}</span></span>
                 </button>
-                <button type="button" onClick={createNewSheet} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md">
+                <button type="button" onClick={createNewSheet} className="flex aspect-square flex-col justify-between gap-3 rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
                 </button>
-                <button type="button" onClick={createNewCanvas} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100/70 hover:shadow-md">
+                <button type="button" onClick={createNewCanvas} className="flex aspect-square flex-col justify-between gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100/70 hover:shadow-md md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm"><PenTool className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New board' : 'Nuova lavagna'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.'}</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New board' : 'Nuova lavagna'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.'}</span></span>
                 </button>
-                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
+                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex aspect-square flex-col justify-between gap-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60 md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS · CSV</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
                 </button>
               </section>
 
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
-                <div className={`relative max-w-sm rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'}
-                    value={docSearch}
-                    onChange={e => setDocSearch(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 text-sm bg-transparent border-0 rounded-lg focus:outline-none focus:ring-0 text-slate-700"
-                  />
-                  {docSearch && (
-                    <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
+                  <div className={`relative min-w-0 flex-1 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input type="text" placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'} value={docSearch} onChange={e => setDocSearch(e.target.value)} className="h-11 w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-base text-slate-700 focus:outline-none focus:ring-0 md:text-sm" />
+                    {docSearch && <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
+                  </div>
+                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="h-[60px] rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none">
+                    <option value="all">{isEnglish ? 'All types' : 'Tutti i tipi'}</option><option value="document">Documenti</option><option value="presentation">Presentazioni</option><option value="sheet">Tabelle</option><option value="canvas">Lavagne</option>
+                  </select>
                 </div>
               )}
 
@@ -1592,16 +1600,16 @@ export default function TeacherDocumentsPage() {
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                        className="mobile-document-card group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
-                        <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                        <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
                         <div className="px-1.5 pb-1.5 pt-2">
                           <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                          <p className="mt-1 text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
+                          <p className="mobile-document-meta mt-1 text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
                         </div>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
+                          className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1660,20 +1668,20 @@ export default function TeacherDocumentsPage() {
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
+                          className="mobile-document-card group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
                         >
-                          <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                          <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
                           <div className="px-1.5 pb-1.5 pt-2">
                             <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                            <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
+                            <p className="mobile-document-meta mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
                               <User className="h-3 w-3 text-emerald-500" />
                               {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
                             </p>
-                            <p className="mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                            <p className="mobile-document-meta mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
                           </div>
                           <button
                             onClick={(e) => handleDeletePublished(e, doc)}
-                            className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
+                            className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1692,20 +1700,20 @@ export default function TeacherDocumentsPage() {
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                        className="mobile-document-card group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
-                        <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                        <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
                         <div className="px-1.5 pb-1.5 pt-2">
                           <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                          <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
+                          <p className="mobile-document-meta mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
                             <User className="h-3 w-3 text-slate-400" />
                             {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
                           </p>
-                          <p className="mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                          <p className="mobile-document-meta mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
                         </div>
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
-                          className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
+                          className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -2313,8 +2321,10 @@ export default function TeacherDocumentsPage() {
              {mode === 'canvas' && (
                <div className="w-full max-w-[1700px] p-2">
                  <CollaborativeCanvas
+                   key={document.id}
                    role="teacher"
                    sessionId={selectedSessionId || undefined}
+                   canvasName={document.title}
                    title={document.title}
                    onTitleChange={handleTitleChange}
                    initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}

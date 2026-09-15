@@ -16,7 +16,7 @@ from app.models.credits import CreditTransaction
 from app.models.enums import LimitLevel, CreditTransactionType
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft
-from app.models.session_canvas import SessionCanvas
+from app.models.session_canvas import SessionCanvas, normalize_canvas_key
 from app.models.user import User
 from app.models.session import Class
 from app.models.tenant import Tenant
@@ -517,17 +517,22 @@ async def get_session_canvas(
     session_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
+    canvas_name: str = Query("Lavagna collaborativa", min_length=1, max_length=240),
 ):
     if session_id != student.session_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    canvas_key = normalize_canvas_key(canvas_name)
     result = await db.execute(
-        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+        select(SessionCanvas)
+        .where(SessionCanvas.session_id == session_id)
+        .where(SessionCanvas.canvas_key == canvas_key)
     )
     canvas = result.scalar_one_or_none()
     if not canvas:
         return {
             "session_id": str(session_id),
+            "canvas_key": canvas_key,
             "title": "Lavagna collaborativa",
             "content_json": '{"type":"canvas_v1","items":[]}',
             "version": 0,
@@ -537,6 +542,7 @@ async def get_session_canvas(
 
     return {
         "session_id": str(canvas.session_id),
+        "canvas_key": canvas.canvas_key,
         "title": canvas.title,
         "content_json": canvas.content_json,
         "version": canvas.version,
@@ -551,12 +557,17 @@ async def upsert_session_canvas(
     request: CanvasUpsertRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
+    canvas_name: str = Query("Lavagna collaborativa", min_length=1, max_length=240),
 ):
     if session_id != student.session_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    canvas_key = normalize_canvas_key(canvas_name)
+    desired_canvas_key = normalize_canvas_key(request.title or canvas_name)
     result = await db.execute(
-        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+        select(SessionCanvas)
+        .where(SessionCanvas.session_id == session_id)
+        .where(SessionCanvas.canvas_key == canvas_key)
     )
     canvas = result.scalar_one_or_none()
 
@@ -576,6 +587,7 @@ async def upsert_session_canvas(
         canvas = SessionCanvas(
             tenant_id=student.tenant_id,
             session_id=session_id,
+            canvas_key=desired_canvas_key,
             title=request.title or "Lavagna collaborativa",
             content_json=request.content_json,
             version=1,
@@ -583,6 +595,16 @@ async def upsert_session_canvas(
         )
         db.add(canvas)
     else:
+        if desired_canvas_key != canvas.canvas_key:
+            duplicate = await db.execute(
+                select(SessionCanvas.id)
+                .where(SessionCanvas.session_id == session_id)
+                .where(SessionCanvas.canvas_key == desired_canvas_key)
+                .where(SessionCanvas.id != canvas.id)
+            )
+            if duplicate.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A canvas with this name already exists")
+            canvas.canvas_key = desired_canvas_key
         canvas.title = request.title or canvas.title
         canvas.content_json = request.content_json
         canvas.version = (canvas.version or 0) + 1
@@ -594,11 +616,13 @@ async def upsert_session_canvas(
 
     payload = {
         "session_id": str(canvas.session_id),
+        "canvas_key": canvas.canvas_key,
         "title": canvas.title,
         "content_json": canvas.content_json,
         "version": canvas.version,
         "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
         "updated_by": {"type": "student", "id": str(student.id)},
+        "students_can_write": canvas.students_can_write,
     }
     await sio.emit("canvas_updated", payload, room=f"session:{session_id}")
     return payload

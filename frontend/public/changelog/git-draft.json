@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-09T07:37:13.103466+00:00",
-  "version_label": "2026.09.09-68086a13",
+  "generated_at": "2026-09-15T10:38:17.691832+00:00",
+  "version_label": "2026.09.15-eb373c78",
   "title": "Aggiornamenti branch staging",
   "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "68086a131f756f4a32a4296ff619b8c837330d29",
+  "git_ref": "eb373c78a76e7e1edcde86fc9981ec0b19119dc3",
   "items": [
     {
       "category": "improved",
-      "title": "Chore(staging): sync platform realtime",
-      "description": "Chore(staging): sync platform realtime"
+      "title": "Finalize changelog state",
+      "description": "Finalize changelog state"
     },
     {
       "category": "improved",
-      "title": "Feat(platform): expand realtime workflows",
-      "description": "Feat(platform): expand realtime workflows"
+      "title": "Feat(platform): refine classroom workspaces",
+      "description": "Feat(platform): refine classroom workspaces"
     }
   ]
 }

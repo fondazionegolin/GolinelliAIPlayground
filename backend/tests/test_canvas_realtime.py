@@ -15,7 +15,7 @@ async def test_canvas_transform_relays_only_valid_bounded_values(monkeypatch):
     gateway.connected_users["canvas-test-sid"] = user
     access = AsyncMock(return_value=True)
     emit = AsyncMock()
-    monkeypatch.setattr(gateway, "can_user_access_session", access)
+    monkeypatch.setattr(gateway, "can_user_edit_canvas", access)
     monkeypatch.setattr(gateway.sio, "emit", emit)
 
     try:
@@ -23,6 +23,7 @@ async def test_canvas_transform_relays_only_valid_bounded_values(monkeypatch):
             "canvas-test-sid",
             {
                 "session_id": "session-1",
+                "canvas_key": "Geometria 1",
                 "item_id": "item-1",
                 "transform": {"x": 120.5, "y": -10, "w": 50_000, "ignored": "value"},
             },
@@ -31,11 +32,12 @@ async def test_canvas_transform_relays_only_valid_bounded_values(monkeypatch):
         gateway.connected_users.pop("canvas-test-sid", None)
 
     assert result == {"success": True}
-    access.assert_awaited_once_with(user, "session-1")
+    access.assert_awaited_once_with(user, "session-1", "geometria 1")
     emit.assert_awaited_once_with(
         "canvas_item_transform",
         {
             "session_id": "session-1",
+            "canvas_key": "geometria 1",
             "item_id": "item-1",
             "user_id": "teacher-1",
             "transform": {"x": 120.5, "y": -10.0, "w": 10_000.0},
@@ -51,16 +53,52 @@ async def test_canvas_transform_rejects_unauthorized_user(monkeypatch):
     gateway.connected_users["canvas-test-sid"] = user
     access = AsyncMock(return_value=False)
     emit = AsyncMock()
-    monkeypatch.setattr(gateway, "can_user_access_session", access)
+    monkeypatch.setattr(gateway, "can_user_edit_canvas", access)
     monkeypatch.setattr(gateway.sio, "emit", emit)
 
     try:
         result = await gateway.canvas_item_transform(
             "canvas-test-sid",
-            {"session_id": "session-1", "item_id": "item-1", "transform": {"x": 1, "y": 2}},
+            {"session_id": "session-1", "canvas_key": "Algebra", "item_id": "item-1", "transform": {"x": 1, "y": 2}},
         )
     finally:
         gateway.connected_users.pop("canvas-test-sid", None)
 
     assert result == {"error": "Forbidden"}
     emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canvas_cursor_broadcasts_presence_without_persisting(monkeypatch):
+    user = {"id": "student-1", "type": "student", "session_id": "session-1", "nickname": "Ada"}
+    gateway.connected_users["canvas-cursor-sid"] = user
+    access = AsyncMock(return_value=True)
+    emit = AsyncMock()
+    monkeypatch.setattr(gateway, "can_user_access_session", access)
+    monkeypatch.setattr(gateway.sio, "emit", emit)
+
+    try:
+        result = await gateway.canvas_cursor(
+            "canvas-cursor-sid",
+            {"session_id": "session-1", "canvas_key": "Geometria 1", "x": 125.5, "y": -40, "active": True},
+        )
+    finally:
+        gateway.connected_users.pop("canvas-cursor-sid", None)
+
+    assert result == {"success": True}
+    access.assert_awaited_once_with(user, "session-1")
+    emit.assert_awaited_once_with(
+        "canvas_cursor",
+        {
+            "session_id": "session-1",
+            "canvas_key": "geometria 1",
+            "user_id": "student-1",
+            "user_type": "student",
+            "label": "Ada",
+            "active": True,
+            "x": 125.5,
+            "y": -40.0,
+        },
+        room="session:session-1",
+        skip_sid="canvas-cursor-sid",
+    )

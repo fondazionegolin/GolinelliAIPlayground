@@ -790,7 +790,7 @@ function MLLabHome({
   t: (key: string) => string
   isEnglish: boolean
 }) {
-  const [tutorialOpen, setTutorialOpen] = useState(true)
+  const [tutorialOpen, setTutorialOpen] = useState(false)
   const modes = [
     {
       key: 'images' as const,
@@ -860,7 +860,7 @@ function MLLabHome({
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="border-b border-slate-200 py-7"
+          className="hidden border-b border-slate-200 py-7 md:block"
         >
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
@@ -937,7 +937,7 @@ function MLLabHome({
           </div>
         </motion.div>
 
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 py-5 md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 py-4 md:grid-cols-3 md:gap-4 md:py-5">
           {modes.map((m, i) => {
             const Illustration = m.illustration
             return (
@@ -949,9 +949,9 @@ function MLLabHome({
                 whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => onSelect(m.key)}
-                className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(15,23,42,0.13)] ${m.cardBorder}`}
+                className={`mobile-card-standard group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(15,23,42,0.13)] md:block ${m.cardBorder}`}
               >
-                <div className={`relative h-48 overflow-hidden border-b border-slate-200 p-3 ${m.panelBg}`}>
+                <div className={`relative hidden h-48 overflow-hidden border-b border-slate-200 p-3 md:block ${m.panelBg}`}>
                   <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/70 blur-2xl" />
                   <motion.div
                     className="relative h-full rounded-xl border border-white/80 bg-white/35 p-1.5 shadow-inner transition-transform duration-500 group-hover:scale-[1.035]"
@@ -965,17 +965,17 @@ function MLLabHome({
                   </span>
                 </div>
 
-                <div className="p-5">
-                  <div className="mb-3 flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${m.iconWrap}`}>
-                      <m.icon className="h-5 w-5" />
+                <div className="flex h-full flex-col p-4 md:block md:h-auto md:p-5">
+                  <div className="flex flex-col items-start gap-3 md:mb-3 md:flex-row md:items-center">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl md:h-10 md:w-10 md:rounded-lg ${m.iconWrap}`}>
+                      <m.icon className="h-6 w-6 md:h-5 md:w-5" />
                     </div>
                     <h3 className="text-base font-bold text-slate-800 leading-tight">{m.title}</h3>
                   </div>
 
-                  <p className="text-sm text-slate-500 leading-relaxed mb-4">{m.description}</p>
+                  <p className="mb-4 hidden text-sm leading-relaxed text-slate-500 md:block">{m.description}</p>
 
-                  <div className="flex flex-wrap gap-1.5 mb-4">
+                  <div className="mb-4 hidden flex-wrap gap-1.5 md:flex">
                     {m.features.map(f => (
                       <span key={f} className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${m.badgeBg}`}>
                         {f}
@@ -983,8 +983,8 @@ function MLLabHome({
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 transition-all duration-200 group-hover:gap-2.5">
-                    {isEnglish ? 'Start now' : 'Inizia ora'}
+                  <div className="mt-auto flex items-center gap-1.5 text-sm font-black text-slate-900 transition-all duration-200 group-hover:gap-2.5 md:mt-0 md:font-semibold">
+                    {isEnglish ? 'Open lab' : 'Apri laboratorio'}
                     <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
                 </div>
@@ -997,7 +997,7 @@ function MLLabHome({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="border-t border-slate-200 py-4 text-center text-xs text-slate-400"
+          className="hidden border-t border-slate-200 py-4 text-center text-xs text-slate-400 md:block"
         >
           <span className="inline-flex items-center justify-center gap-1.5">
             <Info className="h-3.5 w-3.5" />
@@ -1437,7 +1437,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           iconColor="text-rose-600"
         />
 
-        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+        <div className="mb-4 hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 md:block">
           <div className="flex items-start gap-3">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
             <div>
@@ -1605,7 +1605,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     )}
                   </div>
-                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                  <p className="mb-2 hidden text-xs leading-5 text-slate-500 md:block">
                     {isEnglish
                       ? 'Rename the class with the object or situation you are showing to the webcam.'
                       : "Rinomina la classe con l'oggetto o la situazione che mostri alla webcam."}
@@ -1649,7 +1649,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     </div>
                   </div>
-                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                  <p className="mb-2 hidden text-xs leading-5 text-slate-500 md:block">
                     {isEnglish
                       ? 'Hold to capture repeated frames. Aim for at least 10 varied examples per class.'
                       : 'Tieni premuto per registrare più fotogrammi. Punta ad almeno 10 esempi vari per classe.'}
@@ -2007,7 +2007,7 @@ function TextClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <div className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-left">
+                <div className="mb-4 hidden rounded-lg bg-blue-50 px-3 py-2 text-left md:block">
                   <p className="text-xs font-semibold text-blue-900">
                     {isEnglish ? 'CSV structure' : 'Struttura del CSV'}
                   </p>
@@ -2471,7 +2471,7 @@ function DataClassification({
           iconColor="text-emerald-600"
         />
 
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <div className="mb-4 hidden rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 md:block">
           <div className="flex items-start gap-3">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <div>
@@ -2566,7 +2566,7 @@ function DataClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-left">
+                <div className="mb-4 hidden rounded-lg bg-emerald-50 px-3 py-2 text-left md:block">
                   <p className="text-xs font-semibold text-emerald-900">
                     {isEnglish ? 'CSV file expected' : 'File CSV richiesto'}
                   </p>
@@ -2673,7 +2673,7 @@ function DataClassification({
                         }`}>
                           {isEnglish ? 'Suggestion' : 'Suggerimento'}: {suggestedTask === 'classification' ? t('classification.task_classification') : t('classification.task_regression')}
                         </p>
-                        <p className="text-sm mt-1 text-gray-600">{taskExplanation}</p>
+                        <p className="mt-1 hidden text-sm text-gray-600 md:block">{taskExplanation}</p>
                       </div>
                     </div>
                   </div>
@@ -2691,7 +2691,7 @@ function DataClassification({
                     <p className="font-semibold text-slate-800">
                       {isEnglish ? 'Next step: choose the target column' : 'Prossimo passaggio: scegli la colonna target'}
                     </p>
-                    <p className="mt-1 text-xs leading-5">
+                    <p className="mt-1 hidden text-xs leading-5 md:block">
                       {isEnglish
                         ? 'The target is what the model will try to predict. All other columns become the input clues.'
                         : 'La variabile target è ciò che il modello proverà a predire. Tutte le altre colonne diventano gli indizi di input.'}

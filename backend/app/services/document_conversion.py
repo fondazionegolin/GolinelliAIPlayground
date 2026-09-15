@@ -30,6 +30,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 from PIL import Image, ImageOps
 from pptx import Presentation
 from pptx.dml.color import RGBColor as PptxRGBColor
@@ -738,7 +740,9 @@ def _pptx_to_native(data: bytes) -> dict[str, Any]:
 
 
 def _xlsx_to_native(data: bytes) -> dict[str, Any]:
-    workbook = load_workbook(io.BytesIO(data), data_only=False, read_only=True)
+    # Normal mode is required here: read-only worksheets do not expose column/
+    # row dimensions and only provide a reduced style model.
+    workbook = load_workbook(io.BytesIO(data), data_only=False, read_only=False)
     sheet = workbook.active
     rows: list[list[str]] = []
     for row_index, row in enumerate(sheet.iter_rows(values_only=True)):
@@ -750,7 +754,39 @@ def _xlsx_to_native(data: bytes) -> dict[str, Any]:
         rows.append(values)
     while rows and not rows[-1]:
         rows.pop()
-    return {"type": "sheet_v1", "data": rows or [[""]], "sheetName": sheet.title}
+    column_widths = [
+        round((sheet.column_dimensions[get_column_letter(index)].width or 13) * 7)
+        for index in range(1, min(sheet.max_column, 100) + 1)
+    ]
+    row_heights = [
+        round((sheet.row_dimensions[index].height or 27) * 4 / 3)
+        for index in range(1, min(sheet.max_row, 1000) + 1)
+    ]
+    styles: dict[str, dict[str, Any]] = {}
+    for row in sheet.iter_rows(max_row=min(sheet.max_row, 1000), max_col=min(sheet.max_column, 100)):
+        for cell in row:
+            if not cell.has_style:
+                continue
+            cell_style: dict[str, Any] = {}
+            if cell.font.name:
+                cell_style["fontFamily"] = cell.font.name
+            if cell.font.sz:
+                cell_style["fontSize"] = round(float(cell.font.sz))
+            if cell.font.bold:
+                cell_style["fontWeight"] = "bold"
+            if cell.font.italic:
+                cell_style["fontStyle"] = "italic"
+            if cell.alignment.horizontal in {"left", "center", "right"}:
+                cell_style["textAlign"] = cell.alignment.horizontal
+            if cell_style:
+                styles[f"{cell.row - 1}:{cell.column - 1}"] = cell_style
+    return {
+        "type": "sheet_v1",
+        "data": rows or [[""]],
+        "sheetName": sheet.title,
+        "styles": styles,
+        "dimensions": {"columnWidths": column_widths, "rowHeights": row_heights},
+    }
 
 
 def _csv_to_native(data: bytes) -> dict[str, Any]:
@@ -1070,8 +1106,45 @@ def _native_to_xlsx(content: dict[str, Any], title: str) -> bytes:
     sheet = workbook.active
     sheet.title = re.sub(r"[\\/*?:\[\]]", "_", title)[:31] or "Foglio"
     rows = content.get("data") if isinstance(content.get("data"), list) else []
+    def excel_value(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if stripped.upper() == "TRUE":
+            return True
+        if stripped.upper() == "FALSE":
+            return False
+        if re.fullmatch(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?", stripped, re.IGNORECASE) and not re.match(r"[-+]?0\d+", stripped):
+            number = float(stripped)
+            return int(number) if number.is_integer() else number
+        return value
+
     for row in rows:
-        sheet.append(list(row))
+        sheet.append([excel_value(value) for value in row])
+
+    dimensions = content.get("dimensions") if isinstance(content.get("dimensions"), dict) else {}
+    for index, width in enumerate(dimensions.get("columnWidths") or [], 1):
+        if isinstance(width, (int, float)):
+            sheet.column_dimensions[get_column_letter(index)].width = max(1, float(width) / 7)
+    for index, height in enumerate(dimensions.get("rowHeights") or [], 1):
+        if isinstance(height, (int, float)):
+            sheet.row_dimensions[index].height = max(1, float(height) * 3 / 4)
+
+    styles = content.get("styles") if isinstance(content.get("styles"), dict) else {}
+    for key, cell_style in styles.items():
+        if not isinstance(cell_style, dict) or not re.fullmatch(r"\d+:\d+", str(key)):
+            continue
+        row_index, column_index = (int(part) + 1 for part in str(key).split(":"))
+        cell = sheet.cell(row=row_index, column=column_index)
+        cell.font = Font(
+            name=cell_style.get("fontFamily") or cell.font.name,
+            size=cell_style.get("fontSize") or cell.font.sz,
+            bold=cell_style.get("fontWeight") == "bold",
+            italic=cell_style.get("fontStyle") == "italic",
+        )
+        alignment = cell_style.get("textAlign")
+        if alignment in {"left", "center", "right"}:
+            cell.alignment = Alignment(horizontal=alignment)
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()
