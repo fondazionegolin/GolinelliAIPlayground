@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { codingApi } from '@/lib/api'
@@ -28,9 +28,6 @@ export default function PublicCodingSitePage() {
   const [site, setSite] = useState<PublishedSite | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [frameNonce, setFrameNonce] = useState(0)
-  const frameLoads = useRef(0)
-  const frameResets = useRef(0)
 
   useEffect(() => {
     let active = true
@@ -65,18 +62,6 @@ export default function PublicCodingSitePage() {
   const isReact = useMemo(() => (site ? isReactProject(site.files) : false), [site])
   const html = useMemo(() => (site && !isReact ? buildPublicHtml(site.files, site.title) : ''), [site, isReact])
 
-  // Safety net: if the sandboxed iframe navigates away from its srcDoc (e.g. generated
-  // JS does location.href = '...'), remount it instead of letting it load the platform SPA.
-  useEffect(() => { frameLoads.current = 0 }, [frameNonce])
-  useEffect(() => { frameLoads.current = 0; frameResets.current = 0 }, [html])
-  const handleFrameLoad = () => {
-    frameLoads.current += 1
-    if (frameLoads.current > 1 && frameResets.current < 5) {
-      frameResets.current += 1
-      setFrameNonce((value) => value + 1)
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
@@ -101,18 +86,7 @@ export default function PublicCodingSitePage() {
     return <CodingSandpackPreview files={site.files} enableInspector={false} className="h-screen w-screen" />
   }
 
-  return (
-    <iframe
-      key={frameNonce}
-      title={site.title}
-      srcDoc={html}
-      sandbox="allow-scripts allow-forms"
-      allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
-      referrerPolicy="no-referrer"
-      onLoad={handleFrameLoad}
-      className="h-screen w-screen border-0 bg-white"
-    />
-  )
+  return <CodingSandpackPreview staticHtml={html} className="h-screen w-screen" />
 }
 
 function buildPublicHtml(files: PublishedFile[], title: string, entryPath = 'index.html') {

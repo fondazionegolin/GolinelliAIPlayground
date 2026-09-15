@@ -23,7 +23,17 @@ export type SandpackRuntimeError = {
 }
 
 type Props = {
-  files: GeneratedFile[]
+  /** React/Vite projects: a file tree bundled by Sandpack's react-ts template. Ignored when
+   * `staticHtml` is set. */
+  files?: GeneratedFile[]
+  /** Plain HTML/CSS/JS projects (e.g. p5.js sketches): one self-contained HTML document — the
+   * exact string the legacy srcDoc preview used to render directly. Sandpack's `static` template
+   * serves it as-is (no bundler) from Sandpack's own isolated bundler origin, which is what lets
+   * getUserMedia/camera actually work: a `sandbox`ed `srcDoc` iframe has an opaque origin and
+   * browsers refuse camera/mic there no matter what `allow` says, but Sandpack's preview iframe
+   * is a real cross-origin document, so `allow="camera; microphone; ..."` (already set by
+   * sandpack-client on every Sandpack preview, any template) actually takes effect. */
+  staticHtml?: string
   /** Called whenever the running project emits compile/runtime errors (drives the agentic fix loop). */
   onErrors?: (errors: SandpackRuntimeError[]) => void
   /** Called once the project mounts and renders without errors. */
@@ -177,7 +187,8 @@ function ErrorReporter({
 }
 
 export default function CodingSandpackPreview({
-  files,
+  files = [],
+  staticHtml,
   onErrors,
   onReady,
   showConsole = false,
@@ -185,6 +196,11 @@ export default function CodingSandpackPreview({
   className,
 }: Props) {
   const dependencies = useMemo(() => parseDependencies(files), [files])
+
+  const staticFiles = useMemo<SandpackFiles>(() => ({
+    '/index.html': { code: staticHtml || '<!doctype html><html><head></head><body></body></html>' },
+    '/package.json': { code: JSON.stringify({ dependencies: {}, main: '/index.html' }) },
+  }), [staticHtml])
 
   const sandpackFiles = useMemo<SandpackFiles>(() => {
     const map: SandpackFiles = {}
@@ -217,25 +233,39 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
     <div className={`golinelli-sp ${className || ''}`}>
       {/* Sandpack ships a fixed default layout height; force the whole chain to fill our container. */}
       <style>{SANDPACK_FILL_CSS}</style>
-      <SandpackProvider
-        template="react-ts"
-        files={sandpackFiles}
-        customSetup={{
-          entry: ENTRY_PATH,
-          dependencies: {
-            react: '^18.2.0',
-            'react-dom': '^18.2.0',
-            ...dependencies,
-          },
-        }}
-        options={{ recompileMode: 'delayed', recompileDelay: 400 }}
-      >
-        <ErrorReporter onErrors={onErrors} onReady={onReady} />
-        <SandpackLayout>
-          <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
-          {showConsole && <SandpackConsole />}
-        </SandpackLayout>
-      </SandpackProvider>
+      {staticHtml !== undefined ? (
+        <SandpackProvider
+          template="static"
+          files={staticFiles}
+          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+        >
+          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <SandpackLayout>
+            <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
+            {showConsole && <SandpackConsole />}
+          </SandpackLayout>
+        </SandpackProvider>
+      ) : (
+        <SandpackProvider
+          template="react-ts"
+          files={sandpackFiles}
+          customSetup={{
+            entry: ENTRY_PATH,
+            dependencies: {
+              react: '^18.2.0',
+              'react-dom': '^18.2.0',
+              ...dependencies,
+            },
+          }}
+          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+        >
+          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <SandpackLayout>
+            <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
+            {showConsole && <SandpackConsole />}
+          </SandpackLayout>
+        </SandpackProvider>
+      )}
     </div>
   )
 }

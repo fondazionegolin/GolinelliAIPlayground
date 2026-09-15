@@ -355,10 +355,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [previewingCommitId, setPreviewingCommitId] = useState<string | null>(null)
   const [previewingVersionId, setPreviewingVersionId] = useState<string | null>(null)
   const [upstreamStatus, setUpstreamStatus] = useState<UpstreamStatus | null>(null)
-  // Safety net: if the sandboxed preview iframe ever navigates away from its srcDoc
-  // (e.g. generated JS does location.href = '...'), it would load the platform SPA at a
-  // null origin and spam CORS/sessionStorage errors. We detect the extra load and remount.
-  const [previewNonce, setPreviewNonce] = useState(0)
+  // Static (non-React) previews now render through Sandpack (CodingSandpackPreview), which owns
+  // its own iframe/origin and doesn't need the old srcDoc self-navigation remount guard.
+  const [previewNonce] = useState(0)
   const [fullscreenNonce, setFullscreenNonce] = useState(0)
   const previewLoads = useRef(0)
   const previewResets = useRef(0)
@@ -513,24 +512,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }, [activeWorkbench, files, hasPreview, isReactPreview, previewNonce])
 
-  const handlePreviewLoad = () => {
-    previewLoads.current += 1
-    setPreviewLoading(false)
-    // The first load after each (re)mount is expected; any further load means the
-    // sandboxed content navigated itself away — remount to restore the preview.
-    if (previewLoads.current > 1 && previewResets.current < 5) {
-      previewResets.current += 1
-      setPreviewNonce((value) => value + 1)
-    }
-  }
-
-  const handleFullscreenLoad = () => {
-    fullscreenLoads.current += 1
-    if (fullscreenLoads.current > 1 && fullscreenResets.current < 5) {
-      fullscreenResets.current += 1
-      setFullscreenNonce((value) => value + 1)
-    }
-  }
 
   const startNewProject = () => {
     detailLoadSeq.current += 1
@@ -2058,15 +2039,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
             ) : previewHtml ? (
               <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
-                <iframe
+                <CodingSandpackPreview
                   key={`${previewKey}:${previewNonce}`}
-                  title="Anteprima Vibe Lab"
-                  srcDoc={previewHtml}
-                  sandbox="allow-scripts allow-forms"
-                  allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
-                  referrerPolicy="no-referrer"
-                  onLoad={handlePreviewLoad}
-                  className="min-h-0 flex-1 border-0 bg-white"
+                  staticHtml={previewHtml}
+                  className="h-full w-full"
                 />
                 {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
@@ -2110,15 +2086,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           {isReactPreview ? (
             <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
           ) : (
-            <iframe
+            <CodingSandpackPreview
               key={`fullscreen:${previewKey}:${fullscreenNonce}`}
-              title="Anteprima Vibe Lab a pagina intera"
-              srcDoc={fullscreenPreviewHtml}
-              sandbox="allow-scripts allow-forms"
-              allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
-              referrerPolicy="no-referrer"
-              onLoad={handleFullscreenLoad}
-              className="min-h-0 flex-1 border-0 bg-white"
+              staticHtml={fullscreenPreviewHtml}
+              className="min-h-0 flex-1"
             />
           )}
         </div>
