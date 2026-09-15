@@ -107,6 +107,7 @@ export default function PublicCodingSitePage() {
       title={site.title}
       srcDoc={html}
       sandbox="allow-scripts allow-forms"
+      allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
       referrerPolicy="no-referrer"
       onLoad={handleFrameLoad}
       className="h-screen w-screen border-0 bg-white"

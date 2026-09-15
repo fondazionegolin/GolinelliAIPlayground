@@ -2063,6 +2063,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   title="Anteprima Vibe Lab"
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-forms"
+                  allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
                   referrerPolicy="no-referrer"
                   onLoad={handlePreviewLoad}
                   className="min-h-0 flex-1 border-0 bg-white"
@@ -2114,6 +2115,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               title="Anteprima Vibe Lab a pagina intera"
               srcDoc={fullscreenPreviewHtml}
               sandbox="allow-scripts allow-forms"
+              allow="camera; microphone; accelerometer; gyroscope; magnetometer; clipboard-read; clipboard-write"
               referrerPolicy="no-referrer"
               onLoad={handleFullscreenLoad}
               className="min-h-0 flex-1 border-0 bg-white"
