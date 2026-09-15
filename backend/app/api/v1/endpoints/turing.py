@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -15,10 +16,10 @@ from app.core.database import get_db
 from app.core.permissions import teacher_can_access_session
 from app.models.enums import SessionStatus
 from app.models.session import Session, SessionStudent
-from app.models.turing import TuringExperiment, TuringMessage, TuringParticipant, TuringTeacherSettings
+from app.models.turing import TuringExperiment, TuringMessage, TuringParticipant, TuringPersona, TuringTeacherSettings
 from app.models.user import User
 from app.realtime.gateway import get_online_student_ids, sio
-from app.schemas.turing import TuringExperimentCreate, TuringGuessCreate, TuringMessageCreate
+from app.schemas.turing import TuringExperimentCreate, TuringGuessCreate, TuringMessageCreate, TuringPersonaSave
 from app.services.llm_service import llm_service
 
 router = APIRouter()
@@ -26,10 +27,20 @@ logger = logging.getLogger(__name__)
 LOBBY, ACTIVE, COMPLETED, CANCELLED, EXCLUDED = "LOBBY", "ACTIVE", "COMPLETED", "CANCELLED", "EXCLUDED"
 DEFAULT_PERSONA = ("Rispondo con tono cordiale, diretto e incoraggiante. Preferisco frasi chiare e non troppo lunghe. "
                    "Insegno valorizzando il ragionamento e faccio esempi concreti.")
+MIN_TYPING_DELAY_SECONDS = 0.9
+MAX_TYPING_DELAY_SECONDS = 5.5
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _human_typing_delay(message: str, jitter: float = 0.0) -> float:
+    """Return a bounded, length-aware delay for the simulated typing phase."""
+    words = len(message.split())
+    punctuation_pauses = sum(message.count(mark) for mark in ".,;:?!")
+    estimated = 0.65 + (words * 0.075) + (punctuation_pauses * 0.08) + jitter
+    return round(max(MIN_TYPING_DELAY_SECONDS, min(MAX_TYPING_DELAY_SECONDS, estimated)), 2)
 
 
 def _included(experiment: TuringExperiment) -> list[TuringParticipant]:
@@ -47,6 +58,13 @@ def _message_payload(message: TuringMessage, *, student_view: bool = False) -> d
 def _settings_payload(source) -> dict:
     return {key: getattr(source, key) for key in
             ("persona_prompt", "temperature", "confidence_style", "response_length", "emoji_usage")}
+
+
+def _persona_payload(persona: TuringPersona) -> dict:
+    return {"id": str(persona.id), "name": persona.name, "avatar_url": persona.avatar_url,
+            **_settings_payload(persona),
+            "created_at": persona.created_at.isoformat() if persona.created_at else None,
+            "updated_at": persona.updated_at.isoformat() if persona.updated_at else None}
 
 
 def _report(experiment: TuringExperiment) -> dict:
@@ -81,6 +99,9 @@ def _teacher_payload(experiment: TuringExperiment) -> dict:
 
     return {"experiment": {"id": str(experiment.id), "session_id": str(experiment.session_id),
                            "title": experiment.title, "status": experiment.status,
+                           "persona_id": str(getattr(experiment, "persona_id", None)) if getattr(experiment, "persona_id", None) else None,
+                           "persona_name": getattr(experiment, "persona_name", "Interlocutore misterioso"),
+                           "avatar_url": getattr(experiment, "avatar_url", None),
                            "max_questions": experiment.max_questions, "participant_count": experiment.participant_count,
                            "started_at": experiment.started_at.isoformat() if experiment.started_at else None,
                            "completed_at": experiment.completed_at.isoformat() if experiment.completed_at else None,
@@ -93,6 +114,8 @@ def _teacher_payload(experiment: TuringExperiment) -> dict:
 def _student_payload(experiment: TuringExperiment, participant: TuringParticipant) -> dict:
     return {"experiment": {"id": str(experiment.id), "title": experiment.title, "status": experiment.status,
                            "max_questions": experiment.max_questions,
+                           "persona_name": getattr(experiment, "persona_name", "Interlocutore misterioso"),
+                           "avatar_url": getattr(experiment, "avatar_url", None),
                            "started_at": experiment.started_at.isoformat() if experiment.started_at else None,
                            "completed_at": experiment.completed_at.isoformat() if experiment.completed_at else None},
             "participant": {"id": str(participant.id), "status": getattr(participant, "status", ACTIVE),
@@ -139,6 +162,19 @@ async def _valid_online_students(db: AsyncSession, session_id: UUID) -> list[Ses
     return list(result.scalars().all())
 
 
+def _activate_experiment(experiment: TuringExperiment,
+                         students: list[SessionStudent]) -> list[TuringParticipant]:
+    """Start an experiment immediately with the students in the presence snapshot."""
+    human_student = secrets.choice(students)
+    experiment.human_student_id = human_student.id
+    experiment.participant_count = len(students)
+    experiment.status = ACTIVE
+    experiment.started_at = _now()
+    return [TuringParticipant(experiment_id=experiment.id, student_id=student.id,
+                              is_human=student.id == human_student.id, status=ACTIVE)
+            for student in students]
+
+
 @router.get("/teacher/settings")
 async def get_teacher_settings(db: Annotated[AsyncSession, Depends(get_db)],
                                teacher: Annotated[User, Depends(get_current_teacher)]):
@@ -146,6 +182,41 @@ async def get_teacher_settings(db: Annotated[AsyncSession, Depends(get_db)],
         TuringTeacherSettings.teacher_id == teacher.id))).scalar_one_or_none()
     return _settings_payload(saved) if saved else {"persona_prompt": DEFAULT_PERSONA, "temperature": 0.7,
                                                     "confidence_style": 3, "response_length": 2, "emoji_usage": 1}
+
+
+@router.get("/teacher/personas")
+async def get_teacher_personas(db: Annotated[AsyncSession, Depends(get_db)],
+                               teacher: Annotated[User, Depends(get_current_teacher)]):
+    personas = (await db.execute(select(TuringPersona).where(
+        TuringPersona.teacher_id == teacher.id).order_by(TuringPersona.updated_at.desc()))).scalars().all()
+    return {"personas": [_persona_payload(persona) for persona in personas]}
+
+
+@router.post("/teacher/personas")
+async def save_teacher_persona(request: TuringPersonaSave,
+                               db: Annotated[AsyncSession, Depends(get_db)],
+                               teacher: Annotated[User, Depends(get_current_teacher)]):
+    persona = None
+    if request.id:
+        persona = (await db.execute(select(TuringPersona).where(
+            TuringPersona.id == request.id, TuringPersona.teacher_id == teacher.id))).scalar_one_or_none()
+        if not persona:
+            raise HTTPException(status_code=404, detail="Persona non trovata")
+    values = request.model_dump(exclude={"id"})
+    values["name"] = values["name"].strip()
+    values["persona_prompt"] = values["persona_prompt"].strip()
+    values["avatar_url"] = values["avatar_url"].strip() if values["avatar_url"] else None
+    if not values["name"]:
+        raise HTTPException(status_code=422, detail="Il nome della persona è obbligatorio")
+    if persona:
+        for key, value in values.items():
+            setattr(persona, key, value)
+    else:
+        persona = TuringPersona(tenant_id=teacher.tenant_id, teacher_id=teacher.id, **values)
+        db.add(persona)
+    await db.commit()
+    await db.refresh(persona)
+    return _persona_payload(persona)
 
 
 @router.get("/teacher/sessions/{session_id}/available-students")
@@ -185,19 +256,25 @@ async def prepare_experiment(session_id: UUID, request: TuringExperimentCreate,
     else:
         db.add(TuringTeacherSettings(tenant_id=session_obj.tenant_id, teacher_id=teacher.id,
                                      **{key: values[key] for key in setting_keys}))
+    persona = None
+    if request.persona_id:
+        persona = (await db.execute(select(TuringPersona).where(
+            TuringPersona.id == request.persona_id, TuringPersona.teacher_id == teacher.id))).scalar_one_or_none()
+        if not persona:
+            raise HTTPException(status_code=404, detail="Persona non trovata")
     experiment = TuringExperiment(tenant_id=session_obj.tenant_id, session_id=session_id, teacher_id=teacher.id,
                                   title=request.title.strip(), persona_prompt=request.persona_prompt.strip(),
+                                  persona_id=persona.id if persona else None,
+                                  persona_name=request.persona_name.strip(), avatar_url=request.avatar_url,
                                   max_questions=request.max_questions, temperature=request.temperature,
                                   confidence_style=request.confidence_style, response_length=request.response_length,
                                   emoji_usage=request.emoji_usage, participant_count=0, status=LOBBY)
     db.add(experiment)
     await db.flush()
-    for student in students:
-        db.add(TuringParticipant(experiment_id=experiment.id, student_id=student.id,
-                                 is_human=False, status="INVITED"))
+    db.add_all(_activate_experiment(experiment, students))
     await db.commit()
     experiment = await _load_experiment(db, experiment.id)
-    await _emit_experiment_update(experiment, "INVITED")
+    await _emit_experiment_update(experiment, "STARTED")
     return _teacher_payload(experiment)
 
 
@@ -404,7 +481,7 @@ async def send_student_message(experiment_id: UUID, request: TuringMessageCreate
                                           "message": _message_payload(question)}, room=f"user:{experiment.teacher_id}")
         return {"message": _message_payload(question, student_view=True), "waiting_for_reply": True}
 
-    await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True},
+    await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True, "phase": "thinking"},
                    room=f"user:{student.id}")
     history = [{"role": "user" if m.sender_role == "STUDENT" else "assistant", "content": m.message_text}
                for m in participant.messages if m.sender_role in {"STUDENT", "AI"}]
@@ -435,6 +512,10 @@ PROFILO DEL DOCENTE:
     except Exception:
         logger.exception("Turing test AI response failed for experiment %s", experiment.id)
         answer_text = "Questa domanda mi ha fatto esitare. Puoi riformularla?"
+    await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True, "phase": "typing"},
+                   room=f"user:{student.id}")
+    jitter = (secrets.randbelow(61) - 20) / 100
+    await asyncio.sleep(_human_typing_delay(answer_text, jitter))
     answer = TuringMessage(experiment_id=experiment.id, participant_id=participant.id,
                            sender_role="AI", message_text=answer_text)
     db.add(answer)

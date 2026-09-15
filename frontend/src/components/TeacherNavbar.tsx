@@ -743,22 +743,22 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 key={item.path}
                 to={item.path}
                 aria-label={item.label}
-                className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
-                style={isActiveItem
-                  ? {
-                      backgroundColor: accentTheme.accent,
-                      borderColor: `${accentTheme.accent}45`,
-                      color: '#fff',
-                    }
-                  : {
-                      backgroundColor: 'rgba(255,255,255,0.56)',
-                      borderColor: 'rgba(255,255,255,0.34)',
-                    }}
+                className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-150 hover:z-10 ${isActiveItem
+                  ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)]'
+                  : 'border-white/35 bg-white/55 text-slate-600 hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)] hover:shadow-[var(--selection-shadow)]'
+                  }`}
               >
                 <Icon className="h-5 w-5" />
                 {item.path === '/teacher/classes' && invitationCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
                 )}
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-full ml-2 flex items-center gap-1.5 whitespace-nowrap rounded-[var(--selection-radius)] border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-bg)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--selection-text)] opacity-0 shadow-[var(--selection-shadow)] backdrop-blur-md transition-[opacity,transform] duration-100 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 translate-x-[-3px]"
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  {item.label}
+                </span>
               </Link>
             )
           })}

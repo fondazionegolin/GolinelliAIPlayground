@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { meshyApi, chatApi } from '@/lib/api'
 import { Button } from '@/design/primitives/Button'
+import { useMobile } from '@/hooks/useMobile'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,9 @@ function saveAssets(a: Asset3D[]) { localStorage.setItem(KEY, JSON.stringify(a))
 interface Props { sessionId?: string }
 
 export default function Teacher3DLabPage({ sessionId }: Props) {
-  const [mode, setMode] = useState<Mode>('txt23d')
+  const { isMobile, isTablet } = useMobile()
+  const compactUi = isMobile || isTablet
+  const [mode, setMode] = useState<Mode | null>(() => compactUi ? null : 'txt23d')
 
   // txt2img
   const [dallePrompt, setDallePrompt] = useState('')
@@ -253,6 +256,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
   }
 
   async function generate3D() {
+    if (!mode) return
     reset3d(); setGen3dLoading(true)
     try {
       if (mode === 'txt23d') {
@@ -285,7 +289,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
-  const s = S[mode]
+  const s = S[mode || 'txt23d']
   const isRunning3d = gen3dLoading || (task && ['PENDING', 'IN_PROGRESS'].includes(task.status))
   const activeGlb = viewingAsset
     ? meshyApi.proxyAssetUrl(viewingAsset.glbUrl)
@@ -300,8 +304,8 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
 
         {/* ── Hero ── */}
         <section className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-5xl px-4 py-7 md:px-6 md:py-8">
-            <div className="mx-auto max-w-2xl text-center">
+          <div className="mx-auto max-w-5xl px-4 py-4 lg:px-6 lg:py-8">
+            <div className="mx-auto hidden max-w-2xl text-center lg:block">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Lab 3D</p>
               <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Dalla parola al modello</h2>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
@@ -311,7 +315,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
             </div>
 
             {/* Mode cards */}
-            <div className="mt-7 grid gap-3 md:grid-cols-3">
+            {(!compactUi || !mode) && <div className="grid grid-cols-2 gap-3 lg:mt-7 lg:grid-cols-3">
               {MODES.map(m => {
                 const ms = S[m.id]
                 const selected = mode === m.id
@@ -321,7 +325,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => switchMode(m.id)}
-                    className={`group relative overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${
+                    className={`mobile-card-standard group relative flex flex-col overflow-hidden rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg lg:min-h-32 lg:rounded-[24px] ${
                       selected ? ms.selCard : ms.card
                     }`}
                   >
@@ -329,21 +333,23 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                       <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${ms.iconBg}`}>
                         <m.Icon className={`h-5 w-5 ${ms.icon}`} />
                       </span>
-                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${ms.badge}`}>
+                      <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide lg:inline-flex ${ms.badge}`}>
                         {m.sub}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm font-extrabold text-slate-900">{m.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{m.desc}</p>
+                    <p className="mt-auto pt-3 text-sm font-extrabold text-slate-900">{m.label}</p>
+                    <p className="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{m.desc}</p>
+                    <span className="mt-2 inline-flex items-center gap-1 text-xs font-black text-slate-700 lg:hidden">Apri <ArrowRight className="h-3.5 w-3.5" /></span>
                   </motion.button>
                 )
               })}
-            </div>
+            </div>}
           </div>
         </section>
 
         {/* ── Workspace ── */}
-        <div className="mx-auto max-w-5xl px-4 pb-10 pt-6 md:px-6">
+        {(!compactUi || mode) && <div className="mx-auto max-w-5xl px-4 pb-10 pt-4 lg:px-6 lg:pt-6">
+          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white"><ArrowRight className="h-4 w-4 rotate-180" /> Cambia strumento</button>}
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}
@@ -357,7 +363,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
               {mode === 'txt2img' && (
                 <div className="space-y-4">
                   {/* Steps guide */}
-                  <div className={`rounded-lg border p-3 flex items-start gap-3 ${s.tip}`}>
+                  <div className={`hidden rounded-lg border p-3 items-start gap-3 lg:flex ${s.tip}`}>
                     <Lightbulb className={`h-4 w-4 flex-shrink-0 mt-0.5 ${s.tipIcon}`} />
                     <p className={`text-xs leading-5 ${s.tipText}`}>
                       <strong>Flusso consigliato:</strong> scrivi il prompt → genera l'immagine → clicca <em>"Usa per modello 3D"</em> per passare automaticamente alla scheda Immagine → 3D con l'immagine già caricata.
@@ -376,7 +382,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                       disabled={dalleLoading}
                     />
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Formato</p>
                         <select
@@ -409,7 +415,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     <button
                       onClick={generateImage}
                       disabled={!dallePrompt.trim() || dalleLoading}
-                      className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-extrabold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${s.btnCls}`}
+                      className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-extrabold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${s.btnCls}`}
                     >
                       {dalleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       {dalleLoading ? 'Generazione immagine…' : 'Genera immagine'}
@@ -458,7 +464,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
               {/* ─── IMG23D ─── */}
               {mode === 'img23d' && (
                 <div className="space-y-4">
-                  <div className={`rounded-lg border p-3 flex items-start gap-3 ${s.tip}`}>
+                  <div className={`hidden rounded-lg border p-3 items-start gap-3 lg:flex ${s.tip}`}>
                     <Lightbulb className={`h-4 w-4 flex-shrink-0 mt-0.5 ${s.tipIcon}`} />
                     <p className={`text-xs leading-5 ${s.tipText}`}>
                       <strong>Risultati migliori:</strong> usa immagini con soggetto isolato su sfondo bianco o trasparente. Più semplice è la silhouette, più precisa sarà la geometria 3D.
@@ -558,7 +564,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
               {/* ─── TXT23D ─── */}
               {mode === 'txt23d' && (
                 <div className="space-y-4">
-                  <div className={`rounded-lg border p-3 flex items-start gap-3 ${s.tip}`}>
+                  <div className={`hidden rounded-lg border p-3 items-start gap-3 lg:flex ${s.tip}`}>
                     <Lightbulb className={`h-4 w-4 flex-shrink-0 mt-0.5 ${s.tipIcon}`} />
                     <p className={`text-xs leading-5 ${s.tipText}`}>
                       <strong>Suggerimento:</strong> descrizioni dettagliate producono risultati migliori — specifica materiale, dimensioni, stato di conservazione, illuminazione. La generazione richiede 1–3 minuti.
@@ -702,7 +708,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     <motion.div
                       key={a.id}
                       whileHover={{ y: -2 }}
-                      className={`group relative flex flex-col overflow-hidden rounded-[24px] border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
+                      className={`mobile-card-standard group relative flex flex-col overflow-hidden rounded-[24px] border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
                         isViewing
                           ? `${as.selCard}`
                           : `${as.card}`
@@ -727,7 +733,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                       <div className="flex flex-col flex-1 p-3 gap-3">
                         <div>
                           <span className="line-clamp-2 text-sm font-extrabold leading-tight text-slate-950">{a.label}</span>
-                          <div className="mt-2 flex items-center justify-between border-t border-slate-200/70 pt-2">
+                          <div className="mt-2 hidden items-center justify-between border-t border-slate-200/70 pt-2 lg:flex">
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${as.badge}`}>
                               {a.mode === 'txt2img' ? 'DALL-E' : a.mode === 'img23d' ? 'img→3D' : 'txt→3D'}
                             </span>
@@ -761,7 +767,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
               </div>
             </section>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Toast */}

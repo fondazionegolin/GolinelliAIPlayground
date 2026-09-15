@@ -3733,7 +3733,7 @@ REGOLE IMPORTANTI:
                         {normalizedChatbotSearch ? 'Nessun preferito corrisponde alla ricerca.' : 'I chatbot usati di recente appariranno qui.'}
                       </div>
                     ) : (
-                      <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                      <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                         {filteredFavoriteChatbotItems.map((item) => {
                           const style = item.kind === 'teacherbot' ? CHATBOT_CARD_STYLES.amber : CHATBOT_CARD_STYLES.violet
                           return (
@@ -3747,7 +3747,7 @@ REGOLE IMPORTANTI:
                                   handleSelectProfile(item.profileKey)
                                 }
                               }}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {item.icon}
@@ -3778,7 +3778,7 @@ REGOLE IMPORTANTI:
                     {filteredProfiles.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">Nessun chatbot didattico trovato.</div>
                     ) : (
-                      <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                      <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                         {filteredProfiles.map((profile) => {
                           const style = CHATBOT_CARD_STYLES.violet
                           const usage = profileUsageCounts[profile.key] || 0
@@ -3787,7 +3787,7 @@ REGOLE IMPORTANTI:
                               key={profile.key}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectProfile(profile.key)}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
@@ -3820,7 +3820,7 @@ REGOLE IMPORTANTI:
                         {normalizedChatbotSearch ? 'Nessun teacherbot trovato.' : 'Quando il docente pubblica un teacherbot, comparirà qui.'}
                       </div>
                     ) : (
-                      <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                      <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                         {filteredTeacherbots.map((bot) => {
                           const style = CHATBOT_CARD_STYLES.amber
                           return (
@@ -3828,7 +3828,7 @@ REGOLE IMPORTANTI:
                               key={bot.id}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectTeacherbot(bot)}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
@@ -3854,11 +3854,11 @@ REGOLE IMPORTANTI:
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">I tuoi assistenti AI privati e personalizzati</span>
                     </div>
-                    <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                    <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setStudentbotEditorTarget('create')}
-                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Plus className="h-5 w-5" /></div>
                         <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>Nuovo</span>
@@ -3869,7 +3869,7 @@ REGOLE IMPORTANTI:
                       {filteredStudentbots.map((bot) => {
                         const available = availableStudentbots.find((item) => item.id === bot.id)
                         return (
-                          <div key={bot.id} className={`group relative overflow-hidden border text-left shadow-sm ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
+                          <div key={bot.id} className={`group relative overflow-hidden border text-left shadow-sm ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
                             <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={`Apri ${bot.name}`} />
                             <div className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm pointer-events-none ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Sparkles className="h-5 w-5" /></div>
                             <span className={`${libraryViewMode === 'grid' ? 'absolute right-3 top-3' : 'col-start-3 row-span-2 row-start-1 self-center'} z-20 flex gap-1`}>
@@ -3895,11 +3895,11 @@ REGOLE IMPORTANTI:
                       </div>
                       <span className="hidden text-xs text-slate-400 sm:inline">Documenti, citazioni e sessioni salvate</span>
                     </div>
-                    <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                    <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={createAndOpenRagSession}
-                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                           <Plus className="h-5 w-5" />
@@ -3912,7 +3912,7 @@ REGOLE IMPORTANTI:
                           key={ragSession.id}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => openRagSession(ragSession)}
-                          className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                          className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                         >
                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                             <Database className="h-5 w-5" />

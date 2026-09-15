@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi } from '@/lib/api'
-import { Check, Edit2, GripVertical, KanbanSquare, LayoutTemplate, Lock, Palette, Plus, Share2, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, Edit2, GripVertical, KanbanSquare, LayoutTemplate, Lock, Palette, Plus, Share2, Trash2, X } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, SearchPill } from '@/design'
 import {
@@ -11,6 +11,7 @@ import {
   WorkspaceExplorerList,
   WorkspaceExplorerSidebar,
 } from '@/components/WorkspaceExplorerSidebar'
+import { useMobile } from '@/hooks/useMobile'
 
 type BoardColumn = { id: string; label: string; hint: string; color: string }
 type BoardCard = {
@@ -56,6 +57,7 @@ const TASK_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64
 
 export default function BoardManager({ sessionId, isStudent = false }: { sessionId?: string; isStudent?: boolean }) {
   const { toast } = useToast()
+  const { isMobile } = useMobile()
   const queryClient = useQueryClient()
   const draggedCard = useRef<string | null>(null)
   const draggedColumn = useRef<string | null>(null)
@@ -82,6 +84,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [editCardColor, setEditCardColor] = useState(TASK_COLORS[0])
   const [boardListSearch, setBoardListSearch] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [mobileColumnId, setMobileColumnId] = useState<string | null>(null)
 
   const { data: templates = [] } = useQuery({
     queryKey: ['boards-templates'],
@@ -93,7 +96,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     enabled: Boolean(sessionId),
   })
 
-  const selectedSummary = useMemo(() => boards.find((board) => board.id === selectedId) || boards[0] || null, [boards, selectedId])
+  const selectedSummary = useMemo(() => boards.find((board) => board.id === selectedId) || (!isMobile ? boards[0] : null), [boards, isMobile, selectedId])
   const filteredBoards = useMemo(() => {
     const query = boardListSearch.trim().toLocaleLowerCase('it')
     if (!query) return boards
@@ -107,6 +110,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const board = selectedBoard || selectedSummary
   const columns = board?.columns || []
   const cards = board?.cards || []
+  const activeMobileColumnId = columns.some((column) => column.id === mobileColumnId) ? mobileColumnId : columns[0]?.id
 
   const createBoard = useMutation({
     mutationFn: () => boardsApi.create({
@@ -310,11 +314,11 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-100 text-slate-900 lg:flex-row">
-      <WorkspaceExplorerSidebar>
+      {(!isMobile || !board) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isStudent ? 'Spazio studente' : 'Pannello docente'}
           title="Board"
-          description={isStudent ? 'Board personali e condivise in un unico explorer.' : 'Crea e condividi board nella sessione attiva.'}
+          description={isMobile ? '' : (isStudent ? 'Board personali e condivise in un unico explorer.' : 'Crea e condividi board nella sessione attiva.')}
           action={(
             <Button
               type="button"
@@ -359,7 +363,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               key={item.id}
               icon={<KanbanSquare className="h-4 w-4" />}
               title={item.title}
-              subtitle={item.created_by_display_name ? `Creata da ${item.created_by_display_name}` : undefined}
+              subtitle={isMobile ? undefined : (item.created_by_display_name ? `Creata da ${item.created_by_display_name}` : undefined)}
               selected={board?.id === item.id}
               onClick={() => setSelectedId(item.id)}
               badges={(
@@ -385,14 +389,15 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             />
           ))}</div>}
         </WorkspaceExplorerList>
-      </WorkspaceExplorerSidebar>
-      <main className="flex min-w-0 flex-1 flex-col">
+      </WorkspaceExplorerSidebar>}
+      {(!isMobile || board) && <main className="flex min-w-0 flex-1 flex-col">
         {!board ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">Crea una board per iniziare.</div>
         ) : (
           <>
-            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-              <div className="min-w-0">
+            <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 md:gap-3 md:px-4 md:py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Torna alle board"><ArrowLeft className="h-5 w-5" /></button>}
                 <h2 className="truncate text-xl font-black">{board.title}</h2>
               </div>
               <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
@@ -405,11 +410,11 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 />
                 {board.can_manage && (
                   <>
-                    <button onClick={() => updateBoard.mutate({ visibility: board.visibility === 'session_shared' ? 'private' : 'session_shared' })} className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50">
+                    <button onClick={() => updateBoard.mutate({ visibility: board.visibility === 'session_shared' ? 'private' : 'session_shared' })} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3">
                       {board.visibility === 'session_shared' ? <Share2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                      {board.visibility === 'session_shared' ? 'Condivisa' : 'Privata'}
+                      <span className="hidden md:inline">{board.visibility === 'session_shared' ? 'Condivisa' : 'Privata'}</span>
                     </button>
-                    <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600">
+                    <label className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 md:inline-flex">
                       <input type="checkbox" checked={board.students_can_edit} onChange={(e) => updateBoard.mutate({ students_can_edit: e.target.checked })} />
                       studenti editano
                     </label>
@@ -417,8 +422,11 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 )}
               </div>
             </header>
+            {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label="Colonne board">
+              {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
+            </nav>}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
-              {columns.map((column) => (
+              {columns.filter((column) => !isMobile || column.id === activeMobileColumnId).map((column) => (
                 <section
                   key={column.id}
                   onDragOver={(e) => {
@@ -441,7 +449,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     setDragOverCol(null)
                     if (cardId && board.can_edit) moveCard.mutate({ cardId, columnId: column.id })
                   }}
-                  className={`group flex min-h-[210px] w-full shrink-0 flex-row overflow-hidden rounded-xl border bg-white transition lg:h-full lg:min-h-0 lg:w-[300px] lg:flex-col lg:rounded-none ${
+                  className={`group flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border bg-white transition lg:h-full lg:w-[300px] lg:rounded-none ${
                     dragOverCol === column.id
                       ? 'border-sky-500 bg-sky-50/70 ring-2 ring-sky-300'
                       : draggingCardId
@@ -467,7 +475,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       setDraggingColumnId(null)
                       setColumnDragOver(null)
                     }}
-                    className={`flex w-[148px] shrink-0 flex-col items-start gap-2 border-r border-slate-200 px-3 py-3 lg:min-h-[47px] lg:w-auto lg:flex-row lg:items-center lg:border-b lg:border-r-0 lg:py-2 ${board.can_manage && editingColumnId !== column.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    className={`flex w-full shrink-0 flex-row items-center gap-2 border-b border-slate-200 px-3 py-2 lg:min-h-[47px] lg:w-auto ${board.can_manage && editingColumnId !== column.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     style={{ borderTop: `3px solid ${column.color}` }}
                   >
                     {board.can_manage && <GripVertical className="hidden h-4 w-4 shrink-0 text-slate-300 lg:block" aria-hidden="true" />}
@@ -503,7 +511,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       ) : (
                         <>
                           <h3 className="text-xs font-black uppercase tracking-wide">{column.label}</h3>
-                          {column.hint && <p className="mt-0.5 text-[10px] text-slate-400">{column.hint}</p>}
+                          {column.hint && <p className="mt-0.5 hidden text-[10px] text-slate-400 md:block">{column.hint}</p>}
                         </>
                       )}
                     </div>
@@ -512,7 +520,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         <button
                           type="button"
                           onClick={() => { cancelColumnEdit.current = false; setEditingColumnId(column.id); setEditingColumnLabel(column.label) }}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 md:h-7 md:w-7 md:rounded-md"
                           title="Rinomina colonna"
                           aria-label={`Rinomina ${column.label}`}
                         >
@@ -522,7 +530,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           <button
                             type="button"
                             onClick={() => setColumnToDelete({ columnId: column.id, targetId: columns.find((item) => item.id !== column.id)!.id })}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 md:h-7 md:w-7 md:rounded-md"
                             title="Elimina colonna"
                             aria-label={`Elimina ${column.label}`}
                           >
@@ -540,7 +548,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           setInlineDescription('')
                           setNewCardColor(TASK_COLORS[0])
                         }}
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 opacity-100 shadow-sm transition hover:border-slate-400 hover:text-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 opacity-100 shadow-sm transition hover:border-slate-400 hover:text-slate-900 md:h-7 md:w-7 md:rounded-full md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                         aria-label={`Crea un task in ${column.label}`}
                         title={`Crea un task in ${column.label}`}
                       >
@@ -548,14 +556,14 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       </button>
                     )}
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-row items-stretch gap-2 overflow-x-auto overflow-y-hidden bg-slate-50/70 p-2 lg:min-h-0 lg:flex-col lg:items-stretch lg:overflow-x-hidden lg:overflow-y-auto">
+                  <div className="flex min-w-0 flex-1 flex-col items-stretch gap-2 overflow-x-hidden overflow-y-auto bg-slate-50/70 p-2 lg:min-h-0">
                     {inlineColumnId === column.id && (
                       <form
                         onSubmit={(e) => {
                           e.preventDefault()
                           if (inlineTitle.trim()) createCard.mutate({ title: inlineTitle, description: inlineDescription, columnId: column.id, color: newCardColor })
                         }}
-                        className="w-[280px] shrink-0 space-y-2 rounded-lg border border-slate-300 bg-white p-3 shadow-sm lg:w-auto"
+                        className="w-full shrink-0 space-y-2 rounded-lg border border-slate-300 bg-white p-3 shadow-sm"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-black text-slate-700">Nuovo task</p>
@@ -600,7 +608,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           setDraggingCardId(null)
                           setDragOverCol(null)
                         }}
-                        className={`group/card w-[260px] shrink-0 border border-slate-200 bg-white p-3 shadow-sm lg:w-auto ${board.can_edit && editingCardId !== card.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        className={`group/card w-full shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:rounded-none ${board.can_edit && editingCardId !== card.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         style={{ borderLeft: `4px solid ${editingCardId === card.id ? editCardColor : card.color || '#cbd5e1'}` }}
                       >
                         {editingCardId === card.id ? (
@@ -675,8 +683,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                               )}
                               {board.can_edit && <ColorPicker value={card.color || '#cbd5e1'} onChange={(color) => updateCardColor.mutate({ cardId: card.id, color })} compact />}
                             </div>
-                            {card.description && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{card.description}</p>}
-                            <p className="mt-2 text-[10px] text-slate-400">
+                            {card.description && <p className="mt-1 hidden whitespace-pre-wrap text-xs text-slate-500 md:block">{card.description}</p>}
+                            <p className="mt-2 hidden text-[10px] text-slate-400 md:block">
                               {card.created_by_display_name && `Creato da ${card.created_by_display_name}`}
                               {card.last_actor_display_name && ` · ultima modifica ${card.last_actor_display_name}`}
                             </p>
@@ -708,7 +716,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             </div>
           </>
         )}
-      </main>
+      </main>}
       {columnToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setColumnToDelete(null) }}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="delete-column-title">

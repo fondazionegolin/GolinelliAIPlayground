@@ -603,10 +603,10 @@ export default function ToyLMPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full bg-[var(--surface-page)] text-[var(--text-primary)]" style={LAB_ACCENT}>
+    <div className="flex h-full min-w-0 flex-col bg-[var(--surface-page)] text-[var(--text-primary)] md:flex-row" style={LAB_ACCENT}>
 
       {/* ══ Left sidebar: models ══ */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm">
+      <aside className="flex max-h-[16rem] w-full shrink-0 flex-col border-b border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm md:max-h-none md:w-64 md:border-b-0 md:border-r">
         <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]">
             <Network className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
@@ -630,7 +630,7 @@ export default function ToyLMPage() {
           </span>
         </div>
 
-        <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+            <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3 overscroll-contain">
           {isLoadingJobs && jobs.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-muted)]">Caricamento…</p>
           ) : jobs.length === 0 ? (
@@ -668,17 +668,17 @@ export default function ToyLMPage() {
                     </div>
                   )}
                   {!editing && (
-                    <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                       <button
                         onClick={e => { e.stopPropagation(); setEditingName(job.name); setEditingId(job.id) }}
-                        className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-white hover:text-[var(--logo-violet)]"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-muted)] transition-colors hover:bg-white hover:text-[var(--logo-violet)] md:h-auto md:w-auto md:rounded-md md:p-1"
                         title="Rinomina"
                       >
                         <Pencil className="h-3 w-3" />
                       </button>
                       <button
                         onClick={e => handleDeleteJob(job.id, e)}
-                        className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500 md:h-auto md:w-auto md:rounded-md md:p-1"
                         title="Elimina"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -696,12 +696,12 @@ export default function ToyLMPage() {
       <div className="flex min-w-0 flex-1 flex-col">
 
         {/* Top bar */}
-        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-5 py-2.5 backdrop-blur-md">
+        <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 backdrop-blur-md md:px-5 md:py-2.5">
           <h1 className="truncate text-sm font-black tracking-tight">
             {showCreate ? 'Nuovo modello' : selectedJob ? selectedJob.name : 'ToyGPT'}
           </h1>
           {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             {selectedJob && !showCreate && (
               <>
                 <Button tone="neutral" surface="outline" density="compact" disabled={!canGenerate} onClick={openShareDialog}>
@@ -714,7 +714,7 @@ export default function ToyLMPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-5">
+        <main className="flex-1 overflow-y-auto p-3 md:p-5">
           {statusMsg && (
             <div className="mb-4 rounded-xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] px-3.5 py-2 text-xs text-[var(--text-secondary)]">
               <span className="mr-2 font-bold text-[var(--logo-violet)]">›</span>{statusMsg}
@@ -723,7 +723,7 @@ export default function ToyLMPage() {
 
           {/* ── Create model ── */}
           {showCreate ? (
-            <Card className="mx-auto max-w-2xl space-y-4 p-5">
+            <Card className="mx-auto max-w-2xl space-y-4 p-4 md:p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FlaskConical className="h-4 w-4 text-[var(--logo-violet)]" />
@@ -739,7 +739,7 @@ export default function ToyLMPage() {
                 <input
                   value={newJobName}
                   onChange={e => setNewJobName(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
+                  className="h-12 w-full rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)] md:h-auto md:text-sm"
                   placeholder="es. Modello italiano, LM Shakespeare…"
                 />
               </div>

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Check,
   Archive,
+  ArrowLeft,
   ChevronRight,
   Clock,
   Copy,
@@ -53,6 +54,7 @@ import { TeachersManagementModal } from '@/components/TeachersManagementModal'
 import { InvitationsPanel } from '@/components/InvitationsPanel'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuthStore } from '@/stores/auth'
+import { useMobile } from '@/hooks/useMobile'
 
 interface ClassData {
   id: string
@@ -106,6 +108,7 @@ export default function TeacherClassesSessionsManager({
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: teacherProfile } = useTeacherProfile()
+  const { isMobile } = useMobile()
   const currentTeacherId = useAuthStore((state) => state.user?.id)
   // The selected class keeps a neutral accent; session status colours are handled separately.
   const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#64748b', text: '#334155' }
@@ -148,6 +151,7 @@ export default function TeacherClassesSessionsManager({
   const [sessionViewMode, setSessionViewMode] = useState<'grid' | 'list'>(() =>
     window.localStorage.getItem('teacher-session-view-mode') === 'list' ? 'list' : 'grid'
   )
+  const [mobileSessionMenuId, setMobileSessionMenuId] = useState<string | null>(null)
 
   useEffect(() => {
     window.localStorage.setItem('teacher-session-view-mode', sessionViewMode)
@@ -177,10 +181,14 @@ export default function TeacherClassesSessionsManager({
       return
     }
     if (selectedClassId && classes.some((cls) => cls.id === selectedClassId)) return
+    if (isMobile) {
+      setSelectedClassId('')
+      return
+    }
     const fallbackId = classes[0].id
     setSelectedClassId(fallbackId)
     setSearchParams({ class: fallbackId }, { replace: true })
-  }, [classes, searchParams, selectedClassId, setSearchParams])
+  }, [classes, isMobile, searchParams, selectedClassId, setSearchParams])
 
   const selectedClass = classes.find((cls) => cls.id === selectedClassId) || null
 
@@ -429,6 +437,267 @@ export default function TeacherClassesSessionsManager({
   const emptyBody = entryMode === 'classes'
     ? t('classes.empty_body')
     : (isEnglish ? 'Select a class from the side menu to manage its sessions.' : 'Seleziona una classe dal menu laterale per gestire le sessioni in modo ordinato.')
+
+  if (isMobile) {
+    return (
+      <div className="min-h-full w-full overflow-y-auto bg-[#f4f6f8] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+        {!selectedClass ? (
+          <>
+            <header className="flex items-start justify-between gap-4 px-1">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Area docente</p>
+                <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Le tue classi</h1>
+                <p className="mt-1 text-sm font-medium text-slate-500">Scegli una classe per vedere e gestire le sessioni.</p>
+              </div>
+              <InvitationsPanel />
+            </header>
+
+            <div className="mt-5 flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <span className="sr-only">{isEnglish ? 'Search classes' : 'Cerca classi'}</span>
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={classSearch}
+                  onChange={(event) => setClassSearch(event.target.value)}
+                  placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold text-slate-800 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowNewClassForm((open) => !open)}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg"
+                aria-label={t('classes.new_class')}
+              >
+                {showNewClassForm ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              </button>
+            </div>
+
+            {showNewClassForm && (
+              <form onSubmit={handleCreateClass} className="mt-3 space-y-3 rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-black text-slate-950">{t('classes.new_class')}</h2>
+                <Input value={newClassName} onChange={(event) => setNewClassName(event.target.value)} placeholder={t('classes.class_name_placeholder')} className="h-12 bg-slate-50 text-base" />
+                <Select value={newClassSchoolId} onChange={(event) => setNewClassSchoolId(event.target.value)} className="h-12 bg-slate-50">
+                  <option value="">{isEnglish ? 'No institution' : 'Senza istituto'}</option>
+                  {teacherSchools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+                </Select>
+                <Select value={newClassGrade} onChange={(event) => setNewClassGrade(event.target.value)} className="h-12 bg-slate-50">
+                  {schoolGradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                </Select>
+                <button type="submit" disabled={!newClassName.trim() || createClassMutation.isPending} className="flex h-12 w-full items-center justify-center rounded-2xl bg-violet-600 px-5 text-sm font-black text-white disabled:opacity-50">
+                  {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : <Plus className="mr-2 h-4 w-4" />}
+                  {t('classes.create_class')}
+                </button>
+              </form>
+            )}
+
+            <div className="mt-6 flex items-center justify-between px-1">
+              <h2 className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{filteredClasses.length} {isEnglish ? 'classes' : 'classi'}</h2>
+            </div>
+            {isClassesLoading ? (
+              <div className="mt-3 grid grid-cols-2 gap-3">{[1, 2, 3, 4].map(item => <div key={item} className="h-48 animate-pulse rounded-3xl bg-white" />)}</div>
+            ) : filteredClasses.length === 0 ? (
+              <div className="mt-3 rounded-3xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
+                <School className="mx-auto h-9 w-9 text-slate-300" />
+                <p className="mt-3 text-base font-black text-slate-800">{classes.length ? (isEnglish ? 'No results' : 'Nessun risultato') : t('classes.empty_title')}</p>
+                <p className="mt-1 text-sm text-slate-500">{classes.length ? (isEnglish ? 'Try another search.' : 'Prova con un’altra ricerca.') : t('classes.empty_body')}</p>
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {filteredClasses.map((cls, index) => (
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => handleSelectClass(cls.id)}
+                    className="mobile-card-standard flex flex-col rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100 transition-transform active:scale-[0.98]"
+                  >
+                    <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${index % 3 === 0 ? 'bg-sky-50 text-sky-700' : index % 3 === 1 ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}>
+                      <School className="h-5 w-5" />
+                    </span>
+                    <span className="mt-auto line-clamp-2 text-base font-black leading-tight text-slate-950">{cls.name}</span>
+                    <span className="flex w-full items-center justify-between pt-2 text-xs font-black text-slate-600">
+                      {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
+                      <ChevronRight className="h-5 w-5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={() => setShowArchivedClasses(true)} className="mt-5 flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600">
+              <span className="flex items-center gap-2"><Archive className="h-5 w-5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">{archivedClasses.length}</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <header className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedClassId(''); setSearchParams({}, { replace: true }) }}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700"
+                  aria-label={isEnglish ? 'Back to classes' : 'Torna alle classi'}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <div className="min-w-0 flex-1 pt-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">{isEnglish ? 'Selected class' : 'Classe selezionata'}</p>
+                  <h1 className="truncate text-2xl font-black text-slate-950">{selectedClass.name}</h1>
+                  <p className="truncate text-sm font-semibold text-slate-400">{selectedClass.school_grade || t('classes.not_set')}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setShowTeachersModal(true)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-black text-slate-700">
+                  <UserPlus className="h-5 w-5" />
+                  {isEnglish ? 'Teachers' : 'Docenti'}
+                </button>
+                <button type="button" onClick={() => setIsEditingClass((editing) => !editing)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-black text-slate-700">
+                  <Edit2 className="h-5 w-5" />
+                  {isEnglish ? 'Edit class' : 'Modifica classe'}
+                </button>
+              </div>
+              {isEditingClass && (
+                <div className="mt-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <Input value={editClassName} onChange={(event) => setEditClassName(event.target.value)} className="h-12 bg-white text-base" />
+                  <Select value={editClassGrade} onChange={(event) => setEditClassGrade(event.target.value)} className="h-12 bg-white">
+                    {schoolGradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                  </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleSaveClass} disabled={updateClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-black text-white disabled:opacity-50">{isEnglish ? 'Save' : 'Salva'}</button>
+                    {selectedClass.role === 'owner' && <button type="button" onClick={() => { if (window.confirm(`Archiviare la classe \"${selectedClass.name}\"?`)) archiveClassMutation.mutate(selectedClass.id) }} disabled={archiveClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-50">{isEnglish ? 'Archive' : 'Archivia'}</button>}
+                  </div>
+                </div>
+              )}
+            </header>
+
+            <div className="mt-5 flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <span className="sr-only">{isEnglish ? 'Search sessions' : 'Cerca sessioni'}</span>
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'} className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100" />
+              </label>
+              <button
+                type="button"
+                onClick={() => { setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`); setShowNewSessionDialog(true) }}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg"
+                aria-label={t('sessions.new_session')}
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between px-1">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{isEnglish ? 'Class sessions' : 'Sessioni della classe'}</p>
+                <h2 className="mt-1 text-2xl font-black text-slate-950">{filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}</h2>
+              </div>
+            </div>
+
+            {isSessionsLoading ? (
+              <div className="mt-3 grid grid-cols-2 gap-3">{[1, 2, 3, 4].map(item => <div key={item} className="h-56 animate-pulse rounded-3xl bg-white" />)}</div>
+            ) : filteredOrderedSessions.length === 0 ? (
+              <div className="mt-3 rounded-3xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
+                <MonitorPlay className="mx-auto h-9 w-9 text-slate-300" />
+                <p className="mt-3 text-base font-black text-slate-800">{sessionSearch ? (isEnglish ? 'No results' : 'Nessun risultato') : t('sessions.empty_title')}</p>
+                <p className="mt-1 text-sm text-slate-500">{isEnglish ? 'Create a session or change your search.' : 'Crea una sessione o modifica la ricerca.'}</p>
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {filteredOrderedSessions.map((session) => {
+                  const isActive = session.status === 'active'
+                  const isPaused = session.status === 'paused'
+                  const isEnded = session.status === 'ended' || session.status === 'finished'
+                  const meta = statusMeta[session.status] || statusMeta.draft
+                  return (
+                    <article key={session.id} className={`mobile-card-standard relative flex flex-col rounded-3xl p-4 shadow-sm ring-1 ${isActive ? 'bg-emerald-50 ring-emerald-200' : 'bg-white ring-slate-100'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-emerald-100 text-emerald-700' : isPaused ? 'bg-amber-100 text-amber-700' : isEnded ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{meta.label}</span>
+                        <button type="button" onClick={() => setMobileSessionMenuId(mobileSessionMenuId === session.id ? null : session.id)} className="flex h-11 w-11 -mr-2 -mt-2 items-center justify-center rounded-2xl text-slate-500" aria-label={isEnglish ? 'Session options' : 'Opzioni sessione'}>
+                          <MoreVertical className="h-5 w-5" />
+                        </button>
+                      </div>
+                      <h3 className="mt-3 line-clamp-2 text-base font-black leading-tight text-slate-950">{session.title}</h3>
+                      <div className="mt-auto flex gap-2">
+                        {session.join_code && (
+                          <button type="button" onClick={() => copyCode(session.join_code)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 font-mono text-[11px] font-black text-slate-700">
+                            <span className="truncate">{session.join_code}</span><Copy className="h-3.5 w-3.5 shrink-0" />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}`)} className="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-slate-950 px-2 text-xs font-black text-white">
+                          {isEnded ? 'Report' : (isEnglish ? 'Open' : 'Apri')}<ChevronRight className="h-4 w-4 shrink-0" />
+                        </button>
+                      </div>
+                      {mobileSessionMenuId === session.id && (
+                        <div className="absolute inset-x-2 top-12 z-20 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: isActive ? 'paused' : 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50">{isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}{isActive ? (isEnglish ? 'Pause' : 'Metti in pausa') : (isEnglish ? 'Resume' : 'Riprendi')}</button>}
+                          {session.status === 'draft' && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'active' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><Play className="h-4 w-4" />{isEnglish ? 'Start' : 'Avvia'}</button>}
+                          {(isActive || isPaused) && <button type="button" onClick={() => { updateSessionMutation.mutate({ id: session.id, status: 'ended' }); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><Square className="h-4 w-4" />{isEnglish ? 'Stop' : 'Termina'}</button>}
+                          <button type="button" onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" />{isEnglish ? 'Documents' : 'Documenti'}</button>
+                          {isEnded && session.created_by_teacher_id === currentTeacherId && <button type="button" onClick={() => { setSessionToTrash(session); setMobileSessionMenuId(null) }} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-black text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />{isEnglish ? 'Archive' : 'Archivia'}</button>}
+                        </div>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {showTeachersModal && selectedClass && <TeachersManagementModal type="class" targetId={selectedClass.id} targetName={selectedClass.name} onClose={() => setShowTeachersModal(false)} />}
+
+        <Dialog open={showNewSessionDialog} onOpenChange={setShowNewSessionDialog}>
+          <DialogContent size="sm" surface="elevated" className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] rounded-3xl">
+            <DialogHeader>
+              <DialogTitle>{t('sessions.new_session')}</DialogTitle>
+              <DialogDescription>{selectedClass?.name}</DialogDescription>
+            </DialogHeader>
+            <DialogBody><Input autoFocus value={newSessionTitle} onChange={(event) => setNewSessionTitle(event.target.value)} className="h-12 bg-white text-base" placeholder={t('sessions.title_placeholder')} /></DialogBody>
+            <DialogFooter>
+              <Button surface="ghost" tone="neutral" onClick={() => setShowNewSessionDialog(false)} className="min-h-11">{t('classes.cancel')}</Button>
+              <Button onClick={handleCreateSession} disabled={createSessionMutation.isPending} tone="accent" surface="solid" className="min-h-11">{t('sessions.create_btn')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!sessionToTrash} onOpenChange={(open) => { if (!open) setSessionToTrash(null) }}>
+          <DialogContent size="sm" surface="elevated" className="w-[calc(100vw-2rem)] rounded-3xl">
+            <DialogHeader>
+              <DialogTitle>{isEnglish ? 'Archive session?' : 'Archiviare la sessione?'}</DialogTitle>
+              <DialogDescription>{sessionToTrash?.title}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button surface="ghost" tone="neutral" onClick={() => setSessionToTrash(null)} className="min-h-11">{t('classes.cancel')}</Button>
+              <Button tone="danger" surface="solid" onClick={() => sessionToTrash && trashSessionMutation.mutate(sessionToTrash.id)} disabled={trashSessionMutation.isPending} className="min-h-11">{isEnglish ? 'Archive' : 'Archivia'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showArchivedClasses} onOpenChange={setShowArchivedClasses}>
+          <DialogContent size="sm" surface="elevated" className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] rounded-3xl">
+            <DialogHeader>
+              <DialogTitle>{isEnglish ? 'Class archive' : 'Archivio classi'}</DialogTitle>
+              <DialogDescription>{isEnglish ? 'Restore or permanently delete archived classes.' : 'Ripristina o elimina definitivamente le classi archiviate.'}</DialogDescription>
+            </DialogHeader>
+            <DialogBody>
+              <div className="space-y-3">
+                {archivedClasses.length === 0 && <p className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">{isEnglish ? 'No archived classes.' : 'Nessuna classe archiviata.'}</p>}
+                {archivedClasses.map((cls) => (
+                  <div key={cls.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <p className="truncate text-sm font-black text-slate-800">{cls.name}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => restoreClassMutation.mutate(cls.id)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 text-xs font-black text-slate-700"><RotateCcw className="h-4 w-4" />{isEnglish ? 'Restore' : 'Ripristina'}</button>
+                      <button type="button" onClick={() => { if (window.confirm(`${isEnglish ? 'Permanently delete' : 'Eliminare definitivamente'} \"${cls.name}\"?`)) permanentlyDeleteClassMutation.mutate(cls.id) }} className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-rose-50 px-2 text-xs font-black text-rose-600"><Trash2 className="h-4 w-4" />{isEnglish ? 'Delete' : 'Elimina'}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full w-full bg-[#f1f5f9]">

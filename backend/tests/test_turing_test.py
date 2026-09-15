@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.api.v1.endpoints.turing import _report, _student_payload
+from app.api.v1.endpoints.turing import _activate_experiment, _human_typing_delay, _report, _student_payload
 from app.realtime import gateway
 
 
@@ -19,6 +19,30 @@ def test_online_student_ids_are_unique_and_exclude_teachers_and_observers():
     finally:
         for sid in gateway.session_presence.pop(session_id):
             gateway.connected_users.pop(sid, None)
+
+
+def test_experiment_starts_immediately_with_all_connected_students(monkeypatch):
+    students = [SimpleNamespace(id="student-a"), SimpleNamespace(id="student-b")]
+    experiment = SimpleNamespace(id="experiment-id", status="LOBBY", participant_count=0,
+                                 human_student_id=None, started_at=None)
+    monkeypatch.setattr("app.api.v1.endpoints.turing.secrets.choice", lambda values: values[0])
+
+    participants = _activate_experiment(experiment, students)
+
+    assert experiment.status == "ACTIVE"
+    assert experiment.participant_count == 2
+    assert experiment.human_student_id == "student-a"
+    assert experiment.started_at is not None
+    assert [participant.status for participant in participants] == ["ACTIVE", "ACTIVE"]
+    assert [participant.is_human for participant in participants] == [True, False]
+
+
+def test_human_typing_delay_grows_with_response_length_and_stays_bounded():
+    short = _human_typing_delay("Sì, credo di sì.")
+    medium = _human_typing_delay(" ".join(["risposta"] * 35))
+    long = _human_typing_delay(" ".join(["risposta"] * 200))
+
+    assert 0.9 <= short < medium < long <= 5.5
 
 
 def test_report_builds_confusion_matrix_and_accuracy():
@@ -72,12 +96,16 @@ def test_student_payload_hides_assignment_until_completion():
         title="Test",
         status="ACTIVE",
         max_questions=5,
+        persona_name="Ada",
+        avatar_url="/uploads/generated/ada.webp",
         started_at=None,
         completed_at=None,
     )
 
     active_payload = _student_payload(experiment, participant)
     assert active_payload["participant"]["actual_role"] is None
+    assert active_payload["experiment"]["persona_name"] == "Ada"
+    assert active_payload["experiment"]["avatar_url"] == "/uploads/generated/ada.webp"
 
     experiment.status = "COMPLETED"
     completed_payload = _student_payload(experiment, participant)

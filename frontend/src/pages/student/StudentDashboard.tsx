@@ -27,13 +27,14 @@ import { LogoMark } from '@/components/LogoMark'
 import { StudentNavbar } from '@/components/StudentNavbar'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
 import { FloatingHelper } from '@/components/FloatingHelper'
+import { FloatingClassChat } from '@/components/FloatingClassChat'
+import TuringTestPanel from '@/components/TuringTestPanel'
 import { useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
-import TuringTestPanel from '@/components/TuringTestPanel'
 
 interface SessionInfo {
   session: {
@@ -555,32 +556,41 @@ export default function StudentDashboard() {
 
   if (isMobile) {
     return (
-      <StudentMobileShell
-        sessionInfo={sessionInfo}
-        enabledModules={enabledModules}
-        activeModule={activeModule}
-        onNavigate={setActiveModule}
-        pendingTasksCount={pendingTasksCount}
-        openTaskId={openTaskId}
-        privateChatEnabled={privateChatEnabled}
-        collaborationEnabled={collaborationEnabled}
-        studentAccent={studentAccent}
-        selectedTeacherbotId={selectedTeacherbotId}
-        oggiImparoLesson={oggiImparoLesson}
-        onOggiImparoLessonConsumed={() => setOggiImparoLesson(null)}
-        openDocumentTaskId={openDocumentTaskId}
-        onOpenDocument={(taskId) => {
-          setOpenDocumentTaskId(taskId)
-          setActiveModule('documents')
-        }}
-        onTeacherbotNotificationClick={handleNotificationClick}
-        onLogout={() => {
-          localStorage.removeItem('student_token')
-          logout()
-          navigate('/join')
-        }}
-        swipeState={swipeState}
-      />
+      <>
+        <StudentMobileShell
+          sessionInfo={sessionInfo}
+          enabledModules={enabledModules}
+          activeModule={activeModule}
+          onNavigate={setActiveModule}
+          pendingTasksCount={pendingTasksCount}
+          openTaskId={openTaskId}
+          privateChatEnabled={privateChatEnabled}
+          collaborationEnabled={collaborationEnabled}
+          studentAccent={studentAccent}
+          selectedTeacherbotId={selectedTeacherbotId}
+          oggiImparoLesson={oggiImparoLesson}
+          onOggiImparoLessonConsumed={() => setOggiImparoLesson(null)}
+          openDocumentTaskId={openDocumentTaskId}
+          onOpenDocument={(taskId) => {
+            setOpenDocumentTaskId(taskId)
+            setActiveModule('documents')
+          }}
+          onTeacherbotNotificationClick={handleNotificationClick}
+          onLogout={() => {
+            localStorage.removeItem('student_token')
+            logout()
+            navigate('/join')
+          }}
+          swipeState={swipeState}
+        />
+        <TuringTestPanel
+          sessionId={sessionInfo.session.id}
+          userType="student"
+          socket={studentRealtimeSocket}
+          onlineStudentCount={0}
+          floatingTrigger
+        />
+      </>
     )
   }
 
@@ -730,15 +740,13 @@ export default function StudentDashboard() {
       {sessionInfo && (
         <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
       )}
-      {sessionInfo && (
-        <TuringTestPanel
-          sessionId={sessionInfo.session.id}
-          userType="student"
-          socket={studentRealtimeSocket}
-          onlineStudentCount={0}
-          floatingTrigger
-        />
-      )}
+      <TuringTestPanel
+        sessionId={sessionInfo.session.id}
+        userType="student"
+        socket={studentRealtimeSocket}
+        onlineStudentCount={0}
+        floatingTrigger
+      />
     </AppBackground>
   )
 }
@@ -850,19 +858,31 @@ function StudentMobileShell({
       )}
 
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur-2xl">
-        <div className="mx-auto flex h-16 max-w-screen-sm items-center gap-3 px-4">
+        <div className="mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
             <button
               onClick={() => setMenuOpen((value) => !value)}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-950/15 active:scale-95"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-slate-950 text-white shadow-md shadow-slate-950/15 active:scale-95"
               aria-label={t('student_dashboard.explore')}
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">{sessionInfo.session.title}</p>
-              <h1 className="truncate text-lg font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
+              <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">Area studente</p>
+              <h1 className="truncate text-base font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
             </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sm font-black text-sky-800 ring-1 ring-sky-100">
+            <button
+              type="button"
+              onClick={() => handleNavigate(null)}
+              className="flex h-10 max-w-[7.5rem] shrink-0 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200"
+              title={sessionInfo.session.title}
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
+              <span className="min-w-0">
+                <span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span>
+                <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{sessionInfo.session.title}</span>
+              </span>
+            </button>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-xs font-black text-sky-800 ring-1 ring-sky-100">
               {sessionInfo.student.nickname.slice(0, 2).toUpperCase()}
             </div>
         </div>
@@ -928,7 +948,7 @@ function StudentMobileShell({
         )}
       </AnimatePresence>
 
-      <main className="min-h-0 flex-1 pt-[calc(env(safe-area-inset-top)+4rem)]">
+      <main className="min-h-0 flex-1 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
         <AnimatePresence mode="popLayout" custom={slideDirection}>
           <motion.div
             key={activeModule || 'mobile-home'}
@@ -964,12 +984,11 @@ function StudentMobileShell({
                 <section className="mt-4 grid grid-cols-2 gap-3 pb-4">
                   {primaryTiles.map((tile, index) => {
                     const Icon = tile.icon
-                    const wide = tile.key === 'live' || tile.key === 'classe'
                     return (
                       <button
                         key={tile.key}
                         onClick={() => handleNavigate(tile.key)}
-                        className={`${wide ? 'col-span-2' : ''} group relative min-h-[142px] overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-5 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl active:scale-[0.98]`}
+                        className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl active:scale-[0.98]"
                       >
                         <div className="flex items-start justify-between">
                           <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${index === 1 ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700'}`}>
@@ -977,15 +996,14 @@ function StudentMobileShell({
                           </div>
                           {tile.key === 'self_assessment' && pendingTasksCount > 0 && <span className="rounded-full bg-[#fe004d] px-2.5 py-1 text-xs font-black text-white">{pendingTasksCount}</span>}
                         </div>
-                        <div className="mt-5 text-lg font-extrabold text-slate-950">{tile.label}</div>
-                        <div className="mt-1 text-sm font-medium text-slate-500">{tile.detail}</div>
+                        <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight text-slate-950">{tile.label}</div>
+                        <div className="mt-1 hidden text-sm font-medium text-slate-500 md:block">{tile.detail}</div>
                       </button>
                     )
                   })}
-                  <button onClick={() => handleNavigate('documents')} className="col-span-2 flex min-h-[82px] items-center gap-4 rounded-[24px] border border-violet-100 bg-violet-50/90 px-5 text-left active:scale-[0.98]">
+                  <button onClick={() => handleNavigate('documents')} className="mobile-card-standard relative flex flex-col overflow-hidden rounded-[26px] border border-violet-100 bg-violet-50/90 p-4 text-left active:scale-[0.98]">
                     <span className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-white text-violet-700 shadow-sm"><FileText className="h-6 w-6" /></span>
-                    <span className="min-w-0 flex-1"><span className="block text-base font-extrabold text-slate-950">{t('navbar.nav_documents')}</span><span className="block truncate text-sm font-medium text-slate-500">Materiali da consultare</span></span>
-                    <ChevronRight className="h-5 w-5 text-violet-400" />
+                    <span className="mt-auto block text-base font-extrabold text-slate-950">{t('navbar.nav_documents')}</span>
                   </button>
                 </section>
               </div>
@@ -1047,7 +1065,7 @@ function StudentMobileShell({
       <div
         className={
           activeModule === 'chatbot'
-            ? 'fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+4.1rem)] z-40 overflow-hidden bg-white'
+            ? 'fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+3.6rem)] z-40 overflow-hidden bg-white'
             : studentChatSidebarOpen
               ? 'fixed inset-y-0 right-0 z-40 w-[min(92vw,420px)] overflow-hidden border-l border-slate-200 bg-white shadow-2xl'
               : 'pointer-events-none fixed bottom-0 right-0 h-px w-px overflow-hidden opacity-0'
@@ -1071,6 +1089,17 @@ function StudentMobileShell({
         </Suspense>
       </div>
 
+      <FloatingHelper module={activeModule} />
+      <FloatingClassChat
+        sessionId={sessionInfo.session.id}
+        userType="student"
+        currentUserId={sessionInfo.student.id}
+        currentUserName={sessionInfo.student.nickname}
+        studentAccent={studentAccent}
+        teacherTarget={sessionInfo.teacher ?? undefined}
+        privateChatEnabled={privateChatEnabled}
+        onNotificationClick={onTeacherbotNotificationClick}
+      />
       <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
     </AppBackground>
   )

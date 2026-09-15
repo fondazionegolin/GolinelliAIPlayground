@@ -19,10 +19,10 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown
+  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown,
+  ListChecks, SquareKanban
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
-import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { MessageBubble } from '@/components/student/ChatConversationView'
@@ -302,13 +302,17 @@ export default function SessionLivePage() {
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
-  const OPTIONAL_MODULE_KEYS = ['chat_collaboration']
+  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'chat_collaboration']
   const displayModules = [
-    ...modules,
-    ...OPTIONAL_MODULE_KEYS
+    ...MODULE_ORDER
       .filter((k) => !modules.some((m) => m.module_key === k))
       .map((k) => ({ module_key: k, is_enabled: false })),
-  ]
+    ...modules,
+  ].sort((left, right) => {
+    const leftIndex = MODULE_ORDER.indexOf(left.module_key)
+    const rightIndex = MODULE_ORDER.indexOf(right.module_key)
+    return (leftIndex === -1 ? MODULE_ORDER.length : leftIndex) - (rightIndex === -1 ? MODULE_ORDER.length : rightIndex)
+  })
 
   const statusConfig = {
     active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: t('sessions.status_active') },
@@ -458,47 +462,94 @@ export default function SessionLivePage() {
                 <div className="space-y-4">
 
                   {/* Module toggles */}
-                  <Card surface="glass" className="overflow-hidden rounded-xl border-slate-200 bg-white/95">
-                    <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-slate-500" />
-                      <span className="font-semibold text-sm text-slate-800">Moduli Attivi</span>
+                  <Card surface="base" className="overflow-hidden rounded-[10px] border-[#f1f5f9] bg-white shadow-none">
+                    <div className="flex min-h-11 items-center gap-2 border-b border-[#f1f5f9] px-8 py-3">
+                      <Brain className="h-[17px] w-[17px] text-[#222d3f]" />
+                      <span className="text-base font-bold text-[#222d3f]">Moduli attivi visibili agli studenti</span>
                     </div>
-                    <div className="grid gap-3 p-3 lg:grid-cols-2">
+                    <div className="flex flex-wrap justify-center gap-x-7 gap-y-5 px-4 py-6 sm:px-8">
                       {displayModules.map((mod) => {
-                        const cfg: Record<string, { tone: PastelTone; iconTone: string; icon: React.FC<{ className?: string }>; label: string; desc: string }> = {
-                          chatbot:         { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: Bot,           label: 'Chatbot AI',          desc: 'Assistente AI con diverse modalità' },
-                          classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
-                          self_assessment: { tone: 'amber',   iconTone: 'bg-[var(--logo-violet)]', icon: ClipboardList, label: 'Autovalutazione',     desc: 'Quiz e autovalutazione' },
-                          chat:            { tone: 'slate',   iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
-                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Coding Lab',           desc: 'Notebook di coding e attività guidate' },
-                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Vibe Lab',             desc: 'Mini app web con prompt, codice e anteprima' },
-                          chat_collaboration: { tone: 'teal', iconTone: 'bg-[var(--logo-blue)]',   icon: Users,         label: 'Collaborazione chat',  desc: 'Gli studenti condividono una chat con il bot e i compagni' },
+                        const cfg: Record<string, { icon: React.FC<{ className?: string }>; label: string; subtitle: string; desc: string }> = {
+                          chatbot: {
+                            icon: Bot,
+                            label: 'Chatbot AI',
+                            subtitle: 'Tutor virtuale per lo studio',
+                            desc: 'Assistente personale per lo studio individuale, il ripasso e il chiarimento dei dubbi sui contenuti.',
+                          },
+                          self_assessment: {
+                            icon: ListChecks,
+                            label: 'Autovalutazione',
+                            subtitle: 'Quiz e feedback immediato',
+                            desc: 'Genera test e verifiche automatiche per tracciare la comprensione della classe in tempo reale.',
+                          },
+                          notebook: {
+                            icon: FileCode2,
+                            label: 'Coding Lab',
+                            subtitle: 'Ambiente Notebook',
+                            desc: 'Spazio interattivo per eseguire codice Python, svolgere esercitazioni guidate e analizzare dati.',
+                          },
+                          boards: {
+                            icon: SquareKanban,
+                            label: 'Boards',
+                            subtitle: 'Gestione e organizzazione',
+                            desc: "Bacheca visiva per assegnare compiti, organizzare il lavoro della classe e tracciare l'avanzamento dei progetti.",
+                          },
+                          classification: {
+                            icon: Brain,
+                            label: 'Classificazione ML',
+                            subtitle: 'Modelli di Machine Learning',
+                            desc: 'Ambiente pratico per addestrare e testare modelli di intelligenza artificiale su immagini, testi e dati.',
+                          },
+                          chat: {
+                            icon: MessageSquare,
+                            label: 'Chat privata',
+                            subtitle: 'Comunicazione 1 a 1',
+                            desc: 'Spazio di messaggistica diretto per offrire supporto individuale e feedback riservato a ciascun studente.',
+                          },
+                          coding: {
+                            icon: Code2,
+                            label: 'Vibe Lab',
+                            subtitle: 'Generatore di Web App',
+                            desc: 'Crea e progetta piccole applicazioni web tramite prompt di testo, con anteprima istantanea del codice.',
+                          },
+                          chat_collaboration: {
+                            icon: Users,
+                            label: 'Collaborazione chat',
+                            subtitle: 'Lavoro di gruppo assistito',
+                            desc: 'Spazio condiviso dove gli studenti collaborano in team interagendo insieme con lo stesso tutor AI.',
+                          },
                         }
-                        const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
+                        const c = cfg[mod.module_key] ?? { icon: Bot, label: mod.module_key, subtitle: '', desc: '' }
                         const ModIcon = c.icon
                         return (
-                          <Card
+                          <div
                             key={mod.module_key}
-                            surface="base"
-                            className={`flex items-center gap-3 rounded-lg px-3 py-3 ${
-                              mod.is_enabled ? PASTEL_SURFACES[c.tone] : 'border-slate-200 bg-white'
-                            }`}
+                            className={`flex h-[189px] w-[220px] max-w-full shrink-0 flex-col rounded-[14px] border px-[14px] py-[13px] transition-colors ${mod.is_enabled
+                              ? 'border-[#e0dbf4] bg-[#f4f3fd]'
+                              : 'border-[#d9dee6] bg-[#fafbfd]'
+                              }`}
                           >
-                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${mod.is_enabled ? c.iconTone : 'bg-slate-100'}`}>
-                              <ModIcon className={`h-4 w-4 ${mod.is_enabled ? 'text-white' : 'text-slate-400'}`} />
+                            <div className="flex items-center justify-between">
+                              <div className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border ${mod.is_enabled
+                                ? 'border-[#523399] bg-[#523399]'
+                                : 'border-[#d9dee6] bg-[#e2e4ec]'
+                                }`}>
+                                <ModIcon className={`h-5 w-5 ${mod.is_enabled ? 'text-white' : 'text-[#91a4bb]'}`} />
+                              </div>
+                              <Switch
+                                checked={mod.is_enabled}
+                                disabled={toggleModuleMutation.isPending}
+                                onCheckedChange={(isEnabled) => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled })}
+                                aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
+                                className="h-[26px] w-[45px] bg-[#e2e4ec] peer-focus:ring-[#e0dbf4] peer-checked:bg-[#7f68cf] peer-disabled:cursor-wait peer-disabled:opacity-60 after:start-[5px] after:top-[4px] after:h-[18px] after:w-[18px] peer-checked:after:translate-x-[17px]"
+                              />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-slate-800">{c.label}</p>
-                              <p className="text-[11px] text-slate-400">{c.desc}</p>
+                            <div className="mt-1.5 min-w-0 leading-normal text-black">
+                              <p className="text-sm font-bold">{c.label}</p>
+                              <p className="text-[13px] font-medium">{c.subtitle}</p>
                             </div>
-                            <Switch
-                              checked={mod.is_enabled}
-                              disabled={toggleModuleMutation.isPending}
-                              onCheckedChange={(isEnabled) => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled })}
-                              aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
-                              className="peer-checked:bg-[var(--logo-violet)] peer-focus:ring-[var(--brand-pill-lavender)]"
-                            />
-                          </Card>
+                            <p className="mt-2 text-xs font-medium leading-[1.25] text-[#91a4bb]">{c.desc}</p>
+                          </div>
                         )
                       })}
                     </div>

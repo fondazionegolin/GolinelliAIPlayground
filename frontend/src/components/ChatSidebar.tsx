@@ -90,6 +90,7 @@ export default function ChatSidebar({
   sessionId,
   userType,
   currentUserId,
+  currentUserName,
   teacherTarget,
   privateChatEnabled = true,
   studentAccent = DEFAULT_STUDENT_ACCENT,
@@ -786,7 +787,7 @@ export default function ChatSidebar({
 
 
 
-  const containerClasses = `relative flex flex-col h-full bg-white/80 backdrop-blur-xl border-l border-slate-200 overflow-hidden ${className || (isMobileView
+  const containerClasses = `relative flex min-h-0 flex-col overflow-hidden ${isMobileView ? 'bg-white' : 'h-full bg-white/80 backdrop-blur-xl border-l border-slate-200'} ${className || (isMobileView
     ? "w-full"
     : isPinned
       ? "relative"
@@ -964,14 +965,12 @@ export default function ChatSidebar({
         </div>
 
         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
-          {showAvatar && (
-            <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-400">
-              {msg.sender_is_class_owner && (
-                <GraduationCap className="h-3 w-3 text-violet-600" aria-label="Docente proprietario della classe" />
-              )}
-              {msg.sender_name || 'User'}
-            </span>
-          )}
+          <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-500">
+            {msg.sender_is_class_owner && (
+              <GraduationCap className="h-3 w-3 text-violet-600" aria-label="Docente proprietario della classe" />
+            )}
+            {msg.sender_name || (isMe ? currentUserName : 'Utente')}
+          </span>
           <div className={`
             px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
             ${isMe
@@ -1334,9 +1333,9 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div className="flex-1 overflow-hidden relative flex flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
-          className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+          className="min-h-0 flex-1 overflow-y-auto p-4 space-y-6 bg-white scroll-smooth overscroll-contain"
           ref={scrollRef}
         >
           {loadingOlderPublicMessages && (
@@ -1863,7 +1862,7 @@ export default function ChatSidebar({
     >
       {/* Resize handle - trasparente, blu solo su hover */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
+        className={`${isMobileView ? 'hidden' : 'absolute'} left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
           ? 'bg-[#181b1e] w-3'
           : 'bg-slate-200/50 hover:bg-[#181b1e] hover:w-3'
           }`}
@@ -1880,7 +1879,7 @@ export default function ChatSidebar({
           </h3>
         </div>
         <div className="flex items-center gap-1">
-          {userType === 'teacher' && (
+          {userType === 'teacher' && !isMobileView && (
             <TuringTestPanel
               sessionId={sessionId}
               userType={userType}
@@ -1903,10 +1902,10 @@ export default function ChatSidebar({
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 text-slate-400"
+              className={`${isMobileView ? 'h-10 w-10 rounded-xl' : 'h-6 w-6'} text-slate-400`}
               onClick={() => onToggle(false)}
             >
-              <X className="h-3 w-3" />
+              <X className={isMobileView ? 'h-5 w-5' : 'h-3 w-3'} />
             </Button>
           )}
         </div>
@@ -1966,13 +1965,15 @@ export default function ChatSidebar({
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <VoiceRoomPanel
-          sessionId={sessionId}
-          userType={userType}
-          currentUserId={currentUserId}
-          socket={socket}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!isMobileView && (
+          <VoiceRoomPanel
+            sessionId={sessionId}
+            userType={userType}
+            currentUserId={currentUserId}
+            socket={socket}
+          />
+        )}
 
         {activeTab === 'session' && renderSessionChat()}
 
@@ -1985,7 +1986,10 @@ export default function ChatSidebar({
 
       {/* Input area - only show for session chat or when a private chat is selected */}
       {showInputArea && (
-        <div className="p-4 bg-white border-t border-slate-100">
+        <div
+          className="shrink-0 bg-white p-4 border-t border-slate-100"
+          style={isMobileView ? { paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' } : undefined}
+        >
           {attachedFiles.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
               {attachedFiles.map((file, idx) => (

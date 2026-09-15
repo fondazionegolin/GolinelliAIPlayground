@@ -32,7 +32,7 @@ from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole, TenantType
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft, DocumentDraftVersion
-from app.models.session_canvas import SessionCanvas
+from app.models.session_canvas import SessionCanvas, normalize_canvas_key
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.realtime.gateway import sio
 from app.schemas.session import (
@@ -2013,17 +2013,22 @@ async def get_session_canvas(
     session_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    canvas_name: str = Query("Lavagna collaborativa", min_length=1, max_length=240),
 ):
     if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    canvas_key = normalize_canvas_key(canvas_name)
     result = await db.execute(
-        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+        select(SessionCanvas)
+        .where(SessionCanvas.session_id == session_id)
+        .where(SessionCanvas.canvas_key == canvas_key)
     )
     canvas = result.scalar_one_or_none()
     if not canvas:
         return {
             "session_id": str(session_id),
+            "canvas_key": canvas_key,
             "title": "Lavagna collaborativa",
             "content_json": '{"type":"canvas_v1","items":[]}',
             "version": 0,
@@ -2033,6 +2038,7 @@ async def get_session_canvas(
 
     return {
         "session_id": str(canvas.session_id),
+        "canvas_key": canvas.canvas_key,
         "title": canvas.title,
         "content_json": canvas.content_json,
         "version": canvas.version,
@@ -2047,14 +2053,19 @@ async def upsert_session_canvas(
     request: CanvasUpsertRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    canvas_name: str = Query("Lavagna collaborativa", min_length=1, max_length=240),
 ):
     session_data = await get_session_with_access_check(db, teacher, session_id)
     if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     session, _ = session_data
 
+    canvas_key = normalize_canvas_key(canvas_name)
+    desired_canvas_key = normalize_canvas_key(request.title or canvas_name)
     result = await db.execute(
-        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+        select(SessionCanvas)
+        .where(SessionCanvas.session_id == session_id)
+        .where(SessionCanvas.canvas_key == canvas_key)
     )
     canvas = result.scalar_one_or_none()
 
@@ -2071,6 +2082,7 @@ async def upsert_session_canvas(
         canvas = SessionCanvas(
             tenant_id=session.tenant_id,
             session_id=session_id,
+            canvas_key=desired_canvas_key,
             title=request.title or "Lavagna collaborativa",
             content_json=request.content_json,
             version=1,
@@ -2079,6 +2091,16 @@ async def upsert_session_canvas(
         )
         db.add(canvas)
     else:
+        if desired_canvas_key != canvas.canvas_key:
+            duplicate = await db.execute(
+                select(SessionCanvas.id)
+                .where(SessionCanvas.session_id == session_id)
+                .where(SessionCanvas.canvas_key == desired_canvas_key)
+                .where(SessionCanvas.id != canvas.id)
+            )
+            if duplicate.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A canvas with this name already exists")
+            canvas.canvas_key = desired_canvas_key
         canvas.title = request.title or canvas.title
         canvas.content_json = request.content_json
         canvas.version = (canvas.version or 0) + 1
@@ -2092,6 +2114,7 @@ async def upsert_session_canvas(
 
     payload = {
         "session_id": str(canvas.session_id),
+        "canvas_key": canvas.canvas_key,
         "title": canvas.title,
         "content_json": canvas.content_json,
         "version": canvas.version,

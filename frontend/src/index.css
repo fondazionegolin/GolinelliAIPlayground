@@ -554,6 +554,57 @@
   }
 }
 
+/* Teacher workspace: shared mobile guardrails. Individual tools keep their
+   own layouts, while these rules prevent viewport overflow and iOS form zoom. */
+@media (max-width: 1023px) {
+  .mobile-card-standard {
+    aspect-ratio: 1 / 1;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    width: 100%;
+  }
+
+  .mobile-document-card {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .mobile-document-card .mobile-document-meta {
+    display: none;
+  }
+
+  .teacher-mobile-shell main,
+  .teacher-mobile-shell main > *,
+  .teacher-mobile-shell [role='dialog'] {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .teacher-mobile-shell input,
+  .teacher-mobile-shell textarea,
+  .teacher-mobile-shell select {
+    font-size: max(16px, 1em);
+  }
+
+  .teacher-mobile-shell [role='dialog'] {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .teacher-mobile-shell .overflow-x-auto {
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  .teacher-mobile-shell .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .animate-gradient {
   background-size: 300%;
   animation: gradient-shift 5s ease infinite;

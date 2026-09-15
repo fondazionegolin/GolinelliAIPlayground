@@ -28,7 +28,7 @@ from app.models.changelog import PlatformChangelogRelease
 from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDesignSystem, CodingFile, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingReview, CodingVersion
-from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringTeacherSettings
+from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
 
 __all__ = [
     "Tenant",
@@ -116,5 +116,6 @@ __all__ = [
     "TuringExperiment",
     "TuringParticipant",
     "TuringMessage",
+    "TuringPersona",
     "TuringTeacherSettings",
 ]

@@ -6,7 +6,7 @@ import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Video, ScanText, Youtube, PanelRightClose, Square
+  Video, ScanText, Youtube, PanelRightClose, Square, History
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -2945,7 +2945,14 @@ REGOLE IMPORTANTI:
 
                  {/* Chat Main + Canvas split */}
                  <div className="flex-1 flex overflow-hidden min-w-0">
-                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg && !sidebarMode ? { backgroundColor: chatBg } : undefined}>
+                 <main
+                   className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isMobile && !chatBg ? 'bg-slate-50' : ''}`}
+                   style={chatBg && !sidebarMode
+                     ? { backgroundColor: chatBg }
+                     : isMobile
+                       ? { backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08), transparent 42%)' }
+                       : undefined}
+                 >
 
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
@@ -3011,39 +3018,36 @@ REGOLE IMPORTANTI:
                       <>
                         <button
                           onClick={() => !sidebarMode && setMobileHistoryOpen(true)}
-                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                          className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${sidebarMode ? 'invisible' : 'hover:bg-slate-100'}`}
+                          aria-label="Cronologia chat"
                         >
-                          <AcademicAiIcon className="h-4 w-4 text-slate-500" />
-                          <span className="text-xs text-slate-500 font-medium">Chat</span>
+                          <History className="h-5 w-5 text-slate-500" />
                         </button>
 
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStyle}>
-                            <AcademicAiIcon className="h-3.5 w-3.5" />
-                          </div>
-                          <span className="text-sm font-bold text-slate-800">AI Docente</span>
+                        <div className="flex items-center gap-1.5">
+                          <AcademicAiIcon className="h-4 w-4" style={{ color: accentTheme.accent }} />
+                          <span className="text-sm font-bold text-slate-800">Assistente</span>
                         </div>
 
-                        <button
-                          onClick={handleNewChat}
-                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-                        >
-                          <Plus className="h-4 w-4 text-slate-500" />
-                          <span className="text-xs text-slate-500 font-medium">Nuova</span>
-                        </button>
-                        {(onMinimize || onClose) && (
+                        <div className="flex items-center gap-1">
                           <button
-                            onClick={handleDockOrClose}
-                            className={`group/dock relative flex items-center gap-1 rounded-lg px-2 py-1.5 transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
-                            title={dockControlLabel}
-                            aria-label={dockControlLabel}
+                            onClick={handleNewChat}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-slate-100"
+                            aria-label="Nuova chat"
                           >
-                            {sidebarMode ? <X className="h-4 w-4 text-slate-500" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : 'text-slate-500'}`} />}
-                            <span role="tooltip" className="pointer-events-none absolute right-0 top-full z-[90] mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-left text-[11px] font-medium leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover/dock:opacity-100 group-focus-visible/dock:opacity-100">
-                              {dockControlLabel}
-                            </span>
+                            <Plus className="h-5 w-5 text-slate-500" />
                           </button>
-                        )}
+                          {(onMinimize || onClose) && (
+                            <button
+                              onClick={handleDockOrClose}
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
+                              title={dockControlLabel}
+                              aria-label={dockControlLabel}
+                            >
+                              {sidebarMode ? <X className="h-5 w-5 text-slate-500" /> : <PanelRightClose className={`h-5 w-5 ${isDockArmed ? 'text-white' : 'text-slate-500'}`} />}
+                            </button>
+                          )}
+                        </div>
                       </>
                     ) : (
                       /* Desktop header — full controls */
@@ -3307,25 +3311,6 @@ REGOLE IMPORTANTI:
                     )}
                   </header>
 
-                  {/* Mobile: agent mode pills row */}
-                  {isMobile && (
-                    <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-slate-100 scrollbar-none shrink-0">
-                      {AGENT_MODES.map(m => {
-                        const isActive = agentMode === m.id
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => handleChangeAgentMode(m.id)}
-                            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${isActive ? 'text-white border-transparent shadow-sm' : 'text-slate-500 border-slate-200 bg-white hover:bg-slate-50'}`}
-                            style={isActive ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : undefined}
-                          >
-                            {m.id === 'image' ? t('teacher_chat.mode_image') : m.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-
                   <div
                     ref={chatScrollRef}
                     className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
@@ -3391,21 +3376,23 @@ REGOLE IMPORTANTI:
                           </div>
                         </div>
                       ) : (
-                        <div className="h-full flex flex-col items-center justify-center opacity-50">
-                          <AcademicAiIcon className="mb-4 h-12 w-12 text-slate-300" />
-                          <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
+                        <div className="h-full flex flex-col items-center justify-center gap-3">
+                          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                            <AcademicAiIcon className="h-7 w-7" style={{ color: accentTheme.accent }} />
+                          </span>
+                          <p className="text-sm font-semibold text-slate-500">Cosa prepariamo?</p>
                         </div>
                       )
                     ) : (
                       messages.map((msg) => (
-                        <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          {msg.role === 'assistant' && (
+                        <div key={msg.id} className={`flex ${isMobile ? 'gap-2' : 'gap-4'} ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {msg.role === 'assistant' && !isMobile && (
                             <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
                               <AcademicAiIcon className="h-4 w-4 text-red-500" />
                             </div>
                           )}
-                          <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`teacher-support-message px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
+                          <div className={`${isMobile ? 'max-w-[90%]' : 'max-w-[75%]'} space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
+                            <div className={`teacher-support-message ${isMobile ? 'px-4' : 'px-5'} py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
                               ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'border'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
@@ -3689,7 +3676,7 @@ REGOLE IMPORTANTI:
                           ))}
                         </div>
                       )}
-                      {attachedFiles.some(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length) && (
+                      {!isMobile && attachedFiles.some(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length) && (
                         <div className="flex gap-1 mb-2 flex-wrap">
                           {attachedFiles
                             .filter(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length)
@@ -3753,8 +3740,8 @@ REGOLE IMPORTANTI:
                           accept={agentMode === 'ocr' ? 'image/*' : 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
                           onChange={handleFileSelect} />
 
-                        {/* Mode Selector — desktop only (mobile uses pills above) */}
-                        {sidebarMode && (
+                        {/* All secondary tools stay behind one control on mobile/sidebar. */}
+                        {(sidebarMode || isMobile) && (
                           <div className="relative flex-shrink-0">
                             <Button
                               variant="ghost"
@@ -3937,12 +3924,12 @@ REGOLE IMPORTANTI:
                           </div>
                         )}
 
-                        {!sidebarMode && <VoiceRecorder
+                        {!sidebarMode && !isMobile && <VoiceRecorder
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
                         />}
 
                         {/* Link button + popover */}
-                        {!sidebarMode && <div className="relative flex-shrink-0" ref={linkModalRef}>
+                        {!sidebarMode && !isMobile && <div className="relative flex-shrink-0" ref={linkModalRef}>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -4007,7 +3994,7 @@ REGOLE IMPORTANTI:
                           )}
                         </div>}
 
-                        {!sidebarMode && <Button
+                        {!sidebarMode && !isMobile && <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"

@@ -50,6 +50,7 @@ import {
   WorkspaceExplorerList,
   WorkspaceExplorerSidebar,
 } from '@/components/WorkspaceExplorerSidebar'
+import { useMobile } from '@/hooks/useMobile'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -313,6 +314,7 @@ function composeDescription(title: string, prompt: string, answersText: string) 
 }
 
 export default function StudentCodingLabModule({ sessionId, sharedProject, isTeacher = false }: { sessionId: string; sharedProject?: { projectId: string; nonce: number } | null; isTeacher?: boolean }) {
+  const { isMobile } = useMobile()
   const [projects, setProjects] = useState<CodingProject[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   // Kept in sync below so the message-bridge handler (mounted once, deps []) always reads the
@@ -960,11 +962,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   // Step 1: interview the student before generating (always, per project setup).
   const handleStartInterview = async () => {
-    if (!title.trim() || !prompt.trim()) return
+    if (!prompt.trim()) return
+    const projectTitle = title.trim() || prompt.trim().slice(0, 56)
+    if (!title.trim()) setTitle(projectTitle)
     setInterviewing(true)
     setError(null)
     try {
-      const response = await codingApi.interview({ title: title.trim(), prompt: prompt.trim() })
+      const response = await codingApi.interview({ title: projectTitle, prompt: prompt.trim() })
       const questions = (response.data?.questions || []) as InterviewQuestion[]
       if (questions.length) {
         setInterviewQuestions(questions)
@@ -981,12 +985,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const createAndGenerate = async (answersText: string) => {
-    if (!title.trim() || !prompt.trim()) return
+    if (!prompt.trim()) return
+    const projectTitle = title.trim() || prompt.trim().slice(0, 56)
     setCreating(true)
     setError(null)
     try {
       const response = await codingApi.createProject({
-        title: title.trim(),
+        title: projectTitle,
         session_id: sessionId,
         template_key: 'vite-react',
         initial_prompt: prompt.trim(),
@@ -999,7 +1004,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
       setInterviewQuestions(null)
-      const description = composeDescription(title.trim(), prompt.trim(), answersText)
+      const description = composeDescription(projectTitle, prompt.trim(), answersText)
       // Keep any context files the student added with "+ File"; refresh description.md.
       const initialFiles: GeneratedFile[] = [
         { path: 'description.md', content: description, language: 'markdown' },
@@ -1447,7 +1452,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         />
       )}
       <AnimatePresence>
-        {showTutorial && (
+        {showTutorial && !isMobile && (
           <CodingLabTutorialModal
             onClose={closeTutorial}
             onCreateProject={() => {
@@ -1467,7 +1472,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           {designNotice}
         </div>
       )}
-      <WorkspaceExplorerSidebar>
+      {!isMobile && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isTeacher ? 'Pannello docente' : 'Spazio studente'}
           title="Vibe Lab"
@@ -1562,7 +1567,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           }}
           onMergeCommit={handleMergeCommit}
         />
-      </WorkspaceExplorerSidebar>
+      </WorkspaceExplorerSidebar>}
 
       <main className="flex min-w-0 flex-1 flex-col">
         {error && (
@@ -1602,8 +1607,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {createPanelOpen && (
               <div>
                 <div className="mb-6 text-center">
-                  <h2 className="text-xl font-black text-[var(--text-primary)]">Crea un nuovo progetto</h2>
-                  <p className="mt-1 text-sm text-[var(--text-muted)]">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
+                  <h2 className="text-xl font-black text-[var(--text-primary)]">Cosa vuoi creare?</h2>
+                  <p className="mt-1 hidden text-sm text-[var(--text-muted)] md:block">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
                 </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -1621,29 +1626,33 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     </button>
                   </div>
                 )}
-                <label className="mb-1 block text-xs font-bold text-slate-600">Titolo</label>
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Dai un nome al progetto"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                />
-                <label className="mb-1 mt-3 block text-xs font-bold text-slate-600">Prompt iniziale</label>
+                <div className="hidden md:block">
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Titolo</label>
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Dai un nome al progetto"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  />
+                </div>
+                <label className="sr-only">Prompt iniziale</label>
                 <textarea
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  rows={5}
-                  placeholder="Descrivi l'app che vuoi creare, cosa deve fare e per chi è pensata..."
-                  className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  rows={7}
+                  placeholder="Descrivi cosa vuoi creare…"
+                  className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base outline-none focus:border-slate-400 md:rounded-lg md:px-3 md:py-2 md:text-sm"
                 />
-                <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
-                <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
+                <div className="hidden md:block">
+                  <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
+                  <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
+                </div>
                 {!interviewQuestions ? (
                   <button
                     type="button"
                     onClick={handleStartInterview}
-                    disabled={interviewing || creating || !title.trim() || !prompt.trim()}
-                    className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40"
+                    disabled={interviewing || creating || !prompt.trim()}
+                    className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto md:rounded-xl"
                   >
                     {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     {interviewing ? 'Creo...' : 'Crea'}

@@ -419,7 +419,7 @@ function TaskSection({ title, subtitle, tasks, viewMode, draftTaskIds, accentCol
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {tasks.map(task => (
             <TaskCard
               key={task.id}
@@ -460,24 +460,22 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`relative flex min-h-[124px] cursor-pointer flex-col overflow-hidden rounded-[22px] p-3.5 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
+      className={`relative flex aspect-square min-h-0 cursor-pointer flex-col overflow-hidden rounded-[22px] p-3 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
     >
-      <span className={`absolute right-3 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
-        {isCompleted ? 'Fatto' : hasDraft ? 'Bozza' : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
-      </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${s.iconBg} ${s.icon}`}>
+          {typeIcon}
+        </div>
+        <span className={`max-w-[68%] truncate rounded-full border px-2 py-1 text-[9px] font-black uppercase ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
+          {isCompleted ? 'Fatto' : hasDraft ? 'Bozza' : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
+        </span>
+      </div>
+      <div className="mt-3 line-clamp-3 text-sm font-black leading-[1.25rem] text-slate-950">{task.title}</div>
       {(hasUnreadFeedback || hasUnreadCorrection) && (
-        <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-amber-900">
+        <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-900">
           Nuovo feedback
         </span>
       )}
-      <div className="flex items-start gap-3">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg shadow-sm ${s.iconBg} ${s.icon}`}>
-          {typeIcon}
-        </div>
-        <div className="min-w-0 flex-1 pr-14">
-          <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">{task.title}</div>
-        </div>
-      </div>
       <div className="mt-auto flex items-center justify-between gap-2 pt-3">
         {task.due_at && !isCompleted && (
           <div className={`flex items-center gap-1 ${s.time}`}>
@@ -488,7 +486,7 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
         {isCompleted && (
           <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800"><Check className="h-3 w-3" /> Consegnato</span>
         )}
-        {!task.due_at && !isCompleted && <span className="text-[10px] font-medium text-slate-400">Apri il compito</span>}
+        {!task.due_at && !isCompleted && <span className="text-[10px] font-bold text-slate-500">Apri</span>}
         <ChevronRight className="h-4 w-4 text-slate-300" />
       </div>
     </motion.div>

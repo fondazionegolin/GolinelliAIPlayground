@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Bot, CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, LayoutGrid, List, Download, Loader2, FileUp
+  Bot, CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Download, Loader2, FileUp
 } from 'lucide-react'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
@@ -195,10 +195,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
   const [submittedDocuments, setSubmittedDocuments] = useState<SubmittedDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'document' | 'presentation' | 'sheet' | 'canvas' | 'pdf' | 'web'>('all')
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
-  const [catalogViewMode, setCatalogViewMode] = useState<'grid' | 'list'>(() =>
-    localStorage.getItem('student_documents_catalog_view') === 'list' ? 'list' : 'grid'
-  )
+  const isCatalogGrid = true
   const [draftId, setDraftId] = useState<string | null>(null)
   const [isReadOnlyLesson, setIsReadOnlyLesson] = useState(false)
   const [activeLessonTaskId, setActiveLessonTaskId] = useState<string | null>(null)
@@ -207,9 +206,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [isAcceptingCorrection, setIsAcceptingCorrection] = useState(false)
   const isEditorReadOnly = isReadOnlyLesson || Boolean(activeSubmittedDocument)
 
-  useEffect(() => {
-    localStorage.setItem('student_documents_catalog_view', catalogViewMode)
-  }, [catalogViewMode])
+  const uniqueDocumentTitle = (base: string) => {
+    const used = new Set([...draftDocuments, ...lessonDocuments, ...submittedDocuments].map(item => item.title.trim().toLocaleLowerCase()))
+    if (!used.has(base.toLocaleLowerCase())) return base
+    let suffix = 2
+    while (used.has(`${base} (${suffix})`.toLocaleLowerCase())) suffix += 1
+    return `${base} (${suffix})`
+  }
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -422,7 +425,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: defaultDocumentTitle,
+      title: uniqueDocumentTitle(defaultDocumentTitle),
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
@@ -448,7 +451,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: defaultPresentationTitle,
+      title: uniqueDocumentTitle(defaultPresentationTitle),
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
       textContent: '',
@@ -471,7 +474,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   const createNewSheet = () => {
     setDocument({
-      id: crypto.randomUUID(), title: defaultSheetTitle, format: 'a4', slides: [], textContent: '',
+      id: crypto.randomUUID(), title: uniqueDocumentTitle(defaultSheetTitle), format: 'a4', slides: [], textContent: '',
       sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
     })
     setMode('sheet')
@@ -897,7 +900,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const editAsCopy = async (doc: { title: string; type: string; contentJson: string }) => {
     try {
       const response = await studentApi.createDocumentDraft({
-        title: `${doc.title} - ${isEnglishUi ? 'copy' : 'copia'}`,
+        title: uniqueDocumentTitle(`${doc.title} - ${isEnglishUi ? 'copy' : 'copia'}`),
         doc_type: doc.type === 'pdf' || doc.type === 'web' ? 'document' : doc.type,
         content_json: doc.contentJson,
       })
@@ -1266,9 +1269,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       const target = fields.join(' ').toLowerCase()
       return terms.every(term => target.includes(term))
     }
-    const filteredDrafts = readOnlyCatalog ? [] : draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
-    const filteredSubmitted = submittedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type, d.correction?.teacher_name || ''))
-    const filteredLessons = lessonDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type, d.authorName || ''))
+    const matchesType = (type: string) => docTypeFilter === 'all' || type === docTypeFilter
+    const filteredDrafts = readOnlyCatalog ? [] : draftDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type))
+    const filteredSubmitted = submittedDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type, d.correction?.teacher_name || ''))
+    const filteredLessons = lessonDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type, d.authorName || ''))
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'web') return <MonitorPlay className="h-5 w-5" />
@@ -1319,66 +1323,57 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               <div className="mx-auto max-w-3xl text-center">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Documenti</p>
                 <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
-                <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
                   {readOnlyCatalog
                     ? (isEnglishUi ? 'Teacher materials and submitted work, in read-only mode' : 'Materiali del docente e consegne, in sola lettura')
                     : (isEnglishUi ? 'Drafts, teacher materials, and deliverables' : 'Bozze, materiali del docente e consegne')}
                 </p>
-                <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-sm">
-                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                  <input
-                    type="text"
-                    value={docSearch}
-                    onChange={e => setDocSearch(e.target.value)}
-                    placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'}
-                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                  />
-                  {docSearch && (
-                    <button onClick={() => setDocSearch('')} className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </label>
-                <div className="mx-auto mt-3 flex w-fit items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm" role="group" aria-label={isEnglishUi ? 'Document view' : 'Vista documenti'}>
-                  <button type="button" onClick={() => setCatalogViewMode('grid')} aria-pressed={catalogViewMode === 'grid'} title={isEnglishUi ? 'Grid view' : 'Vista griglia'} className={`flex h-8 w-8 items-center justify-center rounded-lg ${catalogViewMode === 'grid' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-400 hover:bg-slate-50'}`}><LayoutGrid className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setCatalogViewMode('list')} aria-pressed={catalogViewMode === 'list'} title={isEnglishUi ? 'List view' : 'Vista elenco'} className={`flex h-8 w-8 items-center justify-center rounded-lg ${catalogViewMode === 'list' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-400 hover:bg-slate-50'}`}><List className="h-4 w-4" /></button>
+                <div className="mx-auto mt-6 flex max-w-3xl flex-col gap-2 sm:flex-row">
+                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-sm">
+                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                    <input type="text" value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none" />
+                    {docSearch && <button onClick={() => setDocSearch('')} className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
+                  </label>
+                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="h-[46px] rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none">
+                    <option value="all">{isEnglishUi ? 'All types' : 'Tutti i tipi'}</option><option value="document">Documenti</option><option value="presentation">Presentazioni</option><option value="sheet">Tabelle</option><option value="canvas">Lavagne</option><option value="pdf">PDF</option><option value="web">Web</option>
+                  </select>
                 </div>
                 {!readOnlyCatalog && (
-                  <div className="mx-auto mt-5 grid w-full max-w-4xl gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mx-auto mt-5 grid w-full max-w-4xl grid-cols-2 gap-2.5 lg:grid-cols-4">
                     <button
                       type="button"
                       onClick={createNewDocument}
-                      className="group flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md"
+                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm"><FileText className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
                         <span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New document' : 'Nuovo documento'}</span>
-                        <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglishUi ? 'Write and format.' : 'Scrivi e impagina.'}</span>
+                        <span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Write and format.' : 'Scrivi e impagina.'}</span>
                       </span>
                     </button>
                     <button
                       type="button"
                       onClick={createNewPresentation}
-                      className="group flex min-h-[76px] items-start gap-3 rounded-xl border border-violet-200/80 bg-violet-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100/70 hover:shadow-md"
+                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-violet-200/80 bg-violet-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
                         <span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New presentation' : 'Nuova presentazione'}</span>
-                        <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglishUi ? 'Create slides.' : 'Crea slide.'}</span>
+                        <span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Create slides.' : 'Crea slide.'}</span>
                       </span>
                     </button>
-                    <button type="button" onClick={createNewSheet} className="group flex min-h-[76px] items-start gap-3 rounded-xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md">
+                    <button type="button" onClick={createNewSheet} className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
-                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglishUi ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
+                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
                     </button>
                     <button
                       type="button"
                       disabled={documentImporting}
                       onClick={() => documentFileInputRef.current?.click()}
-                      className="group flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60 md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS · CSV</span></span>
+                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
                     </button>
                   </div>
                 )}
@@ -1415,21 +1410,21 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">{t('documents.my_drafts')}</h2>
                     <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">{filteredDrafts.length}</span>
                   </div>
-                  <div className={catalogViewMode === 'grid' ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
+                  <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${catalogViewMode === 'grid' ? 'rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'mobile-document-card rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
-                        {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
-                        {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                        {catalogViewMode === 'list' && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
-                        <p className={`${catalogViewMode === 'grid' ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
-                        <p className={`${catalogViewMode === 'grid' ? 'px-1.5 pb-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                        {!isCatalogGrid && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
+                        <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                        <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5 pb-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 bg-white/90 opacity-0 shadow-sm group-hover:opacity-100' : 'col-start-4 row-span-2 row-start-1 opacity-70'} rounded-lg p-1 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600`}
+                          className={`${isCatalogGrid ? 'absolute right-3 top-3 flex h-10 w-10 items-center justify-center bg-white/90 shadow-sm md:opacity-0 md:group-hover:opacity-100' : 'col-start-4 row-span-2 row-start-1 opacity-70'} rounded-lg p-1 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1447,23 +1442,23 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     </h2>
                     <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">{filteredSubmitted.length}</span>
                   </div>
-                  <div className={catalogViewMode === 'grid' ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
+                  <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                     {filteredSubmitted.map(doc => {
                       const hasCorrection = doc.correction?.status === 'pending'
                       return (
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${catalogViewMode === 'grid' ? `rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
+                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `mobile-document-card rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
-                          {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
-                          {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                          <span className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
+                          {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                          {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                          <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
                             {hasCorrection ? (isEnglishUi ? 'Corrections' : 'Correzioni') : docLabel(doc.type)}
                           </span>
-                          <p className={`${catalogViewMode === 'grid' ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
-                          <p className={`${catalogViewMode === 'grid' ? 'px-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                          <div className={`${catalogViewMode === 'grid' ? 'mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
+                          <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                          <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5' : 'col-start-2 row-start-2 self-start'} text-[10px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                          <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
                             {hasCorrection ? <Sparkles className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
                             {hasCorrection ? (isEnglishUi ? 'Review requested' : 'Da revisionare') : (isEnglishUi ? 'Submitted' : 'Consegnato')}
                           </div>
@@ -1479,14 +1474,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div
                     key={doc.id}
                     onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${catalogViewMode === 'grid' ? 'rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'mobile-document-card rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                   >
-                    {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
-                    {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                    <span className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
-                    <p className={`${catalogViewMode === 'grid' ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
-                    <p className={`${catalogViewMode === 'grid' ? 'px-1.5' : 'col-start-2 row-start-2 self-start truncate'} text-[10px] font-medium text-slate-500`}>{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                    <div className={`${catalogViewMode === 'grid' ? 'mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800`}>
+                    {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                    {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                    <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
+                    <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
+                    <p className={`${isCatalogGrid ? 'mobile-document-meta px-1.5' : 'col-start-2 row-start-2 self-start truncate'} text-[10px] font-medium text-slate-500`}>{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <div className={`${isCatalogGrid ? 'mobile-document-meta mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800`}>
                       <BookOpen className="h-3 w-3" />
                       {t('documents.read_only')}
                     </div>
@@ -1495,7 +1490,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 return (
                   <section>
                     <h2 className="mb-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">{t('documents.teacher_materials')}</h2>
-                    <div className={catalogViewMode === 'grid' ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
+                    <div className={isCatalogGrid ? 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5' : 'flex flex-col gap-2'}>
                       {filteredLessons.map(doc => <LessonCard key={doc.id} doc={doc} />)}
                     </div>
                   </section>
@@ -1653,8 +1648,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           {mode === 'canvas' && (
             <div className="min-h-[70dvh] overflow-hidden rounded-2xl bg-white shadow-sm">
               <CollaborativeCanvas
+                key={document.id}
                 role="student"
                 sessionId={sessionId}
+                canvasName={document.title}
                 title={document.title}
                 onTitleChange={() => {}}
                 initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
@@ -2366,8 +2363,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'canvas' && (
                <div className="w-full max-w-[1700px] p-2">
                  <CollaborativeCanvas
+                   key={document.id}
                    role="student"
-                   sessionId={sessionId}
+                   sessionId={isEditorReadOnly ? sessionId : undefined}
+                   canvasName={document.title}
                    title={document.title}
                  onTitleChange={(nextTitle) => {
                    handleTitleChange(nextTitle)

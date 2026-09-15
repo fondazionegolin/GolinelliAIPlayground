@@ -17,6 +17,9 @@ class TuringExperiment(Base):
     title = Column(String(160), nullable=False, default="Test di Turing")
     status = Column(String(24), nullable=False, default="LOBBY", index=True)
     persona_prompt = Column(Text, nullable=False)
+    persona_id = Column(UUID(as_uuid=True), ForeignKey("turing_personas.id", ondelete="SET NULL"), nullable=True, index=True)
+    persona_name = Column(String(120), nullable=False, default="Interlocutore misterioso")
+    avatar_url = Column(Text, nullable=True)
     max_questions = Column(Integer, nullable=False, default=5)
     human_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="SET NULL"), nullable=True)
     participant_count = Column(Integer, nullable=False, default=0)
@@ -100,4 +103,29 @@ class TuringTeacherSettings(Base):
         CheckConstraint("confidence_style >= 1 AND confidence_style <= 5", name="turing_settings_confidence"),
         CheckConstraint("response_length >= 1 AND response_length <= 5", name="turing_settings_length"),
         CheckConstraint("emoji_usage >= 0 AND emoji_usage <= 3", name="turing_settings_emoji"),
+    )
+
+
+class TuringPersona(Base):
+    __tablename__ = "turing_personas"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    persona_prompt = Column(Text, nullable=False)
+    avatar_url = Column(Text, nullable=True)
+    temperature = Column(Float, nullable=False, default=0.7)
+    confidence_style = Column(Integer, nullable=False, default=3)
+    response_length = Column(Integer, nullable=False, default=2)
+    emoji_usage = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("temperature >= 0 AND temperature <= 1.2", name="turing_persona_temperature"),
+        CheckConstraint("confidence_style >= 1 AND confidence_style <= 5", name="turing_persona_confidence"),
+        CheckConstraint("response_length >= 1 AND response_length <= 5", name="turing_persona_length"),
+        CheckConstraint("emoji_usage >= 0 AND emoji_usage <= 3", name="turing_persona_emoji"),
+        Index("ix_turing_personas_teacher_updated", "teacher_id", "updated_at"),
     )

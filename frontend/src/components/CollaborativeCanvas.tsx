@@ -18,6 +18,7 @@ type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left']
 type LockInfo = { userId: string; userType: string }
+type RemoteCursor = { userId: string; label: string; color: string; x: number; y: number; updatedAt: number }
 
 type CanvasItemBase = { id: string; parentFrameId?: string }
 
@@ -28,13 +29,15 @@ type CanvasTextStyle = {
   fontStyle: 'normal' | 'italic'
 }
 
+type CanvasBorderStyle = 'solid' | 'dashed' | 'hand-drawn'
+
 type CanvasPositionedItemBase = CanvasItemBase & { x: number; y: number; w: number; h: number }
 
 type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string; textStyle?: CanvasTextStyle })
-  | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; textStyle?: CanvasTextStyle })
+  | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; backgroundColor?: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string; textStyle?: CanvasTextStyle })
-  | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rounded-rect' | 'triangle' | 'parallelogram'; fill: string; stroke: string })
+  | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rounded-rect' | 'triangle' | 'parallelogram'; fill: string; stroke: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; text?: string; textColor?: string; textStyle?: CanvasTextStyle })
   | (CanvasItemBase & { type: 'connector'; fromId: string; fromAnchor: Anchor; toId: string; toAnchor: Anchor; color: string; width: number })
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
@@ -44,6 +47,7 @@ type CanvasDoc = { type: 'canvas_v1'; items: CanvasItem[] }
 
 interface CollaborativeCanvasProps {
   sessionId?: string
+  canvasName?: string
   role: CanvasRole
   title: string
   onTitleChange?: (title: string) => void
@@ -66,10 +70,28 @@ const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
 }
 
 const POSTIT_PALETTE = ['#fef9c3', '#fce7f3', '#dbeafe', '#dcfce7', '#ffedd5', '#ede9fe', '#fecaca', '#e0f2fe']
+const COLLABORATOR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#be123c']
 
 // ─── Template definitions ─────────────────────────────────────────────────────
 
 function mkId() { return crypto.randomUUID() }
+
+function collaboratorColor(userId: string): string {
+  let hash = 0
+  for (let index = 0; index < userId.length; index += 1) hash = ((hash << 5) - hash + userId.charCodeAt(index)) | 0
+  return COLLABORATOR_COLORS[Math.abs(hash) % COLLABORATOR_COLORS.length]
+}
+
+function jwtSubject(token: string | null): string {
+  if (!token) return ''
+  try {
+    const encoded = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/') || ''
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')
+    return String(JSON.parse(atob(padded))?.sub || '')
+  } catch {
+    return ''
+  }
+}
 
 function simplifyPoints(points: Point[], minimumDistance: number): Point[] {
   if (points.length <= 2) return points
@@ -246,7 +268,26 @@ const TEMPLATES = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const ensureTextStyle = (item: CanvasItem): CanvasItem => {
-  if (item.type !== 'postit' && item.type !== 'frame' && item.type !== 'text') return item
+  if (item.type !== 'postit' && item.type !== 'frame' && item.type !== 'text' && item.type !== 'shape') return item
+  if (item.type === 'shape') {
+    return {
+      ...item,
+      text: item.text || '',
+      textColor: item.textColor || '#0f172a',
+      borderWidth: item.borderWidth ?? 2.5,
+      borderStyle: item.borderStyle || 'solid',
+      textStyle: { ...DEFAULT_TEXT_STYLE, ...(item.textStyle || {}) },
+    }
+  }
+  if (item.type === 'frame') {
+    return {
+      ...item,
+      backgroundColor: item.backgroundColor || '#ffffff99',
+      borderWidth: item.borderWidth ?? 2,
+      borderStyle: item.borderStyle || 'dashed',
+      textStyle: { ...DEFAULT_TEXT_STYLE, ...(item.textStyle || {}) },
+    }
+  }
   return { ...item, textStyle: { ...DEFAULT_TEXT_STYLE, ...(item.textStyle || {}) } } as CanvasItem
 }
 
@@ -296,8 +337,8 @@ const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' 
 const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
 const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
 const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
-const isTextEditable = (item: CanvasItem): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' }> =>
-  item.type === 'postit' || item.type === 'frame' || item.type === 'text'
+const isTextEditable = (item: CanvasItem): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' | 'shape' }> =>
+  item.type === 'postit' || item.type === 'frame' || item.type === 'text' || item.type === 'shape'
 const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> =>
   !isPath(item) && !isConnector(item)
 
@@ -380,6 +421,7 @@ function ToolButton({
 
 export function CollaborativeCanvas({
   sessionId,
+  canvasName,
   role,
   title,
   onTitleChange,
@@ -387,6 +429,8 @@ export function CollaborativeCanvas({
   onContentChange,
   readOnly = false,
 }: CollaborativeCanvasProps) {
+  const collaborationNameRef = useRef((canvasName || title || 'Lavagna collaborativa').trim())
+  const [collaborationKey, setCollaborationKey] = useState(() => collaborationNameRef.current.toLocaleLowerCase().trim().replace(/\s+/g, ' ').slice(0, 240))
   // Refs
   const containerRef = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
@@ -403,7 +447,7 @@ export function CollaborativeCanvas({
   const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number; pendingW?: number; pendingH?: number } | null>(null)
   const drawingRef = useRef<{ points: Point[] } | null>(null)
   const panningRef = useRef<{ startMouseX: number; startMouseY: number; startPanX: number; startPanY: number } | null>(null)
-  const dragCreateRef = useRef<{ tool: Tool; startX: number; startY: number; currentX: number; currentY: number } | null>(null)
+  const dragCreateRef = useRef<{ tool: Tool; startX: number; startY: number; currentX: number; currentY: number; parentFrameId?: string } | null>(null)
   const spaceHeldRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const pollTimerRef = useRef<number | null>(null)
@@ -432,6 +476,9 @@ export function CollaborativeCanvas({
   const pinchRef = useRef<{ startDistance: number; worldX: number; worldY: number; startZoom: number } | null>(null)
   const pushRemoteCanvasRef = useRef<(serialized: string) => Promise<void>>(async () => {})
   const lastTransformEmitRef = useRef(0)
+  const lastCursorEmitRef = useRef(0)
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const hydratedSessionRef = useRef<string | null>(null)
 
   // Canvas state
   const [tool, setTool] = useState<Tool>('select')
@@ -453,6 +500,7 @@ export function CollaborativeCanvas({
   const [previewCreate, setPreviewCreate] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [locks, setLocks] = useState<Record<string, LockInfo>>({})
   const [socketConnected, setSocketConnected] = useState(false)
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({})
 
   // New: viewport & UI state
   const [zoom, setZoom] = useState(1)
@@ -465,7 +513,7 @@ export function CollaborativeCanvas({
   const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; itemId: string | null } | null>(null)
 
   // Derived
-  const canEdit = !readOnly && (role === 'teacher' || studentsCanWrite)
+  const canEdit = !readOnly && (role === 'teacher' || !sessionId || studentsCanWrite)
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
   const itemById = useMemo(() => new Map(canvasDoc.items.map((item) => [item.id, item])), [canvasDoc.items])
   const connectorItems = useMemo(() => canvasDoc.items.filter(isConnector) as Array<Extract<CanvasItem, { type: 'connector' }>>, [canvasDoc.items])
@@ -484,8 +532,7 @@ export function CollaborativeCanvas({
 
   const currentUserId = useMemo(() => {
     const raw = role === 'student' ? localStorage.getItem('student_token') : localStorage.getItem('access_token')
-    if (!raw) return ''
-    try { return String(JSON.parse(atob(raw.split('.')[1]))?.sub || '') } catch { return '' }
+    return jwtSubject(raw)
   }, [role])
 
   useEffect(() => { latestSerializedRef.current = serializedDoc }, [serializedDoc])
@@ -638,59 +685,95 @@ export function CollaborativeCanvas({
   const fetchRemoteCanvas = useCallback(async () => {
     if (!sessionId || isInteractingRef.current) return
     try {
-      const res = await apiByRole[role].getCanvas(sessionId)
+      const res = await apiByRole[role].getCanvas(sessionId, collaborationNameRef.current)
       const remote = parseCanvasDoc(res.data?.content_json)
-      const nextSerialized = JSON.stringify(remote)
-      setVersion(Number(res.data?.version || 0))
+      const remoteVersion = Number(res.data?.version || 0)
+      const hydrationKey = `${sessionId}:${collaborationKey}`
+      const firstHydration = hydratedSessionRef.current !== hydrationKey
+      const local = parseCanvasDoc(latestSerializedRef.current)
+      if (!firstHydration && remoteVersion < versionRef.current) return
+      hydratedSessionRef.current = hydrationKey
+      versionRef.current = remoteVersion
+      setVersion(remoteVersion)
       if (res.data?.students_can_write !== undefined) setStudentsCanWrite(Boolean(res.data.students_can_write))
+
+      // A newly shared document can reach the student before its session-canvas
+      // row is created. Never replace that visible document with the API's
+      // version-0 empty placeholder.
+      if (firstHydration && remoteVersion === 0 && remote.items.length === 0 && local.items.length > 0) return
+
+      const hasUnsavedLocalChanges = !firstHydration
+        && Boolean(latestSerializedRef.current)
+        && latestSerializedRef.current !== lastSerializedRef.current
+      const next = hasUnsavedLocalChanges
+        ? mergeCanvasDocs(parseCanvasDoc(lastSerializedRef.current), local, remote)
+        : remote
+      const nextSerialized = JSON.stringify(next)
       if (nextSerialized !== lastSerializedRef.current) {
-        setCanvasDoc(remote)
-        lastSerializedRef.current = nextSerialized
-        if (historyRef.current.length === 0) {
+        setCanvasDoc(next)
+        latestSerializedRef.current = nextSerialized
+        lastSerializedRef.current = hasUnsavedLocalChanges ? JSON.stringify(remote) : nextSerialized
+        if (firstHydration || historyRef.current.length === 0) {
           historyRef.current = [nextSerialized]
           historyIndexRef.current = 0
           setHistoryIndex(0)
         }
       }
     } catch { /* silent */ }
-  }, [role, sessionId])
+  }, [collaborationKey, role, sessionId])
 
   const pushRemoteCanvas = useCallback(async (nextSerialized: string) => {
     if (!sessionId || !canEdit) return
-    try {
-      const res = await apiByRole[role].updateCanvas(sessionId, { title, content_json: nextSerialized, base_version: version })
-      const nextVersion = Number(res.data?.version || version + 1)
-      versionRef.current = nextVersion
-      setVersion(nextVersion)
-      lastSerializedRef.current = nextSerialized
-    } catch (error: any) {
-      if (error?.response?.status === 409) {
-        try {
-          const current = await apiByRole[role].getCanvas(sessionId)
-          const remoteVersion = Number(current.data?.version || 0)
-          const merged = mergeCanvasDocs(
-            parseCanvasDoc(lastSerializedRef.current),
-            parseCanvasDoc(nextSerialized),
-            parseCanvasDoc(current.data?.content_json),
-          )
-          const mergedSerialized = JSON.stringify(merged)
-          const retry = await apiByRole[role].updateCanvas(sessionId, { title, content_json: mergedSerialized, base_version: remoteVersion })
-          const mergedVersion = Number(retry.data?.version || remoteVersion + 1)
-          versionRef.current = mergedVersion
-          setVersion(mergedVersion)
-          setCanvasDoc(merged)
-          latestSerializedRef.current = mergedSerialized
-          lastSerializedRef.current = mergedSerialized
-          return
-        } catch (retryError) {
-          console.error('Canvas merge failed', retryError)
-          await fetchRemoteCanvas()
-          return
+    const save = async () => {
+      if (nextSerialized === lastSerializedRef.current) return
+      const baseSerialized = lastSerializedRef.current
+      try {
+        const baseVersion = versionRef.current
+        const res = await apiByRole[role].updateCanvas(sessionId, collaborationNameRef.current, { title, content_json: nextSerialized, base_version: baseVersion })
+        const responseKey = String(res.data?.canvas_key || '')
+        if (responseKey && responseKey !== collaborationKey) {
+          collaborationNameRef.current = responseKey
+          setCollaborationKey(responseKey)
         }
+        const nextVersion = Number(res.data?.version || baseVersion + 1)
+        versionRef.current = nextVersion
+        setVersion(nextVersion)
+        lastSerializedRef.current = nextSerialized
+      } catch (error: any) {
+        if (error?.response?.status === 409) {
+          try {
+            const current = await apiByRole[role].getCanvas(sessionId, collaborationNameRef.current)
+            const remoteVersion = Number(current.data?.version || 0)
+            const merged = mergeCanvasDocs(
+              parseCanvasDoc(baseSerialized),
+              parseCanvasDoc(nextSerialized),
+              parseCanvasDoc(current.data?.content_json),
+            )
+            const mergedSerialized = JSON.stringify(merged)
+            const retry = await apiByRole[role].updateCanvas(sessionId, collaborationNameRef.current, { title, content_json: mergedSerialized, base_version: remoteVersion })
+            const mergedVersion = Number(retry.data?.version || remoteVersion + 1)
+            versionRef.current = mergedVersion
+            setVersion(mergedVersion)
+            lastSerializedRef.current = mergedSerialized
+            // Do not roll back edits made while this request was in flight.
+            if (latestSerializedRef.current === nextSerialized) {
+              setCanvasDoc(merged)
+              latestSerializedRef.current = mergedSerialized
+            }
+            return
+          } catch (retryError) {
+            console.error('Canvas merge failed', retryError)
+            await fetchRemoteCanvas()
+            return
+          }
+        }
+        console.error('Canvas update failed', error)
       }
-      console.error('Canvas update failed', error)
     }
-  }, [canEdit, fetchRemoteCanvas, role, sessionId, title, version])
+    const queued = saveQueueRef.current.then(save, save)
+    saveQueueRef.current = queued
+    await queued
+  }, [canEdit, collaborationKey, fetchRemoteCanvas, role, sessionId, title])
   pushRemoteCanvasRef.current = pushRemoteCanvas
 
   // Teacher only: toggle student write permission
@@ -699,7 +782,7 @@ export function CollaborativeCanvas({
     const next = !studentsCanWrite
     setStudentsCanWrite(next)
     try {
-      const res = await teacherApi.updateCanvas(sessionId, {
+      const res = await teacherApi.updateCanvas(sessionId, collaborationNameRef.current, {
         title,
         content_json: latestSerializedRef.current || JSON.stringify(EMPTY_CANVAS),
         students_can_write: next,
@@ -760,7 +843,7 @@ export function CollaborativeCanvas({
     const socket = (window as any).socket
     if (!socket || !sessionId) return
     const onCanvasUpdated = (payload: any) => {
-      if (payload?.session_id !== sessionId) return
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey) return
       // Process students_can_write unconditionally — must not be gated by version check
       if (payload?.students_can_write !== undefined) setStudentsCanWrite(Boolean(payload.students_can_write))
       const incomingVersion = Number(payload?.version || 0)
@@ -773,30 +856,39 @@ export function CollaborativeCanvas({
       if (remoteSerialized !== lastSerializedRef.current) {
         setCanvasDoc(remote)
         lastSerializedRef.current = remoteSerialized
-        window.requestAnimationFrame(() => Object.values(itemRefs.current).forEach((element) => {
+        // Transient collaboration transforms are painted directly on the DOM
+        // for smooth dragging. Never clear width/height here: they are also
+        // React-owned inline styles, and removing them after React's commit
+        // collapses every remote item until another render happens.
+        const remoteItemsById = new Map(remote.items.filter(isPositioned).map((item) => [item.id, item]))
+        window.requestAnimationFrame(() => Object.entries(itemRefs.current).forEach(([itemId, element]) => {
           if (!element) return
+          const item = remoteItemsById.get(itemId)
+          if (!item) return
           element.style.transform = ''
-          element.style.width = ''
-          element.style.height = ''
+          element.style.width = `${item.w}px`
+          element.style.height = `${item.h}px`
+          element.dataset.canvasX = String(item.x)
+          element.dataset.canvasY = String(item.y)
         }))
       }
     }
     const onItemLock = (payload: any) => {
-      if (payload?.session_id !== sessionId) return
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey) return
       const itemId = String(payload?.item_id || ''), userId = String(payload?.user_id || ''), userType = String(payload?.user_type || '')
       if (!itemId || !userId) return
       lockTimestampsRef.current[itemId] = Date.now()
       setLocks((prev) => ({ ...prev, [itemId]: { userId, userType } }))
     }
     const onItemUnlock = (payload: any) => {
-      if (payload?.session_id !== sessionId) return
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey) return
       const itemId = String(payload?.item_id || '')
       if (!itemId) return
       delete lockTimestampsRef.current[itemId]
       setLocks((prev) => { const next = { ...prev }; delete next[itemId]; return next })
     }
     const onItemTransform = (payload: any) => {
-      if (payload?.session_id !== sessionId || String(payload?.user_id || '') === currentUserId) return
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey || String(payload?.user_id || '') === currentUserId) return
       const itemId = String(payload?.item_id || '')
       const transform = payload?.transform || {}
       const element = itemRefs.current[itemId]
@@ -809,12 +901,35 @@ export function CollaborativeCanvas({
       if (Number.isFinite(transform.w)) element.style.width = `${Number(transform.w)}px`
       if (Number.isFinite(transform.h)) element.style.height = `${Number(transform.h)}px`
     }
+    const onCanvasCursor = (payload: any) => {
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey) return
+      const userId = String(payload?.user_id || '')
+      if (!userId || userId === currentUserId) return
+      if (payload?.active === false) {
+        setRemoteCursors((prev) => { const next = { ...prev }; delete next[userId]; return next })
+        return
+      }
+      const x = Number(payload?.x), y = Number(payload?.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      setRemoteCursors((prev) => ({
+        ...prev,
+        [userId]: {
+          userId,
+          label: String(payload?.label || (payload?.user_type === 'teacher' ? 'Docente' : 'Studente')),
+          color: collaboratorColor(userId),
+          x,
+          y,
+          updatedAt: Date.now(),
+        },
+      }))
+    }
     socket.on('canvas_updated', onCanvasUpdated)
     socket.on('canvas_item_lock', onItemLock)
     socket.on('canvas_item_unlock', onItemUnlock)
     socket.on('canvas_item_transform', onItemTransform)
-    return () => { socket.off('canvas_updated', onCanvasUpdated); socket.off('canvas_item_lock', onItemLock); socket.off('canvas_item_unlock', onItemUnlock); socket.off('canvas_item_transform', onItemTransform) }
-  }, [currentUserId, sessionId])
+    socket.on('canvas_cursor', onCanvasCursor)
+    return () => { socket.off('canvas_updated', onCanvasUpdated); socket.off('canvas_item_lock', onItemLock); socket.off('canvas_item_unlock', onItemUnlock); socket.off('canvas_item_transform', onItemTransform); socket.off('canvas_cursor', onCanvasCursor) }
+  }, [collaborationKey, currentUserId, sessionId])
 
   // Auto-expire stale locks (60 s) — prevents permanently stuck "In uso" state
   useEffect(() => {
@@ -831,6 +946,10 @@ export function CollaborativeCanvas({
           return next
         })
       }
+      setRemoteCursors((prev) => {
+        const active = Object.fromEntries(Object.entries(prev).filter(([, cursor]) => now - cursor.updatedAt < 12_000))
+        return Object.keys(active).length === Object.keys(prev).length ? prev : active
+      })
     }, 15_000)
     return () => window.clearInterval(interval)
   }, [])
@@ -900,12 +1019,12 @@ export function CollaborativeCanvas({
   const emitLock = (itemId: string) => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
-    socket.emit('canvas_item_lock', { session_id: sessionId, item_id: itemId })
+    socket.emit('canvas_item_lock', { session_id: sessionId, canvas_key: collaborationKey, item_id: itemId })
   }
   const emitUnlock = (itemId: string) => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
-    socket.emit('canvas_item_unlock', { session_id: sessionId, item_id: itemId })
+    socket.emit('canvas_item_unlock', { session_id: sessionId, canvas_key: collaborationKey, item_id: itemId })
   }
   const emitTransientTransforms = (updates: Array<{ itemId: string; transform: Partial<{ x: number; y: number; w: number; h: number }> }>) => {
     const now = performance.now()
@@ -913,10 +1032,18 @@ export function CollaborativeCanvas({
     lastTransformEmitRef.current = now
     const socket = (window as any).socket
     if (!socket?.connected || !sessionId) return
-    updates.forEach(({ itemId, transform }) => socket.emit('canvas_item_transform', { session_id: sessionId, item_id: itemId, transform }))
+    updates.forEach(({ itemId, transform }) => socket.emit('canvas_item_transform', { session_id: sessionId, canvas_key: collaborationKey, item_id: itemId, transform }))
   }
   const emitTransientTransform = (itemId: string, transform: Partial<{ x: number; y: number; w: number; h: number }>) => {
     emitTransientTransforms([{ itemId, transform }])
+  }
+  const emitCursor = (point: Point, active = true) => {
+    const now = performance.now()
+    if (active && now - lastCursorEmitRef.current < 50) return
+    lastCursorEmitRef.current = now
+    const socket = (window as any).socket
+    if (!socket?.connected || !sessionId) return
+    socket.emit('canvas_cursor', { session_id: sessionId, canvas_key: collaborationKey, x: point.x, y: point.y, active })
   }
   const isLockedByOther = (itemId: string) => {
     const lock = locks[itemId]
@@ -947,10 +1074,10 @@ export function CollaborativeCanvas({
   const createItemAtBounds = (type: Tool, x: number, y: number, w: number, h: number): CanvasItem | null => {
     const id = mkId()
     if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', backgroundColor: '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke }
-    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
     return null
   }
 
@@ -1072,8 +1199,8 @@ export function CollaborativeCanvas({
     delete lockTimestampsRef.current[id]
     setLocks((prev) => { const next = { ...prev }; delete next[id]; return next })
     const socket = (window as any).socket
-    if (socket && sessionId) socket.emit('canvas_item_unlock', { session_id: sessionId, item_id: id })
-  }, [sessionId])
+    if (socket && sessionId) socket.emit('canvas_item_unlock', { session_id: sessionId, canvas_key: collaborationKey, item_id: id })
+  }, [collaborationKey, sessionId])
 
   // ─── Templates ───────────────────────────────────────────────────────────
 
@@ -1105,6 +1232,24 @@ export function CollaborativeCanvas({
     if (pinchRef.current) return
     if (e.button !== 0 && e.pointerType !== 'touch') return
     activePointerIdRef.current = e.pointerId
+
+    // A frame is also a creation surface. Previously it swallowed the event,
+    // forcing users to create on the empty canvas and move the item afterward.
+    if (canEdit && isFrame(item) && tool !== 'select' && tool !== 'hand' && tool !== 'connector') {
+      e.preventDefault()
+      containerRef.current?.setPointerCapture(e.pointerId)
+      const wp = toWorld(e.clientX, e.clientY)
+      if (tool === 'pen') {
+        beginInteraction()
+        drawingRef.current = { points: [wp] }
+        setPreviewPoints([wp])
+      } else {
+        dragCreateRef.current = { tool, startX: wp.x, startY: wp.y, currentX: wp.x, currentY: wp.y, parentFrameId: item.id }
+        setPreviewCreate({ x: wp.x, y: wp.y, w: 20, h: 20 })
+      }
+      return
+    }
+
     const additiveSelection = e.shiftKey || e.ctrlKey || e.metaKey
     if (additiveSelection) {
       e.preventDefault()
@@ -1120,7 +1265,6 @@ export function CollaborativeCanvas({
       setSelectedId(item.id)
       setSelectedIds([item.id])
     }
-    if (isTextEditable(item) && e.detail >= 2) { startTextEditingRef.current(item.id); return }
     const tag = (e.target as HTMLElement).tagName
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
@@ -1179,6 +1323,7 @@ export function CollaborativeCanvas({
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    emitCursor(toWorld(e.clientX, e.clientY))
     if (pinchRef.current && pointersRef.current.size >= 2) {
       const [first, second] = Array.from(pointersRef.current.values())
       const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y))
@@ -1469,9 +1614,17 @@ export function CollaborativeCanvas({
       }
       const item = createItemAtBounds(dc.tool, itemX, itemY, itemW, itemH)
       if (item) {
+        const requestedParent = dc.parentFrameId ? itemById.get(dc.parentFrameId) : null
+        if (requestedParent && isFrame(requestedParent) && isPositioned(item)) {
+          const padding = 12
+          item.w = Math.min(item.w, Math.max(40, requestedParent.w - padding * 2))
+          item.h = Math.min(item.h, Math.max(40, requestedParent.h - padding * 2))
+          item.x = Math.max(requestedParent.x + padding, Math.min(item.x, requestedParent.x + requestedParent.w - item.w - padding))
+          item.y = Math.max(requestedParent.y + padding, Math.min(item.y, requestedParent.y + requestedParent.h - item.h - padding))
+        }
         beginInteraction()
         setCanvasDoc((prev) => {
-          const parentFrameId = getParentFrameId(item, prev.items)
+          const parentFrameId = dc.parentFrameId || getParentFrameId(item, prev.items)
           return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
         })
         setSelectedId(item.id)
@@ -1762,6 +1915,16 @@ export function CollaborativeCanvas({
 
         <div className="flex-1" />
 
+        {sessionId && (
+          <div
+            className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${socketConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}
+            title={socketConnected ? 'Collaborazione in tempo reale attiva' : 'Riconnessione in corso; le modifiche restano salvate localmente'}
+          >
+            <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {socketConnected ? `Live${Object.keys(remoteCursors).length ? ` · ${Object.keys(remoteCursors).length + 1}` : ''}` : 'Offline'}
+          </div>
+        )}
+
         {/* Zoom controls */}
         <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1">
           <button type="button" onClick={zoomOut} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">−</button>
@@ -1792,7 +1955,7 @@ export function CollaborativeCanvas({
               }`}
             >
               <Users className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{studentsCanWrite ? 'Studenti ON' : 'Studenti'}</span>
+              <span>Modifiche studenti: {studentsCanWrite ? 'ON' : 'OFF'}</span>
               <span
                 className={`flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
               >
@@ -1827,6 +1990,22 @@ export function CollaborativeCanvas({
                 <span className="text-slate-400">Bordo</span>
                 <Input type="color" value={selectedItem.stroke} onChange={(e) => updateItem(selectedItem.id, { stroke: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
               </div>
+              <label className="flex items-center gap-1 text-slate-400">
+                Spessore
+                <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2.5} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2.5))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+              </label>
+              <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'solid' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>
+                Bordo a mano
+              </button>
+            </>
+          )}
+          {isFrame(selectedItem) && (
+            <>
+              <span className="text-slate-500">Frame</span>
+              <label className="flex items-center gap-1 text-slate-400">Sfondo <Input type="color" value={(selectedItem.backgroundColor || '#ffffff').slice(0, 7)} onChange={(e) => updateItem(selectedItem.id, { backgroundColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              <label className="flex items-center gap-1 text-slate-400">Bordo <Input type="color" value={selectedItem.color} onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              <label className="flex items-center gap-1 text-slate-400">Spessore <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'dashed' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>Bordo a mano</button>
             </>
           )}
           {isConnector(selectedItem) && (
@@ -1848,6 +2027,9 @@ export function CollaborativeCanvas({
               <Input type="number" min={10} max={48} value={selectedTextStyle.fontSize} onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontSize: Math.max(10, Math.min(48, Number(e.target.value || 14))) } })} className="h-6 w-14 border-slate-200 px-1 text-xs" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' } })} className={`h-6 w-6 rounded border text-xs font-bold ${selectedTextStyle.fontWeight === '600' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>B</button>
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' } })} className={`h-6 w-6 rounded border text-xs italic ${selectedTextStyle.fontStyle === 'italic' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>I</button>
+              {selectedItem.type === 'shape' && (
+                <label className="flex items-center gap-1 text-slate-400">Colore <Input type="color" value={selectedItem.textColor || '#0f172a'} onChange={(e) => updateItem(selectedItem.id, { textColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              )}
               {selectedItem.type === 'postit' && (
                 <div className="flex gap-1">
                   {POSTIT_PALETTE.map((c) => (
@@ -1936,6 +2118,7 @@ export function CollaborativeCanvas({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onPointerLeave={() => emitCursor({ x: 0, y: 0 }, false)}
           onContextMenu={(e) => openContextMenu(e, null)}
           onDragEnter={(e) => { e.preventDefault(); if (canEdit) setIsDropActive(true) }}
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDropActive(false) }}
@@ -1986,6 +2169,19 @@ export function CollaborativeCanvas({
               />
             )}
 
+            {Object.values(remoteCursors).map((remoteCursor) => (
+              <div
+                key={remoteCursor.userId}
+                className="pointer-events-none absolute left-0 top-0 transition-transform duration-75 ease-out"
+                style={{ transform: `translate3d(${remoteCursor.x}px, ${remoteCursor.y}px, 0)`, zIndex: 2_000_000 }}
+              >
+                <MousePointer className="h-5 w-5 -rotate-12 drop-shadow-sm" style={{ color: remoteCursor.color, fill: remoteCursor.color }} />
+                <span className="ml-3 -mt-0.5 block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: remoteCursor.color }}>
+                  {remoteCursor.label}
+                </span>
+              </div>
+            ))}
+
             {/* Items */}
             {positionedItems.map((item) => {
               const lockedByOther = isLockedByOther(item.id)
@@ -2006,17 +2202,13 @@ export function CollaborativeCanvas({
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
-                  onDoubleClick={() => {
-                    if (!canEdit || lockedByOther) return
-                    if (isTextEditable(item)) startTextEditingRef.current(item.id)
-                  }}
                 >
                   {item.type === 'postit' && (
                     <textarea
                       ref={(element) => { textEditorRefs.current[item.id] = element }}
                       value={item.text}
-                      onFocus={() => emitLock(item.id)}
-                      onBlur={() => emitUnlock(item.id)}
+                      onFocus={() => { beginInteraction(); emitLock(item.id) }}
+                      onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
                       className="h-full w-full resize-none rounded-md p-2 text-sm shadow-sm"
                       style={{ background: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
@@ -2028,14 +2220,34 @@ export function CollaborativeCanvas({
                   )}
 
                   {item.type === 'frame' && (
-                    <div className="flex h-full w-full flex-col rounded-md border-2 border-dashed bg-white/60 backdrop-blur-sm" style={{ borderColor: item.color }}>
+                    <div
+                      className="relative flex h-full w-full flex-col rounded-md backdrop-blur-sm"
+                      style={{
+                        backgroundColor: item.backgroundColor || '#ffffff99',
+                        borderColor: item.borderStyle === 'hand-drawn' ? 'transparent' : item.color,
+                        borderWidth: item.borderStyle === 'hand-drawn' ? 0 : (item.borderWidth ?? 2),
+                        borderStyle: item.borderStyle === 'solid' ? 'solid' : 'dashed',
+                      }}
+                    >
+                      {item.borderStyle === 'hand-drawn' && (
+                        <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`} preserveAspectRatio="none">
+                          <defs>
+                            <filter id={`rough-frame-${item.id}`} x="-8%" y="-8%" width="116%" height="116%">
+                              <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="3" seed="7" result="noise" />
+                              <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" />
+                            </filter>
+                          </defs>
+                          <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="7" fill="none" stroke={item.color} strokeWidth={item.borderWidth ?? 2} filter={`url(#rough-frame-${item.id})`} />
+                          <rect x="4" y="2" width={Math.max(item.w - 7, 1)} height={Math.max(item.h - 6, 1)} rx="7" fill="none" stroke={item.color} strokeWidth={Math.max(0.6, (item.borderWidth ?? 2) * 0.45)} opacity="0.45" />
+                        </svg>
+                      )}
                       <input
                         ref={(element) => { textEditorRefs.current[item.id] = element }}
                         value={item.text}
-                        onFocus={() => emitLock(item.id)}
-                        onBlur={() => emitUnlock(item.id)}
+                        onFocus={() => { beginInteraction(); emitLock(item.id) }}
+                        onBlur={() => { emitUnlock(item.id); endInteraction() }}
                         onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                        className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
+                        className="relative z-[1] w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
                         style={{ borderColor: item.color, color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 12}px`, fontWeight: item.textStyle?.fontWeight || '600', fontStyle: item.textStyle?.fontStyle || 'normal', outline: 'none' }}
                         disabled={!canEdit || lockedByOther}
                         readOnly={!isEditing}
@@ -2049,8 +2261,8 @@ export function CollaborativeCanvas({
                     <textarea
                       ref={(element) => { textEditorRefs.current[item.id] = element }}
                       value={item.text}
-                      onFocus={() => emitLock(item.id)}
-                      onBlur={() => emitUnlock(item.id)}
+                      onFocus={() => { beginInteraction(); emitLock(item.id) }}
+                      onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
                       className="h-full w-full resize-none rounded bg-transparent p-2 text-sm"
                       style={{ color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
@@ -2064,10 +2276,44 @@ export function CollaborativeCanvas({
                   {item.type === 'shape' && (
                     <>
                       <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`}>
-                        {item.shape === 'rounded-rect' && <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="16" ry="16" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
-                        {item.shape === 'triangle' && <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
-                        {item.shape === 'parallelogram' && <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
+                        {item.borderStyle === 'hand-drawn' && (
+                          <defs>
+                            <filter id={`rough-shape-${item.id}`} x="-8%" y="-8%" width="116%" height="116%">
+                              <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="3" seed="11" result="noise" />
+                              <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" />
+                            </filter>
+                          </defs>
+                        )}
+                        {item.shape === 'rounded-rect' && <rect x="4" y="4" width={Math.max(item.w - 8, 1)} height={Math.max(item.h - 8, 1)} rx="16" ry="16" fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
+                        {item.shape === 'triangle' && <polygon points={`${item.w / 2},5 ${item.w - 5},${item.h - 5} 5,${item.h - 5}`} fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
+                        {item.shape === 'parallelogram' && <polygon points={`24,5 ${item.w - 5},5 ${item.w - 24},${item.h - 5} 5,${item.h - 5}`} fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
+                        {item.borderStyle === 'hand-drawn' && item.shape === 'rounded-rect' && <rect x="6" y="3" width={Math.max(item.w - 10, 1)} height={Math.max(item.h - 7, 1)} rx="17" ry="15" fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
+                        {item.borderStyle === 'hand-drawn' && item.shape === 'triangle' && <polygon points={`${item.w / 2 + 2},3 ${item.w - 3},${item.h - 6} 4,${item.h - 3}`} fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
+                        {item.borderStyle === 'hand-drawn' && item.shape === 'parallelogram' && <polygon points={`26,3 ${item.w - 3},6 ${item.w - 26},${item.h - 3} 4,${item.h - 6}`} fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
                       </svg>
+                      <textarea
+                        ref={(element) => { textEditorRefs.current[item.id] = element }}
+                        value={item.text || ''}
+                        aria-label="Testo della figura"
+                        onFocus={() => { beginInteraction(); emitLock(item.id) }}
+                        onBlur={() => { emitUnlock(item.id); endInteraction() }}
+                        onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                        className="absolute inset-[12%] z-[1] resize-none bg-transparent text-center"
+                        style={{
+                          color: item.textColor || '#0f172a',
+                          fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                          fontSize: `${item.textStyle?.fontSize || 14}px`,
+                          fontWeight: item.textStyle?.fontWeight || 'normal',
+                          fontStyle: item.textStyle?.fontStyle || 'normal',
+                          border: 'none',
+                          outline: 'none',
+                          pointerEvents: isEditing ? 'auto' : 'none',
+                        }}
+                        disabled={!canEdit || lockedByOther}
+                        readOnly={!isEditing}
+                        autoFocus={isEditing}
+                        onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
+                      />
                       {canEdit && selectedIdSet.has(item.id) && ANCHORS.map((anchor) => {
                         const isSource = connectorDrag?.fromId === item.id && connectorDrag.fromAnchor === anchor
                         const isHoverTarget = connectorDrag?.hoverTarget?.id === item.id && connectorDrag.hoverTarget.anchor === anchor

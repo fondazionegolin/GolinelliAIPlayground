@@ -11,6 +11,7 @@ from app.models.session import SessionStudent, Session, Class, SessionModule
 from app.models.invitation import ClassTeacher, SessionTeacher
 from app.models.user import User
 from app.models.enums import SessionStatus
+from app.models.session_canvas import SessionCanvas, normalize_canvas_key
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -115,6 +116,25 @@ async def can_user_access_session(user: dict, session_id: str) -> bool:
             return session_member.scalar_one_or_none() is not None
     except Exception as e:
         print(f"[Gateway] can_user_access_session error for user {user.get('id')} session {session_id}: {e}")
+        return False
+
+
+async def can_user_edit_canvas(user: dict, session_id: str, canvas_key: str | None = None) -> bool:
+    """Realtime canvas mutations follow the same permission as the HTTP API."""
+    if not await can_user_access_session(user, session_id):
+        return False
+    if user.get("type") == "teacher":
+        return True
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(SessionCanvas.students_can_write)
+                .where(SessionCanvas.session_id == session_id)
+                .where(SessionCanvas.canvas_key == normalize_canvas_key(canvas_key))
+            )
+            return bool(result.scalar_one_or_none())
+    except Exception as exc:
+        print(f"[Gateway] canvas permission check failed for session {session_id}: {exc}")
         return False
 
 
@@ -1259,21 +1279,24 @@ async def canvas_item_lock(sid, data):
 
     session_id = data.get("session_id")
     item_id = data.get("item_id")
+    canvas_key = normalize_canvas_key(data.get("canvas_key"))
     if not session_id or not item_id:
         return {"error": "session_id and item_id required"}
 
-    if not await can_user_access_session(user, session_id):
+    if not await can_user_edit_canvas(user, session_id, canvas_key):
         return {"error": "Forbidden"}
 
     await sio.emit(
         "canvas_item_lock",
         {
             "session_id": session_id,
+            "canvas_key": canvas_key,
             "item_id": item_id,
             "user_id": user.get("id"),
             "user_type": user.get("type"),
         },
         room=f"session:{session_id}",
+        skip_sid=sid,
     )
     return {"success": True}
 
@@ -1286,6 +1309,7 @@ async def canvas_item_unlock(sid, data):
 
     session_id = data.get("session_id")
     item_id = data.get("item_id")
+    canvas_key = normalize_canvas_key(data.get("canvas_key"))
     if not session_id or not item_id:
         return {"error": "session_id and item_id required"}
 
@@ -1296,11 +1320,13 @@ async def canvas_item_unlock(sid, data):
         "canvas_item_unlock",
         {
             "session_id": session_id,
+            "canvas_key": canvas_key,
             "item_id": item_id,
             "user_id": user.get("id"),
             "user_type": user.get("type"),
         },
         room=f"session:{session_id}",
+        skip_sid=sid,
     )
     return {"success": True}
 
@@ -1319,10 +1345,11 @@ async def canvas_item_transform(sid, data):
 
     session_id = data.get("session_id")
     item_id = data.get("item_id")
+    canvas_key = normalize_canvas_key(data.get("canvas_key"))
     transform = data.get("transform")
     if not session_id or not item_id or not isinstance(transform, dict):
         return {"error": "session_id, item_id and transform required"}
-    if not await can_user_access_session(user, session_id):
+    if not await can_user_edit_canvas(user, session_id, canvas_key):
         return {"error": "Forbidden"}
 
     allowed = {}
@@ -1340,6 +1367,7 @@ async def canvas_item_transform(sid, data):
         "canvas_item_transform",
         {
             "session_id": session_id,
+            "canvas_key": canvas_key,
             "item_id": item_id,
             "user_id": user.get("id"),
             "transform": allowed,
@@ -1347,6 +1375,38 @@ async def canvas_item_transform(sid, data):
         room=f"session:{session_id}",
         skip_sid=sid,
     )
+    return {"success": True}
+
+
+@sio.event
+async def canvas_cursor(sid, data):
+    """Broadcast an ephemeral collaborator cursor; no document state is mutated."""
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    session_id = data.get("session_id")
+    canvas_key = normalize_canvas_key(data.get("canvas_key"))
+    if not session_id or not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+
+    active = data.get("active") is not False
+    payload = {
+        "session_id": str(session_id),
+        "canvas_key": canvas_key,
+        "user_id": str(user.get("id") or ""),
+        "user_type": str(user.get("type") or ""),
+        "label": user.get("nickname") or ("Docente" if user.get("type") == "teacher" else "Studente"),
+        "active": active,
+    }
+    if active:
+        try:
+            payload["x"] = max(-100000.0, min(float(data.get("x")), 100000.0))
+            payload["y"] = max(-100000.0, min(float(data.get("y")), 100000.0))
+        except (TypeError, ValueError):
+            return {"error": "Valid cursor coordinates required"}
+
+    await sio.emit("canvas_cursor", payload, room=f"session:{session_id}", skip_sid=sid)
     return {"success": True}
 
 

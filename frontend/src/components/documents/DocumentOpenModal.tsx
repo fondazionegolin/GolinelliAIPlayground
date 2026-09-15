@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, Loader2, Pencil, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { filesApi } from '@/lib/api'
 import DocumentThumbnail from './DocumentThumbnail'
@@ -83,13 +83,29 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
     onClose()
   }
 
+  const documentType = sourceExtension === 'pdf' ? 'pdf' : document.type
+  const typeIcon = documentType === 'presentation' ? <MonitorPlay className="h-5 w-5" />
+    : documentType === 'sheet' ? <FileSpreadsheet className="h-5 w-5" />
+      : documentType === 'canvas' ? <PenTool className="h-5 w-5" />
+        : documentType === 'web' ? <Globe2 className="h-5 w-5" />
+          : <FileText className="h-5 w-5" />
+  const typeLabel = documentType === 'presentation' ? (isEnglish ? 'Presentation' : 'Presentazione')
+    : documentType === 'sheet' ? (isEnglish ? 'Tables' : 'Tabelle')
+      : documentType === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna')
+        : documentType === 'web' ? 'Web'
+          : documentType === 'pdf' ? 'PDF'
+            : (isEnglish ? 'Document' : 'Documento')
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={document.title} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={`flex w-full flex-col overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl ${viewing ? 'h-[92vh] max-w-6xl' : 'max-w-xl'}`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-4">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${documentType === 'canvas' ? 'bg-amber-100 text-amber-700' : documentType === 'presentation' ? 'bg-indigo-100 text-indigo-700' : documentType === 'sheet' ? 'bg-sky-100 text-sky-700' : documentType === 'web' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-emerald-100 text-emerald-700'}`}>
+            {typeIcon}
+          </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-black text-slate-950">{document.title}</p>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{sourceExtension || (document.type === 'sheet' ? (isEnglish ? 'Tables' : 'Tabelle') : document.type)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{typeLabel}</p>
           </div>
           {viewing && onEdit && <Button size="sm" onClick={() => void edit()}><Pencil className="mr-2 h-4 w-4" />{editLabel || (isEnglish ? 'Edit' : 'Modifica')}</Button>}
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Close' : 'Chiudi'}><X className="h-5 w-5" /></button>
