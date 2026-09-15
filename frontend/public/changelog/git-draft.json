@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-09-10T09:06:53.170492+00:00",
-  "version_label": "2026.09.10-8dcf0f96",
-  "title": "Aggiornamenti branch feature/turing-test",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "8dcf0f96eec0a0005dd3c976bac27834530ba0ba",
+  "generated_at": "2026-09-15T10:38:17.691832+00:00",
+  "version_label": "2026.09.15-eb373c78",
+  "title": "Aggiornamenti branch staging",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "eb373c78a76e7e1edcde86fc9981ec0b19119dc3",
   "items": [
     {
       "category": "improved",
-      "title": "Sync generated changelog",
-      "description": "Sync generated changelog"
+      "title": "Finalize changelog state",
+      "description": "Finalize changelog state"
+    },
+    {
+      "category": "improved",
+      "title": "Feat(platform): refine classroom workspaces",
+      "description": "Feat(platform): refine classroom workspaces"
     }
   ]
 }
