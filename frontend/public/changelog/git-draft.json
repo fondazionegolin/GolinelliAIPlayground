@@ -1,19 +1,14 @@
 {
-  "generated_at": "2026-09-15T10:38:17.691832+00:00",
-  "version_label": "2026.09.15-eb373c78",
+  "generated_at": "2026-09-16T11:28:08.672274+00:00",
+  "version_label": "2026.09.16-10d40853",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "eb373c78a76e7e1edcde86fc9981ec0b19119dc3",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "10d40853a5006767537fcc24dea635a75804d03d",
   "items": [
     {
       "category": "improved",
-      "title": "Finalize changelog state",
-      "description": "Finalize changelog state"
-    },
-    {
-      "category": "improved",
-      "title": "Feat(platform): refine classroom workspaces",
-      "description": "Feat(platform): refine classroom workspaces"
+      "title": "Fix(infra): stop nginx from buffering the coding/notebook SSE streams",
+      "description": "Fix(infra): stop nginx from buffering the coding/notebook SSE streams"
     }
   ]
 }
