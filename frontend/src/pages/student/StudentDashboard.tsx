@@ -191,9 +191,13 @@ export default function StudentDashboard() {
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeModule, setActiveModule] = useState<string | null>(() => (
-    typeof window !== 'undefined' && window.innerWidth < 768 ? null : 'chatbot'
-  ))
+  const [activeModule, setActiveModule] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    // Reload/refresh should keep the student on the page they were on, not bounce them home.
+    const stored = window.sessionStorage.getItem('student_active_module')
+    if (stored !== null) return stored === '' ? null : stored
+    return window.innerWidth < 768 ? null : 'chatbot'
+  })
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [lastDocument] = useState<string | null>(null)
@@ -210,6 +214,9 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     activeModuleRef.current = activeModule
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('student_active_module', activeModule ?? '')
+    }
     const socket = studentRealtimeSocketRef.current
     if (!socket?.connected) return
     const isSubjectiveObserver = Boolean(localStorage.getItem('_subjective_mode'))
@@ -252,6 +259,7 @@ export default function StudentDashboard() {
       }
     }
     localStorage.removeItem('student_token')
+    window.sessionStorage.removeItem('student_active_module')
     logout()
     navigate('/join')
   }, [logout, navigate])

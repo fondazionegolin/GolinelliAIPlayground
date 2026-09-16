@@ -11,7 +11,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -2395,39 +2395,28 @@ REGOLE IMPORTANTI:
         </nav>
 
         <div className="flex-1 overflow-y-auto px-3 pb-20">
-          {/* Mobile: Assistenti AI */}
+          {/* Mobile: Assistenti AI — square tiles, same shape as Home/Documents cards */}
           {mainTab === 'assistants' && (
-            <div className="space-y-2">
-              {/* Tutor hero */}
-              <motion.button whileTap={{ scale: 0.98 }} onClick={() => handleSelectProfile('tutor')}
-                className="w-full relative overflow-hidden rounded-xl border p-4 text-left shadow-sm"
-                style={{ backgroundColor: PROFILE_SURFACES_MOB.tutor.bg, borderColor: 'rgba(16,185,129,0.18)' }}
-              >
-                <div className="absolute right-3 top-3 opacity-[0.08]"><GraduationCap className="h-16 w-16" style={{ color: PROFILE_SURFACES_MOB.tutor.text }} /></div>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style={{ backgroundColor: PROFILE_SURFACES_MOB.tutor.icon }}><GraduationCap className="h-4 w-4" style={{ color: PROFILE_SURFACES_MOB.tutor.text }} /></div>
-                <h3 className="text-sm font-bold" style={{ color: PROFILE_SURFACES_MOB.tutor.text }}>{profiles.find(p => p.key === 'tutor')?.name || 'Tutor Personale'}</h3>
-                <p className="text-[11px] mt-0.5 line-clamp-2 text-slate-600">{profiles.find(p => p.key === 'tutor')?.description}</p>
-              </motion.button>
-              {/* Other profiles 2-col */}
-              <div className="grid grid-cols-2 gap-2">
-                {profiles.filter(p => p.key !== 'tutor').map((profile) => {
-                  const surface = PROFILE_SURFACES_MOB[profile.key] || PROFILE_SURFACES_MOB.math_coach
-                  return (
-                  <motion.button key={profile.key} whileTap={{ scale: 0.95 }} onClick={() => handleSelectProfile(profile.key)}
-                    className="relative overflow-hidden rounded-xl border p-3 text-left shadow-sm"
+            <div className="grid grid-cols-2 gap-3">
+              {profiles.map((profile) => {
+                const surface = PROFILE_SURFACES_MOB[profile.key] || PROFILE_SURFACES_MOB.math_coach
+                return (
+                  <motion.button key={profile.key} whileTap={{ scale: 0.98 }} onClick={() => handleSelectProfile(profile.key)}
+                    className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
                     style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
                   >
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-1.5" style={{ backgroundColor: surface.icon }}>
-                      <div className="scale-75" style={{ color: surface.text }}>{PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}</div>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
+                      <div style={{ color: surface.text }}>{PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}</div>
                     </div>
-                    <span className="text-[11px] font-bold leading-tight block" style={{ color: surface.text }}>{profile.name}</span>
+                    <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight" style={{ color: surface.text }}>{profile.name}</div>
+                    <div className="mt-1 line-clamp-2 text-[11px] font-medium" style={{ color: surface.text, opacity: 0.75 }}>{profile.description}</div>
                   </motion.button>
-                )})}
-              </div>
+                )
+              })}
             </div>
           )}
 
-          {/* Mobile: Teacherbots */}
+          {/* Mobile: Teacherbots — same square tile shape */}
           {mainTab === 'teacherbots' && (
             availableTeacherbots.length === 0 ? (
               <div className="text-center py-16">
@@ -2435,51 +2424,69 @@ REGOLE IMPORTANTI:
                 <p className="text-sm text-slate-400 font-medium">Nessun teacherbot disponibile</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {availableTeacherbots.map((bot, idx) => (
-                  (() => {
-                    const surface = BOT_SURFACES_MOB[bot.color] || BOT_SURFACES_MOB.indigo
-                    return (
-                  <motion.button key={bot.id} whileTap={{ scale: 0.97 }} onClick={() => handleSelectTeacherbot(bot)}
-                    className={`w-full relative overflow-hidden rounded-xl border text-left shadow-sm ${idx === 0 ? 'p-4' : 'p-3'}`}
-                    style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
-                  >
-                    <div className="absolute right-2 top-2 opacity-[0.08]"><Wand2 className={idx === 0 ? 'h-16 w-16' : 'h-10 w-10'} style={{ color: surface.text }} /></div>
-                    <div className={`${idx === 0 ? 'w-10 h-10' : 'w-8 h-8'} rounded-xl flex items-center justify-center mb-2`} style={{ backgroundColor: surface.icon }}>
-                      <Wand2 className={idx === 0 ? 'h-5 w-5' : 'h-4 w-4'} style={{ color: surface.text }} />
-                    </div>
-                    <h3 className={`${idx === 0 ? 'text-sm' : 'text-xs'} font-bold`} style={{ color: surface.text }}>{bot.name}</h3>
-                    <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">{bot.synopsis || bot.description}</p>
-                  </motion.button>
-                )})()
-                ))}
+              <div className="grid grid-cols-2 gap-3">
+                {availableTeacherbots.map((bot) => {
+                  const surface = BOT_SURFACES_MOB[bot.color] || BOT_SURFACES_MOB.indigo
+                  return (
+                    <motion.button key={bot.id} whileTap={{ scale: 0.98 }} onClick={() => handleSelectTeacherbot(bot)}
+                      className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                      style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
+                        <Wand2 className="h-6 w-6" style={{ color: surface.text }} />
+                      </div>
+                      <div className="mt-auto line-clamp-2 text-base font-extrabold leading-tight" style={{ color: surface.text }}>{bot.name}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] font-medium" style={{ color: surface.text, opacity: 0.75 }}>{bot.synopsis || bot.description}</div>
+                    </motion.button>
+                  )
+                })}
               </div>
             )
           )}
 
           {mainTab === 'studentbots' && (
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setStudentbotEditorTarget('create')}
-                className="w-full rounded-xl border border-violet-200 bg-violet-50 p-4 text-left shadow-sm"
+                className="mobile-card-standard flex flex-col overflow-hidden rounded-[26px] border border-violet-200 bg-violet-50 p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Plus className="h-5 w-5" /></div>
-                  <div><h3 className="text-sm font-bold text-violet-900">Crea il tuo bot personalizzato</h3><p className="text-[11px] text-violet-700/75">Configura personalità, istruzioni e allegati</p></div>
-                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-violet-100 text-violet-700"><Plus className="h-6 w-6" /></div>
+                <div className="mt-auto text-base font-extrabold leading-tight text-violet-900">Crea bot</div>
+                <div className="mt-1 line-clamp-2 text-[11px] font-medium text-violet-700/75">Personalità, istruzioni e allegati</div>
               </motion.button>
               {studentbotsData.map((bot) => {
                 const available = availableStudentbots.find((item) => item.id === bot.id)
                 return (
-                  <div key={bot.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                    <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="w-full text-left">
-                      <p className="text-sm font-bold text-slate-900">{bot.name}</p>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{bot.synopsis || 'Il tuo assistente AI personalizzato'}</p>
+                  <div key={bot.id} className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                    <button
+                      type="button"
+                      onClick={() => available && handleSelectTeacherbot(available)}
+                      className="flex h-full flex-col text-left"
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-slate-100 text-slate-700"><Bot className="h-6 w-6" /></div>
+                      <div className="mt-auto line-clamp-2 pr-9 text-base font-extrabold leading-tight text-slate-900">{bot.name}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{bot.synopsis || 'Il tuo assistente AI personalizzato'}</div>
                     </button>
-                    <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
-                      <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg px-2 py-1 text-[11px] font-bold text-violet-700 hover:bg-violet-50">Configura</button>
-                      <button type="button" onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50">Elimina</button>
+                    <div className="absolute right-2 top-2 flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setStudentbotEditorTarget(bot.id)}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm"
+                        title="Configura"
+                        aria-label="Configura studentbot"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-rose-500 shadow-sm"
+                        title="Elimina"
+                        aria-label="Elimina studentbot"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 )
