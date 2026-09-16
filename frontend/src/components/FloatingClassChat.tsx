@@ -15,6 +15,16 @@ interface FloatingClassChatProps {
   privateChatEnabled?: boolean
   studentAccent?: StudentAccentId
   onNotificationClick?: (notification: ChatMessage) => void
+  /** Suppress the draggable floating button — used when the trigger lives elsewhere (e.g.
+   * embedded in the mobile navbar avatar). The full-screen chat panel still renders, driven by
+   * `open`/`onOpenChange`. */
+  hideTrigger?: boolean
+  /** Controlled open state. Omit for the default self-contained (draggable bubble) behavior. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Fired whenever the unread count changes — lets an external trigger (e.g. the navbar avatar)
+   * show its own badge. */
+  onUnreadCountChange?: (count: number) => void
 }
 
 export function FloatingClassChat({
@@ -26,8 +36,18 @@ export function FloatingClassChat({
   privateChatEnabled = true,
   studentAccent,
   onNotificationClick,
+  hideTrigger = false,
+  open: controlledOpen,
+  onOpenChange,
+  onUnreadCountChange,
 }: FloatingClassChatProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof value === 'function' ? (value as (prev: boolean) => boolean)(open) : value
+    onOpenChange?.(next)
+    if (controlledOpen === undefined) setInternalOpen(next)
+  }
   const readStorageKey = `class-chat:last-read:${userType}:${sessionId}`
   const [readAt, setReadAt] = useState(() => Number(localStorage.getItem(readStorageKey) || 0))
   const { messages, privateChats, currentUserId: socketUserId, loadingInitialMessages } = useSocket(sessionId)
@@ -48,6 +68,10 @@ export function FloatingClassChat({
 
   const latestTimestamp = incomingMessages.reduce((latest, message) => Math.max(latest, Date.parse(message.created_at) || 0), 0)
   const unreadCount = incomingMessages.filter((message) => (Date.parse(message.created_at) || 0) > readAt).length
+
+  useEffect(() => {
+    onUnreadCountChange?.(unreadCount)
+  }, [onUnreadCountChange, unreadCount])
 
   useEffect(() => {
     setReadAt(Number(localStorage.getItem(readStorageKey) || 0))
@@ -79,25 +103,27 @@ export function FloatingClassChat({
 
   return createPortal(
     <>
-      <button
-        type="button"
-        {...dragProps}
-        onClick={() => {
-          if (consumeDragClick()) return
-          setOpen(true)
-        }}
-        className="fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-xl ring-1 ring-white/40 transition-transform hover:scale-105 active:scale-95"
-        style={{ left: position.x, top: position.y }}
-        aria-label="Apri chat di classe"
-        title="Chat di classe · trascina in alto o in basso"
-      >
-        <MessageSquare className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-2 -top-2 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-black text-white ring-2 ring-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          {...dragProps}
+          onClick={() => {
+            if (consumeDragClick()) return
+            setOpen(true)
+          }}
+          className="fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-xl ring-1 ring-white/40 transition-transform hover:scale-105 active:scale-95"
+          style={{ left: position.x, top: position.y }}
+          aria-label="Apri chat di classe"
+          title="Chat di classe · trascina in alto o in basso"
+        >
+          <MessageSquare className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-2 -top-2 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-black text-white ring-2 ring-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[100] h-[100dvh] w-screen overflow-hidden bg-white" role="dialog" aria-modal="true" aria-label="Chat di classe">

@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { boardsApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Bot, Brain, Award, MessageSquare, FileEdit,
+  Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
   Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi
 } from 'lucide-react'
@@ -801,6 +801,9 @@ function StudentMobileShell({
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
+  const [classChatOpen, setClassChatOpen] = useState(false)
+  const [classChatUnread, setClassChatUnread] = useState(0)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const previousModule = useRef<string | null>(activeModule)
   const previousIndex = MOBILE_MODULE_ORDER.indexOf(previousModule.current)
   const currentIndex = MOBILE_MODULE_ORDER.indexOf(activeModule)
@@ -874,10 +877,10 @@ function StudentMobileShell({
         <div className="mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
             <button
               onClick={() => setMenuOpen((value) => !value)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-md active:scale-95"
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700 active:scale-95"
               aria-label={t('student_dashboard.explore')}
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-6 w-6" />
             </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">Area studente</p>
@@ -895,9 +898,23 @@ function StudentMobileShell({
                 <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{sessionInfo.session.title}</span>
               </span>
             </button>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-xs font-black text-sky-800 ring-1 ring-sky-100">
+            <button
+              type="button"
+              onClick={() => setClassChatOpen(true)}
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-xs font-black text-sky-800 ring-1 ring-sky-100 active:scale-95"
+              title={sessionInfo.student.nickname}
+              aria-label={`Apri chat di classe · ${sessionInfo.student.nickname}`}
+            >
               {sessionInfo.student.nickname.slice(0, 2).toUpperCase()}
-            </div>
+              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full rounded-bl-none border-2 border-white bg-[image:var(--selection-active-bg)] px-1 text-[var(--selection-active-text)] shadow-sm">
+                <MessageSquare className="h-2.5 w-2.5" fill="currentColor" />
+              </span>
+              {classChatUnread > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                  {classChatUnread > 9 ? '9+' : classChatUnread}
+                </span>
+              )}
+            </button>
         </div>
       </header>
 
@@ -953,9 +970,18 @@ function StudentMobileShell({
                   )
                 })}
               </nav>
-              <button onClick={onLogout} className="mt-4 flex min-h-[56px] w-full items-center justify-center gap-3 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]">
-                <LogOut className="h-5 w-5" /> {t('navbar.logout')}
-              </button>
+              <div className="mt-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setFeedbackOpen(true); setMenuOpen(false) }}
+                  className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-bold text-orange-600 active:scale-[0.98]"
+                >
+                  <MessageSquarePlus className="h-5 w-5" /> Feedback
+                </button>
+                <button onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]">
+                  <LogOut className="h-5 w-5" /> {t('navbar.logout')}
+                </button>
+              </div>
             </motion.aside>
           </>
         )}
@@ -1102,7 +1128,7 @@ function StudentMobileShell({
         </Suspense>
       </div>
 
-      <FloatingHelper module={activeModule} />
+      <FloatingHelper module={activeModule} hideTrigger open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       <FloatingClassChat
         sessionId={sessionInfo.session.id}
         userType="student"
@@ -1112,6 +1138,10 @@ function StudentMobileShell({
         teacherTarget={sessionInfo.teacher ?? undefined}
         privateChatEnabled={privateChatEnabled}
         onNotificationClick={onTeacherbotNotificationClick}
+        hideTrigger
+        open={classChatOpen}
+        onOpenChange={setClassChatOpen}
+        onUnreadCountChange={setClassChatUnread}
       />
       <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
     </AppBackground>

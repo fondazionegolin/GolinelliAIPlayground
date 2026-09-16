@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap } from 'lucide-react'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap } from 'lucide-react'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
@@ -64,6 +64,9 @@ export default function TeacherDashboard() {
   const [sessionStudents, setSessionStudents] = useState<SessionStudentSummary[]>([])
   const [updatingStudentId, setUpdatingStudentId] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [classChatOpen, setClassChatOpen] = useState(false)
+  const [classChatUnread, setClassChatUnread] = useState(0)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -261,10 +264,10 @@ export default function TeacherDashboard() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-md"
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700"
               aria-label="Apri menu"
             >
-              <Menu className="h-5 w-5" strokeWidth={2.5} />
+              <Menu className="h-6 w-6" strokeWidth={2.5} />
             </button>
             <button type="button" onClick={() => navigate('/teacher')} className="min-w-0 flex-1 text-left">
               <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: teacherTheme.accent }}>Area docente</span>
@@ -288,11 +291,20 @@ export default function TeacherDashboard() {
             )}
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-slate-200 bg-slate-50 text-xs font-black text-slate-800"
-              aria-label="Apri profilo e menu"
+              onClick={() => setClassChatOpen(true)}
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-slate-200 bg-slate-50 text-xs font-black text-slate-800"
+              title={teacherProfile?.name || 'Docente'}
+              aria-label={`Apri chat di classe · ${teacherProfile?.name || 'Docente'}`}
             >
               {teacherProfile?.name?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}
+              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full rounded-bl-none border-2 border-white bg-[image:var(--selection-active-bg)] px-1 text-[var(--selection-active-text)] shadow-sm">
+                <MessageSquare className="h-2.5 w-2.5" fill="currentColor" />
+              </span>
+              {classChatUnread > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                  {classChatUnread > 9 ? '9+' : classChatUnread}
+                </span>
+              )}
             </button>
           </div>
         </header>
@@ -327,8 +339,16 @@ export default function TeacherDashboard() {
                 )
               })}
             </nav>
-            <div className="border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <button onClick={handleMobileLogout} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600">
+            <div className="border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setFeedbackOpen(true); setMobileMenuOpen(false) }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-50 px-4 py-3.5 text-sm font-black text-orange-600"
+              >
+                <MessageSquarePlus className="h-5 w-5" />
+                Feedback
+              </button>
+              <button onClick={handleMobileLogout} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600">
                 <LogOut className="h-5 w-5" />
                 {t('navbar.logout')}
               </button>
@@ -595,7 +615,11 @@ export default function TeacherDashboard() {
         )}
       </div>
 
-      <FloatingHelper />
+      <FloatingHelper
+        hideTrigger={isMobile}
+        open={isMobile ? feedbackOpen : undefined}
+        onOpenChange={isMobile ? setFeedbackOpen : undefined}
+      />
       {isMobile && activeSessionId && teacherProfile && (
         <FloatingClassChat
           sessionId={activeSessionId}
@@ -603,6 +627,10 @@ export default function TeacherDashboard() {
           currentUserId={teacherProfile.id}
           currentUserName={teacherProfile.name}
           studentAccent={teacherProfile.uiAccent as StudentAccentId}
+          hideTrigger
+          open={classChatOpen}
+          onOpenChange={setClassChatOpen}
+          onUnreadCountChange={setClassChatUnread}
         />
       )}
     </AppBackground>

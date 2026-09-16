@@ -48,19 +48,35 @@ function fileToDataUrl(file: File): Promise<string> {
 
 export interface FloatingHelperProps {
   module?: string | null
+  /** Suppress the draggable floating button — used when the trigger lives elsewhere (e.g. the
+   * mobile drawer, next to Logout). The modal itself still renders, driven by `open`/`onOpenChange`. */
+  hideTrigger?: boolean
+  /** Controlled open state. Omit for the default self-contained (desktop) behavior. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function FloatingHelper(_props: FloatingHelperProps = {}) {
-  const [open, setOpen] = useState(false)
+export function FloatingHelper({ hideTrigger = false, open: controlledOpen, onOpenChange }: FloatingHelperProps = {}) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof value === 'function' ? (value as (prev: boolean) => boolean)(open) : value
+    onOpenChange?.(next)
+    if (controlledOpen === undefined) setInternalOpen(next)
+  }
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [screenshot, setScreenshot] = useState<string | null>(null) // data URI
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { position, dragProps, consumeDragClick } = useDraggableFloating('floating-feedback', 'top-left', 48)
-  const modalLeft = Math.min(Math.max(12, position.x), Math.max(12, window.innerWidth - 332))
-  const modalTop = position.y + 60 + 420 <= window.innerHeight
-    ? position.y + 60
-    : Math.max(12, position.y - 420)
+  const modalLeft = hideTrigger
+    ? Math.max(12, (window.innerWidth - 320) / 2)
+    : Math.min(Math.max(12, position.x), Math.max(12, window.innerWidth - 332))
+  const modalTop = hideTrigger
+    ? Math.max(12, (window.innerHeight - 420) / 2)
+    : position.y + 60 + 420 <= window.innerHeight
+      ? position.y + 60
+      : Math.max(12, position.y - 420)
 
   useEffect(() => {
     if (open && textareaRef.current) {
@@ -128,24 +144,26 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
   return createPortal(
     <>
       {/* Draggable feedback button */}
-      <button
-        type="button"
-        {...dragProps}
-        onClick={() => {
-          if (consumeDragClick()) return
-          setOpen(v => !v)
-        }}
-        className={`fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl transition-all duration-200 hover:scale-105 ${
-          open
-            ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
-            : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
-        }`}
-        style={{ left: position.x, top: position.y }}
-        title="Segnala un problema · trascina in alto o in basso"
-        aria-label="Apri feedback"
-      >
-        {open ? <X className="h-5 w-5" /> : <MessageSquarePlus className="h-5 w-5" />}
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          {...dragProps}
+          onClick={() => {
+            if (consumeDragClick()) return
+            setOpen(v => !v)
+          }}
+          className={`fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl transition-all duration-200 hover:scale-105 ${
+            open
+              ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+              : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
+          }`}
+          style={{ left: position.x, top: position.y }}
+          title="Segnala un problema · trascina in alto o in basso"
+          aria-label="Apri feedback"
+        >
+          {open ? <X className="h-5 w-5" /> : <MessageSquarePlus className="h-5 w-5" />}
+        </button>
+      )}
 
       {/* Modal */}
       {open && (
@@ -155,10 +173,18 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
             <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fce7f3' }}>
               <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: '#e85c8d' }} />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-slate-900 leading-tight">Segnala un problema</h2>
               <p className="text-[11px] text-slate-400">Descrivi il comportamento inatteso</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Chiudi"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Body */}
