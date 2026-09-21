@@ -4,16 +4,16 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const cardVariants = cva(
-  'rounded-[var(--card-radius)] border text-[var(--text-primary)] shadow-[var(--shadow-sm)] transition-all',
+  'rounded-[var(--card-radius)] !border-0 text-[var(--text-primary)] shadow-[var(--shadow-sm)] transition-all',
   {
     variants: {
       surface: {
-        base: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+        base: 'bg-[rgba(255,255,255,0.68)] backdrop-blur-md hover:bg-[rgba(255,255,255,0.78)]',
         elevated:
-          'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] backdrop-blur-md hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-        muted: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)]',
+          'bg-[rgba(255,255,255,0.72)] backdrop-blur-xl hover:bg-[rgba(255,255,255,0.82)]',
+        muted: 'bg-[rgba(123,105,201,0.065)]',
         glass:
-          'border-white/70 bg-[var(--surface-glass)] backdrop-blur-xl',
+          'bg-[var(--surface-glass)] backdrop-blur-xl',
       },
       density: {
         compact: '',
@@ -21,7 +21,7 @@ const cardVariants = cva(
         roomy: '',
       },
       interactive: {
-        true: 'hover:-translate-y-0.5 hover:border-[rgba(23,21,27,0.16)] hover:shadow-[var(--shadow-lg)]',
+        true: 'hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] active:translate-y-0',
         false: '',
       },
     },

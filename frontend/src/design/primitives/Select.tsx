@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const selectVariants = cva(
-  'flex w-full appearance-none rounded-[var(--control-radius)] border text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
+  'flex w-full appearance-none rounded-[var(--control-radius)] !border-0 bg-[rgba(255,255,255,0.66)] text-[var(--text-primary)] shadow-[var(--control-shadow)] backdrop-blur-md transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--focus-shadow)] disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       tone: {
