@@ -406,7 +406,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {showMobileHome && (
             <MobileTeacherHome
               teacherName={teacherProfile?.name}

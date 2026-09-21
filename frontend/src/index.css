@@ -159,12 +159,12 @@
     --selection-height: 2rem;
     --selection-padding-x: 0.8125rem;
     /* Selectors / segmented controls / tabs / selected items → lavender surface + dark violet ink */
-    --selection-bg: var(--ds-reflection), linear-gradient(var(--ds-surface-tint), var(--ds-surface-tint));
-    --selection-bg-hover: var(--ds-reflection), linear-gradient(var(--ds-selected), var(--ds-selected));
+    --selection-bg: linear-gradient(var(--ds-surface-tint), var(--ds-surface-tint));
+    --selection-bg-hover: linear-gradient(var(--ds-selected), var(--ds-selected));
     --selection-border: transparent;
     --selection-border-hover: transparent;
     --selection-text: var(--brand-pill-violet);
-    --selection-active-bg: var(--ds-reflection), linear-gradient(var(--ds-selected), var(--ds-selected));
+    --selection-active-bg: linear-gradient(var(--ds-selected), var(--ds-selected));
     --selection-active-text: var(--brand-pill-violet);
     --selection-shadow: var(--ds-shadow-control);
 

@@ -4,7 +4,7 @@ import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type Pastel
 
 export function WorkspaceExplorerSidebar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <aside className={`flex max-h-[260px] w-full shrink-0 flex-col border-b border-slate-200 bg-white/80 lg:max-h-none lg:w-[19rem] lg:border-b-0 lg:border-r ${className}`}>
+    <aside className={`flex max-h-[260px] w-full shrink-0 flex-col bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] lg:max-h-none lg:w-[19rem] ${className}`}>
       {children}
     </aside>
   )
@@ -32,7 +32,7 @@ export function WorkspaceExplorerHeader({
   const showSearch = searchValue !== undefined && onSearchChange
 
   return (
-    <div className="border-b border-slate-200/80 bg-white/90 px-5 py-4">
+    <div className="bg-[var(--ds-surface)] px-5 py-4 shadow-[var(--ds-shadow-1)]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 max-w-[14rem]">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{eyebrow}</p>
@@ -43,7 +43,7 @@ export function WorkspaceExplorerHeader({
       </div>
 
       {showSearch && (
-        <div className={`relative mt-4 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
+        <div className="ui-search relative mt-4 px-3 py-2">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -94,7 +94,7 @@ export function WorkspaceExplorerItem({
   const itemTone: PastelTone = tone || (selected ? 'violet' : 'slate')
 
   return (
-    <div className={`group relative flex w-full overflow-hidden rounded-[18px] text-left shadow-sm transition-all ${PASTEL_SURFACES[itemTone]} ${selected ? 'ring-1 ring-[rgba(123,105,201,0.32)]' : ''}`}>
+    <div className={`group relative flex w-full overflow-hidden rounded-[18px] text-left transition-all ${PASTEL_SURFACES[itemTone]} ${selected ? 'shadow-[var(--ds-shadow-focus)]' : ''}`}>
       <button type="button" onClick={onClick} className="min-w-0 flex-1 p-3 text-left">
         <div className="flex items-start gap-3">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[itemTone]} ${PASTEL_ICON_TEXT[itemTone]}`}>
@@ -113,5 +113,5 @@ export function WorkspaceExplorerItem({
 }
 
 export function WorkspaceExplorerBadge({ children }: { children: ReactNode }) {
-  return <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">{children}</span>
+  return <span className="rounded-full bg-white/70 px-2 py-0.5 font-bold text-slate-500 shadow-[var(--ds-shadow-1)]">{children}</span>
 }

@@ -54,7 +54,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
   section: string
 }> = {
   python: {
-    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+    card: 'border-0 bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
     iconBg: 'bg-indigo-100 ring-1 ring-indigo-200',
     icon: 'text-indigo-700',
     badge: 'border border-indigo-200 bg-indigo-100 text-indigo-800',
@@ -62,7 +62,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   },
   p5js: {
-    card: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+    card: 'border-0 bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
     iconBg: 'bg-emerald-100 ring-1 ring-emerald-200',
     icon: 'text-emerald-700',
     badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800',
@@ -70,7 +70,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   },
   strudel: {
-    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+    card: 'border-0 bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
     iconBg: 'bg-violet-100 ring-1 ring-violet-200',
     icon: 'text-violet-700',
     badge: 'border border-violet-200 bg-violet-100 text-violet-800',
@@ -78,7 +78,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-violet-200 bg-violet-50 text-violet-700',
   },
   game2d: {
-    card: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
+    card: 'border-0 bg-[rgba(254,0,77,0.075)] hover:bg-[rgba(254,0,77,0.11)]',
     iconBg: 'bg-cyan-100 ring-1 ring-cyan-200',
     icon: 'text-cyan-700',
     badge: 'border border-cyan-200 bg-cyan-100 text-cyan-800',
@@ -86,7 +86,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-cyan-200 bg-cyan-50 text-cyan-700',
   },
   microbit: {
-    card: 'border-[rgba(14,165,233,0.20)] bg-[rgba(14,165,233,0.08)] hover:border-[rgba(14,165,233,0.34)] hover:bg-[rgba(14,165,233,0.13)]',
+    card: 'border-0 bg-[rgba(14,165,233,0.08)] hover:bg-[rgba(14,165,233,0.13)]',
     iconBg: 'bg-sky-100 ring-1 ring-sky-200',
     icon: 'text-sky-700',
     badge: 'border border-sky-200 bg-sky-100 text-sky-800',
@@ -94,7 +94,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-sky-200 bg-sky-50 text-sky-700',
   },
   circuitplayground: {
-    card: 'border-[rgba(16,185,129,0.20)] bg-[rgba(16,185,129,0.08)] hover:border-[rgba(16,185,129,0.34)] hover:bg-[rgba(16,185,129,0.13)]',
+    card: 'border-0 bg-[rgba(16,185,129,0.08)] hover:bg-[rgba(16,185,129,0.13)]',
     iconBg: 'bg-emerald-100 ring-1 ring-emerald-200',
     icon: 'text-emerald-700',
     badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800',
@@ -204,7 +204,7 @@ function NotebookCard({
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onOpen}
-      className={`group relative flex min-h-[156px] cursor-pointer flex-col justify-between overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${s.card}`}
+      className={`ui-card ui-card-interactive group relative flex min-h-[156px] cursor-pointer flex-col justify-between overflow-hidden p-4 text-left ${s.card}`}
     >
       <button
         onClick={onDelete}
@@ -842,7 +842,7 @@ function ReadyTemplateGallery({
               type="button"
               disabled={isPending}
               onClick={() => onCreate(template)}
-              className={`group flex min-h-[188px] flex-col justify-between rounded-lg border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-wait disabled:opacity-70 ${s.card}`}
+              className={`ui-card ui-card-interactive group flex min-h-[188px] flex-col justify-between p-4 text-left disabled:cursor-wait disabled:opacity-70 ${s.card}`}
             >
               <div>
                 <div className="mb-3 flex items-center justify-between gap-3">

@@ -49,13 +49,13 @@ const S = {
     badge:    'border border-violet-200 bg-violet-100 text-violet-800',
     panel:    'border-violet-200 bg-violet-50/80 text-violet-950',
     section:  'border-violet-200 bg-violet-50 text-violet-700',
-    card:     'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
-    selCard:  'border-[rgba(254,0,77,0.34)] bg-[rgba(254,0,77,0.11)] shadow-[var(--shadow-md)]',
+    card:     'border-0 bg-[rgba(254,0,77,0.075)] hover:bg-[rgba(254,0,77,0.11)]',
+    selCard:  'border-0 bg-[rgba(254,0,77,0.12)] shadow-[var(--ds-shadow-focus)]',
     tip:      'border-violet-200 bg-violet-50',
     tipText:  'text-violet-800',
     tipIcon:  'text-violet-500',
     progress: 'bg-violet-500',
-    btnCls:   'bg-violet-600 hover:bg-violet-700 border border-violet-500 text-white shadow-sm',
+    btnCls:   'border-0 bg-violet-600 text-white shadow-[var(--ds-shadow-control)] hover:bg-violet-700',
     ring:     'ring-violet-300',
     focusInput: 'focus:ring-violet-300 focus:border-violet-400',
     optActive: 'border-violet-400 bg-violet-50 text-violet-800',
@@ -66,13 +66,13 @@ const S = {
     badge:    'border border-emerald-200 bg-emerald-100 text-emerald-800',
     panel:    'border-emerald-200 bg-emerald-50/80 text-emerald-950',
     section:  'border-emerald-200 bg-emerald-50 text-emerald-700',
-    card:     'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
-    selCard:  'border-[rgba(62,169,244,0.36)] bg-[rgba(62,169,244,0.11)] shadow-[var(--shadow-md)]',
+    card:     'border-0 bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
+    selCard:  'border-0 bg-[rgba(62,169,244,0.12)] shadow-[var(--ds-shadow-focus)]',
     tip:      'border-emerald-200 bg-emerald-50',
     tipText:  'text-emerald-800',
     tipIcon:  'text-emerald-500',
     progress: 'bg-emerald-500',
-    btnCls:   'bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-white shadow-sm',
+    btnCls:   'border-0 bg-emerald-600 text-white shadow-[var(--ds-shadow-control)] hover:bg-emerald-700',
     ring:     'ring-emerald-300',
     focusInput: 'focus:ring-emerald-300 focus:border-emerald-400',
     optActive: 'border-emerald-400 bg-emerald-50 text-emerald-800',
@@ -83,13 +83,13 @@ const S = {
     badge:    'border border-indigo-200 bg-indigo-100 text-indigo-800',
     panel:    'border-indigo-200 bg-indigo-50/80 text-indigo-950',
     section:  'border-indigo-200 bg-indigo-50 text-indigo-700',
-    card:     'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-    selCard:  'border-[rgba(123,105,201,0.36)] bg-[rgba(123,105,201,0.11)] shadow-[var(--shadow-md)]',
+    card:     'border-0 bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
+    selCard:  'border-0 bg-[rgba(123,105,201,0.12)] shadow-[var(--ds-shadow-focus)]',
     tip:      'border-indigo-200 bg-indigo-50',
     tipText:  'text-indigo-800',
     tipIcon:  'text-indigo-500',
     progress: 'bg-indigo-500',
-    btnCls:   'bg-indigo-600 hover:bg-indigo-700 border border-indigo-500 text-white shadow-sm',
+    btnCls:   'border-0 bg-indigo-600 text-white shadow-[var(--ds-shadow-control)] hover:bg-indigo-700',
     ring:     'ring-indigo-300',
     focusInput: 'focus:ring-indigo-300 focus:border-indigo-400',
     optActive: 'border-indigo-400 bg-indigo-50 text-indigo-800',
@@ -325,7 +325,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => switchMode(m.id)}
-                    className={`mobile-card-standard group relative flex flex-col overflow-hidden rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg lg:min-h-32 lg:rounded-[24px] ${
+                    className={`ui-card ui-card-interactive mobile-card-standard group relative flex flex-col overflow-hidden p-4 text-left lg:min-h-32 ${
                       selected ? ms.selCard : ms.card
                     }`}
                   >
@@ -370,11 +370,11 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                  <div className="ui-card space-y-4 p-5">
                     <SectionLabel mode="txt2img" label="Prompt immagine" />
 
                     <textarea
-                      className={`w-full rounded-lg border border-slate-200 px-4 py-3 text-sm resize-none outline-none focus:ring-2 ${s.focusInput} transition-all`}
+                      className="ui-search w-full resize-none px-4 py-3 text-sm outline-none"
                       rows={4}
                       placeholder="Es: un drago verde smeraldo visto di fronte, su sfondo bianco puro, stile scultura digitale"
                       value={dallePrompt}
@@ -471,7 +471,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-5">
+                  <div className="ui-card space-y-5 p-5">
                     <SectionLabel mode="img23d" label="Immagine di partenza" />
 
                     {/* Upload area */}
@@ -571,11 +571,11 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                  <div className="ui-card space-y-4 p-5">
                     <SectionLabel mode="txt23d" label="Descrizione oggetto 3D" />
 
                     <textarea
-                      className={`w-full rounded-lg border border-slate-200 px-4 py-3 text-sm resize-none outline-none focus:ring-2 ${s.focusInput} transition-all`}
+                      className="ui-search w-full resize-none px-4 py-3 text-sm outline-none"
                       rows={5}
                       placeholder="Es: una sedia in legno massello chiaro, stile scandinavo, con quattro gambe sottili tornite, seduta piatta, schienale a doghe verticali, aspetto nuovo e levigato"
                       value={txt3dPrompt}

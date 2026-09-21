@@ -239,7 +239,7 @@ function CodingModelSelector({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} flex items-center gap-1.5 border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] font-semibold text-[var(--logo-violet-strong)] outline-none transition hover:border-[var(--logo-violet)] focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]`}
+        className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} ds-control flex items-center gap-1.5 font-semibold text-[var(--logo-violet-strong)] outline-none transition focus-visible:shadow-[var(--ds-shadow-focus)]`}
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Modello usato per generare il codice"
@@ -252,7 +252,7 @@ function CodingModelSelector({
         <div
           role="listbox"
           aria-label="Seleziona il modello"
-          className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-white p-1.5 shadow-[var(--shadow-lg)]`}
+          className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} ds-popover absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl p-1.5`}
         >
           {options.map((option) => {
             const active = option.key === selected.key
@@ -1493,7 +1493,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
           )}
         </WorkspaceExplorerList>
-        <div className="border-t border-slate-200/80 px-4 py-3">
+        <div className="px-4 py-3 shadow-[0_-1px_0_rgba(148,163,184,0.10)]">
           <Button
             type="button"
             onClick={() => setShowTutorial(true)}
@@ -1606,8 +1606,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           : `${promptPanelOpen ? 'lg:grid-cols-[minmax(300px,0.7fr)_minmax(520px,1.3fr)]' : 'lg:grid-cols-[3.5rem_minmax(520px,1fr)]'} grid min-h-0 flex-1 grid-cols-1 overflow-hidden transition-[grid-template-columns]`
         }>
           <section className={createPanelOpen
-            ? 'flex w-full max-w-2xl flex-col rounded-[28px] border border-[color:var(--border-subtle)] bg-white shadow-[var(--shadow-lg)]'
-            : `${isMobile && mobilePane !== 'prompt' ? 'hidden' : 'flex'} min-h-0 flex-col border-b border-slate-200 bg-white lg:flex lg:border-b-0 lg:border-r`
+            ? 'ui-card flex w-full max-w-2xl flex-col'
+            : `${isMobile && mobilePane !== 'prompt' ? 'hidden' : 'flex'} min-h-0 flex-col bg-white shadow-[var(--ds-shadow-1)] lg:flex`
           }>
             {!createPanelOpen && <PanelHeader
               icon={MessageSquare}
@@ -1655,7 +1655,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder="Dai un nome al progetto"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    className="ui-search w-full px-3 py-2 text-sm outline-none"
                   />
                 </div>
                 <label className="sr-only">Prompt iniziale</label>
@@ -1664,7 +1664,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   onChange={(event) => setPrompt(event.target.value)}
                   rows={7}
                   placeholder="Descrivi cosa vuoi creare…"
-                  className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base outline-none focus:border-slate-400 md:rounded-lg md:px-3 md:py-2 md:text-sm"
+                  className="ui-search w-full resize-none px-4 py-4 text-base outline-none md:px-3 md:py-2 md:text-sm"
                 />
                 <div className="hidden md:block">
                   <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
@@ -1678,7 +1678,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     type="button"
                     onClick={handleStartInterview}
                     disabled={interviewing || creating || !prompt.trim()}
-                    className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto"
+                    className="ui-cta mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-bold transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto"
                   >
                     {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     {interviewing ? 'Creo...' : 'Crea'}
@@ -1770,7 +1770,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {showDeepSeekDisclaimer && deepSeekConsent && (
                 <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mb-2" />
               )}
-              <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
+              <div className="ui-search flex items-center gap-2 rounded-[24px] px-3 py-2">
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}

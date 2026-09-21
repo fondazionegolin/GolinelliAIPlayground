@@ -2828,9 +2828,9 @@ REGOLE IMPORTANTI:
         <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
               <div className={`flex h-full ${sidebarMode ? 'w-full' : isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
+                <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'ui-card'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden border-r border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm transition-all duration-300`}>
+                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] transition-all duration-300`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="flex flex-col items-center gap-3 p-2 pt-3">
@@ -2846,7 +2846,7 @@ REGOLE IMPORTANTI:
                     </div>
                   ) : (
                     <>
-                      <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
+                      <div className="flex shrink-0 items-center gap-2.5 px-4 py-3 shadow-[var(--ds-shadow-1)]">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]">
                           <MessageCircle className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                         </span>
@@ -3102,7 +3102,7 @@ REGOLE IMPORTANTI:
                         {/* Generatore */}
                         {!sidebarMode && agentMode === 'image' && (
                           <>
-                            <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
+                            <div className="ui-segment flex items-center rounded-full p-1">
                               {([
                                 { id: 'dall-e', label: '🎨 DALL-E 3' },
                                 { id: 'gpt-image-2-2026-04-21', label: '✨ GPT Image 2' },
@@ -3156,8 +3156,8 @@ REGOLE IMPORTANTI:
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
                                 className={sidebarMode
-                                  ? "flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 shadow-sm transition-all hover:bg-slate-50"
-                                  : "flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
+                                  ? "ds-control flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all"
+                                  : "ds-control flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
                                 style={selectedSoftStyle}
                                 title="Seleziona modello"
                               >
@@ -3170,8 +3170,8 @@ REGOLE IMPORTANTI:
 
                               {/* Dropdown */}
                               {showModelMenu && (
-                                <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible ring-1 ring-black/5">
-                                  <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 border-b border-slate-100 mb-1 flex justify-between items-center">
+                                <div className="ds-popover absolute top-full right-0 mt-2 w-72 rounded-xl py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible">
+                                  <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 mb-1 flex justify-between items-center">
                                     <span>Seleziona Modello</span>
                                     <span className="text-[9px] font-normal text-slate-400">Default</span>
                                   </div>
@@ -3735,7 +3735,7 @@ REGOLE IMPORTANTI:
                       )}
 
                       {/* Input Pill */}
-                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
+                      <div className="ui-search relative flex items-center gap-1.5 rounded-[24px] p-1.5">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
                           accept={agentMode === 'ocr' ? 'image/*' : 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
                           onChange={handleFileSelect} />
@@ -3854,7 +3854,7 @@ REGOLE IMPORTANTI:
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-full px-3 text-slate-900 gap-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 shadow-sm"
+                              className="ds-control h-8 rounded-full px-3 text-slate-900 gap-1.5"
                               onClick={() => setShowModeMenu(v => !v)}
                               title="Cambia modalità"
                             >

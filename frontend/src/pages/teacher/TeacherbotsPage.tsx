@@ -37,17 +37,17 @@ type DisplayMode = 'grid' | 'list'
 
 const getCardBg = (color: string) => {
   const colorMap: Record<string, string> = {
-    indigo: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-    blue: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
-    green: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
-    red: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
-    purple: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-    pink: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
-    orange: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-    teal: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
-    cyan: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+    indigo: 'bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
+    blue: 'bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
+    green: 'bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
+    red: 'bg-[rgba(254,0,77,0.075)] hover:bg-[rgba(254,0,77,0.11)]',
+    purple: 'bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
+    pink: 'bg-[rgba(254,0,77,0.075)] hover:bg-[rgba(254,0,77,0.11)]',
+    orange: 'bg-[rgba(123,105,201,0.075)] hover:bg-[rgba(123,105,201,0.11)]',
+    teal: 'bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
+    cyan: 'bg-[rgba(62,169,244,0.075)] hover:bg-[rgba(62,169,244,0.11)]',
   }
-  return colorMap[color] || 'border-[rgba(23,21,27,0.10)] bg-[rgba(23,21,27,0.035)] hover:border-[rgba(23,21,27,0.16)] hover:bg-[rgba(23,21,27,0.055)]'
+  return colorMap[color] || 'bg-white/80 hover:bg-white'
 }
 
 const getIconColor = (color: string) => {
@@ -66,10 +66,10 @@ const getIconColor = (color: string) => {
 }
 
 const STATUS_META: Record<string, { label: string; badge: string }> = {
-  published: { label: 'Pubblicato', badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800' },
-  testing: { label: 'In test', badge: 'border border-amber-200 bg-amber-100 text-amber-800' },
-  draft: { label: 'Bozza', badge: 'border border-slate-200 bg-slate-100 text-slate-600' },
-  archived: { label: 'Archiviato', badge: 'border border-slate-200 bg-slate-100 text-slate-500' },
+  published: { label: 'Pubblicato', badge: 'bg-emerald-100 text-emerald-800 shadow-[var(--ds-shadow-1)]' },
+  testing: { label: 'In test', badge: 'bg-amber-100 text-amber-800 shadow-[var(--ds-shadow-1)]' },
+  draft: { label: 'Bozza', badge: 'bg-slate-100 text-slate-600 shadow-[var(--ds-shadow-1)]' },
+  archived: { label: 'Archiviato', badge: 'bg-slate-100 text-slate-500 shadow-[var(--ds-shadow-1)]' },
 }
 
 function statusMeta(status: string) {
@@ -191,7 +191,7 @@ export default function TeacherbotsPage() {
       <div
         key={bot.id}
         onClick={() => setFormTarget(bot.id)}
-        className={`mobile-card-standard group flex cursor-pointer flex-col justify-between overflow-hidden rounded-[24px] border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg md:min-h-[220px] md:max-h-none md:overflow-visible md:p-5 ${getCardBg(bot.color)}`}
+        className={`ui-card ui-card-interactive mobile-card-standard group flex cursor-pointer flex-col justify-between overflow-hidden p-4 md:min-h-[220px] md:max-h-none md:overflow-visible md:p-5 ${getCardBg(bot.color)}`}
       >
         <div>
           <div className="flex items-start justify-between gap-3">
@@ -229,7 +229,7 @@ export default function TeacherbotsPage() {
       <div
         key={bot.id}
         onClick={() => setFormTarget(bot.id)}
-        className={`group flex cursor-pointer items-center gap-4 rounded-2xl border p-4 shadow-sm transition-all hover:shadow-md ${getCardBg(bot.color)}`}
+        className={`ui-card ui-card-interactive group flex cursor-pointer items-center gap-4 p-4 ${getCardBg(bot.color)}`}
       >
         <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${getIconColor(bot.color)}`}>
           {renderBotIcon(bot.icon)}
@@ -256,7 +256,7 @@ export default function TeacherbotsPage() {
     if (bots.length === 0) return null
     return (
       <section className="mb-7">
-        <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 shadow-[var(--ds-shadow-1)]">
           {icon}
           <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-700">{title}</h3>
           <span className="text-xs font-bold text-slate-400">{bots.length}</span>
@@ -277,7 +277,7 @@ export default function TeacherbotsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-slate-50">
       <div className="flex-1 overflow-y-auto">
-        <section className="border-b border-slate-200 bg-white">
+        <section className="bg-[var(--ds-surface)] shadow-[var(--ds-shadow-1)]">
           <div className="mx-auto max-w-3xl px-4 py-8 text-center md:px-6">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               {t('navbar.nav_teacherbots', 'Teacherbot')}
@@ -312,7 +312,7 @@ export default function TeacherbotsPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Cerca teacherbot..."
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-base shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 md:h-auto md:rounded-lg md:text-sm"
+                  className="ui-search h-11 w-full py-2 pl-10 pr-10 text-base placeholder:text-slate-400 focus:outline-none md:text-sm"
                 />
                 {search && (
                   <button
@@ -324,17 +324,17 @@ export default function TeacherbotsPage() {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+              <div className="ui-segment flex items-center gap-1 rounded-xl p-1">
                 <button
                   onClick={() => setDisplay('grid')}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'grid' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-8 md:w-8 ${display === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:bg-white/70'}`}
                   title="Griglia"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setDisplay('list')}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-md ${display === 'list' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-8 md:w-8 ${display === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:bg-white/70'}`}
                   title="Elenco"
                 >
                   <List className="h-4 w-4" />

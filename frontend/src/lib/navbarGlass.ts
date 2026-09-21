@@ -9,7 +9,7 @@ export function buildAccentNavbarStyle(
   void theme
   return {
     ...cssVars,
-    backgroundColor: 'var(--ds-surface)',
+    backgroundColor: 'var(--ds-navbar)',
     backgroundImage: 'var(--ds-reflection)',
     border: '0',
     boxShadow: 'var(--ds-shadow-2)',
@@ -20,7 +20,7 @@ export function buildAccentNavClusterStyle(theme: AccentTheme): CSSProperties {
   void theme
   return {
     borderRadius: 'var(--selection-radius)',
-    backgroundColor: 'var(--ds-control)',
+    backgroundColor: 'var(--ds-cluster)',
     backgroundImage: 'var(--ds-reflection)',
     border: '0',
     boxShadow: 'var(--ds-shadow-control)',

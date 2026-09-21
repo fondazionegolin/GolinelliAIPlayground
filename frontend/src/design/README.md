@@ -7,6 +7,7 @@ This folder is the single source of truth for product UI.
 - The visual language is flat and lightly glossy: opaque or barely transparent surfaces, one subtle top reflection, and shadows for separation.
 - Decorative outlines are not part of the system. Do not add local `border-*` or `ring-*` classes to controls, cards, navigation, or popovers.
 - Use the shared CSS surfaces (`ds-control`, `ds-selected`, `ds-panel`, `ds-popover`, `ds-navbar`) and `--ds-*` tokens. Borders remain valid only when they communicate meaning, such as validation, accessible focus, or a drop target.
+- Product pages use `ui-card`, `ui-card-interactive`, `ui-search`, `ui-cta`, and `ui-segment`. These utilities keep legacy feature screens aligned while they migrate to the React primitives.
 - Do not use backdrop blur for ordinary chrome. Transparency must remain slight enough to preserve contrast without glassmorphism.
 - Use primitives exported from `@/design` for buttons, cards, inputs, badges, dialogs, tabs, and spinners.
 - Do not copy primary button styles into feature components. Use `<Button tone="accent" surface="solid">`.

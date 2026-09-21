@@ -1536,7 +1536,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
     <div className="mx-auto max-w-6xl px-4 py-8">
 
       {/* Header */}
-      <div className="mb-8 flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-8 flex flex-col gap-5 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-800">Live Interaction</h1>
@@ -1584,7 +1584,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
       {showEscapeModal && activeSessionId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={() => { setShowEscapeModal(false); setEscapeDraft(null) }}>
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-3xl bg-white shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+          <div className="ds-popover flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[var(--ds-radius-panel)]" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div className="px-6 pt-6">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
@@ -1597,7 +1597,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
               <>
                 <div className="mx-6 mt-5 max-h-72 space-y-2 overflow-y-auto">
                   {escapeBots.map(bot => (
-                    <button key={bot.id} onClick={() => setSelectedEscapeBot(bot.id)} className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition ${selectedEscapeBot === bot.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
+                    <button key={bot.id} onClick={() => setSelectedEscapeBot(bot.id)} className={`flex w-full items-start gap-3 rounded-2xl border-0 p-4 text-left transition ${selectedEscapeBot === bot.id ? 'ui-segment-active' : 'ds-control'}`}>
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
                       <span><span className="block font-semibold text-slate-800">{bot.name}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{bot.synopsis || 'Teacherbot configurato in modalità Escape Room'}</span></span>
                     </button>
@@ -1673,7 +1673,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
               <div className="space-y-5">
                 {currentInteractions.map(item => (
-                  <article key={item.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                  <article key={item.id} className="ui-card ui-card-interactive overflow-hidden">
                     <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1689,7 +1689,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                       </div>
                     </div>
 
-                    <div className="border-y border-slate-100 bg-slate-50/70 px-5 py-5 sm:px-6">
+                    <div className="bg-slate-50/70 px-5 py-5 shadow-[inset_0_1px_0_rgba(148,163,184,0.10),inset_0_-1px_0_rgba(148,163,184,0.10)] sm:px-6">
                       <ContentPreviewStrip item={item} />
                     </div>
 
@@ -1747,7 +1747,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
               <div className="grid gap-4 lg:grid-cols-2">
                 {archivedInteractions.map(item => (
-                  <article key={item.id} className="flex min-h-[190px] flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                  <article key={item.id} className="ui-card ui-card-interactive flex min-h-[190px] flex-col p-5">
                     <div className="flex flex-wrap items-center gap-2">
                       {item.interaction_type === 'escape_room' && <Badge tone="accent" surface="soft" density="compact">Escape Room</Badge>}
                       <Badge tone="neutral" surface="soft" density="compact">Completata</Badge>
@@ -1756,7 +1756,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                     <p className="mt-1.5 text-sm text-slate-500">
                       {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> {new Date(item.created_at).toLocaleDateString('it-IT')}
                     </p>
-                    <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                    <div className="mt-auto flex flex-wrap items-center gap-2 pt-4 shadow-[0_-1px_0_rgba(148,163,184,0.10)]">
                       <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
                         <FileBarChart2 className="h-3.5 w-3.5" /> Report
                       </Button>

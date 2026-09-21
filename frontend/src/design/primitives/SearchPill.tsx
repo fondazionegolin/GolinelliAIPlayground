@@ -14,7 +14,7 @@ export const SearchPill = React.forwardRef<HTMLInputElement, SearchPillProps>(
   ({ className, value, onValueChange, onClear, placeholder = 'Cerca…', ...props }, ref) => (
     <div
       className={cn(
-        'flex h-9 min-w-0 items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 text-[var(--text-primary)] shadow-sm transition focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-300/60',
+        'ui-search flex h-11 min-w-0 items-center gap-2 px-3 text-[var(--text-primary)]',
         className
       )}
     >
@@ -32,7 +32,7 @@ export const SearchPill = React.forwardRef<HTMLInputElement, SearchPillProps>(
         <button
           type="button"
           onClick={() => (onClear ? onClear() : onValueChange(''))}
-          className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+          className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-white/70 hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]"
           aria-label="Cancella ricerca"
         >
           <X className="h-3.5 w-3.5" />
