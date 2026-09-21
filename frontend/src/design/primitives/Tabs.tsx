@@ -13,7 +13,7 @@ interface TabsContextValue {
 const TabsContext = React.createContext<TabsContextValue | undefined>(undefined)
 
 const tabsListVariants = cva(
-  'inline-flex items-center rounded-2xl !border-0 shadow-[inset_0_1px_2px_rgba(28,25,40,0.05)] backdrop-blur-md',
+  'inline-flex items-center rounded-2xl !border-0 shadow-[var(--ds-shadow-control)]',
   {
     variants: {
       density: {

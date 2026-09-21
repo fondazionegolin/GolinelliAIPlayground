@@ -92,8 +92,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#f1f3f5')
-    root.style.setProperty('--surface-page', '#f1f3f5')
   }, [accentTheme])
 
   useEffect(() => {
@@ -396,7 +394,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b" style={accentVars}>
+      <nav className="ds-navbar fixed top-0 left-0 right-0 z-50" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -406,7 +404,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border border-[var(--brand-yellow)] bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-sm backdrop-blur-sm transition hover:bg-[var(--brand-yellow)]"
+                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:bg-[var(--brand-yellow)]"
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA
@@ -420,7 +418,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </div>
             </div>
 
-            <div className="hidden 2xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="ds-cluster hidden 2xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {(() => {
                 const activeIdx = navItems.findIndex(item => isActive(item.path))
                 return navItems.map((item, idx) => (
@@ -438,10 +436,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               })()}
             </div>
 
-            <div className="hidden 2xl:block h-8 w-px bg-slate-200/80 mx-1" />
+            <div className="ds-divider hidden 2xl:block h-8 w-px mx-1" />
 
             <div className="flex items-center gap-3">
-              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="ds-cluster hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
               {/* Date/time + mini calendar */}
               <NavbarCalendarClock
                 sessionId={currentSession?.id}
@@ -461,7 +459,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
               {/* Session Selector */}
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
-                <div className="flex h-9 items-stretch overflow-hidden rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100/90 shadow-sm">
+                <div className="ds-control flex h-9 items-stretch overflow-hidden rounded-[var(--selection-radius)]">
                   <button
                     onClick={() => setShowSessionsMenu(!showSessionsMenu)}
                     className="flex min-w-0 items-center gap-2 px-3 transition-colors hover:bg-slate-200/60"
@@ -488,7 +486,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                         setShowSessionsMenu(false)
                         navigate(`/teacher/sessions/${currentSession.id}`)
                       }}
-                      className="flex w-8 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-white hover:text-slate-800"
+                      className="flex w-8 shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-800"
                       title={t('navbar.configure_session')}
                       aria-label={t('navbar.configure_session')}
                     >
@@ -505,7 +503,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <MessageSquare className="h-4 w-4" />
                   {!voiceActive && chatBadge > 0 && (
                     <span
-                      className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                      className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-[var(--ds-shadow-1)]"
                       style={{ backgroundColor: accentTheme.accent }}
                     >
                       {chatBadge > 9 ? '9+' : chatBadge}
@@ -513,7 +511,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   )}
                   {voiceActive && (
                     <span
-                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
+                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white shadow-[var(--ds-shadow-1)]"
                       style={{ backgroundColor: accentTheme.accent }}
                     >
                       <span
@@ -527,9 +525,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  <div className="ds-popover absolute top-full right-0 mt-2 w-80 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+                    <div className="px-5 py-4 bg-slate-50/65">
                       <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
                       <p className="text-xs text-slate-500 mt-0.5">{t('navbar.select_session_hint')}</p>
                     </div>
@@ -558,9 +556,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                             return (
                               <div
                                 key={session.id}
-                                className={`group flex w-full items-stretch overflow-hidden rounded-xl border transition-all duration-150 ${isSelected
-                                  ? 'border-slate-300 bg-slate-100 shadow-sm'
-                                  : 'border-transparent hover:bg-slate-100/50'
+                                className={`group flex w-full items-stretch overflow-hidden rounded-xl border-0 transition-all duration-150 ${isSelected
+                                  ? 'ds-selected'
+                                  : 'bg-transparent hover:bg-slate-100/65'
                                   }`}
                               >
                                 <button
@@ -598,7 +596,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                                     setShowSessionsMenu(false)
                                     navigate(`/teacher/sessions/${session.id}`)
                                   }}
-                                  className="flex w-10 shrink-0 items-center justify-center border-l border-slate-200/80 text-slate-400 transition-colors hover:bg-white hover:text-slate-800"
+                                  className="flex w-10 shrink-0 items-center justify-center text-slate-400 transition-colors hover:bg-white/75 hover:text-slate-800"
                                   title={t('navbar.configure_session')}
                                   aria-label={`${t('navbar.configure_session')}: ${session.name}`}
                                 >
@@ -623,7 +621,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-white/55"
+                  className="group flex items-center gap-1 rounded-full border-0 p-1 transition-all hover:bg-white/65 hover:shadow-[var(--ds-shadow-1)]"
                   title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
@@ -631,10 +629,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       src={profile.avatarUrl}
                       alt="Avatar"
                       className="h-10 w-10 rounded-full object-cover transition-transform duration-200 group-hover:scale-110"
-                      style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
+                      style={{ boxShadow: 'var(--ds-shadow-control)' }}
                     />
                   ) : (
-                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
+                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: 'var(--ds-shadow-control)' }}>
                       {getInitials()}
                     </div>
                   )}
@@ -643,8 +641,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
-                    <div className="px-4 py-3 border-b border-slate-50 mb-1">
+                  <div className="ds-popover absolute right-0 mt-2 w-64 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
+                    <div className="px-4 py-3 mb-1 bg-slate-50/55">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}
                       </p>
@@ -681,7 +679,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                         </button>
                       </>
                     )}
-                    <div className="h-px bg-slate-50 my-1"></div>
+                    <div className="ds-divider h-px my-1"></div>
                     <button
                       onClick={() => {
                         setShowDropdown(false)
@@ -731,7 +729,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       </nav>
 
       <aside
-        className="fixed left-0 top-16 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex 2xl:hidden"
+        className="ds-navbar fixed left-0 top-16 bottom-0 z-40 hidden w-16 px-2 py-3 md:flex 2xl:hidden"
         style={accentVars}
         aria-label={t('navbar.nav_support')}
       >
@@ -744,18 +742,18 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 key={item.path}
                 to={item.path}
                 aria-label={item.label}
-                className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-150 hover:z-10 ${isActiveItem
-                  ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)]'
-                  : 'border-white/35 bg-white/55 text-slate-600 hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)] hover:shadow-[var(--selection-shadow)]'
+                className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border-0 transition-all duration-150 hover:z-10 ${isActiveItem
+                  ? 'ds-selected text-[var(--selection-active-text)]'
+                  : 'ds-control text-slate-600 hover:text-[var(--selection-text)]'
                   }`}
               >
                 <Icon className="h-5 w-5" />
                 {item.path === '/teacher/classes' && invitationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white shadow-[var(--ds-shadow-1)]">{invitationCount > 9 ? '9+' : invitationCount}</span>
                 )}
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-full ml-2 flex items-center gap-1.5 whitespace-nowrap rounded-[var(--selection-radius)] border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-bg)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--selection-text)] opacity-0 shadow-[var(--selection-shadow)] backdrop-blur-md transition-[opacity,transform] duration-100 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 translate-x-[-3px]"
+                  className="ds-popover pointer-events-none absolute left-full ml-2 flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 text-[11px] font-bold text-[var(--selection-text)] opacity-0 transition-[opacity,transform] duration-100 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 translate-x-[-3px]"
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
                   {item.label}
@@ -878,9 +876,9 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
+      <div className="ds-popover rounded-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between bg-slate-50/55 px-6 py-4 shadow-[var(--ds-shadow-1)]">
           <h2 className="text-lg font-bold text-slate-900">{t('navbar.settings_title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             ✕
@@ -892,7 +890,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           <div className="flex flex-col items-center gap-4">
             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
               {previewUrl ? (
-                <img src={previewUrl} alt="Avatar" className="w-24 h-24 rounded-full object-cover shadow-md ring-4 ring-white" />
+                <img src={previewUrl} alt="Avatar" className="w-24 h-24 rounded-full object-cover shadow-[var(--ds-shadow-2)]" />
               ) : (
                 <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-3xl font-semibold shadow-inner">
                   {formData.firstName?.charAt(0) || 'D'}
@@ -929,7 +927,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
+                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
                 required
               />
             </div>
@@ -939,7 +937,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
+                className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
                 required
               />
             </div>
@@ -951,7 +949,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
+              className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none transition-all focus:shadow-[var(--ds-shadow-focus)]"
               required
             />
           </div>
@@ -964,7 +962,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Change password section */}
-          <div className="border-t border-slate-100 pt-4">
+          <div className="pt-4 shadow-[0_-1px_0_rgba(112,121,140,0.10)]">
             <button
               type="button"
               onClick={() => setShowPasswordSection(v => !v)}
@@ -983,7 +981,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   onChange={e => setCurrentPassword(e.target.value)}
                   placeholder="Password attuale"
                   required
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                  className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]"
                 />
                 <input
                   type="password"
@@ -991,7 +989,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   onChange={e => setNewPassword(e.target.value)}
                   placeholder="Nuova password (min. 8 caratteri)"
                   required
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                  className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]"
                 />
                 <input
                   type="password"
@@ -1001,7 +999,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   required
                   aria-invalid={Boolean(newPassword && confirmPassword && newPassword !== confirmPassword)}
                   aria-describedby="password-confirmation-error"
-                  className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:ring-2 focus:border-transparent outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-slate-400'}`}
+                  className={`ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'shadow-[0_0_0_2px_rgba(248,113,113,0.48)] focus:shadow-[0_0_0_3px_rgba(248,113,113,0.24)]' : 'focus:shadow-[var(--ds-shadow-focus)]'}`}
                 />
                 {newPassword && confirmPassword && newPassword !== confirmPassword && (
                   <p id="password-confirmation-error" className="text-xs font-medium text-red-600" role="alert">

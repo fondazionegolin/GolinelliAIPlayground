@@ -787,7 +787,7 @@ export default function ChatSidebar({
 
 
 
-  const containerClasses = `relative flex min-h-0 flex-col overflow-hidden ${isMobileView ? 'bg-white' : 'h-full bg-white/80 backdrop-blur-xl border-l border-slate-200'} ${className || (isMobileView
+  const containerClasses = `relative flex min-h-0 flex-col overflow-hidden ${isMobileView ? 'bg-white' : 'h-full bg-[var(--ds-surface)] shadow-[var(--ds-shadow-2)]'} ${className || (isMobileView
     ? "w-full"
     : isPinned
       ? "relative"
@@ -1871,7 +1871,7 @@ export default function ChatSidebar({
       />
 
       {/* Header with connection status */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-white">
+      <div className="flex items-center justify-between bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
           <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
@@ -1912,9 +1912,9 @@ export default function ChatSidebar({
       </div>
 
       {/* Tabs — pill switcher */}
-      <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
+      <div className="shrink-0 bg-[var(--ds-surface)] px-2.5 pb-1.5 pt-2">
         <div
-          className="flex items-center gap-1 rounded-[var(--selection-radius)] border p-1"
+          className="ds-cluster flex items-center gap-1 rounded-[var(--selection-radius)] p-1"
           style={buildAccentNavClusterStyle(studentAccentTheme)}
         >
           {availableTabs.map((tab) => {
@@ -1945,10 +1945,10 @@ export default function ChatSidebar({
                 } : {})}
                 className={[
                   'ui-control-label group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)]',
-                  'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
+                  'border-0 transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
                   isTabActive
-                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
-                    : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
+                    : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
                 ].join(' ')}
               >
                 <TabIcon className="h-3.5 w-3.5 shrink-0" />
@@ -1985,7 +1985,7 @@ export default function ChatSidebar({
       {/* Input area - only show for session chat or when a private chat is selected */}
       {showInputArea && (
         <div
-          className="shrink-0 bg-white p-4 border-t border-slate-100"
+          className="shrink-0 bg-[var(--ds-surface)] p-4 shadow-[0_-4px_14px_rgba(15,23,42,0.045)]"
           style={isMobileView ? { paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' } : undefined}
         >
           {attachedFiles.length > 0 && (
@@ -2024,7 +2024,7 @@ export default function ChatSidebar({
           )}
 
           {replyingTo && (
-            <div className="flex items-center gap-2 px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+            <div className="flex items-center gap-2 px-3 py-1.5 mb-1 bg-slate-50 rounded-xl text-xs text-slate-500 shadow-[var(--ds-shadow-1)]">
               <CornerUpLeft className="h-3 w-3 flex-shrink-0 text-slate-400" />
               <span className="flex-1 truncate">
                 <span className="font-semibold text-slate-700">{replyingTo.sender_name}</span>: {replyingTo.text.slice(0, 60)}
@@ -2034,7 +2034,7 @@ export default function ChatSidebar({
               </button>
             </div>
           )}
-          <div className="relative flex items-center bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
+          <div className="ds-control relative flex items-center rounded-[24px] p-1.5 transition-all focus-within:shadow-[var(--ds-shadow-focus)]">
             <input
               ref={fileInputRef}
               type="file"
@@ -2076,7 +2076,7 @@ export default function ChatSidebar({
               disabled={!inputText.trim() && attachedFiles.length === 0}
               className={`h-8 w-8 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
                 ? 'bg-slate-100 text-slate-300'
-                : 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] shadow-md'
+                : 'border-0 bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
                 }`}
             >
               <Send className="h-4 w-4" />

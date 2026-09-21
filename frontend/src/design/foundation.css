@@ -1,0 +1,98 @@
+:root {
+  /* Flat glossy foundation: hierarchy comes from tone and shadow, never outlines. */
+  --ds-canvas: #f2f4f7;
+  --ds-surface: rgba(255, 255, 255, 0.94);
+  --ds-surface-raised: rgba(255, 255, 255, 0.97);
+  --ds-surface-muted: rgba(238, 241, 246, 0.9);
+  --ds-surface-tint: rgba(239, 235, 253, 0.88);
+  --ds-control: rgba(247, 248, 251, 0.92);
+  --ds-control-hover: rgba(255, 255, 255, 0.98);
+  --ds-selected: rgba(238, 233, 253, 0.94);
+  --ds-overlay: rgba(24, 28, 38, 0.34);
+
+  --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.10) 38%, rgba(255,255,255,0) 62%);
+  --ds-shadow-1: 0 1px 2px rgba(31, 36, 48, 0.06), 0 3px 8px rgba(31, 36, 48, 0.045);
+  --ds-shadow-2: 0 2px 5px rgba(31, 36, 48, 0.06), 0 10px 24px rgba(31, 36, 48, 0.07);
+  --ds-shadow-3: 0 4px 10px rgba(31, 36, 48, 0.07), 0 20px 44px rgba(31, 36, 48, 0.10);
+  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.78);
+  --ds-shadow-control: var(--ds-shadow-inset), 0 1px 2px rgba(31,36,48,0.06), 0 4px 9px rgba(31,36,48,0.045);
+  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 2px 4px rgba(31,36,48,0.07), 0 7px 14px rgba(31,36,48,0.06);
+  --ds-shadow-focus: 0 0 0 3px rgba(123,105,201,0.14), var(--ds-shadow-control);
+
+  --ds-radius-control: 0.875rem;
+  --ds-radius-panel: 1.25rem;
+  --ds-radius-card: 1.5rem;
+  --ds-radius-pill: 999px;
+}
+
+.dark {
+  --ds-canvas: #151820;
+  --ds-surface: rgba(31, 35, 46, 0.96);
+  --ds-surface-raised: rgba(39, 44, 57, 0.98);
+  --ds-surface-muted: rgba(45, 50, 64, 0.94);
+  --ds-surface-tint: rgba(64, 56, 96, 0.9);
+  --ds-control: rgba(43, 48, 61, 0.94);
+  --ds-control-hover: rgba(53, 59, 74, 0.98);
+  --ds-selected: rgba(70, 61, 106, 0.94);
+  --ds-overlay: rgba(4, 6, 12, 0.62);
+  --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0) 52%);
+  --ds-shadow-1: 0 2px 8px rgba(0,0,0,0.18);
+  --ds-shadow-2: 0 10px 28px rgba(0,0,0,0.24);
+  --ds-shadow-3: 0 22px 52px rgba(0,0,0,0.32);
+  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.07);
+}
+
+@layer components {
+  .ds-navbar {
+    border: 0;
+    background-color: var(--ds-surface);
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-2);
+  }
+
+  .ds-cluster,
+  .ds-control {
+    border: 0;
+    background-color: var(--ds-control);
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-control);
+  }
+
+  .ds-control {
+    transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .ds-control:hover {
+    background-color: var(--ds-control-hover);
+    box-shadow: var(--ds-shadow-control-hover);
+  }
+
+  .ds-control:active {
+    transform: translateY(1px);
+    box-shadow: var(--ds-shadow-inset), 0 1px 2px rgba(31,36,48,0.05);
+  }
+
+  .ds-selected {
+    border: 0;
+    background-color: var(--ds-selected);
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-control);
+  }
+
+  .ds-panel,
+  .ds-popover {
+    border: 0;
+    background-color: var(--ds-surface-raised);
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-2);
+  }
+
+  .ds-popover {
+    box-shadow: var(--ds-shadow-3);
+  }
+
+  .ds-divider {
+    border: 0;
+    background: rgba(112, 121, 140, 0.12);
+  }
+}

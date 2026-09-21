@@ -700,25 +700,15 @@ export default function TeacherClassesSessionsManager({
   }
 
   return (
-    <div className="h-full w-full bg-[#f1f5f9]">
+    <div className="h-full w-full bg-[var(--ds-canvas)]">
       <div
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#f1f5f9] lg:min-h-[680px] lg:flex-row"
-        style={{
-          borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
-        }}
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--ds-canvas)] lg:min-h-[680px] lg:flex-row"
       >
         <aside
-          className="flex max-h-[28rem] min-h-0 w-full shrink-0 flex-col border-b bg-[#fafbfd] lg:h-full lg:max-h-none lg:w-[19rem] lg:border-b-0 lg:border-r"
-          style={{
-            borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
-          }}
+          className="flex max-h-[28rem] min-h-0 w-full shrink-0 flex-col bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] lg:h-full lg:max-h-none lg:w-[19rem]"
         >
           <div
-            className="border-b px-5 py-4"
-            style={{
-              borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-              backgroundColor: 'rgba(255,255,255,0.88)',
-            }}
+            className="bg-[var(--ds-surface)] px-5 py-4 shadow-[var(--ds-shadow-1)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="max-w-[14rem]">
@@ -740,20 +730,20 @@ export default function TeacherClassesSessionsManager({
                 density="compact"
                 tone="accent"
                 surface="soft"
-                className="h-8 rounded-full border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm hover:bg-violet-100"
+                className="h-8 rounded-full border-0 bg-violet-50/90 px-3 text-xs font-bold text-violet-700 shadow-[var(--ds-shadow-control)] hover:bg-violet-100"
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 {t('classes.new_class')}
               </Button>
             </div>
-            <div className="relative mt-4 h-10 rounded-[23px] border border-[#e1e8f1] bg-[#fafbfd] shadow-sm">
+            <div className="ds-control relative mt-4 h-10 rounded-[23px]">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#90a5ba]" />
               <input
                 type="text"
                 value={classSearch}
                 onChange={(e) => setClassSearch(e.target.value)}
                 placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'}
-                className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-9 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:ring-2 focus:ring-violet-200"
+                className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-9 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:shadow-[var(--ds-shadow-focus)]"
               />
               {classSearch && (
                 <button
@@ -770,7 +760,7 @@ export default function TeacherClassesSessionsManager({
           </div>
 
           {showNewClassForm && (
-            <div className="border-b px-5 py-4" style={{ borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
+            <div className="px-5 py-4 shadow-[var(--ds-shadow-1)]">
               <form onSubmit={handleCreateClass} className="space-y-3">
                 <div className="space-y-1.5">
                   <label htmlFor="new-class-name" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -852,10 +842,10 @@ export default function TeacherClassesSessionsManager({
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className={`group relative min-h-[94px] w-full overflow-hidden rounded-[22px] border p-2.5 text-left transition-all hover:-translate-y-px hover:bg-white hover:shadow-sm ${isSelected ? 'border-violet-300 bg-violet-100/80 shadow-sm' : 'border-[#e2e4ec] bg-[#fafbfd]'}`}
+                      className={`group relative min-h-[94px] w-full overflow-hidden rounded-[22px] border-0 p-2.5 text-left transition-all hover:-translate-y-px hover:bg-white hover:shadow-[var(--ds-shadow-control-hover)] ${isSelected ? 'ds-selected' : 'ds-control'}`}
                     >
                       <div className="flex h-full items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#d9dee6] bg-white text-[#475569]">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#475569] shadow-[var(--ds-shadow-1)]">
                           <School className="h-4 w-4" strokeWidth={1.75} />
                         </div>
                         <div className="min-w-0 flex-1">
@@ -884,13 +874,13 @@ export default function TeacherClassesSessionsManager({
               </div>
             )}
           </div>
-          <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 py-2 text-xs font-bold text-[#475569] shadow-sm hover:bg-white">
+          <button type="button" onClick={() => setShowArchivedClasses(true)} className="ds-control mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl px-3 py-2 text-xs font-bold text-[#475569] hover:bg-white">
             <span className="flex items-center gap-2"><Archive className="h-3.5 w-3.5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5">{archivedClasses.length}</span>
           </button>
         </aside>
 
-        <section className="min-w-0 flex-1 bg-[#f1f5f9]">
+        <section className="min-w-0 flex-1 bg-[var(--ds-canvas)]">
           {!selectedClass ? (
             <div className="flex h-full min-h-[420px] items-center justify-center px-6">
               <div className="w-full max-w-lg">
@@ -904,11 +894,7 @@ export default function TeacherClassesSessionsManager({
           ) : (
             <div className="flex h-full flex-col">
               <div
-                className="border-b px-5 py-4"
-                style={{
-                  borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-                  backgroundColor: 'rgba(255,255,255,0.88)',
-                }}
+                className="bg-[var(--ds-surface)] px-5 py-4 shadow-[var(--ds-shadow-1)]"
               >
                 <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
@@ -962,12 +948,12 @@ export default function TeacherClassesSessionsManager({
                           </IconButton>
                         </div>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span className="rounded-full bg-[#f1f5f9] px-2 py-1 font-bold text-[#475569] ring-1 ring-[#e1e8f1]">
+                          <span className="rounded-full bg-[#f1f5f9] px-2 py-1 font-bold text-[#475569] shadow-[var(--ds-shadow-1)]">
                             {selectedClass.school_grade || '—'}
                           </span>
                           {selectedClass.role === 'invited' && (
                             <span
-                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ring-1"
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium shadow-[var(--ds-shadow-1)]"
                               style={{
                                 backgroundColor: hexToRgba(accentTheme.accent, 0.08),
                                 color: accentTheme.text,
@@ -1031,14 +1017,14 @@ export default function TeacherClassesSessionsManager({
                 ) : (
                   <div className="space-y-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="relative h-10 w-full max-w-sm rounded-[23px] border border-[#e1e8f1] bg-[#fafbfd] shadow-sm">
+                      <div className="ds-control relative h-10 w-full max-w-sm rounded-[23px]">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#90a5ba]" />
                         <input
                           type="text"
                           value={sessionSearch}
                           onChange={(e) => setSessionSearch(e.target.value)}
                           placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'}
-                          className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-16 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:ring-2 focus:ring-violet-200"
+                          className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-16 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:shadow-[var(--ds-shadow-focus)]"
                         />
                         {sessionSearch && (
                           <button
@@ -1062,7 +1048,7 @@ export default function TeacherClassesSessionsManager({
                           {hasSessionFilters && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-violet-600" />}
                         </button>
                         {showSessionFilters && (
-                          <div className="absolute right-0 top-12 z-30 w-[min(19rem,calc(100vw-2.5rem))] rounded-2xl border border-[#e1e8f1] bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
+                          <div className="ds-popover absolute right-0 top-12 z-30 w-[min(19rem,calc(100vw-2.5rem))] rounded-2xl p-4" onClick={(event) => event.stopPropagation()}>
                             <div className="mb-3 flex items-center justify-between gap-3">
                               <p className="text-xs font-bold text-slate-800">{isEnglish ? 'Session filters' : 'Filtri sessione'}</p>
                               {hasSessionFilters && (
@@ -1073,7 +1059,7 @@ export default function TeacherClassesSessionsManager({
                             </div>
                             <label className="block text-[10px] font-bold uppercase tracking-wider text-[#90a5ba]">
                               {isEnglish ? 'Status' : 'Stato'}
-                              <select value={sessionStatusFilter} onChange={(event) => setSessionStatusFilter(event.target.value as SessionStatusFilter)} className="mt-1.5 h-10 w-full rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
+                              <select value={sessionStatusFilter} onChange={(event) => setSessionStatusFilter(event.target.value as SessionStatusFilter)} className="ds-control mt-1.5 h-10 w-full rounded-xl border-0 px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:shadow-[var(--ds-shadow-focus)]">
                                 <option value="all">{isEnglish ? 'All statuses' : 'Tutti gli stati'}</option>
                                 <option value="active">{t('sessions.status_active')}</option>
                                 <option value="paused">{t('sessions.status_paused')}</option>
@@ -1083,7 +1069,7 @@ export default function TeacherClassesSessionsManager({
                             </label>
                             <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-[#90a5ba]">
                               {isEnglish ? 'Creation date' : 'Data di creazione'}
-                              <input type="date" value={sessionDateFilter} onChange={(event) => setSessionDateFilter(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-[#e1e8f1] bg-[#fafbfd] px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
+                              <input type="date" value={sessionDateFilter} onChange={(event) => setSessionDateFilter(event.target.value)} className="ds-control mt-1.5 h-10 w-full rounded-xl border-0 px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:shadow-[var(--ds-shadow-focus)]" />
                             </label>
                           </div>
                         )}
@@ -1096,7 +1082,7 @@ export default function TeacherClassesSessionsManager({
                           setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
                           setShowNewSessionDialog(true)
                         }}
-                        className="h-8 rounded-full border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm hover:bg-violet-100"
+                        className="h-8 rounded-full border-0 bg-violet-50/90 px-3 text-xs font-bold text-violet-700 shadow-[var(--ds-shadow-control)] hover:bg-violet-100"
                       >
                         <Plus className="mr-1.5 h-3.5 w-3.5" />
                         {t('sessions.new_session')}
@@ -1115,7 +1101,7 @@ export default function TeacherClassesSessionsManager({
                         <p className="text-[10px] font-bold uppercase tracking-widest text-[#90a5ba]">
                           {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
                         </p>
-                        <div className="flex items-center rounded-xl border border-[#e1e8f1] bg-[#fafbfd] p-0.5 shadow-sm" role="group" aria-label={isEnglish ? 'Session view' : 'Vista sessioni'}>
+                        <div className="ds-control flex items-center rounded-xl p-0.5" role="group" aria-label={isEnglish ? 'Session view' : 'Vista sessioni'}>
                           <button type="button" onClick={() => setSessionViewMode('grid')} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'grid' ? 'bg-violet-100 text-violet-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`} title={isEnglish ? 'Grid view' : 'Vista griglia'} aria-pressed={sessionViewMode === 'grid'}>
                             <LayoutGrid className="h-4 w-4" />
                           </button>
@@ -1494,15 +1480,15 @@ function SessionRow({
         ? 'bg-[#ffe4ee] text-[#e6004c]'
         : 'bg-[#e2e8f0] text-[#475569]'
   const cardSurface = isCurrent
-    ? 'border-emerald-300/80 bg-emerald-100/70 shadow-[0_3px_14px_rgba(16,185,129,0.14)] hover:bg-emerald-100/80'
-    : 'border-[#e0e7f1] bg-[#fafbfd] hover:bg-white'
+    ? 'bg-emerald-100/70 shadow-[0_5px_16px_rgba(16,185,129,0.14)] hover:bg-emerald-100/80'
+    : 'bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-1)] hover:bg-white'
 
   return (
     <Card
       surface="base"
       className={viewMode === 'list'
-        ? `group relative flex min-h-[96px] cursor-pointer flex-col gap-3 rounded-[14px] border p-[15px] transition-all hover:shadow-md xl:flex-row xl:items-center ${cardSurface}`
-        : `group relative flex min-h-[153px] w-[300px] max-w-full shrink-0 cursor-pointer flex-col justify-between rounded-[14px] border p-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md ${cardSurface}`}
+        ? `group relative flex min-h-[96px] cursor-pointer flex-col gap-3 rounded-[14px] border-0 p-[15px] transition-all hover:shadow-[var(--ds-shadow-2)] xl:flex-row xl:items-center ${cardSurface}`
+        : `group relative flex min-h-[153px] w-[300px] max-w-full shrink-0 cursor-pointer flex-col justify-between rounded-[14px] border-0 p-[15px] transition-all hover:-translate-y-0.5 hover:shadow-[var(--ds-shadow-2)] ${cardSurface}`}
       aria-current={isCurrent ? 'true' : undefined}
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
@@ -1528,7 +1514,7 @@ function SessionRow({
         </div>
 
         {menuOpen && (
-          <div className="absolute right-3 top-12 z-20 w-40 overflow-hidden rounded-xl border border-[#e1e8f1] bg-white p-1.5 text-xs shadow-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="ds-popover absolute right-3 top-12 z-20 w-40 overflow-hidden rounded-xl p-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title); setMenuOpen(false) }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">
               <Edit2 className="h-3.5 w-3.5" /> {isEnglish ? 'Rename' : 'Rinomina'}
             </button>

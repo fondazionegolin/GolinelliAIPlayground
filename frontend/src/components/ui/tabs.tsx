@@ -43,7 +43,7 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
     <div
       ref={ref}
       className={cn(
-        "inline-flex h-10 items-center justify-center rounded-2xl border-0 bg-white/45 p-1 text-muted-foreground shadow-[inset_0_1px_2px_rgba(28,25,40,0.05)] backdrop-blur-md",
+        "inline-flex h-10 items-center justify-center rounded-2xl border-0 bg-[var(--ds-control)] p-1 text-muted-foreground shadow-[var(--ds-shadow-control)]",
         className
       )}
       {...props}
@@ -73,8 +73,8 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:shadow-[var(--focus-shadow)] disabled:pointer-events-none disabled:opacity-50",
           isActive
-            ? "bg-white/80 text-foreground shadow-[var(--shadow-sm)] backdrop-blur-md"
-            : "hover:bg-white/45",
+            ? "bg-[var(--ds-surface-raised)] text-foreground shadow-[var(--shadow-sm)]"
+            : "hover:bg-[var(--ds-control-hover)]",
           className
         )}
         {...props}

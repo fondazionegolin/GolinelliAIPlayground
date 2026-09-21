@@ -8,12 +8,12 @@ const cardVariants = cva(
   {
     variants: {
       surface: {
-        base: 'bg-[rgba(255,255,255,0.68)] backdrop-blur-md hover:bg-[rgba(255,255,255,0.78)]',
+        base: 'bg-[var(--ds-surface)] hover:bg-[var(--ds-surface-raised)]',
         elevated:
-          'bg-[rgba(255,255,255,0.72)] backdrop-blur-xl hover:bg-[rgba(255,255,255,0.82)]',
-        muted: 'bg-[rgba(123,105,201,0.065)]',
+          'bg-[var(--ds-surface-raised)] hover:bg-[var(--ds-surface-raised)]',
+        muted: 'bg-[var(--ds-surface-muted)]',
         glass:
-          'bg-[var(--surface-glass)] backdrop-blur-xl',
+          'bg-[var(--ds-surface)]',
       },
       density: {
         compact: '',

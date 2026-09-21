@@ -39,9 +39,9 @@ const dialogContentVariants = cva(
       surface: {
         base: 'border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-xl)]',
         elevated:
-          'border-white/60 bg-[var(--surface-elevated)] shadow-[var(--shadow-xl)] backdrop-blur-xl',
+          'bg-[var(--ds-surface-raised)] shadow-[var(--shadow-xl)]',
         glass:
-          'border-white/50 bg-[var(--surface-glass)] shadow-[var(--shadow-xl)] backdrop-blur-2xl',
+          'bg-[var(--ds-surface)] shadow-[var(--shadow-xl)]',
       },
     },
     defaultVariants: {
