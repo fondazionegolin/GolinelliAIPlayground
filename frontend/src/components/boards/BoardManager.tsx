@@ -251,6 +251,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     }
     updateBoard.mutate({ columns: [...columns, column] }, {
       onSuccess: () => {
+        if (isMobile) setMobileColumnId(column.id)
         cancelColumnEdit.current = false
         setEditingColumnId(column.id)
         setEditingColumnLabel(column.label)
@@ -344,7 +345,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
               {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
             </select>
-            <button disabled={!sessionId || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-lg bg-slate-900 px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+            <button disabled={!sessionId || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
               <Plus className="h-4 w-4" /> Crea
             </button>
           </div>
@@ -390,23 +391,23 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           ))}</div>}
         </WorkspaceExplorerList>
       </WorkspaceExplorerSidebar>}
-      {(!isMobile || board) && <main className="flex min-w-0 flex-1 flex-col">
+      {(!isMobile || board) && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!board ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">Crea una board per iniziare.</div>
         ) : (
           <>
-            <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 md:gap-3 md:px-4 md:py-3">
+            <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 md:flex md:flex-wrap md:justify-between md:gap-3 md:px-4 md:py-3">
               <div className="flex min-w-0 items-center gap-2">
                 {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Torna alle board"><ArrowLeft className="h-5 w-5" /></button>}
                 <h2 className="truncate text-xl font-black">{board.title}</h2>
               </div>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+              <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
                 <SearchPill
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                   placeholder="Cerca task"
                   aria-label="Cerca nelle task della board"
-                  className="w-full sm:w-[260px]"
+                  className="min-w-0 flex-1 sm:w-[260px] sm:flex-none"
                 />
                 {board.can_manage && (
                   <>
@@ -423,9 +424,20 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               </div>
             </header>
             {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label="Colonne board">
-              {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
+              {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
+              {board.can_manage && (
+                <button
+                  type="button"
+                  onClick={addColumn}
+                  disabled={columns.length >= 12 || updateBoard.isPending}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-40"
+                  aria-label="Nuova colonna"
+                >
+                  <Plus className="h-4 w-4" /> Nuova colonna
+                </button>
+              )}
             </nav>}
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] md:p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
               {columns.filter((column) => !isMobile || column.id === activeMobileColumnId).map((column) => (
                 <section
                   key={column.id}
@@ -460,7 +472,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   } ${draggingColumnId === column.id ? 'opacity-50' : ''}`}
                 >
                   <div
-                    draggable={Boolean(board.can_manage && editingColumnId !== column.id)}
+                    draggable={Boolean(!isMobile && board.can_manage && editingColumnId !== column.id)}
                     onDragStart={(event) => {
                       if (!board.can_manage || (event.target as HTMLElement).closest('button, input')) {
                         event.preventDefault()
@@ -583,7 +595,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           <ColorPicker value={newCardColor} onChange={setNewCardColor} />
                           <div className="flex gap-2">
                             <button type="button" onClick={() => setInlineColumnId(null)} className="h-8 rounded-md px-2 text-xs font-bold text-slate-500 hover:bg-slate-100">Annulla</button>
-                            <button disabled={!inlineTitle.trim() || createCard.isPending} className="h-8 rounded-md bg-slate-900 px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                            <button disabled={!inlineTitle.trim() || createCard.isPending} className="h-8 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
                               {createCard.isPending ? 'Creazione…' : 'Crea task'}
                             </button>
                           </div>
@@ -593,7 +605,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     {(grouped[column.id] || []).map((card) => (
                       <article
                         key={card.id}
-                        draggable={Boolean(board.can_edit && editingCardId !== card.id)}
+                        draggable={Boolean(!isMobile && board.can_edit && editingCardId !== card.id)}
                         onDragStart={(event) => {
                           if (!board.can_edit || editingCardId === card.id || (event.target as HTMLElement).closest('button, input, textarea')) {
                             event.preventDefault()
@@ -652,7 +664,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                                 <button type="button" onClick={() => setEditingCardId(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Annulla modifica" aria-label="Annulla modifica">
                                   <X className="h-4 w-4" />
                                 </button>
-                                <button disabled={!editCardTitle.trim() || updateCard.isPending} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-900 text-white disabled:cursor-not-allowed disabled:opacity-40" title="Salva task" aria-label="Salva task">
+                                <button disabled={!editCardTitle.trim() || updateCard.isPending} className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40" title="Salva task" aria-label="Salva task">
                                   <Check className="h-4 w-4" />
                                 </button>
                               </div>
@@ -683,7 +695,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                               )}
                               {board.can_edit && <ColorPicker value={card.color || '#cbd5e1'} onChange={(color) => updateCardColor.mutate({ cardId: card.id, color })} compact />}
                             </div>
-                            {card.description && <p className="mt-1 hidden whitespace-pre-wrap text-xs text-slate-500 md:block">{card.description}</p>}
+                            {card.description && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-slate-500 md:line-clamp-none">{card.description}</p>}
                             <p className="mt-2 hidden text-[10px] text-slate-400 md:block">
                               {card.created_by_display_name && `Creato da ${card.created_by_display_name}`}
                               {card.last_actor_display_name && ` · ultima modifica ${card.last_actor_display_name}`}
@@ -701,7 +713,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   </div>
                 </section>
               ))}
-              {board.can_manage && (
+              {!isMobile && board.can_manage && (
                 <button
                   type="button"
                   onClick={addColumn}

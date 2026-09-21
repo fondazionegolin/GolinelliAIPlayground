@@ -60,6 +60,7 @@ from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.ocr_service import OCRUnavailableError, SUPPORTED_IMAGE_TYPES, ocr_service
 from app.services.email_service import email_service
+from app.services.slide_sanitizer import sanitize_document_draft_content_json
 from app.core.config import settings
 
 router = APIRouter()
@@ -1833,7 +1834,7 @@ async def create_document_draft(
         owner_teacher_id=teacher.id,
         title=request.title,
         doc_type=request.doc_type,
-        content_json=request.content_json,
+        content_json=sanitize_document_draft_content_json(request.content_json),
     )
     db.add(draft)
     await db.flush()
@@ -1881,7 +1882,7 @@ async def update_document_draft(
     if request.doc_type is not None:
         draft.doc_type = request.doc_type
     if request.content_json is not None:
-        draft.content_json = request.content_json
+        draft.content_json = sanitize_document_draft_content_json(request.content_json)
     if request.session_id is not None:
         draft.session_id = request.session_id
     await db.commit()
@@ -2212,7 +2213,7 @@ async def create_task(
         status=TaskStatus.PUBLISHED if auto_publish else TaskStatus.DRAFT,
         due_at=task_due_at_for_storage(request.due_at),
         points=request.points,
-        content_json=request.content_json,
+        content_json=sanitize_document_draft_content_json(request.content_json),
     )
     db.add(task)
     await db.commit()
@@ -2359,11 +2360,11 @@ async def update_task(
     if points is not None:
         task.points = points
     if content_json is not None:
-        task.content_json = content_json
-    
+        task.content_json = sanitize_document_draft_content_json(content_json)
+
     await db.commit()
     await db.refresh(task)
-    
+
     # If task was just published, send notification to students
     if old_status != TaskStatus.PUBLISHED and task.status == TaskStatus.PUBLISHED:
         # Get or create public chat room

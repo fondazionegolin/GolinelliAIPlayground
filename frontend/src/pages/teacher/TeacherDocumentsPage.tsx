@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -15,6 +14,7 @@ import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
+import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
 import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
@@ -158,7 +158,6 @@ export default function TeacherDocumentsPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
-  const { isMobile } = useMobile()
   const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
   const defaultPresentationTitle = isEnglish ? 'New Presentation' : 'Nuova Presentazione'
   const defaultSheetTitle = isEnglish ? 'New Table' : 'Nuova Tabella'
@@ -213,6 +212,8 @@ export default function TeacherDocumentsPage() {
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
+  const [activeBlockEditor, setActiveBlockEditor] = useState<Editor | null>(null)
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false)
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -1503,7 +1504,7 @@ export default function TeacherDocumentsPage() {
   }
 
   // ── Document list view (default) ─────────────────────────────────────────
-  if (!isMobile && viewMode === 'list') {
+  if (viewMode === 'list') {
     const matchesType = (type: string) => docTypeFilter === 'all' || type === docTypeFilter
     const filteredDrafts = draftDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type))
     const filteredStored = storedDocuments.filter(d => matchesType(d.type) && fuzzyMatch(docSearch, d.title, d.type, d.sessionName, d.className, d.authorName))
@@ -1761,65 +1762,6 @@ export default function TeacherDocumentsPage() {
     )
   }
 
-  // ── Mobile simplified view ────────────────────────────────────────────────
-  if (isMobile) {
-    const docTypeLabel: Record<string, string> = {
-      presentation: isEnglish ? '📊 Presentation' : '📊 Presentazione',
-      document: isEnglish ? '📄 Document' : '📄 Documento',
-      sheet: isEnglish ? '📋 Tables' : '📋 Tabelle',
-      canvas: '🎨 Canvas',
-    }
-    return (
-      <div className="flex flex-col h-full bg-slate-50 p-4 gap-4 overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-slate-500" />
-            {isEnglish ? 'Documents' : 'Documenti'}
-          </h1>
-          <p className="text-[10px] text-slate-400 text-right">
-            {isEnglish ? <>Editor available<br />on desktop only</> : <>Editor disponibile<br />solo su desktop</>}
-          </p>
-        </div>
-
-        {storedDocuments.length === 0 && draftDocuments.length === 0 && (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            {isEnglish ? 'No documents found' : 'Nessun documento trovato'}
-          </div>
-        )}
-
-        {draftDocuments.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{isEnglish ? 'Drafts' : 'Bozze'}</p>
-            <div className="space-y-2">
-              {draftDocuments.map(doc => (
-                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">{doc.title}</p>
-                    <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {storedDocuments.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{isEnglish ? 'Published' : 'Pubblicati'}</p>
-            <div className="space-y-2">
-              {storedDocuments.map(doc => (
-                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{doc.title}</p>
-                  <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {doc.sessionName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
@@ -1938,10 +1880,13 @@ export default function TeacherDocumentsPage() {
             onAddSlideImage={addSlideImage}
             selectedBlock={selectedBlock}
             onUpdateBlockStyle={updateBlockStyle}
+            activeBlockEditor={activeBlockEditor}
             snapOptions={snapOptions}
             onChangeSnapOptions={setSnapOptions}
             onOpenAIAssist={() => setDocumentAgentOpen(true)}
             onAIAssistAnchorChange={setAiPanelAnchor}
+            layersPanelOpen={layersPanelOpen}
+            onToggleLayersPanel={() => setLayersPanelOpen(v => !v)}
           />
         </div>
         )}
@@ -2299,6 +2244,7 @@ export default function TeacherDocumentsPage() {
                       slideWidth={FORMAT_DIMENSIONS[document.format].width}
                       slideHeight={FORMAT_DIMENSIONS[document.format].height}
                       snapOptions={snapOptions}
+                      onActiveTextEditorChange={setActiveBlockEditor}
                     />
                   </div>
                </div>
@@ -2357,6 +2303,22 @@ export default function TeacherDocumentsPage() {
                 onClose={() => setDocumentAgentOpen(false)}
               />
             </>
+          )}
+          {layersPanelOpen && mode === 'slides' && (
+            <div className="flex w-[260px] shrink-0 flex-col border-l border-slate-200 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{isEnglish ? 'Layers' : 'Livelli'}</span>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLayersPanelOpen(false)}><X className="h-3.5 w-3.5" /></Button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <SlideLayersPanel
+                  blocks={currentSlide.blocks}
+                  onChange={updateSlideBlocks}
+                  selectedBlockId={selectedBlockId}
+                  onSelectBlock={setSelectedBlockId}
+                />
+              </div>
+            </div>
           )}
         </div>
 

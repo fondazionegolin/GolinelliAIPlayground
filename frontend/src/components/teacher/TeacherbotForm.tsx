@@ -47,6 +47,7 @@ interface FormData {
   is_proactive: boolean
   proactive_message: string
   enable_live_voice: boolean
+  enable_escape_room: boolean
   enable_reporting: boolean
   report_prompt: string
   llm_provider: string
@@ -611,6 +612,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
     is_proactive: false,
     proactive_message: '',
     enable_live_voice: false,
+    enable_escape_room: false,
     enable_reporting: false,
     report_prompt: '',
     llm_provider: '',
@@ -671,6 +673,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
         is_proactive: teacherbot.is_proactive || false,
         proactive_message: teacherbot.proactive_message || '',
         enable_live_voice: teacherbot.enable_live_voice || false,
+        enable_escape_room: teacherbot.enable_escape_room || false,
         enable_reporting: teacherbot.enable_reporting || false,
         report_prompt: teacherbot.report_prompt || '',
         llm_provider: teacherbot.llm_provider || '',
@@ -967,6 +970,20 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                   checked={formData.enable_live_voice}
                   onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
                 />
+
+                {!isStudentbot && <ToggleRow
+                  title="Modalità escape room"
+                  description="Sostituisce la chat libera con un terminale a tappe. Specifica tema e numero di indizi nel system prompt (default: 5, massimo: 10)."
+                  checked={formData.enable_escape_room}
+                  onChange={() => setFormData({ ...formData, enable_escape_room: !formData.enable_escape_room })}
+                />}
+
+                {!isStudentbot && formData.enable_escape_room && (
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
+                    <p className="font-bold">Come configurarla nel system prompt</p>
+                    <p className="mt-1">Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5”. Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.</p>
+                  </div>
+                )}
 
                 {!isStudentbot && <ToggleRow
                   title={t('teacherbot.reporting')}

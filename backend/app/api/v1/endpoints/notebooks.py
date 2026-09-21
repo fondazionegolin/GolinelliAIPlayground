@@ -25,7 +25,7 @@ from app.models.session import Class, Session, SessionStudent
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
-from app.api.v1.endpoints.coding import _resolve_coding_model
+from app.api.v1.endpoints.coding import _resolve_coding_model, CODING_MODEL_CHOICES
 import logging
 
 router = APIRouter()
@@ -352,16 +352,34 @@ async def _generate_text_accumulated(
     le richieste NON-streaming con max_tokens alto (24000) perché potrebbero superare i 10
     minuti ("Streaming is required..."); lo streaming aggira il limite. Web search disattivata
     (le prompt contengono parole tipo 'corrente' che altrimenti la attiverebbero, restituendo
-    testo vuoto)."""
-    parts: list[str] = []
-    async for chunk in llm_service.generate_stream(
-        messages=messages, system_prompt=system_prompt,
-        provider=provider, model=model,
-        temperature=temperature, max_tokens=max_tokens,
-        allow_web_search=False,
-    ):
-        parts.append(chunk)
-    return "".join(parts)
+    testo vuoto).
+
+    Se il provider primario fallisce (es. DeepSeek senza credito, errore 402) prova un modello
+    GPT di fallback prima di arrendersi — stesso pattern di _coding_generate in coding.py.
+    Nessun testo parziale viene mai esposto al chiamante: o la generazione riesce per intero
+    (primaria o di fallback), o viene sollevata l'eccezione."""
+    async def _stream(prov: str, mdl: str) -> str:
+        parts: list[str] = []
+        async for chunk in llm_service.generate_stream(
+            messages=messages, system_prompt=system_prompt,
+            provider=prov, model=mdl,
+            temperature=temperature, max_tokens=max_tokens,
+            allow_web_search=False,
+        ):
+            parts.append(chunk)
+        return "".join(parts)
+
+    try:
+        return await _stream(provider, model)
+    except Exception as exc:
+        fallback_provider, fallback_model = CODING_MODEL_CHOICES["luna"]
+        if (provider, model) == (fallback_provider, fallback_model):
+            raise
+        logger.warning(
+            "notebook codegen model %s/%s failed (%s); falling back to %s/%s",
+            provider, model, exc, fallback_provider, fallback_model,
+        )
+        return await _stream(fallback_provider, fallback_model)
 
 
 async def _notebook_codegen(

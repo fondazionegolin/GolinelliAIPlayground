@@ -12,6 +12,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const studentToken = localStorage.getItem('student_token')
+  const publicLiveToken = window.location.pathname.startsWith('/live/') ? sessionStorage.getItem('public_live_token') : null
   const isTeacherStudentMode = localStorage.getItem('_preview_mode') === 'true'
     || Boolean(localStorage.getItem('_subjective_mode'))
   const isStudentRoute = window.location.pathname.startsWith('/student')
@@ -30,7 +31,9 @@ api.interceptors.request.use((config) => {
 
   // Important: don't send student-token when teacher auth is active,
   // otherwise mixed auth routes may resolve the request as student.
-  if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
+  if (publicLiveToken) {
+    config.headers['student-token'] = publicLiveToken
+  } else if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
     config.headers['student-token'] = studentToken
   }
   config.headers['Accept-Language'] = appLanguage
@@ -49,9 +52,11 @@ api.interceptors.response.use(
       const isContentCall = url.includes('/llm/') || url.includes('/desktop')
       const isStudentAccessFlow = url.includes('/student/join') || url.includes('/student/check-access')
       const isPublicTeacherbotLink = url.includes('/public/teacherbot-links')
+      const isPublicLiveLink = url.includes('/public/live/')
+      const isPublicLivePage = window.location.pathname.startsWith('/live/')
       // In preview/subjective mode StudentDashboard restores the backed-up teacher
       // session. A hard redirect here would win that race and land on /login.
-      if (!isTeacherStudentMode && !url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink) {
+      if (!isTeacherStudentMode && !url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink && !isPublicLiveLink && !isPublicLivePage) {
         // The HTTP-only cookie can expire while Zustand still has a persisted
         // authenticated user. Clear both the in-memory and persisted state before
         // navigating, otherwise /login mounts authenticated-only queries which
@@ -90,6 +95,34 @@ export interface ServerHealthResponse {
 
 export const systemApi = {
   health: () => api.get<ServerHealthResponse>('/system/health', { timeout: 5000 }),
+}
+
+export const agenticApi = {
+  getRegistry: () => api.get('/agentic/registry'),
+  validateWorkflow: (data: { title: string; graph: Record<string, unknown> }) =>
+    api.post('/agentic/validate', data),
+  executeNode: (node: Record<string, unknown>, inputs: Record<string, unknown> = {}) =>
+    api.post('/agentic/execute-node', { node, inputs }),
+  listWorkflows: () => api.get('/agentic/workflows'),
+  getWorkflow: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}`),
+  createWorkflow: (data: { title: string; graph: Record<string, unknown> }) =>
+    api.post('/agentic/workflows', data),
+  updateWorkflow: (workflowId: string, data: { title: string; graph: Record<string, unknown> }) =>
+    api.put(`/agentic/workflows/${workflowId}`, data),
+  deleteWorkflow: (workflowId: string) => api.delete(`/agentic/workflows/${workflowId}`),
+  createRun: (workflowId: string, inputs: Record<string, unknown> = {}, sessionId?: string, signal?: AbortSignal) =>
+    api.post(`/agentic/workflows/${workflowId}/runs`, { inputs, session_id: sessionId || null }, { signal }),
+  listRuns: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}/runs`),
+  getRun: (runId: string) => api.get(`/agentic/runs/${runId}`),
+  provideInput: (runId: string, content: string, signal?: AbortSignal) =>
+    api.post(`/agentic/runs/${runId}/input`, { content }, { signal }),
+  stopRun: (runId: string) => api.post(`/agentic/runs/${runId}/stop`),
+  listDatasets: () => api.get('/agentic/datasets'),
+  createDataset: (data: { title: string; table: Record<string, unknown> }) => api.post('/agentic/datasets', data),
+  deleteDataset: (datasetId: string) => api.delete(`/agentic/datasets/${datasetId}`),
+  getSessionChatbot: (sessionId: string) => api.get(`/agentic/sessions/${sessionId}/chatbot`),
+  provideSessionChatInput: (sessionId: string, runId: string, content: string) =>
+    api.post(`/agentic/sessions/${sessionId}/chatbot/runs/${runId}/input`, { content }),
 }
 
 export const authApi = {
@@ -145,6 +178,8 @@ export const studentApi = {
   updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
     api.patch('/student/profile', data),
   getCreditBalance: () => api.get('/student/credits/balance'),
+  listConsents: () => api.get('/student/consents'),
+  acceptConsent: (consentKey: string) => api.post('/student/consents/accept', { consent_key: consentKey }),
   getCreditHistory: (limit = 20) => api.get('/student/credits/history', { params: { limit } }),
 }
 
@@ -340,6 +375,12 @@ export const adminApi = {
     api.get('/admin/realtime/status'),
   getLegalConsents: () =>
     api.get('/admin/legal-consents'),
+  getStudents: (q?: string) =>
+    api.get('/admin/students', { params: q ? { q } : undefined }),
+  getStudentActivity: (studentId: string, limit = 50, offset = 0) =>
+    api.get(`/admin/students/${studentId}/activity`, { params: { limit, offset } }),
+  createStudentSubjectiveView: (studentId: string) =>
+    api.post(`/admin/students/${studentId}/subjective-view`),
   getEmailTemplates: () =>
     api.get('/admin/email-templates'),
   updateEmailTemplates: (data: Record<string, { subject: string; html: string; text: string }>) =>
@@ -718,7 +759,7 @@ export const llmApi = {
   createRealtimeInterrogationSession: (
     topic: string,
     language: string,
-    opts?: { voice?: string; style?: string; pace?: string }
+    opts?: { voice?: string; style?: string; pace?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }
   ) =>
     api.post<{ value: string; model: string; expires_at?: number | string | null }>(
       '/llm/realtime/interrogation-session',
@@ -727,7 +768,7 @@ export const llmApi = {
   createRealtimeTeacherbotSession: (
     teacherbotId: string,
     language: string,
-    opts?: { voice?: string; style?: string; pace?: string }
+    opts?: { voice?: string; style?: string; pace?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }
   ) =>
     api.post<{ value: string; model: string; expires_at?: number | string | null }>(
       '/llm/realtime/teacherbot-session',
@@ -941,6 +982,7 @@ export const teacherbotsApi = {
     is_proactive?: boolean
     proactive_message?: string
     enable_reporting?: boolean
+    enable_escape_room?: boolean
     report_prompt?: string
     llm_provider?: string
     llm_model?: string
@@ -957,6 +999,7 @@ export const teacherbotsApi = {
     is_proactive?: boolean
     proactive_message?: string
     enable_reporting?: boolean
+    enable_escape_room?: boolean
     report_prompt?: string
     llm_provider?: string
     llm_model?: string
@@ -1011,6 +1054,12 @@ export const teacherbotsApi = {
     api.get(`/student/teacherbots/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string, signal?: AbortSignal) =>
     api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content }, { signal }),
+  getEscapeRoom: (conversationId: string) =>
+    api.get(`/student/teacherbots/conversations/${conversationId}/escape-room`),
+  startEscapeRoom: (conversationId: string) =>
+    api.post(`/student/teacherbots/conversations/${conversationId}/escape-room/start`),
+  submitEscapeRoomAnswer: (conversationId: string, value: string) =>
+    api.post(`/student/teacherbots/conversations/${conversationId}/escape-room/answer`, { value }),
   sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal) => {
     const formData = new FormData()
     formData.append('content', content)
@@ -1353,10 +1402,22 @@ export const liveInteractionApi = {
     api.get('/teacher/live-interactions', { params: { session_id: sessionId } }),
   create: (data: { session_id: string; title: string; slides_json: object[] }) =>
     api.post('/teacher/live-interactions', data),
+  createFromTeacherbot: (data: {
+    session_id: string
+    teacherbot_id: string
+    preview_only?: boolean
+    title?: string
+    narrative_intro?: string
+    mission?: string
+    challenges?: object[]
+  }) =>
+    api.post('/teacher/live-interactions/from-teacherbot', data),
   get: (id: string) =>
     api.get(`/teacher/live-interactions/${id}`),
   update: (id: string, data: { title?: string; slides_json?: object[] }) =>
     api.put(`/teacher/live-interactions/${id}`, data),
+  duplicate: (id: string, data: { target_session_id: string; title?: string }) =>
+    api.post(`/teacher/live-interactions/${id}/duplicate`, data),
   delete: (id: string) =>
     api.delete(`/teacher/live-interactions/${id}`),
   start: (id: string) =>
@@ -1367,6 +1428,10 @@ export const liveInteractionApi = {
     api.post(`/teacher/live-interactions/${id}/end`),
   results: (id: string) =>
     api.get(`/teacher/live-interactions/${id}/results`),
+  enablePublicLink: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/public-link`),
+  disablePublicLink: (id: string) =>
+    api.delete(`/teacher/live-interactions/${id}/public-link`),
   assistSlide: (data: { slide_type: string; draft_text: string; session_id: string; other_slides?: object[]; reference_text?: string }) =>
     api.post('/teacher/live-interactions/assist-slide', data),
   assistStructure: (data: { session_id: string; topic: string; num_slides?: number; reference_text?: string }) =>
@@ -1378,10 +1443,16 @@ export const liveInteractionApi = {
     return api.post('/teacher/live-interactions/extract-reference', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   // Student
-  currentStudent: () =>
-    api.get('/student/live-interaction/current'),
+  currentStudent: (interactionId?: string) =>
+    api.get('/student/live-interaction/current', { params: interactionId ? { interaction_id: interactionId } : undefined }),
   submitAnswer: (data: { live_interaction_id: string; slide_index: number; response: object }) =>
     api.post('/student/live-interaction/answer', data),
+  submitEscapeAnswer: (data: { live_interaction_id: string; value: string }) =>
+    api.post('/student/live-interaction/escape-answer', data),
+  getPublicInfo: (token: string) =>
+    api.get(`/public/live/${token}`),
+  joinPublic: (token: string, nickname: string) =>
+    api.post(`/public/live/${token}/join`, { nickname }),
 }
 
 export const desktopAgentApi = {

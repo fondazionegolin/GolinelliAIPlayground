@@ -500,18 +500,54 @@ Usa al massimo {words} parole e 1-3 frasi brevi. Mantieni un tono {confidence}; 
 PROFILO DEL DOCENTE:
 {experiment.persona_prompt}"""
     session_obj = (await db.execute(select(Session).where(Session.id == experiment.session_id))).scalar_one()
-    try:
-        response = await llm_service.generate(
-            history, system_prompt=system_prompt,
-            provider=session_obj.default_llm_provider or settings.DEFAULT_LLM_PROVIDER,
-            model=session_obj.default_llm_model or settings.DEFAULT_LLM_MODEL,
-            temperature=experiment.temperature,
-            max_tokens={1: 45, 2: 60, 3: 80, 4: 110, 5: 140}[experiment.response_length],
-            allow_web_search=False)
-        answer_text = response.content.strip() or "Prova a farmi la domanda in un altro modo."
-    except Exception:
-        logger.exception("Turing test AI response failed for experiment %s", experiment.id)
-        answer_text = "Questa domanda mi ha fatto esitare. Puoi riformularla?"
+    selected_provider = (session_obj.default_llm_provider or settings.DEFAULT_LLM_PROVIDER).lower()
+    selected_model = session_obj.default_llm_model or settings.DEFAULT_LLM_MODEL
+    compatible_fallback_models = {
+        "anthropic": "claude-haiku-4-5-20251001",
+        "openai": settings.DEFAULT_LLM_MODEL if settings.DEFAULT_LLM_PROVIDER == "openai" else "gpt-5.6-luna",
+    }
+    candidates = [(selected_provider, selected_model), (selected_provider, selected_model)]
+    compatible_model = compatible_fallback_models.get(selected_provider)
+    if compatible_model and compatible_model != selected_model:
+        candidates.append((selected_provider, compatible_model))
+
+    answer_text = ""
+    last_generation_error: Exception | None = None
+    for attempt, (provider, model) in enumerate(candidates, start=1):
+        try:
+            response = await llm_service.generate(
+                history, system_prompt=system_prompt,
+                provider=provider,
+                model=model,
+                temperature=experiment.temperature,
+                max_tokens={1: 45, 2: 60, 3: 80, 4: 110, 5: 140}[experiment.response_length],
+                allow_web_search=False)
+            answer_text = response.content.strip()
+            if not answer_text:
+                raise RuntimeError("Il provider ha restituito una risposta vuota")
+            break
+        except Exception as exc:
+            last_generation_error = exc
+            logger.warning(
+                "Turing generation attempt %s/%s failed for experiment %s with %s/%s: %s",
+                attempt, len(candidates), experiment.id, provider, model, exc,
+                exc_info=True,
+            )
+
+    if not answer_text:
+        # Do not persist a canned answer as if it came from the model. Restore the
+        # question allowance so the student can retry after a transient provider error.
+        await db.delete(question)
+        participant.question_count = max(0, participant.question_count - 1)
+        await db.commit()
+        await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": False},
+                       room=f"user:{student.id}")
+        error_name = type(last_generation_error).__name__ if last_generation_error else "UnknownError"
+        logger.error("Turing generation exhausted for experiment %s (%s)", experiment.id, error_name)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L’interlocutore non è riuscito a rispondere. La domanda non è stata conteggiata: puoi riprovare.",
+        )
     await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True, "phase": "typing"},
                    room=f"user:{student.id}")
     jitter = (secrets.randbelow(61) - 20) / 100

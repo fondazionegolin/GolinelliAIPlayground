@@ -26,7 +26,7 @@ python-socketio==5.11.0
 
 # LLM Providers
 openai>=1.40.0
-anthropic>=0.30.0
+anthropic>=1.6.0,<2.0.0
 httpx>=0.27.0
 
 # ML
@@ -35,6 +35,8 @@ pandas==2.2.0
 numpy==1.26.3
 shap==0.44.1
 matplotlib==3.8.2
+sympy==1.12
+textblob==0.18.0.post0
 
 # Image ML
 torch==2.2.0
@@ -75,3 +77,6 @@ pytest-asyncio==0.23.4
 
 # Syntax validation (notebook tutor preload-check)
 esprima==4.0.1
+
+# HTML sanitization (slide/document rich-text content)
+nh3==0.2.18

@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import create_student_join_token, get_password_hash, verify_password
 from app.api.deps import get_current_student
-from app.models.session import Session, SessionStudent, SessionModule
+from app.models.session import Session, SessionStudent, SessionModule, StudentConsent
+from app.core.legal_documents import STUDENT_CONSENTS
 from app.models.credits import CreditLimit
 from app.models.credits import CreditTransaction
 from app.models.enums import LimitLevel, CreditTransactionType
@@ -23,6 +24,7 @@ from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.services.credit_service import credit_service
+from app.services.slide_sanitizer import sanitize_document_draft_content_json
 from app.core.task_dates import task_due_at_iso
 from app.schemas.auth import (
     StudentAccessCheckRequest,
@@ -443,7 +445,7 @@ async def create_document_draft(
         owner_student_id=student.id,
         title=request.title,
         doc_type=request.doc_type,
-        content_json=request.content_json,
+        content_json=sanitize_document_draft_content_json(request.content_json),
     )
     db.add(draft)
     await db.commit()
@@ -479,7 +481,7 @@ async def update_document_draft(
     if request.doc_type is not None:
         draft.doc_type = request.doc_type
     if request.content_json is not None:
-        draft.content_json = request.content_json
+        draft.content_json = sanitize_document_draft_content_json(request.content_json)
     await db.commit()
     await db.refresh(draft)
     return {
@@ -1053,3 +1055,49 @@ async def submit_document(
         "title": request.title,
         "submitted_at": submission.submitted_at.isoformat(),
     }
+
+
+class StudentConsentAccept(BaseModel):
+    consent_key: str
+
+
+@router.get("/consents")
+async def list_student_consents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    rows = (await db.execute(select(StudentConsent).where(
+        StudentConsent.session_student_id == student.id,
+    ))).scalars().all()
+    accepted = {(row.consent_key, row.consent_version) for row in rows}
+    return [
+        {
+            "key": doc["key"], "title": doc["title"], "version": doc["version"],
+            "source_url": doc["source_url"], "accept_label": doc["accept_label"],
+            "accepted": (doc["key"], doc["version"]) in accepted,
+        }
+        for doc in STUDENT_CONSENTS
+    ]
+
+
+@router.post("/consents/accept")
+async def accept_student_consent(
+    request: StudentConsentAccept,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    doc = next((item for item in STUDENT_CONSENTS if item["key"] == request.consent_key), None)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Consenso non riconosciuto")
+    existing = (await db.execute(select(StudentConsent).where(
+        StudentConsent.session_student_id == student.id,
+        StudentConsent.consent_key == doc["key"],
+        StudentConsent.consent_version == doc["version"],
+    ))).scalar_one_or_none()
+    if not existing:
+        db.add(StudentConsent(
+            tenant_id=student.tenant_id, session_student_id=student.id,
+            consent_key=doc["key"], consent_version=doc["version"],
+        ))
+        await db.commit()
+    return {"accepted": True}

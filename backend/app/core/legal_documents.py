@@ -21,3 +21,16 @@ LEGAL_DOCUMENTS = [
         "accept_label": "Accetto Privacy e DPA",
     },
 ]
+
+# Consents shown to students (not teachers) for specific third-party providers used
+# by a platform feature. Tracked separately from LEGAL_DOCUMENTS because students
+# authenticate as SessionStudent, not User.
+STUDENT_CONSENTS = [
+    {
+        "key": "deepseek_privacy",
+        "title": "Informativa privacy DeepSeek",
+        "version": "2026-09",
+        "source_url": "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html",
+        "accept_label": "Ho letto e accetto",
+    },
+]

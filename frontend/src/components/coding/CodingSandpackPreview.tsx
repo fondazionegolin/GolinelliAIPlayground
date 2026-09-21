@@ -23,7 +23,17 @@ export type SandpackRuntimeError = {
 }
 
 type Props = {
-  files: GeneratedFile[]
+  /** React/Vite projects: a file tree bundled by Sandpack's react-ts template. Ignored when
+   * `staticHtml` is set. */
+  files?: GeneratedFile[]
+  /** Plain HTML/CSS/JS projects (e.g. p5.js sketches): one self-contained HTML document — the
+   * exact string the legacy srcDoc preview used to render directly. Sandpack's `static` template
+   * serves it as-is (no bundler) from Sandpack's own isolated bundler origin, which is what lets
+   * getUserMedia/camera actually work: a `sandbox`ed `srcDoc` iframe has an opaque origin and
+   * browsers refuse camera/mic there no matter what `allow` says, but Sandpack's preview iframe
+   * is a real cross-origin document, so `allow="camera; microphone; ..."` (already set by
+   * sandpack-client on every Sandpack preview, any template) actually takes effect. */
+  staticHtml?: string
   /** Called whenever the running project emits compile/runtime errors (drives the agentic fix loop). */
   onErrors?: (errors: SandpackRuntimeError[]) => void
   /** Called once the project mounts and renders without errors. */
@@ -31,6 +41,8 @@ type Props = {
   showConsole?: boolean
   /** Inspector "ask the AI about this section" overlay (mirrors the legacy preview). */
   enableInspector?: boolean
+  /** Keep page-style previews vertically scrollable on touch devices. */
+  forceVerticalScroll?: boolean
   className?: string
 }
 
@@ -41,11 +53,12 @@ const ENTRY_PATH = '/index.tsx'
 const HTML_PATH = '/public/index.html'
 const BRIDGE_PATH = '/golinelli-bridge.ts'
 
-const HTML_DOC = `<!doctype html>
+const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${forceVerticalScroll ? '<style>html,body,#root{min-height:100%}html,body{overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch;touch-action:pan-y}</style>' : ''}
   </head>
   <body>
     <div id="root"></div>
@@ -177,14 +190,23 @@ function ErrorReporter({
 }
 
 export default function CodingSandpackPreview({
-  files,
+  files = [],
+  staticHtml,
   onErrors,
   onReady,
   showConsole = false,
   enableInspector = true,
+  forceVerticalScroll = false,
   className,
 }: Props) {
   const dependencies = useMemo(() => parseDependencies(files), [files])
+
+  const staticFiles = useMemo<SandpackFiles>(() => ({
+    '/index.html': { code: forceVerticalScroll
+      ? (staticHtml || '<!doctype html><html><head></head><body></body></html>').replace(/<\/head>/i, '<style>html,body{min-height:100%;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch;touch-action:pan-y}</style></head>')
+      : (staticHtml || '<!doctype html><html><head></head><body></body></html>') },
+    '/package.json': { code: JSON.stringify({ dependencies: {}, main: '/index.html' }) },
+  }), [forceVerticalScroll, staticHtml])
 
   const sandpackFiles = useMemo<SandpackFiles>(() => {
     const map: SandpackFiles = {}
@@ -196,7 +218,7 @@ export default function CodingSandpackPreview({
     }
     // Platform-owned wiring — always overrides whatever the model produced for these paths.
     map[BRIDGE_PATH] = { code: buildBridgeSource(enableInspector), hidden: true }
-    map[HTML_PATH] = { code: HTML_DOC, hidden: true }
+    map[HTML_PATH] = { code: buildHtmlDocument(forceVerticalScroll), hidden: true }
     // styles.css is always present so the entry can import it unconditionally.
     if (!map['/styles.css']) map['/styles.css'] = { code: '', hidden: true }
     map[ENTRY_PATH] = {
@@ -211,31 +233,45 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
       hidden: true,
     }
     return map
-  }, [files, enableInspector])
+  }, [files, enableInspector, forceVerticalScroll])
 
   return (
     <div className={`golinelli-sp ${className || ''}`}>
       {/* Sandpack ships a fixed default layout height; force the whole chain to fill our container. */}
       <style>{SANDPACK_FILL_CSS}</style>
-      <SandpackProvider
-        template="react-ts"
-        files={sandpackFiles}
-        customSetup={{
-          entry: ENTRY_PATH,
-          dependencies: {
-            react: '^18.2.0',
-            'react-dom': '^18.2.0',
-            ...dependencies,
-          },
-        }}
-        options={{ recompileMode: 'delayed', recompileDelay: 400 }}
-      >
-        <ErrorReporter onErrors={onErrors} onReady={onReady} />
-        <SandpackLayout>
-          <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
-          {showConsole && <SandpackConsole />}
-        </SandpackLayout>
-      </SandpackProvider>
+      {staticHtml !== undefined ? (
+        <SandpackProvider
+          template="static"
+          files={staticFiles}
+          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+        >
+          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <SandpackLayout>
+            <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
+            {showConsole && <SandpackConsole />}
+          </SandpackLayout>
+        </SandpackProvider>
+      ) : (
+        <SandpackProvider
+          template="react-ts"
+          files={sandpackFiles}
+          customSetup={{
+            entry: ENTRY_PATH,
+            dependencies: {
+              react: '^18.2.0',
+              'react-dom': '^18.2.0',
+              ...dependencies,
+            },
+          }}
+          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+        >
+          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <SandpackLayout>
+            <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
+            {showConsole && <SandpackConsole />}
+          </SandpackLayout>
+        </SandpackProvider>
+      )}
     </div>
   )
 }
@@ -248,6 +284,6 @@ const SANDPACK_FILL_CSS = `
 .golinelli-sp .sp-layout { flex: 1; min-height: 0; height: 100%; border: none; border-radius: 0; flex-direction: column; }
 .golinelli-sp .sp-stack { min-height: 0; height: 100%; flex: 1; }
 .golinelli-sp .sp-preview-container { flex: 1; min-height: 0; height: 100%; }
-.golinelli-sp .sp-preview-iframe { flex: 1; min-height: 0; height: 100%; }
+.golinelli-sp .sp-preview-iframe { flex: 1; min-height: 0; height: 100%; touch-action: pan-y; }
 .golinelli-sp .sp-console { flex: 0 0 180px; min-height: 0; }
 `.trim()

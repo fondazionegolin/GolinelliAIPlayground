@@ -596,7 +596,6 @@ async def desktop_agent(
             system=system,
             messages=messages,
             max_tokens=1024,
-            temperature=0.3,
         )
 
         raw_text = ""

@@ -24,6 +24,7 @@ export function useSwipeBack({
   const startYRef = useRef<number | null>(null)
   const isSwipingRef = useRef(false)
   const hasTriggeredHapticRef = useRef(false)
+  const progressRef = useRef(0)
   const [swipeState, setSwipeState] = useState<SwipeState>({
     isActive: false,
     progress: 0,
@@ -40,6 +41,7 @@ export function useSwipeBack({
       startYRef.current = touch.clientY
       isSwipingRef.current = false
       hasTriggeredHapticRef.current = false
+      progressRef.current = 0
     }
   }, [enabled, edgeWidth])
 
@@ -56,6 +58,7 @@ export function useSwipeBack({
       if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
         startXRef.current = null
         startYRef.current = null
+        progressRef.current = 0
         setSwipeState({ isActive: false, progress: 0, x: 0 })
         return
       }
@@ -74,6 +77,7 @@ export function useSwipeBack({
 
       const screenWidth = window.innerWidth
       const progress = Math.min(deltaX / screenWidth, 1)
+      progressRef.current = progress
 
       // Trigger medium haptic when threshold is reached
       if (progress >= threshold && !hasTriggeredHapticRef.current) {
@@ -92,7 +96,7 @@ export function useSwipeBack({
   }, [threshold])
 
   const handleTouchEnd = useCallback(() => {
-    if (isSwipingRef.current && swipeState.progress >= threshold) {
+    if (isSwipingRef.current && progressRef.current >= threshold) {
       // Trigger success haptic
       triggerHaptic('success')
       onSwipeBack()
@@ -103,16 +107,15 @@ export function useSwipeBack({
     startYRef.current = null
     isSwipingRef.current = false
     hasTriggeredHapticRef.current = false
+    progressRef.current = 0
     setSwipeState({ isActive: false, progress: 0, x: 0 })
-  }, [swipeState.progress, threshold, onSwipeBack])
+  }, [threshold, onSwipeBack])
 
   useEffect(() => {
     if (!enabled) return
 
-    const options: AddEventListenerOptions = { passive: false }
-
-    document.addEventListener('touchstart', handleTouchStart, options)
-    document.addEventListener('touchmove', handleTouchMove, options)
+    document.addEventListener('touchstart', handleTouchStart, { passive: true })
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
     document.addEventListener('touchend', handleTouchEnd)
     document.addEventListener('touchcancel', handleTouchEnd)
 

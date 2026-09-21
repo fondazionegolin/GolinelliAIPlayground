@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-15T10:38:17.691832+00:00",
-  "version_label": "2026.09.15-eb373c78",
-  "title": "Aggiornamenti branch staging",
+  "generated_at": "2026-09-21T13:32:11.763444+00:00",
+  "version_label": "2026.09.21-7dd1300e",
+  "title": "Aggiornamenti branch agentic",
   "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "eb373c78a76e7e1edcde86fc9981ec0b19119dc3",
+  "git_ref": "7dd1300e9f38bb1ee426ac736c29cbc2db4ef993",
   "items": [
     {
       "category": "improved",
-      "title": "Finalize changelog state",
-      "description": "Finalize changelog state"
+      "title": "Docs: add agentic workflow studio spec",
+      "description": "Docs: add agentic workflow studio spec"
     },
     {
-      "category": "improved",
-      "title": "Feat(platform): refine classroom workspaces",
-      "description": "Feat(platform): refine classroom workspaces"
+      "category": "new",
+      "title": "Extend interactive learning tools",
+      "description": "Extend interactive learning tools"
     }
   ]
 }

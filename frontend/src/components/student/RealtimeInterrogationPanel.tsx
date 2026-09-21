@@ -25,6 +25,8 @@ interface RealtimeInterrogationPanelProps {
   onTurn?: (role: 'user' | 'assistant', text: string) => void
   /** Which backend session to mint. Defaults to the oral-exam interrogation. */
   sessionSource?: VoiceSessionSource
+  /** Existing text turns used to continue the same conversation in voice. */
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
 }
 
 type Phase = 'setup' | 'connecting' | 'live' | 'error'
@@ -209,9 +211,15 @@ export default function RealtimeInterrogationPanel({
   onClose,
   onTurn,
   sessionSource = { kind: 'interrogation' },
+  conversationHistory = [],
 }: RealtimeInterrogationPanelProps) {
   const isEnglish = language === 'en'
   const isTeacherbot = sessionSource.kind === 'teacherbot'
+  const seededHistory = conversationHistory
+    .filter(turn => turn.content?.trim())
+    .slice(-24)
+    .map(turn => ({ role: turn.role, content: turn.content.trim().slice(0, 4000) }))
+  const hasPreviousContext = seededHistory.length > 0
   const speakerName = isTeacherbot
     ? sessionSource.botName
     : (isEnglish ? 'Professor' : 'Professore')
@@ -342,6 +350,7 @@ export default function RealtimeInterrogationPanel({
         voice: VOICE_BY_GENDER[prefs.gender],
         style: prefs.style,
         pace: prefs.pace,
+        history: seededHistory,
       }
       const { data } = sessionSource.kind === 'teacherbot'
         ? await llmApi.createRealtimeTeacherbotSession(sessionSource.teacherbotId, language, voiceOpts)
@@ -391,9 +400,14 @@ export default function RealtimeInterrogationPanel({
         try { handleServerEvent(JSON.parse(e.data)) } catch { /* ignore non-JSON */ }
       }
       dc.onopen = () => {
-        // The professor greets and asks the first question right away.
-        setTurnState('responding')
-        try { dc.send(JSON.stringify({ type: 'response.create' })) } catch { /* noop */ }
+        if (hasPreviousContext) {
+          // The text transcript is already included in the session instructions.
+          // Wait for the next spoken user turn instead of greeting and restarting.
+          setTurnState('idle')
+        } else {
+          setTurnState('responding')
+          try { dc.send(JSON.stringify({ type: 'response.create' })) } catch { /* noop */ }
+        }
       }
 
       const offer = await pc.createOffer()
@@ -420,7 +434,7 @@ export default function RealtimeInterrogationPanel({
       cleanup()
       setPhase('error')
     }
-  }, [topic, language, prefs, isEnglish, handleServerEvent, cleanup, sessionSource])
+  }, [topic, language, prefs, isEnglish, handleServerEvent, cleanup, sessionSource, hasPreviousContext, seededHistory])
 
   // ── Tap-to-talk (toggle) ─────────────────────────────────────────────────
   // A toggle is far more robust than hold-to-talk for long answers: the mic can't
@@ -542,11 +556,11 @@ export default function RealtimeInterrogationPanel({
               <p className="mt-1 text-xs text-slate-500">
                 {isTeacherbot
                   ? (isEnglish
-                      ? 'Choose the voice, then start the conversation.'
-                      : 'Scegli la voce, poi avvia la conversazione.')
+                      ? (hasPreviousContext ? `The voice will continue from the last ${seededHistory.length} chat messages.` : 'Choose the voice, then start the conversation.')
+                      : (hasPreviousContext ? `La voce riprenderà dagli ultimi ${seededHistory.length} messaggi della chat.` : 'Scegli la voce, poi avvia la conversazione.'))
                   : (isEnglish
-                      ? 'Optional — you can also let the professor ask you live.'
-                      : 'Facoltativo — puoi anche lasciare che sia il professore a chiedertelo a voce.')}
+                      ? (hasPreviousContext ? `The oral exam will continue from the last ${seededHistory.length} chat messages.` : 'Optional — you can also let the professor ask you live.')
+                      : (hasPreviousContext ? `L’interrogazione riprenderà dagli ultimi ${seededHistory.length} messaggi della chat.` : 'Facoltativo — puoi anche lasciare che sia il professore a chiedertelo a voce.'))}
               </p>
             </div>
             {!isTeacherbot && (

@@ -30,6 +30,7 @@ from app.schemas.teacherbot import (
     TeacherbotPublishRequest, TeacherbotPublicationResponse,
     TeacherbotConversationCreate, TeacherbotConversationResponse, TeacherbotConversationWithDetails,
     TeacherbotMessageCreate, TeacherbotMessageResponse,
+    EscapeRoomAnswerRequest, EscapeRoomStateResponse,
     TeacherbotTestMessage, TeacherbotTestResponse,
     TeacherbotReportResponse, StudentTeacherbotResponse,
     ShareLinkCreate, ShareLinkResponse, ShareLinkVerifyRequest, ShareLinkPublicInfo,
@@ -42,6 +43,7 @@ from app.services.environmental_impact import enrich_usage_with_environmental_im
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
 from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
+from app.services.teacherbot_escape_room import answers_match, generate_plan, judge_semantic_answer, public_state
 from app.api.v1.endpoints.stt import transcribe_with_whisper
 from app.models.rag import RAGDocument
 from app.models.enums import DocumentStatus, Scope
@@ -128,6 +130,7 @@ async def list_teacherbots(
             status=bot.status.value,
             is_proactive=bot.is_proactive,
             enable_reporting=bot.enable_reporting,
+            enable_escape_room=bot.enable_escape_room,
             created_at=bot.created_at,
             updated_at=bot.updated_at,
             publication_count=pub_count,
@@ -156,6 +159,7 @@ async def create_teacherbot(
         is_proactive=request.is_proactive,
         proactive_message=request.proactive_message,
         enable_live_voice=request.enable_live_voice,
+        enable_escape_room=request.enable_escape_room,
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
         llm_provider=request.llm_provider,
@@ -222,6 +226,8 @@ async def update_teacherbot(
         bot.proactive_message = request.proactive_message
     if request.enable_live_voice is not None:
         bot.enable_live_voice = request.enable_live_voice
+    if request.enable_escape_room is not None:
+        bot.enable_escape_room = request.enable_escape_room
     if request.enable_reporting is not None:
         bot.enable_reporting = request.enable_reporting
     if request.report_prompt is not None:
@@ -510,6 +516,7 @@ async def list_session_teacherbots(
             status=bot.status.value,
             is_proactive=bot.is_proactive,
             enable_reporting=bot.enable_reporting,
+            enable_escape_room=bot.enable_escape_room,
             created_at=bot.created_at,
             updated_at=bot.updated_at,
             publication_count=1,
@@ -1303,6 +1310,7 @@ async def list_available_teacherbots(
             is_proactive=bot.is_proactive,
             proactive_message=bot.proactive_message if bot.is_proactive else None,
             enable_live_voice=bot.enable_live_voice,
+            enable_escape_room=bot.enable_escape_room,
             is_studentbot=bot.creator_student_id == student.id,
         )
         for bot in bots
@@ -1467,6 +1475,239 @@ async def get_teacherbot_conversation_messages(
     return result.scalars().all()
 
 
+async def _get_student_escape_conversation(
+    db: AsyncSession,
+    conversation_id: UUID,
+    student: SessionStudent,
+    *,
+    lock: bool = False,
+) -> tuple[TeacherbotConversation, Teacherbot]:
+    query = (
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.student_id == student.id)
+        .where(TeacherbotConversation.session_id == student.session_id)
+    )
+    if lock:
+        query = query.with_for_update()
+    result = await db.execute(query)
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    bot_result = await db.execute(select(Teacherbot).where(Teacherbot.id == conversation.teacherbot_id))
+    bot = bot_result.scalar_one()
+    if not bot.enable_escape_room:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Escape-room mode is not enabled")
+    return conversation, bot
+
+
+@router.get(
+    "/student/teacherbots/conversations/{conversation_id}/escape-room",
+    response_model=EscapeRoomStateResponse,
+)
+async def get_escape_room_state(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    conversation, _bot = await _get_student_escape_conversation(db, conversation_id, student)
+    if not conversation.escape_room_state_json or int(conversation.escape_room_state_json.get("version", 0)) < 3:
+        return {
+            "enabled": True,
+            "status": "not_started",
+            "message": "Avvia la sessione per generare gli indizi.",
+        }
+    return public_state(conversation.escape_room_state_json)
+
+
+@router.post(
+    "/student/teacherbots/conversations/{conversation_id}/escape-room/start",
+    response_model=EscapeRoomStateResponse,
+)
+async def start_escape_room(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    conversation, bot = await _get_student_escape_conversation(db, conversation_id, student, lock=True)
+    if conversation.escape_room_state_json and int(conversation.escape_room_state_json.get("version", 0)) >= 3:
+        return public_state(conversation.escape_room_state_json)
+
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conversation.session_id)
+    )
+    session_row = session_result.first()
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_row
+    allowed = await credit_service.check_availability(
+        db,
+        student.tenant_id,
+        estimated_cost=0.0005,
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Credit limit exceeded for this session/class.")
+
+    try:
+        state, llm_response = await generate_plan(bot.system_prompt, bot.llm_provider, bot.llm_model)
+    except Exception as exc:
+        logger.exception("Escape-room generation failed for bot %s", bot.id)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Non è stato possibile generare l'escape room. Riprova.") from exc
+
+    conversation.escape_room_state_json = state
+    conversation.title = f"Escape room · {bot.name}"[:255]
+    conversation.updated_at = datetime.now(timezone.utc)
+    cost = credit_service.calculate_cost_for_model(
+        llm_response.provider,
+        llm_response.model,
+        llm_response.prompt_tokens,
+        llm_response.completion_tokens,
+    )
+    await credit_service.track_usage(
+        db,
+        student.tenant_id,
+        llm_response.provider,
+        llm_response.model,
+        cost,
+        {
+            "type": "teacherbot_escape_room_generation",
+            "bot_id": str(bot.id),
+            "prompt_tokens": llm_response.prompt_tokens,
+            "completion_tokens": llm_response.completion_tokens,
+        },
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    await db.commit()
+    return public_state(state, message="Scenario pronto. Osserva con attenzione: una sola informazione è stata alterata.")
+
+
+@router.post(
+    "/student/teacherbots/conversations/{conversation_id}/escape-room/answer",
+    response_model=EscapeRoomStateResponse,
+)
+async def submit_escape_room_answer(
+    conversation_id: UUID,
+    request: EscapeRoomAnswerRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    conversation, bot = await _get_student_escape_conversation(db, conversation_id, student, lock=True)
+    if not conversation.escape_room_state_json:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Escape room not started")
+
+    state = dict(conversation.escape_room_state_json)
+    challenges = list(state.get("challenges") or [])
+    current_step = int(state.get("current_step") or 0)
+    if state.get("status") == "completed" or current_step >= len(challenges):
+        state["status"] = "completed"
+        conversation.escape_room_state_json = state
+        await db.commit()
+        return public_state(state, message="Escape room già completata.", correct=True)
+
+    challenge = challenges[current_step]
+    submitted = request.value.strip()
+    accepted = [str(value) for value in challenge.get("accepted_answers") or []]
+    is_correct = answers_match(submitted, accepted)
+    judge_response = None
+    validation_context = None
+    if not is_correct:
+        session_result = await db.execute(
+            select(Session, Class)
+            .join(Class, Session.class_id == Class.id)
+            .where(Session.id == conversation.session_id)
+        )
+        validation_context = session_result.first()
+        if validation_context:
+            session_obj, class_obj = validation_context
+            allowed = await credit_service.check_availability(
+                db,
+                student.tenant_id,
+                estimated_cost=0.0001,
+                teacher_id=class_obj.teacher_id,
+                class_id=class_obj.id,
+                session_id=session_obj.id,
+                student_id=student.id,
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Credit limit exceeded for this session/class.",
+                )
+            try:
+                is_correct, judge_response = await judge_semantic_answer(
+                    challenge, submitted, bot.llm_provider, bot.llm_model
+                )
+            except Exception:
+                logger.warning("Semantic escape-room validation failed for bot %s", bot.id, exc_info=True)
+    attempts = int(state.get("attempts") or 0) + 1
+    events = list(state.get("events") or [])
+    state["attempts"] = attempts
+    achievement = None
+
+    if is_correct:
+        explanation = str(challenge.get("explanation") or "Correzione acquisita.")
+        achievement = challenge.get("achievement") or {}
+        state["inventory"] = [*(state.get("inventory") or []), achievement]
+        events.append({
+            "step": current_step + 1,
+            "input": submitted,
+            "correct": True,
+            "feedback": explanation,
+        })
+        state["current_step"] = current_step + 1
+        completed = state["current_step"] >= len(challenges)
+        state["status"] = "completed" if completed else "active"
+        message = "Escape room risolta: tutte le chiavi sono state recuperate." if completed else f"Correzione accettata: indizio {current_step + 1} risolto."
+    else:
+        events.append({
+            "step": current_step + 1,
+            "input": submitted,
+            "correct": False,
+            "feedback": "Correzione non riconosciuta. Verifica il fatto e riprova.",
+        })
+        message = "Questa correzione non risolve l'indizio. Controlla le fonti e riprova."
+
+    state["events"] = events[-50:]
+    conversation.escape_room_state_json = state
+    conversation.updated_at = datetime.now(timezone.utc)
+    if judge_response is not None and validation_context:
+        session_obj, class_obj = validation_context
+        cost = credit_service.calculate_cost_for_model(
+            judge_response.provider,
+            judge_response.model,
+            judge_response.prompt_tokens,
+            judge_response.completion_tokens,
+        )
+        await credit_service.track_usage(
+            db,
+            student.tenant_id,
+            judge_response.provider,
+            judge_response.model,
+            cost,
+            {
+                "type": "teacherbot_escape_room_validation",
+                "bot_id": str(bot.id),
+                "prompt_tokens": judge_response.prompt_tokens,
+                "completion_tokens": judge_response.completion_tokens,
+            },
+            teacher_id=class_obj.teacher_id,
+            class_id=class_obj.id,
+            session_id=session_obj.id,
+            student_id=student.id,
+        )
+    await db.commit()
+    return public_state(state, message=message, correct=is_correct, achievement=achievement)
+
+
 @router.post("/student/teacherbots/conversations/{conversation_id}/message", response_model=TeacherbotMessageResponse)
 async def send_teacherbot_message(
     conversation_id: UUID,
@@ -1519,6 +1760,11 @@ async def send_teacherbot_message(
         select(Teacherbot).where(Teacherbot.id == conv.teacherbot_id)
     )
     bot = result.scalar_one()
+    if bot.enable_escape_room:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Usa il terminale escape room per questa conversazione.",
+        )
 
     # Save user message
     user_msg = TeacherbotMessage(
@@ -1655,6 +1901,11 @@ async def send_teacherbot_message_with_files(
         select(Teacherbot).where(Teacherbot.id == conv.teacherbot_id)
     )
     bot = result.scalar_one()
+    if bot.enable_escape_room:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Gli allegati non sono disponibili nella modalità escape room.",
+        )
 
     # Process attached files
     file_contents = []

@@ -2,17 +2,19 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
-import { liveInteractionApi } from '@/lib/api'
+import { liveInteractionApi, teacherApi, teacherbotsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 import {
   Plus, Minus, Trash2, Play, ChevronDown,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
-  ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText,
+  ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText, Bot, LockKeyhole, Share2,
+  Copy, LayoutTemplate, UsersRound, ChevronRight,
 } from 'lucide-react'
 
 // ── Types ──
@@ -47,9 +49,64 @@ interface LiveInteractionItem {
   title: string
   status: string
   slides_count: number
-  slides_json?: Slide[]
+  slides_json?: Array<Slide | Record<string, unknown>>
   current_slide_index: number
   created_at: string
+  interaction_type?: 'slides' | 'escape_room'
+}
+
+interface EscapeTeacherbotItem {
+  id: string
+  name: string
+  synopsis?: string | null
+  enable_escape_room?: boolean
+}
+
+interface EscapeChallengeDraft {
+  key: string
+  false_statement: string
+  accepted_answers: string[]
+  explanation: string
+  achievement: { name: string; icon: string; description: string }
+}
+
+interface EscapeRoomDraft {
+  title: string
+  narrative_intro: string
+  mission: string
+  challenges: EscapeChallengeDraft[]
+}
+
+const emptyEscapeChallenge = (): EscapeChallengeDraft => ({
+  key: makeKey(),
+  false_statement: '',
+  accepted_answers: [''],
+  explanation: '',
+  achievement: { name: 'Nuovo oggetto', icon: '🗝️', description: '' },
+})
+
+function normalizeEscapeDraft(raw: Record<string, unknown>): EscapeRoomDraft {
+  const challenges = Array.isArray(raw.challenges) ? raw.challenges : []
+  return {
+    title: String(raw.title || 'Escape room'),
+    narrative_intro: String(raw.narrative_intro || ''),
+    mission: String(raw.mission || ''),
+    challenges: challenges.map((item) => {
+      const challenge = item as Record<string, unknown>
+      const achievement = (challenge.achievement || {}) as Record<string, unknown>
+      return {
+        key: makeKey(),
+        false_statement: String(challenge.false_statement || ''),
+        accepted_answers: Array.isArray(challenge.accepted_answers) ? challenge.accepted_answers.map(String) : [''],
+        explanation: String(challenge.explanation || ''),
+        achievement: {
+          name: String(achievement.name || 'Oggetto misterioso'),
+          icon: String(achievement.icon || '🗝️'),
+          description: String(achievement.description || ''),
+        },
+      }
+    }),
+  }
 }
 
 const SLIDE_LABELS: Record<SlideType, string> = {
@@ -871,45 +928,49 @@ function SlideCard({
   )
 }
 
-function SlidePreviewStrip({ slides, count }: { slides?: Slide[]; count: number }) {
-  const previewSlides = (slides || []).slice(0, 5)
-  if (previewSlides.length === 0) {
-    return (
-      <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-        <div className="h-10 w-16 rounded-xl border border-dashed border-slate-200 bg-slate-50" />
-        <span>{count} slide</span>
-      </div>
-    )
-  }
+function ContentPreviewStrip({ item }: { item: LiveInteractionItem }) {
+  const previews = (item.slides_json || []).slice(0, 3)
+  if (!previews.length) return null
 
   return (
-    <div className="mt-3 flex items-center gap-2 overflow-hidden">
-      {previewSlides.map((slide, idx) => {
+    <div aria-label="Anteprima contenuti">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Anteprima contenuti</p>
+        {item.slides_count > previews.length && (
+          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+            +{item.slides_count - previews.length} altri
+          </span>
+        )}
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {previews.map((raw, idx) => {
+        if (item.interaction_type === 'escape_room') {
+          const challenge = raw as Record<string, unknown>
+          const achievement = (challenge.achievement || {}) as Record<string, unknown>
+          const label = String(challenge.false_statement || `Indizio ${idx + 1}`)
+          return (
+            <div key={idx} className="min-w-0 rounded-2xl border border-violet-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-violet-600">
+                <span>Indizio {idx + 1}</span><span className="text-lg leading-none">{String(achievement.icon || '🗝️')}</span>
+              </div>
+              <p className="mt-3 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-700">{label}</p>
+            </div>
+          )
+        }
+        const slide = raw as Slide
         const Icon = SLIDE_ICONS[slide.type] || Zap
         const label = slide.question || slide.prompt || SLIDE_LABELS[slide.type]
         return (
-          <div
-            key={idx}
-            className="flex h-[78px] w-[124px] flex-shrink-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white/72 p-2.5 shadow-sm"
-            title={label}
-          >
-            <div className="flex items-center justify-between gap-1">
-              <span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg border ${SLIDE_COLORS[slide.type]}`}>
-                <Icon className="h-3.5 w-3.5" />
-              </span>
-              <span className="text-[11px] font-black text-slate-400">{idx + 1}</span>
+          <div key={idx} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-xl border ${SLIDE_COLORS[slide.type]}`}><Icon className="h-4 w-4" /></span>
+              <span className="text-xs font-black text-slate-400">{idx + 1}</span>
             </div>
-            <p className="line-clamp-3 text-[11px] font-semibold leading-[14px] text-slate-600">
-              {label}
-            </p>
+            <p className="mt-3 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-700">{label}</p>
           </div>
         )
       })}
-      {count > previewSlides.length && (
-        <div className="flex h-[78px] min-w-[60px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-400">
-          +{count - previewSlides.length}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -1146,6 +1207,229 @@ function StructureAssistModal({
   )
 }
 
+function NewSessionModal({
+  onClose, onManual, onAi, onEscape,
+}: {
+  onClose: () => void
+  onManual: () => void
+  onAi: () => void
+  onEscape: () => void
+}) {
+  const choices = [
+    {
+      title: 'Crea manualmente',
+      description: 'Componi il quiz slide per slide e scegli ogni interazione.',
+      icon: LayoutTemplate,
+      tone: 'bg-sky-50 text-sky-700 ring-sky-100',
+      action: onManual,
+    },
+    {
+      title: 'Suggerisci struttura AI',
+      description: 'Parti da un argomento o da un PDF e modifica la proposta.',
+      icon: Sparkles,
+      tone: 'bg-violet-50 text-violet-700 ring-violet-100',
+      action: onAi,
+    },
+    {
+      title: 'Escape Room',
+      description: 'Trasforma un Teacherbot in una sfida narrativa a indizi.',
+      icon: LockKeyhole,
+      tone: 'bg-amber-50 text-amber-700 ring-amber-100',
+      action: onEscape,
+    },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 text-center">
+          <div className="flex-1 pl-8">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">Nuova sessione</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Come vuoi iniziare?</h2>
+            <p className="mt-1 text-sm text-slate-500">Ogni percorso crea una bozza modificabile prima della pubblicazione.</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mt-6 space-y-3">
+          {choices.map(({ title, description, icon: Icon, tone, action }) => (
+            <button key={title} type="button" onClick={action} className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/30 hover:shadow-md">
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${tone}`}><Icon className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1"><span className="block font-bold text-slate-900">{title}</span><span className="mt-0.5 block text-sm leading-5 text-slate-500">{description}</span></span>
+              <ChevronRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-500" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface AudienceOption {
+  id: string
+  title: string
+  className: string
+  status: string
+}
+
+function DuplicateForAudienceModal({
+  item, currentSessionId, onClose, onDuplicated,
+}: {
+  item: LiveInteractionItem
+  currentSessionId: string
+  onClose: () => void
+  onDuplicated: (targetSessionId: string) => void
+}) {
+  const { toast } = useToast()
+  const [targetSessionId, setTargetSessionId] = useState('')
+  const { data: audiences = [], isLoading } = useQuery<AudienceOption[]>({
+    queryKey: ['live-interaction-audiences'],
+    queryFn: async () => {
+      const classes = (await teacherApi.getClasses()).data as Array<{ id: string; name: string }>
+      const groups = await Promise.all(classes.map(async classroom => {
+        const sessions = (await teacherApi.getSessions(classroom.id)).data as Array<{ id: string; title?: string; name?: string; status: string }>
+        return sessions
+          .filter(session => session.status === 'active' && session.id !== currentSessionId)
+          .map(session => ({ id: session.id, title: session.title || session.name || 'Sessione', className: classroom.name, status: session.status }))
+      }))
+      return groups.flat()
+    },
+  })
+  const duplicate = useMutation({
+    mutationFn: () => liveInteractionApi.duplicate(item.id, { target_session_id: targetSessionId }),
+    onSuccess: () => {
+      onDuplicated(targetSessionId)
+      toast({ title: 'Sessione duplicata come nuova bozza' })
+      onClose()
+    },
+    onError: () => toast({ title: 'Non è stato possibile duplicare il quiz', variant: 'destructive' }),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">Duplica sessione</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Duplica “{item.title}”</h2>
+            <p className="mt-1 text-sm text-slate-500">Contenuti e impostazioni verranno copiati in una nuova bozza, senza risposte o risultati precedenti.</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mt-5 max-h-64 space-y-2 overflow-y-auto">
+          {isLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-violet-600" /></div>}
+          {!isLoading && audiences.map(audience => (
+            <button key={audience.id} type="button" onClick={() => setTargetSessionId(audience.id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${targetSessionId === audience.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><UsersRound className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
+            </button>
+          ))}
+          {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono sessioni attive disponibili.</p>}
+        </div>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button tone="accent" surface="solid" onClick={() => duplicate.mutate()} disabled={!targetSessionId || duplicate.isPending}>
+            {duplicate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+            {duplicate.isPending ? 'Duplicazione…' : 'Crea bozza'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EscapeRoomDraftEditor({
+  draft, onChange, onBack, onPublish, publishing,
+}: {
+  draft: EscapeRoomDraft
+  onChange: (draft: EscapeRoomDraft) => void
+  onBack: () => void
+  onPublish: () => void
+  publishing: boolean
+}) {
+  const updateChallenge = (index: number, patch: Partial<EscapeChallengeDraft>) => {
+    onChange({ ...draft, challenges: draft.challenges.map((challenge, current) => current === index ? { ...challenge, ...patch } : challenge) })
+  }
+  const valid = Boolean(
+    draft.title.trim() && draft.challenges.length &&
+    draft.challenges.every(challenge => challenge.false_statement.trim() && challenge.accepted_answers.some(answer => answer.trim()))
+  )
+
+  return (
+    <>
+      <div className="mt-5 flex-1 space-y-5 overflow-y-auto border-y border-slate-100 px-6 py-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-bold text-slate-600">Titolo</label>
+            <Input value={draft.title} onChange={event => onChange({ ...draft, title: event.target.value })} placeholder="Titolo dell’escape room" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">Introduzione narrativa</label>
+            <Textarea rows={4} value={draft.narrative_intro} onChange={event => onChange({ ...draft, narrative_intro: event.target.value })} placeholder="L’ambientazione che accoglie gli studenti…" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">Missione</label>
+            <Textarea rows={4} value={draft.mission} onChange={event => onChange({ ...draft, mission: event.target.value })} placeholder="L’obiettivo da completare…" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-900">Indizi e ricompense</h3>
+            <p className="text-xs text-slate-500">Puoi cambiare testi, soluzioni accettate e oggetti conquistati.</p>
+          </div>
+          <Button tone="neutral" surface="outline" density="compact" onClick={() => onChange({ ...draft, challenges: [...draft.challenges, emptyEscapeChallenge()] })}>
+            <Plus className="h-3.5 w-3.5" /> Aggiungi indizio
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {draft.challenges.map((challenge, index) => (
+            <section key={challenge.key} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="flex h-7 items-center rounded-full bg-violet-100 px-3 text-xs font-black text-violet-700">INDIZIO {index + 1}</span>
+                <button type="button" disabled={draft.challenges.length === 1} onClick={() => onChange({ ...draft, challenges: draft.challenges.filter((_, current) => current !== index) })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label={`Elimina indizio ${index + 1}`}><Trash2 className="h-4 w-4" /></button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Affermazione con l’informazione alterata</label>
+                  <Textarea rows={3} value={challenge.false_statement} onChange={event => updateChallenge(index, { false_statement: event.target.value })} />
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">Soluzioni accettate</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-bold text-violet-600 hover:text-violet-800">+ Variante</button></div>
+                  <div className="space-y-2">
+                    {challenge.accepted_answers.map((answer, answerIndex) => (
+                      <div key={answerIndex} className="flex gap-2">
+                        <Input value={answer} onChange={event => updateChallenge(index, { accepted_answers: challenge.accepted_answers.map((current, i) => i === answerIndex ? event.target.value : current) })} placeholder={answerIndex ? 'Variante equivalente' : 'Risposta corretta'} />
+                        {challenge.accepted_answers.length > 1 && <button type="button" onClick={() => updateChallenge(index, { accepted_answers: challenge.accepted_answers.filter((_, i) => i !== answerIndex) })} className="text-slate-400 hover:text-rose-600"><X className="h-4 w-4" /></button>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Spiegazione dopo la risposta</label>
+                  <Textarea rows={2} value={challenge.explanation} onChange={event => updateChallenge(index, { explanation: event.target.value })} />
+                </div>
+                <div className="grid grid-cols-[72px_1fr] gap-3 sm:grid-cols-[72px_1fr_1.5fr]">
+                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Icona</label><Input value={challenge.achievement.icon} maxLength={12} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, icon: event.target.value } })} /></div>
+                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Ricompensa</label><Input value={challenge.achievement.name} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, name: event.target.value } })} /></div>
+                  <div className="col-span-2 sm:col-span-1"><label className="mb-1 block text-xs font-medium text-slate-600">Effetto narrativo</label><Input value={challenge.achievement.description} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, description: event.target.value } })} /></div>
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 p-6">
+        <Button tone="neutral" surface="ghost" onClick={onBack}>← Cambia Teacherbot</Button>
+        <Button tone="accent" surface="solid" disabled={!valid || publishing} onClick={onPublish}>
+          {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
+          {publishing ? 'Pubblicazione…' : `Pubblica Escape room · ${draft.challenges.length} indizi`}
+        </Button>
+      </div>
+    </>
+  )
+}
+
 // ── Main page ──
 
 export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: string }) {
@@ -1161,13 +1445,64 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [showTutorial, setShowTutorial] = useState(true)
+  const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [showEscapeModal, setShowEscapeModal] = useState(false)
+  const [selectedEscapeBot, setSelectedEscapeBot] = useState('')
+  const [escapeDraft, setEscapeDraft] = useState<EscapeRoomDraft | null>(null)
+  const [shareTarget, setShareTarget] = useState<LiveInteractionItem | null>(null)
+  const [duplicateTarget, setDuplicateTarget] = useState<LiveInteractionItem | null>(null)
   const [prefill, setPrefill] = useState<{ title: string; slides: Slide[] } | null>(null)
 
   const { data: interactions, isLoading } = useQuery<LiveInteractionItem[]>({
     queryKey: ['live-interactions', activeSessionId],
     queryFn: () => liveInteractionApi.list(activeSessionId!).then(r => r.data),
     enabled: !!activeSessionId,
+  })
+  const orderedInteractions = [...(interactions || [])].sort((left, right) => {
+    const priority: Record<string, number> = { ACTIVE: 0, DRAFT: 1, CLOSED: 2 }
+    const statusDelta = (priority[left.status] ?? 3) - (priority[right.status] ?? 3)
+    return statusDelta || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  })
+  const currentInteractions = orderedInteractions.filter(item => item.status !== 'CLOSED')
+  const archivedInteractions = orderedInteractions.filter(item => item.status === 'CLOSED')
+
+  const { data: teacherbots = [] } = useQuery<EscapeTeacherbotItem[]>({
+    queryKey: ['teacherbots', 'live-escape-picker'],
+    queryFn: () => teacherbotsApi.list().then(r => r.data),
+    enabled: showEscapeModal,
+  })
+  const escapeBots = teacherbots.filter(bot => bot.enable_escape_room)
+
+  const previewEscapeMutation = useMutation({
+    mutationFn: () => liveInteractionApi.createFromTeacherbot({ session_id: activeSessionId!, teacherbot_id: selectedEscapeBot, preview_only: true }),
+    onSuccess: response => setEscapeDraft(normalizeEscapeDraft(response.data)),
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast({ title: detail || 'Impossibile preparare l’escape room', variant: 'destructive' })
+    },
+  })
+
+  const publishEscapeMutation = useMutation({
+    mutationFn: () => liveInteractionApi.createFromTeacherbot({
+      session_id: activeSessionId!,
+      teacherbot_id: selectedEscapeBot,
+      title: escapeDraft!.title,
+      narrative_intro: escapeDraft!.narrative_intro,
+      mission: escapeDraft!.mission,
+      challenges: escapeDraft!.challenges.map(({ key: _key, ...challenge }) => challenge),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live-interactions', activeSessionId] })
+      setShowEscapeModal(false)
+      setSelectedEscapeBot('')
+      setEscapeDraft(null)
+      toast({ title: 'Escape Room pubblicata in Live' })
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast({ title: detail || 'Impossibile pubblicare il Teacherbot', variant: 'destructive' })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -1198,10 +1533,10 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-8">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-8 flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-800">Live Interaction</h1>
@@ -1213,21 +1548,27 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
               <HelpCircle className="h-4 w-4" />
             </button>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="mt-1 text-sm text-slate-500">
             {storedSession ? `Sessione: ${storedSession.name}` : 'Seleziona una sessione dalla navbar'}
           </p>
         </div>
         {activeSessionId && (
-          <div className="flex items-center gap-2">
-            <Button tone="accent" surface="outline" onClick={() => setShowStructureModal(true)}>
-              <Sparkles className="h-4 w-4" /> Suggerisci struttura AI
-            </Button>
-            <Button tone="accent" surface="solid" onClick={() => setCreating(true)}>
+          <div className="flex sm:justify-end">
+            <Button className="w-full justify-center sm:w-auto" tone="accent" surface="solid" onClick={() => setShowNewSessionModal(true)}>
               <Plus className="h-4 w-4" /> Nuova sessione
             </Button>
           </div>
         )}
       </div>
+
+      {showNewSessionModal && (
+        <NewSessionModal
+          onClose={() => setShowNewSessionModal(false)}
+          onManual={() => { setShowNewSessionModal(false); setCreating(true) }}
+          onAi={() => { setShowNewSessionModal(false); setShowStructureModal(true) }}
+          onEscape={() => { setShowNewSessionModal(false); setShowEscapeModal(true) }}
+        />
+      )}
 
       {showStructureModal && activeSessionId && (
         <StructureAssistModal
@@ -1239,6 +1580,48 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             setCreating(true)
           }}
         />
+      )}
+
+      {showEscapeModal && activeSessionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={() => { setShowEscapeModal(false); setEscapeDraft(null) }}>
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-3xl bg-white shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="px-6 pt-6">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">{escapeDraft ? 'Personalizza il quiz' : 'Scegli un Teacherbot'}</h2>
+                <p className="mt-1 text-sm text-slate-500">{escapeDraft ? 'Rivedi ogni testo, soluzione e premio prima di pubblicare.' : 'Genera una bozza modificabile: nulla sarà pubblicato senza la tua conferma.'}</p>
+              </div>
+              <button onClick={() => { setShowEscapeModal(false); setEscapeDraft(null) }} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+            </div>
+            {!escapeDraft ? (
+              <>
+                <div className="mx-6 mt-5 max-h-72 space-y-2 overflow-y-auto">
+                  {escapeBots.map(bot => (
+                    <button key={bot.id} onClick={() => setSelectedEscapeBot(bot.id)} className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition ${selectedEscapeBot === bot.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
+                      <span><span className="block font-semibold text-slate-800">{bot.name}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{bot.synopsis || 'Teacherbot configurato in modalità Escape Room'}</span></span>
+                    </button>
+                  ))}
+                  {escapeBots.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono Teacherbot con modalità Escape Room attiva.</p>}
+                </div>
+                <div className="p-6">
+                  <Button className="w-full" tone="accent" surface="solid" disabled={!selectedEscapeBot || previewEscapeMutation.isPending} onClick={() => previewEscapeMutation.mutate()}>
+                    {previewEscapeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {previewEscapeMutation.isPending ? 'Genero la bozza…' : 'Genera quiz modificabile'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <EscapeRoomDraftEditor
+                draft={escapeDraft}
+                onChange={setEscapeDraft}
+                onBack={() => setEscapeDraft(null)}
+                onPublish={() => publishEscapeMutation.mutate()}
+                publishing={publishEscapeMutation.isPending}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       {/* Tutorial */}
@@ -1276,72 +1659,133 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       )}
 
       {/* List */}
-      <div className="space-y-3">
-        {interactions?.map(item => (
-          <div key={item.id} className="border border-slate-200 rounded-[24px] bg-white/86 shadow-sm p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-center gap-3">
-            {item.status === 'ACTIVE' && (
-              <span className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            )}
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-800 truncate">{item.title}</span>
-                {item.status === 'ACTIVE' && <Badge tone="success" surface="soft" density="compact">● Live</Badge>}
-                {item.status === 'DRAFT'  && <Badge tone="warning" surface="soft" density="compact">Bozza</Badge>}
-                {item.status === 'CLOSED' && <Badge tone="neutral" surface="soft" density="compact">Completata</Badge>}
+      {activeSessionId && !isLoading && Boolean(interactions?.length) && (
+        <div className="space-y-10">
+          {currentInteractions.length > 0 && (
+            <section>
+              <div className="mb-4 flex items-end justify-between gap-4 px-1">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">Da preparare e in corso</h2>
+                  <p className="mt-1 text-sm text-slate-500">Controlla i contenuti, condividi il link e avvia la sessione.</p>
+                </div>
+                <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{currentInteractions.length}</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {item.slides_count} slide · {new Date(item.created_at).toLocaleDateString('it-IT')}
-              </p>
-            </div>
 
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {item.status === 'DRAFT' && (
-                <Button tone="neutral" surface="outline" density="compact" onClick={() => setEditingId(item.id)}>
-                  <Pencil className="h-3.5 w-3.5" /> Modifica
-                </Button>
-              )}
-              {item.status !== 'DRAFT' && (
-                <Button
-                  tone="neutral" surface="outline" density="compact"
-                  onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}
-                >
-                  <FileBarChart2 className="h-3.5 w-3.5" /> Report
-                </Button>
-              )}
-              {item.status === 'ACTIVE' && (
-                <Button
-                  tone="success" surface="solid" density="compact"
-                  onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}
-                >
-                  <Radio className="h-3.5 w-3.5" /> Pannello live
-                </Button>
-              )}
-              {item.status === 'DRAFT' && (
-                <Button
-                  tone="accent" surface="solid" density="compact"
-                  onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}
-                >
-                  <Play className="h-3.5 w-3.5" /> Avvia
-                </Button>
-              )}
-              {item.status !== 'ACTIVE' && (
-                <Button
-                  tone="danger" surface="ghost" density="compact"
-                  onClick={() => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }}
-                  disabled={deleteMutation.isPending}
-                  title="Elimina"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-            </div>
-            <SlidePreviewStrip slides={item.slides_json} count={item.slides_count} />
-          </div>
-        ))}
-      </div>
+              <div className="space-y-5">
+                {currentInteractions.map(item => (
+                  <article key={item.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                    <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.status === 'ACTIVE' && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />}
+                          {item.interaction_type === 'escape_room' && <Badge tone="accent" surface="soft" density="compact">Escape Room</Badge>}
+                          {item.status === 'ACTIVE' && <Badge tone="success" surface="soft" density="compact">Live</Badge>}
+                          {item.status === 'DRAFT' && <Badge tone="warning" surface="soft" density="compact">Bozza</Badge>}
+                        </div>
+                        <h3 className="mt-3 break-words text-xl font-bold leading-snug text-slate-900">{item.title}</h3>
+                        <p className="mt-1.5 text-sm text-slate-500">
+                          {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> Creata il {new Date(item.created_at).toLocaleDateString('it-IT')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-y border-slate-100 bg-slate-50/70 px-5 py-5 sm:px-6">
+                      <ContentPreviewStrip item={item} />
+                    </div>
+
+                    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button tone="neutral" surface="outline" density="compact" onClick={() => setShareTarget(item)}>
+                          <Share2 className="h-3.5 w-3.5" /> Link pubblico
+                        </Button>
+                        {item.status === 'DRAFT' && item.interaction_type !== 'escape_room' && (
+                          <Button tone="neutral" surface="outline" density="compact" onClick={() => setEditingId(item.id)}>
+                            <Pencil className="h-3.5 w-3.5" /> Modifica
+                          </Button>
+                        )}
+                        {item.status !== 'DRAFT' && (
+                          <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
+                            <FileBarChart2 className="h-3.5 w-3.5" /> Report
+                          </Button>
+                        )}
+                        <Button tone="neutral" surface="outline" density="compact" onClick={() => setDuplicateTarget(item)} title="Duplica la sessione">
+                          <Copy className="h-3.5 w-3.5" /> Duplica
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        {item.status !== 'ACTIVE' && (
+                          <Button tone="danger" surface="ghost" density="compact" onClick={() => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }} disabled={deleteMutation.isPending} title="Elimina">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {item.status === 'ACTIVE' ? (
+                          <Button tone="success" surface="solid" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
+                            <Radio className="h-3.5 w-3.5" /> Pannello live
+                          </Button>
+                        ) : (
+                          <Button tone="accent" surface="solid" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
+                            <Play className="h-3.5 w-3.5" /> Avvia
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {archivedInteractions.length > 0 && (
+            <section>
+              <div className="mb-4 flex items-end justify-between gap-4 px-1">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">Archivio</h2>
+                  <p className="mt-1 text-sm text-slate-500">Sessioni concluse, disponibili per report o riutilizzo.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{archivedInteractions.length}</span>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                {archivedInteractions.map(item => (
+                  <article key={item.id} className="flex min-h-[190px] flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {item.interaction_type === 'escape_room' && <Badge tone="accent" surface="soft" density="compact">Escape Room</Badge>}
+                      <Badge tone="neutral" surface="soft" density="compact">Completata</Badge>
+                    </div>
+                    <h3 className="mt-3 break-words text-lg font-bold leading-snug text-slate-900">{item.title}</h3>
+                    <p className="mt-1.5 text-sm text-slate-500">
+                      {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> {new Date(item.created_at).toLocaleDateString('it-IT')}
+                    </p>
+                    <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                      <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
+                        <FileBarChart2 className="h-3.5 w-3.5" /> Report
+                      </Button>
+                      <Button tone="neutral" surface="outline" density="compact" onClick={() => setDuplicateTarget(item)} title="Duplica la sessione">
+                        <Copy className="h-3.5 w-3.5" /> Duplica
+                      </Button>
+                      <Button className="ml-auto" tone="danger" surface="ghost" density="compact" onClick={() => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }} disabled={deleteMutation.isPending} title="Elimina">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+      {shareTarget && <LiveInteractionPublicShareModal interactionId={shareTarget.id} title={shareTarget.title} onClose={() => setShareTarget(null)} />}
+      {duplicateTarget && activeSessionId && (
+        <DuplicateForAudienceModal
+          item={duplicateTarget}
+          currentSessionId={activeSessionId}
+          onClose={() => setDuplicateTarget(null)}
+          onDuplicated={targetSessionId => {
+            queryClient.invalidateQueries({ queryKey: ['live-interactions', targetSessionId] })
+            if (targetSessionId === activeSessionId) queryClient.invalidateQueries({ queryKey: ['live-interactions', activeSessionId] })
+          }}
+        />
+      )}
     </div>
   )
 }

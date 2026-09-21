@@ -1029,21 +1029,21 @@ function SubViewHeader({
   const { i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   return (
-    <div className="flex items-center gap-3 mb-6">
-      <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 text-slate-500 hover:text-slate-700 flex-shrink-0">
+    <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur md:static md:mx-0 md:mb-6 md:border-0 md:bg-transparent md:px-0 md:py-0">
+      <Button variant="ghost" size="sm" onClick={onBack} className="h-10 w-10 flex-shrink-0 gap-0 p-0 text-slate-500 hover:text-slate-700 md:h-9 md:w-auto md:gap-1.5 md:px-3">
         <ArrowLeft className="h-4 w-4" />
-        ML Lab
+        <span className="hidden md:inline">ML Lab</span>
       </Button>
       <div className="flex-1 flex items-center gap-2">
         <div className={`w-8 h-8 rounded-xl ${iconBg} ${iconColor} flex items-center justify-center`}>
           <Icon className="h-4 w-4" />
         </div>
-        <h2 className="text-base font-bold text-slate-800">{title}</h2>
+        <h2 className="truncate text-sm font-bold text-slate-800 md:text-base">{title}</h2>
       </div>
       {onOpenDatasetCreator && (
-        <Button size="sm" variant="outline" onClick={onOpenDatasetCreator} className="gap-1.5 flex-shrink-0">
+        <Button size="sm" variant="outline" onClick={onOpenDatasetCreator} className="h-10 flex-shrink-0 gap-1.5 px-3">
           <Sparkles className="h-4 w-4" />
-          {isEnglish ? 'Create Dataset' : 'Crea Dataset'}
+          <span className="hidden sm:inline">{isEnglish ? 'Create Dataset' : 'Crea Dataset'}</span>
         </Button>
       )}
     </div>

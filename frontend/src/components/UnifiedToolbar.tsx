@@ -4,7 +4,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
   Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
-  Square, Circle, RotateCw, Magnet, Grid3x3
+  Square, Circle, RotateCw, Magnet, Grid3x3, Layers
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -24,12 +24,17 @@ interface UnifiedToolbarProps {
   onAddSlideImage?: (imageUrl: string) => void
   selectedBlock?: SlideBlock
   onUpdateBlockStyle?: (key: string, value: any) => void
+  /** The focused slide text block's TipTap instance, if any (see SlideEditor's onActiveTextEditorChange).
+   * When it has a non-collapsed selection, formatting buttons apply to that range instead of the whole block. */
+  activeBlockEditor?: Editor | null
   onOpenAIAssist?: (position: { x: number; y: number }) => void
   onAIAssistAnchorChange?: (position: { x: number; y: number }) => void
   showRuledLines?: boolean
   onToggleRuledLines?: () => void
   snapOptions?: SlideSnapOptions
   onChangeSnapOptions?: (options: SlideSnapOptions) => void
+  layersPanelOpen?: boolean
+  onToggleLayersPanel?: () => void
 }
 
 const FONTS = [
@@ -48,12 +53,15 @@ export function UnifiedToolbar({
   onAddSlideImage,
   selectedBlock,
   onUpdateBlockStyle,
+  activeBlockEditor,
   onOpenAIAssist,
   onAIAssistAnchorChange,
   showRuledLines = false,
   onToggleRuledLines,
   snapOptions,
-  onChangeSnapOptions
+  onChangeSnapOptions,
+  layersPanelOpen = false,
+  onToggleLayersPanel
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
@@ -118,6 +126,26 @@ export function UnifiedToolbar({
       editor.off('selectionUpdate', updateSelectionState)
     }
   }, [editor, mode])
+
+  // Same pattern as the document-mode selection tracking above, but for whichever slide text
+  // block is currently focused — drives whether formatting buttons target the highlighted
+  // range (hasBlockRangeSelection) or fall back to the whole-block style (onUpdateBlockStyle).
+  const [hasBlockRangeSelection, setHasBlockRangeSelection] = useState(false)
+  useEffect(() => {
+    if (mode !== 'slides' || !activeBlockEditor) {
+      setHasBlockRangeSelection(false)
+      return
+    }
+    const updateSelectionState = () => {
+      const { from, to } = activeBlockEditor.state.selection
+      setHasBlockRangeSelection(from !== to && activeBlockEditor.state.doc.textBetween(from, to, ' ').trim().length > 0)
+    }
+    updateSelectionState()
+    activeBlockEditor.on('selectionUpdate', updateSelectionState)
+    return () => {
+      activeBlockEditor.off('selectionUpdate', updateSelectionState)
+    }
+  }, [activeBlockEditor, mode])
 
   useEffect(() => {
     if (!toolbarRef.current) return
@@ -473,6 +501,19 @@ export function UnifiedToolbar({
             </div>
           )}
 
+          {/* Layers panel toggle */}
+          {onToggleLayersPanel && (
+            <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+              <Button
+                size="icon" variant="ghost" className={`h-8 w-8 ${layersPanelOpen ? 'bg-slate-200' : ''}`}
+                title="Livelli"
+                onClick={onToggleLayersPanel}
+              >
+                <Layers className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           {/* Insert Group */}
           <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
             <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('text')} className="h-8 w-8 rounded-lg" title="Testo">
@@ -558,48 +599,70 @@ export function UnifiedToolbar({
           )}
 
           {/* Contextual Properties (Text) */}
-          {selectedBlock?.type === 'text' && onUpdateBlockStyle && (
+          {selectedBlock?.type === 'text' && onUpdateBlockStyle && (() => {
+            // When there's a highlighted range in the focused block, format commands target
+            // that range via TipTap; otherwise they fall back to the whole block's style
+            // (today's behavior — the sane default before the user has typed/selected anything).
+            const useRange = hasBlockRangeSelection && !!activeBlockEditor
+            const isBold = useRange ? activeBlockEditor!.isActive('bold') : selectedBlock.style?.fontWeight === 'bold'
+            const isItalic = useRange ? activeBlockEditor!.isActive('italic') : selectedBlock.style?.fontStyle === 'italic'
+            const isUnderline = useRange ? activeBlockEditor!.isActive('underline') : selectedBlock.style?.textDecoration === 'underline'
+            const activeColor = useRange ? (activeBlockEditor!.getAttributes('textStyle').color || '#000000') : (selectedBlock.style?.color || '#000000')
+            const activeFontFamily = useRange ? (activeBlockEditor!.getAttributes('textStyle').fontFamily || 'Arial') : (selectedBlock.style?.fontFamily || 'Arial')
+            const rangeFontSizeAttr = useRange ? activeBlockEditor!.getAttributes('textStyle').fontSize : null
+            const activeFontSize = rangeFontSizeAttr ? parseInt(String(rangeFontSizeAttr), 10) || 16 : (selectedBlock.style?.fontSize || 16)
+
+            const applyFontFamily = (value: string) => {
+              if (useRange) activeBlockEditor!.chain().focus().setFontFamily(value).run()
+              else onUpdateBlockStyle('fontFamily', value)
+            }
+            const applyFontSize = (size: number) => {
+              const next = Math.max(8, size)
+              if (useRange) activeBlockEditor!.chain().focus().setMark('textStyle', { fontSize: `${next}px` }).run()
+              else onUpdateBlockStyle('fontSize', next)
+            }
+            const toggleBold = () => useRange ? activeBlockEditor!.chain().focus().toggleBold().run() : onUpdateBlockStyle('fontWeight', isBold ? 'normal' : 'bold')
+            const toggleItalic = () => useRange ? activeBlockEditor!.chain().focus().toggleItalic().run() : onUpdateBlockStyle('fontStyle', isItalic ? 'normal' : 'italic')
+            const toggleUnderline = () => useRange ? activeBlockEditor!.chain().focus().toggleUnderline().run() : onUpdateBlockStyle('textDecoration', isUnderline ? 'none' : 'underline')
+            const applyColor = (value: string) => useRange ? activeBlockEditor!.chain().focus().setColor(value).run() : onUpdateBlockStyle('color', value)
+            const applyAlign = (align: string) => useRange ? activeBlockEditor!.chain().focus().setTextAlign(align).run() : onUpdateBlockStyle('textAlign', align)
+            const activeAlign = useRange
+              ? (['left', 'center', 'right'].find(a => activeBlockEditor!.isActive({ textAlign: a })) || 'left')
+              : selectedBlock.style?.textAlign
+
+            return (
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-              <select 
+              <select
                 className="h-8 text-xs border rounded px-2 w-32"
-                value={selectedBlock.style?.fontFamily || 'Arial'}
-                onChange={(e) => onUpdateBlockStyle('fontFamily', e.target.value)}
+                value={activeFontFamily}
+                onChange={(e) => applyFontFamily(e.target.value)}
               >
                 {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
 
               <div className="flex items-center border rounded h-8 px-1">
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('fontSize', (selectedBlock.style?.fontSize || 16) - 2)}>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => applyFontSize(activeFontSize - 2)}>
                   <Minus className="h-3 w-3" />
                 </Button>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   className="h-6 w-10 text-xs border-0 text-center focus:ring-0 p-0"
-                  value={selectedBlock.style?.fontSize || 16}
-                  onChange={(e) => onUpdateBlockStyle('fontSize', parseInt(e.target.value))}
+                  value={activeFontSize}
+                  onChange={(e) => applyFontSize(parseInt(e.target.value) || activeFontSize)}
                 />
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('fontSize', (selectedBlock.style?.fontSize || 16) + 2)}>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => applyFontSize(activeFontSize + 2)}>
                   <Plus className="h-3 w-3" />
                 </Button>
               </div>
 
               <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
-                <Button 
-                  size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.fontWeight === 'bold' ? 'bg-slate-200' : ''}`}
-                  onClick={() => onUpdateBlockStyle('fontWeight', selectedBlock.style?.fontWeight === 'bold' ? 'normal' : 'bold')}
-                >
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${isBold ? 'bg-slate-200' : ''}`} onClick={toggleBold}>
                   <Bold className="h-4 w-4" />
                 </Button>
-                <Button 
-                  size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.fontStyle === 'italic' ? 'bg-slate-200' : ''}`}
-                  onClick={() => onUpdateBlockStyle('fontStyle', selectedBlock.style?.fontStyle === 'italic' ? 'normal' : 'italic')}
-                >
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${isItalic ? 'bg-slate-200' : ''}`} onClick={toggleItalic}>
                   <Italic className="h-4 w-4" />
                 </Button>
-                <Button 
-                  size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.textDecoration === 'underline' ? 'bg-slate-200' : ''}`}
-                  onClick={() => onUpdateBlockStyle('textDecoration', selectedBlock.style?.textDecoration === 'underline' ? 'none' : 'underline')}
-                >
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${isUnderline ? 'bg-slate-200' : ''}`} onClick={toggleUnderline}>
                   <Underline className="h-4 w-4" />
                 </Button>
               </div>
@@ -607,8 +670,8 @@ export function UnifiedToolbar({
               <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
                 <input
                   type="color"
-                  value={selectedBlock.style?.color || '#000000'}
-                  onChange={(e) => onUpdateBlockStyle('color', e.target.value)}
+                  value={activeColor}
+                  onChange={(e) => applyColor(e.target.value)}
                   className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
                   title="Colore Testo"
                 />
@@ -622,18 +685,19 @@ export function UnifiedToolbar({
               </div>
 
               <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
-                <Button size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.textAlign === 'left' ? 'bg-slate-200' : ''}`} onClick={() => onUpdateBlockStyle('textAlign', 'left')}>
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${activeAlign === 'left' ? 'bg-slate-200' : ''}`} onClick={() => applyAlign('left')}>
                   <AlignLeft className="h-4 w-4" />
                 </Button>
-                <Button size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.textAlign === 'center' ? 'bg-slate-200' : ''}`} onClick={() => onUpdateBlockStyle('textAlign', 'center')}>
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${activeAlign === 'center' ? 'bg-slate-200' : ''}`} onClick={() => applyAlign('center')}>
                   <AlignCenter className="h-4 w-4" />
                 </Button>
-                <Button size="icon" variant="ghost" className={`h-8 w-8 ${selectedBlock.style?.textAlign === 'right' ? 'bg-slate-200' : ''}`} onClick={() => onUpdateBlockStyle('textAlign', 'right')}>
+                <Button size="icon" variant="ghost" className={`h-8 w-8 ${activeAlign === 'right' ? 'bg-slate-200' : ''}`} onClick={() => applyAlign('right')}>
                   <AlignRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-          )}
+            )
+          })()}
         </>
       )}
 

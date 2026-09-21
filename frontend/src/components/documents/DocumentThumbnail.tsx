@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, PenTool } from 'lucide-react'
 import type { SlideBlock } from '@/components/SlideEditor'
+import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
 
 type ThumbnailType = 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'
 
@@ -39,11 +40,19 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const update = () => setHostSize({ width: host.clientWidth, height: host.clientHeight })
+    let frame = 0
+    const update = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const width = Math.round(host.clientWidth)
+        const height = Math.round(host.clientHeight)
+        setHostSize(previous => previous.width === width && previous.height === height ? previous : { width, height })
+      })
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(host)
-    return () => observer.disconnect()
+    return () => { cancelAnimationFrame(frame); observer.disconnect() }
   }, [])
 
   const blocks = useMemo(() => (slide?.blocks || [])
@@ -101,7 +110,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
             >
               {block.type === 'text' ? (
                 <div
-                  className="h-full w-full whitespace-pre-wrap"
+                  className="h-full w-full whitespace-pre-wrap [&_p]:m-0"
                   style={{
                     fontFamily: block.style.fontFamily,
                     fontSize: block.style.fontSize,
@@ -112,9 +121,11 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
                     textAlign: block.style.textAlign,
                     lineHeight: block.style.lineHeight,
                   }}
-                >
-                  {block.content}
-                </div>
+                  // block.content is TipTap-authored HTML (inline bold/italic/color marks), already
+                  // sanitized on both write paths (client DOMPurify + server nh3) — re-sanitized here
+                  // too since this renders other users' saved decks, not just the author's own.
+                  dangerouslySetInnerHTML={{ __html: sanitizeSlideHtml(block.content) }}
+                />
               ) : block.type === 'image' ? (
                 <img src={block.content} alt="" className="h-full w-full object-cover" />
               ) : block.type === 'line' ? (
@@ -138,11 +149,18 @@ function DocumentPagePreview({ html }: { html: string }) {
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const update = () => setHostWidth(host.clientWidth)
+    let frame = 0
+    const update = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const width = Math.round(host.clientWidth)
+        setHostWidth(previous => previous === width ? previous : width)
+      })
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(host)
-    return () => observer.disconnect()
+    return () => { cancelAnimationFrame(frame); observer.disconnect() }
   }, [])
 
   return (
@@ -174,7 +192,7 @@ function SheetPreview({ data }: { data: string[][] }) {
   )
 }
 
-export default function DocumentThumbnail({ contentJson, type, title, className = '' }: DocumentThumbnailProps) {
+function DocumentThumbnail({ contentJson, type, title, className = '' }: DocumentThumbnailProps) {
   const content = useMemo<ParsedContent>(() => {
     try { return JSON.parse(contentJson || '{}') }
     catch { return {} }
@@ -189,6 +207,7 @@ export default function DocumentThumbnail({ contentJson, type, title, className 
       : isFullHtml
         ? 'web'
       : type
+  const useLightweightPreview = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   return (
     <div className={`pointer-events-none relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={`Anteprima di ${title}`}>
@@ -196,8 +215,8 @@ export default function DocumentThumbnail({ contentJson, type, title, className 
         : actualType === 'presentation' ? <SlidePreview content={content} title={title} />
         : actualType === 'document' && html ? <DocumentPagePreview html={html} />
         : actualType === 'sheet' ? <SheetPreview data={content.data || []} />
-        : actualType === 'pdf' && content.url ? <iframe src={`${content.url}#page=1&toolbar=0&navpanes=0`} title={title} className="h-full w-full border-0 bg-white" />
-        : actualType === 'web' && (content.url || html) ? <iframe src={content.url} srcDoc={content.url ? undefined : html} sandbox="" title={title} className="h-full w-full border-0 bg-white" />
+        : !useLightweightPreview && actualType === 'pdf' && content.url ? <iframe src={`${content.url}#page=1&toolbar=0&navpanes=0`} title={title} className="h-full w-full border-0 bg-white" />
+        : !useLightweightPreview && actualType === 'web' && (content.url || html) ? <iframe src={content.url} srcDoc={content.url ? undefined : html} sandbox="" title={title} className="h-full w-full border-0 bg-white" />
         : (
           <div className="flex h-full flex-col items-center justify-center gap-2 bg-slate-50 text-slate-300">
             {actualType === 'canvas' ? <PenTool className="h-9 w-9" /> : <FileText className="h-9 w-9" />}
@@ -213,3 +232,5 @@ export default function DocumentThumbnail({ contentJson, type, title, className 
     </div>
   )
 }
+
+export default memo(DocumentThumbnail)

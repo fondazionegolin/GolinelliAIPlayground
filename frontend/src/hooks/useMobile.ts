@@ -29,13 +29,15 @@ export function useMobile(): MobileState {
   useEffect(() => {
     // Detect screen size changes
     const handleResize = () => {
-      setState(prev => ({
-        ...prev,
-        isMobile: window.innerWidth < 768,
-        isTablet: window.innerWidth >= 768 && window.innerWidth < 1024,
-        orientation: window.innerWidth > window.innerHeight ? 'landscape' : 'portrait',
-        viewportHeight: window.innerHeight,
-      }))
+      const isMobile = window.innerWidth < 768
+      const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024
+      const orientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait'
+      setState(prev => {
+        // iOS fires resize continuously while its browser chrome expands/collapses. A height-only
+        // update used to re-render every consumer (including the complete document workspace).
+        if (prev.isMobile === isMobile && prev.isTablet === isTablet && prev.orientation === orientation) return prev
+        return { ...prev, isMobile, isTablet, orientation, viewportHeight: window.innerHeight }
+      })
     }
 
     // Detect keyboard using visualViewport API (more reliable than resize)
@@ -47,17 +49,26 @@ export function useMobile(): MobileState {
         vvRafPending = false
         if (!window.visualViewport) return
 
-        const viewportHeight = window.visualViewport.height
+        const viewportHeight = Math.round(window.visualViewport.height)
         const windowHeight = window.innerHeight
-        const keyboardHeight = windowHeight - viewportHeight
+        const keyboardHeight = Math.max(0, Math.round(windowHeight - viewportHeight))
         const isKeyboardOpen = keyboardHeight > 150 // Threshold to detect keyboard
 
-        setState(prev => ({
-          ...prev,
-          isKeyboardOpen,
-          keyboardHeight: isKeyboardOpen ? keyboardHeight : 0,
-          viewportHeight: viewportHeight,
-        }))
+        setState(prev => {
+          const nextKeyboardHeight = isKeyboardOpen ? keyboardHeight : 0
+          const nextViewportHeight = isKeyboardOpen ? viewportHeight : prev.viewportHeight
+          if (
+            prev.isKeyboardOpen === isKeyboardOpen &&
+            prev.keyboardHeight === nextKeyboardHeight &&
+            prev.viewportHeight === nextViewportHeight
+          ) return prev
+          return {
+            ...prev,
+            isKeyboardOpen,
+            keyboardHeight: nextKeyboardHeight,
+            viewportHeight: nextViewportHeight,
+          }
+        })
       })
     }
 
@@ -86,12 +97,10 @@ export function useMobile(): MobileState {
     // Event listeners
     window.addEventListener('resize', handleResize)
     window.visualViewport?.addEventListener('resize', handleVisualViewportResize)
-    window.visualViewport?.addEventListener('scroll', handleVisualViewportResize)
 
     return () => {
       window.removeEventListener('resize', handleResize)
       window.visualViewport?.removeEventListener('resize', handleVisualViewportResize)
-      window.visualViewport?.removeEventListener('scroll', handleVisualViewportResize)
     }
   }, [])
 
@@ -154,11 +163,15 @@ export function useIsTouch(): boolean {
 
 // Detect iOS specifically (for special handling)
 export function useIsIOS(): boolean {
-  const [isIOS, setIsIOS] = useState(false)
+  const detectIOS = () => {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+    const userAgent = navigator.userAgent || navigator.vendor || ''
+    return /iPad|iPhone|iPod/.test(userAgent) && !(window as unknown as { MSStream?: unknown }).MSStream
+  }
+  const [isIOS, setIsIOS] = useState(detectIOS)
 
   useEffect(() => {
-    const userAgent = navigator.userAgent || navigator.vendor || ''
-    setIsIOS(/iPad|iPhone|iPod/.test(userAgent) && !(window as unknown as { MSStream?: unknown }).MSStream)
+    setIsIOS(detectIOS())
   }, [])
 
   return isIOS
