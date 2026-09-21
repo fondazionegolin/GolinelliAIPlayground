@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-09-16T11:28:08.672274+00:00",
-  "version_label": "2026.09.16-10d40853",
-  "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "10d40853a5006767537fcc24dea635a75804d03d",
+  "generated_at": "2026-09-21T13:32:11.763444+00:00",
+  "version_label": "2026.09.21-7dd1300e",
+  "title": "Aggiornamenti branch agentic",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "7dd1300e9f38bb1ee426ac736c29cbc2db4ef993",
   "items": [
     {
       "category": "improved",
-      "title": "Fix(infra): stop nginx from buffering the coding/notebook SSE streams",
-      "description": "Fix(infra): stop nginx from buffering the coding/notebook SSE streams"
+      "title": "Docs: add agentic workflow studio spec",
+      "description": "Docs: add agentic workflow studio spec"
+    },
+    {
+      "category": "new",
+      "title": "Extend interactive learning tools",
+      "description": "Extend interactive learning tools"
     }
   ]
 }
