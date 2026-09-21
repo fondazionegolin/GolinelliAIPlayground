@@ -251,6 +251,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     }
     updateBoard.mutate({ columns: [...columns, column] }, {
       onSuccess: () => {
+        if (isMobile) setMobileColumnId(column.id)
         cancelColumnEdit.current = false
         setEditingColumnId(column.id)
         setEditingColumnLabel(column.label)
@@ -424,6 +425,17 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             </header>
             {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label="Colonne board">
               {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
+              {board.can_manage && (
+                <button
+                  type="button"
+                  onClick={addColumn}
+                  disabled={columns.length >= 12 || updateBoard.isPending}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-40"
+                  aria-label="Nuova colonna"
+                >
+                  <Plus className="h-4 w-4" /> Nuova colonna
+                </button>
+              )}
             </nav>}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] md:p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
               {columns.filter((column) => !isMobile || column.id === activeMobileColumnId).map((column) => (
@@ -460,7 +472,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   } ${draggingColumnId === column.id ? 'opacity-50' : ''}`}
                 >
                   <div
-                    draggable={Boolean(board.can_manage && editingColumnId !== column.id)}
+                    draggable={Boolean(!isMobile && board.can_manage && editingColumnId !== column.id)}
                     onDragStart={(event) => {
                       if (!board.can_manage || (event.target as HTMLElement).closest('button, input')) {
                         event.preventDefault()
@@ -593,7 +605,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     {(grouped[column.id] || []).map((card) => (
                       <article
                         key={card.id}
-                        draggable={Boolean(board.can_edit && editingCardId !== card.id)}
+                        draggable={Boolean(!isMobile && board.can_edit && editingCardId !== card.id)}
                         onDragStart={(event) => {
                           if (!board.can_edit || editingCardId === card.id || (event.target as HTMLElement).closest('button, input, textarea')) {
                             event.preventDefault()
@@ -683,7 +695,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                               )}
                               {board.can_edit && <ColorPicker value={card.color || '#cbd5e1'} onChange={(color) => updateCardColor.mutate({ cardId: card.id, color })} compact />}
                             </div>
-                            {card.description && <p className="mt-1 hidden whitespace-pre-wrap text-xs text-slate-500 md:block">{card.description}</p>}
+                            {card.description && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-slate-500 md:line-clamp-none">{card.description}</p>}
                             <p className="mt-2 hidden text-[10px] text-slate-400 md:block">
                               {card.created_by_display_name && `Creato da ${card.created_by_display_name}`}
                               {card.last_actor_display_name && ` · ultima modifica ${card.last_actor_display_name}`}
@@ -701,7 +713,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   </div>
                 </section>
               ))}
-              {board.can_manage && (
+              {!isMobile && board.can_manage && (
                 <button
                   type="button"
                   onClick={addColumn}

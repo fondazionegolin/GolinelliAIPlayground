@@ -25,10 +25,11 @@ from app.models.notebook_assignment import NotebookAssignment, NotebookFork
 from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
 from app.models.changelog import PlatformChangelogRelease
-from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
+from app.models.live_interaction import LiveEscapeParticipant, LiveInteraction, LiveInteractionResponse
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDesignSystem, CodingFile, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingReview, CodingVersion
 from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
+from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
 
 __all__ = [
     "Tenant",
@@ -100,6 +101,7 @@ __all__ = [
     "PlatformChangelogRelease",
     "LiveInteraction",
     "LiveInteractionResponse",
+    "LiveEscapeParticipant",
     "ToyLMJob",
     "ToyLMJobPublication",
     "CodingAgentRun",
@@ -118,4 +120,7 @@ __all__ = [
     "TuringMessage",
     "TuringPersona",
     "TuringTeacherSettings",
+    "AgenticWorkflow",
+    "AgenticWorkflowRun",
+    "AgenticNodeRun",
 ]

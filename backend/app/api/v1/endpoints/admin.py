@@ -10,18 +10,18 @@ import csv
 import io
 
 from app.core.database import get_db
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash, verify_password, create_student_join_token
 from app.core.config import settings
-from app.core.legal_documents import LEGAL_DOCUMENTS
+from app.core.legal_documents import LEGAL_DOCUMENTS, STUDENT_CONSENTS
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
 from app.models.tenant import Tenant
 from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.template_version import TenantTemplateVersion
-from app.models.session import Session, SessionStudent, Class as TeacherClass
+from app.models.session import Session, SessionStudent, StudentConsent, Class as TeacherClass
 from app.models.chat import ChatMessage
-from app.models.llm import Conversation, ConversationMessage, TeacherConversation, TeacherConversationMessage
+from app.models.llm import AuditEvent, Conversation, ConversationMessage, TeacherConversation, TeacherConversationMessage
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
 from app.models.task import Task
@@ -2451,6 +2451,153 @@ async def list_legal_consents(
             }
             for teacher in teachers
         ],
+    }
+
+
+@router.get("/students")
+async def list_students(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    q: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+):
+    stats_subquery = (
+        select(
+            CreditTransaction.student_id.label("student_id"),
+            func.count(CreditTransaction.id).label("interactions"),
+            func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("cost"),
+            func.max(CreditTransaction.timestamp).label("last_interaction_at"),
+        )
+        .where(CreditTransaction.tenant_id == admin.tenant_id, CreditTransaction.student_id.is_not(None))
+        .group_by(CreditTransaction.student_id)
+        .subquery()
+    )
+    query = (
+        select(
+            SessionStudent, Session.title, TeacherClass.name,
+            stats_subquery.c.interactions, stats_subquery.c.cost, stats_subquery.c.last_interaction_at,
+        )
+        .join(Session, Session.id == SessionStudent.session_id)
+        .outerjoin(TeacherClass, TeacherClass.id == Session.class_id)
+        .outerjoin(stats_subquery, stats_subquery.c.student_id == SessionStudent.id)
+        .where(SessionStudent.tenant_id == admin.tenant_id)
+        .order_by(SessionStudent.last_seen_at.desc().nulls_last())
+        .limit(limit)
+    )
+    if q:
+        query = query.where(SessionStudent.nickname.ilike(f"%{q}%"))
+    rows = (await db.execute(query)).all()
+
+    student_ids = [row[0].id for row in rows]
+    consents_by_student: dict[str, list[StudentConsent]] = {}
+    if student_ids:
+        consent_rows = (await db.execute(select(StudentConsent).where(
+            StudentConsent.session_student_id.in_(student_ids),
+        ))).scalars().all()
+        for consent in consent_rows:
+            consents_by_student.setdefault(str(consent.session_student_id), []).append(consent)
+
+    return {
+        "consent_definitions": STUDENT_CONSENTS,
+        "items": [
+            {
+                "id": str(student.id),
+                "nickname": student.nickname,
+                "session_title": session_title,
+                "class_name": class_name,
+                "is_frozen": student.is_frozen,
+                "created_at": student.created_at.isoformat() if student.created_at else None,
+                "last_seen_at": student.last_seen_at.isoformat() if student.last_seen_at else None,
+                "interactions": int(interactions or 0),
+                "cost": float(cost or 0.0),
+                "last_interaction_at": last_interaction_at.isoformat() if last_interaction_at else None,
+                "consents": [
+                    {
+                        "key": doc["key"],
+                        "version": doc["version"],
+                        "accepted_at": next((
+                            item.accepted_at.isoformat() for item in consents_by_student.get(str(student.id), [])
+                            if item.consent_key == doc["key"] and item.consent_version == doc["version"]
+                        ), None),
+                    }
+                    for doc in STUDENT_CONSENTS
+                ],
+            }
+            for student, session_title, class_name, interactions, cost, last_interaction_at in rows
+        ],
+    }
+
+
+@router.get("/students/{student_id}/activity")
+async def get_student_activity(
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    student = (await db.execute(select(SessionStudent).where(
+        SessionStudent.id == student_id, SessionStudent.tenant_id == admin.tenant_id,
+    ))).scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Studente non trovato")
+    rows = (await db.execute(
+        select(CreditTransaction).where(CreditTransaction.student_id == student_id)
+        .order_by(CreditTransaction.timestamp.desc()).limit(limit).offset(offset)
+    )).scalars().all()
+    total = (await db.execute(
+        select(func.count(CreditTransaction.id)).where(CreditTransaction.student_id == student_id)
+    )).scalar_one()
+    return {
+        "student": {"id": str(student.id), "nickname": student.nickname},
+        "total": int(total),
+        "items": [
+            {
+                "id": str(item.id),
+                "timestamp": item.timestamp.isoformat() if item.timestamp else None,
+                "transaction_type": item.transaction_type.value if item.transaction_type else None,
+                "provider": item.provider,
+                "model": item.model,
+                "cost": float(item.cost or 0.0),
+                "usage_details": item.usage_details,
+            }
+            for item in rows
+        ],
+    }
+
+
+@router.post("/students/{student_id}/subjective-view")
+async def create_admin_student_subjective_view_token(
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Issue a short-lived student-scoped token so an admin can view the platform as this student."""
+    result = await db.execute(select(SessionStudent).where(
+        SessionStudent.id == student_id, SessionStudent.tenant_id == admin.tenant_id,
+    ))
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Studente non trovato")
+    session = (await db.execute(select(Session).where(Session.id == student.session_id))).scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessione non trovata")
+
+    token = create_student_join_token(
+        str(student.session_id), str(student.id), student.nickname,
+        extra_claims={"subjective_observer": True, "observer_admin_id": str(admin.id)},
+        expires_delta=timedelta(minutes=30),
+    )
+    db.add(AuditEvent(
+        tenant_id=student.tenant_id, session_id=student.session_id,
+        actor_type="ADMIN", actor_user_id=admin.id,
+        event_type="STUDENT_SUBJECTIVE_VIEW_STARTED",
+        payload_json={"student_id": str(student.id), "nickname": student.nickname},
+    ))
+    await db.commit()
+    return {
+        "token": token, "student_id": str(student.id), "session_id": str(session.id),
+        "session_title": session.title, "nickname": student.nickname,
     }
 
 

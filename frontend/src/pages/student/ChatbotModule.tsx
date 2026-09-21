@@ -32,6 +32,7 @@ import {
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
+import EscapeRoomTerminal, { type EscapeRoomState } from '@/components/teacherbots/EscapeRoomTerminal'
 
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
@@ -336,6 +337,7 @@ interface Teacherbot {
   is_proactive: boolean
   proactive_message: string | null
   enable_live_voice?: boolean
+  enable_escape_room?: boolean
   is_studentbot?: boolean
 }
 
@@ -533,6 +535,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
   const [messages, setMessages] = useState<Message[]>([])
+  const [escapeRoomState, setEscapeRoomState] = useState<EscapeRoomState | null>(null)
+  const [escapeRoomLoading, setEscapeRoomLoading] = useState(false)
+  const [escapeRoomError, setEscapeRoomError] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const loadingConvIdRef = useRef<string | null>(null)
@@ -1932,6 +1937,16 @@ REGOLE IMPORTANTI:
           token_usage_json: m.token_usage_json,
         }))
         setMessages(loadedMessages)
+        if (bot?.enable_escape_room) {
+          try {
+            const escapeResponse = await teacherbotsApi.getEscapeRoom(convId)
+            if (loadingConvIdRef.current === convId) setEscapeRoomState(escapeResponse.data)
+          } catch {
+            if (loadingConvIdRef.current === convId) setEscapeRoomState(null)
+          }
+        } else {
+          setEscapeRoomState(null)
+        }
         if (isMobile) setMobileView('chat')
       } catch (err) {
         console.error('Error loading tb conv', err)
@@ -1942,6 +1957,7 @@ REGOLE IMPORTANTI:
     // Regular conversation load
     setTeacherbotConversationId(null)
     setSelectedTeacherbot(null)
+    setEscapeRoomState(null)
 
     try {
       const res = await llmApi.getMessages(convId)
@@ -2053,6 +2069,8 @@ REGOLE IMPORTANTI:
     }] : [])
     setConversationId(null)
     setTeacherbotConversationId(null)
+    setEscapeRoomState(null)
+    setEscapeRoomError(null)
     setActiveMasterPrompt(null)
     setIsMasterPromptApplied(false)
     resetProfileInterview()
@@ -2123,6 +2141,58 @@ REGOLE IMPORTANTI:
     }
   }, [refetchConversations, refetchTeacherbotConversations, teacherbotConversationsData])
 
+  const handleStartEscapeRoom = useCallback(async () => {
+    if (!selectedTeacherbot?.enable_escape_room || isTeacherPreview) return
+    setEscapeRoomLoading(true)
+    setEscapeRoomError(null)
+    try {
+      let convId = teacherbotConversationId
+      if (!convId) {
+        const conversation = await teacherbotsApi.startConversation(selectedTeacherbot.id, sessionId)
+        convId = conversation.data.id
+        setTeacherbotConversationId(convId)
+      }
+      const response = await teacherbotsApi.startEscapeRoom(convId!)
+      setEscapeRoomState(response.data)
+      await refetchTeacherbotConversations()
+    } catch (error: any) {
+      setEscapeRoomError(error?.response?.data?.detail || 'Impossibile inizializzare l’escape room.')
+    } finally {
+      setEscapeRoomLoading(false)
+    }
+  }, [isTeacherPreview, refetchTeacherbotConversations, selectedTeacherbot, sessionId, teacherbotConversationId])
+
+  const handleEscapeRoomAnswer = useCallback(async (value: string) => {
+    if (!teacherbotConversationId) return
+    setEscapeRoomLoading(true)
+    setEscapeRoomError(null)
+    try {
+      const response = await teacherbotsApi.submitEscapeRoomAnswer(teacherbotConversationId, value)
+      setEscapeRoomState(response.data)
+      if (response.data.status === 'completed') await refetchTeacherbotConversations()
+    } catch (error: any) {
+      setEscapeRoomError(error?.response?.data?.detail || 'Il terminale non ha accettato il comando.')
+    } finally {
+      setEscapeRoomLoading(false)
+    }
+  }, [refetchTeacherbotConversations, teacherbotConversationId])
+
+  useEffect(() => {
+    const needsStart = !escapeRoomState || escapeRoomState.status === 'not_started'
+    if (!selectedTeacherbot?.enable_escape_room || isTeacherPreview || !needsStart || escapeRoomLoading || escapeRoomError) return
+    if (isMobile && mobileView !== 'chat') return
+    void handleStartEscapeRoom()
+  }, [
+    escapeRoomError,
+    escapeRoomLoading,
+    escapeRoomState,
+    handleStartEscapeRoom,
+    isMobile,
+    isTeacherPreview,
+    mobileView,
+    selectedTeacherbot?.enable_escape_room,
+  ])
+
   const handleSelectTeacherbot = useCallback(async (teacherbot: Teacherbot) => {
     triggerHaptic('selection')
 
@@ -2138,6 +2208,8 @@ REGOLE IMPORTANTI:
     setSelectedTeacherbot(teacherbot)
     setMainTab(teacherbot.is_studentbot ? 'studentbots' : 'teacherbots')
     setTeacherbotConversationId(null)
+    setEscapeRoomState(null)
+    setEscapeRoomError(null)
     setSelectedProfile(null)
     setConversationId(null)
     setActiveMasterPrompt(null)
@@ -2640,6 +2712,16 @@ REGOLE IMPORTANTI:
         suggestedPrompts={[]}
         isTeacherbot={true}
         onMinimize={(onMinimize || onClose) ? handleDockOrClose : undefined}
+        hideComposer={Boolean(selectedTeacherbot.enable_escape_room && !isTeacherPreview)}
+        footerContent={selectedTeacherbot.enable_escape_room && !isTeacherPreview ? (
+          <EscapeRoomTerminal
+            state={escapeRoomState}
+            loading={escapeRoomLoading}
+            error={escapeRoomError}
+            onStart={handleStartEscapeRoom}
+            onSubmit={handleEscapeRoomAnswer}
+          />
+        ) : undefined}
       />
     )
   }
@@ -4395,6 +4477,17 @@ REGOLE IMPORTANTI:
               )
             })
           )}
+          {selectedTeacherbot?.enable_escape_room && !isTeacherPreview && (
+            <div className="mx-auto mt-5 w-full max-w-2xl">
+              <EscapeRoomTerminal
+                state={escapeRoomState}
+                loading={escapeRoomLoading}
+                error={escapeRoomError}
+                onStart={handleStartEscapeRoom}
+                onSubmit={handleEscapeRoomAnswer}
+              />
+            </div>
+          )}
           {(sendMessageMutation.isPending && !isStreaming) && (
             <div className="flex gap-3">
 	              <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={activeBotSolidStyle}>
@@ -4451,7 +4544,7 @@ REGOLE IMPORTANTI:
           </div>
               </div>
 
-              {isMobile ? (
+              {(!selectedTeacherbot?.enable_escape_room || isTeacherPreview) && (isMobile ? (
                 <div className={`fixed left-0 right-0 bottom-0 transition-all duration-200 z-50 ${isInputFocused ? 'p-2 bg-white border-t border-slate-200' : 'p-2'}`}>
                   {composerContent}
                 </div>
@@ -4461,7 +4554,7 @@ REGOLE IMPORTANTI:
                     {composerContent}
                   </div>
                 </div>
-              )}
+              ))}
             </>
           )}
         </div>
@@ -4521,6 +4614,9 @@ REGOLE IMPORTANTI:
               border: accentTheme.border,
             }}
             sessionSource={voiceSource}
+            conversationHistory={messages
+              .filter(message => message.content?.trim() && (message.role === 'user' || message.role === 'assistant'))
+              .map(message => ({ role: message.role, content: message.content }))}
             onClose={() => setShowVoiceInterrogation(false)}
             onTurn={(role, text) => {
               setMessages((prev) => [

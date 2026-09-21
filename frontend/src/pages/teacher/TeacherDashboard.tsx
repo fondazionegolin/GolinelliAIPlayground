@@ -1,8 +1,8 @@
-import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
+import { useState, useEffect, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap } from 'lucide-react'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch } from 'lucide-react'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
@@ -25,6 +25,8 @@ const ToyLMPage = lazy(() => import('./ToyLMPage'))
 const TeacherFeedbackBoardPage = lazy(() => import('./FeedbackBoardPage'))
 const BoardManagerPage = lazy(() => import('./BoardManagerPage'))
 const StudentCodingLabModule = lazy(() => import('../student/StudentCodingLabModule'))
+const AgenticWorkflowStudioPage = lazy(() => import('./AgenticWorkflowStudioPage'))
+const AgenticWorkflowLibraryPage = lazy(() => import('./AgenticWorkflowLibraryPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -63,7 +65,6 @@ export default function TeacherDashboard() {
   const [subjectiveStudentId, setSubjectiveStudentId] = useState<string | null>(null)
   const [sessionStudents, setSessionStudents] = useState<SessionStudentSummary[]>([])
   const [updatingStudentId, setUpdatingStudentId] = useState<string | null>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [classChatOpen, setClassChatOpen] = useState(false)
   const [classChatUnread, setClassChatUnread] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -226,19 +227,15 @@ export default function TeacherDashboard() {
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
+    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
   ]
 
   const handleMobileLogout = () => {
-    setMobileMenuOpen(false)
     localStorage.removeItem('teacher_token')
     localStorage.removeItem('teacher_selected_session')
     useAuthStore.getState().logout()
     navigate('/login')
   }
-
-  useEffect(() => {
-    setMobileMenuOpen(false)
-  }, [location.pathname])
 
   return (
     <AppBackground className={`h-[100dvh] flex flex-col overflow-hidden ${isMobile ? 'teacher-mobile-shell' : ''}`} gradient={bgGradient}>
@@ -257,104 +254,19 @@ export default function TeacherDashboard() {
         />
       )}
 
-      {/* ── Mobile Top Bar ── */}
       {isMobile && (
-        <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-          <div className="flex h-12 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700"
-              aria-label="Apri menu"
-            >
-              <Menu className="h-6 w-6" strokeWidth={2.5} />
-            </button>
-            <button type="button" onClick={() => navigate('/teacher')} className="min-w-0 flex-1 text-left">
-              <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: teacherTheme.accent }}>Area docente</span>
-              <span className="block truncate text-base font-black leading-tight text-slate-950">
-                {isTeacherHomeRoute ? 'Home' : mobileNav.find(item => location.pathname.startsWith(item.path) && item.path !== '/teacher')?.label || 'Workspace'}
-              </span>
-            </button>
-            {currentSession && (
-              <button
-                type="button"
-                onClick={() => navigate(`/teacher/sessions/${currentSession.id}`)}
-                className="flex h-10 max-w-[7.5rem] shrink-0 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200"
-                title={currentSession.name}
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
-                <span className="min-w-0">
-                  <span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span>
-                  <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span>
-                </span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setClassChatOpen(true)}
-              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-slate-200 bg-slate-50 text-xs font-black text-slate-800"
-              title={teacherProfile?.name || 'Docente'}
-              aria-label={`Apri chat di classe · ${teacherProfile?.name || 'Docente'}`}
-            >
-              {teacherProfile?.name?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}
-              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full rounded-bl-none border-2 border-white bg-[image:var(--selection-active-bg)] px-1 text-[var(--selection-active-text)] shadow-sm">
-                <MessageSquare className="h-2.5 w-2.5" fill="currentColor" />
-              </span>
-              {classChatUnread > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">
-                  {classChatUnread > 9 ? '9+' : classChatUnread}
-                </span>
-              )}
-            </button>
-          </div>
-        </header>
-      )}
-
-      {isMobile && mobileMenuOpen && (
-        <div className="fixed inset-0 z-[80]">
-          <button className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} aria-label="Chiudi menu" />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-              <div className="flex items-center gap-3">
-                <LogoMark className="h-11 w-11 shrink-0" />
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: teacherTheme.accent }}>Golinelli.ai</span>
-                  <p className="mt-1 text-lg font-black text-slate-950">{teacherProfile?.name || t('teacher_dashboard.mobile_teacher_default')}</p>
-                  <p className="text-xs font-medium text-slate-400">Area docente</p>
-                </div>
-              </div>
-              <button onClick={() => setMobileMenuOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Chiudi menu">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <nav className="flex-1 overflow-y-auto p-3">
-              {mobileNav.map(({ path, label, icon: Icon, exact }) => {
-                const active = exact ? isTeacherHomeRoute : location.pathname.startsWith(path)
-                return (
-                  <Link key={path} to={path} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 hover:bg-slate-100'}`}>
-                    <Icon className="h-5 w-5 shrink-0" />
-                    <span className="flex-1">{label}</span>
-                    <ChevronRight className="h-4 w-4 opacity-50" />
-                  </Link>
-                )
-              })}
-            </nav>
-            <div className="border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => { setFeedbackOpen(true); setMobileMenuOpen(false) }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-50 px-4 py-3.5 text-sm font-black text-orange-600"
-              >
-                <MessageSquarePlus className="h-5 w-5" />
-                Feedback
-              </button>
-              <button onClick={handleMobileLogout} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600">
-                <LogOut className="h-5 w-5" />
-                {t('navbar.logout')}
-              </button>
-            </div>
-          </aside>
-        </div>
+        <TeacherMobileNavigation
+          currentSession={currentSession}
+          teacherName={teacherProfile?.name}
+          accentColor={teacherTheme.accent}
+          currentPath={location.pathname}
+          items={mobileNav}
+          unreadCount={classChatUnread}
+          onNavigate={navigate}
+          onOpenChat={() => setClassChatOpen(true)}
+          onOpenFeedback={() => setFeedbackOpen(true)}
+          onLogout={handleMobileLogout}
+        />
       )}
 
       {/* ── Main Content ── */}
@@ -494,7 +406,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {showMobileHome && (
             <MobileTeacherHome
               teacherName={teacherProfile?.name}
@@ -525,6 +437,9 @@ export default function TeacherDashboard() {
               <Route path="toy-lm" element={<ToyLMPage />} />
               <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
+              <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
+              <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="coding" element={
                 activeSessionId ? (
                   <div className="h-full min-h-0 overflow-hidden">
@@ -634,6 +549,100 @@ export default function TeacherDashboard() {
         />
       )}
     </AppBackground>
+  )
+}
+
+type TeacherMobileNavItem = {
+  path: string
+  label: string
+  icon: ComponentType<{ className?: string }>
+  exact?: boolean
+}
+
+function TeacherMobileNavigation({
+  currentSession,
+  teacherName,
+  accentColor,
+  currentPath,
+  items,
+  unreadCount,
+  onNavigate,
+  onOpenChat,
+  onOpenFeedback,
+  onLogout,
+}: {
+  currentSession: { id: string; name: string } | null
+  teacherName?: string
+  accentColor: string
+  currentPath: string
+  items: TeacherMobileNavItem[]
+  unreadCount: number
+  onNavigate: (path: string) => void
+  onOpenChat: () => void
+  onOpenFeedback: () => void
+  onLogout: () => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const isHome = currentPath === '/teacher' || currentPath === '/teacher/'
+
+  useEffect(() => setOpen(false), [currentPath])
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [open])
+
+  return (
+    <>
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <div className="relative flex h-12 items-center gap-2">
+          <button type="button" onClick={() => setOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700" aria-label="Apri menu">
+            <Menu className="h-6 w-6" strokeWidth={2.5} />
+          </button>
+          <button type="button" onClick={() => onNavigate('/teacher')} className="hidden min-w-0 flex-1 text-left sm:block">
+            <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>Area docente</span>
+            <span className="block truncate text-base font-black leading-tight text-slate-950">
+              {isHome ? 'Home' : items.find(item => currentPath.startsWith(item.path) && item.path !== '/teacher')?.label || 'Workspace'}
+            </span>
+          </button>
+          {currentSession && (
+            <button type="button" onClick={() => onNavigate(`/teacher/sessions/${currentSession.id}`)} className="absolute left-1/2 flex h-10 max-w-[8.5rem] -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200" title={currentSession.name}>
+              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
+              <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
+            </button>
+          )}
+          <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || 'Docente'} aria-label={`Apri chat di classe · ${teacherName || 'Docente'}`}>
+            <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
+            <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>
+            {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
+        </div>
+      </header>
+
+      {open && (
+        <div className="fixed inset-0 z-[80]">
+          <button className="absolute inset-0 bg-slate-950/45" onClick={() => setOpen(false)} aria-label="Chiudi menu" />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
+              <div className="flex items-center gap-3"><LogoMark className="h-11 w-11 shrink-0" /><div><span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: accentColor }}>Golinelli.ai</span><p className="mt-1 text-lg font-black text-slate-950">{teacherName || t('teacher_dashboard.mobile_teacher_default')}</p><p className="text-xs font-medium text-slate-400">Area docente</p></div></div>
+              <button type="button" onClick={() => setOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Chiudi menu"><X className="h-5 w-5" /></button>
+            </div>
+            <nav className="flex-1 overflow-y-auto p-3">
+              {items.map(({ path, label, icon: Icon, exact }) => {
+                const active = exact ? isHome : currentPath.startsWith(path)
+                return <Link key={path} to={path} onClick={() => setOpen(false)} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 active:bg-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 opacity-50" /></Link>
+              })}
+            </nav>
+            <div className="flex items-center gap-2 border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-50 px-4 py-3.5 text-sm font-black text-orange-600"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
+              <button type="button" onClick={onLogout} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
   )
 }
 

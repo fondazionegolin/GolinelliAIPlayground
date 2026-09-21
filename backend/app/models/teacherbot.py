@@ -36,6 +36,7 @@ class Teacherbot(Base):
     is_proactive = Column(Boolean, default=False, nullable=False)
     proactive_message = Column(Text, nullable=True)  # Initial message if proactive
     enable_live_voice = Column(Boolean, default=False, nullable=False)  # Realtime voice chat with this bot
+    enable_escape_room = Column(Boolean, default=False, nullable=False)
     enable_reporting = Column(Boolean, default=False, nullable=False)
     report_prompt = Column(Text, nullable=True)  # Custom prompt for report generation
     llm_provider = Column(String, nullable=True)  # Override default provider
@@ -109,6 +110,7 @@ class TeacherbotConversation(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     report_json = Column(JSONB, nullable=True)  # {summary, observations, message_count, etc.}
     report_generated_at = Column(DateTime(timezone=True), nullable=True)
+    escape_room_state_json = Column(JSONB, nullable=True)
 
     # Relationships
     teacherbot = relationship("Teacherbot", back_populates="conversations")

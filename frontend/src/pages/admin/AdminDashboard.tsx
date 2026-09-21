@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -18,6 +18,7 @@ import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
+import StudentsPage from './StudentsPage'
 import { useSocket } from '@/hooks/useSocket'
 import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
@@ -27,6 +28,7 @@ const navItems = [
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
   { path: '/admin/licenses', label: 'Licenze', icon: FileCheck2, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
+  { path: '/admin/students', label: 'Studenti', icon: Users, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
   { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
@@ -181,6 +183,7 @@ export default function AdminDashboard() {
                 <Route path="teachers" element={<TeachersPage />} />
                 <Route path="licenses" element={<LicensesPage />} />
                 <Route path="classes" element={<ClassesPage />} />
+                <Route path="students" element={<StudentsPage />} />
                 <Route path="costs" element={<UsersPage />} />
                 <Route path="email" element={<TeacherRequestsPage />} />
                 <Route path="feedback" element={<FeedbackPage />} />

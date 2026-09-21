@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, memo } from 'react'
+import { useState, useRef, useEffect, useCallback, memo, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,8 @@ interface ChatConversationViewProps {
   suggestedPrompts?: string[]
   isTeacherbot?: boolean
   onMinimize?: () => void
+  footerContent?: ReactNode
+  hideComposer?: boolean
 }
 
 export function ChatConversationView({
@@ -56,6 +58,8 @@ export function ChatConversationView({
   suggestedPrompts = [],
   isTeacherbot: _isTeacherbot = false,
   onMinimize,
+  footerContent,
+  hideComposer = false,
 }: ChatConversationViewProps) {
   // Get the appropriate color class for avatars
   const avatarColorClass = profileColor.startsWith('bg-')
@@ -279,11 +283,13 @@ export function ChatConversationView({
           </div>
         )}
 
+        {footerContent && <div className="mx-auto w-full max-w-2xl pt-2">{footerContent}</div>}
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Composer: part of the viewport flex layout, never underneath the keyboard. */}
-      <div
+      {!hideComposer && <div
         className="z-10 flex-shrink-0 border-t border-slate-200 bg-white px-3 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
@@ -386,7 +392,7 @@ export function ChatConversationView({
             <Send className="h-4 w-4" />
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

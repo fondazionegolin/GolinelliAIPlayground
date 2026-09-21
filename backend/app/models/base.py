@@ -10,6 +10,7 @@ from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
 from app.models.document_draft import DocumentDraft
 from app.models.template_version import TenantTemplateVersion
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
+from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
 
 __all__ = [
     "Tenant",
@@ -42,4 +43,7 @@ __all__ = [
     "TenantTemplateVersion",
     "ToyLMJob",
     "ToyLMJobPublication",
+    "AgenticWorkflow",
+    "AgenticWorkflowRun",
+    "AgenticNodeRun",
 ]

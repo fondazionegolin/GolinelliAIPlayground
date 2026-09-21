@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { io, Socket } from 'socket.io-client'
 import { liveInteractionApi } from '@/lib/api'
+import LiveEscapeRoomStudent, { type LiveEscapeState } from '@/components/LiveEscapeRoomStudent'
 import { useToast } from '@/components/ui/use-toast'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Clock, Users, CheckCircle2, Zap, CloudLightning,
-  ListChecks, MessageSquare, ThumbsUp, BarChart2, ArrowRight,
+  ListChecks, MessageSquare, ThumbsUp, BarChart2, ArrowRight, Sparkles, Trophy,
 } from 'lucide-react'
 
 // ── Types ──
@@ -36,10 +37,14 @@ interface LiveState {
   already_answered?: boolean
   response_count?: number
   total_students?: number
+  interaction_type?: 'slides' | 'escape_room'
+  status?: 'ACTIVE' | 'CLOSED'
 }
 
 interface Props {
   sessionId: string
+  interactionId?: string
+  studentToken?: string
 }
 
 // ── Visual constants ──
@@ -221,14 +226,16 @@ function FeedbackInput({ selected, onSelect, disabled }: {
 
 // ── Main overlay ──
 
-export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
+export default function LiveInteractionStudentOverlay({ sessionId, interactionId, studentToken }: Props) {
   const { toast } = useToast()
   const socketRef = useRef<Socket | null>(null)
+  const lastSlideRef = useRef<{ interactionId: string; index: number } | null>(null)
   const [liveState, setLiveState] = useState<LiveState | null>(null)
   const [answered, setAnswered] = useState(false)
   const [responseCount, setResponseCount] = useState(0)
   const [totalStudents, setTotalStudents] = useState(0)
   const [allAnswered, setAllAnswered] = useState(false)
+  const [advanceCue, setAdvanceCue] = useState<number | null>(null)
 
   const [mcqSelected, setMcqSelected] = useState<number | null>(null)
   const [words, setWords] = useState<string[]>([])
@@ -245,24 +252,33 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
   }, [])
 
   useEffect(() => {
-    liveInteractionApi.currentStudent().then(r => {
+    if (advanceCue === null) return
+    const timer = window.setTimeout(() => setAdvanceCue(null), 1800)
+    return () => window.clearTimeout(timer)
+  }, [advanceCue])
+
+  useEffect(() => {
+    liveInteractionApi.currentStudent(interactionId).then(r => {
       const data = r.data
       if (data.active) {
         setLiveState(data)
+        if (data.live_interaction_id && data.current_slide_index !== undefined) {
+          lastSlideRef.current = { interactionId: data.live_interaction_id, index: data.current_slide_index }
+        }
         setAnswered(data.already_answered || false)
         setResponseCount(data.response_count || 0)
         setTotalStudents(data.total_students || 0)
       }
     }).catch(() => {})
-  }, [sessionId])
+  }, [interactionId, sessionId])
 
   useEffect(() => {
-    const studentToken = localStorage.getItem('student_token')
-    if (!studentToken || !sessionId) return
+    const socketToken = studentToken || localStorage.getItem('student_token')
+    if (!socketToken || !sessionId) return
 
     const socket = io(window.location.origin, {
       path: '/socket.io',
-      auth: { token: studentToken },
+      auth: { token: socketToken },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 3000,
@@ -273,10 +289,16 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
       live_interaction_id: string; title: string; status: string
       current_slide_index: number; total_slides: number; current_slide: Slide
       current_slide_started_at: string; response_count: number; total_students: number
+      interaction_type?: 'slides' | 'escape_room'
     }) => {
+      if (interactionId && data.live_interaction_id !== interactionId) return
       if (data.status === 'CLOSED') {
-        setLiveState(prev => prev ? { ...prev, status: 'CLOSED' } as LiveState : null)
-        setTimeout(() => setLiveState(null), 2500)
+        setLiveState(prev => prev ? { ...prev, status: 'CLOSED', active: false } as LiveState : null)
+        if (data.interaction_type !== 'escape_room') setTimeout(() => setLiveState(null), 2500)
+        return
+      }
+      if (data.interaction_type === 'escape_room') {
+        liveInteractionApi.currentStudent(interactionId).then(response => setLiveState(response.data)).catch(() => {})
         return
       }
       const newState: LiveState = {
@@ -290,10 +312,13 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
         response_count: data.response_count,
         total_students: data.total_students,
       }
-      setLiveState(prev => {
-        if (prev?.current_slide_index !== data.current_slide_index) resetAnswerState()
-        return newState
-      })
+      const previousSlide = lastSlideRef.current
+      if (previousSlide?.index !== data.current_slide_index) {
+        resetAnswerState()
+        if (previousSlide?.interactionId === data.live_interaction_id) setAdvanceCue(data.current_slide_index + 1)
+      }
+      lastSlideRef.current = { interactionId: data.live_interaction_id, index: data.current_slide_index }
+      setLiveState(newState)
       setResponseCount(data.response_count || 0)
       setTotalStudents(data.total_students || 0)
     }
@@ -310,7 +335,7 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
     socket.on('live_interaction_answer_count', handleCount)
 
     return () => { socket.disconnect(); socketRef.current = null }
-  }, [sessionId, resetAnswerState])
+  }, [interactionId, resetAnswerState, sessionId, studentToken])
 
   const submit = async () => {
     if (!liveState?.live_interaction_id || liveState.current_slide_index === undefined) return
@@ -364,6 +389,10 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
     ? (remaining / slide.max_seconds) * 100
     : 100
 
+  if (liveState?.interaction_type === 'escape_room') {
+    return <LiveEscapeRoomStudent state={liveState as unknown as LiveEscapeState} onUpdate={next => setLiveState(next as unknown as LiveState)} />
+  }
+
   return (
     <AnimatePresence>
       {liveState && (
@@ -375,7 +404,20 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
           transition={{ duration: 0.25 }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
         >
+          <AnimatePresence>
+            {advanceCue !== null && (
+              <motion.div initial={{ opacity: 0, scale: 0.5, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 1.15, y: -30 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }} className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
+                <div className="relative rounded-3xl bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 px-8 py-6 text-center text-white shadow-2xl shadow-orange-500/30">
+                  {Array.from({ length: 12 }, (_, index) => <motion.span key={index} initial={{ opacity: 1, x: 0, y: 0, rotate: 0 }} animate={{ opacity: 0, x: Math.cos(index * Math.PI / 6) * 130, y: Math.sin(index * Math.PI / 6) * 130, rotate: 180 }} transition={{ duration: 1.2, delay: 0.08 }} className="absolute left-1/2 top-1/2 text-lg">{index % 2 ? '✦' : '●'}</motion.span>)}
+                  <Trophy className="mx-auto h-9 w-9" />
+                  <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-white/80">Nuova sfida</p>
+                  <p className="text-2xl font-black">Livello {advanceCue}</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <motion.div
+            key={`slide-${liveState.current_slide_index ?? 'waiting'}`}
             initial={{ opacity: 0, scale: 0.92, y: 30 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -483,7 +525,7 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
                         ) : (
                           <motion.div
                             initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
+                            animate={{ scale: [0, 1.18, 1], rotate: [0, -8, 0] }}
                             transition={{ type: 'spring', stiffness: 320, damping: 22, delay: 0.05 }}
                             className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center"
                           >
@@ -494,6 +536,7 @@ export default function LiveInteractionStudentOverlay({ sessionId }: Props) {
                           <p className="text-lg font-bold text-slate-800">
                             {isClosed ? 'Sessione terminata!' : answered ? 'Risposta inviata!' : 'Tempo scaduto'}
                           </p>
+                          {answered && !isClosed && <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-amber-600"><Sparkles className="h-4 w-4" /> +1 partecipazione</motion.p>}
                           {isClosed && (
                             <p className="text-sm text-slate-500 mt-0.5">Ottimo lavoro! 👏</p>
                           )}

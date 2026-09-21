@@ -16,6 +16,7 @@ class TeacherbotCreate(BaseModel):
     is_proactive: bool = False
     proactive_message: Optional[str] = None
     enable_live_voice: bool = False
+    enable_escape_room: bool = False
     enable_reporting: bool = False
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -33,6 +34,7 @@ class TeacherbotUpdate(BaseModel):
     is_proactive: Optional[bool] = None
     proactive_message: Optional[str] = None
     enable_live_voice: Optional[bool] = None
+    enable_escape_room: Optional[bool] = None
     enable_reporting: Optional[bool] = None
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -55,6 +57,7 @@ class TeacherbotResponse(BaseModel):
     is_proactive: bool
     proactive_message: Optional[str]
     enable_live_voice: bool
+    enable_escape_room: bool
     enable_reporting: bool
     report_prompt: Optional[str]
     llm_provider: Optional[str]
@@ -79,6 +82,7 @@ class TeacherbotListResponse(BaseModel):
     status: str
     is_proactive: bool
     enable_reporting: bool
+    enable_escape_room: bool = False
     created_at: datetime
     updated_at: datetime
     publication_count: int = 0
@@ -150,6 +154,33 @@ class TeacherbotMessageCreate(BaseModel):
     content: str
 
 
+class EscapeRoomAnswerRequest(BaseModel):
+    value: str = Field(..., min_length=1, max_length=300)
+
+
+class EscapeRoomChallengeResponse(BaseModel):
+    number: int
+    false_statement: str
+    prompt: str
+
+
+class EscapeRoomStateResponse(BaseModel):
+    enabled: bool = True
+    status: str
+    title: Optional[str] = None
+    narrative_intro: Optional[str] = None
+    mission: Optional[str] = None
+    current_step: int = 0
+    total_steps: int = 0
+    attempts: int = 0
+    current_challenge: Optional[EscapeRoomChallengeResponse] = None
+    events: list[dict[str, Any]] = Field(default_factory=list)
+    inventory: list[dict[str, Any]] = Field(default_factory=list)
+    achievement: Optional[dict[str, Any]] = None
+    message: Optional[str] = None
+    correct: Optional[bool] = None
+
+
 class TeacherbotMessageResponse(BaseModel):
     id: UUID
     conversation_id: UUID
@@ -219,6 +250,7 @@ class StudentTeacherbotResponse(BaseModel):
     is_proactive: bool
     proactive_message: Optional[str] = None
     enable_live_voice: bool = False
+    enable_escape_room: bool = False
     is_studentbot: bool = False
 
     class Config:

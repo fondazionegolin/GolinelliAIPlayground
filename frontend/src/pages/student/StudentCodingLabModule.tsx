@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
@@ -25,7 +25,6 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
-  Paperclip,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -38,7 +37,7 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { codingApi, llmApi } from '@/lib/api'
+import { codingApi, llmApi, studentApi } from '@/lib/api'
 import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorConfig'
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
@@ -285,32 +284,38 @@ function CodingModelSelector({
     </div>
   )
 }
-// Resizes an image file/blob to a JPEG data URL capped at `maxDimension` on its longest side, so
-// pasted screenshots stay a few hundred KB instead of multi-megabyte PNGs.
-function downscaleImageToDataUrl(blob: Blob, maxDimension = 1280, quality = 0.82): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const objectUrl = URL.createObjectURL(blob)
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.max(1, Math.round(img.width * scale))
-      canvas.height = Math.max(1, Math.round(img.height * scale))
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('canvas 2d context unavailable')); return }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', quality))
-    }
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('immagine non valida')) }
-    img.src = objectUrl
-  })
-}
-
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
+const MOBILE_PAGE_CONSTRAINT = `VINCOLI MOBILE OBBLIGATORI:
+- genera esclusivamente una pagina pensata per smartphone (viewport di riferimento 390px);
+- usa un layout a colonna singola, controlli touch e testi leggibili senza zoom;
+- la pagina deve crescere in altezza e consentire sempre lo scroll verticale;
+- non creare varianti desktop, sidebar desktop o layout a larghezza fissa.`
+
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
   return `# ${title || 'Progetto'}\n\n## Istruzioni di progetto\n${prompt || 'Descrivi qui obiettivo e regole del progetto.'}\n${spec}\n## Richieste\n`
+}
+
+function DeepSeekDisclaimer({ consent, onAccept, className = '' }: {
+  consent: { source_url: string; accept_label: string }
+  onAccept: () => void
+  className?: string
+}) {
+  return (
+    <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 ${className}`}>
+      <p className="mb-2 leading-snug">
+        Stai usando un modello <strong>DeepSeek</strong>: i tuoi messaggi vengono inviati ai server di DeepSeek per generare il codice.{' '}
+        <a href={consent.source_url} target="_blank" rel="noreferrer" className="font-bold underline">Leggi l'informativa privacy di DeepSeek</a>.
+      </p>
+      <button
+        type="button"
+        onClick={onAccept}
+        className="rounded-full bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700"
+      >
+        {consent.accept_label}
+      </button>
+    </div>
+  )
 }
 
 export default function StudentCodingLabModule({ sessionId, sharedProject, isTeacher = false }: { sessionId: string; sharedProject?: { projectId: string; nonce: number } | null; isTeacher?: boolean }) {
@@ -325,11 +330,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
-  // Screenshots pasted (Ctrl+V) or picked into the prompt box, downscaled client-side and sent as
-  // data URLs — the backend describes them with a vision model so any codegen model can use them.
-  const [attachedImages, setAttachedImages] = useState<{ id: string; dataUrl: string; name: string }[]>([])
-  const attachmentFileInputRef = useRef<HTMLInputElement>(null)
-  const MAX_ATTACHMENTS = 3
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const [selectedPath, setSelectedPath] = useState('index.html')
   const [loading, setLoading] = useState(true)
@@ -345,7 +345,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [mobilePane, setMobilePane] = useState<'prompt' | 'workbench'>('prompt')
   const [activeWorkbench, setActiveWorkbench] = useState<'code' | 'preview'>('preview')
   const [previewFullscreen, setPreviewFullscreen] = useState(false)
-  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop')
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>(() => isMobile ? 'mobile' : 'desktop')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [createPanelOpen, setCreatePanelOpen] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -424,6 +424,28 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [diffView, setDiffView] = useState<{ path: string; oldContent: string; newContent: string } | null>(null)
   const modelOptions = modelOptionsFor(isTeacher)
   const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
+  const [consents, setConsents] = useState<Array<{ key: string; title: string; version: string; source_url: string; accept_label: string; accepted: boolean }>>([])
+  useEffect(() => {
+    if (isTeacher) return
+    studentApi.listConsents().then((res) => setConsents(res.data)).catch(() => {})
+  }, [isTeacher])
+  const activeModelProvider = modelOptions.find((option) => option.key === modelKey)?.provider
+  const deepSeekConsent = consents.find((item) => item.key === 'deepseek_privacy')
+  const showDeepSeekDisclaimer = !isTeacher && activeModelProvider === 'deepseek' && !!deepSeekConsent && !deepSeekConsent.accepted
+  const acceptDeepSeekConsent = async () => {
+    try {
+      await studentApi.acceptConsent('deepseek_privacy')
+      setConsents((prev) => prev.map((item) => item.key === 'deepseek_privacy' ? { ...item, accepted: true } : item))
+    } catch { /* the disclaimer stays visible and can be retried */ }
+  }
+  const constrainGenerationPrompt = useCallback((value: string) => {
+    if (!isMobile || value.includes('VINCOLI MOBILE OBBLIGATORI:')) return value
+    return `${value.trim()}\n\n${MOBILE_PAGE_CONSTRAINT}`
+  }, [isMobile])
+
+  useEffect(() => {
+    if (isMobile) setPreviewDevice('mobile')
+  }, [isMobile])
   // Live generation feedback (streamed): reasoning chain, planned files, and per-file progress.
   const [liveReasoning, setLiveReasoning] = useState('')
   const [livePlan, setLivePlan] = useState<{ path: string; purpose: string }[]>([])
@@ -950,7 +972,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setInterviewing(true)
     setError(null)
     try {
-      const response = await codingApi.interview({ title: projectTitle, prompt: prompt.trim() })
+      const response = await codingApi.interview({ title: projectTitle, prompt: constrainGenerationPrompt(prompt) })
       const questions = (response.data?.questions || []) as InterviewQuestion[]
       if (questions.length) {
         setInterviewQuestions(questions)
@@ -976,7 +998,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         title: projectTitle,
         session_id: sessionId,
         template_key: 'vite-react',
-        initial_prompt: prompt.trim(),
+        initial_prompt: constrainGenerationPrompt(prompt),
       })
       const project = response.data as CodingProject
       void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
@@ -986,7 +1008,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
       setInterviewQuestions(null)
-      const description = composeDescription(projectTitle, prompt.trim(), answersText)
+      const description = composeDescription(projectTitle, constrainGenerationPrompt(prompt), answersText)
       // Keep any context files the student added with "+ File"; refresh description.md.
       const initialFiles: GeneratedFile[] = [
         { path: 'description.md', content: description, language: 'markdown' },
@@ -1023,7 +1045,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false, attachmentsOverride?: string[]) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false) => {
     setGenerating(true)
     setError(null)
     setLiveReasoning('')
@@ -1048,10 +1070,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         },
         credentials: 'include',
         body: JSON.stringify({
-          prompt: nextPrompt,
+          prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
           files: baseFiles.length ? baseFiles : undefined,
           model_key: modelKey,
-          attachments: attachmentsOverride?.length ? attachmentsOverride : undefined,
         }),
       })
       if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
@@ -1165,9 +1186,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setError(null)
     try {
       const nextPrompt = message.trim()
-      const nextAttachments = attachedImages.map((a) => a.dataUrl)
       setMessage('')
-      setAttachedImages([])
       // Show the student's message immediately; the generate-stream endpoint persists it as the
       // codegen request, and loadProjectDetail reconciles this optimistic bubble afterwards.
       const optimistic: CodingMessage = {
@@ -1176,50 +1195,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         role: 'user',
         content: nextPrompt,
         created_at: new Date().toISOString(),
-        metadata_json: nextAttachments.length ? { attachments: nextAttachments } : undefined,
       }
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
-      await generateCode(selectedProjectId, nextPrompt, undefined, false, nextAttachments)
+      await generateCode(selectedProjectId, nextPrompt, undefined, false)
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile salvare il messaggio.')
     } finally {
       setSending(false)
     }
-  }
-
-  const addAttachments = async (blobs: (File | Blob)[]) => {
-    const room = Math.max(0, MAX_ATTACHMENTS - attachedImages.length)
-    if (room <= 0) return
-    const accepted = blobs.filter((b) => b.type.startsWith('image/')).slice(0, room)
-    for (const blob of accepted) {
-      try {
-        const dataUrl = await downscaleImageToDataUrl(blob)
-        setAttachedImages((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [
-          ...prev,
-          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl, name: (blob as File).name || 'screenshot.png' },
-        ])
-      } catch {
-        setError('Non è stato possibile leggere una delle immagini allegate.')
-      }
-    }
-  }
-
-  const handlePromptPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = Array.from(event.clipboardData?.items || [])
-    const imageFiles = items.filter((item) => item.type.startsWith('image/')).map((item) => item.getAsFile()).filter((f): f is File => !!f)
-    if (imageFiles.length === 0) return
-    event.preventDefault()
-    void addAttachments(imageFiles)
-  }
-
-  const handleAttachmentFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(event.target.files || [])
-    event.target.value = ''
-    if (picked.length) void addAttachments(picked)
-  }
-
-  const removeAttachment = (id: string) => {
-    setAttachedImages((prev) => prev.filter((a) => a.id !== id))
   }
 
   const saveCurrentFilesVersion = async (reason: string) => {
@@ -1687,6 +1670,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
                   <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
                 </div>
+                {showDeepSeekDisclaimer && deepSeekConsent && (
+                  <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mt-3" />
+                )}
                 {!interviewQuestions ? (
                   <button
                     type="button"
@@ -1781,41 +1767,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Modello</span>
                 <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
               </div>
-              {attachedImages.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {attachedImages.map((att) => (
-                    <div key={att.id} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-slate-200">
-                      <img src={att.dataUrl} alt={att.name} className="h-full w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(att.id)}
-                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-80 hover:opacity-100"
-                        title="Rimuovi allegato"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              {showDeepSeekDisclaimer && deepSeekConsent && (
+                <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mb-2" />
               )}
               <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
-                <input
-                  ref={attachmentFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={handleAttachmentFilePick}
-                />
-                <button
-                  type="button"
-                  onClick={() => attachmentFileInputRef.current?.click()}
-                  disabled={!selectedProjectId || attachedImages.length >= MAX_ATTACHMENTS}
-                  title="Allega uno screenshot (o incollalo con Ctrl+V nel campo di testo)"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -1825,7 +1780,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       handleSendMessage()
                     }
                   }}
-                  onPaste={handlePromptPaste}
                   disabled={!selectedProjectId}
                   rows={2}
                   placeholder="Chiedi una modifica al progetto..."
@@ -1888,13 +1842,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {activeWorkbench === 'preview' && hasPreview && (
                 <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
                   <div className="inline-flex shrink-0 rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100 p-1">
-                    <CodingToolbarIconButton
+                    {!isMobile && <CodingToolbarIconButton
                       icon={<MonitorPlay className="h-4 w-4" />}
                       label="Desktop"
                       active={previewDevice === 'desktop'}
                       onClick={() => setPreviewDevice('desktop')}
                       title="Anteprima desktop"
-                    />
+                    />}
                     <CodingToolbarIconButton
                       icon={<Smartphone className="h-4 w-4" />}
                       label="Mobile"
@@ -2013,6 +1967,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   key={previewIdentityKey}
                   files={files}
                   enableInspector
+                  forceVerticalScroll={isMobile}
                   className="h-full w-full"
                   onErrors={handlePreviewErrors}
                   onReady={handlePreviewReady}
@@ -2042,6 +1997,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <CodingSandpackPreview
                   key={`${previewKey}:${previewNonce}`}
                   staticHtml={previewHtml}
+                  forceVerticalScroll={isMobile}
                   className="h-full w-full"
                 />
                 {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
@@ -2084,11 +2040,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </button>
           </div>
           {isReactPreview ? (
-            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
+            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} forceVerticalScroll={isMobile} className="min-h-0 flex-1" />
           ) : (
             <CodingSandpackPreview
               key={`fullscreen:${previewKey}:${fullscreenNonce}`}
               staticHtml={fullscreenPreviewHtml}
+              forceVerticalScroll={isMobile}
               className="min-h-0 flex-1"
             />
           )}

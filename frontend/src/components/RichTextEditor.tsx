@@ -13,26 +13,6 @@ import FontFamily from '@tiptap/extension-font-family'
 import { Mathematics } from '@tiptap/extension-mathematics'
 import { useEffect, useState, useCallback } from 'react'
 
-// Adds fontSize support to the existing TextStyle mark
-const FontSizeExtension = Extension.create({
-  name: 'fontSize',
-  addGlobalAttributes() {
-    return [{
-      types: ['textStyle'],
-      attributes: {
-        fontSize: {
-          default: null,
-          parseHTML: (element: HTMLElement) => element.style.fontSize || null,
-          renderHTML: (attributes: Record<string, unknown>) => {
-            if (!attributes.fontSize) return {}
-            return { style: `font-size: ${attributes.fontSize}` }
-          },
-        },
-      },
-    }]
-  },
-})
-
 const ImportedImage = Image.extend({
   addAttributes() {
     return {
@@ -219,6 +199,7 @@ const ImportedTableHeader = Node.create({
 })
 import { AITextAssistPanel } from './AITextAssistPanel'
 import { looksLikeMarkdown, renderMarkdownToHtml } from '@/lib/markdown'
+import { FontSizeExtension } from '@/lib/tiptapFontSize'
 import 'katex/dist/katex.min.css'
 
 interface RichTextEditorProps {

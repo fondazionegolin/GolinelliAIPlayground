@@ -109,3 +109,19 @@ class SessionStudent(Base):
     session = relationship("Session", back_populates="students")
     conversations = relationship("Conversation", back_populates="student", lazy="dynamic")
     chat_messages = relationship("ChatMessage", back_populates="sender_student", lazy="dynamic")
+
+
+class StudentConsent(Base):
+    """Tracks a student's acceptance of a specific consent (e.g. a third-party provider's
+    privacy policy), separate from LegalDocumentAcceptance which is keyed on User (teachers)."""
+
+    __tablename__ = "student_consents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    session_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    consent_key = Column(String(80), nullable=False)
+    consent_version = Column(String(32), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student = relationship("SessionStudent")

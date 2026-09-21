@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
-import { BringToFront, Copy, Image as ImageIcon, Layers, MoveDown, MoveUp, RotateCw, Trash2, Type } from 'lucide-react'
+import type { Editor } from '@tiptap/react'
+import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from 'lucide-react'
 import { AITextAssistPanel } from './AITextAssistPanel'
+import { SlideTextBlock } from './SlideTextBlock'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'
+import { moveBlockLayer, normalizeLayerOrder, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
 
 interface TextSelectionState {
   blockId: string
   text: string
   position: { x: number; y: number }
-  selectionStart: number
-  selectionEnd: number
+  from: number
+  to: number
 }
 
 /** Rotates a screen-space delta by `angleDeg` into the block's local (unrotated) coordinate space,
@@ -31,8 +34,12 @@ interface BaseSlideBlock {
   height: number
   /** Degrees; undefined/0 = unrotated. Optional so documents saved before rotation existed still load. */
   rotation?: number
-  /** Reserved for future layer reordering; paint order is still array order until that ships. */
+  /** Paint/selection order; renormalized to array index on every reorder (see normalizeLayerOrder). */
   zIndex?: number
+  /** When true, block ignores drag/resize/rotate/text-edit interactions on the canvas. */
+  locked?: boolean
+  /** When true, block is excluded from canvas paint but stays listed (dimmed) in the layers panel. */
+  hidden?: boolean
 }
 
 export interface TextSlideBlock extends BaseSlideBlock {
@@ -98,6 +105,9 @@ interface SlideEditorProps {
   slideHeight?: number
   snapOptions?: SlideSnapOptions
   onContextAddBlock?: (type: SlideBlockType, position: { x: number; y: number }) => void
+  /** Fires with the focused text block's TipTap instance (or null on blur) so a parent toolbar
+   * can route Bold/Italic/color/etc. to the actual selection range instead of the whole block. */
+  onActiveTextEditorChange?: (editor: Editor | null) => void
 }
 
 export function SlideEditor({
@@ -110,7 +120,8 @@ export function SlideEditor({
   slideWidth,
   slideHeight,
   snapOptions = DEFAULT_SLIDE_SNAP_OPTIONS,
-  onContextAddBlock
+  onContextAddBlock,
+  onActiveTextEditorChange
 }: SlideEditorProps) {
   const [dragState, setDragState] = useState<{
     isDragging: boolean
@@ -127,7 +138,8 @@ export function SlideEditor({
   } | null>(null)
 
   const [textSelection, setTextSelection] = useState<TextSelectionState | null>(null)
-  const textareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map())
+  const blockEditors = useRef<Map<string, Editor>>(new Map())
+  const blockWrapperRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [activeGuides, setActiveGuides] = useState<GuideLine[]>([])
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -142,6 +154,7 @@ export function SlideEditor({
   const orderedBlocks = blocks
     .map((block, index) => ({ block, index }))
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
+  const paintBlocks = orderedBlocks.filter(({ block }) => !block.hidden)
 
   // Handle Canvas Click (Deselect)
   const handleCanvasClick = (e: React.PointerEvent) => {
@@ -162,9 +175,6 @@ export function SlideEditor({
     }
   }, [contextMenu])
 
-  const normalizeLayerOrder = (nextBlocks: SlideBlock[]) =>
-    nextBlocks.map((block, index) => ({ ...block, zIndex: index }))
-
   const duplicateBlock = (blockId: string) => {
     const block = blocks.find(item => item.id === blockId)
     if (!block) return
@@ -184,19 +194,18 @@ export function SlideEditor({
     if (selectedBlockId === blockId) onSelectBlock(null)
   }
 
-  const moveLayer = (blockId: string, action: 'front' | 'back' | 'forward' | 'backward') => {
-    const order = orderedBlocks.map(({ block }) => block)
-    const index = order.findIndex(block => block.id === blockId)
-    if (index < 0) return
-    const [block] = order.splice(index, 1)
-    const targetIndex =
-      action === 'front' ? order.length :
-      action === 'back' ? 0 :
-      action === 'forward' ? Math.min(order.length, index + 1) :
-      Math.max(0, index - 1)
-    order.splice(targetIndex, 0, block)
-    onChange(normalizeLayerOrder(order))
+  const moveLayer = (blockId: string, action: LayerMoveAction) => {
+    onChange(moveBlockLayer(blocks, blockId, action))
     onSelectBlock(blockId)
+  }
+
+  const toggleLock = (blockId: string) => {
+    onChange(toggleBlockLocked(blocks, blockId))
+  }
+
+  const toggleHidden = (blockId: string) => {
+    onChange(toggleBlockHidden(blocks, blockId))
+    if (selectedBlockId === blockId) onSelectBlock(null)
   }
 
   const openContextMenu = (e: React.MouseEvent, blockId: string | null) => {
@@ -334,59 +343,47 @@ export function SlideEditor({
     }
   }, [dragState, blocks, onChange, scale, slideWidth, slideHeight, snapOptions])
 
-  // Handle text selection in textarea for AI assist
-  const handleTextSelection = useCallback((blockId: string, textarea: HTMLTextAreaElement) => {
+  // Track the focused block's selection range (drives both the toolbar's range-aware
+  // formatting and the AI text-assist popup), replacing the old textarea selectionStart/End.
+  const handleBlockSelectionChange = useCallback((blockId: string) => {
     if (readOnly) return
-
-    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+    const editor = blockEditors.current.get(blockId)
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
 
     if (selectedText && selectedText.trim().length > 3) {
-      const rect = textarea.getBoundingClientRect()
+      const rect = blockWrapperRefs.current.get(blockId)?.getBoundingClientRect()
+      if (!rect) return
       const viewportHeight = window.innerHeight
       const panelHeight = 320 // Approximate panel height
 
-      // Position panel above the textarea if there's not enough space below
+      // Position panel above the block if there's not enough space below
       let yPos = rect.top - panelHeight - 10
       if (yPos < 80) {
-        // If not enough space above, try below but with safe margin
         yPos = Math.min(rect.bottom + 10, viewportHeight - panelHeight - 20)
       }
 
       setTextSelection({
         blockId,
         text: selectedText.trim(),
-        position: {
-          x: rect.left + rect.width / 2 - 140,
-          y: yPos
-        },
-        selectionStart: textarea.selectionStart,
-        selectionEnd: textarea.selectionEnd
+        position: { x: rect.left + rect.width / 2 - 140, y: yPos },
+        from,
+        to,
       })
     } else {
       setTextSelection(null)
     }
   }, [readOnly])
 
-  // Apply AI-generated text to textarea
+  // Apply AI-generated text to the block's current selection range
   const handleApplyAIText = useCallback((newText: string) => {
     if (!textSelection) return
-
-    const textarea = textareaRefs.current.get(textSelection.blockId)
-    if (!textarea) return
-
-    const block = blocks.find(b => b.id === textSelection.blockId)
-    if (!block) return
-
-    const beforeSelection = block.content.substring(0, textSelection.selectionStart)
-    const afterSelection = block.content.substring(textSelection.selectionEnd)
-    const newContent = beforeSelection + newText + afterSelection
-
-    const newBlocks = blocks.map(b =>
-      b.id === textSelection.blockId ? { ...b, content: newContent } : b
-    )
-    onChange(newBlocks)
+    const editor = blockEditors.current.get(textSelection.blockId)
+    if (!editor) return
+    editor.chain().focus().deleteRange({ from: textSelection.from, to: textSelection.to }).insertContent(newText).run()
     setTextSelection(null)
-  }, [textSelection, blocks, onChange])
+  }, [textSelection])
 
   // Handle file drop for images
   const handleDrop = (e: React.DragEvent) => {
@@ -441,9 +438,13 @@ export function SlideEditor({
         </div>
       )}
 
-      {orderedBlocks.map(({ block, index }) => (
+      {paintBlocks.map(({ block, index }) => (
         <div
           key={block.id}
+          ref={(el) => {
+            if (el) blockWrapperRefs.current.set(block.id, el)
+            else blockWrapperRefs.current.delete(block.id)
+          }}
           className={`absolute group ${selectedBlockId === block.id ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-slate-300'}`}
           style={{
             left: block.x,
@@ -451,8 +452,8 @@ export function SlideEditor({
             width: block.width,
             height: block.height,
             zIndex: selectedBlockId === block.id ? 1000 : block.zIndex ?? index,
-            cursor: dragState?.isDragging ? 'grabbing' : 'grab',
-            touchAction: readOnly || block.type === 'text' ? undefined : 'none',
+            cursor: block.locked ? 'default' : dragState?.isDragging ? 'grabbing' : 'grab',
+            touchAction: readOnly || block.locked || block.type === 'text' ? undefined : 'none',
             transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
             transformOrigin: 'center center',
             ...(block.type === 'text' || block.type === 'image'
@@ -473,9 +474,10 @@ export function SlideEditor({
           onPointerDown={(e) => {
             if (readOnly) return
             e.stopPropagation()
+            onSelectBlock(block.id)
+            if (block.locked) return
             e.preventDefault()
             e.currentTarget.setPointerCapture(e.pointerId)
-            onSelectBlock(block.id)
             setDragState({
               isDragging: true,
               isResizing: false,
@@ -486,42 +488,30 @@ export function SlideEditor({
             })
           }}
         >
+          {block.locked && !readOnly && (
+            <div className="pointer-events-none absolute -top-2 -right-2 z-20 flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 opacity-0 shadow-sm group-hover:opacity-100">
+              <Lock className="h-3 w-3" />
+            </div>
+          )}
           {/* Content */}
           {block.type === 'text' ? (
-            <textarea
-              ref={(el) => {
-                if (el) textareaRefs.current.set(block.id, el)
-                else textareaRefs.current.delete(block.id)
-              }}
-              value={block.content}
+            <SlideTextBlock
+              block={block}
               readOnly={readOnly}
-              onChange={(e) => {
-                const newBlocks = blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b)
+              onChange={(html) => {
+                const newBlocks = blocks.map(b => b.id === block.id ? { ...b, content: html } : b)
                 onChange(newBlocks)
               }}
-              className="w-full h-full bg-transparent resize-none border-none focus:ring-0 p-0 cursor-text select-text"
-              style={{
-                fontFamily: block.style.fontFamily,
-                fontSize: block.style.fontSize,
-                color: block.style.color,
-                fontWeight: block.style.fontWeight,
-                fontStyle: block.style.fontStyle,
-                textDecoration: block.style.textDecoration,
-                textAlign: block.style.textAlign,
-                lineHeight: block.style.lineHeight,
+              onSelectBlock={() => onSelectBlock(block.id)}
+              onEditorCreate={(editor) => blockEditors.current.set(block.id, editor)}
+              onEditorDestroy={() => blockEditors.current.delete(block.id)}
+              onSelectionChange={() => handleBlockSelectionChange(block.id)}
+              onEditorFocus={(editor) => onActiveTextEditorChange?.(editor)}
+              onEditorBlur={() => onActiveTextEditorChange?.(null)}
+              onOverflowFontFit={(fontSize) => {
+                const newBlocks = blocks.map(b => b.id === block.id && b.type === 'text' ? { ...b, style: { ...b.style, fontSize } } : b)
+                onChange(newBlocks)
               }}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                if (!readOnly) onSelectBlock(block.id)
-              }}
-              onFocus={() => {
-                if (!readOnly) onSelectBlock(block.id)
-              }}
-              onMouseUp={(e) => {
-                e.stopPropagation()
-                handleTextSelection(block.id, e.currentTarget)
-              }}
-              onKeyUp={(e) => handleTextSelection(block.id, e.currentTarget)}
             />
           ) : block.type === 'image' ? (
             <img
@@ -542,8 +532,8 @@ export function SlideEditor({
             </svg>
           ) : null /* rectangle/ellipse appearance is fully handled by the wrapper's own style above */}
 
-          {/* Resize Handles (only when selected) */}
-          {selectedBlockId === block.id && !readOnly && (
+          {/* Resize Handles (only when selected and unlocked) */}
+          {selectedBlockId === block.id && !readOnly && !block.locked && (
             <>
               {(block.type === 'line' ? ['nw', 'se'] : ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']).map((handle) => (
                 <div
@@ -645,6 +635,13 @@ export function SlideEditor({
               <ContextMenuButton icon={<Layers className="h-4 w-4" />} label="Porta dietro" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'back'))} />
               <ContextMenuButton icon={<MoveUp className="h-4 w-4" />} label="Avanza livello" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'forward'))} />
               <ContextMenuButton icon={<MoveDown className="h-4 w-4" />} label="Arretra livello" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'backward'))} />
+              <div className="my-1 border-t border-slate-100" />
+              <ContextMenuButton
+                icon={blocks.find(b => b.id === contextMenu.blockId)?.locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                label={blocks.find(b => b.id === contextMenu.blockId)?.locked ? 'Sblocca oggetto' : 'Blocca oggetto'}
+                onClick={() => runContextAction(() => toggleLock(contextMenu.blockId!))}
+              />
+              <ContextMenuButton icon={<EyeOff className="h-4 w-4" />} label="Nascondi oggetto" onClick={() => runContextAction(() => toggleHidden(contextMenu.blockId!))} />
               <ContextMenuButton icon={<Trash2 className="h-4 w-4" />} label="Elimina oggetto" danger onClick={() => runContextAction(() => deleteBlock(contextMenu.blockId!))} />
             </>
           )}

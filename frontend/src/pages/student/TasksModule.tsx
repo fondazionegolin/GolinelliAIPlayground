@@ -250,10 +250,10 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
 
   return (
     <div className="h-full flex flex-col relative overflow-hidden bg-slate-100">
-      <section className={`relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm transition-[padding] duration-300 ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
+      <section className={`relative shrink-0 border-b border-slate-200 bg-white/95 md:bg-white/70 md:backdrop-blur-sm ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
         <div className="mx-auto max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+            <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
               <div className="overflow-hidden">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Compiti</p>
                 <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
@@ -262,7 +262,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                 </p>
               </div>
             </div>
-            <label className={`mx-auto flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm transition-all duration-300 ${headerCollapsed ? 'py-2' : 'mt-6 py-2.5'}`}>
+            <label className={`mx-auto flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm ${headerCollapsed ? 'py-2' : 'mt-6 py-2.5'}`}>
               <Search className="h-4 w-4 shrink-0 text-slate-400" />
               <input
                 type="text"
@@ -282,7 +282,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                 </button>
               )}
             </label>
-            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${headerCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+            <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
               <div className="overflow-hidden">
                 <div className="mt-5 flex items-center justify-center gap-2">
                   <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
@@ -320,7 +320,10 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
 
       <div
         className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8"
-        onScroll={isMobile ? (e) => setHeaderCollapsed(e.currentTarget.scrollTop > 24) : undefined}
+        onScroll={isMobile ? (e) => {
+          const scrollTop = e.currentTarget.scrollTop
+          setHeaderCollapsed((collapsed) => collapsed ? scrollTop > 2 : scrollTop > 40)
+        } : undefined}
       >
         <div className="mx-auto w-full max-w-6xl">
           {visibleTasks.length === 0 && taskSearch ? (

@@ -557,6 +557,16 @@
 /* Teacher workspace: shared mobile guardrails. Individual tools keep their
    own layouts, while these rules prevent viewport overflow and iOS form zoom. */
 @media (max-width: 1023px) {
+  .mobile-student-app button,
+  .mobile-student-app a,
+  .mobile-student-app [role='button'],
+  .teacher-mobile-shell button,
+  .teacher-mobile-shell a,
+  .teacher-mobile-shell [role='button'] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   .mobile-card-standard {
     aspect-ratio: 1 / 1;
     height: auto;
@@ -583,6 +593,9 @@
     max-width: 100%;
   }
 
+  .mobile-student-app input,
+  .mobile-student-app textarea,
+  .mobile-student-app select,
   .teacher-mobile-shell input,
   .teacher-mobile-shell textarea,
   .teacher-mobile-shell select {

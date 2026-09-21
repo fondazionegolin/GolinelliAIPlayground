@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, lazy, Suspense, type ComponentType, type SVGProps } from 'react'
+import { useEffect, useState, useCallback, useRef, lazy, memo, Suspense, type ComponentType, type SVGProps } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -29,7 +29,7 @@ import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOv
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { FloatingClassChat } from '@/components/FloatingClassChat'
 import TuringTestPanel from '@/components/TuringTestPanel'
-import { useMobile } from '@/hooks/useMobile'
+import { useIsIOS, useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
@@ -265,6 +265,7 @@ export default function StudentDashboard() {
   }, [logout, navigate])
 
   const { isMobile } = useMobile()
+  const isIOS = useIsIOS()
 
   useEffect(() => {
     const handleOpenSharedProject = (event: Event) => {
@@ -346,7 +347,9 @@ export default function StudentDashboard() {
 
   const swipeState = useSwipeBack({
     onSwipeBack: handleSwipeBack,
-    enabled: isMobile && activeModule !== null,
+    // Safari already owns the edge-back gesture. A non-passive document-level touch listener
+    // delays normal taps on iPhone, especially while a heavy workspace is mounted.
+    enabled: isMobile && !isIOS && activeModule !== null,
   })
 
   useEffect(() => {
@@ -769,6 +772,8 @@ export default function StudentDashboard() {
   )
 }
 
+const MemoizedModuleView = memo(ModuleView)
+
 function StudentMobileShell({
   sessionInfo,
   enabledModules,
@@ -812,10 +817,6 @@ function StudentMobileShell({
   const [classChatOpen, setClassChatOpen] = useState(false)
   const [classChatUnread, setClassChatUnread] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const previousModule = useRef<string | null>(activeModule)
-  const previousIndex = MOBILE_MODULE_ORDER.indexOf(previousModule.current)
-  const currentIndex = MOBILE_MODULE_ORDER.indexOf(activeModule)
-  const slideDirection = currentIndex >= previousIndex ? 1 : -1
   const studentTheme = getStudentAccentTheme(studentAccent)
   const bgGradient = getAppBackgroundGradient(studentTheme)
   const moduleConfig = getModuleConfig(t)
@@ -853,11 +854,11 @@ function StudentMobileShell({
     }
   }, [menuOpen])
 
-  const handleNavigate = (module: string | null) => {
-    previousModule.current = activeModule
+  const handleNavigate = useCallback((module: string | null) => {
     onNavigate(module)
     setMenuOpen(false)
-  }
+  }, [onNavigate])
+  const handleModuleBack = useCallback(() => handleNavigate(null), [handleNavigate])
 
   const dockStudentChat = () => {
     setStudentChatSidebarOpen(true)
@@ -882,7 +883,7 @@ function StudentMobileShell({
       )}
 
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 pt-[env(safe-area-inset-top)]">
-        <div className="mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
+        <div className="relative mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
             <button
               onClick={() => setMenuOpen((value) => !value)}
               className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700 active:scale-95"
@@ -890,14 +891,14 @@ function StudentMobileShell({
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="min-w-0 flex-1">
+            <div className="hidden min-w-0 flex-1 sm:block">
               <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">Area studente</p>
               <h1 className="truncate text-base font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
             </div>
             <button
               type="button"
               onClick={() => handleNavigate(null)}
-              className="flex h-10 max-w-[7.5rem] shrink-0 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200"
+              className="absolute left-1/2 flex h-10 max-w-[8.5rem] -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200"
               title={sessionInfo.session.title}
             >
               <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
@@ -909,14 +910,12 @@ function StudentMobileShell({
             <button
               type="button"
               onClick={() => setClassChatOpen(true)}
-              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-50 text-xs font-black text-sky-800 ring-1 ring-sky-100 active:scale-95"
+              className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-sky-800 active:scale-95"
               title={sessionInfo.student.nickname}
               aria-label={`Apri chat di classe · ${sessionInfo.student.nickname}`}
             >
-              {sessionInfo.student.nickname.slice(0, 2).toUpperCase()}
-              <span className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full rounded-bl-none border-2 border-white bg-[image:var(--selection-active-bg)] px-1 text-[var(--selection-active-text)] shadow-sm">
-                <MessageSquare className="h-2.5 w-2.5" fill="currentColor" />
-              </span>
+              <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-sky-700" strokeWidth={1.8} />
+              <span className="relative -translate-y-px">{sessionInfo.student.nickname.slice(0, 2).toUpperCase()}</span>
               {classChatUnread > 0 && (
                 <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">
                   {classChatUnread > 9 ? '9+' : classChatUnread}
@@ -926,17 +925,13 @@ function StudentMobileShell({
         </div>
       </header>
 
-      <AnimatePresence>
-        {menuOpen && (
+      {menuOpen && (
           <>
-            <motion.div
-              className="fixed inset-0 z-[60] bg-slate-950/45 backdrop-blur-sm"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <div
+              className="fixed inset-0 z-[60] bg-slate-950/45"
               onClick={() => setMenuOpen(false)}
             />
-            <motion.aside
-              initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-              transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+            <aside
               className="fixed inset-y-0 left-0 z-[70] flex w-[min(88vw,360px)] flex-col bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] shadow-2xl"
             >
               <div className="mb-6 flex items-center gap-3 px-1">
@@ -990,25 +985,13 @@ function StudentMobileShell({
                   <LogOut className="h-5 w-5" /> {t('navbar.logout')}
                 </button>
               </div>
-            </motion.aside>
+            </aside>
           </>
-        )}
-      </AnimatePresence>
+      )}
 
       <main className="min-h-0 flex-1 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
-        <AnimatePresence mode="popLayout" custom={slideDirection}>
-          <motion.div
+          <div
             key={activeModule || 'mobile-home'}
-            custom={slideDirection}
-            variants={{
-              initial: (direction: number) => ({ opacity: 0, x: direction * 72 }),
-              animate: { opacity: 1, x: 0 },
-              exit: (direction: number) => ({ opacity: 0, x: direction * -56 }),
-            }}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.75 }}
             className={`h-full min-h-0 ${isImmersiveModule ? 'px-0' : 'px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}
             style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
           >
@@ -1080,7 +1063,7 @@ function StudentMobileShell({
                 )}
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}>
-                    <ModuleView
+                    <MemoizedModuleView
                       moduleKey={activeModule}
                       sessionId={sessionInfo.session.id}
                       sessionName={sessionInfo.session.title}
@@ -1097,16 +1080,14 @@ function StudentMobileShell({
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
                       collaborationEnabled={collaborationEnabled}
-                      onModuleBack={() => handleNavigate(null)}
+                      onModuleBack={handleModuleBack}
                       documentsReadOnly
-                      tasksReadOnly
                     />
                   </Suspense>
                 </div>
               </div>
             )}
-          </motion.div>
-        </AnimatePresence>
+          </div>
       </main>
 
       <div
@@ -1333,7 +1314,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack, documentsReadOnly = false, tasksReadOnly = false }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack, documentsReadOnly = false }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1353,7 +1334,6 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   sharedCodingProject?: { projectId: string; nonce: number } | null;
   onModuleBack?: () => void;
   documentsReadOnly?: boolean;
-  tasksReadOnly?: boolean;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
@@ -1394,7 +1374,6 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
             openTaskId={openTaskId} 
             studentId={studentId}
             onOpenDocument={onOpenDocument}
-            readOnly={tasksReadOnly}
           />
         </CardContent>
       </Card>

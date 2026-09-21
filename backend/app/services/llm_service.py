@@ -129,17 +129,6 @@ def _openai_supports_web_search(model: str) -> bool:
     return not (model.startswith('o1') or model.startswith('o3'))
 
 
-def _openai_search_model(model: str) -> str:
-    """Return the Chat Completions search-preview variant for a given model name.
-
-    The web_search_preview *tool type* is only valid in the Responses API.
-    For Chat Completions we must swap to a search-preview model instead.
-    """
-    if 'mini' in model or 'nano' in model:
-        return 'gpt-4o-mini-search-preview'
-    return 'gpt-4o-search-preview'
-
-
 class LLMService:
     def __init__(self):
         self.openai_client = None
@@ -212,27 +201,37 @@ class LLMService:
             formatted_messages.append({"role": "system", "content": system_prompt})
         formatted_messages.extend(messages)
 
-        # Swap to a search-preview model when web search is needed.
-        # web_search_preview as a tool type is only valid in the Responses API,
-        # not in Chat Completions.
+        # Search-preview models have been retired. Keep the configured model and
+        # invoke the first-party web_search tool through the Responses API.
         if use_web_search and _openai_supports_web_search(model):
-            model = _openai_search_model(model)
+            response = await self.openai_client.responses.create(
+                model=model,
+                instructions=system_prompt,
+                input=messages,
+                tools=[{"type": "web_search"}],
+                max_output_tokens=max_tokens,
+            )
+            usage = response.usage
+            content = response.output_text or ""
+            if not content.strip():
+                incomplete_reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
+                suffix = f": {incomplete_reason}" if incomplete_reason else ""
+                raise RuntimeError(f"OpenAI web search returned no text{suffix}")
+            return LLMResponse(
+                content=content,
+                provider="openai",
+                model=model,
+                prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+            )
 
         is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
-        is_search_model = model.endswith('-search-preview')
 
         if is_o_series:
             response = await self.openai_client.chat.completions.create(
                 model=model,
                 messages=formatted_messages,
                 max_completion_tokens=max_tokens,
-            )
-        elif is_search_model:
-            # Search-preview models do not support temperature
-            response = await self.openai_client.chat.completions.create(
-                model=model,
-                messages=formatted_messages,
-                max_tokens=max_tokens,
             )
         else:
             response = await self.openai_client.chat.completions.create(
@@ -262,6 +261,10 @@ class LLMService:
         if not self.anthropic_client:
             raise RuntimeError("Anthropic client not configured")
 
+        # Anthropic SDK 1.x no longer accepts sampling parameters for current
+        # models. Keep the argument in our provider-neutral interface, but do
+        # not forward it to messages.create().
+        _ = temperature
         kwargs: dict = {}
         if use_web_search:
             kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
@@ -270,7 +273,6 @@ class LLMService:
             model=model,
             system=system_prompt or "",
             messages=messages,
-            temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
         )
@@ -475,23 +477,30 @@ class LLMService:
         formatted_messages.extend(messages)
 
         if use_web_search and _openai_supports_web_search(model):
-            model = _openai_search_model(model)
+            stream = await self.openai_client.responses.create(
+                model=model,
+                instructions=system_prompt,
+                input=messages,
+                tools=[{"type": "web_search"}],
+                max_output_tokens=max_tokens,
+                stream=True,
+            )
+            emitted_text = False
+            async for event in stream:
+                if event.type == "response.output_text.delta":
+                    emitted_text = True
+                    yield event.delta
+            if not emitted_text:
+                raise RuntimeError("OpenAI web search returned no text")
+            return
 
         is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
-        is_search_model = model.endswith('-search-preview')
 
         if is_o_series:
             stream = await self.openai_client.chat.completions.create(
                 model=model,
                 messages=formatted_messages,
                 max_completion_tokens=max_tokens,
-                stream=True,
-            )
-        elif is_search_model:
-            stream = await self.openai_client.chat.completions.create(
-                model=model,
-                messages=formatted_messages,
-                max_tokens=max_tokens,
                 stream=True,
             )
         else:
@@ -519,6 +528,9 @@ class LLMService:
         if not self.anthropic_client:
             raise RuntimeError("Anthropic client not configured")
 
+        # See _generate_anthropic: messages.stream() uses the same SDK 1.x
+        # request shape and rejects temperature as an unexpected keyword.
+        _ = temperature
         kwargs: dict = {}
         if use_web_search:
             kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
@@ -527,7 +539,6 @@ class LLMService:
             model=model,
             system=system_prompt or "",
             messages=messages,
-            temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
         ) as stream:

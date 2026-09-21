@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import LiveEscapeRoomControl from '@/components/teacher/LiveEscapeRoomControl'
 import {
   Play, SkipForward, Square, Users, Clock, CheckCircle2,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, Zap, ArrowLeft, Trophy,
@@ -180,12 +181,17 @@ function McqBars({ responses, options, correctOption }: {
   )
 }
 
-function McqRanking({ responses, correctOption }: {
-  responses: ResponseItem[]; correctOption: number
-}) {
-  const correct = responses
-    .filter(r => r.response.selected_option === correctOption)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+function SlideLeaderboard({ responses, slide }: { responses: ResponseItem[]; slide: Slide }) {
+  const hasCorrectAnswer = slide.type === 'mcq' && slide.correct_option !== null && slide.correct_option !== undefined
+  const ranked = [...responses]
+    .sort((left, right) => {
+      if (hasCorrectAnswer) {
+        const leftCorrect = left.response.selected_option === slide.correct_option
+        const rightCorrect = right.response.selected_option === slide.correct_option
+        if (leftCorrect !== rightCorrect) return leftCorrect ? -1 : 1
+      }
+      return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+    })
     .slice(0, 10)
 
   const podiumStyle = [
@@ -195,17 +201,19 @@ function McqRanking({ responses, correctOption }: {
   ]
   const medals = ['🥇', '🥈', '🥉']
 
-  if (correct.length === 0) {
+  if (ranked.length === 0) {
     return (
       <div className="text-center py-5 text-slate-400 text-sm">
         <Trophy className="h-8 w-8 mx-auto mb-2 opacity-25" />
-        Nessuna risposta corretta ancora
+        Nessuna risposta ricevuta
       </div>
     )
   }
   return (
     <div className="space-y-2">
-      {correct.map((r, i) => (
+      {ranked.map((r, i) => {
+        const isCorrect = hasCorrectAnswer && r.response.selected_option === slide.correct_option
+        return (
         <motion.div
           key={`${r.student_nickname}-${i}`}
           initial={{ opacity: 0, x: -20 }}
@@ -217,13 +225,19 @@ function McqRanking({ responses, correctOption }: {
             {i < 3 ? medals[i] : <span className="text-sm font-bold text-slate-500">{i + 1}°</span>}
           </span>
           <span className="font-semibold text-slate-800 flex-1 truncate">{r.student_nickname}</span>
+          {hasCorrectAnswer && (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+              {isCorrect ? 'Corretta' : 'Errata'}
+            </span>
+          )}
           <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">
             {new Date(r.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </motion.div>
-      ))}
+        )
+      })}
       <p className="text-xs text-slate-400 text-center pt-1">
-        {correct.length} corrette su {responses.length} risposte totali
+        Nickname reali della sessione · {responses.length} {responses.length === 1 ? 'partecipante' : 'partecipanti'}
       </p>
     </div>
   )
@@ -341,27 +355,31 @@ function useTimer(startedAt: string | null | undefined, maxSeconds: number, acti
 
 // ── Slide chart dispatcher ──
 
-function SlideChart({ slide, responses }: { slide: Slide; responses: ResponseItem[] }) {
+function SlideChart({ slide, responses, isComplete }: { slide: Slide; responses: ResponseItem[]; isComplete: boolean }) {
+  let chart: React.ReactNode = null
   if (slide.type === 'mcq') {
-    return (
-      <div className="space-y-4">
-        <McqBars responses={responses} options={slide.options || []} correctOption={slide.correct_option} />
-        {slide.show_ranking && slide.correct_option !== null && slide.correct_option !== undefined && (
-          <div className="border-t border-slate-100 pt-4 mt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Trophy className="h-4 w-4 text-amber-500" />
-              <h4 className="text-sm font-bold text-slate-700">Classifica velocità</h4>
-            </div>
-            <McqRanking responses={responses} correctOption={slide.correct_option} />
-          </div>
-        )}
-      </div>
-    )
+    chart = <McqBars responses={responses} options={slide.options || []} correctOption={slide.correct_option} />
   }
-  if (slide.type === 'wordwall') return <WordwallCloud responses={responses} />
-  if (slide.type === 'opinion')  return <OpinionBubbles responses={responses} />
-  if (slide.type === 'feedback') return <FeedbackBars responses={responses} />
-  return null
+  if (slide.type === 'wordwall') chart = <WordwallCloud responses={responses} />
+  if (slide.type === 'opinion') chart = <OpinionBubbles responses={responses} />
+  if (slide.type === 'feedback') chart = <FeedbackBars responses={responses} />
+  return (
+    <div className="space-y-5">
+      {chart}
+      {isComplete && (
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="border-t border-slate-100 pt-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-500" />
+              <h4 className="text-sm font-bold text-slate-700">Classifica della slide</h4>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Slide conclusa</span>
+          </div>
+          <SlideLeaderboard responses={responses} slide={slide} />
+        </motion.div>
+      )}
+    </div>
+  )
 }
 
 // ── Main page ──
@@ -509,8 +527,9 @@ export default function LiveInteractionControlPage() {
   const remaining      = useTimer(startedAt, currentSlide?.max_seconds || 60, isActive)
   const timerUrgent    = remaining !== null && remaining <= 10
   const allAnswered    = totalStudents > 0 && responseCount >= totalStudents
+  const slideComplete  = allAnswered || remaining === 0
 
-  const currentSlideResults = results?.results.find(r => r.slide_index === slideIndex)?.responses || []
+  const currentSlideResults = results?.results?.find(r => r.slide_index === slideIndex)?.responses || []
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-full">
@@ -528,6 +547,10 @@ export default function LiveInteractionControlPage() {
       </div>
     </div>
   )
+
+  if (interaction.interaction_type === 'escape_room') {
+    return <LiveEscapeRoomControl interaction={interaction} onBack={() => navigate('/teacher/live-interaction')} />
+  }
 
   const SlideIcon = currentSlide ? SLIDE_ICON[currentSlide.type] : Zap
   const slideGrad  = currentSlide ? SLIDE_GRAD[currentSlide.type] : 'from-indigo-500 to-purple-600'
@@ -637,7 +660,7 @@ export default function LiveInteractionControlPage() {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live
                 </span>
               </div>
-              <SlideChart slide={currentSlide} responses={currentSlideResults} />
+              <SlideChart slide={currentSlide} responses={currentSlideResults} isComplete={slideComplete} />
             </div>
           </div>
 
@@ -736,7 +759,7 @@ export default function LiveInteractionControlPage() {
                 </div>
                 <div className="px-6 py-5">
                   <p className="font-bold text-slate-800 text-lg mb-5">{slide.question || slide.prompt}</p>
-                  <SlideChart slide={slide} responses={slideResult.responses} />
+                  <SlideChart slide={slide} responses={slideResult.responses} isComplete />
                 </div>
               </div>
             )

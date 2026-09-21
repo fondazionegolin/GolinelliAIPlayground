@@ -97,7 +97,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
             : (isEnglish ? 'Document' : 'Documento')
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={document.title} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 md:backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={document.title} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={`flex w-full flex-col overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl ${viewing ? 'h-[92vh] max-w-6xl' : 'max-w-xl'}`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-4">
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${documentType === 'canvas' ? 'bg-amber-100 text-amber-700' : documentType === 'presentation' ? 'bg-indigo-100 text-indigo-700' : documentType === 'sheet' ? 'bg-sky-100 text-sky-700' : documentType === 'web' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-emerald-100 text-emerald-700'}`}>

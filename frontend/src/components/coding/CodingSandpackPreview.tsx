@@ -41,6 +41,8 @@ type Props = {
   showConsole?: boolean
   /** Inspector "ask the AI about this section" overlay (mirrors the legacy preview). */
   enableInspector?: boolean
+  /** Keep page-style previews vertically scrollable on touch devices. */
+  forceVerticalScroll?: boolean
   className?: string
 }
 
@@ -51,11 +53,12 @@ const ENTRY_PATH = '/index.tsx'
 const HTML_PATH = '/public/index.html'
 const BRIDGE_PATH = '/golinelli-bridge.ts'
 
-const HTML_DOC = `<!doctype html>
+const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${forceVerticalScroll ? '<style>html,body,#root{min-height:100%}html,body{overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch;touch-action:pan-y}</style>' : ''}
   </head>
   <body>
     <div id="root"></div>
@@ -193,14 +196,17 @@ export default function CodingSandpackPreview({
   onReady,
   showConsole = false,
   enableInspector = true,
+  forceVerticalScroll = false,
   className,
 }: Props) {
   const dependencies = useMemo(() => parseDependencies(files), [files])
 
   const staticFiles = useMemo<SandpackFiles>(() => ({
-    '/index.html': { code: staticHtml || '<!doctype html><html><head></head><body></body></html>' },
+    '/index.html': { code: forceVerticalScroll
+      ? (staticHtml || '<!doctype html><html><head></head><body></body></html>').replace(/<\/head>/i, '<style>html,body{min-height:100%;overflow-x:hidden!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch;touch-action:pan-y}</style></head>')
+      : (staticHtml || '<!doctype html><html><head></head><body></body></html>') },
     '/package.json': { code: JSON.stringify({ dependencies: {}, main: '/index.html' }) },
-  }), [staticHtml])
+  }), [forceVerticalScroll, staticHtml])
 
   const sandpackFiles = useMemo<SandpackFiles>(() => {
     const map: SandpackFiles = {}
@@ -212,7 +218,7 @@ export default function CodingSandpackPreview({
     }
     // Platform-owned wiring — always overrides whatever the model produced for these paths.
     map[BRIDGE_PATH] = { code: buildBridgeSource(enableInspector), hidden: true }
-    map[HTML_PATH] = { code: HTML_DOC, hidden: true }
+    map[HTML_PATH] = { code: buildHtmlDocument(forceVerticalScroll), hidden: true }
     // styles.css is always present so the entry can import it unconditionally.
     if (!map['/styles.css']) map['/styles.css'] = { code: '', hidden: true }
     map[ENTRY_PATH] = {
@@ -227,7 +233,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
       hidden: true,
     }
     return map
-  }, [files, enableInspector])
+  }, [files, enableInspector, forceVerticalScroll])
 
   return (
     <div className={`golinelli-sp ${className || ''}`}>
@@ -278,6 +284,6 @@ const SANDPACK_FILL_CSS = `
 .golinelli-sp .sp-layout { flex: 1; min-height: 0; height: 100%; border: none; border-radius: 0; flex-direction: column; }
 .golinelli-sp .sp-stack { min-height: 0; height: 100%; flex: 1; }
 .golinelli-sp .sp-preview-container { flex: 1; min-height: 0; height: 100%; }
-.golinelli-sp .sp-preview-iframe { flex: 1; min-height: 0; height: 100%; }
+.golinelli-sp .sp-preview-iframe { flex: 1; min-height: 0; height: 100%; touch-action: pan-y; }
 .golinelli-sp .sp-console { flex: 0 0 180px; min-height: 0; }
 `.trim()
