@@ -18,7 +18,7 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                     style={{
                         zIndex: -1,
                         background:
-                            'linear-gradient(180deg, #fff 0%, var(--app-body-bg) 46%, #fff 100%), linear-gradient(90deg, var(--logo-pink-06), var(--logo-blue-06) 48%, var(--logo-violet-06))',
+                            'radial-gradient(ellipse at 12% 4%, rgba(255,255,255,0.98) 0%, transparent 38%), radial-gradient(ellipse at 88% 10%, rgba(227,241,255,0.42) 0%, transparent 34%), linear-gradient(155deg, #ffffff 0%, var(--app-body-bg) 52%, #f5f9ff 100%)',
                     }}
                 />
             )}

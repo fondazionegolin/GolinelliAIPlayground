@@ -1626,10 +1626,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             />}
             {promptPanelOpen ? (
             <>
-            <div className={createPanelOpen ? 'space-y-3 p-5 sm:p-7' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
+            <div className={createPanelOpen ? 'space-y-3 p-5 sm:p-8' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
               {createPanelOpen && (
               <div>
-                <div className="mb-6 text-center">
+                <div className="mb-8 text-center">
                   <h2 className="text-xl font-black text-[var(--text-primary)]">Cosa vuoi creare?</h2>
                   <p className="mt-1 hidden text-sm text-[var(--text-muted)] md:block">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
                 </div>
@@ -1649,25 +1649,29 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     </button>
                   </div>
                 )}
-                <div className="hidden md:block">
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Titolo</label>
+                <div>
+                  <label htmlFor="vibe-project-title" className="mb-2 block text-sm font-bold text-slate-700">Dai un nome al progetto</label>
                   <input
+                    id="vibe-project-title"
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder="Dai un nome al progetto"
-                    className="ui-search w-full px-3 py-2 text-sm outline-none"
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:shadow-[var(--ds-shadow-focus)]"
                   />
                 </div>
-                <label className="sr-only">Prompt iniziale</label>
-                <textarea
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  rows={7}
-                  placeholder="Descrivi cosa vuoi creare…"
-                  className="ui-search w-full resize-none px-4 py-4 text-base outline-none md:px-3 md:py-2 md:text-sm"
-                />
+                <div className="mt-6">
+                  <label htmlFor="vibe-project-prompt" className="mb-2 block text-sm font-bold text-slate-700">Descrivi cosa vuoi creare</label>
+                  <textarea
+                    id="vibe-project-prompt"
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    rows={7}
+                    placeholder="Per esempio: crea un quiz interattivo sul sistema solare…"
+                    className="min-h-40 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:bg-white focus:shadow-[var(--ds-shadow-focus)] md:text-sm"
+                  />
+                </div>
                 <div className="hidden md:block">
-                  <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
+                  <div className="mb-2 mt-6 text-sm font-bold text-slate-700">Modello</div>
                   <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
                 </div>
                 {showDeepSeekDisclaimer && deepSeekConsent && (
@@ -1678,7 +1682,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     type="button"
                     onClick={handleStartInterview}
                     disabled={interviewing || creating || !prompt.trim()}
-                    className="ui-cta mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-bold transition disabled:opacity-40 md:h-10 md:min-h-0 md:w-auto"
+                    className="ui-cta mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition disabled:opacity-40 md:h-11 md:min-h-0 md:w-auto"
                   >
                     {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     {interviewing ? 'Creo...' : 'Crea'}

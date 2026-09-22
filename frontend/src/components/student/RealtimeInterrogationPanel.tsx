@@ -191,7 +191,7 @@ function Segmented({
               onClick={() => onChange(opt.value)}
               className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
                 active
-                  ? 'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-active-text)] shadow-sm'
+                  ? 'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-sm'
                   : 'border border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
@@ -678,7 +678,7 @@ export default function RealtimeInterrogationPanel({
                     <div
                       className={`max-w-[92%] md:max-w-[80%] rounded-2xl px-4 py-3 text-[16px] leading-7 shadow-sm ${turn.final ? '' : 'opacity-70'} ${
                         turn.role === 'user'
-                          ? 'rounded-br-md border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-active-text)]'
+                          ? 'rounded-br-md border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)]'
                           : 'rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] text-[var(--text-primary)]'
                       }`}
                     >

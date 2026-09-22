@@ -16,16 +16,28 @@ interface NavTabProps {
 }
 
 export function NavTab({ icon: Icon, label, isActive, onClick, accentClass, badgeCount = 0 }: NavTabProps) {
+  const activeMaterialStyle = isActive && !accentClass
+    ? {
+        backgroundColor: 'var(--ds-control)',
+        backgroundImage: 'var(--ds-reflection)',
+        borderColor: 'transparent',
+        color: 'var(--logo-violet-strong)',
+        boxShadow: 'var(--ds-shadow-control)',
+        backdropFilter: 'blur(8px)',
+      }
+    : undefined
+
   return (
     <button
       onClick={onClick}
       title={label}
+      style={activeMaterialStyle}
       className={[
         'group relative flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] font-emphasis text-xs font-bold',
-        'border-0 transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
+        'border transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
         isActive
-          ? `${accentClass ?? 'bg-[image:var(--selection-active-bg)]'} text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]`
-          : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
+          ? `${accentClass ?? ''}`
+          : 'border-transparent bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
       ].join(' ')}
     >
       <Icon className="h-4 w-4 shrink-0" />

@@ -868,7 +868,7 @@ export default function ChatSidebar({
         return (
           <div
             key={msg.id}
-            className="mx-2 p-3 bg-gradient-to-br from-[#181b1e]/5 to-slate-50 border border-[#181b1e]/20 rounded-xl shadow-sm"
+            className="ds-semantic-surface mx-2 rounded-xl bg-[rgba(123,105,201,0.065)] p-3"
           >
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg ${botColor} flex items-center justify-center shadow-md flex-shrink-0`}>
@@ -886,7 +886,7 @@ export default function ChatSidebar({
             </div>
             <button
               onClick={() => onNotificationClick?.(msg)}
-              className="mt-3 w-full py-2 border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="mt-3 w-full py-2 border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <Wand2 className="h-3.5 w-3.5" />
               Prova ora
@@ -900,7 +900,7 @@ export default function ChatSidebar({
         <div
           key={msg.id}
           onClick={() => onNotificationClick?.(msg)}
-          className="mx-2 p-3 bg-[#181b1e]/5 border border-[#181b1e]/15 rounded-xl cursor-pointer hover:bg-[#181b1e]/10 transition-colors shadow-sm group"
+          className="ds-semantic-surface mx-2 cursor-pointer rounded-xl bg-[rgba(123,105,201,0.055)] p-3 transition-colors hover:bg-[rgba(123,105,201,0.09)] group"
         >
           <div className="flex items-center gap-2 mb-1">
             <Bell className="h-3 w-3 text-[#181b1e]" />
@@ -975,9 +975,9 @@ export default function ChatSidebar({
             px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
             ${isMe
               ? messageAccentTheme
-                ? 'border rounded-2xl rounded-tr-none'
-                : 'bg-slate-50/60 text-slate-800 border border-slate-200/80 rounded-2xl rounded-tr-none'
-              : 'bg-white/60 text-slate-700 border border-slate-200/80 rounded-2xl rounded-tl-none'}
+                ? 'rounded-2xl rounded-tr-none'
+                : 'class-chat-bubble class-chat-bubble-own text-slate-800 rounded-2xl rounded-tr-none'
+              : 'class-chat-bubble text-slate-700 rounded-2xl rounded-tl-none'}
           `}
             data-chat-copyable="true"
             draggable={false}
@@ -1169,7 +1169,7 @@ export default function ChatSidebar({
                       setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })
                     }}
                     title="Apri allegato"
-                    className="group/att flex w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white/85 px-2.5 py-2 text-left text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-white"
+                    className="class-chat-attachment group/att flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-white"
                     style={messageAccentTheme ? {
                       borderColor: `${messageAccentTheme.accent}55`,
                       color: messageAccentTheme.text,
@@ -1335,7 +1335,7 @@ export default function ChatSidebar({
     return (
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
-          className="min-h-0 flex-1 overflow-y-auto p-4 space-y-6 bg-white scroll-smooth overscroll-contain"
+          className="min-h-0 flex-1 overflow-y-auto space-y-6 bg-transparent p-4 scroll-smooth overscroll-contain"
           ref={scrollRef}
         >
           {loadingOlderPublicMessages && (
@@ -1377,7 +1377,7 @@ export default function ChatSidebar({
         </div>
         {isUserScrolledUp && (
           <button
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-bg-hover)] transition-all z-10"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-active-bg-hover)] transition-all z-10"
             onClick={() => {
               const container = scrollRef.current
               if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
@@ -1853,7 +1853,7 @@ export default function ChatSidebar({
   return (
     <div
       ref={sidebarRef}
-      className={containerClasses}
+      className={`${containerClasses} class-chat-material`}
       style={containerStyle}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -2076,7 +2076,7 @@ export default function ChatSidebar({
               disabled={!inputText.trim() && attachedFiles.length === 0}
               className={`h-8 w-8 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
                 ? 'bg-slate-100 text-slate-300'
-                : 'border-0 bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
+                : 'border-0 bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
                 }`}
             >
               <Send className="h-4 w-4" />

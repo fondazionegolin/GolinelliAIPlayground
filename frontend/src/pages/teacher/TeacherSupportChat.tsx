@@ -561,26 +561,31 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     '--teacher-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: `color-mix(in srgb, ${accentTheme.accent} 10%, white)`,
-    color: accentTheme.text,
-    borderColor: `color-mix(in srgb, ${accentTheme.accent} 28%, transparent)`,
+    backgroundColor: 'transparent',
+    backgroundImage: 'var(--ds-choice-bg)',
+    color: 'var(--ds-choice-ink)',
+    borderColor: 'var(--ds-choice-border)',
     backdropFilter: 'blur(8px)',
-    boxShadow: `0 1px 2px color-mix(in srgb, ${accentTheme.accent} 10%, transparent)`,
+    boxShadow: 'var(--ds-choice-shadow)',
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
     backgroundColor: accentTheme.accent,
     color: '#ffffff',
   }) as CSSProperties, [accentTheme])
-  // Ghost bubble matching the violet used for buttons/badges elsewhere in this chat: transparent fill, thin violet border.
+  // Soft material bubble: accent tint, internal light and no drawn outline.
   const userBubbleStyle = useMemo(() => ({
-    backgroundColor: 'transparent',
-    borderColor: '#c4b5fd', // violet-300
+    backgroundColor: 'color-mix(in srgb, var(--teacher-accent) 7%, white)',
+    backgroundImage: 'var(--ds-semantic-shading)',
+    borderColor: 'transparent',
     color: '#6d28d9', // violet-700
+    boxShadow: 'var(--ds-shadow-1)',
   }) as CSSProperties, [])
   const accentButtonStyle = useMemo(() => ({
-    backgroundColor: accentTheme.soft,
-    color: accentTheme.text,
-    borderColor: accentTheme.border,
+    backgroundColor: 'transparent',
+    backgroundImage: 'var(--ds-choice-bg)',
+    color: 'var(--ds-choice-ink)',
+    borderColor: 'var(--ds-choice-border)',
+    boxShadow: 'var(--ds-choice-shadow)',
   }) as CSSProperties, [accentTheme])
   const selectedModeMeta = useMemo(
     () => AGENT_MODES.find(m => m.id === agentMode) || AGENT_MODES[0],
@@ -668,8 +673,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
   const paletteGroups = useMemo(() => ([
     {
-      label: 'Toni di grigio',
-      colors: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1', '#94a3b8'],
+      label: 'Toni luminosi',
+      colors: ['#ffffff', '#fbfdff', '#f7fbff', '#fffaf4', '#f8f5ff'],
     },
     {
       label: 'Toni di azzurro',
@@ -2784,7 +2789,7 @@ REGOLE IMPORTANTI:
 
   return (
     <>
-      <div className="h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      <div className="teacher-support-shell h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         
 
 
@@ -2828,9 +2833,9 @@ REGOLE IMPORTANTI:
         <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
               <div className={`flex h-full ${sidebarMode ? 'w-full' : isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'ui-card'}`}>
+                <div className={`teacher-support-frame flex-1 flex h-full overflow-hidden ${sidebarMode ? '' : isMobile ? '' : 'ui-card'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] transition-all duration-300`}>
+                 <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition-all duration-300`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="flex flex-col items-center gap-3 p-2 pt-3">
@@ -2946,11 +2951,11 @@ REGOLE IMPORTANTI:
                  {/* Chat Main + Canvas split */}
                  <div className="flex-1 flex overflow-hidden min-w-0">
                  <main
-                   className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isMobile && !chatBg ? 'bg-slate-50' : ''}`}
+                   className="teacher-support-main relative flex min-w-0 flex-1 flex-col overflow-hidden"
                    style={chatBg && !sidebarMode
-                     ? { backgroundColor: chatBg }
+                     ? { backgroundColor: chatBg, backgroundImage: 'linear-gradient(145deg, rgba(255,255,255,0.30), transparent 52%, rgba(164,196,235,0.06))' }
                      : isMobile
-                       ? { backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08), transparent 42%)' }
+                       ? { backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(185, 215, 255, 0.16), transparent 42%), linear-gradient(150deg, rgba(255,255,255,0.98), rgba(246,250,255,0.94))' }
                        : undefined}
                  >
 
@@ -3012,7 +3017,7 @@ REGOLE IMPORTANTI:
                     </div>
                   )}
 
-                  <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                  <header className="teacher-support-header px-3 py-2 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
                       /* Mobile header — essential only */
                       <>
@@ -3377,7 +3382,7 @@ REGOLE IMPORTANTI:
                         </div>
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center gap-3">
-                          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                          <span className="teacher-support-hero flex h-14 w-14 items-center justify-center rounded-2xl bg-white">
                             <AcademicAiIcon className="h-7 w-7" style={{ color: accentTheme.accent }} />
                           </span>
                           <p className="text-sm font-semibold text-slate-500">Cosa prepariamo?</p>
@@ -3392,9 +3397,9 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                           <div className={`${isMobile ? 'max-w-[90%]' : 'max-w-[75%]'} space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`teacher-support-message ${isMobile ? 'px-4' : 'px-5'} py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'border'} font-medium rounded-2xl rounded-tr-sm`
-                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
+                            <div className={`teacher-support-message ${isMobile ? 'px-4' : 'px-5'} py-3 text-sm leading-relaxed backdrop-blur-md transition-all ${msg.role === 'user'
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'teacher-chat-bubble'} font-medium rounded-2xl rounded-tr-sm`
+                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'teacher-chat-bubble teacher-chat-bubble-assistant text-slate-800'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
                               style={msg.role === 'user' && !chatBgIsDark ? userBubbleStyle : undefined}
                             >
@@ -3570,7 +3575,7 @@ REGOLE IMPORTANTI:
                     </div>
                   </div>
 
-                  <div className={`${isMobile ? 'p-2' : 'p-4'} bg-white border-t border-slate-200`} style={isMobile ? { paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' } : undefined}>
+                  <div className={`teacher-support-composer ${isMobile ? 'p-2' : 'p-4'}`} style={isMobile ? { paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' } : undefined}>
                     <div className={isMobile ? '' : 'max-w-3xl mx-auto'}>
 
                       {agentMode === 'dispensa' && pendingDispensaPlan && (

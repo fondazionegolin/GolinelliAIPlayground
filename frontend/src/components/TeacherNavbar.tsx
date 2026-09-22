@@ -743,7 +743,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 to={item.path}
                 aria-label={item.label}
                 className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border-0 transition-all duration-150 hover:z-10 ${isActiveItem
-                  ? 'ds-selected text-[var(--selection-active-text)]'
+                  ? 'ds-selected text-[var(--selection-text)]'
                   : 'ds-control text-slate-600 hover:text-[var(--selection-text)]'
                   }`}
               >

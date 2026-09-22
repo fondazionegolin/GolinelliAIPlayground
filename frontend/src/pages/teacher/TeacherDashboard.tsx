@@ -417,7 +417,7 @@ export default function TeacherDashboard() {
           )}
           {!showMobileHome && <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
             <Routes>
-              <Route index element={<div className="h-full bg-neutral-100" />} />
+              <Route index element={<div className="h-full bg-transparent" />} />
               <Route path="assistant" element={<div />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
               <Route path="teacherbots" element={<TeacherbotsPage />} />
@@ -472,7 +472,7 @@ export default function TeacherDashboard() {
         <motion.div
           layout
           transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
-          className={`h-full overflow-hidden bg-white ${
+          className={`h-full overflow-hidden bg-[var(--ds-surface)] ${
             isTeacherAssistantRoute && !showMobileHome
               ? 'relative flex-1 border-l-0 opacity-100'
               : teacherChatSidebarOpen
@@ -495,8 +495,8 @@ export default function TeacherDashboard() {
         {/* Right chat sidebar — kept mounted so voice stays connected when hidden */}
         {!isMobile && (
           <div
-            className={`h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 ${
-              showSidebar ? 'relative border-l border-slate-200 opacity-100' : 'pointer-events-none border-l-0 opacity-0'
+            className={`h-full flex-shrink-0 overflow-hidden bg-[var(--ds-surface)] transition-[width,opacity] duration-200 ${
+              showSidebar ? 'relative opacity-100 shadow-[var(--ds-shadow-2)]' : 'pointer-events-none opacity-0'
             }`}
             style={{ width: showSidebar ? `${sidebarWidth}px` : 0 }}
             aria-hidden={!showSidebar}

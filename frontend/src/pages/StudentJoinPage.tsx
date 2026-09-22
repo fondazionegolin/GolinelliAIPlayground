@@ -11,7 +11,7 @@ export default function StudentJoinPage() {
   const { t } = useTranslation()
 
   return (
-    <AppBackground className="min-h-screen flex items-center justify-center p-4">
+    <AppBackground className="student-ui student-access-ui min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-4">
@@ -27,13 +27,13 @@ export default function StudentJoinPage() {
           </div>
         </div>
 
-        <Card>
+        <Card className="student-access-card">
           <CardHeader>
             <CardTitle>{t('student_join.title')}</CardTitle>
             <CardDescription>{t('student_join.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <StudentAccessForm submitButtonClassName="w-full bg-emerald-600 hover:bg-emerald-700" />
+            <StudentAccessForm submitButtonClassName="w-full" />
           </CardContent>
         </Card>
 

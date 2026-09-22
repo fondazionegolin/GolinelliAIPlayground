@@ -387,7 +387,7 @@ export function ChatConversationView({
             onClick={handleSend}
             disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
             size="sm"
-            className="h-10 w-10 p-0 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)] shadow-md transition-all disabled:opacity-50"
+            className="h-10 w-10 p-0 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] shadow-md transition-all disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>

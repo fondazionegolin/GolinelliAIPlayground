@@ -141,13 +141,13 @@
     --button-padding-x-default: 1.25rem;
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
-    /* Buttons reset to a single neutral grey (slightly darker than cards), tone-independent. */
-    --button-chrome-bg: var(--ds-reflection), linear-gradient(var(--ds-control), var(--ds-control));
-    --button-chrome-bg-hover: var(--ds-reflection), linear-gradient(var(--ds-control-hover), var(--ds-control-hover));
-    --button-chrome-border: transparent;
-    --button-chrome-border-hover: transparent;
-    --button-chrome-shadow: var(--ds-shadow-control);
-    --button-chrome-shadow-hover: var(--ds-shadow-control-hover);
+    /* Buttons and selectors share the model-picker material surface. */
+    --button-chrome-bg: var(--ds-choice-bg);
+    --button-chrome-bg-hover: var(--ds-choice-bg-hover);
+    --button-chrome-border: var(--ds-choice-border);
+    --button-chrome-border-hover: color-mix(in srgb, var(--ds-choice-tone) 8%, transparent);
+    --button-chrome-shadow: var(--ds-choice-shadow);
+    --button-chrome-shadow-hover: var(--ds-choice-shadow-hover);
     --button-accent-bg: var(--button-chrome-bg);
     --button-accent-shadow: var(--button-chrome-shadow);
     --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
@@ -158,15 +158,15 @@
     --selection-radius: 999px;
     --selection-height: 2rem;
     --selection-padding-x: 0.8125rem;
-    /* Selectors / segmented controls / tabs / selected items → lavender surface + dark violet ink */
-    --selection-bg: linear-gradient(var(--ds-surface-tint), var(--ds-surface-tint));
-    --selection-bg-hover: linear-gradient(var(--ds-selected), var(--ds-selected));
-    --selection-border: transparent;
-    --selection-border-hover: transparent;
-    --selection-text: var(--brand-pill-violet);
-    --selection-active-bg: linear-gradient(var(--ds-selected), var(--ds-selected));
-    --selection-active-text: var(--brand-pill-violet);
-    --selection-shadow: var(--ds-shadow-control);
+    --selection-bg: var(--ds-choice-bg);
+    --selection-bg-hover: var(--ds-choice-bg-hover);
+    --selection-border: var(--ds-choice-border);
+    --selection-border-hover: color-mix(in srgb, var(--ds-choice-tone) 8%, transparent);
+    --selection-text: var(--ds-choice-ink);
+    --selection-active-bg: var(--ds-choice-bg);
+    --selection-active-text: var(--ds-choice-ink);
+    --selection-active-bg-hover: var(--ds-choice-bg-hover);
+    --selection-shadow: var(--ds-choice-shadow);
 
     /* Core surfaces */
     --background: 0 0% 99%;
@@ -206,8 +206,8 @@
     --surface-logo-blue: var(--logo-blue-10);
     --surface-logo-violet: var(--logo-violet-10);
     --text-primary: #17151b;
-    /* Secondary text → brand celeste (logo light blue); muted slightly darker for hierarchy. */
-    --text-secondary: var(--brand-celeste);
+    /* Secondary text keeps the brand blue, using its accessible ink value. */
+    --text-secondary: var(--brand-celeste-ink);
     --text-muted: #6e6679;
     /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
     --border-subtle: transparent;
@@ -221,12 +221,12 @@
     --control-shadow: var(--ds-shadow-control);
     --focus-shadow: var(--ds-shadow-focus);
 
-    /* Buttons & accent surfaces reset to neutral grey (no colour). */
-    --app-accent: #475569;            /* slate-600 */
-    --app-accent-text: #334155;       /* slate-700 */
-    --app-accent-soft: rgba(71, 85, 105, 0.08);
-    --app-accent-soft-strong: #475569;
-    --app-accent-border: #475569;
+    /* Material controls stay pale; brand ink supplies crisp colour contrast. */
+    --app-accent: var(--logo-violet-strong);
+    --app-accent-text: var(--logo-violet-strong);
+    --app-accent-soft: var(--logo-violet-06);
+    --app-accent-soft-strong: var(--logo-violet-strong);
+    --app-accent-border: var(--logo-violet-strong);
   }
 
   .dark {
@@ -283,7 +283,10 @@
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
     background-color: var(--app-body-bg);
-    background-image: linear-gradient(180deg, rgba(255,255,255,0.32), transparent 20rem);
+    background-image:
+      radial-gradient(ellipse at 12% 0%, rgba(255,255,255,0.96), transparent 34rem),
+      radial-gradient(ellipse at 92% 8%, rgba(220,238,255,0.34), transparent 38rem),
+      linear-gradient(155deg, rgba(255,255,255,0.74), rgba(241,247,255,0.34));
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -363,7 +366,7 @@
     --btn-tone: var(--app-accent);
     font-family: var(--font-family-emphasis);
     font-weight: 700;
-    color: var(--btn-tone, var(--app-accent-text));
+    color: var(--ds-choice-ink);
     background-image: var(--button-chrome-bg);
     border: 0;
     box-shadow: var(--button-chrome-shadow);

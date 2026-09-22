@@ -1,36 +1,36 @@
 const PASTEL_FAMILIES = {
   neutral: {
-    surface: 'border-0 bg-[rgba(255,255,255,0.78)] shadow-[var(--ds-shadow-1)] hover:bg-white hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[rgba(255,255,255,0.78)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-white hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(23,21,27,0.08)]',
     iconText: 'text-[#17151b]',
   },
   brand: {
-    surface: 'border-0 bg-[rgba(254,0,77,0.07)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(254,0,77,0.10)] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[rgba(254,0,77,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(254,0,77,0.10)] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(254,0,77,0.14)]',
     iconText: 'text-[#fe004d]',
   },
   info: {
-    surface: 'border-0 bg-[rgba(62,169,244,0.07)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(62,169,244,0.10)] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[rgba(62,169,244,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(62,169,244,0.10)] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(62,169,244,0.14)]',
     iconText: 'text-[#1278bd]',
   },
   support: {
-    surface: 'border-0 bg-[rgba(123,105,201,0.07)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(123,105,201,0.10)] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[rgba(123,105,201,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(123,105,201,0.10)] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(123,105,201,0.14)]',
     iconText: 'text-[#55449c]',
   },
   success: {
-    surface: 'border-0 bg-[#eef7fe] shadow-[var(--ds-shadow-1)] hover:bg-[#f6fbff] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[#eef7fe] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#f6fbff] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[#d9ecfd]',
     iconText: 'text-[#1d7dd8]',
   },
   warning: {
-    surface: 'border-0 bg-[#f7eff9] shadow-[var(--ds-shadow-1)] hover:bg-[#fcf8fd] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[#f7eff9] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#fcf8fd] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[#ebd9f0]',
     iconText: 'text-[#9452a3]',
   },
   danger: {
-    surface: 'border-0 bg-[#fdf0f5] shadow-[var(--ds-shadow-1)] hover:bg-[#fff6fa] hover:shadow-[var(--ds-shadow-2)]',
+    surface: 'border-0 bg-[#fdf0f5] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#fff6fa] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[#f8d6e5]',
     iconText: 'text-[#b51f5f]',
   },

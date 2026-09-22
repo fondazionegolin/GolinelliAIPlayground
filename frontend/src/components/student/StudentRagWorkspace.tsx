@@ -366,7 +366,7 @@ function DocumentPanel({
               <div className="flex items-start gap-2">
 	                  <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
 	                    style={isSelected
-	                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-active-text)' }
+	                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)' }
 	                    : { borderColor: '#cbd5e1' }}>
                   {isSelected && <CheckCircle2 className="h-3 w-3" />}
                 </div>
@@ -440,7 +440,7 @@ function CitedContent({
               style={isActive
 	                ? { backgroundColor: 'var(--text-primary)', color: 'var(--surface-base)' }
 	                : chunk
-	                  ? { backgroundColor: 'var(--surface-muted)', color: 'var(--selection-active-text)' }
+	                  ? { backgroundColor: 'var(--surface-muted)', color: 'var(--selection-text)' }
                   : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
               title={chunk ? `Fonte: ${chunk.document_title}${chunk.page ? ` — p.${chunk.page}` : ''}` : 'Fonte non disponibile'}>
               {seg.index}
@@ -516,7 +516,7 @@ function ChatPanel({
             )}
 	            <div className={`max-w-[92%] md:max-w-[80%] rounded-xl px-4 py-3 text-[16px] leading-7 shadow-sm ${
                 msg.role === 'user'
-                  ? 'rounded-br-md border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-active-text)]'
+                  ? 'rounded-br-md border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)]'
                   : 'rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] text-[var(--text-primary)]'
               }`}>
               {msg.role === 'assistant' ? (
@@ -1023,7 +1023,7 @@ export default function StudentRagWorkspace({
               <div key={doc.id} title={doc.title}
 	                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors"
 	                style={selectedDocIds.includes(doc.id)
-	                  ? { backgroundImage: 'var(--selection-bg)', color: 'var(--selection-active-text)', border: '1px solid var(--selection-border)' }
+	                  ? { backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)', border: '1px solid var(--selection-border)' }
 	                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
                 onClick={() => toggleDocSelection(doc.id)}>
                 {doc.title.slice(0, 1).toUpperCase()}

@@ -797,18 +797,11 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   })()
 
   return (
-    <div
-      className="mx-3 mt-3 overflow-hidden rounded-2xl border"
-      style={{
-        background: 'color-mix(in srgb, var(--logo-blue) 12%, white)',
-        borderColor: 'color-mix(in srgb, var(--logo-blue) 24%, transparent)',
-        boxShadow: 'none',
-      }}
-    >
+    <div className="ds-semantic-info mx-3 mt-3 overflow-hidden rounded-2xl">
       <div ref={audioSinkRef} className="hidden" />
 
       {/* Header row */}
-      <div className="flex items-center justify-between gap-2 border-b border-sky-200/50 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />

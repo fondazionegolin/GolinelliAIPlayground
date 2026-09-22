@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] !border-transparent font-[var(--button-font-weight)] transition-all duration-150 focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--focus-shadow)] active:translate-y-px active:scale-[0.995] disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-transparent disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border border-[color:var(--button-chrome-border)] font-[var(--button-font-weight)] transition-all duration-150 focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--focus-shadow)] active:translate-y-px active:scale-[0.995] disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-transparent disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
   {
     variants: {
       tone: {
@@ -44,7 +44,7 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'solid',
         className:
-          'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
+          'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-active-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',

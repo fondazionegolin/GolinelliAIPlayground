@@ -12,7 +12,7 @@ export function buildAccentNavbarStyle(
     backgroundColor: 'var(--ds-navbar)',
     backgroundImage: 'var(--ds-reflection)',
     border: '0',
-    boxShadow: 'var(--ds-shadow-2)',
+    boxShadow: 'none',
   }
 }
 
@@ -20,10 +20,10 @@ export function buildAccentNavClusterStyle(theme: AccentTheme): CSSProperties {
   void theme
   return {
     borderRadius: 'var(--selection-radius)',
-    backgroundColor: 'var(--ds-cluster)',
-    backgroundImage: 'var(--ds-reflection)',
+    backgroundColor: 'var(--ds-navbar-cluster)',
+    backgroundImage: 'var(--ds-navbar-cluster-bg)',
     border: '0',
-    boxShadow: 'var(--ds-shadow-control)',
+    boxShadow: 'var(--ds-shadow-cluster)',
   }
 }
 

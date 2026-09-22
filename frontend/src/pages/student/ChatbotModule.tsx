@@ -124,28 +124,28 @@ interface ChatbotModuleProps {
   dockArmed?: boolean
 }
 
-// Card visual language for the "Spazio AI" library — same tinted-surface/pill pattern as the
-// "Materiali del docente" document cards, one fixed hue per chatbot category.
+// Semantic colour is kept on the small affordances; the card itself uses the
+// shared luminous material surface from the design system.
 const CHATBOT_CARD_STYLES = {
   violet: {
-    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
-    icon: 'bg-violet-100 text-violet-800',
-    badge: 'border-violet-200 bg-violet-100 text-violet-800',
+    card: 'student-ai-card student-ai-card--violet',
+    icon: 'student-ai-card-icon bg-violet-50 text-violet-700',
+    badge: 'student-ai-card-badge bg-violet-50/80 text-violet-700',
   },
   amber: {
-    card: 'border-[rgba(180,131,13,0.18)] bg-[rgba(180,131,13,0.075)] hover:border-[rgba(180,131,13,0.30)] hover:bg-[rgba(180,131,13,0.11)]',
-    icon: 'bg-amber-100 text-amber-800',
-    badge: 'border-amber-200 bg-amber-100 text-amber-800',
+    card: 'student-ai-card student-ai-card--amber',
+    icon: 'student-ai-card-icon bg-amber-50 text-amber-700',
+    badge: 'student-ai-card-badge bg-amber-50/80 text-amber-700',
   },
   emerald: {
-    card: 'border-[rgba(16,150,105,0.18)] bg-[rgba(16,150,105,0.075)] hover:border-[rgba(16,150,105,0.30)] hover:bg-[rgba(16,150,105,0.11)]',
-    icon: 'bg-emerald-100 text-emerald-800',
-    badge: 'border-emerald-200 bg-emerald-100 text-emerald-800',
+    card: 'student-ai-card student-ai-card--emerald',
+    icon: 'student-ai-card-icon bg-emerald-50 text-emerald-700',
+    badge: 'student-ai-card-badge bg-emerald-50/80 text-emerald-700',
   },
   rose: {
-    card: 'border-[rgba(225,29,72,0.18)] bg-[rgba(225,29,72,0.075)] hover:border-[rgba(225,29,72,0.30)] hover:bg-[rgba(225,29,72,0.11)]',
-    icon: 'bg-rose-100 text-rose-800',
-    badge: 'border-rose-200 bg-rose-100 text-rose-800',
+    card: 'student-ai-card student-ai-card--rose',
+    icon: 'student-ai-card-icon bg-rose-50 text-rose-700',
+    badge: 'student-ai-card-badge bg-rose-50/80 text-rose-700',
   },
 } as const
 
@@ -693,11 +693,12 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     '--student-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: `color-mix(in srgb, ${accentTheme.accent} 10%, white)`,
-    color: accentTheme.text,
-    borderColor: `color-mix(in srgb, ${accentTheme.accent} 28%, transparent)`,
+    backgroundColor: 'transparent',
+    backgroundImage: 'var(--ds-choice-bg)',
+    color: 'var(--ds-choice-ink)',
+    borderColor: 'var(--ds-choice-border)',
     backdropFilter: 'blur(8px)',
-    boxShadow: `0 1px 2px color-mix(in srgb, ${accentTheme.accent} 10%, transparent)`,
+    boxShadow: 'var(--ds-choice-shadow)',
   }) as CSSProperties, [accentTheme])
   const isDarkColor = (color: string) => {
     const hex = color.replace('#', '')
@@ -2460,7 +2461,7 @@ REGOLE IMPORTANTI:
             >
               {icon}{label}
               {badge !== undefined && badge > 0 && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${mainTab === key ? 'bg-white/60 text-[var(--selection-active-text)]' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${mainTab === key ? 'bg-white/60 text-[var(--brand-red-text)]' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
               )}
             </button>
           ))}
@@ -2961,7 +2962,7 @@ REGOLE IMPORTANTI:
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)]"
+                className="h-9 w-9 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)]"
                 onClick={() => setShowActionMenu((prev) => !prev)}
                 title="Strumenti chatbot"
               >
@@ -3212,7 +3213,7 @@ REGOLE IMPORTANTI:
   // Desktop Chat interface
   return (
     <div
-      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-slate-100 p-4 text-slate-900"
+      className="student-ui relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-[var(--ds-canvas)] p-4 text-slate-900"
       style={{
         ...accentVars,
       }}
@@ -3457,7 +3458,7 @@ REGOLE IMPORTANTI:
         )}
       </aside>
 
-      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : `rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.slate}`}`}>
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : isDesktopSelection ? 'student-ai-library-frame' : `rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.slate}`}`}>
         {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
 	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (
@@ -3736,8 +3737,8 @@ REGOLE IMPORTANTI:
               </Suspense>
             </div>
           ) : isDesktopSelection ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <section className="relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm">
+            <div className="student-ai-library flex min-h-0 flex-1 flex-col">
+              <section className="student-ai-library-hero relative shrink-0">
                 {(onMinimize || onClose) && (
                   <Button
                     variant="ghost"
@@ -3745,7 +3746,7 @@ REGOLE IMPORTANTI:
                     onClick={handleDockOrClose}
                     className={isDockArmed
                       ? 'dock-armed-glow absolute right-4 top-4 rounded-xl border border-emerald-300 text-white shadow-sm'
-                      : 'absolute right-4 top-4 rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-700'}
+                      : 'ds-control absolute right-4 top-4 rounded-xl text-slate-500 hover:text-slate-700'}
                     title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
                   >
                     {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
@@ -3758,7 +3759,7 @@ REGOLE IMPORTANTI:
                     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
                       Assistenti per studio e quiz, teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.
                     </p>
-                    <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+                    <label className="ui-search mx-auto mt-6 flex max-w-xl items-center gap-2 px-4 py-2.5">
                       <Search className="h-4 w-4 shrink-0 text-slate-400" />
                       <input
                         value={chatbotSearch}
@@ -3781,7 +3782,7 @@ REGOLE IMPORTANTI:
                 </div>
               </section>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
+              <div className="student-ai-library-body min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
                 <div className="mx-auto w-full max-w-6xl">
                   <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -3796,17 +3797,17 @@ REGOLE IMPORTANTI:
                           key={key}
                           type="button"
                           onClick={() => setLibrarySection(key)}
-                          className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-bold transition-colors ${librarySection === key ? 'border-violet-300 bg-violet-100 text-violet-800 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                          className={`student-ai-filter flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold ${librarySection === key ? 'ui-segment-active' : 'ds-control text-slate-600'}`}
                         >
                           <Icon className="h-4 w-4 shrink-0" />
                           <span className="min-w-0 flex-1 truncate">{label}</span>
-                          <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[9px]">{count}</span>
+                          <span className="student-ai-filter-count rounded-full px-1.5 py-0.5 text-[9px]">{count}</span>
                         </button>
                       ))}
                     </div>
-                    <div className="flex shrink-0 items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm" role="group" aria-label="Vista Spazio AI">
-                      <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title="Vista griglia" className={`flex h-8 w-8 items-center justify-center rounded-lg ${libraryViewMode === 'grid' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50'}`}><LayoutGrid className="h-4 w-4" /></button>
-                      <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title="Vista elenco" className={`flex h-8 w-8 items-center justify-center rounded-lg ${libraryViewMode === 'list' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50'}`}><List className="h-4 w-4" /></button>
+                    <div className="ui-segment flex shrink-0 items-center rounded-xl p-0.5" role="group" aria-label="Vista Spazio AI">
+                      <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title="Vista griglia" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title="Vista elenco" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
                     </div>
                   </div>
                   {librarySection === 'favorites' && (
@@ -4592,7 +4593,7 @@ REGOLE IMPORTANTI:
               <button
                 onClick={handleGenerateLesson}
                 disabled={!newLessonTopic.trim() || generatingLesson}
-                className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
               >
                 {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Genera lezione
@@ -4813,7 +4814,7 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
                   </button>
                   <button
                     onClick={() => onGenerateQuiz?.(buildLearningQuizPrompt(topic, unit, uiLanguage))}
-                    className="rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 py-2 text-sm font-semibold text-[var(--selection-active-text)] hover:bg-[image:var(--selection-bg-hover)] transition-colors"
+                    className="rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 py-2 text-sm font-semibold text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] transition-colors"
                   >
                     {uiLanguage === 'en' ? 'Generate quiz' : 'Genera quiz'}
                   </button>

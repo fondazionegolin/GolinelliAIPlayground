@@ -1,24 +1,59 @@
 :root {
-  /* Flat glossy foundation: hierarchy comes from tone and shadow, never outlines. */
-  --ds-canvas: #f2f4f7;
-  --ds-surface: rgba(255, 255, 255, 0.94);
+  /* Luminous soft-material foundation: depth comes from light, never outlines. */
+  --ds-canvas: #f9fbff;
+  --ds-surface: rgba(255, 255, 255, 0.88);
   --ds-navbar: #ffffff;
-  --ds-surface-raised: rgba(255, 255, 255, 0.97);
-  --ds-surface-muted: rgba(238, 241, 246, 0.9);
-  --ds-surface-tint: rgba(239, 235, 253, 0.88);
-  --ds-control: rgba(236, 239, 244, 0.96);
-  --ds-control-hover: rgba(244, 246, 249, 0.99);
-  --ds-cluster: rgba(230, 234, 241, 0.98);
-  --ds-selected: #e7e0fb;
+  --ds-surface-raised: rgba(255, 255, 255, 0.96);
+  --ds-surface-muted: rgba(250, 252, 255, 0.92);
+  --ds-surface-tint: rgba(244, 241, 255, 0.92);
+  --ds-control: rgba(248, 250, 255, 0.96);
+  --ds-control-hover: rgba(255, 255, 255, 0.99);
+  --ds-cluster: rgba(238, 242, 248, 0.94);
+  --ds-cluster-bg:
+    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.40) 0%, transparent 58%),
+    linear-gradient(145deg, rgba(235,239,246,0.94), rgba(244,247,251,0.92));
+  --ds-navbar-cluster: rgba(255, 255, 255, 0.98);
+  --ds-navbar-cluster-bg:
+    radial-gradient(ellipse at 25% 0%, rgba(255,255,255,0.96) 0%, transparent 62%),
+    linear-gradient(145deg, rgba(255,255,255,0.99), rgba(248,250,253,0.96));
+  --ds-navbar-active: rgba(255,255,255,0.94);
+  --ds-navbar-active-bg:
+    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(251,252,254,0.96));
+  --ds-navbar-active-ink: #334155;
+  --ds-navbar-active-border: rgba(100,116,139,0.11);
+  --ds-navbar-active-shadow: 0 2px 6px rgba(72,92,126,0.055);
+  --ds-switch-active: rgba(255,255,255,0.94);
+  --ds-switch-active-bg:
+    linear-gradient(180deg, rgba(255,255,255,0.99), rgba(251,252,254,0.96));
+  --ds-switch-active-border: rgba(100,116,139,0.11);
+  --ds-switch-active-shadow: 0 2px 6px rgba(72,92,126,0.055);
+  --ds-choice-tone: var(--teacher-accent, var(--student-accent, var(--app-accent, #64748b)));
+  --ds-choice-surface: color-mix(in srgb, var(--ds-choice-tone) 1%, #fffefd);
+  --ds-choice-ink: #334155;
+  --ds-choice-border: color-mix(in srgb, var(--ds-choice-tone) 4%, transparent);
+  --ds-choice-bg:
+    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.08) 48%, transparent 76%),
+    linear-gradient(145deg, #ffffff 0%, var(--ds-choice-surface) 62%, color-mix(in srgb, var(--ds-choice-tone) 1.5%, #fbfcfe) 100%);
+  --ds-choice-bg-hover:
+    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.10) 48%, transparent 76%),
+    linear-gradient(145deg, #ffffff 0%, color-mix(in srgb, var(--ds-choice-tone) 1.5%, #fffefd) 62%, color-mix(in srgb, var(--ds-choice-tone) 2.5%, #fafcff) 100%);
+  --ds-choice-shadow: inset 0 1px 0 rgba(255,255,255,0.72), 0 6px 16px rgba(72,92,126,0.065);
+  --ds-choice-shadow-hover: inset 0 1px 0 rgba(255,255,255,0.82), 0 9px 21px rgba(72,92,126,0.08);
+  --ds-selected: var(--ds-choice-surface);
   --ds-overlay: rgba(24, 28, 38, 0.34);
 
-  --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.04) 28%, rgba(255,255,255,0) 48%);
-  --ds-shadow-1: 0 1px 2px rgba(31, 36, 48, 0.06), 0 3px 8px rgba(31, 36, 48, 0.045);
-  --ds-shadow-2: 0 2px 5px rgba(31, 36, 48, 0.06), 0 10px 24px rgba(31, 36, 48, 0.07);
-  --ds-shadow-3: 0 4px 10px rgba(31, 36, 48, 0.07), 0 20px 44px rgba(31, 36, 48, 0.10);
-  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.78);
-  --ds-shadow-control: var(--ds-shadow-inset), 0 1px 2px rgba(31,36,48,0.06), 0 4px 9px rgba(31,36,48,0.045);
-  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 2px 4px rgba(31,36,48,0.07), 0 7px 14px rgba(31,36,48,0.06);
+  --ds-reflection: radial-gradient(ellipse at 30% 12%, rgba(255,255,255,0.76) 0%, rgba(255,255,255,0.22) 40%, transparent 72%);
+  --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.24) 42%, transparent 74%);
+  --ds-selection-shading:
+    radial-gradient(ellipse at 30% 4%, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.26) 46%, transparent 76%),
+    radial-gradient(ellipse at 78% 115%, rgba(123,105,201,0.075) 0%, transparent 68%);
+  --ds-shadow-1: 0 2px 7px rgba(72,92,126,0.075), 0 8px 18px rgba(93,111,142,0.035);
+  --ds-shadow-2: 0 5px 16px rgba(72,92,126,0.085), 0 14px 30px rgba(93,111,142,0.055);
+  --ds-shadow-3: 0 10px 28px rgba(72,92,126,0.11), 0 24px 48px rgba(93,111,142,0.07);
+  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 0 rgba(132,153,184,0.055);
+  --ds-shadow-control: var(--ds-shadow-inset), 0 3px 9px rgba(72,92,126,0.075);
+  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 5px 13px rgba(72,92,126,0.10);
+  --ds-shadow-cluster: var(--ds-shadow-inset), 0 2px 5px rgba(55,70,102,0.11), 0 8px 20px rgba(72,92,126,0.13);
   --ds-shadow-focus: 0 0 0 3px rgba(123,105,201,0.14), var(--ds-shadow-control);
 
   --ds-radius-control: 0.875rem;
@@ -35,21 +70,57 @@
   --ds-surface-tint: rgba(64, 56, 96, 0.9);
   --ds-control: rgba(43, 48, 61, 0.94);
   --ds-control-hover: rgba(53, 59, 74, 0.98);
+  --ds-cluster-bg:
+    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.07) 0%, transparent 58%),
+    linear-gradient(145deg, rgba(38,43,55,0.96), rgba(46,52,66,0.94));
+  --ds-navbar-cluster: rgba(43, 42, 39, 0.96);
+  --ds-navbar-cluster-bg:
+    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.08) 0%, transparent 58%),
+    linear-gradient(145deg, rgba(48,47,43,0.97), rgba(38,39,43,0.96));
+  --ds-navbar-active: #292e39;
+  --ds-navbar-active-bg: linear-gradient(145deg, #252a34, #343a47);
+  --ds-navbar-active-ink: #f8fafc;
+  --ds-navbar-active-border: rgba(255,255,255,0.10);
+  --ds-navbar-active-shadow: inset 3px 3px 7px rgba(0,0,0,0.34), inset -2px -2px 6px rgba(255,255,255,0.07);
+  --ds-switch-active: #272c37;
+  --ds-switch-active-bg: linear-gradient(145deg, #242933, #333945);
+  --ds-switch-active-border: rgba(255,255,255,0.10);
+  --ds-switch-active-shadow: inset 3px 3px 7px rgba(0,0,0,0.34), inset -2px -2px 6px rgba(255,255,255,0.065);
   --ds-selected: rgba(70, 61, 106, 0.94);
+  --ds-choice-surface: color-mix(in srgb, var(--ds-choice-tone) 16%, #2d3341);
+  --ds-choice-ink: #eef2f7;
+  --ds-choice-border: color-mix(in srgb, var(--ds-choice-tone) 34%, rgba(255,255,255,0.10));
+  --ds-choice-bg:
+    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.13) 0%, transparent 70%),
+    linear-gradient(var(--ds-choice-surface), var(--ds-choice-surface));
+  --ds-choice-bg-hover:
+    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.17) 0%, transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--ds-choice-tone) 20%, #323947), color-mix(in srgb, var(--ds-choice-tone) 20%, #323947));
+  --ds-choice-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 4px 13px rgba(0,0,0,0.24);
+  --ds-choice-shadow-hover: inset 0 1px 0 rgba(255,255,255,0.12), 0 7px 18px rgba(0,0,0,0.30);
   --ds-overlay: rgba(4, 6, 12, 0.62);
   --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0) 52%);
+  --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.10), transparent 72%);
+  --ds-selection-shading: radial-gradient(ellipse at 34% 18%, rgba(255,255,255,0.13), transparent 74%);
   --ds-shadow-1: 0 2px 8px rgba(0,0,0,0.18);
   --ds-shadow-2: 0 10px 28px rgba(0,0,0,0.24);
   --ds-shadow-3: 0 22px 52px rgba(0,0,0,0.32);
   --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.07);
+  --ds-shadow-cluster: var(--ds-shadow-inset), 0 3px 12px rgba(0,0,0,0.28);
 }
 
 @layer components {
   .ds-navbar {
+    position: relative;
+    overflow: visible;
     border: 0;
     background-color: var(--ds-navbar);
     background-image: var(--ds-reflection);
-    box-shadow: var(--ds-shadow-2);
+    box-shadow: none;
+  }
+
+  .ds-navbar::after {
+    content: none;
   }
 
   .ds-cluster,
@@ -62,7 +133,8 @@
 
   .ds-cluster {
     background-color: var(--ds-cluster);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.62), 0 4px 12px rgba(31,36,48,0.065);
+    background-image: var(--ds-cluster-bg);
+    box-shadow: var(--ds-shadow-cluster);
   }
 
   .ds-control {
@@ -81,9 +153,10 @@
 
   .ds-selected {
     border: 0;
-    background-color: var(--ds-selected);
-    background-image: var(--ds-reflection);
-    box-shadow: var(--ds-shadow-control);
+    background-color: transparent;
+    background-image: var(--ds-choice-bg);
+    color: var(--ds-choice-ink);
+    box-shadow: var(--ds-choice-shadow);
   }
 
   .ds-panel,
@@ -107,6 +180,7 @@
     border: 0 !important;
     border-radius: 1.125rem;
     background-color: var(--ds-surface-raised);
+    background-image: var(--ds-semantic-shading);
     box-shadow: var(--ds-shadow-1);
   }
 
@@ -118,6 +192,85 @@
     transform: translateY(-2px);
     background-color: #fff;
     box-shadow: var(--ds-shadow-2);
+  }
+
+  /* Teacher chat: bright, low-contrast material layers with no drawn edges. */
+  .teacher-support-frame {
+    border: 0 !important;
+    background: rgba(255,255,255,0.78);
+    box-shadow: var(--ds-shadow-1);
+  }
+
+  .teacher-support-history {
+    border: 0;
+    background:
+      var(--ds-reflection),
+      linear-gradient(160deg, rgba(255,255,255,0.98), rgba(247,250,255,0.94));
+    box-shadow: 5px 0 16px rgba(93,111,142,0.055), inset -1px 0 rgba(255,255,255,0.72);
+  }
+
+  .teacher-support-main {
+    background:
+      radial-gradient(ellipse at 48% 0%, rgba(255,255,255,0.94) 0%, transparent 62%),
+      linear-gradient(155deg, #ffffff 0%, #fbfcff 55%, #f8faff 100%);
+  }
+
+  .teacher-support-header,
+  .teacher-support-composer {
+    border: 0 !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.90), rgba(250,252,255,0.78));
+    box-shadow: 0 5px 14px rgba(93,111,142,0.045), inset 0 1px rgba(255,255,255,0.95);
+  }
+
+  .teacher-support-composer {
+    box-shadow: 0 -5px 15px rgba(93,111,142,0.05), inset 0 1px rgba(255,255,255,0.92);
+  }
+
+  .teacher-support-hero {
+    border: 0 !important;
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-1);
+  }
+
+  .class-chat-material {
+    border: 0 !important;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.98), transparent 48%),
+      linear-gradient(155deg, rgba(255,255,255,0.96), rgba(247,251,255,0.92));
+    box-shadow: -4px 0 16px rgba(93,111,142,0.065) !important;
+  }
+
+  .ds-semantic-surface,
+  .class-chat-bubble,
+  .class-chat-attachment,
+  .teacher-chat-bubble {
+    border: 0 !important;
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-1);
+  }
+
+  .ds-semantic-info {
+    border: 0 !important;
+    background-color: color-mix(in srgb, var(--logo-blue) 9%, white);
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-1);
+  }
+
+  .class-chat-bubble {
+    background-color: rgba(250,252,255,0.92);
+  }
+
+  .class-chat-bubble-own {
+    background-color: color-mix(in srgb, var(--logo-violet) 5%, white);
+  }
+
+  .class-chat-attachment {
+    background-color: rgba(255,255,255,0.92);
+  }
+
+  .teacher-chat-bubble-assistant {
+    background-color: rgba(255,255,255,0.76);
   }
 
   .ui-search {
@@ -134,24 +287,37 @@
   }
 
   .ui-cta {
-    border: 0 !important;
-    background-color: var(--ds-selected);
+    border-color: transparent !important;
+    background-color: var(--ds-control);
     background-image: var(--ds-reflection);
-    color: var(--brand-pill-violet);
+    color: var(--logo-violet-strong);
     box-shadow: var(--ds-shadow-control);
+  }
+
+  .ui-cta:hover {
+    background-color: var(--ds-control-hover);
+    box-shadow: var(--ds-shadow-control-hover);
+    transform: translateY(-1px);
+  }
+
+  .ui-cta:active {
+    transform: translateY(1px);
+    box-shadow: var(--ds-shadow-inset), 0 1px 2px rgba(31,36,48,0.05);
   }
 
   .ui-segment {
     border: 0 !important;
     background-color: var(--ds-cluster);
-    box-shadow: var(--ds-shadow-control);
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-cluster);
   }
 
   .ui-segment-active {
-    border: 0 !important;
-    background: var(--ds-selected) !important;
-    color: var(--brand-pill-violet);
-    box-shadow: var(--ds-shadow-1);
+    border: 1px solid var(--ds-switch-active-border) !important;
+    background-color: var(--ds-switch-active) !important;
+    background-image: var(--ds-switch-active-bg) !important;
+    color: var(--ds-choice-ink);
+    box-shadow: var(--ds-switch-active-shadow);
   }
 
   /* Migration safety net: legacy teacher pages inherit the same chrome while
@@ -177,5 +343,143 @@
   .teacher-ui button[class*="rounded"][class*="border-slate-"]:not([class*="border-dashed"]) {
     border-color: transparent !important;
     box-shadow: var(--ds-shadow-control);
+  }
+
+  /* Student areas share the same material language while preserving dark
+     editors and semantic solid actions. */
+  .student-ui :where(.mobile-card-standard, .mobile-document-card) {
+    border-color: transparent !important;
+    background-image: var(--ds-semantic-shading) !important;
+    box-shadow: var(--ds-shadow-1) !important;
+  }
+
+  .student-ui :where(.mobile-card-standard, .mobile-document-card):hover {
+    box-shadow: var(--ds-shadow-2) !important;
+  }
+
+  .student-ui :where(article, section, div)[class*="rounded"][class*="bg-white"][class*="shadow"] {
+    border-color: transparent !important;
+    background-image: var(--ds-semantic-shading);
+  }
+
+  .student-ui :where(button, a)[class*="rounded"][class*="bg-white"][class*="border-slate-"] {
+    border-color: transparent !important;
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-control) !important;
+  }
+
+  .student-ui button[class*="rounded"][class*="bg-slate-50"] {
+    border-color: transparent !important;
+    background-color: var(--ds-control) !important;
+    background-image: var(--ds-reflection);
+    box-shadow: var(--ds-shadow-control);
+  }
+
+  .student-ui :where(button, article, section, div)[class*="rounded"]:is(
+    [class*="bg-violet-50"],
+    [class*="bg-indigo-50"],
+    [class*="bg-sky-50"],
+    [class*="bg-cyan-50"],
+    [class*="bg-emerald-50"],
+    [class*="bg-orange-50"],
+    [class*="bg-amber-50"],
+    [class*="bg-rose-50"],
+    [class*="bg-fuchsia-50"]
+  ) {
+    border-color: transparent !important;
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-1);
+  }
+
+  .student-ui :where(section, main)[class*="bg-white"] {
+    background-image: var(--ds-semantic-shading);
+  }
+
+  .student-access-card {
+    background-color: rgba(255,255,255,0.86) !important;
+    background-image: var(--ds-semantic-shading) !important;
+    box-shadow: var(--ds-shadow-2) !important;
+  }
+
+  /* Student Spazio AI: one continuous luminous canvas. Category colour is an
+     accent, not a full-card fill, so the library stays consistent with the
+     shared card and model-selector language. */
+  .student-ai-library-frame {
+    border: 0;
+    border-radius: var(--ds-radius-panel);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .student-ai-library {
+    background:
+      radial-gradient(ellipse at 50% -12%, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.30) 45%, transparent 70%),
+      linear-gradient(180deg, rgba(252,253,255,0.76), rgba(247,250,255,0.72));
+  }
+
+  .student-ai-library-hero {
+    border: 0;
+    background: transparent;
+  }
+
+  .student-ai-library-hero::after {
+    content: '';
+    position: absolute;
+    right: 8%;
+    bottom: -14px;
+    left: 8%;
+    height: 28px;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(117,135,166,0.055), transparent 72%);
+    filter: blur(8px);
+  }
+
+  .student-ai-library-body {
+    background: transparent;
+  }
+
+  .student-ai-filter {
+    border: 0 !important;
+    transition: transform 150ms ease, color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .student-ai-filter:hover {
+    transform: translateY(-1px);
+  }
+
+  .student-ai-filter-count {
+    background: rgba(255,255,255,0.68);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
+  }
+
+  .student-ai-card {
+    --student-ai-card-accent: 123 105 201;
+    border: 0 !important;
+    background-color: rgba(255,255,255,0.84) !important;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.28) 48%, transparent 72%),
+      radial-gradient(ellipse at 94% 112%, rgb(var(--student-ai-card-accent) / 0.055) 0%, transparent 66%) !important;
+    box-shadow: var(--ds-shadow-1) !important;
+  }
+
+  .student-ai-card:hover {
+    background-color: rgba(255,255,255,0.97) !important;
+    box-shadow: var(--ds-shadow-2) !important;
+  }
+
+  .student-ai-card--amber { --student-ai-card-accent: 180 131 13; }
+  .student-ai-card--emerald { --student-ai-card-accent: 16 150 105; }
+  .student-ai-card--rose { --student-ai-card-accent: 225 29 72; }
+
+  .student-ai-card-icon {
+    border: 0 !important;
+    background-image: var(--ds-semantic-shading) !important;
+    box-shadow: var(--ds-shadow-control) !important;
+  }
+
+  .student-ai-card-badge {
+    border-color: transparent !important;
+    background-image: var(--ds-semantic-shading) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 2px 6px rgba(72,92,126,0.045) !important;
   }
 }

@@ -616,7 +616,7 @@ export default function StudentDashboard() {
   }
 
   return (
-    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
+    <AppBackground className="student-ui h-[100dvh] flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
       <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' || localStorage.getItem('_subjective_mode') ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
@@ -873,7 +873,7 @@ function StudentMobileShell({
   }
 
   return (
-    <AppBackground className="mobile-student-app h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
+    <AppBackground className="student-ui mobile-student-app h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
       {swipeState.isActive && (
         <motion.div
           className="fixed inset-0 z-40 bg-slate-950/10 pointer-events-none"
