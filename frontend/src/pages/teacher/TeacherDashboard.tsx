@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -29,6 +29,10 @@ const AgenticWorkflowStudioPage = lazy(() => import('./AgenticWorkflowStudioPage
 const AgenticWorkflowLibraryPage = lazy(() => import('./AgenticWorkflowLibraryPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
+
+// Right padding (pr-4) around the class-chat card; added to the column width so the
+// card edge tracks the cursor exactly while dragging the resize grip.
+const CHAT_SIDEBAR_GUTTER = 16
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
@@ -59,6 +63,11 @@ export default function TeacherDashboard() {
   const { data: teacherProfileData } = useTeacherProfile()
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
+  const [isResizingChat, setIsResizingChat] = useState(false)
+  const chatColumnRef = useRef<HTMLDivElement>(null)
+  const previewChatWidth = useCallback((width: number) => {
+    if (chatColumnRef.current) chatColumnRef.current.style.width = `${width + CHAT_SIDEBAR_GUTTER}px`
+  }, [])
   const [showSidebar, setShowSidebar] = useState(true)
   const [showOnlineMenu, setShowOnlineMenu] = useState(false)
   const [teacherChatSidebarOpen, setTeacherChatSidebarOpen] = useState(false)
@@ -470,9 +479,9 @@ export default function TeacherDashboard() {
         </main>
 
         <motion.div
-          layout
+          layout={!isResizingChat}
           transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
-          className={`h-full overflow-hidden bg-[var(--ds-surface)] ${
+          className={`h-full overflow-hidden bg-white ${
             isTeacherAssistantRoute && !showMobileHome
               ? 'relative flex-1 border-l-0 opacity-100'
               : teacherChatSidebarOpen
@@ -495,37 +504,42 @@ export default function TeacherDashboard() {
         {/* Right chat sidebar — kept mounted so voice stays connected when hidden */}
         {!isMobile && (
           <div
-            className={`h-full flex-shrink-0 overflow-hidden bg-[var(--ds-surface)] transition-[width,opacity] duration-200 ${
-              showSidebar ? 'relative opacity-100 shadow-[var(--ds-shadow-2)]' : 'pointer-events-none opacity-0'
-            }`}
-            style={{ width: showSidebar ? `${sidebarWidth}px` : 0 }}
+            ref={chatColumnRef}
+            className={`h-full flex-shrink-0 overflow-hidden bg-white box-border ${
+              isResizingChat ? '' : 'transition-[width,opacity] duration-200'
+            } ${showSidebar ? 'relative opacity-100 py-4 pr-4' : 'pointer-events-none opacity-0'}`}
+            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0 }}
             aria-hidden={!showSidebar}
           >
-            {activeSessionId && teacherProfile ? (
-              <ChatSidebar
-                sessionId={activeSessionId}
-                userType="teacher"
-                currentUserId={teacherProfile.id}
-                currentUserName={teacherProfile.name}
-                isPinned={true}
-                onPinToggle={() => setShowSidebar(false)}
-                onToggle={() => { }}
-                onWidthChange={setSidebarWidth}
-                initialWidth={sidebarWidth}
-                className="h-full w-full"
-                studentAccent={teacherProfile.uiAccent as StudentAccentId}
-              />
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-16 h-16 rounded-full bg-cyan-100 flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
+            <div className="ui-card h-full w-full overflow-hidden shadow-[var(--ds-shadow-2)]">
+              {activeSessionId && teacherProfile ? (
+                <ChatSidebar
+                  sessionId={activeSessionId}
+                  userType="teacher"
+                  currentUserId={teacherProfile.id}
+                  currentUserName={teacherProfile.name}
+                  isPinned={true}
+                  onPinToggle={() => setShowSidebar(false)}
+                  onToggle={() => { }}
+                  onWidthChange={setSidebarWidth}
+                  onResizingChange={setIsResizingChat}
+                  onResizePreview={previewChatWidth}
+                  initialWidth={sidebarWidth}
+                  className="h-full w-full !bg-white !shadow-none"
+                  studentAccent={teacherProfile.uiAccent as StudentAccentId}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                  <div className="w-16 h-16 rounded-full bg-cyan-100 flex items-center justify-center mb-4">
+                    <svg className="w-8 h-8 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-slate-700 mb-1">{t('teacher_dashboard.chat_title')}</p>
+                  <p className="text-xs text-slate-400">{t('teacher_dashboard.chat_hint')}</p>
                 </div>
-                <p className="text-sm font-medium text-slate-700 mb-1">{t('teacher_dashboard.chat_title')}</p>
-                <p className="text-xs text-slate-400">{t('teacher_dashboard.chat_hint')}</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </div>

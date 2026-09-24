@@ -18,12 +18,13 @@ interface NavTabProps {
 export function NavTab({ icon: Icon, label, isActive, onClick, accentClass, badgeCount = 0 }: NavTabProps) {
   const activeMaterialStyle = isActive && !accentClass
     ? {
-        backgroundColor: 'var(--ds-control)',
-        backgroundImage: 'var(--ds-reflection)',
+        backgroundColor: 'transparent',
+        backgroundImage: 'var(--ds-choice-bg)',
         borderColor: 'transparent',
-        color: 'var(--logo-violet-strong)',
-        boxShadow: 'var(--ds-shadow-control)',
-        backdropFilter: 'blur(8px)',
+        color: 'var(--ds-choice-ink)',
+        boxShadow: 'var(--ds-choice-ring-strong), var(--ds-choice-shadow)',
+        backdropFilter: 'var(--ds-choice-blur)',
+        WebkitBackdropFilter: 'var(--ds-choice-blur)',
       }
     : undefined
 

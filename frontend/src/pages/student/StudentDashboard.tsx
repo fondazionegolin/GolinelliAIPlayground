@@ -23,6 +23,10 @@ const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
+
+// Right padding (pr-4) around the class-chat card; added to the column width so the
+// card edge tracks the cursor exactly while dragging the resize grip.
+const CHAT_SIDEBAR_GUTTER = 16
 import { LogoMark } from '@/components/LogoMark'
 import { StudentNavbar } from '@/components/StudentNavbar'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
@@ -202,6 +206,11 @@ export default function StudentDashboard() {
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [lastDocument] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
+  const [isResizingChat, setIsResizingChat] = useState(false)
+  const chatColumnRef = useRef<HTMLDivElement>(null)
+  const previewChatWidth = useCallback((width: number) => {
+    if (chatColumnRef.current) chatColumnRef.current.style.width = `${width + CHAT_SIDEBAR_GUTTER}px`
+  }, [])
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
   const [oggiImparoLesson, setOggiImparoLesson] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
@@ -697,7 +706,7 @@ export default function StudentDashboard() {
 
         {chatbotEnabled && sessionInfo && (
           <motion.div
-            layout
+            layout={!isResizingChat}
             transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
             className={`overflow-hidden bg-white ${
               activeModule === 'chatbot'
@@ -732,28 +741,33 @@ export default function StudentDashboard() {
         )}
         {sessionInfo ? (
           <div
-            className={`hidden h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 lg:block ${
-              showSidebar ? 'relative border-l border-slate-200 opacity-100' : 'pointer-events-none border-l-0 opacity-0'
-            }`}
-            style={{ width: showSidebar ? `${sidebarWidth}px` : 0, height: '100%' }}
+            ref={chatColumnRef}
+            className={`hidden h-full flex-shrink-0 overflow-hidden bg-white box-border lg:block ${
+              isResizingChat ? '' : 'transition-[width,opacity] duration-200'
+            } ${showSidebar ? 'relative opacity-100 py-4 pr-4' : 'pointer-events-none opacity-0'}`}
+            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0, height: '100%' }}
             aria-hidden={!showSidebar}
           >
-            <ChatSidebar
-              sessionId={sessionInfo.session.id}
-              userType="student"
-              currentUserId={sessionInfo.student.id}
-              currentUserName={sessionInfo.student.nickname}
-              studentAccent={studentAccent}
-              isPinned={true}
-              onPinToggle={() => setShowSidebar(false)}
-              onToggle={() => { }}
-              onWidthChange={setSidebarWidth}
-              initialWidth={sidebarWidth}
-              className="h-full w-full"
-              onNotificationClick={handleNotificationClick}
-              teacherTarget={sessionInfo.teacher ?? undefined}
-              privateChatEnabled={privateChatEnabled}
-            />
+            <div className="ui-card h-full w-full overflow-hidden shadow-[var(--ds-shadow-2)]">
+              <ChatSidebar
+                sessionId={sessionInfo.session.id}
+                userType="student"
+                currentUserId={sessionInfo.student.id}
+                currentUserName={sessionInfo.student.nickname}
+                studentAccent={studentAccent}
+                isPinned={true}
+                onPinToggle={() => setShowSidebar(false)}
+                onToggle={() => { }}
+                onWidthChange={setSidebarWidth}
+                onResizingChange={setIsResizingChat}
+                onResizePreview={previewChatWidth}
+                initialWidth={sidebarWidth}
+                className="h-full w-full !bg-white !shadow-none"
+                onNotificationClick={handleNotificationClick}
+                teacherTarget={sessionInfo.teacher ?? undefined}
+                privateChatEnabled={privateChatEnabled}
+              />
+            </div>
           </div>
         ) : null}
       </div>

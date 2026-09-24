@@ -83,6 +83,11 @@ interface ChatSidebarProps {
   onPinToggle?: () => void
   className?: string
   onWidthChange?: (width: number) => void
+  /** Fired while the user drags the resize grip, so the parent can suspend width animations. */
+  onResizingChange?: (resizing: boolean) => void
+  /** Per-frame width during a drag. Parents apply it imperatively so no React render runs
+   * mid-gesture; the committed value still arrives through `onWidthChange` on mouse up. */
+  onResizePreview?: (width: number) => void
   initialWidth?: number
 }
 
@@ -101,6 +106,8 @@ export default function ChatSidebar({
   onPinToggle,
   className,
   onWidthChange,
+  onResizingChange,
+  onResizePreview,
   initialWidth = 380
 }: ChatSidebarProps) {
   const { t, i18n } = useTranslation()
@@ -734,10 +741,12 @@ export default function ChatSidebar({
   }
 
   const sidebarRef = useRef<HTMLDivElement>(null)
+  const draggedWidthRef = useRef(initialWidth)
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isMobileView) {
       e.preventDefault()
+      draggedWidthRef.current = chatWidth
       setIsResizing(true)
     }
   }
@@ -745,24 +754,27 @@ export default function ChatSidebar({
   useEffect(() => {
     if (!isResizing || isMobileView) return
 
+    let frame: number | null = null
+
     const handleMouseMove = (e: MouseEvent) => {
-      // Calculate width based on sidebar position
-      if (sidebarRef.current) {
-        const rect = sidebarRef.current.getBoundingClientRect()
-        const newWidth = rect.right - e.clientX
-        if (newWidth >= 280 && newWidth <= 800) {
-          setChatWidth(newWidth)
-        }
-      } else {
-        // Fallback for non-pinned mode
-        const newWidth = window.innerWidth - e.clientX
-        if (newWidth >= 280 && newWidth <= 800) {
-          setChatWidth(newWidth)
-        }
+      const right = sidebarRef.current?.getBoundingClientRect().right ?? window.innerWidth
+      // Clamping (instead of dropping out-of-range values) keeps the drag continuous at the limits.
+      draggedWidthRef.current = Math.min(800, Math.max(280, right - e.clientX))
+      if (!onResizePreview) {
+        setChatWidth(draggedWidthRef.current)
+        return
+      }
+      if (frame === null) {
+        frame = requestAnimationFrame(() => {
+          frame = null
+          onResizePreview(draggedWidthRef.current)
+        })
       }
     }
 
     const handleMouseUp = () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      setChatWidth(draggedWidthRef.current)
       setIsResizing(false)
     }
 
@@ -773,17 +785,22 @@ export default function ChatSidebar({
     document.body.style.cursor = 'ew-resize'
 
     return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isResizing, isMobileView])
+  }, [isResizing, isMobileView, onResizePreview])
 
   // Notify parent when width changes
   useEffect(() => {
     onWidthChange?.(chatWidth)
   }, [chatWidth, onWidthChange])
+
+  useEffect(() => {
+    onResizingChange?.(isResizing)
+  }, [isResizing, onResizingChange])
 
 
 
@@ -1860,15 +1877,19 @@ export default function ChatSidebar({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Resize handle - trasparente, blu solo su hover */}
+      {/* Resize handle — grip centrato verticalmente, non su tutta l'altezza */}
       <div
-        className={`${isMobileView ? 'hidden' : 'absolute'} left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
-          ? 'bg-[#181b1e] w-3'
-          : 'bg-slate-200/50 hover:bg-[#181b1e] hover:w-3'
-          }`}
+        className={`${isMobileView ? 'hidden' : 'absolute'} group left-0 top-1/2 z-10 flex h-20 w-4 -translate-y-1/2 cursor-ew-resize items-center justify-center`}
         onMouseDown={handleMouseDown}
         title={sidebarLabels.resize}
-      />
+      >
+        <span
+          className={`h-full rounded-full transition-all ${isResizing
+            ? 'w-1.5 bg-[#181b1e]'
+            : 'w-1 bg-slate-300/80 group-hover:w-1.5 group-hover:bg-[#181b1e]'
+            }`}
+        />
+      </div>
 
       {/* Header with connection status */}
       <div className="flex items-center justify-between bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]">
@@ -1947,7 +1968,7 @@ export default function ChatSidebar({
                   'ui-control-label group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)]',
                   'border-0 transition-all duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
                   isTabActive
-                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--ds-shadow-control)]'
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)]'
                     : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]',
                 ].join(' ')}
               >

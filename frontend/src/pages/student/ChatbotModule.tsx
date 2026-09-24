@@ -3458,7 +3458,7 @@ REGOLE IMPORTANTI:
         )}
       </aside>
 
-      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : isDesktopSelection ? 'student-ai-library-frame' : `rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.slate}`}`}>
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : isDesktopSelection ? 'student-ai-library-frame' : `rounded-[1.125rem] shadow-[var(--ds-shadow-1)] ${PASTEL_SURFACES.slate}`}`}>
         {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
 	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (

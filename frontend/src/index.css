@@ -166,7 +166,7 @@
     --selection-active-bg: var(--ds-choice-bg);
     --selection-active-text: var(--ds-choice-ink);
     --selection-active-bg-hover: var(--ds-choice-bg-hover);
-    --selection-shadow: var(--ds-choice-shadow);
+    --selection-shadow: var(--ds-choice-ring-strong), var(--ds-choice-shadow);
 
     /* Core surfaces */
     --background: 0 0% 99%;
@@ -369,7 +369,9 @@
     color: var(--ds-choice-ink);
     background-image: var(--button-chrome-bg);
     border: 0;
-    box-shadow: var(--button-chrome-shadow);
+    box-shadow: var(--ds-choice-ring), var(--button-chrome-shadow);
+    backdrop-filter: var(--ds-choice-blur);
+    -webkit-backdrop-filter: var(--ds-choice-blur);
     transition:
       transform 160ms ease,
       border-color 160ms ease,
@@ -381,12 +383,12 @@
   .app-button-chrome:hover {
     transform: translateY(-1px);
     background-image: var(--button-chrome-bg-hover);
-    box-shadow: var(--button-chrome-shadow-hover);
+    box-shadow: var(--ds-choice-ring), var(--button-chrome-shadow-hover);
   }
 
   .app-button-chrome-active {
     background-image: var(--button-chrome-bg-hover);
-    box-shadow: var(--button-chrome-shadow-hover);
+    box-shadow: var(--ds-choice-ring-strong), var(--button-chrome-shadow-hover);
   }
 
   .app-button-chrome-quiet {
