@@ -603,7 +603,7 @@ export default function ToyLMPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-[var(--surface-page)] text-[var(--text-primary)] md:flex-row" style={LAB_ACCENT}>
+    <div className="flex h-full min-w-0 flex-col bg-transparent text-[var(--text-primary)] md:flex-row" style={LAB_ACCENT}>
 
       {/* ══ Left sidebar: models ══ */}
       <aside className="flex max-h-[16rem] w-full shrink-0 flex-col border-b border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm md:max-h-none md:w-64 md:border-b-0 md:border-r">

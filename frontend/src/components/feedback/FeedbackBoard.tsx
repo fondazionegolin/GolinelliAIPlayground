@@ -700,7 +700,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   }
 
   return (
-    <div className={`flex min-h-0 flex-col overflow-hidden bg-[var(--surface-page)] ${
+    <div className={`flex min-h-0 flex-col overflow-hidden bg-transparent ${
       isAdmin ? 'h-[calc(100dvh-6rem)] lg:h-[calc(100dvh-3.5rem)]' : 'h-full'
     }`}>
       <header className="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 shadow-[var(--shadow-sm)] sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)_minmax(0,1fr)]">

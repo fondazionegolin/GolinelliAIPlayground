@@ -1,6 +1,15 @@
 :root {
   /* Luminous soft-material foundation: depth comes from light, never outlines. */
   --ds-canvas: #f9fbff;
+  --ds-canvas-base: #fcfcfd;
+  /* Page backdrop: white with large, heavily-feathered grey patches so the canvas reads as
+     softly lit rather than flat. Neutral only — no hue. Each patch fades over ~40vmax. */
+  --ds-canvas-mesh:
+    radial-gradient(ellipse 46vmax 38vmax at 4% 8%, rgba(120,128,140,0.085) 0%, rgba(120,128,140,0.03) 42%, transparent 74%),
+    radial-gradient(ellipse 52vmax 40vmax at 96% 22%, rgba(120,128,140,0.07) 0%, rgba(120,128,140,0.025) 42%, transparent 74%),
+    radial-gradient(ellipse 48vmax 38vmax at 70% 98%, rgba(120,128,140,0.08) 0%, rgba(120,128,140,0.03) 42%, transparent 74%),
+    radial-gradient(ellipse 40vmax 34vmax at 18% 82%, rgba(120,128,140,0.055) 0%, transparent 72%),
+    radial-gradient(ellipse 38vmax 30vmax at 48% 40%, rgba(255,255,255,0.9) 0%, transparent 72%);
   --ds-surface: rgba(255, 255, 255, 0.88);
   --ds-navbar: #ffffff;
   --ds-surface-raised: rgba(255, 255, 255, 0.96);
@@ -27,31 +36,25 @@
     linear-gradient(180deg, rgba(255,255,255,0.99), rgba(251,252,254,0.96));
   --ds-switch-active-border: rgba(100,116,139,0.11);
   --ds-switch-active-shadow: 0 2px 6px rgba(72,92,126,0.055);
-  /* Selectors and pill controls live on the lavender/violet family, not on the neutral
-     button accent (see roleThemes.ts: the accent is deliberately grey). */
-  --ds-choice-tone: var(--logo-violet);
-  --ds-choice-surface: color-mix(in srgb, var(--ds-choice-tone) 7%, rgba(255,255,255,0.74));
-  --ds-choice-ink: var(--logo-violet-strong);
-  /* Outline always derives from the ink, so it stays in tone with the label. */
-  --ds-choice-border: color-mix(in srgb, var(--ds-choice-ink) 16%, transparent);
-  --ds-choice-blur: blur(10px) saturate(1.3);
-  /* Hairline ring drawn as a shadow: visible outline with zero layout shift. */
+  /* Selected state (nav tabs, filters, chips): flat soft grey + near-black ink. No hue, no glow,
+     no blur — the fill alone marks the choice. */
+  --ds-choice-tone: #64748b;
+  --ds-choice-surface: #eceef2;
+  --ds-choice-ink: #111827;
+  --ds-choice-border: rgba(15,23,42,0.09);
+  --ds-choice-blur: none;
+  /* Hairline for resting button chrome; selected states carry no ring. */
   --ds-choice-ring: 0 0 0 1px var(--ds-choice-border);
-  --ds-choice-ring-strong: 0 0 0 1px color-mix(in srgb, var(--ds-choice-ink) 24%, transparent);
-  --ds-choice-bg:
-    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.14) 48%, transparent 76%),
-    linear-gradient(145deg, rgba(255,255,255,0.86) 0%, var(--ds-choice-surface) 100%);
-  --ds-choice-bg-hover:
-    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.18) 48%, transparent 76%),
-    linear-gradient(145deg, rgba(255,255,255,0.92) 0%, color-mix(in srgb, var(--ds-choice-tone) 10%, rgba(255,255,255,0.78)) 100%);
-  --ds-choice-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.92),
-    0 1px 2px color-mix(in srgb, var(--ds-choice-ink) 16%, transparent),
-    0 6px 16px color-mix(in srgb, var(--ds-choice-ink) 16%, transparent);
-  --ds-choice-shadow-hover:
-    inset 0 1px 0 rgba(255,255,255,0.96),
-    0 2px 4px color-mix(in srgb, var(--ds-choice-ink) 18%, transparent),
-    0 9px 21px color-mix(in srgb, var(--ds-choice-ink) 20%, transparent);
+  --ds-choice-ring-strong: 0 0 0 0 transparent;
+  --ds-choice-bg: linear-gradient(var(--ds-choice-surface), var(--ds-choice-surface));
+  --ds-choice-bg-hover: linear-gradient(#e4e7ec, #e4e7ec);
+  --ds-choice-shadow: 0 0 0 0 transparent;
+  --ds-choice-shadow-hover: 0 0 0 0 transparent;
+  /* Generic button chrome (.app-button-chrome, Button solid/neutral): white, neutral hairline. */
+  --ds-button-bg: linear-gradient(#ffffff, #ffffff);
+  --ds-button-bg-hover: linear-gradient(#f6f7f9, #f6f7f9);
+  --ds-button-shadow: 0 1px 2px rgba(15,23,42,0.05);
+  --ds-button-shadow-hover: 0 2px 6px rgba(15,23,42,0.08);
   --ds-selected: var(--ds-choice-surface);
   --ds-overlay: rgba(24, 28, 38, 0.34);
 
@@ -71,12 +74,21 @@
 
   --ds-radius-control: 0.875rem;
   --ds-radius-panel: 1.25rem;
+  --ds-radius-frame: 1.125rem;
+  --ds-frame-gutter: 1rem;
+  --ds-frame-divider: rgba(100,116,139,0.10);
   --ds-radius-card: 1.5rem;
   --ds-radius-pill: 999px;
 }
 
 .dark {
   --ds-canvas: #151820;
+  --ds-canvas-base: #151820;
+  --ds-frame-divider: rgba(255,255,255,0.08);
+  --ds-canvas-mesh:
+    radial-gradient(ellipse 46vmax 38vmax at 4% 8%, rgba(255,255,255,0.035) 0%, transparent 72%),
+    radial-gradient(ellipse 52vmax 40vmax at 96% 22%, rgba(0,0,0,0.18) 0%, transparent 72%),
+    radial-gradient(ellipse 48vmax 38vmax at 70% 98%, rgba(255,255,255,0.03) 0%, transparent 72%);
   --ds-surface: rgba(31, 35, 46, 0.96);
   --ds-surface-raised: rgba(39, 44, 57, 0.98);
   --ds-surface-muted: rgba(45, 50, 64, 0.94);
@@ -100,20 +112,20 @@
   --ds-switch-active-border: rgba(255,255,255,0.10);
   --ds-switch-active-shadow: inset 3px 3px 7px rgba(0,0,0,0.34), inset -2px -2px 6px rgba(255,255,255,0.065);
   --ds-selected: rgba(70, 61, 106, 0.94);
-  --ds-choice-surface: color-mix(in srgb, var(--ds-choice-tone) 24%, rgba(45, 51, 65, 0.78));
-  --ds-choice-ink: #eef2f7;
-  --ds-choice-border: color-mix(in srgb, var(--ds-choice-tone) 52%, rgba(255,255,255,0.16));
-  --ds-choice-blur: blur(10px) saturate(1.2);
+  --ds-choice-surface: rgba(255,255,255,0.10);
+  --ds-choice-ink: #f8fafc;
+  --ds-choice-border: rgba(255,255,255,0.12);
+  --ds-choice-blur: none;
   --ds-choice-ring: 0 0 0 1px var(--ds-choice-border);
-  --ds-choice-ring-strong: 0 0 0 1px color-mix(in srgb, var(--ds-choice-ink) 40%, transparent);
-  --ds-choice-bg:
-    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.13) 0%, transparent 70%),
-    linear-gradient(var(--ds-choice-surface), var(--ds-choice-surface));
-  --ds-choice-bg-hover:
-    radial-gradient(ellipse at 28% 6%, rgba(255,255,255,0.17) 0%, transparent 70%),
-    linear-gradient(color-mix(in srgb, var(--ds-choice-tone) 20%, #323947), color-mix(in srgb, var(--ds-choice-tone) 20%, #323947));
-  --ds-choice-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 4px 13px rgba(0,0,0,0.24);
-  --ds-choice-shadow-hover: inset 0 1px 0 rgba(255,255,255,0.12), 0 7px 18px rgba(0,0,0,0.30);
+  --ds-choice-ring-strong: 0 0 0 0 transparent;
+  --ds-choice-bg: linear-gradient(var(--ds-choice-surface), var(--ds-choice-surface));
+  --ds-choice-bg-hover: linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14));
+  --ds-choice-shadow: 0 0 0 0 transparent;
+  --ds-choice-shadow-hover: 0 0 0 0 transparent;
+  --ds-button-bg: linear-gradient(rgba(255,255,255,0.06), rgba(255,255,255,0.06));
+  --ds-button-bg-hover: linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10));
+  --ds-button-shadow: 0 1px 2px rgba(0,0,0,0.24);
+  --ds-button-shadow-hover: 0 3px 8px rgba(0,0,0,0.30);
   --ds-overlay: rgba(4, 6, 12, 0.62);
   --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0) 52%);
   --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.10), transparent 72%);
@@ -130,8 +142,8 @@
     position: relative;
     overflow: visible;
     border: 0;
-    background-color: var(--ds-navbar);
-    background-image: var(--ds-reflection);
+    /* Navbar sits on the page backdrop: no fill of its own. */
+    background: transparent;
     box-shadow: none;
   }
 
@@ -211,6 +223,26 @@
     box-shadow: var(--ds-shadow-1);
   }
 
+  /* Floating page frame (components/ui/PageFrame.tsx): the one container every desktop page,
+     the teacher chatbot and the class chat column sit in. Same gutter, radius and lift everywhere. */
+  .ds-page-frame-gutter {
+    padding: var(--ds-frame-gutter);
+  }
+
+  .ds-page-frame {
+    border: 0 !important;
+    border-radius: var(--ds-radius-frame);
+    background-color: var(--ds-surface-raised);
+    background-image: var(--ds-semantic-shading);
+    box-shadow: var(--ds-shadow-2);
+  }
+
+  /* Title/hero band at the top of a framed page: part of the frame surface, separated by a hairline. */
+  .ds-frame-header {
+    background: transparent !important;
+    box-shadow: inset 0 -1px 0 var(--ds-frame-divider) !important;
+  }
+
   .ui-card-interactive {
     transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
   }
@@ -222,13 +254,15 @@
   }
 
   /* Teacher chat: bright, low-contrast material layers with no drawn edges. */
-  .teacher-support-frame {
+  .teacher-support-frame:not(.ds-page-frame) {
     border: 0 !important;
     background: rgba(255,255,255,0.78);
     box-shadow: var(--ds-shadow-1);
   }
 
-  .teacher-support-history {
+  /* Left explorer/history column inside a page frame (chatbot history, workspace explorers). */
+  .teacher-support-history,
+  .ds-frame-sidebar {
     border: 0;
     background:
       var(--ds-reflection),

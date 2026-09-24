@@ -142,12 +142,12 @@
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
     /* Buttons and selectors share the model-picker material surface. */
-    --button-chrome-bg: var(--ds-choice-bg);
-    --button-chrome-bg-hover: var(--ds-choice-bg-hover);
+    --button-chrome-bg: var(--ds-button-bg);
+    --button-chrome-bg-hover: var(--ds-button-bg-hover);
     --button-chrome-border: var(--ds-choice-border);
-    --button-chrome-border-hover: color-mix(in srgb, var(--ds-choice-tone) 8%, transparent);
-    --button-chrome-shadow: var(--ds-choice-shadow);
-    --button-chrome-shadow-hover: var(--ds-choice-shadow-hover);
+    --button-chrome-border-hover: rgba(15,23,42,0.14);
+    --button-chrome-shadow: var(--ds-button-shadow);
+    --button-chrome-shadow-hover: var(--ds-button-shadow-hover);
     --button-accent-bg: var(--button-chrome-bg);
     --button-accent-shadow: var(--button-chrome-shadow);
     --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
@@ -161,7 +161,7 @@
     --selection-bg: var(--ds-choice-bg);
     --selection-bg-hover: var(--ds-choice-bg-hover);
     --selection-border: var(--ds-choice-border);
-    --selection-border-hover: color-mix(in srgb, var(--ds-choice-tone) 8%, transparent);
+    --selection-border-hover: rgba(15,23,42,0.14);
     --selection-text: var(--ds-choice-ink);
     --selection-active-bg: var(--ds-choice-bg);
     --selection-active-text: var(--ds-choice-ink);
@@ -283,10 +283,7 @@
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
     background-color: var(--app-body-bg);
-    background-image:
-      radial-gradient(ellipse at 12% 0%, rgba(255,255,255,0.96), transparent 34rem),
-      radial-gradient(ellipse at 92% 8%, rgba(220,238,255,0.34), transparent 38rem),
-      linear-gradient(155deg, rgba(255,255,255,0.74), rgba(241,247,255,0.34));
+    background-image: var(--ds-canvas-mesh);
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -386,9 +383,10 @@
     box-shadow: var(--ds-choice-ring), var(--button-chrome-shadow-hover);
   }
 
-  .app-button-chrome-active {
-    background-image: var(--button-chrome-bg-hover);
-    box-shadow: var(--ds-choice-ring-strong), var(--button-chrome-shadow-hover);
+  .app-button-chrome-active,
+  .app-button-chrome-active:hover {
+    background-image: var(--ds-choice-bg);
+    box-shadow: none;
   }
 
   .app-button-chrome-quiet {

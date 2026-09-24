@@ -275,9 +275,9 @@ export default function TeacherbotsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-slate-50">
+    <div className="h-full flex flex-col overflow-hidden bg-transparent">
       <div className="flex-1 overflow-y-auto">
-        <section className="bg-[var(--ds-surface)] shadow-[var(--ds-shadow-1)]">
+        <section className="ds-frame-header">
           <div className="mx-auto max-w-3xl px-4 py-8 text-center md:px-6">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               {t('navbar.nav_teacherbots', 'Teacherbot')}

@@ -9,8 +9,8 @@ export function buildAccentNavbarStyle(
   void theme
   return {
     ...cssVars,
-    backgroundColor: 'var(--ds-navbar)',
-    backgroundImage: 'var(--ds-reflection)',
+    // Navbar sits on the page backdrop (--ds-canvas-mesh): no fill of its own.
+    background: 'transparent',
     border: '0',
     boxShadow: 'none',
   }

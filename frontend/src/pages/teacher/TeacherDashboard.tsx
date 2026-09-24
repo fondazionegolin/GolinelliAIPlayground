@@ -32,9 +32,10 @@ import TeacherSupportChat from './TeacherSupportChat'
 
 // Right padding (pr-4) around the class-chat card; added to the column width so the
 // card edge tracks the cursor exactly while dragging the resize grip.
-const CHAT_SIDEBAR_GUTTER = 16
+const CHAT_SIDEBAR_GUTTER = 28
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
+import { PageFrame } from '@/components/ui/PageFrame'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
@@ -168,6 +169,8 @@ export default function TeacherDashboard() {
   const bgGradient = getAppBackgroundGradient(teacherTheme)
   const isTeacherHomeRoute = location.pathname === '/teacher' || location.pathname === '/teacher/'
   const isTeacherAssistantRoute = isTeacherHomeRoute || location.pathname === '/teacher/assistant'
+  // Routes that own their internal scroll panes (editor/IDE layouts) — the page frame must not scroll them.
+  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic')
   const showMobileHome = isMobile && isTeacherHomeRoute
 
   const dockTeacherChat = () => {
@@ -415,7 +418,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${isMobile ? (selfScrollingRoute ? 'overflow-hidden flex flex-col' : 'overflow-y-auto') : 'overflow-hidden flex flex-col'}`}>
           {showMobileHome && (
             <MobileTeacherHome
               teacherName={teacherProfile?.name}
@@ -424,7 +427,8 @@ export default function TeacherDashboard() {
               onOpenAssistant={() => navigate('/teacher/assistant')}
             />
           )}
-          {!showMobileHome && <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
+          {!showMobileHome && <PageFrame bare={isMobile} scroll={!selfScrollingRoute}>
+          <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
             <Routes>
               <Route index element={<div className="h-full bg-transparent" />} />
               <Route path="assistant" element={<div />} />
@@ -475,18 +479,19 @@ export default function TeacherDashboard() {
                 />
               } />
             </Routes>
-          </Suspense>}
+          </Suspense>
+          </PageFrame>}
         </main>
 
         <motion.div
           layout={!isResizingChat}
           transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
-          className={`h-full overflow-hidden bg-white ${
+          className={`h-full overflow-hidden ${
             isTeacherAssistantRoute && !showMobileHome
-              ? 'relative flex-1 border-l-0 opacity-100'
+              ? 'relative flex-1 border-l-0 bg-transparent opacity-100'
               : teacherChatSidebarOpen
-                ? 'relative flex-shrink-0 border-l border-slate-200 opacity-100'
-                : 'pointer-events-none flex-shrink-0 border-l-0 opacity-0'
+                ? 'relative flex-shrink-0 border-l border-slate-200 bg-white opacity-100'
+                : 'pointer-events-none flex-shrink-0 border-l-0 bg-white opacity-0'
           }`}
           style={{
             width: isTeacherAssistantRoute && !showMobileHome ? 'auto' : teacherChatSidebarOpen ? 480 : 0,
@@ -505,13 +510,13 @@ export default function TeacherDashboard() {
         {!isMobile && (
           <div
             ref={chatColumnRef}
-            className={`h-full flex-shrink-0 overflow-hidden bg-white box-border ${
+            className={`h-full flex-shrink-0 overflow-hidden bg-transparent box-border ${
               isResizingChat ? '' : 'transition-[width,opacity] duration-200'
-            } ${showSidebar ? 'relative opacity-100 py-4 pr-4' : 'pointer-events-none opacity-0'}`}
+            } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0 }}
             aria-hidden={!showSidebar}
           >
-            <div className="ui-card h-full w-full overflow-hidden shadow-[var(--ds-shadow-2)]">
+            <div className="ds-page-frame h-full w-full overflow-hidden">
               {activeSessionId && teacherProfile ? (
                 <ChatSidebar
                   sessionId={activeSessionId}

@@ -390,7 +390,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
 
   if ((!notebooks || totalCount === 0) && !(isStudent && assignments.length > 0)) {
     return (
-      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-100 lg:flex-row">
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-transparent lg:flex-row">
         <WorkspaceExplorerSidebar>
           <WorkspaceExplorerHeader
             eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
@@ -421,7 +421,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             </p>
           </WorkspaceExplorerList>
         </WorkspaceExplorerSidebar>
-        <main className="relative min-w-0 flex-1 overflow-y-auto bg-slate-50">
+        <main className="relative min-w-0 flex-1 overflow-y-auto">
           {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
         <section className="flex min-h-full items-center justify-center px-4 py-10 text-center md:px-6">
           <div className="w-full max-w-4xl">
@@ -488,7 +488,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-100 lg:flex-row">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-transparent lg:flex-row">
       <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
@@ -553,7 +553,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
         </WorkspaceExplorerList>
       </WorkspaceExplorerSidebar>
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <section className="border-b border-slate-200 bg-white">
+        <section className="ds-frame-header">
           <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">
             {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="mb-4" />}
             <div className="mx-auto max-w-3xl text-center">

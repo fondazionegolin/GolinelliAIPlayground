@@ -4,7 +4,7 @@ import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type Pastel
 
 export function WorkspaceExplorerSidebar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <aside className={`flex max-h-[260px] w-full shrink-0 flex-col bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] lg:max-h-none lg:w-[19rem] ${className}`}>
+    <aside className={`ds-frame-sidebar flex max-h-[260px] w-full shrink-0 flex-col lg:max-h-none lg:w-[19rem] ${className}`}>
       {children}
     </aside>
   )

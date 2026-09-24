@@ -1521,7 +1521,7 @@ export default function TeacherDocumentsPage() {
     return (
       <>
         <div
-          className="relative h-full flex flex-col bg-slate-100 overflow-hidden"
+          className="relative h-full flex flex-col bg-transparent overflow-hidden"
           onDragEnter={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
           onDragOver={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
           onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
@@ -1532,7 +1532,7 @@ export default function TeacherDocumentsPage() {
           }}
         >
           <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
-          <div className="hidden h-14 items-center bg-[var(--ds-surface)] px-6 shadow-[var(--ds-shadow-1)] md:flex">
+          <div className="ds-frame-header hidden h-14 items-center px-6 md:flex">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>

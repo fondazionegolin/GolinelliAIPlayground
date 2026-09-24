@@ -7,9 +7,10 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { SpreadsheetEditor, type SheetCellStyles, type SheetChartConfig, type SheetDimensions } from '@/components/SpreadsheetEditor'
+import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 import {
-  Activity, BarChart3, Braces, ChevronDown, ChevronRight, CircleDot,
+  Activity, BarChart3, Braces, ChevronDown, ChevronRight,
   Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2,
   ArrowLeft, Cloud, CloudOff, Eraser, Network, PanelRightClose, Play, Save, Search,
   Sigma, Split, Square, Trash2, Undo2, Wrench, X, ZoomIn, ZoomOut, Minus, Paperclip,
@@ -23,10 +24,9 @@ type CanvasNode = { id: string; instanceId: string; x: number; y: number; status
 type Edge = { id: string; from: string; to: string; sourcePort: string; targetPort: string }
 type NodeRun = { node_instance_id: string; label: string; status: string; output?: Record<string, unknown>; error?: string | null; duration_ms?: number | null }
 type WorkflowRun = { id: string; status: string; output?: Record<string, unknown>; error?: string | null; nodes: NodeRun[] }
-type TableValue = { columns?: string[]; rows: Array<Record<string, unknown>>; rowCount?: number }
-type PlotValue = { kind: 'scatter' | 'histogram' | 'scatter3d'; x: number[]; xEnd?: number[]; y: number[]; z?: number[]; color?: unknown[]; labels?: Record<string, string>; title?: string }
 type TableEditorState = { chart: SheetChartConfig; styles: SheetCellStyles; dimensions: SheetDimensions }
-type TableModalState = { nodeId: string; outputPort: string; nodeLabel: string; table: TableValue; editor?: Partial<TableEditorState> }
+// `detached` tables (e.g. data behind a chart) open in the spreadsheet for exploration only: nothing is written back.
+type TableModalState = { nodeId: string; outputPort: string; nodeLabel: string; table: TableValue; editor?: Partial<TableEditorState>; detached?: boolean }
 
 const makeSpec = (
   id: string, label: string, category: string, description: string,
@@ -85,13 +85,14 @@ const CATEGORY_STYLE: Record<string, { dot: string; soft: string; ink: string; i
   Controllo: { dot: '#ca8a04', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
 }
 
-const NEOMORPHIC_SHADOW = '1px 1px 2px rgba(174,186,204,.3), 6px 6px 14px rgba(174,186,204,.38), -1px -1px 2px rgba(255,255,255,.8), -6px -6px 14px rgba(255,255,255,.9)'
+// Same soft lift as the page frames: nodes float as light glass cards on the canvas.
+const NODE_SHADOW = '0 4px 14px rgba(72,92,126,.07), 0 16px 36px rgba(93,111,142,.08)'
 function nodeBoxShadow(status: NodeStatus, isSelected: boolean): string {
   // "complete" is the normal resting state, not a status that needs a highlight — no ring for it,
   // so a finished canvas doesn't turn into a wall of colored outlines. Only states that need the
   // teacher's attention (running/waiting/error) or active editing (selected) get a soft glow.
-  const ring = status === 'running' ? 'rgba(56,189,248,.35)' : isSelected ? 'rgba(124,58,237,.32)' : status === 'waiting' ? 'rgba(245,158,11,.4)' : status === 'error' ? 'rgba(244,63,94,.4)' : null
-  return ring ? `0 0 0 2px ${ring}, ${NEOMORPHIC_SHADOW}` : NEOMORPHIC_SHADOW
+  const ring = status === 'running' ? 'rgba(56,189,248,.35)' : isSelected ? 'rgba(15,23,42,.18)' : status === 'waiting' ? 'rgba(245,158,11,.35)' : status === 'error' ? 'rgba(244,63,94,.35)' : null
+  return ring ? `0 0 0 1.5px ${ring}, 0 0 22px ${ring}, ${NODE_SHADOW}` : `0 0 0 1px rgba(255,255,255,.7), ${NODE_SHADOW}`
 }
 
 const NODE_WIDTH = 300
@@ -141,16 +142,18 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [running, setRunning] = useState(false)
   const [saveState, setSaveState] = useState<'loading' | 'dirty' | 'saving' | 'saved' | 'error'>('loading')
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [consoleOpen, setConsoleOpen] = useState(false)
   const [error, setError] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [tableModal, setTableModal] = useState<TableModalState | null>(null)
+  const [explorer, setExplorer] = useState<ExplorerTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ startX: number; startY: number; positions: Record<string, { x: number; y: number }>; moved: boolean; nodeId: string; shiftKey: boolean } | null>(null)
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
   const rubberRef = useRef<{ startX: number; startY: number } | null>(null)
   const backgroundClickRef = useRef<{ x: number; y: number } | null>(null)
   const connectingRef = useRef<{ nodeId: string; port: string; type: string } | null>(null)
+  // Where the drag that started the current connection began; `moved` = drag gesture rather than click-to-connect.
+  const connectStartRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const stoppedRef = useRef(false)
   const snapshotRef = useRef({ title, nodes, edges, workflowId: routeWorkflowId || null as string | null })
@@ -163,13 +166,13 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const selected = nodes.find((node) => node.instanceId === selectedId)
   const specOf = (node: CanvasNode) => specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)!
   const selectedSpec = selected ? specOf(selected) : undefined
-  const selectedRun = activeRun?.nodes.find((item) => item.node_instance_id === selectedId)
   const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
   const chatLog = useMemo(() => buildChatLog(activeRun, nodes), [activeRun, nodes])
 
   useEffect(() => {
     const isTyping = () => { const tag = (document.activeElement?.tagName || '').toLowerCase(); return tag === 'input' || tag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable }
     const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && connectingRef.current) { event.preventDefault(); cancelConnection(); return }
       if ((event.key === 'Delete' || event.key === 'Backspace') && !isTyping() && selectedIds.size) {
         setNodes((current) => current.filter((item) => !selectedIds.has(item.instanceId)))
         setEdges((current) => current.filter((edge) => !selectedIds.has(edge.from) && !selectedIds.has(edge.to)))
@@ -317,23 +320,63 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const source = connectingRef.current
     if (!source || source.nodeId === nodeId) return
     if (source.type !== port.type && source.type !== 'ANY' && port.type !== 'ANY') {
-      setError(`Connessione non valida: ${source.type} non può entrare in ${port.type}`); setConsoleOpen(true); return
+      setError(`Connessione non valida: ${source.type} non può entrare in ${port.type}`); cancelConnection(); return
     }
     setEdges((current) => [...current.filter((edge) => !(edge.to === nodeId && edge.targetPort === port.name)), {
       id: `edge-${Date.now()}`, from: source.nodeId, to: nodeId, sourcePort: source.port, targetPort: port.name,
     }])
     const inferred = inferOutputColumns(source.nodeId, source.port)
     if (inferred.length) setNodes((current) => current.map((node) => node.instanceId === nodeId ? { ...node, config: recommendedConfig(node, inferred) } : node))
-    connectingRef.current = null; setConnecting(null); setConnectionPoint(null); setError('')
+    connectingRef.current = null; connectStartRef.current = null; setConnecting(null); setConnectionPoint(null); setError('')
   }
-  const startConnection = (nodeId: string, port: Port) => {
+  function cancelConnection() {
+    connectingRef.current = null; connectStartRef.current = null; setConnecting(null); setConnectionPoint(null)
+  }
+  // Drop target resolution by geometry, not by the element under the cursor: the nearest input handle within
+  // reach wins, so releasing slightly off a 14px dot (or over the node body/label) still connects.
+  const nearestInputPort = (clientX: number, clientY: number): { nodeId: string; port: Port } | null => {
+    const source = connectingRef.current
+    if (!source) return null
+    let best: { nodeId: string; port: Port; distance: number } | null = null
+    document.querySelectorAll<HTMLElement>('[data-port-in]').forEach((element) => {
+      const [nodeId, portName] = (element.dataset.portIn || '').split('::')
+      if (!nodeId || nodeId === source.nodeId) return
+      const node = nodes.find((item) => item.instanceId === nodeId)
+      const port = node && specOf(node).inputs.find((item) => item.name === portName)
+      if (!port) return
+      const rect = element.getBoundingClientRect()
+      const distance = Math.hypot(clientX - (rect.left + rect.width / 2), clientY - (rect.top + rect.height / 2))
+      if (distance <= 44 && (!best || distance < best.distance)) best = { nodeId, port, distance }
+    })
+    return best
+  }
+  const startConnection = (nodeId: string, port: Port, clientX?: number, clientY?: number) => {
     const next = { nodeId, port: port.name, type: port.type }
     connectingRef.current = next; setConnecting(next); setError('')
+    connectStartRef.current = clientX === undefined || clientY === undefined ? null : { x: clientX, y: clientY, moved: false }
     const node = nodes.find((item) => item.instanceId === nodeId)
     const nodeSpec = node && specOf(node)
     const index = Math.max(0, nodeSpec?.outputs.findIndex((item) => item.name === port.name) ?? 0)
     if (node && nodeSpec) setConnectionPoint({ x: node.x + nodeWidth(nodeSpec), y: node.y + PORT_TOP + index * PORT_HEIGHT + PORT_HEIGHT / 2 })
   }
+
+  useEffect(() => {
+    if (!connecting) return
+    const move = (event: PointerEvent) => {
+      const start = connectStartRef.current
+      if (start && !start.moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) start.moved = true
+    }
+    const release = (event: PointerEvent) => {
+      if (!connectingRef.current) return
+      const target = nearestInputPort(event.clientX, event.clientY)
+      if (target) { connectTo(target.nodeId, target.port); return }
+      // A drag that ends on nothing cancels; a plain click keeps click-to-connect mode alive.
+      if (connectStartRef.current?.moved) cancelConnection()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', release)
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', release) }
+  })
 
   const nodePointerDown = (event: ReactPointerEvent, node: CanvasNode, draggable: boolean) => {
     event.stopPropagation()
@@ -350,6 +393,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const backgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     if (!target.closest('[data-canvas-background]') || !viewportRef.current) return
+    if (connectingRef.current) { cancelConnection(); return }
     if (event.button === 1) {
       panRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y }
     } else if (event.button === 0 && event.shiftKey) {
@@ -495,7 +539,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
       const id = await persist(); if (!id) throw new Error('Il workflow non è stato salvato')
       const response = await agenticApi.createRun(id, {}, chatbotFlow ? sessionId : undefined, controller.signal)
-      if (chatbotFlow) setChatWindow(true); else setConsoleOpen(true)
+      if (chatbotFlow) setChatWindow(true)
       await applyRun(response.data)
     }
     catch (reason: any) { if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || reason?.message || 'Esecuzione non riuscita') }
@@ -521,7 +565,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null)
   }
   const clearCanvas = () => {
-    setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); setConnecting(null); setConnectionPoint(null); connectingRef.current = null
+    setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection()
   }
   const updateNodeParam = (nodeId: string, name: string, value: unknown) => {
     setNodes((current) => current.map((item) => item.instanceId === nodeId ? { ...item, status: 'idle', config: { ...item.config, [name]: value } } : item))
@@ -571,7 +615,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       <button onClick={() => navigate('/teacher/agentic')} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title="Torna ai workflow"><ArrowLeft className="h-4 w-4" /></button>
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white"><Network className="h-5 w-5" /></div>
       <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="text-sm font-black md:text-base">Dataflow Studio</h1><span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-black uppercase text-violet-700">Beta</span></div><label className="mt-1 flex items-center gap-1.5"><span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Nome workflow</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Workflow senza titolo" className="w-56 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /></label></div>
-      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={() => setConsoleOpen((value) => !value)} tone="neutral" surface="outline" density="compact" className="rounded-full">Output</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{running && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
+      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{running && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
     </header>
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-[17rem] shrink-0 flex-col border-r border-slate-200 bg-white max-sm:hidden">
@@ -581,7 +625,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
 
       <main className="relative min-w-0 flex-1 overflow-hidden bg-[#f4f6f9]">
         <div className="absolute left-3 top-3 z-30 flex rounded-xl border border-slate-200 bg-white p-1 shadow"><button onClick={() => zoomBy(1 / 1.2)} className="p-2"><ZoomOut className="h-4 w-4" /></button><span className="w-11 py-2 text-center text-[10px] font-black">{Math.round(zoom * 100)}%</span><button onClick={() => zoomBy(1.2)} className="p-2"><ZoomIn className="h-4 w-4" /></button><button onClick={() => { setZoom(.75); setPan({ x: 60, y: 60 }) }} className="p-2"><Maximize2 className="h-4 w-4" /></button></div>
-        {connecting && <div className="absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white">Da {connecting.port} · clicca o trascina fino a una porta IN compatibile · <button onClick={() => { connectingRef.current = null; setConnecting(null); setConnectionPoint(null) }} className="text-white/60">annulla</button></div>}
+        {connecting && <div className="absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white">Da {connecting.port} · rilascia su una porta IN compatibile · <kbd className="rounded bg-white/15 px-1">Esc</kbd> o <button onClick={cancelConnection} className="text-white/70 underline">annulla</button></div>}
         {selectedIds.size > 1 && <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white"><span>{selectedIds.size} nodi selezionati</span><button onClick={() => { setNodes((current) => current.filter((item) => !selectedIds.has(item.instanceId))); setEdges((current) => current.filter((edge) => !selectedIds.has(edge.from) && !selectedIds.has(edge.to))); setSelectedIds(new Set()); setSelectedId('') }} className="flex items-center gap-1 rounded-full bg-rose-500 px-2 py-1"><Trash2 className="h-3 w-3" /> Elimina</button><button onClick={() => setSelectedIds(new Set())} className="text-white/60">annulla</button></div>}
         <div
           ref={viewportRef}
@@ -609,28 +653,28 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
               const fromSpec = specOf(from); const toSpec = specOf(to)
               const outputIndex = Math.max(0, fromSpec.outputs.findIndex((port) => port.name === edge.sourcePort)); const inputIndex = Math.max(0, toSpec.inputs.findIndex((port) => port.name === edge.targetPort))
               const x1 = from.x + nodeWidth(fromSpec); const y1 = from.y + PORT_TOP + outputIndex * PORT_HEIGHT + PORT_HEIGHT / 2; const x2 = to.x; const y2 = to.y + PORT_TOP + inputIndex * PORT_HEIGHT + PORT_HEIGHT / 2; const bend = Math.max(70, Math.abs(x2 - x1) * .42)
-              return <g key={edge.id} className="group cursor-pointer" onClick={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)) }}><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke={edge.from === selectedId || edge.to === selectedId ? '#7c3aed' : '#94a3b8'} strokeWidth="2.5" className="pointer-events-none group-hover:stroke-rose-400" /><text x={(x1+x2)/2} y={(y1+y2)/2-7} textAnchor="middle" fill="#64748b" fontSize="9" fontWeight="700" className="pointer-events-none">{edge.sourcePort} → {edge.targetPort}</text></g>
+              return <g key={edge.id} className="group cursor-pointer" onClick={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)) }}><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke={edge.from === selectedId || edge.to === selectedId ? '#334155' : '#b6c0cd'} strokeWidth="2" className="pointer-events-none group-hover:stroke-rose-400" /><text x={(x1+x2)/2} y={(y1+y2)/2-7} textAnchor="middle" fill="#64748b" fontSize="9" fontWeight="700" className="pointer-events-none">{edge.sourcePort} → {edge.targetPort}</text></g>
             })}{connecting && connectionPoint && (() => {
               const from = nodes.find((node) => node.instanceId === connecting.nodeId)
               if (!from) return null
               const outputIndex = Math.max(0, specOf(from).outputs.findIndex((port) => port.name === connecting.port))
               const x1 = from.x + nodeWidth(specOf(from)); const y1 = from.y + PORT_TOP + outputIndex * PORT_HEIGHT + PORT_HEIGHT / 2
               const bend = Math.max(60, Math.abs(connectionPoint.x - x1) * .42)
-              return <g className="pointer-events-none"><path d={`M${x1},${y1} C${x1+bend},${y1} ${connectionPoint.x-bend},${connectionPoint.y} ${connectionPoint.x},${connectionPoint.y}`} fill="none" stroke="#7c3aed" strokeWidth="3" strokeDasharray="7 5" /><circle cx={connectionPoint.x} cy={connectionPoint.y} r="6" fill="#7c3aed" opacity=".85" /></g>
+              return <g className="pointer-events-none"><path d={`M${x1},${y1} C${x1+bend},${y1} ${connectionPoint.x-bend},${connectionPoint.y} ${connectionPoint.x},${connectionPoint.y}`} fill="none" stroke="#475569" strokeWidth="2.5" strokeDasharray="7 5" /><circle cx={connectionPoint.x} cy={connectionPoint.y} r="6" fill="#475569" opacity=".85" /></g>
             })()}{rubberBox && <rect x={rubberBox.x} y={rubberBox.y} width={rubberBox.w} height={rubberBox.h} fill="rgba(124,58,237,.1)" stroke="#7c3aed" strokeWidth={1.5} strokeDasharray="4 3" />}</svg>
 
             {nodes.map((node) => {
               const spec = specOf(node); const style = CATEGORY_STYLE[spec.category] || CATEGORY_STYLE.Controllo; const Icon = style.icon; const portRows = Math.max(spec.inputs.length, spec.outputs.length); const output = outputs[node.instanceId]
               const isSelected = selectedIds.has(node.instanceId)
-              return <article data-node key={node.instanceId} onPointerDown={(event) => nodePointerDown(event, node, false)} className={`absolute overflow-visible rounded-[26px] bg-[#f4f6f9] p-1 transition-shadow ${node.status === 'running' ? 'animate-pulse' : ''} ${node.status === 'skipped' ? 'opacity-55' : ''}`} style={{ left: node.x, top: node.y, width: nodeWidth(spec), boxShadow: nodeBoxShadow(node.status, isSelected) }}>
-                <div className="overflow-hidden rounded-[22px] bg-white shadow-[inset_0_1px_3px_rgba(15,23,42,.05)]">
-                  <div onPointerDown={(event) => beginMove(event, node)} className="flex cursor-grab items-center gap-3 p-3 active:cursor-grabbing" style={{ background: style.dot }}><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/25 text-white"><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-black text-white">{spec.label}</span></span><IconButton onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} surface="solid" size="sm" className="rounded-full bg-white/25 text-white hover:bg-white/40" title="Esegui solo questo nodo">{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}</IconButton></div>
+              return <article data-node key={node.instanceId} onPointerDown={(event) => nodePointerDown(event, node, false)} className={`absolute overflow-visible rounded-[22px] bg-white/75 backdrop-blur-xl transition-shadow ${node.status === 'running' ? 'animate-pulse' : ''} ${node.status === 'skipped' ? 'opacity-55' : ''}`} style={{ left: node.x, top: node.y, width: nodeWidth(spec), boxShadow: nodeBoxShadow(node.status, isSelected) }}>
+                <div className="rounded-[22px]">
+                  <div onPointerDown={(event) => beginMove(event, node)} className="flex cursor-grab items-center gap-3 rounded-t-[22px] px-3 py-2.5 active:cursor-grabbing" style={{ background: `radial-gradient(ellipse at 12% 0%, color-mix(in srgb, ${style.dot} 16%, transparent) 0%, transparent 70%), linear-gradient(180deg, color-mix(in srgb, ${style.dot} 7%, rgba(255,255,255,.6)), rgba(255,255,255,0))` }}><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 shadow-[0_1px_3px_rgba(15,23,42,.08)]" style={{ color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-semibold uppercase tracking-wider" style={{ color: `color-mix(in srgb, ${style.dot} 70%, #64748b)` }}>{spec.category}</span></span><IconButton onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} surface="solid" size="sm" className="rounded-full bg-white/80 shadow-[0_1px_3px_rgba(15,23,42,.08)] hover:bg-white" style={{ color: style.dot }} title="Esegui solo questo nodo">{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}</IconButton></div>
 
-                  <div className="border-y border-slate-100 py-1" style={{ minHeight: portRows * PORT_HEIGHT + 8 }}>{Array.from({ length: portRows }).map((_, index) => { const input = spec.inputs[index]; const outputPort = spec.outputs[index]; return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button onPointerUp={(event) => { event.stopPropagation(); connectTo(node.instanceId, input) }} onClick={(event) => { event.stopPropagation(); connectTo(node.instanceId, input) }} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left ${connecting ? 'text-violet-700' : ''}`}><span className={`absolute -left-2 h-4 w-4 rounded-full border-[3px] border-white ${connecting ? 'animate-pulse bg-violet-500' : 'bg-slate-400'}`} style={{ transform: `scale(${1 / zoom})` }} /><span className="truncate">{input.label}</span><code className="text-[7px] text-slate-300">{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); startConnection(node.instanceId, outputPort) }} onClick={(event) => { event.stopPropagation(); startConnection(node.instanceId, outputPort) }} className="flex h-full max-w-[48%] items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px] text-slate-300">{outputPort.type}</code><span className="truncate">{outputPort.label}</span><span className={`absolute -right-2 h-4 w-4 rounded-full border-[3px] border-white ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'bg-violet-600 ring-4 ring-violet-200' : 'bg-slate-700'}`} style={{ transform: `scale(${1 / zoom})` }} /></button> : <span />}</div> })}</div>
+                  <div className="border-y border-slate-200/40 py-1" style={{ minHeight: portRows * PORT_HEIGHT + 8 }}>{Array.from({ length: portRows }).map((_, index) => { const input = spec.inputs[index]; const outputPort = spec.outputs[index]; return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left ${connecting ? 'text-violet-700' : ''}`}><span className={`absolute left-[-8px] top-1/2 z-10 h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_0_0_1.5px_rgba(15,23,42,.35),0_2px_5px_rgba(15,23,42,.25)] ${connecting ? 'animate-pulse bg-violet-500' : 'bg-slate-500'}`} style={{ scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span><code className="text-[7px] text-slate-300">{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px] text-slate-300">{outputPort.type}</code><span className="truncate">{outputPort.label}</span><span className={`absolute right-[-8px] top-1/2 z-10 h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_0_0_1.5px_rgba(15,23,42,.35),0_2px_5px_rgba(15,23,42,.25)] ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'bg-violet-600 ring-4 ring-violet-200' : 'bg-slate-800'}`} style={{ scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div> })}</div>
 
-                  {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 border-b border-slate-100 p-2.5" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
+                  {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 border-b border-slate-200/40 p-2.5" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
 
-                  <NodePreview output={output} error={nodeErrors[node.instanceId]} onOpenTable={(outputPort, table) => setTableModal({ nodeId: node.instanceId, outputPort, nodeLabel: spec.label, table, editor: node.config._tableEditor as Partial<TableEditorState> | undefined })} />
+                  <NodePreview output={output} error={nodeErrors[node.instanceId]} nodeLabel={spec.label} onOpenTable={(outputPort, table) => setTableModal({ nodeId: node.instanceId, outputPort, nodeLabel: spec.label, table, editor: node.config._tableEditor as Partial<TableEditorState> | undefined })} onExplore={setExplorer} />
                 </div>
               </article>
             })}
@@ -639,48 +683,48 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[10px] text-slate-500 shadow"><MousePointer2 className="mr-1 inline h-3 w-3" /> Trascina lo sfondo per spostarti · Shift+trascina per selezione multipla · rotella per zoom sul cursore · clic su un nodo per selezionarlo</div>
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
-        {consoleOpen && <div className="absolute inset-x-3 bottom-3 z-40 max-h-[55%] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-center border-b border-slate-100 px-4 py-3">
-            <CircleDot className={`mr-2 h-4 w-4 ${activeRun?.status === 'completed' ? 'text-emerald-500' : 'text-amber-500'}`} />
-            <div className="flex-1"><p className="text-xs font-black">Console dataflow</p><p className="text-[10px] text-slate-400">{activeRun ? `${activeRun.status} · ${activeRun.id.slice(0, 8)}` : 'Output e diagnostica'}</p></div>
-            {chatbotFlow && <Button onClick={() => setChatWindow(true)} tone="accent" surface="solid" density="compact" className="mr-2 rounded-full !h-6 !px-2.5 text-[10px]">Apri chat test</Button>}
-            <button onClick={() => setConsoleOpen(false)}><X className="h-4 w-4" /></button>
-          </div>
-          {activeRun?.status === 'waiting' && <div className="flex gap-2 border-b border-amber-100 bg-amber-50 p-3"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') answer() }} placeholder={String(activeRun.output?.question || 'Scrivi la risposta')} className="h-9 flex-1 rounded-lg border border-amber-200 px-3 text-xs" /><Button onClick={() => answer()} surface="solid" density="compact" className="rounded-full bg-amber-500 text-white hover:bg-amber-600">Rispondi</Button></div>}
-          <div className="grid max-h-[19rem] grid-cols-[15rem_1fr]"><div className="overflow-y-auto border-r border-slate-100 p-2">{activeRun?.nodes.map((item) => <button key={item.node_instance_id} onClick={() => setSelectedId(item.node_instance_id)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-slate-50"><span className={`h-2 w-2 rounded-full ${item.status === 'completed' ? 'bg-emerald-500' : item.status === 'failed' ? 'bg-rose-500' : item.status === 'waiting' ? 'bg-amber-500' : 'bg-slate-300'}`} /><span className="flex-1 truncate text-[10px] font-bold">{item.label}</span></button>)}</div><div className="overflow-auto p-4">{error ? <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{error}</p> : selectedRun ? <pre className="whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{selectedRun.error || JSON.stringify(selectedRun.output || {}, null, 2)}</pre> : <p className="text-xs text-slate-400">Esegui il workflow e seleziona un nodo.</p>}</div></div>
-        </div>}
+        {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{error}</span><button onClick={() => setError('')} aria-label="Chiudi errore"><X className="h-3.5 w-3.5" /></button></div>}
+        {chatbotFlow && !chatWindow && <Button onClick={() => setChatWindow(true)} tone="neutral" surface="solid" density="compact" className="absolute bottom-3 right-3 z-30 rounded-full"><MessageSquareText className="h-4 w-4" /> Chat test</Button>}
       </main>
 
       {inspectorOpen && <aside className="flex w-[19rem] shrink-0 flex-col border-l border-slate-200 bg-white max-xl:hidden"><div className="flex h-16 items-center justify-between border-b border-slate-100 px-4"><div><p className="text-[10px] font-black uppercase text-slate-400">Inspector</p><h2 className="text-sm font-black">{selectedSpec?.label || 'Nessun nodo'}</h2></div><button onClick={() => setInspectorOpen(false)}><PanelRightClose className="h-4 w-4" /></button></div>{selected && selectedSpec ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><p className="mb-4 rounded-xl bg-slate-50 p-3 text-[10px] leading-4 text-slate-600">{selectedSpec.description}</p>{inputColumnsFor(selected).length > 0 && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-wider text-violet-700">Schema input rilevato</p><Button onClick={() => setNodes((current) => current.map((item) => item.instanceId === selected.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item) } : item))} tone="accent" surface="solid" density="compact" className="rounded-full !h-6 !px-2.5 text-[9px]">Auto-configura</Button></div><div className="mt-2 flex flex-wrap gap-1">{inputColumnsFor(selected).map((column) => <span key={column} className="rounded-md bg-white px-2 py-1 text-[9px] font-bold text-violet-700">{column}</span>)}</div></div>}<h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? 'Parametri avanzati' : 'Contenuto e parametri'}</h3><div className="space-y-3">{(() => { const advancedParams = selectedSpec.params.filter((param) => !(INLINE_PARAMS[selected.id] || []).includes(param.name)); return advancedParams.length ? advancedParams.map((param) => <ParamField key={param.name} param={param} value={selected.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? inputColumnsFor(selected) : undefined} onChange={(value) => updateNodeParam(selected.instanceId, param.name, value)} />) : <p className="rounded-xl border border-dashed p-3 text-[10px] text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? 'Gli altri parametri sono modificabili direttamente sul nodo.' : 'Questo nodo usa solo gli input collegati.'}</p> })()}</div><Button onClick={() => executeOne(selected)} tone="accent" surface="solid" fullWidth className="mt-5 rounded-full"><Play className="h-4 w-4" /> Esegui questo nodo</Button>{['data.custom_input', 'csv.synthetic'].includes(selected.id) && outputs[selected.instanceId] && <Button onClick={() => saveTableToLibrary(selected)} tone="neutral" surface="outline" fullWidth className="mt-2 rounded-full"><Save className="h-4 w-4" /> Salva in libreria dataset</Button>}{nodeErrors[selected.instanceId] &&<p className="mt-2 rounded-lg bg-rose-50 p-2 text-[10px] text-rose-700">{nodeErrors[selected.instanceId]}</p>}<h3 className="mb-2 mt-6 text-[10px] font-black uppercase tracking-wider text-slate-400">Porte</h3>{[...selectedSpec.inputs.map((port) => ({ ...port, direction: 'IN' })), ...selectedSpec.outputs.map((port) => ({ ...port, direction: 'OUT' }))].map((port) => <div key={`${port.direction}-${port.name}`} className="mb-1 flex rounded-lg border border-slate-100 p-2 text-[10px]"><b className="w-9 text-slate-400">{port.direction}</b><span className="flex-1 font-bold">{port.name}</span><code className="text-violet-600">{port.type}</code></div>)}</div> : null}{selected && <Button onClick={() => { setNodes((current) => current.filter((item) => item.instanceId !== selected.instanceId)); setEdges((current) => current.filter((edge) => edge.from !== selected.instanceId && edge.to !== selected.instanceId)); setSelectedId('') }} tone="danger" surface="ghost" className="m-3 rounded-full"><Trash2 className="h-4 w-4" /> Elimina nodo</Button>}</aside>}
       {!inspectorOpen && <button onClick={() => setInspectorOpen(true)} className="absolute bottom-4 right-4 z-50 hidden rounded-xl bg-white p-3 shadow xl:block"><Wrench className="h-4 w-4" /></button>}
     </div>
-    {tableModal && <WorkflowTableModal modal={tableModal} onClose={() => setTableModal(null)} onApply={(table, editor) => applyTableEdit(tableModal, table, editor)} />}
+    {explorer && <OutputExplorerModal target={explorer} onClose={() => setExplorer(null)} onOpenTable={(label, table) => setTableModal({ nodeId: '', outputPort: '', nodeLabel: label, table, detached: true })} />}
+    {tableModal && <WorkflowTableModal modal={tableModal} onClose={() => setTableModal(null)} onApply={(table, editor) => { if (tableModal.detached) setTableModal(null); else applyTableEdit(tableModal, table, editor) }} />}
   </div>
 }
 
-function NodePreview({ output, error, onOpenTable }: { output?: Record<string, unknown>; error?: string; onOpenTable: (outputPort: string, table: TableValue) => void }) {
+function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { output?: Record<string, unknown>; error?: string; nodeLabel: string; onOpenTable: (outputPort: string, table: TableValue) => void; onExplore: (target: ExplorerTarget) => void }) {
   if (error) return <div className="m-2 rounded-lg bg-rose-50 p-2 text-[9px] leading-4 text-rose-700">{error}</div>
   if (!output) return <div className="m-2 flex h-12 items-center justify-center rounded-lg border border-dashed border-slate-200 text-[9px] text-slate-400">▶ Esegui il nodo per vedere l’anteprima</div>
   const values = Object.values(output)
-  const tableEntry = Object.entries(output).find(([, value]) => isTable(value)) as [string, TableValue] | undefined
-  const table = tableEntry?.[1]
-  const plot = values.find(isPlot) as PlotValue | undefined
+  const tableEntries = Object.entries(output).filter(([, value]) => isTable(value)) as Array<[string, TableValue]>
+  const plotEntry = Object.entries(output).find(([, value]) => isPlot(value)) as [string, PlotValue] | undefined
   const metrics = (output.metrics && typeof output.metrics === 'object' ? output.metrics : values.find((value) => value && typeof value === 'object' && !Array.isArray(value) && !isTable(value) && !isPlot(value))) as Record<string, unknown> | undefined
-  if (plot) return <div className="space-y-2 p-2"><MiniPlot plot={plot} metrics={metrics} />{table && tableEntry && <MiniTable table={table} onOpen={() => onOpenTable(tableEntry[0], table)} />}</div>
-  if (table && tableEntry) return <div>{metrics && <MetricCards metrics={metrics} />}<MiniTable table={table} onOpen={() => onOpenTable(tableEntry[0], table)} /></div>
-  if (metrics) return <MetricCards metrics={metrics} />
-  return <div className="m-2 max-h-24 overflow-auto rounded-lg bg-slate-950 p-2 text-[9px] leading-4 text-slate-100">{formatCompact(Object.values(output)[0])}</div>
+  const openMetrics = metrics ? () => onExplore({ kind: 'metrics', title: `${nodeLabel} · metriche`, metrics }) : undefined
+  const [firstTable, ...otherTables] = tableEntries
+  // Stop pointer events here: the node captures the pointer for dragging, which would swallow clicks on previews.
+  return <div className="overflow-hidden rounded-b-[22px]" onPointerDown={(event) => event.stopPropagation()}>
+    {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || `${nodeLabel} · grafico`, plot: plotEntry[1] })} onOpenMetrics={openMetrics} /></div>}
+    {!plotEntry && metrics && <MetricCards metrics={metrics} onOpen={openMetrics} />}
+    {firstTable && <MiniTable table={firstTable[1]} label={firstTable[0]} onOpen={() => onOpenTable(firstTable[0], firstTable[1])} />}
+    {otherTables.length > 0 && <div className="flex flex-wrap gap-1.5 px-2 pb-2">{otherTables.map(([port, table]) => <button key={port} type="button" onClick={() => onOpenTable(port, table)} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {port} · {table.rowCount ?? table.rows.length} righe</button>)}</div>}
+    {!plotEntry && !metrics && !tableEntries.length && <button type="button" onClick={() => onExplore({ kind: 'raw', title: `${nodeLabel} · output`, value: values.length === 1 ? values[0] : output })} className="group m-2 block max-h-24 w-[calc(100%-1rem)] overflow-hidden rounded-lg bg-slate-950 p-2 text-left text-[9px] leading-4 text-slate-100" title="Apri l’output completo"><span className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-slate-400 group-hover:text-white"><Maximize2 className="h-3 w-3" /> Apri output</span>{formatCompact(values[0])}</button>}
+  </div>
 }
 
-function MiniTable({ table, onOpen }: { table: TableValue; onOpen: () => void }) {
+function MiniTable({ table, label, onOpen }: { table: TableValue; label?: string; onOpen: () => void }) {
   const columns = (table.columns?.length ? table.columns : Object.keys(table.rows[0] || {})).slice(0, 4)
-  return <button type="button" onClick={(event) => { event.stopPropagation(); onOpen() }} className="group block w-full p-2 text-left" title="Apri nell'editor di tabelle"><div className="mb-1 flex justify-between text-[8px] font-bold uppercase text-slate-400"><span className="flex items-center gap-1 group-hover:text-violet-600"><FileSpreadsheet className="h-3 w-3" /> Apri tabella</span><span>{table.rowCount ?? table.rows.length} righe</span></div><div className="overflow-hidden rounded-lg border border-slate-200 transition group-hover:border-violet-300 group-hover:ring-2 group-hover:ring-violet-100"><table className="w-full table-fixed text-[8px]"><thead className="bg-slate-100"><tr>{columns.map((column) => <th key={column} className="truncate px-1.5 py-1 text-left">{column}</th>)}</tr></thead><tbody>{table.rows.slice(0, 3).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="truncate px-1.5 py-1 text-slate-600">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div></button>
+  return <button type="button" onClick={(event) => { event.stopPropagation(); onOpen() }} className="group block w-full p-2 text-left" title="Apri nell'editor di tabelle"><div className="mb-1 flex justify-between text-[8px] font-bold uppercase text-slate-400"><span className="flex items-center gap-1 group-hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> Apri {label || 'tabella'} nel foglio</span><span>{table.rowCount ?? table.rows.length} righe</span></div><div className="overflow-hidden rounded-lg border border-slate-200 transition group-hover:border-violet-300 group-hover:ring-2 group-hover:ring-violet-100"><table className="w-full table-fixed text-[8px]"><thead className="bg-slate-100"><tr>{columns.map((column) => <th key={column} className="truncate px-1.5 py-1 text-left">{column}</th>)}</tr></thead><tbody>{table.rows.slice(0, 3).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="truncate px-1.5 py-1 text-slate-600">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div></button>
 }
 
-function MetricCards({ metrics }: { metrics: Record<string, unknown> }) {
+function MetricCards({ metrics, onOpen }: { metrics: Record<string, unknown>; onOpen?: () => void }) {
   const labels: Record<string, string> = { clusters: 'Cluster', rows: 'Righe', inertia: 'Inerzia', silhouette: 'Silhouette', davies_bouldin: 'Davies–Bouldin', r2: 'R²', rmse: 'RMSE', mae: 'MAE', accuracy: 'Accuracy', precision: 'Precisione', recall: 'Recall', f1: 'F1', cv_mean: 'CV media' }
   const entries = Object.entries(metrics).filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value) || value === null).slice(0, 8)
-  return <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3">{entries.map(([key, value]) => <div key={key} className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5"><p className="truncate text-[7px] font-black uppercase tracking-wide text-slate-400">{labels[key] || key.replace(/_/g, ' ')}</p><p className="mt-0.5 truncate text-[10px] font-black text-slate-700">{formatCompact(value)}</p></div>)}</div>
+  const cards = <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3">{entries.map(([key, value]) => <div key={key} className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5"><p className="truncate text-[7px] font-black uppercase tracking-wide text-slate-400">{labels[key] || key.replace(/_/g, ' ')}</p><p className="mt-0.5 truncate text-[10px] font-black text-slate-700">{formatCompact(value)}</p></div>)}</div>
+  if (!onOpen) return cards
+  return <button type="button" onClick={(event) => { event.stopPropagation(); onOpen() }} className="group block w-full text-left" title="Apri tutte le metriche"><span className="flex items-center gap-1 px-2 pt-2 text-[8px] font-bold uppercase text-slate-400 group-hover:text-slate-900"><Maximize2 className="h-3 w-3" /> Apri metriche</span>{cards}</button>
 }
 
 const CHART_COLORS = ['#7c3aed', '#06b6d4', '#f59e0b', '#f43f5e', '#22c55e', '#3b82f6', '#a855f7', '#64748b']
@@ -692,8 +736,8 @@ function compactTick(value: unknown) {
   return Number.isInteger(number) ? String(number) : number.toFixed(2)
 }
 
-function MiniPlot({ plot, metrics }: { plot: PlotValue; metrics?: Record<string, unknown> }) {
-  if (plot.kind === 'scatter3d') return <Mini3DPlot plot={plot} metrics={metrics} />
+function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
+  if (plot.kind === 'scatter3d') return <Mini3DPlot plot={plot} metrics={metrics} onExplore={onExplore} onOpenMetrics={onOpenMetrics} />
   const points = plot.x.map((x, index) => ({ x: Number(x), y: Number(plot.y[index]), group: String(plot.color?.[index] ?? 'Dati') })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
   const groups = [...new Set(points.map((point) => point.group))]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
@@ -705,10 +749,10 @@ function MiniPlot({ plot, metrics }: { plot: PlotValue; metrics?: Record<string,
   const histogram = plot.x.map((start, index) => ({ bin: `${compactTick(start)}–${compactTick(plot.xEnd?.[index] ?? plot.x[index + 1] ?? start)}`, value: Number(plot.y[index]), start: Number(start) }))
   const tooltipStyle = { borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 10, boxShadow: '0 10px 25px rgba(15,23,42,.12)' }
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? 'Distribuzione' : 'Grafico')}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[8px] font-black text-violet-700">{plot.kind === 'histogram' ? `${histogram.length} intervalli` : `${points.length} punti`}</span></div>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? 'Distribuzione' : 'Grafico')}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.kind === 'histogram' ? `${histogram.length} intervalli` : `${points.length} punti`}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title="Apri explorer interattivo"><Maximize2 className="h-3 w-3" /> Esplora</button></span></div>
     <div className="grid grid-cols-3 gap-px border-b border-slate-100 bg-slate-100">{plot.kind === 'histogram' ? <><ChartStat label="Totale" value={plot.y.reduce((sum, value) => sum + Number(value || 0), 0)} /><ChartStat label="Picco" value={Math.max(0, ...plot.y.map(Number))} /><ChartStat label="Intervallo" value={rangeLabel([...(plot.x || []), ...(plot.xEnd || [])].map(Number).filter(Number.isFinite))} /></> : <><ChartStat label="Intervallo X" value={rangeLabel(xs)} /><ChartStat label="Intervallo Y" value={rangeLabel(ys)} /><ChartStat label="Correlazione" value={correlation === null ? '—' : correlation.toFixed(3)} /></>}</div>
-    <div className="h-[255px] w-full bg-slate-50/60 px-1 pb-1 pt-3">{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: '#64748b' }} label={{ value: plot.labels?.x || 'Valore', position: 'insideBottom', offset: -28, fontSize: 9, fill: '#475569' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: '#64748b' }} width={34} label={{ value: plot.labels?.y || 'Conteggio', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#475569' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, 'Conteggio']} labelFormatter={(label) => `Intervallo ${label}`} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#64748b' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: '#475569' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#64748b' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#475569' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
-    {metrics && <MetricCards metrics={metrics} />}
+    <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title="Doppio clic per aprire l’explorer">{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: '#64748b' }} label={{ value: plot.labels?.x || 'Valore', position: 'insideBottom', offset: -28, fontSize: 9, fill: '#475569' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: '#64748b' }} width={34} label={{ value: plot.labels?.y || 'Conteggio', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#475569' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, 'Conteggio']} labelFormatter={(label) => `Intervallo ${label}`} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#64748b' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: '#475569' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#64748b' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#475569' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
+    {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
   </div>
 }
 
@@ -718,7 +762,7 @@ function ChartStat({ label, value }: { label: string; value: unknown }) {
 
 const Plot3D = lazy(() => import('react-plotly.js'))
 
-function Mini3DPlot({ plot, metrics }: { plot: PlotValue; metrics?: Record<string, unknown> }) {
+function Mini3DPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
   const groups = plot.color ? [...new Set(plot.color.map((value) => String(value)))] : []
   const traces = groups.length > 1
     ? groups.map((group, index) => {
@@ -730,7 +774,7 @@ function Mini3DPlot({ plot, metrics }: { plot: PlotValue; metrics?: Record<strin
     : [{ type: 'scatter3d', mode: 'markers', name: 'Dati', x: plot.x, y: plot.y, z: plot.z,
         marker: { size: 4, color: plot.z, colorscale: 'Viridis', opacity: .85, showscale: true } }]
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || 'Grafico 3D'}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'} · {plot.labels?.z || 'z'}</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[8px] font-black text-violet-700">{plot.x.length} punti</span></div>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || 'Grafico 3D'}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'} · {plot.labels?.z || 'z'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.x.length} punti</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title="Apri explorer interattivo"><Maximize2 className="h-3 w-3" /> Esplora</button></span></div>
     <div className="h-[280px] w-full bg-slate-50/60" onPointerDown={(event) => event.stopPropagation()}>
       <Suspense fallback={<div className="flex h-full items-center justify-center text-[10px] text-slate-400">Caricamento vista 3D…</div>}>
         <Plot3D
@@ -744,7 +788,7 @@ function Mini3DPlot({ plot, metrics }: { plot: PlotValue; metrics?: Record<strin
         />
       </Suspense>
     </div>
-    {metrics && <MetricCards metrics={metrics} />}
+    {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
   </div>
 }
 
@@ -795,11 +839,11 @@ function WorkflowTableModal({ modal, onClose, onApply }: { modal: TableModalStat
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
   }, [onClose])
-  return <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-sm md:p-5" role="dialog" aria-modal="true" aria-label={`Editor tabella ${modal.nodeLabel}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div data-modal-stack className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-sm md:p-5" role="dialog" aria-modal="true" aria-label={`Editor tabella ${modal.nodeLabel}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <div className="flex h-[96vh] w-[98vw] max-w-[1800px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-[#f4f5f7] shadow-2xl">
-      <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700"><FileSpreadsheet className="h-5 w-5" /></span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{modal.nodeLabel} · Editor tabella</h2><p className="text-[10px] text-slate-500">{modal.table.rowCount ?? modal.table.rows.length} righe · modifiche applicate all’output corrente del nodo</p></div><button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label="Chiudi"><X className="h-4 w-4" /></button></header>
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700"><FileSpreadsheet className="h-5 w-5" /></span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{modal.nodeLabel} · Editor tabella</h2><p className="text-[10px] text-slate-500">{modal.table.rowCount ?? modal.table.rows.length} righe · {modal.detached ? 'vista di esplorazione, le modifiche non tornano al nodo' : 'modifiche applicate all’output corrente del nodo'}</p></div><button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label="Chiudi"><X className="h-4 w-4" /></button></header>
       <div className="min-h-0 flex-1 overflow-auto p-3"><SpreadsheetEditor data={data} onDataChange={setData} chartConfig={chart} onChartConfigChange={setChart} styles={styles} onStylesChange={setStyles} dimensions={dimensions} onDimensionsChange={setDimensions} /></div>
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3"><p className="hidden text-[10px] text-slate-500 md:block">Se il nodo viene rieseguito, il risultato sarà calcolato nuovamente. Stili, grafico e dimensioni vengono salvati nel workflow.</p><div className="ml-auto flex gap-2"><Button type="button" onClick={onClose} tone="neutral" surface="outline" className="rounded-full">Annulla</Button><Button type="button" onClick={() => onApply(gridToTable(data, originalColumns), { chart, styles, dimensions })} tone="accent" surface="solid" className="rounded-full">Applica al nodo</Button></div></footer>
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3"><p className="hidden text-[10px] text-slate-500 md:block">Se il nodo viene rieseguito, il risultato sarà calcolato nuovamente. Stili, grafico e dimensioni vengono salvati nel workflow.</p><div className="ml-auto flex gap-2"><Button type="button" onClick={onClose} tone="neutral" surface="outline" className="rounded-full">{modal.detached ? 'Chiudi' : 'Annulla'}</Button>{!modal.detached && <Button type="button" onClick={() => onApply(gridToTable(data, originalColumns), { chart, styles, dimensions })} tone="accent" surface="solid" className="rounded-full">Applica al nodo</Button>}</div></footer>
     </div>
   </div>
 }
@@ -892,6 +936,3 @@ function buildChatLog(run: WorkflowRun | null, nodes: CanvasNode[]): ChatEntry[]
   return log
 }
 
-function isTable(value: unknown): value is TableValue { return Boolean(value && typeof value === 'object' && Array.isArray((value as TableValue).rows)) }
-function isPlot(value: unknown): value is PlotValue { return Boolean(value && typeof value === 'object' && ['scatter', 'histogram', 'scatter3d'].includes(String((value as PlotValue).kind)) && Array.isArray((value as PlotValue).x) && Array.isArray((value as PlotValue).y)) }
-function formatCompact(value: unknown) { if (value === null || value === undefined || value === '') return '—'; if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3); if (typeof value === 'object') return JSON.stringify(value); return String(value) }

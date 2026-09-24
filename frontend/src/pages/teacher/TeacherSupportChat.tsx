@@ -2830,10 +2830,10 @@ REGOLE IMPORTANTI:
         )}
 
         {/* Main Content Area */}
-        <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
+        <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'ds-page-frame-gutter'}`}>
               <div className={`flex h-full ${sidebarMode ? 'w-full' : isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`teacher-support-frame flex-1 flex h-full overflow-hidden ${sidebarMode ? '' : isMobile ? '' : 'ui-card'}`}>
+                <div className={`teacher-support-frame flex-1 flex h-full overflow-hidden ${sidebarMode ? '' : isMobile ? '' : 'ds-page-frame'}`}>
                  {/* Sidebar — desktop only */}
                  <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition-all duration-300`}>
                   {isSidebarCollapsed ? (

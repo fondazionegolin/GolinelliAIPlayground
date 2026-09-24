@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-09-21T14:19:39.090958+00:00",
-  "version_label": "2026.09.21-ad13ea40",
+  "generated_at": "2026-09-24T04:57:29.699131+00:00",
+  "version_label": "2026.09.24-62c1d36b",
   "title": "Aggiornamenti branch UI_experiment",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "ad13ea402a3767985c9301fc684c32ccfead57f2",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "62c1d36b3d3eebc2cd65409173a86d74fed29458",
   "items": [
     {
       "category": "improved",
-      "title": "Style(ui): standardize teacher surfaces",
-      "description": "Style(ui): standardize teacher surfaces"
+      "title": "Style(ui): soften application surfaces",
+      "description": "Style(ui): soften application surfaces"
+    },
+    {
+      "category": "improved",
+      "title": "Style(ui): violet glass choice controls and panel framing",
+      "description": "Style(ui): violet glass choice controls and panel framing"
     }
   ]
 }

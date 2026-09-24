@@ -299,11 +299,11 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-slate-50">
+    <div className="relative flex h-full flex-col overflow-hidden bg-transparent">
       <div className="flex-1 overflow-y-auto">
 
         {/* ── Hero ── */}
-        <section className="border-b border-slate-200 bg-white">
+        <section className="ds-frame-header">
           <div className="mx-auto max-w-5xl px-4 py-4 lg:px-6 lg:py-8">
             <div className="mx-auto hidden max-w-2xl text-center lg:block">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Lab 3D</p>

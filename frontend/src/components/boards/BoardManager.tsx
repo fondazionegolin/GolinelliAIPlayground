@@ -314,7 +314,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   }, [cards, columns, searchQuery])
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-100 text-slate-900 lg:flex-row">
+    <div className="flex h-full min-h-0 flex-col bg-transparent text-slate-900 lg:flex-row">
       {(!isMobile || !board) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isStudent ? 'Spazio studente' : 'Pannello docente'}
