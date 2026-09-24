@@ -1,5 +1,7 @@
 import re
 import io
+import asyncio
+import time
 import json
 import logging
 import posixpath
@@ -52,6 +54,7 @@ from app.services.environmental_impact import (
     enrich_usage_with_environmental_impact,
 )
 from app.services.llm_service import llm_service
+from app.services.coding_patch import apply_search_replace
 
 logger = logging.getLogger(__name__)
 
@@ -315,9 +318,37 @@ AMBIENTE DI ESECUZIONE: il progetto gira in un bundler React reale in-browser (s
   anche usare CSS Modules (Foo.module.css) o stili inline, ma tieni la palette nelle variabili :root.
 
 LIBRERIE npm: puoi usarle davvero. Dichiarale in package.json (campo "dependencies") con una versione
-(es. "recharts": "^2.12.0") e importale normalmente. Librerie utili: react-router-dom (routing reale tra
-viste/URL), recharts (grafici), framer-motion (animazioni), clsx, date-fns, zustand. react e react-dom
-sono già forniti: NON elencarli. Usa solo ciò che ti serve davvero e versioni esistenti e stabili.
+(es. "recharts": "^2.12.0") e importale normalmente. Sono CONSENTITE SOLO queste (le altre vengono rimosse):
+react-router-dom, recharts, framer-motion, clsx, date-fns, dayjs, zustand, immer, zod, lucide-react,
+react-hot-toast, canvas-confetti, uuid, nanoid, lodash, fuse.js, three, @react-three/fiber, @react-three/drei,
+cannon-es, p5, d3, chart.js, react-chartjs-2, tone, howler, matter-js, gsap, animejs, phaser, pixi.js,
+simplex-noise, seedrandom, mathjs, katex, marked, react-markdown, leaflet, react-leaflet, papaparse,
+qrcode.react, @tensorflow/tfjs. react e react-dom sono già forniti: NON elencarli. Usa solo ciò che serve.
+
+CAPACITÀ DELLA PIATTAFORMA (window.GolinelliAI, sempre disponibile, nessuna chiave necessaria):
+- chat({content, history}) -> {response}; chatStream({content, history, onToken}) -> {response}: come chat ma
+  chiama onToken(testoParziale) mentre il modello scrive (usalo per chatbot: il testo appare progressivamente);
+- json({prompt, schema, history}) -> oggetto JS gia parsato che rispetta lo schema descritto (quiz, schede,
+  classificazioni, dati strutturati): preferiscilo a chat quando ti serve una struttura;
+- vision({image, prompt}) -> {response}: analizza un'immagine (data URL da <input type=file> o canvas, o URL);
+- generateImage({prompt}) -> {image_url};
+- speak(testo, {lang, rate}) legge ad alta voce; stopSpeaking(); listen({lang, onPartial}) -> Promise<string>
+  con il parlato trascritto (microfono);
+- me() -> {name, role} di chi usa l'app (per salutare o firmare i contenuti);
+- WEBCAM E MICROFONO: usa SEMPRE await window.GolinelliAI.media.camera({facingMode}) /
+  media.microphone() / media.cameraAndMicrophone() -> MediaStream, e media.attach(videoElement, stream) per
+  mostrarla (imposta playsInline/muted/autoplay e avvia la riproduzione). Gestiscono vincoli di riserva e
+  messaggi chiari; la piattaforma mostra all'utente come concedere il permesso se il browser lo blocca.
+  Regole: chiedi l'accesso SOLO dopo un clic su un pulsante esplicito ("Attiva webcam"), mai all'avvio;
+  mostra gli stati (in attesa del permesso, attiva, negata) e un pulsante "Riprova"; in caso di errore mostra
+  error.message (gia in italiano); ferma le tracce (stream.getTracks().forEach(t => t.stop())) quando
+  il componente si smonta o l'utente disattiva. MAI navigator.permissions.query per decidere se chiedere.
+- shared.get(key) / shared.set(key, value) / shared.append(key, item) / shared.subscribe(key, callback):
+  stato CONDIVISO tra tutti quelli che usano la stessa app nella sessione (sondaggi, bacheche, classifiche,
+  giochi a turni). Per raccogliere contributi di piu persone usa SEMPRE append (non si sovrascrivono a vicenda;
+  ogni oggetto riceve _by = nome e _at = timestamp); subscribe chiama callback(valore) a ogni cambiamento e
+  restituisce una funzione per smettere di ascoltare (chiamala nel cleanup di useEffect);
+- saveData/loadData/deleteData per la persistenza (vedi sotto).
 
 ROUTING: per più viste usa react-router-dom (createBrowserRouter/Routes) oppure stato locale. Niente più
 vincolo single-page artificiale: puoi avere route vere come /, /dettaglio/:id, ecc.
@@ -393,6 +424,113 @@ FORMATO DI OUTPUT — rispettalo ALLA LETTERA:
 
 App.tsx e styles.css devono SEMPRE esistere. Includi package.json solo se usi librerie oltre a react/react-dom.
 Non scrivere index.html né il file di entry/bootstrap. Non scrivere nulla al di fuori di questo formato dopo @@FILES@@."""
+
+
+# Edit turns (existing project): files that already exist are changed with SEARCH/REPLACE patches,
+# never re-emitted whole. Appended to the user message so it overrides the "whole file" format.
+EDIT_FORMAT_INSTRUCTIONS = """
+FORMATO PER QUESTA MODIFICA (sostituisce il punto 3 del formato generale):
+- File GIA ESISTENTI: NON ristamparli. Modificali con uno o piu blocchi SEARCH/REPLACE:
+=== PATCH: components/Header.tsx ===
+<<<<<<< SEARCH
+righe ESATTE copiate dal file attuale (includi 2-3 righe di contesto stabili, abbastanza da essere uniche)
+=======
+le stesse righe con la modifica applicata
+>>>>>>> REPLACE
+  Puoi mettere piu blocchi SEARCH/REPLACE sotto lo stesso === PATCH: path ===, in ordine dall'alto al basso.
+  SEARCH deve comparire UNA sola volta nel file e combaciare carattere per carattere (spazi compresi).
+  Per aggiungere codice in fondo a un file usa un SEARCH vuoto.
+- File NUOVI: scrivili interi con === FILE: path ===.
+- File da eliminare: una riga === DELETE: path ===.
+- Se devi riscrivere quasi tutto un file, puoi usare === FILE: path === con il contenuto completo.
+- Chiudi sempre con === END ===.
+- Nell'elenco "File:" del ragionamento scrivi una riga per file toccato nel formato "- path: cosa cambia".
+"""
+
+# Automatic repair turn of the observe->fix loop.
+FIX_TURN_INSTRUCTIONS = """
+QUESTO È UN TURNO DI CORREZIONE AUTOMATICA. La piattaforma ha eseguito l'app e ha raccolto gli errori reali
+elencati sopra (compilazione, runtime o console). Obiettivo: far funzionare l'app SENZA cambiare cosa fa.
+- Individua la causa di ciascun errore (import mancante, export con nome sbagliato, tipo errato, accesso a
+  undefined, dipendenza npm non dichiarata in package.json, hook usato male...).
+- Correggi con PATCH minime, solo nei file coinvolti. Non rifare il design, non aggiungere funzioni.
+- Ragionamento BREVISSIMO (massimo 4 righe) + elenco "File:".
+"""
+
+# Polish turn driven by the visual review (screenshot + vision model).
+VISUAL_TURN_INSTRUCTIONS = """
+QUESTO È UN TURNO DI RIFINITURA VISIVA. Un revisore ha guardato uno screenshot dell'app in esecuzione e ha
+elencato i difetti visivi sopra (contrasto, allineamenti, spaziature, testi tagliati, gerarchia, responsive).
+- Correggi SOLO quei difetti, con PATCH minime (di solito styles.css e i componenti coinvolti).
+- Non cambiare funzionalita, testi, struttura dei dati o comportamento. Rispetta il design system del progetto.
+- Ragionamento BREVISSIMO (massimo 4 righe) + elenco "File:".
+"""
+
+VISUAL_REVIEW_PROMPT = """Sei un revisore UI/UX senior. Guardi lo SCREENSHOT di una mini app web creata da uno studente
+e la richiesta che l'ha generata. Valuta solo cio che vedi: leggibilita e contrasto, allineamenti, spaziature,
+testi tagliati o sovrapposti, gerarchia visiva, coerenza di colori/stili, stati vuoti evidenti, aderenza alla richiesta.
+Ignora dettagli di gusto personale. Segnala al massimo 6 problemi CONCRETI e correggibili, i piu importanti prima.
+Rispondi SOLO con JSON valido:
+{"score": 1-10, "summary": "giudizio in una frase", "issues": [{"severity": "alta|media|bassa", "area": "dove", "problem": "cosa non va", "fix": "come correggerlo"}]}
+Se l'interfaccia e gia pulita restituisci issues vuoto. Rispondi in italiano."""
+
+
+# One targeted call for patches whose SEARCH did not match: the model sees the current file and the
+# intended edits and returns the file rewritten.
+PATCH_REPAIR_SYSTEM_PROMPT = """Sei un senior front-end engineer dentro Golinelli.ai. Alcune modifiche SEARCH/REPLACE non
+si sono potute applicare perche il testo SEARCH non corrisponde al file attuale. Ricevi il file ATTUALE e le
+modifiche previste. Applica al file le modifiche nello spirito in cui erano intese, senza toccare altro.
+
+FORMATO DI OUTPUT — senza backtick e senza testo fuori:
+=== FILE: path ===
+<contenuto COMPLETO aggiornato del file>
+=== END ==="""
+
+
+# Curated npm packages generated apps may use (Sandpack downloads them from npm). Anything else is
+# dropped from package.json: it keeps apps on well-known, education-appropriate libraries and the
+# observe->fix loop steers the model back to an allowed one if an import then fails.
+# Value = version used when the model omits one or gives an unparseable range.
+ALLOWED_NPM_PACKAGES: dict[str, str] = {
+    "react-router-dom": "^6.26.0", "recharts": "^2.12.7", "framer-motion": "^11.3.0", "clsx": "^2.1.1",
+    "date-fns": "^3.6.0", "dayjs": "^1.11.12", "zustand": "^4.5.4", "immer": "^10.1.1", "zod": "^3.23.8",
+    "lucide-react": "^0.424.0", "react-hot-toast": "^2.4.1", "canvas-confetti": "^1.9.3",
+    "uuid": "^10.0.0", "nanoid": "^5.0.7", "lodash": "^4.17.21", "fuse.js": "^7.0.0",
+    "three": "^0.167.0", "@react-three/fiber": "^8.17.0", "@react-three/drei": "^9.109.0", "cannon-es": "^0.20.0",
+    "p5": "^1.10.0", "d3": "^7.9.0", "chart.js": "^4.4.3", "react-chartjs-2": "^5.2.0",
+    "tone": "^15.0.4", "howler": "^2.2.4", "matter-js": "^0.20.0", "gsap": "^3.12.5", "animejs": "^3.2.2",
+    "phaser": "^3.80.1", "pixi.js": "^8.2.5", "simplex-noise": "^4.0.3", "seedrandom": "^3.0.5",
+    "mathjs": "^13.0.3", "katex": "^0.16.11", "marked": "^13.0.2", "react-markdown": "^9.0.1",
+    "leaflet": "^1.9.4", "react-leaflet": "^4.2.1", "papaparse": "^5.4.1", "qrcode.react": "^3.1.0",
+    "@tensorflow/tfjs": "^4.20.0",
+}
+_NPM_RANGE = re.compile(r"^[~^]?\d+(\.\d+){0,2}([-.][\w.]+)?$")
+
+
+def _sanitize_package_json(files: list[dict]) -> tuple[list[dict], list[str]]:
+    """Keep only allowlisted dependencies in package.json. Returns (files, dropped_package_names)."""
+    dropped: list[str] = []
+    out: list[dict] = []
+    for f in files:
+        if str(f.get("path") or "").lstrip("/") != "package.json":
+            out.append(f)
+            continue
+        try:
+            data = json.loads(str(f.get("content") or "{}"))
+        except Exception:
+            data = {}
+        deps: dict[str, str] = {}
+        for section in ("dependencies", "devDependencies"):
+            for name, version in (data.get(section) or {}).items():
+                if name in {"react", "react-dom"} or name.startswith("@types/"):
+                    continue
+                if name in ALLOWED_NPM_PACKAGES:
+                    version = str(version or "").strip()
+                    deps[name] = version if _NPM_RANGE.match(version) else ALLOWED_NPM_PACKAGES[name]
+                else:
+                    dropped.append(name)
+        out.append({**f, "content": json.dumps({"dependencies": deps}, indent=2)})
+    return out, sorted(set(dropped))
 
 
 def _slugify(value: str) -> str:
@@ -1137,7 +1275,7 @@ def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) ->
     return CODING_MODEL_CHOICES.get(key, (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL))
 
 
-async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 16000):
+async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 16000, reasoning_sink=None):
     """Streaming counterpart of _coding_generate. Yields text chunks from the chosen Coding Lab
     model, falling back to the platform default only if the primary fails before emitting."""
     started = False
@@ -1149,6 +1287,10 @@ async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, p
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            reasoning_sink=reasoning_sink,
+            # DeepSeek V4 otherwise "thinks" silently for tens of thousands of tokens and can burn the
+            # whole output budget before writing a file; the prompt already asks for explicit reasoning.
+            thinking=False,
         ):
             started = True
             yield chunk
@@ -1163,6 +1305,59 @@ async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, p
             max_tokens=max_tokens,
         ):
             yield chunk
+
+
+# Proxies in front of the API (Cloudflare ~100s) drop a response that sends nothing for too long.
+# Reasoning models can think silently for minutes, and the post-generation passes are plain awaits,
+# so every long wait in the SSE generation is pumped with a heartbeat frame.
+SSE_HEARTBEAT_SECONDS = 8.0
+
+
+async def _heartbeat_await(coro, interval: float = SSE_HEARTBEAT_SECONDS):
+    """Await `coro`, yielding ("ping", None) every `interval` seconds and finally ("result", value)."""
+    task = asyncio.ensure_future(coro)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=interval)
+            if done:
+                yield ("result", task.result())
+                return
+            yield ("ping", None)
+    finally:
+        if not task.done():
+            task.cancel()
+
+
+async def _heartbeat_stream(agen_factory, interval: float = SSE_HEARTBEAT_SECONDS):
+    """Iterate the async generator built by `agen_factory()`, yielding ("chunk", text) for its items
+    and ("idle", seconds_since_start) whenever nothing arrived for `interval` seconds."""
+    queue: asyncio.Queue = asyncio.Queue()
+    started_at = time.monotonic()
+
+    async def produce():
+        try:
+            async for item in agen_factory():
+                await queue.put(("chunk", item))
+            await queue.put(("end", None))
+        except Exception as exc:  # surfaced to the consumer below
+            await queue.put(("error", exc))
+
+    producer = asyncio.create_task(produce())
+    try:
+        while True:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=interval)
+            except asyncio.TimeoutError:
+                yield ("idle", int(time.monotonic() - started_at))
+                continue
+            if kind == "end":
+                return
+            if kind == "error":
+                raise payload
+            yield ("chunk", payload)
+    finally:
+        if not producer.done():
+            producer.cancel()
 
 
 MAX_CODING_ATTACHMENTS = 3
@@ -1199,6 +1394,7 @@ async def _describe_attachments(data_urls: list[str]) -> str:
                 model="gpt-4o",
                 temperature=0.2,
                 max_tokens=500,
+                allow_web_search=False,
             )
             descriptions.append(f"[Screenshot {idx}]\n{response.content}")
         except Exception as exc:
@@ -1209,6 +1405,31 @@ async def _describe_attachments(data_urls: list[str]) -> str:
         "\n\nScreenshot allegati dallo studente (analizzati automaticamente, usali come riferimento "
         "visivo per la richiesta):\n\n" + "\n\n".join(descriptions)
     )
+
+
+async def _repair_failed_patches(files: dict[str, dict], failed: dict[str, list]) -> dict[str, str]:
+    """Re-apply SEARCH/REPLACE edits that did not match, one file at a time. Returns {path: content}
+    for the files it could rewrite; never raises (a failed repair leaves the file as it was)."""
+    repaired: dict[str, str] = {}
+    for path, items in list(failed.items())[:6]:
+        current = str((files.get(path) or {}).get("content") or "")
+        edits = "\n\n".join(
+            f"MODIFICA {index} ({reason}):\nSEARCH:\n{search}\nREPLACE:\n{replace}"
+            for index, (search, replace, reason) in enumerate(items, start=1)
+        )
+        try:
+            response = await _coding_generate(
+                messages=[{"role": "user", "content": f"FILE: {path}\n\nCONTENUTO ATTUALE:\n{current}\n\nMODIFICHE PREVISTE:\n{edits}"}],
+                system_prompt=PATCH_REPAIR_SYSTEM_PROMPT,
+                temperature=0.1,
+                max_tokens=12000,
+            )
+            for item in _parse_delimited_files(response.content or ""):
+                if str(item.get("path") or "").lstrip("/") == path and str(item.get("content") or "").strip():
+                    repaired[path] = str(item["content"])
+        except Exception as exc:
+            logger.warning("patch repair failed for %s (%s)", path, exc)
+    return repaired
 
 
 async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
@@ -2185,6 +2406,7 @@ async def coding_ai_chat(
     content = str(body.get("content") or "").strip()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
+    _bridge_rate_limit(actor)
 
     history = body.get("history") if isinstance(body.get("history"), list) else []
     messages = []
@@ -2250,6 +2472,321 @@ async def coding_ai_chat(
         "prompt_tokens": response.prompt_tokens,
         "completion_tokens": response.completion_tokens,
     }
+
+
+# Generated apps call the AI from a loop or a button without any debounce: cap them per actor so a
+# buggy app can't drain the class credit pool. In-memory sliding window per API worker.
+BRIDGE_AI_CALLS_PER_MINUTE = 30
+_bridge_calls: dict[str, list[float]] = {}
+
+
+def _bridge_rate_limit(actor: StudentOrTeacher) -> None:
+    key = f"s:{actor.student.id}" if actor.is_student else f"t:{actor.teacher.id}"
+    now = time.monotonic()
+    recent = [stamp for stamp in _bridge_calls.get(key, []) if now - stamp < 60]
+    if len(recent) >= BRIDGE_AI_CALLS_PER_MINUTE:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="L'app sta chiamando l'AI troppo spesso: attendi qualche secondo e riprova.",
+        )
+    recent.append(now)
+    _bridge_calls[key] = recent
+
+
+def _bridge_chat_messages(body: dict) -> list[dict]:
+    content = str(body.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
+    history = body.get("history") if isinstance(body.get("history"), list) else []
+    messages: list[dict] = []
+    for item in history[-12:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role") if item.get("role") in {"user", "assistant"} else "user"
+        text = str(item.get("content") or "").strip()
+        if text:
+            messages.append({"role": role, "content": text[:4000]})
+    messages.append({"role": "user", "content": content[:8000]})
+    return messages
+
+
+@router.post("/ai/chat-stream")
+async def coding_ai_chat_stream(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Token-by-token variant of /ai/chat for generated apps (GolinelliAI.chatStream). Platform
+    default model; the cost is estimated from the streamed text and billed once at the end."""
+    messages = _bridge_chat_messages(body)
+    _bridge_rate_limit(actor)
+    actor_label = "studente" if actor.is_student else "docente"
+    system_prompt = (
+        "Sei un assistente AI dentro una mini-app del Coding Lab Golinelli.ai. "
+        f"Stai rispondendo a un {actor_label}. Sii utile, conciso, educativo e adatto a studenti. "
+        "Non citare dettagli tecnici interni della piattaforma."
+    )
+    extra_system = str(body.get("system") or "").strip()
+    if extra_system:
+        system_prompt += "\n\nIstruzioni dell'app:\n" + extra_system[:4000]
+    tenant_id = actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id
+
+    async def event_stream():
+        full = ""
+        try:
+            async for chunk in llm_service.generate_stream(
+                messages=messages, system_prompt=system_prompt, temperature=0.4, max_tokens=1500, allow_web_search=False,
+            ):
+                full += chunk
+                yield f"data: {json.dumps({'type': 'delta', 'text': chunk})}\n\n"
+            usage = build_estimated_token_usage([{"role": "system", "content": system_prompt}, *messages], full)
+            await _record_coding_cost(
+                db,
+                provider=settings.DEFAULT_LLM_PROVIDER,
+                model=settings.DEFAULT_LLM_MODEL,
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
+                context="coding_ai_chat_stream",
+                tenant_id=tenant_id,
+                session_id=actor.student.session_id if actor.is_student else None,
+                student_id=actor.student.id if actor.is_student else None,
+                teacher_id=actor.teacher.id if actor.is_teacher else None,
+            )
+            yield f"data: {json.dumps({'type': 'done', 'response': full})}\n\n"
+        except Exception as exc:
+            logger.exception("coding ai/chat-stream failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/ai/vision")
+async def coding_ai_vision(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Image understanding for generated apps (GolinelliAI.vision): data URL or https URL + prompt."""
+    image = str(body.get("image") or "").strip()
+    prompt = str(body.get("prompt") or "Descrivi questa immagine.").strip()[:4000]
+    is_data_url = bool(_DATA_URL_RE.match(image))
+    if not image or (is_data_url and len(image) > MAX_ATTACHMENT_DATA_URL_CHARS) or (not is_data_url and not image.startswith("https://")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Immagine non valida: usa un data URL o un URL https")
+    _bridge_rate_limit(actor)
+    try:
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": prompt + "\n\nRispondi in italiano, in modo adatto a studenti."},
+                {"type": "image_url", "image_url": {"url": image}},
+            ]}],
+            provider="openai",
+            model="gpt-4o",
+            temperature=0.2,
+            max_tokens=900,
+            allow_web_search=False,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Analisi immagine non disponibile: {exc}")
+    await _record_coding_cost(
+        db,
+        provider=response.provider,
+        model=response.model,
+        prompt_tokens=response.prompt_tokens,
+        completion_tokens=response.completion_tokens,
+        context="coding_ai_vision",
+        tenant_id=actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id,
+        session_id=actor.student.session_id if actor.is_student else None,
+        student_id=actor.student.id if actor.is_student else None,
+        teacher_id=actor.teacher.id if actor.is_teacher else None,
+    )
+    return {"response": response.content}
+
+
+@router.post("/projects/{project_id}/visual-review")
+async def visual_review_project(
+    project_id: UUID,
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Look at a screenshot of the running app and list concrete visual defects (vision model).
+    The result is stored as an agent message so it shows in the project conversation."""
+    project = await _get_accessible_project(db, actor, project_id)
+    image = str(body.get("image") or "").strip()
+    if not _DATA_URL_RE.match(image) or len(image) > MAX_ATTACHMENT_DATA_URL_CHARS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Screenshot non valido")
+    last_request = (await db.execute(
+        select(CodingMessage.content)
+        .where(CodingMessage.project_id == project.id, CodingMessage.role == "user")
+        .order_by(CodingMessage.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none() or project.title
+    try:
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": f"Titolo: {project.title}\nUltima richiesta dello studente: {str(last_request)[:2000]}"},
+                {"type": "image_url", "image_url": {"url": image}},
+            ]}],
+            system_prompt=VISUAL_REVIEW_PROMPT,
+            provider="openai",
+            model="gpt-4o",
+            temperature=0.2,
+            max_tokens=900,
+            allow_web_search=False,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Revisione visiva non disponibile: {exc}")
+    try:
+        review = _extract_json_object(response.content or "")
+    except Exception:
+        review = {}
+    issues = [
+        {
+            "severity": str(item.get("severity") or "media")[:10],
+            "area": str(item.get("area") or "")[:120],
+            "problem": str(item.get("problem") or "")[:400],
+            "fix": str(item.get("fix") or "")[:400],
+        }
+        for item in (review.get("issues") or []) if isinstance(item, dict) and item.get("problem")
+    ][:6]
+    try:
+        score = max(1, min(10, int(review.get("score") or 0))) if review.get("score") is not None else None
+    except (TypeError, ValueError):
+        score = None
+    summary = str(review.get("summary") or "")[:400]
+    lines = "\n".join(f"- [{item['severity']}] {item['area']}: {item['problem']} → {item['fix']}" for item in issues)
+    db.add(CodingMessage(
+        project_id=project.id,
+        actor_type="agent",
+        agent_name="Revisore visivo",
+        role="assistant",
+        content=(f"Valutazione {score}/10. " if score else "") + (summary or "Revisione completata.") + (f"\n{lines}" if lines else "\nNessun difetto visivo rilevante."),
+        metadata_json={"kind": "visual_review", "score": score, "issues": issues, "version_id": str(project.current_version_id or "")},
+    ))
+    await db.commit()
+    await _record_coding_cost(
+        db,
+        provider=response.provider,
+        model=response.model,
+        prompt_tokens=response.prompt_tokens,
+        completion_tokens=response.completion_tokens,
+        context="coding_visual_review",
+        tenant_id=project.tenant_id,
+        session_id=project.session_id,
+        student_id=actor.student.id if actor.is_student else None,
+        teacher_id=actor.teacher.id if actor.is_teacher else None,
+    )
+    return {"score": score, "summary": summary, "issues": issues}
+
+
+# --- Shared state between everyone using the same app in a session (GolinelliAI.shared) ---
+SHARED_PREFIX = "shared:"
+SHARED_MAX_VALUE_BYTES = 200_000
+SHARED_MAX_LIST_ITEMS = 500
+
+
+async def _shared_scope_project(db: AsyncSession, actor: StudentOrTeacher, project_id: UUID) -> CodingProject:
+    """Shared data lives on the ROOT project (the original a class forked from), so every copy of the
+    same app in the session sees the same values. Access = same session (students) / tenant (teachers)."""
+    project = (await db.execute(select(CodingProject).where(CodingProject.id == project_id))).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    root = project
+    source_id = (await _get_fork_metadata(db, project)).get("source_project_id")
+    if source_id:
+        source = (await db.execute(select(CodingProject).where(CodingProject.id == UUID(str(source_id))))).scalar_one_or_none()
+        if source and source.session_id == project.session_id:
+            root = source
+    if actor.is_student:
+        if actor.student.session_id != root.session_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project not accessible")
+    elif actor.teacher.tenant_id and root.tenant_id != actor.teacher.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project not accessible")
+    return root
+
+
+def _shared_key(key: str) -> str:
+    key = key.strip()
+    if not key or len(key) > 150:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chiave non valida")
+    return SHARED_PREFIX + key
+
+
+async def _shared_row(db: AsyncSession, root_id: UUID, key: str) -> CodingProjectData | None:
+    return (await db.execute(
+        select(CodingProjectData).where(CodingProjectData.project_id == root_id, CodingProjectData.key == key)
+    )).scalar_one_or_none()
+
+
+@router.get("/projects/{project_id}/shared/{key}")
+async def get_shared_value(
+    project_id: UUID,
+    key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    root = await _shared_scope_project(db, actor, project_id)
+    row = await _shared_row(db, root.id, _shared_key(key))
+    return {"key": key, "value": row.value_json if row else None, "updated_at": row.updated_at.isoformat() if row else None}
+
+
+async def _write_shared(db: AsyncSession, root: CodingProject, key: str, value) -> CodingProjectData:
+    size = _json_size_bytes(value)
+    if size > SHARED_MAX_VALUE_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Valore condiviso troppo grande")
+    row = await _shared_row(db, root.id, key)
+    if row is None:
+        count = (await db.execute(select(func.count(CodingProjectData.id)).where(CodingProjectData.project_id == root.id))).scalar_one()
+        if count >= PROJECT_DATA_MAX_KEYS:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Troppe chiavi per questa app")
+        row = CodingProjectData(project_id=root.id, key=key, value_json=value, size_bytes=size)
+        db.add(row)
+    else:
+        row.value_json = value
+        row.size_bytes = size
+        row.updated_at = func.now()
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+@router.put("/projects/{project_id}/shared/{key}")
+async def put_shared_value(
+    project_id: UUID,
+    key: str,
+    body: CodingProjectDataPut,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    root = await _shared_scope_project(db, actor, project_id)
+    row = await _write_shared(db, root, _shared_key(key), body.value)
+    return {"key": key, "value": row.value_json, "updated_at": row.updated_at.isoformat()}
+
+
+@router.post("/projects/{project_id}/shared/{key}/append")
+async def append_shared_value(
+    project_id: UUID,
+    key: str,
+    body: CodingProjectDataPut,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Append one item to a shared list server-side, so concurrent users never overwrite each other
+    (votes, messages, answers). The row is locked for the read-modify-write."""
+    root = await _shared_scope_project(db, actor, project_id)
+    full_key = _shared_key(key)
+    row = (await db.execute(
+        select(CodingProjectData)
+        .where(CodingProjectData.project_id == root.id, CodingProjectData.key == full_key)
+        .with_for_update()
+    )).scalar_one_or_none()
+    current = row.value_json if row and isinstance(row.value_json, list) else []
+    item = body.value
+    if isinstance(item, dict):
+        item = {**item, "_by": (actor.student.nickname if actor.is_student else "docente"), "_at": time.time()}
+    updated = (current + [item])[-SHARED_MAX_LIST_ITEMS:]
+    row = await _write_shared(db, root, full_key, updated)
+    return {"key": key, "value": row.value_json, "updated_at": row.updated_at.isoformat()}
 
 
 @router.post("/ai/interview")
@@ -2918,12 +3455,38 @@ async def generate_project_code_stream(
     track_student_id = actor.student.id if actor.is_student else None
     track_teacher_id = actor.teacher.id if actor.is_teacher else None
 
-    explicit_prompt = bool((body.prompt or "").strip())
+    turn_mode = (body.mode or "").strip()
+    is_visual = turn_mode == "visual"
+    is_fix = turn_mode in {"fix", "visual"}
+    fix_errors = [str(item).strip()[:700] for item in (body.errors or []) if str(item).strip()][:12]
+    explicit_prompt = bool((body.prompt or "").strip()) and not is_fix
     user_prompt = (body.prompt or "").strip()
     attachments = [a for a in (body.attachments or []) if a][:MAX_CODING_ATTACHMENTS]
     prompt_message_id: UUID | None = None
 
-    if user_prompt:
+    if is_fix:
+        if not fix_errors:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Errors required for a fix turn")
+        error_list = "\n".join(f"- {item}" for item in fix_errors)
+        user_prompt = (
+            f"Difetti visivi rilevati sullo screenshot dell'app:\n{error_list}" if is_visual
+            else f"Errori reali rilevati eseguendo l'app:\n{error_list}"
+        )
+        fix_message = CodingMessage(
+            project_id=project.id,
+            actor_type="agent",
+            agent_name="Revisore visivo" if is_visual else "Verificatore",
+            role="assistant",
+            content=(
+                f"Rifinisco {len(fix_errors)} difetto/i visivo/i con modifiche mirate:\n{error_list}" if is_visual
+                else f"Ho eseguito l'app e ho trovato {len(fix_errors)} errore/i. Li correggo con modifiche mirate:\n{error_list}"
+            ),
+            metadata_json={"kind": "agent_fix_request", "errors": fix_errors, **({"visual": True} if is_visual else {})},
+        )
+        db.add(fix_message)
+        await db.flush()
+        prompt_message_id = fix_message.id
+    elif user_prompt:
         prompt_message = CodingMessage(
             project_id=project_pk,
             actor_type=actor_type,
@@ -2948,14 +3511,15 @@ async def generate_project_code_stream(
     if not user_prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
 
-    db.add(CodingMessage(
-        project_id=project_pk,
-        actor_type="agent",
-        agent_name="Prompt Analyst",
-        role="assistant",
-        content="Leggo la richiesta, individuo le funzioni necessarie e preparo una versione eseguibile della mini app.",
-        metadata_json={"kind": "agent_progress"},
-    ))
+    if not is_fix:
+        db.add(CodingMessage(
+            project_id=project_pk,
+            actor_type="agent",
+            agent_name="Prompt Analyst",
+            role="assistant",
+            content="Leggo la richiesta, individuo le funzioni necessarie e preparo una versione eseguibile della mini app.",
+            metadata_json={"kind": "agent_progress"},
+        ))
     # Persist the request + progress message durably so the long stream below never holds an
     # open write transaction.
     await db.commit()
@@ -2993,7 +3557,8 @@ async def generate_project_code_stream(
             + "\n\n---\n\n".join(kb_snippets)
         )
 
-    base_context = f"Titolo progetto: {project_title}\n\nRichiesta studente:\n{user_prompt}{kb_context}"
+    request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
+    base_context = f"Titolo progetto: {project_title}\n\n{request_label}:\n{user_prompt}{kb_context}"
     gen_provider, gen_model = _resolve_coding_model(body.model_key, is_student=actor.is_student)
 
     def _sse(payload: dict) -> str:
@@ -3012,12 +3577,12 @@ async def generate_project_code_stream(
             "QUESTA È UNA MODIFICA PUNTUALE di un progetto React ESISTENTE (file completi qui sotto).\n"
             "Comportati in modo agentico e CHIRURGICO:\n"
             "- applica SOLO le modifiche richieste; lascia IDENTICO tutto il resto;\n"
-            "- nel blocco dopo @@FILES@@ restituisci SOLO i file che cambiano davvero (o i file nuovi),\n"
-            "  con il loro contenuto COMPLETO aggiornato; NON ristampare i file che restano invariati;\n"
             "- mantieni la coerenza: ogni import deve puntare a un file esistente con quell'export;\n"
             "  riusa gli STESSI nomi di componenti/funzioni/tipi gia presenti;\n"
             "- se aggiungi una libreria npm, aggiorna package.json (campo dependencies);\n"
-            "- non scrivere index.html ne il file di entry (createRoot): sono della piattaforma.\n\n"
+            "- non scrivere index.html ne il file di entry (createRoot): sono della piattaforma.\n"
+            f"{(VISUAL_TURN_INSTRUCTIONS if is_visual else FIX_TURN_INSTRUCTIONS) if is_fix else ''}"
+            f"{EDIT_FORMAT_INSTRUCTIONS}\n"
             f"Progetto attuale:\n{current_dump}"
         )
     else:
@@ -3036,7 +3601,12 @@ async def generate_project_code_stream(
             final_gen_user = gen_user
             if attachments:
                 yield _sse({"type": "status", "message": "Analizzo gli screenshot allegati..."})
-                attachment_context = await _describe_attachments(attachments)
+                attachment_context = ""
+                async for kind, value in _heartbeat_await(_describe_attachments(attachments)):
+                    if kind == "ping":
+                        yield _sse({"type": "ping"})
+                    else:
+                        attachment_context = value
                 if attachment_context:
                     final_gen_user = f"{gen_user}{attachment_context}"
 
@@ -3054,8 +3624,15 @@ async def generate_project_code_stream(
             current_lines: list[str] = []
             current_reported = -1
             generated: list[dict] = []
+            patches: dict[str, list[str]] = {}
+            deleted: set[str] = set()
+            current_kind = "file"  # "file" = whole content, "patch" = SEARCH/REPLACE blocks
             file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*===\s*$")
+            patch_marker = re.compile(r"^===\s*PATCH:\s*(.+?)\s*===\s*$")
+            delete_marker = re.compile(r"^===\s*DELETE:\s*(.+?)\s*===\s*$")
             end_marker = re.compile(r"^===\s*END\s*===\s*$")
+            # "- path: why" lines of the reasoning's closing "File:" list become the live checklist.
+            plan_line = re.compile(r"^\s*[-*]\s*`?([\w@./-]+\.[A-Za-z0-9]+)`?\s*[:\u2014\u2013-]\s*(.+?)\s*$")
 
             def _finalize_current():
                 """Store the file just finished; return its file_done SSE frame (or None)."""
@@ -3063,21 +3640,29 @@ async def generate_project_code_stream(
                 if current_path is None:
                     current_lines = []
                     return None
-                content = _strip_code_fences("\n".join(current_lines).strip("\n"))
                 path = current_path
                 current_path = None
+                if current_kind == "patch":
+                    text = "\n".join(current_lines)
+                    current_lines = []
+                    if text.strip():
+                        patches.setdefault(path, []).append(text)
+                        return _sse({"type": "file_done", "path": path, "lines": text.count("\n") + 1, "op": "patch"})
+                    return None
+                content = _strip_code_fences("\n".join(current_lines).strip("\n"))
                 current_lines = []
                 if content.strip():
                     generated.append({"path": path, "content": content, "language": _lang_for_path(path)})
                     return _sse({"type": "file_done", "path": path, "lines": content.count("\n") + 1})
                 return None
 
-            def _open_file(raw_path: str):
+            def _open_file(raw_path: str, kind: str = "file"):
                 """Start a new file unless it's an extra page/.md we must not keep; returns SSE or None."""
-                nonlocal current_path, current_lines, current_reported
+                nonlocal current_path, current_lines, current_reported, current_kind
                 path = raw_path.strip().lstrip("/")
                 current_lines = []
                 current_reported = -1
+                current_kind = kind
                 lower = path.lower()
                 # Platform-owned files the model must not produce: the HTML shell and the React entry
                 # (createRoot) are injected by the preview; KB markdown belongs to the platform.
@@ -3089,16 +3674,31 @@ async def generate_project_code_stream(
                     current_path = None
                     return None
                 current_path = path
-                return _sse({"type": "file_start", "path": path})
+                return _sse({"type": "file_start", "path": path, "op": kind})
 
-            async for chunk in _coding_generate_stream(
+            thinking_chars = 0
+
+            def _count_thinking(text: str) -> None:
+                nonlocal thinking_chars
+                thinking_chars += len(text)
+
+            async for event_kind, chunk in _heartbeat_stream(lambda: _coding_generate_stream(
                 messages=[{"role": "user", "content": final_gen_user}],
                 system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
                 provider=gen_provider,
                 model=gen_model,
-                temperature=0.4,
-                max_tokens=24000,
-            ):
+                temperature=0.2 if is_fix else 0.4,
+                max_tokens=12000 if is_fix else 24000,
+                reasoning_sink=_count_thinking,
+            )):
+                if event_kind == "idle":
+                    # Silent thinking phase (no answer text yet): show progress instead of a frozen UI.
+                    if not full:
+                        detail = f" · {thinking_chars} caratteri di ragionamento" if thinking_chars else ""
+                        yield _sse({"type": "status", "message": f"Il modello sta ragionando sul progetto… {chunk}s{detail}"})
+                    else:
+                        yield _sse({"type": "ping"})
+                    continue
                 full += chunk
                 buffer += chunk
                 while "\n" in buffer:
@@ -3110,18 +3710,36 @@ async def generate_project_code_stream(
                                 reasoning_parts.append(pre)
                                 yield _sse({"type": "reasoning", "content": pre + "\n"})
                             state = "files"
-                            yield _sse({"type": "status", "message": "Struttura definita. Inizio a scrivere i file..."})
+                            plan = []
+                            for reasoning_line in reasoning_parts:
+                                match = plan_line.match(reasoning_line)
+                                if match and "/" not in match.group(1).split(".")[-1]:
+                                    plan.append({"path": match.group(1).lstrip("/"), "purpose": match.group(2)[:160]})
+                            if plan:
+                                yield _sse({"type": "plan", "files": plan[:30]})
+                            yield _sse({"type": "status", "message": "Piano definito. Applico le modifiche..." if is_edit else "Struttura definita. Inizio a scrivere i file..."})
                             continue
                         reasoning_parts.append(line)
                         yield _sse({"type": "reasoning", "content": line + "\n"})
                         continue
-                    if file_marker.match(line):
+                    if file_marker.match(line) or patch_marker.match(line):
                         done = _finalize_current()
                         if done:
                             yield done
-                        started = _open_file(file_marker.match(line).group(1))
+                        is_patch = bool(patch_marker.match(line))
+                        raw = (patch_marker.match(line) if is_patch else file_marker.match(line)).group(1)
+                        started = _open_file(raw, "patch" if is_patch else "file")
                         if started:
                             yield started
+                        continue
+                    if delete_marker.match(line):
+                        done = _finalize_current()
+                        if done:
+                            yield done
+                        target = delete_marker.match(line).group(1).strip().lstrip("/")
+                        if target and ".." not in target.split("/"):
+                            deleted.add(target)
+                            yield _sse({"type": "file_done", "path": target, "lines": 0, "op": "delete"})
                         continue
                     if end_marker.match(line):
                         done = _finalize_current()
@@ -3160,18 +3778,48 @@ async def generate_project_code_stream(
             usage_prompt += est["prompt_tokens"]
             usage_completion += est["completion_tokens"]
 
-            if not generated:
+            if not generated and not patches and not deleted:
                 yield _sse({"type": "error", "message": "La generazione non ha prodotto file validi. Riprova o cambia modello."})
                 return
 
-            yield _sse({"type": "status", "message": f"Scrittura completata: {len(generated)} file prodotti. Verifico il progetto..."})
+            touched = len(generated) + len(patches) + len(deleted)
+            yield _sse({"type": "status", "message": f"Scrittura completata: {touched} file toccati. Verifico il progetto..."})
 
-            # Targeted edits: merge the regenerated files OVER the existing ones so files the model
-            # left untouched are preserved EXACTLY (no accidental rewrites, no architecture drift).
+            # Targeted edits: whole files replace, patches apply in place, untouched files stay
+            # byte-identical (no accidental rewrites, no architecture drift).
+            patch_report: dict = {"applied": 0, "repaired": [], "failed": []}
             if is_edit:
                 merged = {str(f.get("path")): f for f in prev_code_files}
                 for g in generated:
                     merged[g["path"]] = g
+                failed_by_path: dict[str, list] = {}
+                for path, texts in patches.items():
+                    base = merged.get(path)
+                    if base is None:
+                        failed_by_path.setdefault(path, []).append(("", "\n".join(texts), "il file non esiste nel progetto"))
+                        continue
+                    content = str(base.get("content") or "")
+                    for text in texts:
+                        content, failures, applied = apply_search_replace(content, text)
+                        patch_report["applied"] += applied
+                        for failure in failures:
+                            failed_by_path.setdefault(path, []).append((failure.block.search, failure.block.replace, failure.reason))
+                    merged[path] = {**base, "content": content}
+                if failed_by_path:
+                    yield _sse({"type": "status", "message": f"Alcune modifiche non combaciano ({len(failed_by_path)} file): le riapplico sul file attuale..."})
+                    repaired: dict[str, str] = {}
+                    async for kind, value in _heartbeat_await(_repair_failed_patches(merged, failed_by_path)):
+                        if kind == "ping":
+                            yield _sse({"type": "ping"})
+                        else:
+                            repaired = value
+                    for path, content in repaired.items():
+                        merged[path] = {"path": path, "content": content, "language": _lang_for_path(path)}
+                    patch_report["repaired"] = sorted(repaired)
+                    patch_report["failed"] = sorted(set(failed_by_path) - set(repaired))
+                for path in deleted:
+                    if path not in {"App.tsx", "styles.css"}:
+                        merged.pop(path, None)
                 files = _normalize_generated_files({"files": list(merged.values())})
             else:
                 files = _normalize_generated_files({"files": generated})
@@ -3181,6 +3829,12 @@ async def generate_project_code_stream(
             # HAS network + real npm), so their fonts/images/CDNs are left intact.
             if not _is_react_files(files):
                 files = _sanitize_external_refs(files)
+
+            dropped_packages: list[str] = []
+            if _is_react_files(files):
+                files, dropped_packages = _sanitize_package_json(files)
+                if dropped_packages:
+                    yield _sse({"type": "status", "message": "Librerie non consentite rimosse: " + ", ".join(dropped_packages)})
 
             # Knowledge base ownership: drop any .md the model emitted, carry forward ours,
             # and append the student's request to description.md.
@@ -3195,7 +3849,12 @@ async def generate_project_code_stream(
             # use --ds-* everywhere). Only fires when a contract exists; an extra strong-model call.
             if _is_react_files(files) and any(str(f.get("path") or "").lower() == "design-system.md" for f in files):
                 yield _sse({"type": "status", "message": "Revisione design system in corso..."})
-                files, ds_changed = await _design_review_files(files)
+                ds_changed: list[str] = []
+                async for kind, value in _heartbeat_await(_design_review_files(files)):
+                    if kind == "ping":
+                        yield _sse({"type": "ping"})
+                    else:
+                        files, ds_changed = value
                 if ds_changed:
                     yield _sse({"type": "status", "message": f"Design system applicato ({len(ds_changed)} file aggiornati)."})
 
@@ -3208,7 +3867,12 @@ async def generate_project_code_stream(
                 broken = _check_broken_imports(files)
                 if broken:
                     yield _sse({"type": "status", "message": "Verifico e correggo import non risolti..."})
-                    files, import_fixed = await _repair_broken_imports(files, broken)
+                    import_fixed: list[str] = []
+                    async for kind, value in _heartbeat_await(_repair_broken_imports(files, broken)):
+                        if kind == "ping":
+                            yield _sse({"type": "ping"})
+                        else:
+                            files, import_fixed = value
                     if import_fixed:
                         yield _sse({"type": "status", "message": f"Import corretti ({len(import_fixed)} file)."})
                     broken_imports_unresolved = _check_broken_imports(files)
@@ -3265,10 +3929,19 @@ async def generate_project_code_stream(
                 db.add(CodingMessage(
                     project_id=project_pk,
                     actor_type="agent",
-                    agent_name="Architetto",
+                    agent_name="Revisore visivo" if is_visual else "Verificatore" if is_fix else "Architetto",
                     role="assistant",
                     content=reasoning_text[:6000],
-                    metadata_json={"kind": "agent_reasoning", "version_id": str(new_version_id)},
+                    metadata_json={"kind": "agent_reasoning", "version_id": str(new_version_id), **({"fix": True} if is_fix else {})},
+                ))
+            if patch_report["failed"]:
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Architetto",
+                    role="assistant",
+                    content="Non sono riuscito ad applicare alcune modifiche a: " + ", ".join(patch_report["failed"]) + ". Riformula la richiesta indicando cosa cambiare in quei file.",
+                    metadata_json={"kind": "patch_warning", "version_id": str(new_version_id), "files": patch_report["failed"]},
                 ))
 
             db.add(CodingMessage(
@@ -3322,6 +3995,9 @@ async def generate_project_code_stream(
                 "version_id": str(new_version_id),
                 "version_number": new_version_number,
                 "needs_review": bool(broken_imports_unresolved),
+                "fix": is_fix,
+                "dropped_packages": dropped_packages,
+                "patches": {"applied": patch_report["applied"], "repaired": patch_report["repaired"], "failed": patch_report["failed"]},
             })
         except Exception as exc:
             logger.exception("coding generate stream failed")
@@ -3868,6 +4544,31 @@ async def pull_project_upstream(
     return {"status": "updated", "version_id": str(version.id), "version_number": version.version_number}
 
 
+async def _publication_slug(db: AsyncSession, project: CodingProject) -> str:
+    """Public URL slug: readable title + short code from the project id. Project slugs are only unique
+    within a session, so the bare title would collide across classes. The same project always gets
+    the same slug (stable link across re-publishes); the code grows only if it ever clashes."""
+    previous = (await db.execute(
+        select(CodingPublication.publication_slug)
+        .where(CodingPublication.project_id == project.id, CodingPublication.publication_slug.like(f"{project.slug[:100]}-%"))
+        .order_by(CodingPublication.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if previous:
+        return previous
+    base = (project.slug or "app")[:100]
+    for length in (6, 8, 12, 32):
+        candidate = f"{base}-{project.id.hex[:length]}"
+        clash = (await db.execute(
+            select(CodingPublication.id)
+            .where(CodingPublication.publication_slug == candidate, CodingPublication.project_id != project.id)
+            .limit(1)
+        )).scalar_one_or_none()
+        if clash is None:
+            return candidate
+    return f"{base}-{project.id.hex}"
+
+
 @router.post("/projects/{project_id}/publish")
 async def publish_project(
     project_id: UUID,
@@ -3884,7 +4585,7 @@ async def publish_project(
     if not version or not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No generated files to publish")
 
-    publication_slug = project.slug
+    publication_slug = await _publication_slug(db, project)
     url_path = f"/students/{publication_slug}"
     existing_result = await db.execute(
         select(CodingPublication).where(

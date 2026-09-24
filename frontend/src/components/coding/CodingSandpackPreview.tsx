@@ -71,18 +71,38 @@ const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 // parent handler in StudentCodingLabModule picks it up unchanged.
 function buildBridgeSource(enableInspector: boolean): string {
   return `// AUTO-GENERATED platform bridge. Do not edit.
-const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
+const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; onDelta?: (text: string) => void }>()
 window.addEventListener('message', (event: MessageEvent) => {
   const data: any = event.data || {}
-  if (data.source !== 'golinelli-coding-host' || !pending.has(data.id)) return
+  if (data.source !== 'golinelli-coding-host') return
+  // Host-initiated request: screenshot of the running app for the visual review.
+  if (data.action === 'capture') {
+    const root = document.documentElement
+    const answer = (payload: any) => window.parent.postMessage({ source: 'golinelli-coding-preview', id: data.id, action: 'captureResult', payload }, '*')
+    import('html2canvas')
+      .then(({ default: html2canvas }) => html2canvas(document.body, {
+        backgroundColor: null,
+        useCORS: true,
+        logging: false,
+        scale: Math.min(1, 1280 / Math.max(1, root.clientWidth)),
+        height: Math.min(root.scrollHeight, 2200),
+        windowHeight: Math.min(root.scrollHeight, 2200),
+      }))
+      .then((canvas: HTMLCanvasElement) => answer({ ok: true, image: canvas.toDataURL('image/jpeg', 0.72) }))
+      .catch((error: any) => answer({ ok: false, error: (error && error.message) || 'Screenshot non riuscito.' }))
+    return
+  }
+  if (!pending.has(data.id)) return
   const entry = pending.get(data.id)!
+  // Streaming calls receive partial frames before the final reply.
+  if (data.partial) { if (entry.onDelta && typeof data.delta === 'string') entry.onDelta(data.delta); return }
   pending.delete(data.id)
   data.ok ? entry.resolve(data.result) : entry.reject(new Error(data.error || 'Chiamata AI non riuscita.'))
 })
-function callHost(action: string, payload: any, timeoutMs = 60000): Promise<any> {
+function callHost(action: string, payload: any, timeoutMs = 60000, onDelta?: (text: string) => void): Promise<any> {
   return new Promise((resolve, reject) => {
     const id = 'coding_' + Date.now() + '_' + Math.random().toString(36).slice(2)
-    pending.set(id, { resolve, reject })
+    pending.set(id, { resolve, reject, onDelta })
     window.parent.postMessage({ source: 'golinelli-coding-preview', id, action, payload }, '*')
     setTimeout(() => {
       if (!pending.has(id)) return
@@ -91,7 +111,79 @@ function callHost(action: string, payload: any, timeoutMs = 60000): Promise<any>
     }, timeoutMs)
   })
 }
+// --- Camera / microphone ------------------------------------------------------------------------
+// Every getUserMedia call (ours or the app's own) goes through requestMedia: relaxed-constraint retry,
+// Italian messages that tell the user what to do, and the permission state posted to the host page,
+// which shows browser-specific guidance OUTSIDE the iframe (where the real permission prompt lives).
+const MEDIA_MESSAGES: Record<string, string> = {
+  NotAllowedError: 'Permesso negato. Consenti fotocamera/microfono dall’icona accanto all’indirizzo del browser, poi premi di nuovo il pulsante.',
+  SecurityError: 'Il browser blocca fotocamera e microfono in questa pagina.',
+  NotFoundError: 'Nessuna fotocamera o microfono trovati su questo dispositivo.',
+  NotReadableError: 'Il dispositivo è già usato da un’altra app o scheda: chiudila e riprova.',
+  OverconstrainedError: 'Il dispositivo non supporta le impostazioni richieste.',
+  AbortError: 'L’accesso al dispositivo è stato interrotto: riprova.',
+}
+const nativeGetUserMedia = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+  ? navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+  : null
+function mediaKind(constraints: any): string {
+  if (constraints && constraints.video && constraints.audio) return 'camera+microphone'
+  return constraints && constraints.video ? 'camera' : 'microphone'
+}
+function notifyMedia(kind: string, state: string, errorName = '') {
+  window.parent.postMessage({ source: 'golinelli-coding-preview', id: 'media_' + Date.now(), action: 'mediaStatus', payload: { kind, state, error: errorName } }, '*')
+}
+function mediaError(name: string, message: string) {
+  const error: any = new Error(message)
+  error.name = name
+  error.isMediaPermission = true
+  return error
+}
+async function requestMedia(constraints: any): Promise<MediaStream> {
+  const kind = mediaKind(constraints)
+  if (!nativeGetUserMedia) {
+    notifyMedia(kind, 'unsupported')
+    throw mediaError('NotSupportedError', 'Questo browser non permette l’accesso a fotocamera e microfono: usa Chrome, Edge, Firefox o Safari aggiornati.')
+  }
+  notifyMedia(kind, 'prompt')
+  try {
+    const stream = await nativeGetUserMedia(constraints)
+    notifyMedia(kind, 'granted')
+    return stream
+  } catch (first: any) {
+    let error: any = first
+    if (error && ['OverconstrainedError', 'NotReadableError', 'AbortError', 'TypeError'].indexOf(error.name) >= 0) {
+      try {
+        const stream = await nativeGetUserMedia({ video: !!constraints.video, audio: !!constraints.audio })
+        notifyMedia(kind, 'granted')
+        return stream
+      } catch (retry: any) { error = retry }
+    }
+    const name = (error && error.name) || 'Error'
+    notifyMedia(kind, name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'error', name)
+    throw mediaError(name, MEDIA_MESSAGES[name] || (error && error.message) || 'Accesso al dispositivo non riuscito.')
+  }
+}
+if (nativeGetUserMedia) {
+  try { (navigator.mediaDevices as any).getUserMedia = (constraints: any) => requestMedia(constraints || { video: true }) } catch (e) { /* read-only in some browsers */ }
+}
 ;(window as any).GolinelliAI = {
+  media: {
+    camera: (options: any = {}) => requestMedia({
+      video: { facingMode: options.facingMode || 'user', width: { ideal: options.width || 1280 }, height: { ideal: options.height || 720 } },
+      audio: false,
+    }),
+    microphone: () => requestMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false }),
+    cameraAndMicrophone: (options: any = {}) => requestMedia({ video: { facingMode: options.facingMode || 'user' }, audio: true }),
+    attach: (video: HTMLVideoElement, stream: MediaStream) => {
+      video.playsInline = true
+      video.muted = true
+      video.autoplay = true
+      video.srcObject = stream
+      return video.play().catch(() => undefined)
+    },
+    stop: (stream?: MediaStream | null) => { if (stream) stream.getTracks().forEach((track) => track.stop()) },
+  },
   chat: ({ content, history = [], profileKey = 'tutor', provider, model }: any = {}) =>
     callHost('chat', { content, history, profileKey, provider, model }),
   generateImage: (args: any = {}) => {
@@ -116,7 +208,96 @@ function callHost(action: string, payload: any, timeoutMs = 60000): Promise<any>
   saveData: ({ key, value }: any = {}) => callHost('saveData', { key, value }),
   loadData: ({ key }: any = {}) => callHost('loadData', { key }),
   deleteData: ({ key }: any = {}) => callHost('deleteData', { key }),
+  // Streaming chat: onToken receives the growing text; resolves with the full response.
+  chatStream: ({ content, history = [], system, onToken }: any = {}) => {
+    let text = ''
+    return callHost('chatStream', { content, history, system }, 120000, (delta: string) => {
+      text += delta
+      if (typeof onToken === 'function') onToken(text, delta)
+    })
+  },
+  // Structured output: returns an already-parsed object shaped like the schema/example given.
+  json: ({ prompt, schema, history = [] }: any = {}) => callHost('json', { prompt, schema, history }, 90000),
+  // Image understanding: image = data URL (file input / canvas) or https URL.
+  vision: ({ image, prompt }: any = {}) => callHost('vision', { image, prompt }, 90000),
+  me: () => callHost('me', {}),
+  // State shared by EVERYONE using this app in the session (polls, boards, multiplayer games).
+  // append() adds to a list server-side, so simultaneous users never overwrite each other.
+  shared: {
+    get: (key: string) => callHost('sharedGet', { key }).then((result: any) => result ? result.value : null),
+    set: (key: string, value: any) => callHost('sharedSet', { key, value }).then((result: any) => result ? result.value : value),
+    append: (key: string, item: any) => callHost('sharedAppend', { key, value: item }).then((result: any) => result ? result.value : []),
+    subscribe: (key: string, callback: (value: any) => void, options: any = {}) => {
+      let lastStamp: string | null = null
+      let stopped = false
+      const tick = () => {
+        if (stopped) return
+        callHost('sharedGet', { key })
+          .then((result: any) => {
+            const stamp = result && result.updated_at ? String(result.updated_at) : ''
+            if (stamp !== lastStamp) { lastStamp = stamp; callback(result ? result.value : null) }
+          })
+          .catch(() => {})
+          .finally(() => { if (!stopped) setTimeout(tick, Math.max(1000, options.intervalMs || 2000)) })
+      }
+      tick()
+      return () => { stopped = true }
+    },
+  },
+  // Speech runs locally in the browser (Web Speech API): no server round trip, no credits.
+  speak: (text: string, options: any = {}) => new Promise<void>((resolve, reject) => {
+    const synth = (window as any).speechSynthesis
+    if (!synth) { reject(new Error('Sintesi vocale non supportata da questo browser.')); return }
+    const utterance = new SpeechSynthesisUtterance(String(text || ''))
+    utterance.lang = options.lang || 'it-IT'
+    utterance.rate = options.rate || 1
+    utterance.pitch = options.pitch || 1
+    utterance.onend = () => resolve()
+    utterance.onerror = (event: any) => reject(new Error(event.error || 'Lettura non riuscita.'))
+    synth.cancel()
+    synth.speak(utterance)
+  }),
+  stopSpeaking: () => { const synth = (window as any).speechSynthesis; if (synth) synth.cancel() },
+  listen: (options: any = {}) => new Promise<string>((resolve, reject) => {
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!Recognition) { reject(new Error('Riconoscimento vocale non supportato da questo browser (usa Chrome o Edge).')); return }
+    const recognition = new Recognition()
+    recognition.lang = options.lang || 'it-IT'
+    recognition.interimResults = typeof options.onPartial === 'function'
+    recognition.maxAlternatives = 1
+    let finalText = ''
+    recognition.onresult = (event: any) => {
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const chunk = event.results[i][0].transcript
+        if (event.results[i].isFinal) finalText += chunk
+        else interim += chunk
+      }
+      if (typeof options.onPartial === 'function') options.onPartial(finalText + interim)
+    }
+    recognition.onerror = (event: any) => reject(new Error(event.error === 'not-allowed' ? 'Permesso microfono negato.' : (event.error || 'Ascolto non riuscito.')))
+    recognition.onend = () => resolve(finalText.trim())
+    recognition.start()
+  }),
 }
+// Uncaught errors and rejected promises are what break an app AFTER it compiles: report them to the
+// host so the observe->fix loop can see them (fire-and-forget, deduplicated, capped).
+const reportedErrors = new Set<string>()
+function reportRuntimeError(message: string) {
+  const text = String(message || '').trim()
+  if (!text || reportedErrors.has(text) || reportedErrors.size > 20) return
+  reportedErrors.add(text)
+  window.parent.postMessage({ source: 'golinelli-coding-preview', id: 'err_' + Date.now() + '_' + reportedErrors.size, action: 'reportError', payload: { message: text } }, '*')
+}
+window.addEventListener('error', (event: ErrorEvent) => {
+  const where = event.filename ? ' (' + event.filename.split('/').pop() + ':' + event.lineno + ')' : ''
+  reportRuntimeError((event.message || 'Errore JavaScript') + where)
+})
+window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+  const reason: any = event.reason
+  if (reason && (reason.isMediaPermission || reason.name === 'NotAllowedError' || reason.name === 'SecurityError')) return
+  reportRuntimeError('Promise non gestita: ' + (reason && reason.message ? reason.message : String(reason)))
+})
 export const ENABLE_INSPECTOR = ${enableInspector ? 'true' : 'false'}
 export {}
 `
@@ -260,6 +441,8 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
             dependencies: {
               react: '^18.2.0',
               'react-dom': '^18.2.0',
+              // Used only by the bridge for the visual review screenshot.
+              html2canvas: '^1.4.1',
               ...dependencies,
             },
           }}

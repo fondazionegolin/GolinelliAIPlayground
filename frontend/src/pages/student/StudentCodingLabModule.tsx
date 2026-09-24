@@ -15,6 +15,8 @@ import {
   Download,
   Eye,
   FileCode2,
+  Globe,
+  Copy,
   HelpCircle,
   Lightbulb,
   ListChecks,
@@ -50,6 +52,9 @@ import {
   WorkspaceExplorerSidebar,
 } from '@/components/WorkspaceExplorerSidebar'
 import { useMobile } from '@/hooks/useMobile'
+import { useAuthStore } from '@/stores/auth'
+import { TEACHER_PROFILE_KEY, type TeacherProfileData } from '@/hooks/useTeacherProfile'
+import { useQueryClient } from '@tanstack/react-query'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -153,7 +158,7 @@ type UpstreamStatus = {
 type PreviewApiRequest = {
   source?: 'golinelli-coding-preview'
   id?: string
-  action?: 'chat' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink'
+  action?: 'chat' | 'chatStream' | 'json' | 'vision' | 'me' | 'sharedGet' | 'sharedSet' | 'sharedAppend' | 'captureResult' | 'mediaStatus' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink' | 'reportError'
   payload?: Record<string, unknown>
 }
 
@@ -331,6 +336,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<GeneratedFile[]>([])
+  const queryClient = useQueryClient()
+  // Identity exposed to generated apps through GolinelliAI.me(): display name + role only. Read from
+  // what the app already knows (teacher profile cache / student session) — never an extra request.
+  const bridgeIdentity = (): { name: string; role: 'student' | 'teacher' } => {
+    if (!isTeacher) return { name: useAuthStore.getState().studentSession?.nickname || 'Studente', role: 'student' }
+    const profile = queryClient.getQueryData<TeacherProfileData>(TEACHER_PROFILE_KEY)
+    const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ')
+    return { name: fullName || useAuthStore.getState().user?.email?.split('@')[0] || 'Docente', role: 'teacher' }
+  }
+  const bridgeIdentityRef = useRef(bridgeIdentity)
+  bridgeIdentityRef.current = bridgeIdentity
+  // Latest files for async flows (observe→fix timers) that outlive the render that started them.
+  const filesRef = useRef<GeneratedFile[]>([])
+  filesRef.current = files
   const [selectedPath, setSelectedPath] = useState('index.html')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -415,12 +434,28 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }, 120)
     return () => window.clearTimeout(timer)
   }, [activeWorkbench, message, prompt, selectedPath, selectedProjectId, title])
-  // Agentic auto-fix loop: real compile errors from the Sandpack runtime are fed back to the model
-  // until the project builds clean (capped, so a stubborn error can't loop forever / burn credits).
-  const [previewErrors, setPreviewErrors] = useState<SandpackRuntimeError[]>([])
+  // Agentic observe→fix loop: after every generation the running app is watched for a few seconds;
+  // real compile/runtime/console errors go back to the agent as a patch-only fix turn, until the app
+  // runs clean or the budget is spent (so a stubborn error can't loop forever / burn credits).
   const [autoFixing, setAutoFixing] = useState(false)
+  const [verifyState, setVerifyState] = useState<'idle' | 'observing' | 'clean' | 'failed'>('idle')
+  const [verifyErrors, setVerifyErrors] = useState<SandpackRuntimeError[]>([])
   const autoFixAttempts = useRef(0)
-  const MAX_AUTO_FIX = 2
+  const MAX_AUTO_FIX = 3
+  const observeRef = useRef<{ errors: Map<string, SandpackRuntimeError>; timer: number | null } | null>(null)
+  const generationAbortRef = useRef<AbortController | null>(null)
+  const lastGenerationModeRef = useRef<'build' | 'fix' | 'visual'>('build')
+  // Visual review: screenshot of the running app → vision model → one-click polish turn.
+  const previewFrameRef = useRef<HTMLDivElement>(null)
+  const captureWaitersRef = useRef(new Map<string, (result: { ok?: boolean; image?: string; error?: string }) => void>())
+  const [visualReview, setVisualReview] = useState<{ status: 'reviewing' | 'done' | 'error'; score?: number | null; summary?: string; issues?: { severity: string; area: string; problem: string; fix: string }[]; error?: string } | null>(null)
+  const [publication, setPublication] = useState<{ url: string } | null>(null)
+  // Camera/microphone state reported by the running app: the real browser prompt appears next to the
+  // address bar, far from the preview, so the page explains it (and how to undo a refusal).
+  const [mediaStatus, setMediaStatus] = useState<{ kind: string; state: string; error: string } | null>(null)
+  const [mediaReloadNonce, setMediaReloadNonce] = useState(0)
+  const activeWorkbenchRef = useRef<string>('preview')
+  const [generationMode, setGenerationMode] = useState<'build' | 'fix'>('build')
   const [diffView, setDiffView] = useState<{ path: string; oldContent: string; newContent: string } | null>(null)
   const modelOptions = modelOptionsFor(isTeacher)
   const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
@@ -449,7 +484,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // Live generation feedback (streamed): reasoning chain, planned files, and per-file progress.
   const [liveReasoning, setLiveReasoning] = useState('')
   const [livePlan, setLivePlan] = useState<{ path: string; purpose: string }[]>([])
-  const [liveFiles, setLiveFiles] = useState<{ path: string; lines: number; status: 'writing' | 'done' }[]>([])
+  const [liveFiles, setLiveFiles] = useState<LiveFile[]>([])
   const [liveStatus, setLiveStatus] = useState('')
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
@@ -491,6 +526,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null
   const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
+  activeWorkbenchRef.current = activeWorkbench
   const previewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: true })), [files, isReactPreview])
   const fullscreenPreviewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: false })), [files, isReactPreview])
   const hasPreview = isReactPreview ? files.length > 0 : Boolean(previewHtml)
@@ -517,7 +553,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     previewResets.current = 0
     fullscreenLoads.current = 0
     fullscreenResets.current = 0
-    setPreviewErrors([])
   }, [previewKey])
   useEffect(() => { fullscreenLoads.current = 0 }, [fullscreenNonce])
   useEffect(() => { fullscreenLoads.current = 0; fullscreenResets.current = 0 }, [fullscreenPreviewHtml])
@@ -627,7 +662,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setSelectedPath('index.html')
     setPreviewingCommitId(null)
     setPreviewingVersionId(null)
-    setPreviewErrors([])
     try {
       const [response, savedModelResponse] = await Promise.all([
         codingApi.getProject(projectId),
@@ -695,7 +729,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setSelectedPath('index.html')
       setPreviewingCommitId(null)
       setPreviewingVersionId(null)
-      setPreviewErrors([])
     }
     setSelectedProjectId(project.id)
     setActiveWorkbench('preview')
@@ -827,7 +860,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setSelectedPath('index.html')
         setPreviewingCommitId(null)
         setPreviewingVersionId(null)
-        setPreviewErrors([])
         setCreatePanelOpen(false)
         setPromptPanelOpen(true)
         setSelectedProjectId(project.id)
@@ -854,13 +886,29 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     const handlePreviewApi = async (event: MessageEvent<PreviewApiRequest>) => {
       const data = event.data
       if (data?.source !== 'golinelli-coding-preview' || !data.id || !data.action) return
+      // Only frames embedded in this page (our previews) may drive the bridge: a message from any
+      // other window (another tab, an opener, a frame of a frame) is ignored.
+      const fromOwnPreview = Array.from(document.querySelectorAll('iframe')).some((frame) => frame.contentWindow === event.source)
+      if (!fromOwnPreview) return
+      const replyOrigin = event.origin && event.origin !== 'null' ? event.origin : '*'
 
       const reply = (payload: Record<string, unknown>) => {
         event.source?.postMessage({
           source: 'golinelli-coding-host',
           id: data.id,
           ...payload,
-        }, { targetOrigin: '*' })
+        }, { targetOrigin: replyOrigin })
+      }
+
+      if (data.action === 'mediaStatus') {
+        const payload = (data.payload || {}) as { kind?: string; state?: string; error?: string }
+        setMediaStatus(payload.state === 'granted' ? null : { kind: String(payload.kind || 'camera'), state: String(payload.state || 'error'), error: String(payload.error || '') })
+        return
+      }
+
+      if (data.action === 'captureResult') {
+        captureWaitersRef.current.get(data.id)?.((data.payload || {}) as { ok?: boolean; image?: string; error?: string })
+        return
       }
 
       try {
@@ -939,6 +987,97 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           const reference = where ? `Migliora questa sezione: ${label} (${where})` : `Migliora questa sezione: ${label}`
           setMessage((prev) => prev.trim() ? `${reference}\n${prev.trim()}` : reference)
           reply({ ok: true, result: { inserted: true } })
+          return
+        }
+
+        if (data.action === 'sharedGet' || data.action === 'sharedSet' || data.action === 'sharedAppend') {
+          const projectId = selectedProjectIdRef.current
+          const key = String(data.payload?.key || '').trim()
+          if (!projectId || !key) { reply({ ok: false, error: 'Chiave condivisa mancante.' }); return }
+          const response = data.action === 'sharedGet'
+            ? await codingApi.getSharedData(projectId, key)
+            : data.action === 'sharedSet'
+              ? await codingApi.putSharedData(projectId, key, data.payload?.value ?? null)
+              : await codingApi.appendSharedData(projectId, key, data.payload?.value ?? null)
+          reply({ ok: true, result: response.data })
+          return
+        }
+
+        if (data.action === 'me') {
+          reply({ ok: true, result: bridgeIdentityRef.current() })
+          return
+        }
+
+        if (data.action === 'chatStream') {
+          const payload = data.payload || {}
+          const studentToken = localStorage.getItem('student_token')
+          const response = await fetch(codingApi.aiChatStreamUrl(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(studentToken ? { 'student-token': studentToken } : {}) },
+            credentials: 'include',
+            body: JSON.stringify({
+              content: String(payload.content || ''),
+              history: Array.isArray(payload.history) ? payload.history : [],
+              system: typeof payload.system === 'string' ? payload.system : undefined,
+            }),
+          })
+          if (!response.ok || !response.body) throw new Error('Chat non disponibile.')
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let full = ''
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            let sep: number
+            while ((sep = buffer.indexOf('\n\n')) >= 0) {
+              const line = buffer.slice(0, sep).split('\n').find((item) => item.startsWith('data: '))
+              buffer = buffer.slice(sep + 2)
+              if (!line) continue
+              let frame: any
+              try { frame = JSON.parse(line.slice(6)) } catch { continue }
+              if (frame.type === 'delta' && typeof frame.text === 'string') {
+                full += frame.text
+                event.source?.postMessage({ source: 'golinelli-coding-host', id: data.id, partial: true, delta: frame.text }, { targetOrigin: replyOrigin })
+              } else if (frame.type === 'error') {
+                throw new Error(frame.message || 'Chat non riuscita.')
+              } else if (frame.type === 'done' && typeof frame.response === 'string') {
+                full = frame.response
+              }
+            }
+          }
+          reply({ ok: true, result: { response: full } })
+          return
+        }
+
+        if (data.action === 'json') {
+          const payload = data.payload || {}
+          const schema = payload.schema === undefined ? '' : (typeof payload.schema === 'string' ? payload.schema : JSON.stringify(payload.schema))
+          const instruction = `${String(payload.prompt || '')}\n\nRispondi SOLO con JSON valido${schema ? `, con esattamente questa struttura (schema o esempio): ${schema}` : ''}. Nessun testo, commento o markdown fuori dal JSON.`
+          const history = Array.isArray(payload.history) ? payload.history as { role: string; content: string }[] : []
+          let lastError = ''
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const content = attempt === 0 ? instruction : `${instruction}\n\nIl tentativo precedente non era JSON valido (${lastError}). Restituisci solo il JSON.`
+            const response = await codingApi.aiChat({ content, history })
+            const parsed = parseLooseJson(String(response.data?.response || ''))
+            if (parsed.ok) { reply({ ok: true, result: parsed.value }); return }
+            lastError = parsed.error
+          }
+          throw new Error('Il modello non ha restituito JSON valido.')
+        }
+
+        if (data.action === 'vision') {
+          const payload = data.payload || {}
+          const response = await codingApi.aiVision({ image: String(payload.image || ''), prompt: typeof payload.prompt === 'string' ? payload.prompt : undefined })
+          reply({ ok: true, result: response.data })
+          return
+        }
+
+        if (data.action === 'reportError') {
+          const message = String(data.payload?.message || '').trim()
+          if (message) previewErrorsHandlerRef.current?.([{ message: message.slice(0, 600), kind: 'runtime' }])
+          reply({ ok: true, result: {} })
           return
         }
 
@@ -1045,20 +1184,27 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual' }) => {
+    const controller = new AbortController()
+    generationAbortRef.current = controller
     setGenerating(true)
+    setGenerationMode(fix ? 'fix' : 'build')
+    lastGenerationModeRef.current = fix ? (fix.mode || 'fix') : 'build'
+    if (!fix || fix.mode === 'visual') setVisualReview(null)
     setError(null)
     setLiveReasoning('')
     setLivePlan([])
     setLiveFiles([])
-    setLiveStatus('Preparo il progetto e il contesto della richiesta…')
+    setLiveStatus(fix ? 'Leggo gli errori dell’anteprima e preparo una correzione mirata…' : 'Preparo il progetto e il contesto della richiesta…')
     // A fresh user-driven generation starts a new fix budget; an auto-fix iteration spends from it.
-    if (!isAutoFix) {
+    if (!fix) {
       autoFixAttempts.current = 0
-      setPreviewErrors([])
+      setVerifyErrors([])
     }
+    cancelObservation()
+    setVerifyState('idle')
     try {
-      const baseFiles = filesOverride ?? files
+      const baseFiles = filesOverride ?? filesRef.current
       // Streamed (SSE) generation: keeps the connection alive while the LLM writes the app,
       // so a 90-180s generation survives the Cloudflare ~100s proxy timeout.
       const studentToken = localStorage.getItem('student_token')
@@ -1069,11 +1215,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           ...(studentToken ? { 'student-token': studentToken } : {}),
         },
         credentials: 'include',
-        body: JSON.stringify({
-          prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
-          files: baseFiles.length ? baseFiles : undefined,
-          model_key: modelKey,
-        }),
+        signal: controller.signal,
+        body: JSON.stringify(fix
+          ? { mode: fix.mode || 'fix', errors: fix.errors, files: baseFiles.length ? baseFiles : undefined, model_key: modelKey }
+          : {
+              prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
+              files: baseFiles.length ? baseFiles : undefined,
+              model_key: modelKey,
+            }),
       })
       if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
 
@@ -1111,16 +1260,21 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             setLivePlan((event.files || []) as { path: string; purpose: string }[])
             setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
           } else if (event.type === 'file_start') {
-            setLiveStatus(`Scrittura di ${String(event.path)}…`)
+            setLiveStatus(event.op === 'patch' ? `Modifico ${String(event.path)}…` : `Scrittura di ${String(event.path)}…`)
             setLiveFiles((prev) => prev.some((file) => file.path === event.path)
-              ? prev
-              : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const }])
+              ? prev.map((file) => file.path === event.path ? { ...file, op: event.op } : file)
+              : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const, op: event.op }])
           } else if (event.type === 'file_progress') {
             setLiveStatus(`Scrittura di ${String(event.path)}: ${event.lines || 0} righe…`)
             setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
           } else if (event.type === 'file_done') {
-            setLiveStatus(`${String(event.path)} completato (${event.lines || 0} righe).`)
-            setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines, status: 'done' as const } : file))
+            setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? `Modifica pronta per ${String(event.path)}.` : `${String(event.path)} completato (${event.lines || 0} righe).`)
+            setLiveFiles((prev) => {
+              const next = { path: String(event.path), lines: event.lines || 0, status: 'done' as const, op: event.op }
+              return prev.some((file) => file.path === event.path)
+                ? prev.map((file) => file.path === event.path ? { ...file, ...next, lines: event.lines || file.lines } : file)
+                : [...prev, next]
+            })
           } else if (event.type === 'done') {
             setLiveStatus('Versione pronta. Aggiorno progetto e anteprima…')
             generatedFiles = (event.files || []) as GeneratedFile[]
@@ -1137,13 +1291,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       if (streamError) throw new Error(streamError)
       if (generatedFiles) {
         setFiles(generatedFiles)
+        filesRef.current = generatedFiles
         const preferred = generatedFiles.find((f) => f.path === 'App.tsx' || f.path === 'index.html')
         setSelectedPath(preferred?.path || generatedFiles[0]?.path || 'App.tsx')
+        // Observe the new version running before declaring it done (React projects only).
+        if (isReactProject(generatedFiles)) startObservation()
       }
       await loadProjectDetail(projectId)
     } catch (err: any) {
-      setError(err?.message || 'Generazione codice non riuscita.')
+      if (err?.name === 'AbortError') setError('Generazione interrotta: il progetto è rimasto alla versione precedente.')
+      else setError(err?.message || 'Generazione codice non riuscita.')
     } finally {
+      if (generationAbortRef.current === controller) generationAbortRef.current = null
       setGenerating(false)
       setLiveReasoning('')
       setLivePlan([])
@@ -1152,31 +1311,141 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
-  // Feed real compile errors back to the model to repair the project (capped retry budget).
+  // Feed real errors back to the agent as a patch-only fix turn (capped retry budget).
   const runAutoFix = async (errs: SandpackRuntimeError[]) => {
-    if (!selectedProjectId || autoFixing || generating) return
-    if (autoFixAttempts.current >= MAX_AUTO_FIX) return
+    const projectId = selectedProjectIdRef.current
+    if (!projectId || generationAbortRef.current) return
     autoFixAttempts.current += 1
     setAutoFixing(true)
     try {
-      const detail = errs.slice(0, 6).map((e) => `- ${e.path ? e.path + ': ' : ''}${e.message}`).join('\n')
-      const prompt = `Il progetto non compila o va in errore. Correggi SOLO questi errori reali del runtime, lasciando invariato tutto il resto:\n${detail}`
-      await generateCode(selectedProjectId, prompt, undefined, true)
+      await generateCode(projectId, undefined, undefined, { errors: errs.slice(0, 8).map(describeRuntimeError) })
     } finally {
       setAutoFixing(false)
     }
   }
+  const runAutoFixRef = useRef(runAutoFix)
+  runAutoFixRef.current = runAutoFix
+
+  function cancelObservation() {
+    if (observeRef.current?.timer) window.clearTimeout(observeRef.current.timer)
+    observeRef.current = null
+  }
+  // Decide once the preview has been quiet for a moment: clean, fix again, or hand over.
+  function concludeObservation() {
+    const state = observeRef.current
+    if (!state) return
+    observeRef.current = null
+    const errs = [...state.errors.values()]
+    setVerifyErrors(errs)
+    if (!errs.length) {
+      setVerifyState('clean')
+      window.setTimeout(() => setVerifyState((value) => value === 'clean' ? 'idle' : value), 4000)
+      // A fresh build that runs clean gets one automatic look; polish turns don't loop on themselves.
+      if (lastGenerationModeRef.current === 'build' && activeWorkbenchRef.current === 'preview') {
+        window.setTimeout(() => { void runVisualReviewRef.current() }, 1200)
+      }
+      return
+    }
+    if (autoFixAttempts.current >= MAX_AUTO_FIX) { setVerifyState('failed'); return }
+    setVerifyState('idle')
+    void runAutoFixRef.current(errs)
+  }
+  function scheduleVerdict(delayMs: number) {
+    const state = observeRef.current
+    if (!state) return
+    if (state.timer) window.clearTimeout(state.timer)
+    state.timer = window.setTimeout(concludeObservation, delayMs)
+  }
+  function startObservation() {
+    cancelObservation()
+    observeRef.current = { errors: new Map(), timer: null }
+    setVerifyState('observing')
+    // Hard cap in case the bundler never reports back (e.g. dependency download stalls).
+    scheduleVerdict(15000)
+  }
 
   const handlePreviewErrors = (errs: SandpackRuntimeError[]) => {
-    setPreviewErrors(errs)
-    const compile = errs.filter((e) => e.kind === 'compile')
-    if (compile.length && isReactPreview && !generating && !autoFixing && autoFixAttempts.current < MAX_AUTO_FIX) {
-      void runAutoFix(compile)
+    const state = observeRef.current
+    if (!state) return
+    for (const item of errs.filter(isActionableRuntimeError)) state.errors.set(`${item.kind}:${item.path || ''}:${item.message}`, item)
+    // Debounce: errors often arrive in bursts (compile then console echo).
+    scheduleVerdict(2000)
+  }
+  const previewErrorsHandlerRef = useRef(handlePreviewErrors)
+  previewErrorsHandlerRef.current = handlePreviewErrors
+
+  // Ask the bridge inside the preview iframe for a screenshot (the host cannot read a cross-origin frame).
+  const capturePreview = () => new Promise<string>((resolve, reject) => {
+    const frame = previewFrameRef.current?.querySelector('iframe')
+    if (!frame?.contentWindow) { reject(new Error('Anteprima non disponibile.')); return }
+    const id = `capture_${Date.now()}`
+    const timer = window.setTimeout(() => { captureWaitersRef.current.delete(id); reject(new Error('Screenshot non riuscito (tempo scaduto).')) }, 20000)
+    captureWaitersRef.current.set(id, (result) => {
+      window.clearTimeout(timer)
+      captureWaitersRef.current.delete(id)
+      if (result.ok && result.image) resolve(result.image)
+      else reject(new Error(result.error || 'Screenshot non riuscito.'))
+    })
+    frame.contentWindow.postMessage({ source: 'golinelli-coding-host', action: 'capture', id }, '*')
+  })
+
+  const runVisualReview = async () => {
+    const projectId = selectedProjectIdRef.current
+    if (!projectId || generationAbortRef.current) return
+    setVisualReview({ status: 'reviewing' })
+    try {
+      const image = await capturePreview()
+      const response = await codingApi.visualReview(projectId, image)
+      setVisualReview({ status: 'done', ...response.data })
+      await loadProjectDetail(projectId)
+    } catch (err: any) {
+      setVisualReview({ status: 'error', error: err?.response?.data?.detail || err?.message || 'Revisione visiva non riuscita.' })
+    }
+  }
+  const runVisualReviewRef = useRef(runVisualReview)
+  runVisualReviewRef.current = runVisualReview
+
+  const applyVisualFixes = () => {
+    const projectId = selectedProjectIdRef.current
+    const issues = visualReview?.issues || []
+    if (!projectId || !issues.length) return
+    autoFixAttempts.current = 0
+    void generateCode(projectId, undefined, undefined, {
+      mode: 'visual',
+      errors: issues.map((item) => `[${item.severity}] ${item.area}: ${item.problem} → ${item.fix}`),
+    })
+  }
+
+  const handlePublishProject = async () => {
+    if (!selectedProjectId) return
+    setPublishing(true)
+    setError(null)
+    try {
+      await saveCurrentFilesVersion('Versione salvata prima della pubblicazione.')
+      const response = await codingApi.publishProject(selectedProjectId)
+      setPublication({ url: `${window.location.origin}${response.data.url_path}` })
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Pubblicazione non riuscita.')
+    } finally {
+      setPublishing(false)
     }
   }
 
+  const stopGeneration = () => {
+    generationAbortRef.current?.abort()
+    cancelObservation()
+    setVerifyState('idle')
+  }
+
+  const retryAutoFix = () => {
+    autoFixAttempts.current = Math.max(0, MAX_AUTO_FIX - 1)
+    setVerifyState('idle')
+    void runAutoFix(verifyErrors)
+  }
+
   const handlePreviewReady = () => {
-    setPreviewErrors([])
+    // Mounted without compile errors: keep watching briefly for runtime errors after first render.
+    if (observeRef.current) scheduleVerdict(3000)
     setPreviewLoading(false)
   }
 
@@ -1197,7 +1466,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         created_at: new Date().toISOString(),
       }
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
-      await generateCode(selectedProjectId, nextPrompt, undefined, false)
+      await generateCode(selectedProjectId, nextPrompt)
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile salvare il messaggio.')
     } finally {
@@ -1759,7 +2028,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )}
                   {generating && (
                     <div className="sticky bottom-0 z-20 rounded-2xl border border-[color:var(--border-subtle)] bg-white/95 p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
-                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} plan={livePlan} files={liveFiles} />
+                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} plan={livePlan} files={liveFiles} mode={generationMode} onStop={stopGeneration} />
                     </div>
                   )}
                   <div ref={conversationEndRef} />
@@ -1878,6 +2147,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     disabled={!selectedProjectId || publishing}
                     title="Condividi in classe"
                   />
+                  {isReactPreview && (
+                    <CodingToolbarIconButton
+                      icon={visualReview?.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                      label="Revisione"
+                      onClick={() => { void runVisualReview() }}
+                      disabled={!selectedProjectId || generating || visualReview?.status === 'reviewing'}
+                      title="Revisione visiva con screenshot"
+                    />
+                  )}
+                  <CodingToolbarIconButton
+                    icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                    label="Pubblica"
+                    onClick={handlePublishProject}
+                    disabled={!selectedProjectId || publishing}
+                    title="Pubblica con un link e un codice da incorporare"
+                  />
                   <CodingToolbarIconButton
                     icon={downloadingZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     label="ZIP"
@@ -1899,6 +2184,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </div>
               )}
             </div>
+            {activeWorkbench === 'preview' && publication && (
+              <PublicationBanner url={publication.url} onClose={() => setPublication(null)} />
+            )}
             {activeWorkbench === 'preview' && shareUrl && (
               <div className="border-b border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-4 py-2 text-xs font-semibold text-[#1278bd]">
                 {shareUrl}
@@ -1917,7 +2205,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             {/* Both panels stay mounted and are toggled via CSS (not conditional rendering) so
                 switching Code <-> Preview never tears down the live Sandpack bundler/iframe. */}
             <div className={activeWorkbench === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-              <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-slate-900 p-2">
+              <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-slate-900 p-2 md:hidden">
                 {files.length === 0 && (
                   <span className="px-2 py-1 text-xs text-slate-500">Nessun file — aggiungi contesto o genera</span>
                 )}
@@ -1950,7 +2238,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   File
                 </button>
               </div>
-              <div className="min-h-0 flex-1 p-3">
+              <div className="flex min-h-0 flex-1">
+              <ProjectFileTree files={files} selectedPath={selectedFile?.path} onSelect={setSelectedPath} onAddFile={addNewFile} />
+              <div className="min-h-0 min-w-0 flex-1 p-3">
                 {selectedFile ? (
                   selectedFileIsGeneratedDescription ? (
                     <GeneratedDescriptionPreview file={selectedFile} />
@@ -1963,12 +2253,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   </div>
                 )}
               </div>
+              </div>
             </div>
             <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
             {isReactPreview && files.length > 0 ? (
-              <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
+              <div ref={previewFrameRef} className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
-                  key={previewIdentityKey}
+                  key={`${previewIdentityKey}:${mediaReloadNonce}`}
                   files={files}
                   enableInspector
                   forceVerticalScroll={isMobile}
@@ -1976,22 +2267,23 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   onErrors={handlePreviewErrors}
                   onReady={handlePreviewReady}
                 />
-                {(autoFixing || (previewErrors.some((e) => e.kind === 'compile') && autoFixAttempts.current >= MAX_AUTO_FIX)) && (
-                  <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
-                    <div className={`pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${autoFixing ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white'}`}>
-                      {autoFixing ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Correzione automatica degli errori… (tentativo {autoFixAttempts.current}/{MAX_AUTO_FIX})
-                        </>
-                      ) : (
-                        <>
-                          <X className="h-3.5 w-3.5" />
-                          Errori residui non risolti automaticamente. Descrivi la correzione in chat.
-                        </>
-                      )}
-                    </div>
-                  </div>
+                <VerifyStatusPill
+                  state={autoFixing || (generating && generationMode === 'fix') ? 'fixing' : verifyState}
+                  attempt={autoFixAttempts.current}
+                  maxAttempts={MAX_AUTO_FIX}
+                  errors={verifyErrors}
+                  onRetry={retryAutoFix}
+                  onDismiss={() => setVerifyState('idle')}
+                />
+                {mediaStatus && (
+                  <MediaPermissionBanner
+                    status={mediaStatus}
+                    onReload={() => { setMediaStatus(null); setMediaReloadNonce((value) => value + 1) }}
+                    onClose={() => setMediaStatus(null)}
+                  />
+                )}
+                {verifyState === 'idle' && !generating && visualReview && (
+                  <VisualReviewCard review={visualReview} onApply={applyVisualFixes} onClose={() => setVisualReview(null)} />
                 )}
                 {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
@@ -2680,16 +2972,261 @@ function CollapsibleVersionRow({
   )
 }
 
+type FileTreeNode = { name: string; path: string; children: FileTreeNode[]; file?: GeneratedFile }
+
+function buildFileTree(files: GeneratedFile[]): FileTreeNode[] {
+  const root: FileTreeNode = { name: '', path: '', children: [] }
+  for (const file of files) {
+    const parts = file.path.replace(/^\/+/, '').split('/')
+    let node = root
+    parts.forEach((part, index) => {
+      const path = parts.slice(0, index + 1).join('/')
+      let child = node.children.find((item) => item.name === part)
+      if (!child) { child = { name: part, path, children: [] }; node.children.push(child) }
+      if (index === parts.length - 1) child.file = file
+      node = child
+    })
+  }
+  // Folders first, then files; both alphabetical — like any code editor.
+  const sort = (nodes: FileTreeNode[]): FileTreeNode[] => nodes
+    .sort((a, b) => Number(!!a.file && !a.children.length) - Number(!!b.file && !b.children.length) || a.name.localeCompare(b.name))
+    .map((node) => ({ ...node, children: sort(node.children) }))
+  return sort(root.children)
+}
+
+// Explorer-style file tree for the code workbench (desktop); mobile keeps the compact tab strip.
+function ProjectFileTree({ files, selectedPath, onSelect, onAddFile }: { files: GeneratedFile[]; selectedPath?: string; onSelect: (path: string) => void; onAddFile: () => void }) {
+  const tree = useMemo(() => buildFileTree(files), [files])
+  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  const renderNodes = (nodes: FileTreeNode[], depth: number): ReactNode => nodes.map((node) => {
+    const isFolder = node.children.length > 0 && !node.file
+    if (isFolder) {
+      const open = !closed.has(node.path)
+      return (
+        <div key={node.path}>
+          <button
+            type="button"
+            onClick={() => setClosed((prev) => { const next = new Set(prev); if (next.has(node.path)) next.delete(node.path); else next.add(node.path); return next })}
+            className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs font-semibold text-slate-300 hover:bg-white/5"
+            style={{ paddingLeft: 8 + depth * 12 }}
+            aria-expanded={open}
+          >
+            <ChevronRight className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} />
+            <span className="truncate">{node.name}</span>
+          </button>
+          {open && renderNodes(node.children, depth + 1)}
+        </div>
+      )
+    }
+    const active = node.path === selectedPath
+    return (
+      <button
+        key={node.path}
+        type="button"
+        onClick={() => onSelect(node.file?.path || node.path)}
+        className={`flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs ${active ? 'bg-white/10 font-semibold text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
+        style={{ paddingLeft: 20 + depth * 12 }}
+        title={node.path}
+      >
+        <FileCode2 className="h-3 w-3 shrink-0 opacity-70" />
+        <span className="truncate">{node.name}</span>
+        {node.path === 'description.md' && <span className="ml-auto rounded-full bg-white/10 px-1.5 text-[9px] font-black uppercase text-slate-400">auto</span>}
+      </button>
+    )
+  })
+  return (
+    <aside className="hidden w-56 shrink-0 flex-col border-r border-white/10 bg-slate-900/60 md:flex">
+      <div className="flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+        <span>File · {files.length}</span>
+        <button type="button" onClick={onAddFile} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" title="Aggiungi file di contesto (knowledge base di progetto)"><Plus className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
+        {files.length ? renderNodes(tree, 0) : <p className="px-2 py-4 text-xs text-slate-500">Nessun file ancora.</p>}
+      </div>
+    </aside>
+  )
+}
+
+// Tolerant JSON extraction for model output: strips code fences and surrounding prose.
+function parseLooseJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  const cleaned = text.replace(/```(?:json)?/gi, '').trim()
+  const starts = [cleaned.indexOf('{'), cleaned.indexOf('[')].filter((index) => index >= 0)
+  if (!starts.length) return { ok: false, error: 'nessun oggetto JSON trovato' }
+  const start = Math.min(...starts)
+  const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
+  try {
+    return { ok: true, value: JSON.parse(cleaned.slice(start, end + 1)) }
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'JSON non valido' }
+  }
+}
+
+function VisualReviewCard({ review, onApply, onClose }: {
+  review: { status: 'reviewing' | 'done' | 'error'; score?: number | null; summary?: string; issues?: { severity: string; area: string; problem: string; fix: string }[]; error?: string }
+  onApply: () => void
+  onClose: () => void
+}) {
+  const issues = review.issues || []
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center p-3">
+      <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-slate-200 backdrop-blur" role="status" aria-live="polite">
+        <div className="flex items-center gap-2">
+          {review.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> : <Eye className="h-4 w-4 text-slate-500" />}
+          <p className="flex-1 font-bold text-slate-900">
+            {review.status === 'reviewing' ? 'Revisione visiva in corso…' : review.status === 'error' ? 'Revisione visiva non riuscita' : `Revisione visiva${review.score ? ` · ${review.score}/10` : ''}`}
+          </p>
+          {review.status !== 'reviewing' && <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>}
+        </div>
+        {review.status === 'error' && <p className="mt-1 text-rose-600">{review.error}</p>}
+        {review.status === 'done' && (
+          <>
+            {review.summary && <p className="mt-1 text-slate-600">{review.summary}</p>}
+            {issues.length > 0 ? (
+              <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
+                {issues.map((item, index) => (
+                  <li key={index} className="flex gap-2">
+                    <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${item.severity === 'alta' ? 'bg-rose-500' : item.severity === 'media' ? 'bg-orange-400' : 'bg-slate-300'}`} />
+                    <span><b className="text-slate-800">{item.area}</b> — {item.problem}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-1 text-emerald-700">Nessun difetto visivo rilevante.</p>}
+            {issues.length > 0 && (
+              <button type="button" onClick={onApply} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-700">
+                <Wand2 className="h-3.5 w-3.5" /> Correggi questi difetti
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PublicationBanner({ url, onClose }: { url: string; onClose: () => void }) {
+  const [copied, setCopied] = useState<'link' | 'embed' | null>(null)
+  const embed = `<iframe src="${url}" width="100%" height="640" style="border:0;border-radius:16px" allow="camera; microphone; clipboard-write" loading="lazy"></iframe>`
+  const copy = async (kind: 'link' | 'embed') => {
+    try { await navigator.clipboard.writeText(kind === 'link' ? url : embed); setCopied(kind); window.setTimeout(() => setCopied(null), 1500) } catch { /* clipboard blocked */ }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900">
+      <Globe className="h-3.5 w-3.5 shrink-0" />
+      <span className="font-bold">Pubblicata:</span>
+      <a href={url} target="_blank" rel="noreferrer" className="min-w-0 max-w-[40ch] truncate font-semibold underline">{url}</a>
+      <button type="button" onClick={() => copy('link')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'link' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Link</button>
+      <button type="button" onClick={() => copy('embed')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'embed' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Codice incorporamento</button>
+      <span className="text-emerald-700">Le funzioni AI dell'app restano disponibili solo dentro Golinelli.ai.</span>
+      <button type="button" onClick={onClose} className="ml-auto rounded-full p-1 hover:bg-emerald-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+    </div>
+  )
+}
+
+type LiveFile = { path: string; lines: number; status: 'writing' | 'done'; op?: 'file' | 'patch' | 'delete' }
+
+// Console chatter that is not a bug in the student's app: never worth a fix turn.
+const RUNTIME_NOISE = [/NotAllowedError|Permission denied|Permesso negato|getUserMedia|NotFoundError: Requested device/i, /^Warning:/i, /React DevTools/i, /Download the React/i, /ResizeObserver loop/i, /\[HMR\]/i, /sandpack/i, /favicon/i]
+function isActionableRuntimeError(error: SandpackRuntimeError) {
+  if (!error.message?.trim()) return false
+  // A refused camera/mic permission is the user's or the browser's choice, never a code bug to "fix".
+  if (/NotAllowedError|Permission denied|Permesso negato|non permette l.accesso a fotocamera/i.test(error.message)) return false
+  return !(error.kind === 'console' && RUNTIME_NOISE.some((pattern) => pattern.test(error.message)))
+}
+
+function browserPermissionHint(): string {
+  const agent = navigator.userAgent
+  if (/Firefox\//.test(agent)) return 'Firefox: clicca l’icona della fotocamera/microfono barrata a sinistra dell’indirizzo e rimuovi il blocco, poi ricarica l’anteprima.'
+  if (/Safari\//.test(agent) && !/Chrome\//.test(agent)) return 'Safari: menu Safari › Impostazioni per questo sito web › Fotocamera/Microfono › Consenti, poi ricarica l’anteprima.'
+  return 'Chrome/Edge: clicca l’icona a sinistra dell’indirizzo (lucchetto o impostazioni sito), imposta Fotocamera e Microfono su Consenti, poi ricarica l’anteprima.'
+}
+
+function MediaPermissionBanner({ status, onReload, onClose }: { status: { kind: string; state: string; error: string }; onReload: () => void; onClose: () => void }) {
+  const device = status.kind === 'microphone' ? 'il microfono' : status.kind === 'camera' ? 'la webcam' : 'webcam e microfono'
+  if (status.state === 'prompt') {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-12 z-20 flex justify-center p-2">
+        <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg" role="status">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> L’app chiede di usare {device}: rispondi alla richiesta del browser in alto, accanto all’indirizzo.
+        </div>
+      </div>
+    )
+  }
+  const title = status.state === 'denied' ? `Il browser ha bloccato ${device}`
+    : status.state === 'unsupported' ? 'Questo browser non supporta webcam e microfono'
+      : status.error === 'NotFoundError' ? 'Nessun dispositivo trovato'
+        : status.error === 'NotReadableError' ? 'Dispositivo già in uso'
+          : `Non riesco ad accedere a ${device}`
+  const hint = status.state === 'denied' ? browserPermissionHint()
+    : status.error === 'NotFoundError' ? 'Collega una webcam o un microfono, poi ricarica l’anteprima.'
+      : status.error === 'NotReadableError' ? 'Chiudi le altre app o schede che usano la webcam (videochiamate, altre anteprime) e ricarica.'
+        : 'Usa un browser aggiornato (Chrome, Edge, Firefox o Safari) e ricarica l’anteprima.'
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-12 z-20 flex justify-center p-2">
+      <div className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-amber-200 backdrop-blur" role="alert">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-slate-900">{title}</p>
+            <p className="mt-1 leading-5">{hint}</p>
+            <button type="button" onClick={onReload} className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-bold text-white hover:bg-slate-700">
+              <RefreshCw className="h-3.5 w-3.5" /> Ricarica anteprima
+            </button>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
+    </div>
+  )
+}
+function describeRuntimeError(error: SandpackRuntimeError) {
+  const kind = error.kind === 'compile' ? 'Compilazione' : error.kind === 'runtime' ? 'Runtime' : 'Console'
+  const where = error.path ? ` ${error.path}${error.line ? `:${error.line}` : ''}` : ''
+  return `${kind}${where}: ${error.message.slice(0, 500)}`
+}
+
+function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDismiss }: {
+  state: 'idle' | 'observing' | 'fixing' | 'clean' | 'failed'
+  attempt: number
+  maxAttempts: number
+  errors: SandpackRuntimeError[]
+  onRetry: () => void
+  onDismiss: () => void
+}) {
+  if (state === 'idle') return null
+  const tone = state === 'clean' ? 'bg-emerald-600 text-white' : state === 'failed' ? 'bg-amber-500 text-white' : state === 'fixing' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
+      <div className={`pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${tone}`} role="status" aria-live="polite" title={errors.map(describeRuntimeError).join('\n')}>
+        {state === 'observing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifico l’app in esecuzione…</>}
+        {state === 'fixing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Correggo gli errori trovati (tentativo {Math.max(1, attempt)}/{maxAttempts})…</>}
+        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> Verificata: nessun errore in esecuzione</>}
+        {state === 'failed' && (
+          <>
+            <X className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Restano {errors.length} errori: {errors[0] ? describeRuntimeError(errors[0]) : ''}</span>
+            <button type="button" onClick={onRetry} className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 font-bold hover:bg-white/40">Riprova</button>
+            <button type="button" onClick={onDismiss} className="shrink-0 rounded-full p-0.5 hover:bg-white/25" aria-label="Chiudi"><X className="h-3 w-3" /></button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LiveGenerationPanel({
   status,
   reasoning,
   plan,
   files,
+  mode,
+  onStop,
 }: {
   status: string
   reasoning: string
   plan: { path: string; purpose: string }[]
-  files: { path: string; lines: number; status: 'writing' | 'done' }[]
+  files: LiveFile[]
+  mode: 'build' | 'fix'
+  onStop: () => void
 }) {
   const reasoningRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -2702,12 +3239,13 @@ function LiveGenerationPanel({
     <div className="space-y-2">
       <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold leading-5 text-indigo-900" role="status" aria-live="polite">
         <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
-        <span>{status || 'Avvio della generazione…'}</span>
+        <span className="min-w-0 flex-1">{status || 'Avvio della generazione…'}</span>
+        <button type="button" onClick={onStop} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50">Stop</button>
       </div>
       <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
         <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {reasoning ? "Architetto" : 'Sto progettando la struttura...'}
+          {mode === 'fix' ? 'Verificatore' : reasoning ? 'Architetto' : 'Sto progettando la struttura...'}
         </div>
         {reasoning && (
           <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
@@ -2719,19 +3257,25 @@ function LiveGenerationPanel({
       {files.length > 0 && (
         <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-sky-700">
-            <span>File Writer</span>
+            <span>{mode === 'fix' ? 'Correzioni' : 'Piano di lavoro'}</span>
             <span>{doneCount}/{files.length} file</span>
           </div>
           <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-sky-200/75 bg-white/[0.82] p-2 font-code">
-            {files.map((file) => (
-              <div key={file.path} className="flex items-center gap-2 text-sm text-slate-700">
-                {file.status === 'done'
-                  ? <Check className="h-3.5 w-3.5 shrink-0 text-sky-700" />
-                  : <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
-                <span className="min-w-0 flex-1 truncate">{file.path}</span>
-                <span className="shrink-0 text-xs font-bold text-sky-700">{file.lines} ln</span>
-              </div>
-            ))}
+            {files.map((file) => {
+              const purpose = plan.find((item) => item.path === file.path)?.purpose
+              return (
+                <div key={file.path} className="flex items-start gap-2 text-sm text-slate-700">
+                  {file.status === 'done'
+                    ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-700" />
+                    : <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{file.path}</span>
+                    {purpose && <span className="block truncate font-sans text-[11px] text-slate-500">{purpose}</span>}
+                  </span>
+                  <span className="shrink-0 text-xs font-bold text-sky-700">{file.op === 'patch' ? 'modifica' : file.op === 'delete' ? 'eliminato' : `${file.lines} ln`}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

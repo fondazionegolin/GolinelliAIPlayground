@@ -1,4 +1,4 @@
-from typing import Optional, AsyncGenerator
+from typing import Callable, Optional, AsyncGenerator
 from dataclasses import dataclass
 import httpx
 import base64
@@ -436,7 +436,13 @@ class LLMService:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         allow_web_search: bool = True,
+        reasoning_sink: Optional[Callable[[str], None]] = None,
+        thinking: Optional[bool] = None,
     ) -> AsyncGenerator[str, None]:
+        """Yield answer text chunks. `thinking=False` turns off the hidden thinking phase of
+        DeepSeek reasoning models (ignored by other providers). `reasoning_sink`, when given, receives the model's hidden
+        thinking text (DeepSeek reasoning models) so callers can show progress during long,
+        otherwise silent thinking phases."""
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
         use_web_search = allow_web_search and _needs_web_search(messages)
@@ -450,7 +456,7 @@ class LLMService:
             async for chunk in self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search):
                 yield chunk
         elif provider == "deepseek":
-            async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens):
+            async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking):
                 yield chunk
         elif provider == "gemini":
             async for chunk in self._stream_gemini(messages, system_prompt, model, temperature, max_tokens):
@@ -553,6 +559,8 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int,
+        reasoning_sink: Optional[Callable[[str], None]] = None,
+        thinking: Optional[bool] = None,
     ) -> AsyncGenerator[str, None]:
         if not self.deepseek_client:
             raise RuntimeError("DeepSeek client not configured")
@@ -568,11 +576,18 @@ class LLMService:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            **({"extra_body": {"thinking": {"type": "disabled"}}} if thinking is False else {}),
         )
 
         async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if not delta:
+                continue
+            thinking = getattr(delta, "reasoning_content", None)
+            if thinking and reasoning_sink:
+                reasoning_sink(thinking)
+            if delta.content:
+                yield delta.content
 
     async def _stream_gemini(
         self,

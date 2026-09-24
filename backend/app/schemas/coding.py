@@ -54,6 +54,10 @@ class CodingGenerateRequest(BaseModel):
     # vision model server-side and folded into the prompt, so they work regardless of which
     # codegen model is selected (some, like DeepSeek, have no vision support at all).
     attachments: Optional[list[str]] = Field(default=None, max_length=3)
+    # "fix" = automatic repair turn of the observe->fix loop: `errors` are the real compile/runtime
+    # errors the preview reported; the agent patches only what they require.
+    mode: Optional[str] = Field(default=None, max_length=20)
+    errors: Optional[list[str]] = Field(default=None, max_length=12)
 
 
 class CodingMessageResponse(BaseModel):

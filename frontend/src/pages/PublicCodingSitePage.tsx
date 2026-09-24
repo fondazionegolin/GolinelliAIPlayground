@@ -49,11 +49,29 @@ export default function PublicCodingSitePage() {
   }, [slug])
 
   useEffect(() => {
+    // Published apps run outside the platform (no login): the bridge still gets an answer right away
+    // instead of hanging on a timeout. Data lives in memory for the visit; AI features are unavailable.
+    const guestData = new Map<string, unknown>()
     const handleMessage = (event: MessageEvent) => {
-      const data = (event.data || {}) as { source?: string; action?: string; url?: string }
-      if (data.source !== 'golinelli-coding-preview' || data.action !== 'openExternalLink') return
-      const url = String(data.url || '')
-      if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
+      const data = (event.data || {}) as { source?: string; action?: string; url?: string; id?: string; payload?: any }
+      if (data.source !== 'golinelli-coding-preview') return
+      if (!Array.from(document.querySelectorAll('iframe')).some((frame) => frame.contentWindow === event.source)) return
+      if (data.action === 'openExternalLink') {
+        const url = String(data.url || data.payload?.url || '')
+        if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
+      }
+      if (!data.id || data.action === 'reportError' || data.action === 'captureResult' || data.action === 'mediaStatus') return
+      const reply = (payload: Record<string, unknown>) => event.source?.postMessage(
+        { source: 'golinelli-coding-host', id: data.id, ...payload },
+        { targetOrigin: event.origin && event.origin !== 'null' ? event.origin : '*' },
+      )
+      const key = String(data.payload?.key || '')
+      if (data.action === 'me') reply({ ok: true, result: { name: 'Ospite', role: 'guest' } })
+      else if (data.action === 'loadData') reply({ ok: true, result: { key, value: guestData.get(key) ?? null } })
+      else if (data.action === 'saveData') { guestData.set(key, data.payload?.value ?? null); reply({ ok: true, result: { key, value: data.payload?.value ?? null } }) }
+      else if (data.action === 'deleteData') { guestData.delete(key); reply({ ok: true, result: {} }) }
+      else if (data.action === 'openExternalLink') reply({ ok: true, result: {} })
+      else reply({ ok: false, error: 'Questa funzione è disponibile solo aprendo l’app dentro Golinelli.ai.' })
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)

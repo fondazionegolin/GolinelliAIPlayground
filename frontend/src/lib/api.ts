@@ -202,6 +202,12 @@ export const codingApi = {
   generateProject: (projectId: string, data: { prompt?: string; files?: { path: string; content: string; language?: string }[] }) =>
     api.post(`/coding/projects/${projectId}/generate`, data),
   generateProjectStreamUrl: (projectId: string) => `/api/v1/coding/projects/${projectId}/generate-stream`,
+  aiChatStreamUrl: () => '/api/v1/coding/ai/chat-stream',
+  visualReview: (projectId: string, image: string) => api.post(`/coding/projects/${projectId}/visual-review`, { image }),
+  getSharedData: (projectId: string, key: string) => api.get(`/coding/projects/${projectId}/shared/${encodeURIComponent(key)}`),
+  putSharedData: (projectId: string, key: string, value: unknown) => api.put(`/coding/projects/${projectId}/shared/${encodeURIComponent(key)}`, { value }),
+  appendSharedData: (projectId: string, key: string, value: unknown) => api.post(`/coding/projects/${projectId}/shared/${encodeURIComponent(key)}/append`, { value }),
+  aiVision: (data: { image: string; prompt?: string }) => api.post('/coding/ai/vision', data),
   interview: (data: { title?: string; prompt?: string }) =>
     api.post('/coding/ai/interview', data),
   uiReview: (projectId: string, data: { files?: { path: string; content: string; language?: string }[] }) =>
