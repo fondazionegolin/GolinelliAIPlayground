@@ -924,7 +924,7 @@ export default function StudentRagWorkspace({
   }, [])
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-slate-100">
+    <div className="flex flex-col h-full min-h-0 bg-slate-100 md:bg-transparent">
       {/* Session bar */}
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5 shrink-0">
         {/* Session selector */}

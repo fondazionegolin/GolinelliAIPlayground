@@ -331,6 +331,11 @@ class DocumentCorrectionUpdate(BaseModel):
     content_json: str
 
 
+class PublishedDocumentUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=255)
+    content_json: str
+
+
 class ExerciseCorrectionUpdate(BaseModel):
     content: str
 
@@ -1739,6 +1744,7 @@ async def list_shared_documents(
             "title": task.title,
             "doc_type": "presentation" if task.task_type == TaskType.PRESENTATION else "document",
             "content_json": task.content_json,
+            "status": task.status.value if task.status else None,
             "created_at": task.created_at.isoformat(),
             "updated_at": task.updated_at.isoformat() if task.updated_at else task.created_at.isoformat(),
             "session_id": str(session.id),
@@ -1798,10 +1804,13 @@ async def upsert_document_correction(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid document JSON") from exc
 
     previous = _submission_correction(submission) or {}
+    # The editor autosaves the correction on every pause in typing: notify the student only when a
+    # new correction round starts, not on each save of the same pending correction.
+    starts_new_round = previous.get("status") != "pending"
     correction = {
         "status": "pending",
         "original_content_json": previous.get("original_content_json") or submission.content_json,
-        "suggested_content_json": request.content_json,
+        "suggested_content_json": sanitize_document_draft_content_json(request.content_json),
         "teacher_id": str(teacher.id),
         "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or "Docente",
         "updated_at": datetime.utcnow().isoformat(),
@@ -1809,15 +1818,64 @@ async def upsert_document_correction(
     submission.corrections_json = json.dumps(correction, ensure_ascii=False)
     await db.commit()
 
-    await _create_student_task_notification(
-        db,
-        task=task,
-        student_id=submission.student_id,
-        teacher_id=teacher.id,
-        notification_type="task_correction",
-        text=f"📝 Il docente ha preparato una correzione per: {task.title}",
-    )
+    if starts_new_round:
+        await _create_student_task_notification(
+            db,
+            task=task,
+            student_id=submission.student_id,
+            teacher_id=teacher.id,
+            notification_type="task_correction",
+            text=f"📝 Il docente ha preparato una correzione per: {task.title}",
+        )
     return correction
+
+
+@router.put("/documents/published/{task_id}")
+async def update_published_document(
+    task_id: UUID,
+    request: PublishedDocumentUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Save edits to a document the teacher already shared in a session (content sent in the body,
+    unlike the generic task PATCH whose query-string params cannot carry a whole document)."""
+    result = await db.execute(
+        select(Task)
+        .where(Task.id == task_id)
+        .where(Task.task_type.in_([TaskType.LESSON, TaskType.PRESENTATION]))
+    )
+    task = result.scalar_one_or_none()
+    if not task or not await teacher_can_access_session(db, teacher, task.session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    try:
+        json.loads(request.content_json)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid document JSON") from exc
+
+    if request.title is not None and request.title.strip():
+        task.title = request.title.strip()
+    task.content_json = sanitize_document_draft_content_json(request.content_json)
+    await db.commit()
+    await db.refresh(task)
+
+    session_result = await db.execute(select(Session.class_id).where(Session.id == task.session_id))
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="updated",
+        entity_id=task.id,
+        class_id=session_result.scalar_one_or_none(),
+        session_id=task.session_id,
+        include_session_room=True,
+        data={"title": task.title, "task_type": task.task_type.value, "status": task.status.value},
+    )
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "content_json": task.content_json,
+        "status": task.status.value,
+        "updated_at": (task.updated_at or task.created_at).isoformat(),
+    }
 
 
 @router.post("/documents/drafts")

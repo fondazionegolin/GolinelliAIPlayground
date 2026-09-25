@@ -5,12 +5,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
-import { boardsApi, studentApi } from '@/lib/api'
+import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
-  Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi
+  Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box
 } from 'lucide-react'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -21,12 +21,13 @@ const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModu
 const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
 const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
+const StudentSolidModelsModule = lazy(() => import('./StudentSolidModelsModule'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 
 // Right padding (pr-4) around the class-chat card; added to the column width so the
 // card edge tracks the cursor exactly while dragging the resize grip.
-const CHAT_SIDEBAR_GUTTER = 16
+const CHAT_SIDEBAR_GUTTER = 28
 import { LogoMark } from '@/components/LogoMark'
 import { StudentNavbar } from '@/components/StudentNavbar'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
@@ -36,6 +37,7 @@ import TuringTestPanel from '@/components/TuringTestPanel'
 import { useIsIOS, useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { PageFrame } from '@/components/ui/PageFrame'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
@@ -156,6 +158,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-slate-200/80',
       shadowClass: 'shadow-slate-100/40',
     },
+    models3d: {
+      label: 'Modelli 3D',
+      description: 'Modelli condivisi dal docente, pronti da stampare',
+      icon: Box,
+      colorClass: 'text-violet-800',
+      bgClass: 'bg-violet-100',
+      borderClass: 'border-violet-200/80',
+      shadowClass: 'shadow-violet-100/40',
+    },
     boards: {
       label: 'Board',
       description: 'Organizza task e idee con la classe',
@@ -185,6 +196,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
   'classification',
   'coding',
   'boards',
+  'models3d',
 ]
 
 export default function StudentDashboard() {
@@ -247,6 +259,12 @@ export default function StudentDashboard() {
     queryKey: ['student-shared-boards', sessionInfo?.session.id],
     queryFn: async () => (await boardsApi.list()).data,
     enabled: Boolean(sessionInfo?.session.id),
+  })
+  const { data: sharedSolidModels = [] } = useQuery({
+    queryKey: ['student-solid-models', sessionInfo?.session.id],
+    queryFn: async () => (await solidModelerApi.studentList()).data,
+    enabled: Boolean(sessionInfo?.session.id),
+    staleTime: 60_000,
   })
 
   const exitStudentSession = useCallback(() => {
@@ -554,7 +572,7 @@ export default function StudentDashboard() {
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat' && m.is_enabled !== false) ?? false
   const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration' && m.is_enabled !== false) ?? false
   const sessionModules = sessionInfo?.enabled_modules?.filter((m) => m.is_enabled !== false).map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', ...(sharedBoards.length ? ['boards'] : [])])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', ...(sharedBoards.length ? ['boards'] : []), ...(sharedSolidModels.length ? ['models3d'] : [])])]
   const chatbotEnabled = enabledModules.includes('chatbot')
 
   const dockStudentChat = () => {
@@ -646,7 +664,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className="flex flex-1 overflow-hidden md:pl-16 xl:pl-0">
         {/* Main Content Area */}
-        <main className={`min-h-0 relative ${activeModule === 'chatbot' ? 'hidden' : 'flex-1'} ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`min-h-0 min-w-0 relative overflow-hidden flex flex-col ${activeModule === 'chatbot' ? 'hidden' : 'flex-1'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -655,10 +673,12 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule ? 'p-0 h-full min-h-0' : 'p-4 md:p-6'}`}
+              className="h-full min-h-0"
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
+              <PageFrame scroll={!activeModule}>
               {!activeModule ? (
+                <div className="p-4 md:p-6">
                 <HomeView
                   sessionInfo={sessionInfo}
                   enabledModules={enabledModules}
@@ -667,6 +687,7 @@ export default function StudentDashboard() {
                   lastDocument={lastDocument}
                   isMobile={isMobile}
                 />
+                </div>
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
                   <Suspense fallback={
@@ -700,6 +721,7 @@ export default function StudentDashboard() {
                   </Suspense>
                 </div>
               )}
+              </PageFrame>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -708,12 +730,12 @@ export default function StudentDashboard() {
           <motion.div
             layout={!isResizingChat}
             transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
-            className={`overflow-hidden bg-white ${
+            className={`overflow-hidden ${
               activeModule === 'chatbot'
-                ? 'relative flex-1 h-full border-l-0 opacity-100'
+                ? 'relative flex-1 h-full border-l-0 bg-transparent opacity-100'
                 : studentChatSidebarOpen
-                  ? 'relative flex-shrink-0 h-full border-l border-slate-200 opacity-100'
-                  : 'pointer-events-none flex-shrink-0 h-full border-l-0 opacity-0'
+                  ? 'relative flex-shrink-0 h-full border-l border-slate-200 bg-white opacity-100'
+                  : 'pointer-events-none flex-shrink-0 h-full border-l-0 bg-white opacity-0'
             }`}
             style={{
               width: activeModule === 'chatbot' ? 'auto' : studentChatSidebarOpen ? 460 : 0,
@@ -742,13 +764,13 @@ export default function StudentDashboard() {
         {sessionInfo ? (
           <div
             ref={chatColumnRef}
-            className={`hidden h-full flex-shrink-0 overflow-hidden bg-white box-border lg:block ${
+            className={`hidden h-full flex-shrink-0 overflow-hidden bg-transparent box-border lg:block ${
               isResizingChat ? '' : 'transition-[width,opacity] duration-200'
-            } ${showSidebar ? 'relative opacity-100 py-4 pr-4' : 'pointer-events-none opacity-0'}`}
+            } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0, height: '100%' }}
             aria-hidden={!showSidebar}
           >
-            <div className="ui-card h-full w-full overflow-hidden shadow-[var(--ds-shadow-2)]">
+            <div className="ds-page-frame h-full w-full overflow-hidden">
               <ChatSidebar
                 sessionId={sessionInfo.session.id}
                 userType="student"
@@ -844,6 +866,7 @@ function StudentMobileShell({
     { key: 'classification', label: 'ML Lab', detail: 'Allena e prova modelli', icon: Brain },
     { key: 'coding', label: 'Vibe Lab', detail: 'Crea app con l’AI', icon: Code2 },
     { key: 'boards', label: 'Board', detail: 'Task e idee', icon: KanbanSquare },
+    { key: 'models3d', label: 'Modelli 3D', detail: 'Guarda e scarica STL', icon: Box },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -1440,6 +1463,14 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'models3d') {
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <StudentSolidModelsModule />
       </div>
     )
   }

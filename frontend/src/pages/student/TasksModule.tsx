@@ -236,7 +236,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
 
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-100 p-12 text-center">
+      <div className="h-full flex flex-col items-center justify-center bg-slate-100 md:bg-transparent p-12 text-center">
         <div className="w-20 h-20 rounded-xl border border-emerald-200 bg-emerald-100 flex items-center justify-center mb-6 shadow-sm">
           <ClipboardList className="h-10 w-10 text-emerald-800" />
         </div>
@@ -249,8 +249,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
   }
 
   return (
-    <div className="h-full flex flex-col relative overflow-hidden bg-slate-100">
-      <section className={`relative shrink-0 border-b border-slate-200 bg-white/95 md:bg-white/70 md:backdrop-blur-sm ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
+    <div className="h-full flex flex-col relative overflow-hidden bg-slate-100 md:bg-transparent">
+      <section className={`relative shrink-0 border-b border-slate-200 bg-white/95 md:border-0 md:ds-frame-header ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
         <div className="mx-auto max-w-6xl px-4 md:px-6">
           <div className="mx-auto max-w-3xl text-center">
             <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>

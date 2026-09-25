@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, FileText, Globe2, Load
 import { Button } from '@/components/ui/button'
 import { filesApi } from '@/lib/api'
 import DocumentThumbnail from './DocumentThumbnail'
+import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 
 export type OpenableDocument = {
   title: string
@@ -73,6 +74,8 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
   }, [content.slides, onClose, viewing])
 
   const html = content.htmlContent || content.content || ''
+  const isFullHtml = /^\s*(?:<!doctype\s+html|<html)/i.test(html)
+  const safeHtml = useMemo(() => (html && !isFullHtml ? sanitizeDocumentHtml(html) : ''), [html, isFullHtml])
   const currentSlideJson = content.slides?.length
     ? JSON.stringify({ ...content, slides: [content.slides[slideIndex]] })
     : document.contentJson
@@ -83,7 +86,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
     onClose()
   }
 
-  const documentType = sourceExtension === 'pdf' ? 'pdf' : document.type
+  const documentType = sourceExtension === 'pdf' ? 'pdf' : isFullHtml ? 'web' : document.type
   const typeIcon = documentType === 'presentation' ? <MonitorPlay className="h-5 w-5" />
     : documentType === 'sheet' ? <FileSpreadsheet className="h-5 w-5" />
       : documentType === 'canvas' ? <PenTool className="h-5 w-5" />
@@ -113,7 +116,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
 
         {!viewing ? (
           <div className="p-5">
-            <DocumentThumbnail contentJson={document.contentJson} type={document.type} title={document.title} className="mx-auto max-w-md" />
+            <DocumentThumbnail contentJson={document.contentJson} type={document.type} title={document.title} className="mx-auto aspect-square w-full max-w-xs" />
             <p className="mt-4 text-center text-sm text-slate-600">{isEnglish ? 'Open without changing it, or enter editing mode.' : 'Apri senza modificare il contenuto, oppure entra in modalità di editing.'}</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <Button variant="outline" className="h-12" onClick={() => setViewing(true)}><Eye className="mr-2 h-4 w-4" />{isEnglish ? 'View' : 'Visualizza'}</Button>
@@ -126,7 +129,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
               : sourceUrl ? <iframe src={sourceUrl} title={document.title} className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
               : content.slides?.length ? (
                 <div className="mx-auto flex h-full max-w-5xl flex-col items-center justify-center gap-4">
-                  <DocumentThumbnail contentJson={currentSlideJson} type="presentation" title={document.title} className="aspect-video w-full shadow-xl" />
+                  <DocumentThumbnail contentJson={currentSlideJson} type="presentation" title={document.title} className="aspect-video w-full shadow-xl" showTypeBadge={false} />
                   <div className="flex items-center gap-3 rounded-full bg-white px-2 py-1 shadow">
                     <button className="rounded-full p-2 hover:bg-slate-100 disabled:opacity-30" disabled={slideIndex === 0} onClick={() => setSlideIndex(index => index - 1)}><ChevronLeft className="h-5 w-5" /></button>
                     <span className="min-w-20 text-center text-sm font-bold text-slate-700">{slideIndex + 1} / {content.slides.length}</span>
@@ -137,8 +140,11 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
                 <div className="overflow-auto rounded-xl bg-white shadow">
                   <table className="min-w-full table-fixed border-collapse text-sm"><colgroup>{Array.from({ length: Math.max(0, ...content.data.map(row => row.length)) }, (_, index) => <col key={index} style={{ width: content.dimensions?.columnWidths?.[index] || 120 }} />)}</colgroup><tbody>{content.data.map((row, rowIndex) => <tr key={rowIndex} style={{ height: content.dimensions?.rowHeights?.[rowIndex] || 36 }}>{row.map((cell, colIndex) => <td key={colIndex} style={content.styles?.[`${rowIndex}:${colIndex}`]} className="border border-slate-200 px-3 py-2 text-slate-700">{cell}</td>)}</tr>)}</tbody></table>
                 </div>
-              ) : html ? (
-                <article className="prose prose-slate mx-auto min-h-full max-w-[794px] rounded-sm bg-white px-10 py-12 shadow-xl sm:px-16" dangerouslySetInnerHTML={{ __html: html }} />
+              ) : isFullHtml ? (
+                // Full HTML pages (AI-generated sites, student submissions) run isolated: no scripts, opaque origin.
+                <iframe srcDoc={html} title={document.title} sandbox="" className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
+              ) : safeHtml ? (
+                <article className="prose prose-slate mx-auto min-h-full max-w-[794px] rounded-sm bg-white px-10 py-12 shadow-xl sm:px-16" dangerouslySetInnerHTML={{ __html: safeHtml }} />
               ) : content.url ? <iframe src={content.url} title={document.title} sandbox="" className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
               : <div className="flex h-full flex-col items-center justify-center text-slate-400"><FileSpreadsheet className="mb-3 h-10 w-10" /><p>{isEnglish ? 'Preview unavailable' : 'Anteprima non disponibile'}</p></div>}
           </div>

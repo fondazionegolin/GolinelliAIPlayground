@@ -854,7 +854,7 @@ function MLLabHome({
   ]
 
   return (
-    <div className="min-h-full bg-white px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+    <div className="min-h-full bg-white md:bg-transparent px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
       <div className="w-full">
         <motion.div
           initial={{ opacity: 0, y: -16 }}

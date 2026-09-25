@@ -30,6 +30,7 @@ from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDesignSystem, CodingFile, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingReview, CodingVersion
 from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
+from app.models.solid_model import SolidModel
 
 __all__ = [
     "Tenant",
@@ -123,4 +124,5 @@ __all__ = [
     "AgenticWorkflow",
     "AgenticWorkflowRun",
     "AgenticNodeRun",
+    "SolidModel",
 ]

@@ -11,6 +11,7 @@ from app.models.document_draft import DocumentDraft
 from app.models.template_version import TenantTemplateVersion
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
+from app.models.solid_model import SolidModel
 
 __all__ = [
     "Tenant",
@@ -46,4 +47,5 @@ __all__ = [
     "AgenticWorkflow",
     "AgenticWorkflowRun",
     "AgenticNodeRun",
+    "SolidModel",
 ]

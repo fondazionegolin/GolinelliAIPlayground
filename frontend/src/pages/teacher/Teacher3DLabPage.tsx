@@ -1,5 +1,5 @@
 import '@google/model-viewer'
-import { useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Box, Loader2, Download, RotateCcw, Sparkles, AlertCircle,
@@ -9,6 +9,9 @@ import {
 import { meshyApi, chatApi } from '@/lib/api'
 import { Button } from '@/design/primitives/Button'
 import { useMobile } from '@/hooks/useMobile'
+import { useAuthStore } from '@/stores/auth'
+
+const SolidModeler = lazy(() => import('@/components/solidModeler/SolidModeler'))
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -145,7 +148,54 @@ function saveAssets(a: Asset3D[]) { localStorage.setItem(KEY, JSON.stringify(a))
 
 interface Props { sessionId?: string }
 
+const LAB_TAB_KEY = 'teacher_3d_lab_tab'
+
+// Solid modeler (Tinkercad-like) is an admin-only prototype for now.
 export default function Teacher3DLabPage({ sessionId }: Props) {
+  const isAdmin = useAuthStore(s => s.user?.role === 'ADMIN')
+  const { isMobile } = useMobile()
+  const [tab, setTab] = useState<'generate' | 'modeler'>(() => {
+    try { return localStorage.getItem(LAB_TAB_KEY) === 'modeler' ? 'modeler' : 'generate' } catch { return 'generate' }
+  })
+  if (!isAdmin || isMobile) return <MeshyLab sessionId={sessionId} />
+  const choose = (t: 'generate' | 'modeler') => {
+    setTab(t)
+    try { localStorage.setItem(LAB_TAB_KEY, t) } catch { /* ignore */ }
+  }
+  const tabs = (
+    <>
+      {([['generate', 'Generativo AI', Sparkles], ['modeler', 'Modellatore solido', Box]] as const).map(([id, label, Icon]) => (
+        <Button
+          key={id}
+          type="button"
+          onClick={() => choose(id)}
+          tone={tab === id ? 'accent' : 'neutral'}
+          surface={tab === id ? 'solid' : 'ghost'}
+          density="compact"
+          className="rounded-full"
+          title={id === 'modeler' ? 'Modellatore solido (beta, solo admin)' : label}
+        >
+          <Icon /> <span className="hidden 2xl:inline">{label}</span><span className="2xl:hidden">{id === 'modeler' ? 'Modellatore' : 'Generativo'}</span>
+          {id === 'modeler' && <span className="rounded-full bg-white/70 px-1.5 text-[9px] font-black uppercase tracking-wide text-violet-700">β</span>}
+        </Button>
+      ))}
+    </>
+  )
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {tab === 'generate' && <div className="flex items-center gap-1 border-b border-slate-200 bg-white/70 px-3 py-1.5">{tabs}</div>}
+      <div className="relative min-h-0 flex-1">
+        {tab === 'generate' ? <MeshyLab sessionId={sessionId} /> : (
+          <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+            <SolidModeler leading={tabs} />
+          </Suspense>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MeshyLab({ sessionId }: Props) {
   const { isMobile, isTablet } = useMobile()
   const compactUi = isMobile || isTablet
   const [mode, setMode] = useState<Mode | null>(() => compactUi ? null : 'txt23d')

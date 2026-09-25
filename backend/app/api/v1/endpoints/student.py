@@ -1016,7 +1016,7 @@ async def submit_document(
         description=f"Documento inviato da {student.nickname}",
         task_type=TaskType.STUDENT_SUBMISSION,
         status=TaskStatus.PUBLISHED,  # Auto-publish so teacher sees it
-        content_json=request.content_json,
+        content_json=sanitize_document_draft_content_json(request.content_json),
     )
     db.add(task)
     await db.flush()
@@ -1026,7 +1026,7 @@ async def submit_document(
         task_id=task.id,
         student_id=student.id,
         content=f"{request.content_type}: {request.title}",
-        content_json=request.content_json,
+        content_json=task.content_json,
     )
     db.add(submission)
     await db.commit()

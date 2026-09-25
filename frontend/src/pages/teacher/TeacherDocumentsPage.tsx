@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X,
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
   History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Download, Loader2, FileUp
 } from 'lucide-react'
 import { filesApi, teacherApi } from '@/lib/api'
@@ -15,7 +15,7 @@ import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
-import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
+import DocumentCard from '@/components/documents/DocumentCard'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
 import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
@@ -80,6 +80,8 @@ interface StoredDocument {
   contentJson: string
   authorName: string
   correction?: DocumentCorrection | null
+  /** Task status for teacher-shared documents: 'draft' = saved in the session, not yet visible. */
+  status?: string | null
 }
 
 interface DocumentCorrection {
@@ -172,6 +174,10 @@ export default function TeacherDocumentsPage() {
   const publishingDocumentRef = useRef(false)
   const activePublishedTaskIdRef = useRef<string | null>(null)
   const lastCorrectionPayloadRef = useRef<string | null>(null)
+  // Bumped whenever the editor switches to another document: an in-flight draft create that
+  // resolves afterwards must not bind its id to the document now on screen.
+  const editorGenerationRef = useRef(0)
+  const publishedSaveChainRef = useRef<Promise<void>>(Promise.resolve())
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -225,7 +231,7 @@ export default function TeacherDocumentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
-  const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit: () => void } | null>(null)
+  const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit: () => void; editLabel?: string } | null>(null)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
@@ -404,6 +410,8 @@ export default function TeacherDocumentsPage() {
     })
 
   const createNewDocument = () => {
+    flushPendingSave()
+    editorGenerationRef.current += 1
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
@@ -431,6 +439,8 @@ export default function TeacherDocumentsPage() {
   }
 
   const createNewPresentation = () => {
+    flushPendingSave()
+    editorGenerationRef.current += 1
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
@@ -457,6 +467,8 @@ export default function TeacherDocumentsPage() {
   }
 
   const createNewSheet = () => {
+    flushPendingSave()
+    editorGenerationRef.current += 1
     setDocument({
       id: crypto.randomUUID(), title: uniqueDocumentTitle(defaultSheetTitle), format: 'a4', slides: [], textContent: '',
       sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
@@ -473,6 +485,8 @@ export default function TeacherDocumentsPage() {
   }
 
   const createNewCanvas = () => {
+    flushPendingSave()
+    editorGenerationRef.current += 1
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
@@ -570,6 +584,7 @@ export default function TeacherDocumentsPage() {
 
     const payload = pendingDraftPayloadRef.current
     pendingDraftPayloadRef.current = null
+    const generation = editorGenerationRef.current
     isSavingDraftRef.current = true
     setDraftSaveState('saving')
 
@@ -597,8 +612,10 @@ export default function TeacherDocumentsPage() {
           await teacherApi.deleteDocumentDraft(savedDraftId).catch(() => undefined)
           return
         }
-        draftIdRef.current = savedDraftId
-        setDraftId(savedDraftId)
+        if (generation === editorGenerationRef.current) {
+          draftIdRef.current = savedDraftId
+          setDraftId(savedDraftId)
+        }
         const created: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -608,8 +625,10 @@ export default function TeacherDocumentsPage() {
         }
         setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
       }
-      lastDraftPayloadKeyRef.current = JSON.stringify(payload)
-      setDraftSaveState('saved')
+      if (generation === editorGenerationRef.current) {
+        lastDraftPayloadKeyRef.current = JSON.stringify(payload)
+        setDraftSaveState('saved')
+      }
     } catch (e) {
       console.error('Draft save failed', e)
       setDraftSaveState('error')
@@ -623,11 +642,67 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  const isEditorContentEmpty = () => {
+    if (mode === 'document') return (document.textContent || '').replace(/<[^>]*>/g, '').trim().length === 0
+    if (mode === 'slides') return document.slides.every(s => !s.blocks || s.blocks.length === 0)
+    if (mode === 'canvas') return parseCanvasContent(document.canvasContent).items.length === 0
+    return false
+  }
+
+  // Edits to a document already shared in a session are saved back onto that session's task.
+  const queuePublishedSave = (payload: { title: string; doc_type: string; content_json: string }) => {
+    const taskId = activePublishedTaskIdRef.current
+    if (!taskId) return Promise.resolve()
+    const run = async () => {
+      setDraftSaveState('saving')
+      try {
+        const response = await teacherApi.updatePublishedDocument(taskId, { title: payload.title, content_json: payload.content_json })
+        if (activePublishedTaskIdRef.current === taskId) {
+          lastDraftPayloadKeyRef.current = JSON.stringify(payload)
+          setDraftSaveState('saved')
+        }
+        setStoredDocuments(previous => previous.map(item => (
+          item.source === 'teacher' && item.taskId === taskId
+            ? { ...item, title: response.data.title, contentJson: response.data.content_json, updatedAt: response.data.updated_at || item.updatedAt }
+            : item
+        )))
+      } catch (error) {
+        console.error('Published document save failed', error)
+        if (activePublishedTaskIdRef.current === taskId) setDraftSaveState('error')
+      }
+    }
+    publishedSaveChainRef.current = publishedSaveChainRef.current.then(run)
+    return publishedSaveChainRef.current
+  }
+
+  // Autosave is debounced; leaving the editor (or switching document) must not drop the last edits.
+  const flushPendingSave = () => {
+    if (viewMode !== 'editor') return
+    const payload = buildDraftPayload()
+    if (activeStudentSubmissionId) {
+      if (lastCorrectionPayloadRef.current !== payload.content_json) {
+        lastCorrectionPayloadRef.current = payload.content_json
+        void teacherApi.updateDocumentCorrection(activeStudentSubmissionId, payload.content_json).catch(error => console.error('Correction save failed', error))
+      }
+      return
+    }
+    if (lastDraftPayloadKeyRef.current === JSON.stringify(payload)) return
+    if (activePublishedTaskIdRef.current) {
+      void queuePublishedSave(payload)
+      return
+    }
+    if (publishingDocumentRef.current || (!draftIdRef.current && isEditorContentEmpty())) return
+    pendingDraftPayloadRef.current = payload
+    void flushDraftSaveQueue()
+  }
+
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
   }
 
   const closeDocumentEditor = () => {
+    flushPendingSave()
+    editorGenerationRef.current += 1
     const stateReturnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
     const queryReturnTo = searchParams.get('returnTo')
     const returnTo = typeof stateReturnTo === 'string' ? stateReturnTo : queryReturnTo
@@ -643,8 +718,9 @@ export default function TeacherDocumentsPage() {
     setViewMode('list')
   }
 
-  const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation()
+  const handleDeleteDraft = async (doc: DraftDocument) => {
+    const id = doc.id
+    if (!window.confirm(isEnglish ? `Delete "${doc.title}"? This cannot be undone.` : `Eliminare "${doc.title}"? L'operazione non si può annullare.`)) return
     try {
       await teacherApi.deleteDocumentDraft(id)
       setDraftDocuments(prev => prev.filter(d => d.id !== id))
@@ -654,12 +730,19 @@ export default function TeacherDocumentsPage() {
         setViewMode('list')
       }
     } catch (e) {
-      toast({ title: 'Errore eliminazione', variant: 'destructive' })
+      toast({ title: isEnglish ? 'Delete failed' : 'Errore eliminazione', variant: 'destructive' })
     }
   }
 
-  const handleDeletePublished = async (e: React.MouseEvent, doc: StoredDocument) => {
-    e.stopPropagation()
+  const handleDeletePublished = async (doc: StoredDocument) => {
+    const question = doc.source === 'student'
+      ? (isEnglish
+        ? `Remove "${doc.title}" sent by ${doc.authorName}? The submission and any correction will be deleted.`
+        : `Rimuovere "${doc.title}" inviato da ${doc.authorName}? L'invio e l'eventuale correzione verranno eliminati.`)
+      : (isEnglish
+        ? `Remove "${doc.title}" from session "${doc.sessionName}"? Students will no longer see it.`
+        : `Rimuovere "${doc.title}" dalla sessione "${doc.sessionName}"? Gli studenti non lo vedranno più.`)
+    if (!window.confirm(question)) return
     try {
       await teacherApi.deleteTask(doc.sessionId, doc.taskId)
       setStoredDocuments(prev => prev.filter(d => d.id !== doc.id))
@@ -667,7 +750,7 @@ export default function TeacherDocumentsPage() {
         setViewMode('list')
       }
     } catch (e) {
-      toast({ title: 'Errore eliminazione', variant: 'destructive' })
+      toast({ title: isEnglish ? 'Delete failed' : 'Errore eliminazione', variant: 'destructive' })
     }
   }
 
@@ -743,6 +826,7 @@ export default function TeacherDocumentsPage() {
             contentJson: d.content_json,
             authorName: d.author_name || (d.source === 'student' ? 'Studente' : 'Docente'),
             correction: d.correction || null,
+            status: d.status || null,
           }
         })
         setStoredDocuments(docs)
@@ -759,7 +843,7 @@ export default function TeacherDocumentsPage() {
   }, [draftId])
 
   useEffect(() => {
-    if (viewMode !== 'editor' || activePublishedTaskId) return
+    if (viewMode !== 'editor' || activeStudentSubmissionId) return
     const payload = buildDraftPayload()
     const payloadKey = JSON.stringify(payload)
     if (suppressNextDraftSaveRef.current) {
@@ -768,17 +852,12 @@ export default function TeacherDocumentsPage() {
       return
     }
     if (lastDraftPayloadKeyRef.current === payloadKey) return
-    // Don't create a new draft for empty documents
-    if (!draftIdRef.current) {
-      const html = document.textContent || ''
-      const stripped = html.replace(/<[^>]*>/g, '').trim()
-      const isEmpty =
-        mode === 'document' ? stripped.length === 0 :
-        mode === 'slides' ? document.slides.every(s => !s.blocks || s.blocks.length === 0) :
-        mode === 'canvas' ? parseCanvasContent(document.canvasContent).items.length === 0 :
-        false
-      if (isEmpty) return
+    if (activePublishedTaskId) {
+      const timer = setTimeout(() => { void queuePublishedSave(payload) }, 900)
+      return () => clearTimeout(timer)
     }
+    // Don't create a new draft for empty documents
+    if (!draftIdRef.current && isEditorContentEmpty()) return
     const timer = setTimeout(() => {
       if (publishingDocumentRef.current || activePublishedTaskIdRef.current) return
       pendingDraftPayloadRef.current = payload
@@ -786,7 +865,7 @@ export default function TeacherDocumentsPage() {
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, viewMode, activePublishedTaskId])
+  }, [document, mode, docMargins, viewMode, activePublishedTaskId, activeStudentSubmissionId])
 
   useEffect(() => {
     if (viewMode !== 'editor' || !activeStudentSubmissionId) return
@@ -814,6 +893,7 @@ export default function TeacherDocumentsPage() {
 
   // Load document
   const loadDocument = (doc: StoredDocument) => {
+    editorGenerationRef.current += 1
     try {
       const correctionContent = doc.source === 'student' && doc.correction?.status === 'pending'
         ? doc.correction.suggested_content_json
@@ -929,7 +1009,7 @@ export default function TeacherDocumentsPage() {
       setViewMode('editor')
     } catch (e) {
       console.error(e)
-      toast({ title: "Errore caricamento", description: "Impossibile aprire questo documento.", variant: "destructive" })
+      toast({ title: isEnglish ? 'Loading error' : 'Errore caricamento', description: isEnglish ? 'Unable to open this document.' : 'Impossibile aprire questo documento.', variant: 'destructive' })
     }
   }
 
@@ -938,6 +1018,8 @@ export default function TeacherDocumentsPage() {
     if (!openDocumentId) return
     if (viewMode === 'editor' && document.id === openDocumentId) return
     const draft = draftDocuments.find((item) => item.id === openDocumentId)
+    const doc = draft ? null : storedDocuments.find((item) => item.id === openDocumentId || item.taskId === openDocumentId)
+    if (draft || doc) flushPendingSave()
     if (draft) {
       loadDraft(draft)
       if (searchParams.get('publish') === '1') {
@@ -945,7 +1027,6 @@ export default function TeacherDocumentsPage() {
       }
       return
     }
-    const doc = storedDocuments.find((item) => item.id === openDocumentId || item.taskId === openDocumentId)
     if (doc) {
       loadDocument(doc)
       if (searchParams.get('publish') === '1') {
@@ -956,6 +1037,7 @@ export default function TeacherDocumentsPage() {
   }, [searchParams, storedDocuments, draftDocuments])
 
   const loadDraft = (doc: DraftDocument) => {
+    editorGenerationRef.current += 1
     try {
       const content = JSON.parse(doc.contentJson)
       activePublishedTaskIdRef.current = null
@@ -1064,6 +1146,7 @@ export default function TeacherDocumentsPage() {
       setViewMode('editor')
     } catch (e) {
       console.error(e)
+      toast({ title: isEnglish ? 'Loading error' : 'Errore caricamento', description: isEnglish ? 'Unable to open this document.' : 'Impossibile aprire questo documento.', variant: 'destructive' })
     }
   }
 
@@ -1441,13 +1524,15 @@ export default function TeacherDocumentsPage() {
       publishingDocumentRef.current = false
       setShowPublishModal(false)
       toast({
-        title: publishMode === 'published' ? "Documento pubblicato!" : "Documento salvato in bozza",
+        title: publishMode === 'published'
+          ? (isEnglish ? 'Document published' : 'Documento pubblicato')
+          : (isEnglish ? 'Saved in the session (hidden from students)' : 'Salvato nella sessione (nascosto agli studenti)'),
         className: publishMode === 'published' ? "bg-green-500 text-white" : undefined,
       })
     } catch (e) {
       publishingDocumentRef.current = false
       console.error('Publish error:', e)
-      toast({ title: "Errore pubblicazione", variant: "destructive" })
+      toast({ title: isEnglish ? 'Publish failed' : 'Errore pubblicazione', variant: 'destructive' })
     }
   }
 
@@ -1502,6 +1587,37 @@ export default function TeacherDocumentsPage() {
     const target = fields.join(' ').toLowerCase()
     return terms.every(term => target.includes(term))
   }
+
+  const newDocumentOptions = [
+    { key: 'document', icon: FileText, tone: 'bg-emerald-50 text-emerald-700', label: isEnglish ? 'Document' : 'Documento', hint: isEnglish ? 'Write and format.' : 'Scrivi e impagina.', create: createNewDocument },
+    { key: 'presentation', icon: MonitorPlay, tone: 'bg-indigo-50 text-indigo-700', label: isEnglish ? 'Presentation' : 'Presentazione', hint: isEnglish ? 'Create slides.' : 'Crea slide.', create: createNewPresentation },
+    { key: 'sheet', icon: FileSpreadsheet, tone: 'bg-sky-50 text-sky-700', label: isEnglish ? 'Table' : 'Tabella', hint: isEnglish ? 'Data and formulas.' : 'Dati e formule.', create: createNewSheet },
+    { key: 'canvas', icon: PenTool, tone: 'bg-amber-50 text-amber-700', label: isEnglish ? 'Board' : 'Lavagna', hint: isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.', create: createNewCanvas },
+  ]
+  const newDocumentModal = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={isEnglish ? 'Create new' : 'Crea nuovo'} onMouseDown={(event) => { if (event.target === event.currentTarget) setShowNewModal(false) }}>
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
+            <p className="text-sm text-slate-500">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
+          </div>
+          <button type="button" onClick={() => setShowNewModal(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Close' : 'Chiudi'}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          {newDocumentOptions.map(option => {
+            const Icon = option.icon
+            return (
+              <button key={option.key} type="button" onClick={() => { option.create(); setShowNewModal(false) }} className="flex flex-col items-start gap-2 rounded-xl border border-slate-200 p-3 text-left transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+                <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${option.tone}`}><Icon className="h-5 w-5" /></span>
+                <span><span className="block text-sm font-bold text-slate-900">{option.label}</span><span className="block text-xs text-slate-500">{option.hint}</span></span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 
   // ── Document list view (default) ─────────────────────────────────────────
   if (viewMode === 'list') {
@@ -1573,8 +1689,8 @@ export default function TeacherDocumentsPage() {
                     <input type="text" placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'} value={docSearch} onChange={e => setDocSearch(e.target.value)} className="h-11 w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-base text-slate-700 focus:outline-none focus:ring-0 md:text-sm" />
                     {docSearch && <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
                   </div>
-                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="ui-search h-[60px] px-4 text-sm font-semibold text-slate-700 focus:outline-none">
-                    <option value="all">{isEnglish ? 'All types' : 'Tutti i tipi'}</option><option value="document">Documenti</option><option value="presentation">Presentazioni</option><option value="sheet">Tabelle</option><option value="canvas">Lavagne</option>
+                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} aria-label={isEnglish ? 'Filter by type' : 'Filtra per tipo'} className="ui-search h-[60px] px-4 text-sm font-semibold text-slate-700 focus:outline-none">
+                    <option value="all">{isEnglish ? 'All types' : 'Tutti i tipi'}</option><option value="document">{isEnglish ? 'Documents' : 'Documenti'}</option><option value="presentation">{isEnglish ? 'Presentations' : 'Presentazioni'}</option><option value="sheet">{isEnglish ? 'Tables' : 'Tabelle'}</option><option value="canvas">{isEnglish ? 'Boards' : 'Lavagne'}</option>
                   </select>
                 </div>
               )}
@@ -1596,25 +1712,18 @@ export default function TeacherDocumentsPage() {
               {filteredDrafts.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'My Drafts' : 'Le mie Bozze'} {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {filteredDrafts.map(doc => (
-                      <div
+                      <DocumentCard
                         key={doc.id}
-                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className="ui-card ui-card-interactive mobile-document-card group relative cursor-pointer overflow-hidden bg-white/95 p-1.5"
-                      >
-                        <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                        <div className="px-1.5 pb-1.5 pt-2">
-                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                          <p className="mobile-document-meta mt-1 text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                        title={doc.title}
+                        type={doc.type}
+                        contentJson={doc.contentJson}
+                        onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
+                        onDelete={() => void handleDeleteDraft(doc)}
+                        deleteLabel={isEnglish ? 'Delete draft' : 'Elimina bozza'}
+                        meta={<p className="truncate">{formatDocumentDateTime(doc.updatedAt)}</p>}
+                      />
                     ))}
                   </div>
                 </section>
@@ -1649,7 +1758,7 @@ export default function TeacherDocumentsPage() {
                         <button
                           key={doc.id}
                           type="button"
-                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc), editLabel: isEnglish ? 'Correct' : 'Correggi' })}
                           title={`${doc.title} · ${doc.authorName}`}
                           className={`flex max-w-[260px] shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
                         >
@@ -1664,29 +1773,26 @@ export default function TeacherDocumentsPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                       {filteredStudentDocuments.map(doc => (
-                        <div
+                        <DocumentCard
                           key={doc.id}
-                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                          className="ui-card ui-card-interactive mobile-document-card group relative cursor-pointer overflow-hidden bg-white/95 p-1.5"
-                        >
-                          <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                          <div className="px-1.5 pb-1.5 pt-2">
-                            <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                            <p className="mobile-document-meta mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
-                              <User className="h-3 w-3 text-emerald-500" />
-                              {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
-                            </p>
-                            <p className="mobile-document-meta mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
-                          </div>
-                          <button
-                            onClick={(e) => handleDeletePublished(e, doc)}
-                            className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                          title={doc.title}
+                          type={doc.type}
+                          contentJson={doc.contentJson}
+                          onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc), editLabel: isEnglish ? 'Correct' : 'Correggi' })}
+                          onDelete={() => void handleDeletePublished(doc)}
+                          deleteLabel={isEnglish ? 'Remove submission' : 'Rimuovi invio'}
+                          status={doc.correction?.status === 'pending'
+                            ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{isEnglish ? 'Corrected' : 'Corretto'}</span>
+                            : doc.correction?.status === 'accepted'
+                              ? <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">{isEnglish ? 'Accepted' : 'Accettato'}</span>
+                              : null}
+                          meta={<>
+                            <p className="flex items-center gap-1 truncate"><User className="h-3 w-3 shrink-0 text-emerald-500" />{doc.authorName}</p>
+                            <p className="truncate text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                          </>}
+                        />
                       ))}
                     </div>
                   )}
@@ -1696,29 +1802,24 @@ export default function TeacherDocumentsPage() {
               {filteredTeacherDocuments.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Teacher' : 'Condivisi dal docente'} {docSearch && <span className="normal-case font-normal">({filteredTeacherDocuments.length})</span>}</h2>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {filteredTeacherDocuments.map(doc => (
-                      <div
+                      <DocumentCard
                         key={doc.id}
-                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                        className="ui-card ui-card-interactive mobile-document-card group relative cursor-pointer overflow-hidden bg-white/95 p-1.5"
-                      >
-                        <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                        <div className="px-1.5 pb-1.5 pt-2">
-                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
-                          <p className="mobile-document-meta mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
-                            <User className="h-3 w-3 text-slate-400" />
-                            {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
-                          </p>
-                          <p className="mobile-document-meta mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeletePublished(e, doc)}
-                          className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-slate-500 opacity-100 shadow-sm transition-all hover:text-red-500 md:right-3 md:top-3 md:h-auto md:w-auto md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                        title={doc.title}
+                        type={doc.type}
+                        contentJson={doc.contentJson}
+                        onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                        onDelete={() => void handleDeletePublished(doc)}
+                        deleteLabel={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
+                        status={doc.status === 'draft'
+                          ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title={isEnglish ? 'Saved in the session, not visible to students yet' : 'Salvato nella sessione, non ancora visibile agli studenti'}>{isEnglish ? 'Hidden' : 'Nascosto'}</span>
+                          : null}
+                        meta={<>
+                          <p className="truncate">{doc.sessionName}</p>
+                          <p className="truncate text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                        </>}
+                      />
                     ))}
                   </div>
                 </section>
@@ -1732,32 +1833,8 @@ export default function TeacherDocumentsPage() {
           )}
         </div>
 
-        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
-        {showNewModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className={`w-full max-w-md mx-4 rounded-[28px] p-6 shadow-xl ${PASTEL_SURFACES.slate}`}>
-              <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
-              <p className="text-sm text-gray-600 mb-4">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
-              <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
-                  <FileText className="h-4 w-4 mr-2" />{isEnglish ? 'New document' : 'Nuovo documento'}
-                </Button>
-                <Button className="w-full justify-center" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
-                  <Monitor className="h-4 w-4 mr-2" />{isEnglish ? 'New presentation' : 'Nuova presentazione'}
-                </Button>
-                <Button className="w-full justify-center" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
-                </Button>
-                <Button className="w-full justify-center" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
-                  <PenTool className="h-4 w-4 mr-2" />{isEnglish ? 'New board' : 'Nuova lavagna'}
-                </Button>
-              </div>
-              <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
+        {showNewModal && newDocumentModal}
       </>
     )
   }
@@ -1803,7 +1880,7 @@ export default function TeacherDocumentsPage() {
                {activeStudentSubmissionId
                  ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
                  : draftSaveState === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…')
-                   : draftSaveState === 'saved' ? (isEnglish ? 'Saved' : 'Salvato')
+                   : draftSaveState === 'saved' ? (activePublishedTaskId ? (isEnglish ? 'Saved in session' : 'Salvato nella sessione') : (isEnglish ? 'Saved' : 'Salvato'))
                      : draftSaveState === 'error' ? (isEnglish ? 'Save error' : 'Errore salvataggio')
                        : ''}
              </span>
@@ -1813,7 +1890,8 @@ export default function TeacherDocumentsPage() {
                className="h-10 w-10 rounded-xl text-slate-600"
                disabled={!draftId}
                onClick={() => setShowVersionPanel(true)}
-               title={isEnglish ? 'Version history' : 'Cronologia versioni'}
+               title={draftId ? (isEnglish ? 'Version history' : 'Cronologia versioni') : (isEnglish ? 'Version history is available for personal drafts' : 'La cronologia è disponibile per le bozze personali')}
+               aria-label={isEnglish ? 'Version history' : 'Cronologia versioni'}
              >
                <History className="h-4 w-4" />
              </Button>
@@ -1856,9 +1934,15 @@ export default function TeacherDocumentsPage() {
                  {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
                </span>
              ) : (
-               <Button tone="accent" surface="solid" density="default" onClick={() => setShowPublishModal(true)}>
+               <Button
+                 tone="accent"
+                 surface={activePublishedTaskId ? 'soft' : 'solid'}
+                 density="default"
+                 onClick={() => setShowPublishModal(true)}
+                 title={activePublishedTaskId ? (isEnglish ? 'Already shared: edits are saved automatically. Publish a copy to another session.' : 'Già condiviso: le modifiche si salvano da sole. Pubblica una copia in un\'altra sessione.') : undefined}
+               >
                  <Upload className="h-4 w-4 mr-2" />
-                 {isEnglish ? 'Publish' : 'Pubblica'}
+                 {activePublishedTaskId ? (isEnglish ? 'Share copy' : 'Condividi copia') : (isEnglish ? 'Publish' : 'Pubblica')}
                </Button>
              )}
           </div>
@@ -1961,118 +2045,6 @@ export default function TeacherDocumentsPage() {
               </div>
             )}
 
-            {/* Document Lists */}
-            <div className="hidden">
-              {/* Drafts Section */}
-              <section>
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'My Drafts' : 'Le mie Bozze'}</h3>
-                  <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
-                </div>
-                
-                <div className="space-y-2">
-                  {draftDocuments.length === 0 && (
-                    <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <p className="text-[10px] font-medium text-slate-400">{isEnglish ? 'No saved drafts' : 'Nessuna bozza salvata'}</p>
-                    </div>
-                  )}
-                  {draftDocuments.map((doc) => (
-                    <div
-                      key={doc.id}
-                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                      className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${draftId === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${PASTEL_ICON_BACKGROUNDS[docTone(doc.type)]} ${PASTEL_ICON_TEXT[docTone(doc.type)]}`}>
-                          {doc.type === 'presentation' ? <MonitorPlay className="h-4 w-4" /> : 
-                           doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> : 
-                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
-                           <FileText className="h-4 w-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${draftId === doc.id ? PASTEL_ICON_TEXT[docTone(doc.type)] : 'text-slate-800'}`}>
-                            {doc.title}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                          title={isEnglish ? 'Delete draft' : 'Elimina bozza'}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-auto">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                          <Clock className="h-3 w-3" />
-                          {formatDocumentDateTime(doc.updatedAt)}
-                        </div>
-                        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">{isEnglish ? 'Personal Draft' : 'Bozza Personale'}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* Stored/Published Section */}
-              <section>
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Saved in Sessions' : 'Salvati nelle Sessioni'}</h3>
-                  <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">{storedDocuments.length}</span>
-                </div>
-
-                <div className="space-y-2">
-                  {storedDocuments.length === 0 && (
-                    <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <p className="text-[10px] font-medium text-slate-400">{isEnglish ? 'No content published in sessions' : 'Nessun contenuto pubblicato nelle sessioni'}</p>
-                    </div>
-                  )}
-                  {storedDocuments.map((doc) => (
-                    <div
-                      key={doc.id}
-                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                      className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${document.id === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${PASTEL_ICON_BACKGROUNDS[docTone(doc.type)]} ${PASTEL_ICON_TEXT[docTone(doc.type)]}`}>
-                          {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
-                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
-                           <BookOpen className="h-4 w-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${document.id === doc.id ? PASTEL_ICON_TEXT[docTone(doc.type)] : 'text-slate-800'}`}>
-                            {doc.title}
-                          </p>
-                          <p className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
-                            <User className="h-2.5 w-2.5 text-indigo-500" />
-                            {doc.authorName} • {doc.className}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeletePublished(e, doc)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                          title={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-auto">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                          <Calendar className="h-3 w-3" />
-                          {formatDocumentDateTime(doc.updatedAt)}
-                        </div>
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-[9px] font-black uppercase tracking-tighter text-indigo-600">
-                          <Share2 className="h-2 w-2" />
-                          {isEnglish ? 'Published' : 'Pubblicato'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
           </div>
 
           {/* Main Area */}
@@ -2091,7 +2063,9 @@ export default function TeacherDocumentsPage() {
                  ) : (
                    <iframe
                      srcDoc={document.textContent || ''}
-                     sandbox="allow-same-origin allow-scripts"
+                     // Scripts may run (interactive pages) but never on the app's origin: the page
+                     // could come from a student submission and must not reach the teacher's session.
+                     sandbox="allow-scripts allow-popups allow-forms"
                      className="w-full h-full border-0"
                      title={document.title}
                    />
@@ -2365,55 +2339,8 @@ export default function TeacherDocumentsPage() {
         )}
 
         {/* New Document Modal */}
-        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
-        {showNewModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-              <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                {isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}
-              </p>
-              <div className="flex flex-col gap-3">
-                <Button
-                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
-                  onClick={() => {
-                    createNewDocument()
-                    setShowNewModal(false)
-                  }}
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  {isEnglish ? 'New document' : 'Nuovo documento'}
-                </Button>
-                <Button
-                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
-                  onClick={() => {
-                    createNewPresentation()
-                    setShowNewModal(false)
-                  }}
-                >
-                  <Monitor className="h-4 w-4 mr-2" />
-                  {isEnglish ? 'New presentation' : 'Nuova presentazione'}
-                </Button>
-                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
-                </Button>
-                <Button
-                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
-                  onClick={() => {
-                    createNewCanvas()
-                    setShowNewModal(false)
-                  }}
-                >
-                  <PenTool className="h-4 w-4 mr-2" />
-                  {isEnglish ? 'New board' : 'Nuova lavagna'}
-                </Button>
-              </div>
-              <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
+        {showNewModal && newDocumentModal}
 
         {/* Publish Modal */}
         {showPublishModal && (
@@ -2437,6 +2364,9 @@ export default function TeacherDocumentsPage() {
                   </option>
                 ))}
               </select>
+              {classesData && classesData.length === 0 && (
+                <p className="mt-2 text-xs text-amber-700">{isEnglish ? 'No sessions yet: create a class session first.' : 'Nessuna sessione: crea prima una sessione in una classe.'}</p>
+              )}
             </div>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">{isEnglish ? 'Mode:' : 'Modalità:'}</label>
@@ -2451,7 +2381,7 @@ export default function TeacherDocumentsPage() {
                   onClick={() => setPublishMode('draft')}
                   className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'draft' ? 'bg-violet-100 text-violet-700 border-violet-200 font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  {isEnglish ? 'Save draft' : 'Salva bozza'}
+                  {isEnglish ? 'Hidden from students' : 'Nascosto agli studenti'}
                 </button>
               </div>
             </div>
@@ -2460,7 +2390,7 @@ export default function TeacherDocumentsPage() {
               <Button onClick={handlePublish} disabled={!selectedSessionId}>
                 {publishMode === 'published'
                   ? (isEnglish ? 'Publish now' : 'Pubblica ora')
-                  : (isEnglish ? 'Save draft' : 'Salva bozza')}
+                  : (isEnglish ? 'Save in session' : 'Salva nella sessione')}
               </Button>
             </div>
           </div>

@@ -3213,7 +3213,7 @@ REGOLE IMPORTANTI:
   // Desktop Chat interface
   return (
     <div
-      className="student-ui relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-[var(--ds-canvas)] p-4 text-slate-900"
+      className={`student-ui relative mx-auto flex h-full min-h-0 w-full max-w-[1800px] gap-3 overflow-hidden text-slate-900 ${sidebarMode ? 'bg-[var(--ds-canvas)] p-4' : 'bg-transparent ds-page-frame-gutter'}`}
       style={{
         ...accentVars,
       }}
@@ -3458,7 +3458,7 @@ REGOLE IMPORTANTI:
         )}
       </aside>
 
-      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : isDesktopSelection ? 'student-ai-library-frame' : `rounded-[1.125rem] shadow-[var(--ds-shadow-1)] ${PASTEL_SURFACES.slate}`}`}>
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : 'ds-page-frame'}`}>
         {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
 	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (

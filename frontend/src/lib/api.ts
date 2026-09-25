@@ -627,6 +627,8 @@ export const teacherApi = {
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
   listSharedDocuments: (params?: { class_id?: string; session_id?: string }) =>
     api.get('/teacher/documents/shared', { params }),
+  updatePublishedDocument: (taskId: string, data: { title?: string; content_json: string }) =>
+    api.put(`/teacher/documents/published/${taskId}`, data),
   updateDocumentCorrection: (submissionId: string, contentJson: string) =>
     api.put(`/teacher/documents/submissions/${submissionId}/correction`, { content_json: contentJson }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
@@ -1510,4 +1512,42 @@ export const meshyApi = {
     api.post<{ image_data: string; image_mime: string; revised_prompt: string }>('/meshy/text-to-image', { prompt, size, quality, style }),
   proxyAssetUrl: (url: string) =>
     `/api/v1/meshy/proxy-asset?url=${encodeURIComponent(url)}`,
+}
+
+// ── 3D Lab solid modeler ────────────────────────────────────────────────────
+
+export interface SolidModelSummary {
+  id: string
+  name: string
+  thumbnail: string | null
+  object_count: number
+  shared_class_ids: string[]
+  public_enabled: boolean
+  public_token: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SolidModelReadonly {
+  id: string
+  name: string
+  scene: unknown[]
+  author: string
+  updated_at: string
+}
+
+export const solidModelerApi = {
+  list: () => api.get<SolidModelSummary[]>('/solid-modeler/models'),
+  get: (id: string) => api.get<SolidModelSummary & { scene: unknown[] }>(`/solid-modeler/models/${id}`),
+  create: (data: { name?: string; scene?: unknown[]; thumbnail?: string | null }) =>
+    api.post<SolidModelSummary & { scene: unknown[] }>('/solid-modeler/models', data),
+  update: (id: string, data: { name?: string; scene?: unknown[]; thumbnail?: string | null }) =>
+    api.put<SolidModelSummary>(`/solid-modeler/models/${id}`, data),
+  remove: (id: string) => api.delete(`/solid-modeler/models/${id}`),
+  classes: () => api.get<{ id: string; name: string; school_grade: string | null }[]>('/solid-modeler/classes'),
+  share: (id: string, data: { class_ids?: string[]; public_enabled?: boolean; regenerate_token?: boolean }) =>
+    api.put<SolidModelSummary>(`/solid-modeler/models/${id}/share`, data),
+  getPublic: (token: string) => api.get<SolidModelReadonly>(`/solid-modeler/public/${token}`),
+  studentList: () => api.get<{ id: string; name: string; thumbnail: string | null; object_count: number; updated_at: string }[]>('/solid-modeler/student/models'),
+  studentGet: (id: string) => api.get<SolidModelReadonly>(`/solid-modeler/student/models/${id}`),
 }

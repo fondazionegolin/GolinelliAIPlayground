@@ -1,15 +1,18 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, PenTool } from 'lucide-react'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
+import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
+import DocumentTypeBadge, { documentKindMeta, resolveDocumentKind, type DocumentKind } from './DocumentTypeBadge'
 
-type ThumbnailType = 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'
+type ThumbnailType = DocumentKind
 
 interface DocumentThumbnailProps {
   contentJson: string
   type: ThumbnailType
   title: string
   className?: string
+  /** Type badge in the top-left corner; on by default so every preview states its file type. */
+  showTypeBadge?: boolean
 }
 
 type ParsedContent = {
@@ -145,6 +148,7 @@ function DocumentPagePreview({ html }: { html: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [hostWidth, setHostWidth] = useState(0)
   const scale = hostWidth / DIMENSIONS.a4.width
+  const safeHtml = useMemo(() => sanitizeDocumentHtml(html), [html])
 
   useEffect(() => {
     const host = hostRef.current
@@ -169,7 +173,7 @@ function DocumentPagePreview({ html }: { html: string }) {
         <article
           className="absolute left-0 top-0 origin-top-left overflow-hidden bg-white px-16 py-14 text-[16px] leading-7 text-slate-800 [&_h1]:mb-5 [&_h1]:text-4xl [&_h1]:font-bold [&_h2]:mb-4 [&_h2]:text-3xl [&_h2]:font-bold [&_h3]:mb-3 [&_h3]:text-2xl [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_ul]:my-4 [&_ul]:pl-6"
           style={{ width: DIMENSIONS.a4.width, height: DIMENSIONS.a4.height, transform: `scale(${scale})` }}
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: safeHtml }}
         />
       )}
     </div>
@@ -192,7 +196,7 @@ function SheetPreview({ data }: { data: string[][] }) {
   )
 }
 
-function DocumentThumbnail({ contentJson, type, title, className = '' }: DocumentThumbnailProps) {
+function DocumentThumbnail({ contentJson, type, title, className = '', showTypeBadge = true }: DocumentThumbnailProps) {
   const content = useMemo<ParsedContent>(() => {
     try { return JSON.parse(contentJson || '{}') }
     catch { return {} }
@@ -200,34 +204,28 @@ function DocumentThumbnail({ contentJson, type, title, className = '' }: Documen
 
   const html = content.htmlContent || content.content || ''
   const isFullHtml = /^\s*(?:<!doctype\s+html|<html)/i.test(html)
-  const actualType: ThumbnailType = Array.isArray(content.slides)
-    ? 'presentation'
-    : Array.isArray(content.data)
-      ? 'sheet'
-      : isFullHtml
-        ? 'web'
-      : type
+  const actualType: ThumbnailType = resolveDocumentKind(content, type)
+  const kindMeta = documentKindMeta(actualType)
+  const KindIcon = kindMeta.icon
   const useLightweightPreview = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   return (
-    <div className={`pointer-events-none relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={`Anteprima di ${title}`}>
+    <div className={`pointer-events-none relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={`Anteprima di ${title}`}>
       {content.previewImage ? <img src={content.previewImage} alt="" className="h-full w-full object-contain bg-slate-100" />
         : actualType === 'presentation' ? <SlidePreview content={content} title={title} />
-        : actualType === 'document' && html ? <DocumentPagePreview html={html} />
+        : (actualType === 'document' || (actualType === 'pdf' && !content.url)) && html && !isFullHtml ? <DocumentPagePreview html={html} />
         : actualType === 'sheet' ? <SheetPreview data={content.data || []} />
         : !useLightweightPreview && actualType === 'pdf' && content.url ? <iframe src={`${content.url}#page=1&toolbar=0&navpanes=0`} title={title} className="h-full w-full border-0 bg-white" />
         : !useLightweightPreview && actualType === 'web' && (content.url || html) ? <iframe src={content.url} srcDoc={content.url ? undefined : html} sandbox="" title={title} className="h-full w-full border-0 bg-white" />
         : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 bg-slate-50 text-slate-300">
-            {actualType === 'canvas' ? <PenTool className="h-9 w-9" /> : <FileText className="h-9 w-9" />}
-            <span className="max-w-[80%] truncate text-xs font-semibold">{title}</span>
+          <div className={`flex h-full flex-col items-center justify-center gap-2 ${kindMeta.soft}`}>
+            <KindIcon className="h-9 w-9 opacity-70" />
+            <span className="max-w-[80%] truncate text-xs font-semibold text-slate-500">{title}</span>
           </div>
         )}
       <span className="absolute inset-0 ring-1 ring-inset ring-black/5" />
-      {content.source?.extension && (
-        <span className="absolute left-2 top-2 rounded-md border border-white/80 bg-slate-950/80 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white shadow-sm backdrop-blur-sm">
-          {content.source.extension}
-        </span>
+      {showTypeBadge && (
+        <DocumentTypeBadge kind={actualType} extension={content.source?.extension} className="absolute left-2 top-2 max-w-[calc(100%-1rem)]" />
       )}
     </div>
   )

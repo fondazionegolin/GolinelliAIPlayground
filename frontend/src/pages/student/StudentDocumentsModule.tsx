@@ -1317,14 +1317,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     return (
       <>
         <div
-          className="relative h-full flex flex-col bg-slate-100 overflow-hidden"
+          className="relative h-full flex flex-col bg-slate-100 md:bg-transparent overflow-hidden"
           onDragEnter={(event) => { if (!readOnlyCatalog) { event.preventDefault(); setDocumentDragActive(true) } }}
           onDragOver={(event) => { if (!readOnlyCatalog) { event.preventDefault(); setDocumentDragActive(true) } }}
           onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
           onDrop={(event) => { if (readOnlyCatalog) return; event.preventDefault(); setDocumentDragActive(false); void importDocumentFiles(Array.from(event.dataTransfer.files)) }}
         >
           {!readOnlyCatalog && <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />}
-          <section className={`relative shrink-0 border-b border-slate-200/80 bg-white/95 shadow-sm md:bg-white/90 md:backdrop-blur-sm ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
+          <section className={`relative shrink-0 border-b border-slate-200/80 bg-white/95 shadow-sm md:border-0 md:ds-frame-header ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
             <div className="mx-auto max-w-6xl px-4 md:px-6">
               <div className="mx-auto max-w-3xl text-center">
                 <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
@@ -1435,9 +1435,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'mobile-document-card rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
-                        {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                         {!isCatalogGrid && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
                         <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
@@ -1469,9 +1469,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `mobile-document-card rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
+                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
-                          {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                          {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                           {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                           <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
                             {hasCorrection ? (isEnglishUi ? 'Corrections' : 'Correzioni') : docLabel(doc.type)}
@@ -1494,9 +1494,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div
                     key={doc.id}
                     onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'mobile-document-card rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                   >
-                    {isCatalogGrid && <DocumentThumbnail className="min-h-0 flex-1 !aspect-auto" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                    {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                     {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                     <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
                     <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
