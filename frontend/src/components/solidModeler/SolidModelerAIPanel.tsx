@@ -9,6 +9,9 @@ const MODELS = [
   { value: 'default|', label: 'Modello predefinito piattaforma' },
 ]
 
+// Premium model kept for teachers: student runs draw from the shared student pool.
+const STUDENT_BLOCKED_MODELS = new Set(['anthropic|claude-opus-4-8'])
+
 const SUGGESTIONS = [
   'Un tavolo con piano rettangolare e quattro gambe cilindriche',
   'Un portapenne esagonale cavo con base piena',
@@ -34,9 +37,15 @@ interface Props {
   onRunStart: () => void
   /** Live scene updates from the agent (no history entry). */
   onScene: (objects: SceneObject[]) => void
+  /** Session student: authenticate with the student token and hide the premium model. */
+  student?: boolean
 }
 
-function authHeader(): Record<string, string> {
+function authHeader(student: boolean): Record<string, string> {
+  if (student) {
+    const studentToken = localStorage.getItem('student_token')
+    return studentToken ? { 'student-token': studentToken } : {}
+  }
   try {
     const token = JSON.parse(localStorage.getItem('eduai-auth') || 'null')?.state?.accessToken
     return token ? { Authorization: `Bearer ${token}` } : {}
@@ -45,7 +54,8 @@ function authHeader(): Record<string, string> {
   }
 }
 
-export default function SolidModelerAIPanel({ objects, selection, onRunStart, onScene }: Props) {
+export default function SolidModelerAIPanel({ objects, selection, onRunStart, onScene, student = false }: Props) {
+  const models = student ? MODELS.filter(m => !STUDENT_BLOCKED_MODELS.has(m.value)) : MODELS
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState(MODELS[0].value)
   const [maxSteps, setMaxSteps] = useState(6)
@@ -75,7 +85,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
         method: 'POST',
         credentials: 'include',
         signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        headers: { 'Content-Type': 'application/json', ...authHeader(student) },
         body: JSON.stringify({
           prompt: request,
           scene: objects,
@@ -194,7 +204,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
         />
         <div className="mt-2 flex items-center gap-2">
           <select value={model} onChange={e => setModel(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
-            {MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            {models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
           <select value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} title="Passi massimi dell'agente" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
             {[3, 4, 6, 8, 10].map(n => <option key={n} value={n}>{n} passi</option>)}

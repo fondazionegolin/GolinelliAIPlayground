@@ -260,7 +260,7 @@ export function StudentNavbar({
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { key: 'boards', label: 'Board', icon: KanbanSquare },
-    { key: 'models3d', label: 'Modelli 3D', icon: Box },
+    { key: 'models3d', label: '3D Lab', icon: Box },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])

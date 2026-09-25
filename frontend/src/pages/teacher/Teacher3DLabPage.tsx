@@ -9,7 +9,6 @@ import {
 import { meshyApi, chatApi } from '@/lib/api'
 import { Button } from '@/design/primitives/Button'
 import { useMobile } from '@/hooks/useMobile'
-import { useAuthStore } from '@/stores/auth'
 
 const SolidModeler = lazy(() => import('@/components/solidModeler/SolidModeler'))
 
@@ -150,14 +149,13 @@ interface Props { sessionId?: string }
 
 const LAB_TAB_KEY = 'teacher_3d_lab_tab'
 
-// Solid modeler (Tinkercad-like) is an admin-only prototype for now.
+// Solid modeler (Tinkercad-like) needs a desktop pointer: mobile keeps the generative lab only.
 export default function Teacher3DLabPage({ sessionId }: Props) {
-  const isAdmin = useAuthStore(s => s.user?.role === 'ADMIN')
   const { isMobile } = useMobile()
   const [tab, setTab] = useState<'generate' | 'modeler'>(() => {
     try { return localStorage.getItem(LAB_TAB_KEY) === 'modeler' ? 'modeler' : 'generate' } catch { return 'generate' }
   })
-  if (!isAdmin || isMobile) return <MeshyLab sessionId={sessionId} />
+  if (isMobile) return <MeshyLab sessionId={sessionId} />
   const choose = (t: 'generate' | 'modeler') => {
     setTab(t)
     try { localStorage.setItem(LAB_TAB_KEY, t) } catch { /* ignore */ }
@@ -173,7 +171,7 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
           surface={tab === id ? 'solid' : 'ghost'}
           density="compact"
           className="rounded-full"
-          title={id === 'modeler' ? 'Modellatore solido (beta, solo admin)' : label}
+          title={id === 'modeler' ? 'Modellatore solido (beta)' : label}
         >
           <Icon /> <span className="hidden 2xl:inline">{label}</span><span className="2xl:hidden">{id === 'modeler' ? 'Modellatore' : 'Generativo'}</span>
           {id === 'modeler' && <span className="rounded-full bg-white/70 px-1.5 text-[9px] font-black uppercase tracking-wide text-violet-700">β</span>}

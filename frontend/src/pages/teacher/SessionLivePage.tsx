@@ -20,7 +20,7 @@ import {
   Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
   MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown,
-  ListChecks, SquareKanban
+  ListChecks, SquareKanban, Box
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
@@ -302,7 +302,7 @@ export default function SessionLivePage() {
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
-  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'chat_collaboration']
+  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'chat_collaboration']
   const displayModules = [
     ...MODULE_ORDER
       .filter((k) => !modules.some((m) => m.module_key === k))
@@ -511,6 +511,12 @@ export default function SessionLivePage() {
                             label: 'Vibe Lab',
                             subtitle: 'Generatore di Web App',
                             desc: 'Crea e progetta piccole applicazioni web tramite prompt di testo, con anteprima istantanea del codice.',
+                          },
+                          models3d: {
+                            icon: Box,
+                            label: '3D Lab',
+                            subtitle: 'Modellazione solida con AI',
+                            desc: 'Modellatore 3D in stile Tinkercad con assistente AI: gli studenti costruiscono oggetti ed esportano STL per la stampa 3D.',
                           },
                           chat_collaboration: {
                             icon: Users,

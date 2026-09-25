@@ -1,19 +1,14 @@
 {
-  "generated_at": "2026-09-24T10:40:08.404468+00:00",
-  "version_label": "2026.09.24-9fcd4b58",
+  "generated_at": "2026-09-25T07:35:14.705976+00:00",
+  "version_label": "2026.09.25-d4204a4c",
   "title": "Aggiornamenti branch UI_experiment",
-  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "9fcd4b58807a36152189281397d040e9bbc00eca",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "d4204a4cf8136cee383f6e006195550877017bd1",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(vibe-lab): search/replace patch edits, auto-fix loop, shared data + AI bridge",
-      "description": "Feat(vibe-lab): search/replace patch edits, auto-fix loop, shared data + AI bridge"
-    },
-    {
-      "category": "improved",
-      "title": "Style(ui): page frames, agentic output explorer, glass surface polish",
-      "description": "Style(ui): page frames, agentic output explorer, glass surface polish"
+      "title": "Feat(ui,3d-lab): student page frames, solid modeler, document cards",
+      "description": "Feat(ui,3d-lab): student page frames, solid modeler, document cards"
     }
   ]
 }

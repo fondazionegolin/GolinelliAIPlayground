@@ -89,7 +89,8 @@ const Divider = () => <span className="mx-1 h-5 w-px shrink-0 bg-slate-200" />
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export default function SolidModeler({ leading }: { leading?: ReactNode }) {
+/** `student`: session-student editor (own projects, no class/public sharing). */
+export default function SolidModeler({ leading, student = false }: { leading?: ReactNode; student?: boolean }) {
   const [hist, setHist] = useState<{ past: SceneObject[][]; present: SceneObject[]; future: SceneObject[][] }>(
     () => ({ past: [], present: [], future: [] }),
   )
@@ -129,7 +130,7 @@ export default function SolidModeler({ leading }: { leading?: ReactNode }) {
     setTimeout(() => viewport.current?.setView('home'), 0)
   }, [])
   const snapshot = useCallback(() => viewport.current?.snapshot() ?? null, [])
-  const project = useSolidProject({ objects, resetScene, snapshot })
+  const project = useSolidProject({ objects, resetScene, snapshot, student })
 
   // Drop selection ids that no longer exist (undo, AI edits).
   useEffect(() => {
@@ -342,7 +343,7 @@ export default function SolidModeler({ leading }: { leading?: ReactNode }) {
           <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = '' }} />
           <ToolButton icon={FileUp} label="Importa JSON" onClick={() => fileInput.current?.click()} />
           <ToolButton icon={FileDown} label="Esporta JSON" onClick={exportJson} disabled={!objects.length} />
-          <Button
+          {!student && <Button
             type="button"
             onClick={() => void openShare()}
             title="Condividi con la classe o con un link / QR code"
@@ -352,7 +353,7 @@ export default function SolidModeler({ leading }: { leading?: ReactNode }) {
             className="ml-1 rounded-full"
           >
             <Share2 /> Condividi
-          </Button>
+          </Button>}
           <Button
             type="button"
             onClick={doExportSTL}
@@ -460,6 +461,7 @@ export default function SolidModeler({ leading }: { leading?: ReactNode }) {
 
           <div className={`min-h-0 flex-1 ${panel === 'ai' ? 'flex flex-col' : 'hidden'}`}>
             <SolidModelerAIPanel
+              student={student}
               objects={objects}
               selection={selection}
               onRunStart={() => {

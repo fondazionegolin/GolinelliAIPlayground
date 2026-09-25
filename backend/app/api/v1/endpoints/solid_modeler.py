@@ -1,7 +1,8 @@
 """3D Lab solid modeler (Tinkercad-like prototype).
 
-Editing + AI agent are admin-only for now; shared models are readable by students
-of the target classes and, when enabled, by anyone holding the public link.
+Teachers own and edit projects; students own their own projects when the session
+enables the `models3d` module. Teacher models shared with a class are readable by its
+students and, when enabled, by anyone holding the public link.
 """
 import json
 import logging
@@ -16,12 +17,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_current_student
+from app.api.deps import StudentOrTeacher, get_current_student, get_current_teacher, get_student_or_teacher
 from app.api.v1.endpoints.llm import safe_track_usage
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.invitation import ClassTeacher
-from app.models.session import Class, Session, SessionStudent
+from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.solid_model import SolidModel
 from app.models.user import User
 from app.services.credit_service import credit_service
@@ -49,6 +50,38 @@ ALLOWED_MODELS = {
     ("openai", "gpt-5.2"),
     ("openai", "gpt-5.6-luna"),
 }
+# Premium model reserved to teachers: student runs are billed to the shared student pool.
+STUDENT_BLOCKED_MODELS = {("anthropic", "claude-opus-4-8")}
+
+
+MODULE_KEY = "models3d"
+
+
+async def get_modeler_actor(
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StudentOrTeacher:
+    """Teachers always; students only while their session has the 3D Lab module enabled."""
+    if actor.is_student:
+        enabled = await db.scalar(
+            select(SessionModule.is_enabled).where(
+                SessionModule.session_id == actor.student.session_id,
+                SessionModule.module_key == MODULE_KEY,
+            )
+        )
+        if not enabled:
+            raise HTTPException(status_code=403, detail="Il 3D Lab non è attivo in questa sessione")
+    return actor
+
+
+def _tenant_id(actor: StudentOrTeacher) -> uuid.UUID:
+    return actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id
+
+
+def _credit_scope(actor: StudentOrTeacher) -> dict:
+    if actor.is_student:
+        return {"session_id": actor.student.session_id, "student_id": actor.student.id}
+    return {"teacher_id": actor.teacher.id}
 
 
 class AgentRequest(BaseModel):
@@ -67,14 +100,15 @@ def _line(payload: dict) -> bytes:
 @router.post("/agent")
 async def run_modeler_agent(
     body: AgentRequest,
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
 ):
     provider, model = body.provider, body.model
-    if (provider, model) not in ALLOWED_MODELS:
+    allowed_models = ALLOWED_MODELS - STUDENT_BLOCKED_MODELS if actor.is_student else ALLOWED_MODELS
+    if (provider, model) not in allowed_models:
         provider, model = settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL
 
     async with AsyncSessionLocal() as db:
-        allowed = await credit_service.check_availability(db, admin.tenant_id, estimated_cost=0.002, teacher_id=admin.id)
+        allowed = await credit_service.check_availability(db, _tenant_id(actor), estimated_cost=0.002, **_credit_scope(actor))
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -110,9 +144,9 @@ async def run_modeler_agent(
                 total_cost += cost
                 async with AsyncSessionLocal() as db:
                     await safe_track_usage(
-                        db, admin.tenant_id, response.provider, response.model, cost,
+                        db, _tenant_id(actor), response.provider, response.model, cost,
                         {"type": "solid_modeler_agent", "step": step},
-                        teacher_id=admin.id,
+                        **_credit_scope(actor),
                         context="solid_modeler_agent",
                     )
                 messages.append({"role": "assistant", "content": response.content})
@@ -222,9 +256,18 @@ def _clean_payload(body: ModelSaveRequest, model: SolidModel) -> None:
         model.thumbnail = thumb or None
 
 
-async def _own_model(db: AsyncSession, model_id: uuid.UUID, user: User) -> SolidModel:
+def _owner_filter(actor: StudentOrTeacher):
+    if actor.is_student:
+        return SolidModel.owner_student_id == actor.student.id
+    return SolidModel.owner_id == actor.teacher.id
+
+
+async def _own_model(db: AsyncSession, model_id: uuid.UUID, actor: StudentOrTeacher) -> SolidModel:
     model = await db.get(SolidModel, model_id)
-    if not model or model.owner_id != user.id:
+    owned = model and (
+        model.owner_student_id == actor.student.id if actor.is_student else model.owner_id == actor.teacher.id
+    )
+    if not owned:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
     return model
 
@@ -241,11 +284,11 @@ async def _teacher_class_rows(db: AsyncSession, user: User) -> list[Class]:
 
 @router.get("/models")
 async def list_models(
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     result = await db.execute(
-        select(SolidModel).where(SolidModel.owner_id == admin.id).order_by(SolidModel.updated_at.desc())
+        select(SolidModel).where(_owner_filter(actor)).order_by(SolidModel.updated_at.desc())
     )
     return [_summary(m) for m in result.scalars().all()]
 
@@ -253,10 +296,16 @@ async def list_models(
 @router.post("/models", status_code=201)
 async def create_model(
     body: ModelSaveRequest,
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    model = SolidModel(tenant_id=admin.tenant_id, owner_id=admin.id, name="Progetto senza titolo", scene=[])
+    model = SolidModel(
+        tenant_id=_tenant_id(actor),
+        owner_id=None if actor.is_student else actor.teacher.id,
+        owner_student_id=actor.student.id if actor.is_student else None,
+        name="Progetto senza titolo",
+        scene=[],
+    )
     _clean_payload(body, model)
     db.add(model)
     await db.commit()
@@ -267,20 +316,20 @@ async def create_model(
 @router.get("/models/{model_id}")
 async def get_model(
     model_id: uuid.UUID,
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return _detail(await _own_model(db, model_id, admin))
+    return _detail(await _own_model(db, model_id, actor))
 
 
 @router.put("/models/{model_id}")
 async def update_model(
     model_id: uuid.UUID,
     body: ModelSaveRequest,
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    model = await _own_model(db, model_id, admin)
+    model = await _own_model(db, model_id, actor)
     _clean_payload(body, model)
     await db.commit()
     await db.refresh(model)
@@ -290,32 +339,32 @@ async def update_model(
 @router.delete("/models/{model_id}", status_code=204)
 async def delete_model(
     model_id: uuid.UUID,
-    admin: Annotated[User, Depends(get_current_admin)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    model = await _own_model(db, model_id, admin)
+    model = await _own_model(db, model_id, actor)
     await db.delete(model)
     await db.commit()
 
 
 @router.get("/classes")
 async def list_share_classes(
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return [{"id": str(c.id), "name": c.name, "school_grade": c.school_grade} for c in await _teacher_class_rows(db, admin)]
+    return [{"id": str(c.id), "name": c.name, "school_grade": c.school_grade} for c in await _teacher_class_rows(db, teacher)]
 
 
 @router.put("/models/{model_id}/share")
 async def share_model(
     model_id: uuid.UUID,
     body: ModelShareRequest,
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    model = await _own_model(db, model_id, admin)
+    model = await _own_model(db, model_id, StudentOrTeacher(teacher=teacher))
     if body.class_ids is not None:
-        allowed = {c.id for c in await _teacher_class_rows(db, admin)}
+        allowed = {c.id for c in await _teacher_class_rows(db, teacher)}
         invalid = [str(cid) for cid in body.class_ids if cid not in allowed]
         if invalid:
             raise HTTPException(status_code=403, detail="Puoi condividere solo con le tue classi")
@@ -331,8 +380,11 @@ async def share_model(
 
 # ── Read-only access: public link and students of shared classes ─────────
 
-async def _owner_name(db: AsyncSession, owner_id: uuid.UUID) -> str:
-    owner = await db.get(User, owner_id)
+async def _owner_name(db: AsyncSession, model: SolidModel) -> str:
+    if model.owner_student_id:
+        student = await db.get(SessionStudent, model.owner_student_id)
+        return (student.nickname or "") if student else ""
+    owner = await db.get(User, model.owner_id) if model.owner_id else None
     if not owner:
         return ""
     return " ".join(p for p in (owner.first_name, owner.last_name) if p) or ""
@@ -350,7 +402,7 @@ async def get_public_model(token: str, db: Annotated[AsyncSession, Depends(get_d
         "id": str(model.id),
         "name": model.name,
         "scene": model.scene or [],
-        "author": await _owner_name(db, model.owner_id),
+        "author": await _owner_name(db, model),
         "updated_at": _iso(model.updated_at),
     }
 
@@ -393,6 +445,6 @@ async def get_student_model(
         "id": str(model.id),
         "name": model.name,
         "scene": model.scene or [],
-        "author": await _owner_name(db, model.owner_id),
+        "author": await _owner_name(db, model),
         "updated_at": _iso(model.updated_at),
     }

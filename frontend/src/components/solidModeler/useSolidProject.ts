@@ -42,15 +42,17 @@ interface Options {
   /** Replace the editor scene (clears undo history + selection). */
   resetScene: (objects: SceneObject[]) => void
   snapshot: () => string | null
+  /** Student-owned projects (session 3D Lab module): no legacy localStorage import. */
+  student?: boolean
 }
 
-export function useSolidProject({ objects, resetScene, snapshot }: Options) {
+export function useSolidProject({ objects, resetScene, snapshot, student = false }: Options) {
   const queryClient = useQueryClient()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [name, setName] = useState(DEFAULT_NAME)
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [ready, setReady] = useState(false)
-  const [legacy, setLegacy] = useState<LegacyProject[]>(legacyProjects)
+  const [legacy, setLegacy] = useState<LegacyProject[]>(() => (student ? [] : legacyProjects()))
 
   const idRef = useRef<string | null>(null)
   const nameRef = useRef(name)
@@ -62,7 +64,7 @@ export function useSolidProject({ objects, resetScene, snapshot }: Options) {
   objectsRef.current = objects
 
   const projects = useQuery({
-    queryKey: ['solid-models'],
+    queryKey: ['solid-models', student ? 'student' : 'teacher'],
     queryFn: async () => (await solidModelerApi.list()).data,
   })
 

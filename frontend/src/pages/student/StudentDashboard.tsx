@@ -159,8 +159,8 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       shadowClass: 'shadow-slate-100/40',
     },
     models3d: {
-      label: 'Modelli 3D',
-      description: 'Modelli condivisi dal docente, pronti da stampare',
+      label: '3D Lab',
+      description: 'Modella oggetti 3D e guarda quelli condivisi dal docente',
       icon: Box,
       colorClass: 'text-violet-800',
       bgClass: 'bg-violet-100',
@@ -717,6 +717,7 @@ export default function StudentDashboard() {
                       collaborationEnabled={collaborationEnabled}
                       sharedCodingProject={sharedCodingProject}
                       onModuleBack={() => setActiveModule(null)}
+                      modelerEnabled={sessionModules.includes('models3d')}
                     />
                   </Suspense>
                 </div>
@@ -1351,7 +1352,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack, documentsReadOnly = false }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack, documentsReadOnly = false, modelerEnabled = false }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1371,6 +1372,8 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   sharedCodingProject?: { projectId: string; nonce: number } | null;
   onModuleBack?: () => void;
   documentsReadOnly?: boolean;
+  /** Session enables the 3D Lab module: students get their own solid modeler. */
+  modelerEnabled?: boolean;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
@@ -1470,7 +1473,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   if (moduleKey === 'models3d') {
     return (
       <div className="h-full min-h-0 overflow-hidden">
-        <StudentSolidModelsModule />
+        <StudentSolidModelsModule canEdit={modelerEnabled} />
       </div>
     )
   }
