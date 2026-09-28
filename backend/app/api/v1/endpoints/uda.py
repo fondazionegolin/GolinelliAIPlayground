@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
 from app.models.enums import SessionStatus
 from app.models.task import Task, TaskStatus, TaskType
+from app.services import background_jobs
 from app.services.uda_agent import generate_kb, generate_plan, generate_item_content, chat_iterate, _extract_json
 from app.services.document_processor import DocumentProcessor
 
@@ -371,7 +372,31 @@ async def api_generate_content(
             await db.commit()
         yield f"data: {json.dumps({'event': 'done', 'uda_phase': 'review'})}\n\n"
 
-    return StreamingResponse(_stream(), media_type="text/event-stream")
+    total_items = len(items)
+
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        name = event.get("event")
+        if name == "item_start":
+            state.progress = int(event.get("index") or 0) / total_items
+            state.label = f"Contenuto {int(event.get('index') or 0) + 1} di {total_items}: {event.get('title') or ''}"[:200]
+        elif name in ("item_done", "item_error"):
+            state.progress = (int(event.get("index") or 0) + 1) / total_items
+        elif name == "done":
+            state.label = "Contenuti pronti per la revisione"
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner(tenant_id=teacher.tenant_id, user_id=teacher.id),
+        kind="uda_generate",
+        title=f"UDA · {uda.title}"[:200],
+        description=f"Generazione di {total_items} contenuti didattici" + (f": {teacher_request[:300]}" if teacher_request else ""),
+        route=f"/teacher/classes/{cls.id}/uda/{uda.id}",
+        resource_id=str(uda.id),
+        stream=_stream(),
+        event_format="sse",
+        progress_fn=track_progress,
+        expected_seconds=35.0 * total_items,
+    )
+    return background_jobs.stream_response(job_id, "text/event-stream")
 
 
 @router.post("/teacher/classes/{class_id}/udas/{uda_id}/chat")

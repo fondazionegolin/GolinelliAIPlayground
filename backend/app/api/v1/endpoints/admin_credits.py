@@ -143,6 +143,7 @@ async def get_my_credit_history(
         .where(
             CreditTransaction.tenant_id == user.tenant_id,
             CreditTransaction.teacher_id == user.id,
+            CreditTransaction.student_id.is_(None),
             CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
         )
         .order_by(desc(CreditTransaction.timestamp))
@@ -155,6 +156,7 @@ async def get_my_credit_history(
             timestamp=tx.timestamp,
             provider=tx.provider,
             model=tx.model,
+            service=credit_service.classify_service(tx.provider, tx.model, tx.usage_details),
             cost_eur=float(tx.cost or 0.0),
             cost_credits=round(float(tx.cost or 0.0) * 100, 6),
             usage_details=tx.usage_details,
@@ -201,6 +203,7 @@ async def get_my_student_pool_history(
             "session_title": session_title,
             "provider": tx.provider,
             "model": tx.model,
+            "service": credit_service.classify_service(tx.provider, tx.model, tx.usage_details),
             "cost_eur": float(tx.cost or 0.0),
             "cost_credits": round(float(tx.cost or 0.0) * 100, 6),
             "usage_details": tx.usage_details or {},

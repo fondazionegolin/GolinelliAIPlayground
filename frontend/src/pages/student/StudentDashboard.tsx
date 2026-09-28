@@ -7,11 +7,8 @@ import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit,
-  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
-  Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box
-} from 'lucide-react'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box } from 'lucide-react'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
@@ -22,6 +19,7 @@ const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
 const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const StudentSolidModelsModule = lazy(() => import('./StudentSolidModelsModule'))
+const StudentMeshyLab = lazy(() => import('@/components/meshy/UnifiedMeshyLab'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 
@@ -167,6 +165,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-violet-200/80',
       shadowClass: 'shadow-violet-100/40',
     },
+    models3d_ai: {
+      label: 'AI 3D',
+      description: 'Genera modelli 3D da un testo o da un’immagine',
+      icon: MushroomIcon,
+      colorClass: 'text-fuchsia-800',
+      bgClass: 'bg-fuchsia-100',
+      borderClass: 'border-fuchsia-200/80',
+      shadowClass: 'shadow-fuchsia-100/40',
+    },
     boards: {
       label: 'Board',
       description: 'Organizza task e idee con la classe',
@@ -197,6 +204,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
   'coding',
   'boards',
   'models3d',
+  'models3d_ai',
 ]
 
 export default function StudentDashboard() {
@@ -214,6 +222,17 @@ export default function StudentDashboard() {
     if (stored !== null) return stored === '' ? null : stored
     return window.innerWidth < 768 ? null : 'chatbot'
   })
+  // Teachers currently watching this student's view (subjective view), announced by the gateway.
+  const [observingTeachers, setObservingTeachers] = useState<string[]>([])
+  // The navbar background-job indicator opens the module a job belongs to.
+  useEffect(() => {
+    const open = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail
+      if (typeof key === 'string' && key) setActiveModule(key)
+    }
+    window.addEventListener('student-open-module', open)
+    return () => window.removeEventListener('student-open-module', open)
+  }, [])
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [lastDocument] = useState<string | null>(null)
@@ -231,6 +250,21 @@ export default function StudentDashboard() {
   const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
   const studentRealtimeSocketRef = useRef<ReturnType<typeof io> | null>(null)
   const [studentRealtimeSocket, setStudentRealtimeSocket] = useState<ReturnType<typeof io> | null>(null)
+  useEffect(() => {
+    const socket = studentRealtimeSocket
+    // The teacher's own subjective-view tab must not warn itself.
+    if (!socket || localStorage.getItem('_subjective_mode')) return
+    const onObserver = (payload: { active?: boolean; teachers?: string[] }) => {
+      setObservingTeachers(payload?.active ? (payload.teachers || []) : [])
+    }
+    const onDisconnect = () => setObservingTeachers([])
+    socket.on('subjective_observer_changed', onObserver)
+    socket.on('disconnect', onDisconnect)
+    return () => {
+      socket.off('subjective_observer_changed', onObserver)
+      socket.off('disconnect', onDisconnect)
+    }
+  }, [studentRealtimeSocket])
   const activeModuleRef = useRef<string | null>(activeModule)
 
   useEffect(() => {
@@ -658,6 +692,7 @@ export default function StudentDashboard() {
           onAccentChange={setStudentAccent}
           enabledModules={enabledModules}
           pendingTasksCount={pendingTasksCount}
+          observingTeachers={observingTeachers}
         />
       </div>
 
@@ -868,6 +903,7 @@ function StudentMobileShell({
     { key: 'coding', label: 'Vibe Lab', detail: 'Crea app con l’AI', icon: Code2 },
     { key: 'boards', label: 'Board', detail: 'Task e idee', icon: KanbanSquare },
     { key: 'models3d', label: 'Modelli 3D', detail: 'Guarda e scarica STL', icon: Box },
+    { key: 'models3d_ai', label: 'AI 3D', detail: 'Genera modelli con l’AI', icon: MushroomIcon },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -1470,10 +1506,20 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     )
   }
 
+  if (moduleKey === 'models3d_ai') {
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <StudentMeshyLab sessionId={sessionId} student />
+        </Suspense>
+      </div>
+    )
+  }
+
   if (moduleKey === 'models3d') {
     return (
       <div className="h-full min-h-0 overflow-hidden">
-        <StudentSolidModelsModule canEdit={modelerEnabled} />
+        <StudentSolidModelsModule canEdit={modelerEnabled} sessionId={sessionId} />
       </div>
     )
   }

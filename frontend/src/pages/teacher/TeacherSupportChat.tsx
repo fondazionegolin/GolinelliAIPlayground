@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
+import { notifyJobsChanged } from '@/lib/backgroundJobs'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
@@ -1317,6 +1318,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       mode?: AgentMode
       sessionId?: string
       signal?: AbortSignal
+      /** Conversation to save the exchange into server-side if the teacher leaves before it ends. */
+      conversationId?: string | null
+      userMessage?: string
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
       onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
@@ -1342,8 +1346,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           model,
           agent_mode: opts?.mode ?? agentMode,
           session_id: opts?.sessionId ?? null,
+          conversation_id: opts?.conversationId ?? null,
+          user_message: opts?.userMessage,
         })
       })
+      notifyJobsChanged()
 
       if (!response.ok) {
         const error = new Error(`Stream request failed (${response.status})`) as Error & { status?: number }
@@ -2374,7 +2381,7 @@ REGOLE IMPORTANTI:
           setIsGeneratingDoc(false)
         }
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'report') {
-        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage], { signal })
+        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage], { signal, conversationId: convId, userMessage: userMessage.content })
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
           && !/```session_selector[\s\S]*?```/.test(streamResult.content)
@@ -2478,6 +2485,8 @@ REGOLE IMPORTANTI:
           const streamResult = await runStreamingRequest(llmContent, messages, {
             sessionId: _sessionId,
             signal,
+            conversationId: convId,
+            userMessage: userMessage.content,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: m.content + chunk } : m

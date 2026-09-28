@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch } from 'lucide-react'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
@@ -19,6 +20,7 @@ import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
+import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
@@ -362,6 +364,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
+    { path: '/teacher/ai-3d', label: 'AI 3D', icon: MushroomIcon },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
     ...(isAdmin ? [{ path: '/teacher/agentic', label: 'Agentic β', icon: GitBranch }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', icon: ShieldCheck }] : []),
@@ -612,6 +615,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <BackgroundJobsIndicator accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />
               </div>

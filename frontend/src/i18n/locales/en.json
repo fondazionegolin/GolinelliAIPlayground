@@ -172,6 +172,7 @@
     "preview_exit": "Exit preview",
     "subjective_banner": "You are entering the subjective view of student: {{nickname}}",
     "subjective_exit": "Return to teacher panel",
+    "observed_banner": "{{teachers}} is viewing your screen (subjective view)",
     "nickname_locked": "The nickname cannot be changed",
     "image_only_error": "Please select an image file",
     "image_max_5mb": "The file must be smaller than 5MB",

@@ -462,6 +462,8 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
           <div className={`min-h-0 flex-1 ${panel === 'ai' ? 'flex flex-col' : 'hidden'}`}>
             <SolidModelerAIPanel
               student={student}
+              projectId={project.projectId}
+              ensureProjectId={project.ensureSaved}
               objects={objects}
               selection={selection}
               onRunStart={() => {

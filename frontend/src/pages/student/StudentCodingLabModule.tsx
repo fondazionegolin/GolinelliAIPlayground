@@ -39,7 +39,8 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { codingApi, llmApi, studentApi } from '@/lib/api'
+import { codingApi, getApiAuthHeaders, llmApi, studentApi } from '@/lib/api'
+import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged } from '@/lib/backgroundJobs'
 import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorConfig'
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
@@ -331,6 +332,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // currently active project instead of a stale closure value.
   const selectedProjectIdRef = useRef<string | null>(null)
   useEffect(() => { selectedProjectIdRef.current = selectedProjectId }, [selectedProjectId])
+  // Server-side job of the generation currently shown (it keeps running if the page is left).
+  const generationJobIdRef = useRef<string | null>(null)
   const [projectDetail, setProjectDetail] = useState<CodingProjectDetail | null>(null)
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -760,6 +763,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }, [sessionId])
 
   useEffect(() => {
+    if (!selectedProjectId || generationAbortRef.current) return
+    let cancelled = false
+    void findActiveJob('vibe_generate', selectedProjectId).then((job) => {
+      if (!cancelled && job && selectedProjectIdRef.current === selectedProjectId) void resumeGeneration(selectedProjectId, job.id)
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId])
+
+  useEffect(() => {
     if (selectedProjectId) {
       loadProjectDetail(selectedProjectId)
       loadProjectCommits(selectedProjectId)
@@ -1010,10 +1023,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
         if (data.action === 'chatStream') {
           const payload = data.payload || {}
-          const studentToken = localStorage.getItem('student_token')
           const response = await fetch(codingApi.aiChatStreamUrl(), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(studentToken ? { 'student-token': studentToken } : {}) },
+            headers: { 'Content-Type': 'application/json', ...getApiAuthHeaders() },
             credentials: 'include',
             body: JSON.stringify({
               content: String(payload.content || ''),
@@ -1184,6 +1196,77 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
+  // Parse the generation SSE stream (new run or a replay of a background job) into the live UI.
+  // Returns the generated files on success; throws with the server's message on error.
+  const consumeGenerationStream = async (response: Response): Promise<GeneratedFile[] | null> => {
+    if (!response.body) throw new Error('La generazione non è partita.')
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let generatedFiles: GeneratedFile[] | null = null
+    let streamError: string | null = null
+    let finished = false
+
+    while (!finished) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // SSE frames are separated by a blank line; each frame is a single `data: {json}` line.
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        const dataLine = frame.split('\n').find((line) => line.startsWith('data: '))
+        if (!dataLine) continue
+        let event: any
+        try {
+          event = JSON.parse(dataLine.slice(6))
+        } catch {
+          continue
+        }
+        if (event.type === 'reasoning') {
+          setLiveStatus('L’architetto sta definendo struttura e modifiche…')
+          setLiveReasoning((prev) => prev + (event.content || ''))
+        } else if (event.type === 'status') {
+          setLiveStatus(String(event.message || 'Elaborazione in corso…'))
+        } else if (event.type === 'plan') {
+          setLiveStatus(`Piano pronto: ${event.files?.length || 0} file da elaborare.`)
+          setLivePlan((event.files || []) as { path: string; purpose: string }[])
+          setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
+        } else if (event.type === 'file_start') {
+          setLiveStatus(event.op === 'patch' ? `Modifico ${String(event.path)}…` : `Scrittura di ${String(event.path)}…`)
+          setLiveFiles((prev) => prev.some((file) => file.path === event.path)
+            ? prev.map((file) => file.path === event.path ? { ...file, op: event.op } : file)
+            : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const, op: event.op }])
+        } else if (event.type === 'file_progress') {
+          setLiveStatus(`Scrittura di ${String(event.path)}: ${event.lines || 0} righe…`)
+          setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
+        } else if (event.type === 'file_done') {
+          setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? `Modifica pronta per ${String(event.path)}.` : `${String(event.path)} completato (${event.lines || 0} righe).`)
+          setLiveFiles((prev) => {
+            const next = { path: String(event.path), lines: event.lines || 0, status: 'done' as const, op: event.op }
+            return prev.some((file) => file.path === event.path)
+              ? prev.map((file) => file.path === event.path ? { ...file, ...next, lines: event.lines || file.lines } : file)
+              : [...prev, next]
+          })
+        } else if (event.type === 'done') {
+          setLiveStatus('Versione pronta. Aggiorno progetto e anteprima…')
+          generatedFiles = (event.files || []) as GeneratedFile[]
+          finished = true
+        } else if (event.type === 'error') {
+          streamError = event.message || 'Generazione non riuscita.'
+          finished = true
+        }
+        // 'chunk' events only keep the connection alive; visible progress is carried by status,
+        // reasoning and per-file events.
+      }
+    }
+
+    if (streamError) throw new Error(streamError)
+    if (!generatedFiles) throw new Error('Connessione interrotta: la generazione prosegue in background, riapri il progetto tra poco.')
+    return generatedFiles
+  }
+
   const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual' }) => {
     const controller = new AbortController()
     generationAbortRef.current = controller
@@ -1207,12 +1290,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       const baseFiles = filesOverride ?? filesRef.current
       // Streamed (SSE) generation: keeps the connection alive while the LLM writes the app,
       // so a 90-180s generation survives the Cloudflare ~100s proxy timeout.
-      const studentToken = localStorage.getItem('student_token')
       const response = await fetch(codingApi.generateProjectStreamUrl(projectId), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(studentToken ? { 'student-token': studentToken } : {}),
+          ...getApiAuthHeaders(),
         },
         credentials: 'include',
         signal: controller.signal,
@@ -1225,70 +1307,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             }),
       })
       if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let generatedFiles: GeneratedFile[] | null = null
-      let streamError: string | null = null
-      let finished = false
-
-      while (!finished) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        // SSE frames are separated by a blank line; each frame is a single `data: {json}` line.
-        let sep: number
-        while ((sep = buffer.indexOf('\n\n')) >= 0) {
-          const frame = buffer.slice(0, sep)
-          buffer = buffer.slice(sep + 2)
-          const dataLine = frame.split('\n').find((line) => line.startsWith('data: '))
-          if (!dataLine) continue
-          let event: any
-          try {
-            event = JSON.parse(dataLine.slice(6))
-          } catch {
-            continue
-          }
-          if (event.type === 'reasoning') {
-            setLiveStatus('L’architetto sta definendo struttura e modifiche…')
-            setLiveReasoning((prev) => prev + (event.content || ''))
-          } else if (event.type === 'status') {
-            setLiveStatus(String(event.message || 'Elaborazione in corso…'))
-          } else if (event.type === 'plan') {
-            setLiveStatus(`Piano pronto: ${event.files?.length || 0} file da elaborare.`)
-            setLivePlan((event.files || []) as { path: string; purpose: string }[])
-            setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
-          } else if (event.type === 'file_start') {
-            setLiveStatus(event.op === 'patch' ? `Modifico ${String(event.path)}…` : `Scrittura di ${String(event.path)}…`)
-            setLiveFiles((prev) => prev.some((file) => file.path === event.path)
-              ? prev.map((file) => file.path === event.path ? { ...file, op: event.op } : file)
-              : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const, op: event.op }])
-          } else if (event.type === 'file_progress') {
-            setLiveStatus(`Scrittura di ${String(event.path)}: ${event.lines || 0} righe…`)
-            setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
-          } else if (event.type === 'file_done') {
-            setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? `Modifica pronta per ${String(event.path)}.` : `${String(event.path)} completato (${event.lines || 0} righe).`)
-            setLiveFiles((prev) => {
-              const next = { path: String(event.path), lines: event.lines || 0, status: 'done' as const, op: event.op }
-              return prev.some((file) => file.path === event.path)
-                ? prev.map((file) => file.path === event.path ? { ...file, ...next, lines: event.lines || file.lines } : file)
-                : [...prev, next]
-            })
-          } else if (event.type === 'done') {
-            setLiveStatus('Versione pronta. Aggiorno progetto e anteprima…')
-            generatedFiles = (event.files || []) as GeneratedFile[]
-            finished = true
-          } else if (event.type === 'error') {
-            streamError = event.message || 'Generazione non riuscita.'
-            finished = true
-          }
-          // 'chunk' events only keep the connection alive; visible progress is carried by status,
-          // reasoning and per-file events.
-        }
-      }
-
-      if (streamError) throw new Error(streamError)
+      generationJobIdRef.current = response.headers.get('X-Job-Id')
+      notifyJobsChanged()
+      const generatedFiles = await consumeGenerationStream(response)
       if (generatedFiles) {
         setFiles(generatedFiles)
         filesRef.current = generatedFiles
@@ -1302,7 +1323,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       if (err?.name === 'AbortError') setError('Generazione interrotta: il progetto è rimasto alla versione precedente.')
       else setError(err?.message || 'Generazione codice non riuscita.')
     } finally {
-      if (generationAbortRef.current === controller) generationAbortRef.current = null
+      if (generationAbortRef.current === controller) {
+        generationAbortRef.current = null
+        generationJobIdRef.current = null
+        notifyJobsChanged()
+      }
       setGenerating(false)
       setLiveReasoning('')
       setLivePlan([])
@@ -1431,7 +1456,53 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
+  // Back on a project whose generation is still running server-side: follow it from the start.
+  const resumeGeneration = async (projectId: string, jobId: string) => {
+    if (generationAbortRef.current) return
+    const controller = new AbortController()
+    generationAbortRef.current = controller
+    generationJobIdRef.current = jobId
+    setGenerating(true)
+    setGenerationMode('build')
+    lastGenerationModeRef.current = 'build'
+    setError(null)
+    setLiveReasoning('')
+    setLivePlan([])
+    setLiveFiles([])
+    setLiveStatus('Generazione in corso in background: riprendo da dove era arrivata…')
+    try {
+      const response = await followJobStream(jobId, controller.signal)
+      if (!response.ok) {
+        // The job ended meanwhile (stream no longer kept): just show the saved result.
+        await loadProjectDetail(projectId)
+        return
+      }
+      const generatedFiles = await consumeGenerationStream(response)
+      if (selectedProjectIdRef.current !== projectId) return
+      if (generatedFiles) {
+        setFiles(generatedFiles)
+        filesRef.current = generatedFiles
+        const preferred = generatedFiles.find((f) => f.path === 'App.tsx' || f.path === 'index.html')
+        setSelectedPath(preferred?.path || generatedFiles[0]?.path || 'App.tsx')
+      }
+      await loadProjectDetail(projectId)
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') setError(err?.message || 'Generazione codice non riuscita.')
+    } finally {
+      if (generationAbortRef.current === controller) {
+        generationAbortRef.current = null
+        generationJobIdRef.current = null
+      }
+      setGenerating(false)
+      setLiveReasoning('')
+      setLivePlan([])
+      setLiveFiles([])
+      setLiveStatus('')
+    }
+  }
+
   const stopGeneration = () => {
+    void cancelJob(generationJobIdRef.current)
     generationAbortRef.current?.abort()
     cancelObservation()
     setVerifyState('idle')

@@ -18,6 +18,32 @@ def _next_month_start(now: datetime) -> datetime:
 
 
 class CreditService:
+    @staticmethod
+    def classify_service(provider: Optional[str], model: Optional[str], usage_details: Optional[dict]) -> str:
+        """Return a stable, human-readable product area for current and historical transactions."""
+        details = usage_details or {}
+        explicit = str(details.get("service") or "").strip()
+        if explicit:
+            return explicit
+        kind = str(details.get("type") or details.get("context") or "").lower()
+        haystack = " ".join((kind, str(provider or "").lower(), str(model or "").lower()))
+        if any(value in haystack for value in ("meshy", "solid_modeler", "text_to_3d", "image_to_3d", "3d_lab")):
+            return "3D Lab"
+        if any(value in haystack for value in ("coding", "vibe", "pxt", "code_agent")):
+            return "Vibe Lab"
+        if "notebook" in haystack:
+            return "Notebook"
+        if any(value in haystack for value in ("teacherbot", "studentbot", "escape_room")):
+            return "Teacherbot"
+        if any(value in haystack for value in ("classification", "ml_lab", "dataset")):
+            return "ML Lab"
+        if any(value in haystack for value in ("agentic", "workflow", "dataflow")):
+            return "Agentic"
+        if any(value in haystack for value in ("document", "presentation", "lesson", "uda")):
+            return "Documenti"
+        if any(value in haystack for value in ("chat", "message", "conversation", "vision", "txt2img", "img2img", "direct_generation")):
+            return "Chatbot"
+        return "Servizi AI"
 
     # ── Limit creation helpers ──────────────────────────────────────────────
 
@@ -334,6 +360,9 @@ class CreditService:
         session_id: Optional[UUID] = None,
         student_id: Optional[UUID] = None,
     ) -> CreditTransaction:
+        usage_details = dict(usage_details or {})
+        usage_details.setdefault("service", self.classify_service(provider, model, usage_details))
+
         tx = CreditTransaction(
             tenant_id=tenant_id,
             transaction_type=CreditTransactionType.API_CALL,

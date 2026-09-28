@@ -167,7 +167,7 @@ def export_session_task(self, session_id: str, teacher_id: str):
         from sqlalchemy import select
         from app.models.session import Session, SessionStudent
         from app.models.chat import ChatMessage
-        from app.models.llm import Conversation, ConversationMessage, AuditEvent
+        from app.models.llm import Conversation, ConversationMessage, AuditEvent, conversation_message_order
         import json
         from datetime import datetime
         
@@ -219,7 +219,7 @@ def export_session_task(self, session_id: str, teacher_id: str):
                 msg_result = await db.execute(
                     select(ConversationMessage)
                     .where(ConversationMessage.conversation_id == conv.id)
-                    .order_by(ConversationMessage.created_at)
+                    .order_by(*conversation_message_order())
                 )
                 for msg in msg_result.scalars():
                     conv_data["messages"].append({

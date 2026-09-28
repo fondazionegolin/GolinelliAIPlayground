@@ -22,6 +22,7 @@ import {
   MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown,
   ListChecks, SquareKanban, Box
 } from 'lucide-react'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
@@ -302,7 +303,7 @@ export default function SessionLivePage() {
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
-  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'chat_collaboration']
+  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'models3d_ai', 'chat_collaboration']
   const displayModules = [
     ...MODULE_ORDER
       .filter((k) => !modules.some((m) => m.module_key === k))
@@ -438,7 +439,16 @@ export default function SessionLivePage() {
             <div className="min-w-0">
 
               <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-5">
-                <TabsList surface="base" className="grid h-auto w-full grid-cols-2 gap-1 rounded-[var(--selection-radius)] border-[color:var(--border-subtle)] bg-white p-1 shadow-none sm:grid-cols-4">
+                {/* Same material as the navbar selector: cluster track + ds-selected active tab. */}
+                <TabsList
+                  className="grid h-auto w-full grid-cols-2 gap-1 !border-0 p-1 sm:grid-cols-4"
+                  style={{
+                    borderRadius: 'var(--selection-radius)',
+                    backgroundColor: 'var(--ds-navbar-cluster)',
+                    backgroundImage: 'var(--ds-navbar-cluster-bg)',
+                    boxShadow: 'var(--ds-shadow-cluster)',
+                  }}
+                >
                   {([
                     { key: 'modules', icon: Brain, label: 'Moduli' },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
@@ -448,7 +458,15 @@ export default function SessionLivePage() {
                     <TabsTrigger
                       key={tab.key}
                       value={tab.key}
-                      className="ui-control-label gap-2 rounded-[var(--selection-radius)] border px-4 py-2.5 data-[state=inactive]:border-transparent data-[state=inactive]:bg-transparent data-[state=inactive]:text-slate-600 data-[state=inactive]:shadow-none data-[state=inactive]:hover:border-[color:var(--selection-border)] data-[state=inactive]:hover:bg-[image:var(--selection-bg)] data-[state=inactive]:hover:text-[var(--selection-text)] data-[state=active]:border-[color:var(--selection-border-hover)] data-[state=active]:bg-[image:var(--selection-active-bg)] data-[state=active]:text-[var(--selection-active-text)] data-[state=active]:shadow-[var(--selection-shadow)]"
+                      style={activeTab === tab.key ? {
+                        backgroundColor: 'transparent',
+                        backgroundImage: 'var(--ds-choice-bg)',
+                        color: 'var(--ds-choice-ink)',
+                        boxShadow: 'var(--ds-choice-ring-strong), var(--ds-choice-shadow)',
+                        backdropFilter: 'var(--ds-choice-blur)',
+                        WebkitBackdropFilter: 'var(--ds-choice-blur)',
+                      } : undefined}
+                      className={`min-h-[var(--selection-height)] gap-2 rounded-[var(--selection-radius)] border-0 px-[var(--selection-padding-x)] py-1.5 text-xs font-bold transition-all duration-150 ${activeTab === tab.key ? '' : 'bg-transparent text-slate-600 shadow-none hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] hover:shadow-[var(--ds-shadow-1)]'}`}
                     >
                       <tab.icon className="h-4 w-4" />
                       <span>{tab.label}</span>
@@ -462,12 +480,18 @@ export default function SessionLivePage() {
                 <div className="space-y-4">
 
                   {/* Module toggles */}
-                  <Card surface="base" className="overflow-hidden rounded-[10px] border-[#f1f5f9] bg-white shadow-none">
-                    <div className="flex min-h-11 items-center gap-2 border-b border-[#f1f5f9] px-8 py-3">
-                      <Brain className="h-[17px] w-[17px] text-[#222d3f]" />
-                      <span className="text-base font-bold text-[#222d3f]">Moduli attivi visibili agli studenti</span>
+                  <section className="ds-panel overflow-hidden rounded-[var(--ds-radius-panel)]">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
+                      <Brain className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-black text-slate-900">Moduli visibili agli studenti</h2>
+                        <p className="text-xs text-slate-500">Attiva gli strumenti che gli studenti vedono nella sessione.</p>
+                      </div>
+                      <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,white)] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
+                        {displayModules.filter((mod) => mod.is_enabled).length} di {displayModules.length} attivi
+                      </span>
                     </div>
-                    <div className="flex flex-wrap justify-center gap-x-7 gap-y-5 px-4 py-6 sm:px-8">
+                    <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3 xl:grid-cols-4">
                       {displayModules.map((mod) => {
                         const cfg: Record<string, { icon: React.FC<{ className?: string }>; label: string; subtitle: string; desc: string }> = {
                           chatbot: {
@@ -515,8 +539,14 @@ export default function SessionLivePage() {
                           models3d: {
                             icon: Box,
                             label: '3D Lab',
-                            subtitle: 'Modellazione solida con AI',
+                            subtitle: 'Modellazione solida',
                             desc: 'Modellatore 3D in stile Tinkercad con assistente AI: gli studenti costruiscono oggetti ed esportano STL per la stampa 3D.',
+                          },
+                          models3d_ai: {
+                            icon: MushroomIcon,
+                            label: 'AI 3D',
+                            subtitle: 'Modelli 3D generativi',
+                            desc: 'Generazione di modelli 3D da un testo o da un’immagine con Meshy, pronti da scaricare e condividere in chat.',
                           },
                           chat_collaboration: {
                             icon: Users,
@@ -530,44 +560,63 @@ export default function SessionLivePage() {
                         return (
                           <div
                             key={mod.module_key}
-                            className={`flex h-[189px] w-[220px] max-w-full shrink-0 flex-col rounded-[14px] border px-[14px] py-[13px] transition-colors ${mod.is_enabled
-                              ? 'border-[#e0dbf4] bg-[#f4f3fd]'
-                              : 'border-[#d9dee6] bg-[#fafbfd]'
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={mod.is_enabled}
+                            aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
+                            onClick={() => { if (!toggleModuleMutation.isPending) toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: !mod.is_enabled }) }}
+                            onKeyDown={(event) => {
+                              if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
+                                event.preventDefault()
+                                if (!toggleModuleMutation.isPending) toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: !mod.is_enabled })
+                              }
+                            }}
+                            className={`ui-card-interactive group flex min-h-[168px] cursor-pointer flex-col rounded-[var(--ds-radius-control)] p-4 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${mod.is_enabled
+                              ? 'bg-[color-mix(in_srgb,var(--logo-violet)_8%,white)] shadow-[var(--ds-shadow-1)]'
+                              : 'bg-white/60 shadow-[var(--ds-shadow-inset)]'
                               }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <div className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border ${mod.is_enabled
-                                ? 'border-[#523399] bg-[#523399]'
-                                : 'border-[#d9dee6] bg-[#e2e4ec]'
+                            <div className="flex items-center justify-between gap-2">
+                              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${mod.is_enabled
+                                ? 'bg-[var(--logo-violet)] shadow-[var(--ds-shadow-1)]'
+                                : 'bg-slate-100'
                                 }`}>
-                                <ModIcon className={`h-5 w-5 ${mod.is_enabled ? 'text-white' : 'text-[#91a4bb]'}`} />
+                                <ModIcon className={`h-5 w-5 ${mod.is_enabled ? 'text-white' : 'text-slate-400'}`} />
                               </div>
-                              <Switch
-                                checked={mod.is_enabled}
-                                disabled={toggleModuleMutation.isPending}
-                                onCheckedChange={(isEnabled) => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled })}
-                                aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
-                                className="h-[26px] w-[45px] bg-[#e2e4ec] peer-focus:ring-[#e0dbf4] peer-checked:bg-[#7f68cf] peer-disabled:cursor-wait peer-disabled:opacity-60 after:start-[5px] after:top-[4px] after:h-[18px] after:w-[18px] peer-checked:after:translate-x-[17px]"
-                              />
+                              <div onClick={(event) => event.stopPropagation()}>
+                                <Switch
+                                  checked={mod.is_enabled}
+                                  disabled={toggleModuleMutation.isPending}
+                                  onCheckedChange={(isEnabled) => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled })}
+                                  aria-label={`${mod.is_enabled ? 'Disattiva' : 'Attiva'} ${c.label}`}
+                                  className="h-[24px] w-[42px] bg-slate-200 peer-focus:ring-0 peer-checked:bg-[var(--logo-violet)] peer-disabled:cursor-wait peer-disabled:opacity-60 after:start-[4px] after:top-[3px] after:h-[18px] after:w-[18px] peer-checked:after:translate-x-[16px]"
+                                />
+                              </div>
                             </div>
-                            <div className="mt-1.5 min-w-0 leading-normal text-black">
-                              <p className="text-sm font-bold">{c.label}</p>
-                              <p className="text-[13px] font-medium">{c.subtitle}</p>
+                            <div className="mt-3 min-w-0">
+                              <p className={`text-sm font-black ${mod.is_enabled ? 'text-slate-900' : 'text-slate-600'}`}>{c.label}</p>
+                              <p className={`text-xs font-semibold ${mod.is_enabled ? 'text-[var(--logo-violet)]' : 'text-slate-400'}`}>{c.subtitle}</p>
                             </div>
-                            <p className="mt-2 text-xs font-medium leading-[1.25] text-[#91a4bb]">{c.desc}</p>
+                            <p className="mt-2 line-clamp-3 text-xs leading-[1.4] text-slate-500">{c.desc}</p>
+                            <p className={`mt-auto pt-2 text-[10px] font-bold uppercase tracking-wide ${mod.is_enabled ? 'text-[var(--logo-violet)]' : 'text-slate-400'}`}>
+                              {mod.is_enabled ? 'Visibile agli studenti' : 'Nascosto'}
+                            </p>
                           </div>
                         )
                       })}
                     </div>
-                  </Card>
+                  </section>
 
                   {/* Default LLM model */}
-                  <Card surface="glass" className="overflow-hidden rounded-xl border-slate-200 bg-white/95">
-                    <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-                      <Bot className="h-4 w-4 text-slate-500" />
-                      <span className="font-semibold text-sm text-slate-800">Modello AI di Default</span>
+                  <section className="ds-panel overflow-hidden rounded-[var(--ds-radius-panel)]">
+                    <div className="flex items-center gap-3 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
+                      <Bot className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
+                      <div className="min-w-0">
+                        <h2 className="text-base font-black text-slate-900">Modello AI predefinito</h2>
+                        <p className="text-xs text-slate-500">Usato dagli strumenti AI degli studenti in questa sessione.</p>
+                      </div>
                     </div>
-                    <div className="p-3 flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 p-4 sm:p-5">
                       {modelsData?.models?.map((m: { provider: string; model: string; name: string; description: string }) => {
                         const isSelected =
                           (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_provider === m.provider &&
@@ -576,13 +625,12 @@ export default function SessionLivePage() {
                           <button
                             key={`${m.provider}:${m.model}`}
                             onClick={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
-                            className={`app-button-chrome flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${
-                              isSelected
-                                ? 'app-button-chrome-active text-[var(--app-accent-text,var(--logo-pink))]'
-                                : 'text-slate-600 hover:text-slate-800'
+                            aria-pressed={isSelected}
+                            className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition-all ${
+                              isSelected ? 'ds-selected' : 'ds-control text-slate-600 hover:text-slate-900'
                             }`}
                           >
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-white/20' : 'bg-slate-100'}`}>
+                            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-[var(--ds-shadow-1)]">
                               {m.provider === 'openai' ? (
                                 <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3 w-3 object-contain" />
                               ) : m.provider === 'anthropic' ? (
@@ -594,12 +642,12 @@ export default function SessionLivePage() {
                               )}
                             </span>
                             {m.name}
-                            {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                            {isSelected && <Check className="h-3 w-3 shrink-0 text-[var(--logo-violet)]" />}
                           </button>
                         )
                       })}
                     </div>
-                  </Card>
+                  </section>
                 </div>
               )}
 
@@ -1892,11 +1940,16 @@ interface MessageData {
   id: string
   role: string
   content: string | null
+  content_json?: { files?: { filename?: string; mime_type?: string }[] } | null
   provider: string | null
   model: string | null
   created_at: string
   token_usage_json?: TokenUsageJson | null
 }
+
+// The history is the teacher's record of what students did: keep it fresh even without socket events.
+const HISTORY_LIST_REFRESH_MS = 15000
+const HISTORY_MESSAGES_REFRESH_MS = 10000
 
 interface TeacherbotConvData {
   id: string
@@ -2080,6 +2133,8 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       const res = await llmApi.getSessionConversations(sessionId)
       return res.data
     },
+    refetchInterval: HISTORY_LIST_REFRESH_MS,
+    refetchOnWindowFocus: true,
   })
 
   // Teacherbot conversations for this session
@@ -2089,6 +2144,8 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       const res = await teacherbotsApi.getSessionConversations(sessionId)
       return res.data
     },
+    refetchInterval: HISTORY_LIST_REFRESH_MS,
+    refetchOnWindowFocus: true,
   })
 
   useEffect(() => {
@@ -2107,6 +2164,8 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       return res.data
     },
     enabled: !!selectedTBConvId && !!selectedTBConv,
+    refetchInterval: HISTORY_MESSAGES_REFRESH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { data: messages, isLoading: loadingMessages } = useQuery<MessageData[]>({
@@ -2116,14 +2175,19 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       return res.data
     },
     enabled: !!selectedConversationId,
+    refetchInterval: HISTORY_MESSAGES_REFRESH_MS,
+    refetchOnWindowFocus: true,
   })
 
-  // Scroll to bottom when messages load
+  // Scroll to bottom when a conversation opens or grows (not on every identical background refresh)
+  const shownMessages = historyTab === 'teacherbot' ? tbMessages : messages
+  const shownKey = `${historyTab === 'teacherbot' ? selectedTBConvId : selectedConversationId}:${shownMessages?.length ?? 0}`
   useEffect(() => {
-    if (messages && messagesEndRef.current) {
+    if (shownMessages && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownKey])
 
   // Socket: real-time updates
   useEffect(() => {
@@ -2167,6 +2231,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
     provider: msg.provider ?? undefined,
     model: msg.model ?? undefined,
     token_usage_json: msg.token_usage_json ?? null,
+    files: (msg.content_json?.files ?? []).filter(file => file && (file.filename || file.mime_type)),
   }))
 
   const groupByStudent = (convs: ConversationData[]) =>
@@ -2415,18 +2480,32 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                     Nessun messaggio in questa conversazione.
                   </div>
                 ) : (
-                  activeMsgs.map((msg) => (
+                  activeMsgs.map((msg, index) => {
+                    const time = msg.timestamp.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+                    const previous = activeMsgs[index - 1]
+                    const showDay = !previous || previous.timestamp.toDateString() !== msg.timestamp.toDateString()
+                    return (
                     <div key={msg.id}>
+                      {showDay && (
+                        <div className="my-2 flex justify-center">
+                          <span className="rounded-full bg-white px-3 py-0.5 text-[10px] font-semibold text-slate-400 shadow-sm">
+                            {msg.timestamp.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
                       {/* Student label above user messages */}
-                      {msg.role === 'user' && (
+                      {msg.role === 'user' ? (
                         <div className="flex justify-end mb-1 pr-1">
                           <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400">{time}</span>
                             <span className="text-[11px] font-semibold text-slate-500">{activeName}</span>
                             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0">
                               {activeName?.charAt(0).toUpperCase() ?? 'S'}
                             </div>
                           </div>
                         </div>
+                      ) : (
+                        <div className="mb-1 pl-11 text-[10px] text-slate-400">{time}</div>
                       )}
                       <MessageBubble
                         message={msg}
@@ -2438,8 +2517,18 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                           setTimeout(() => setCopiedId(null), 2000)
                         }}
                       />
+                      {msg.files.length > 0 && (
+                        <div className={`mt-1 flex flex-wrap gap-1 ${msg.role === 'user' ? 'justify-end pr-1' : 'pl-11'}`}>
+                          {msg.files.map((file, fileIndex) => (
+                            <span key={fileIndex} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
+                              📎 {file.filename && file.filename !== 'blob' ? file.filename : (file.mime_type?.startsWith('image/') ? 'Immagine allegata' : 'File allegato')}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))
+                    )
+                  })
                 )}
                 <div ref={messagesEndRef} />
               </div>

@@ -136,7 +136,17 @@ class TeacherbotMessage(Base):
     provider = Column(String, nullable=True)
     model = Column(String, nullable=True)
     token_usage_json = Column(JSONB, nullable=True)  # {prompt_tokens, completion_tokens, total_tokens}
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False)
 
     # Relationships
     conversation = relationship("TeacherbotConversation", back_populates="messages")
+
+
+def teacherbot_message_order():
+    """Chronological order for teacherbot history (see conversation_message_order)."""
+    from sqlalchemy import case
+    return (
+        TeacherbotMessage.created_at.asc(),
+        case((TeacherbotMessage.role == "user", 0), else_=1),
+        TeacherbotMessage.id.asc(),
+    )

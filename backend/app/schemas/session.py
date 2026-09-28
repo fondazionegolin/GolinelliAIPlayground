@@ -57,6 +57,7 @@ class SessionResponse(BaseModel):
     deleted_at: Optional[datetime] = None
     deleted_by_id: Optional[UUID] = None
     purge_after: Optional[datetime] = None
+    co_teachers: list[str] = []
 
     class Config:
         from_attributes = True

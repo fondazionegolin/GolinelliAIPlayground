@@ -53,7 +53,7 @@ class ConversationMessage(Base):
     model = Column(String, nullable=True)
     token_usage_json = Column(JSONB, nullable=True)
     confidence_json = Column(JSONB, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
@@ -113,8 +113,18 @@ class TeacherConversationMessage(Base):
     attachments_json = Column(JSONB, nullable=True)  # file attachments metadata
     provider = Column(String, nullable=True)
     model = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False)
 
     # Relationships
     conversation = relationship("TeacherConversation", back_populates="messages")
 
+
+def conversation_message_order():
+    """Chronological order for chat history. Legacy rows saved in one transaction share created_at:
+    the student's question precedes the reply, then id keeps the order deterministic."""
+    from sqlalchemy import case
+    return (
+        ConversationMessage.created_at.asc(),
+        case((ConversationMessage.role == MessageRole.USER, 0), else_=1),
+        ConversationMessage.id.asc(),
+    )

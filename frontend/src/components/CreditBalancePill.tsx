@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Moon, Users } from 'lucide-react'
+import { ProgressRing } from '@/components/ui/ProgressGlyph'
 import { creditsApi, studentApi } from '@/lib/api'
 
 type CreditBalance = {
@@ -15,9 +15,11 @@ type CreditHistoryItem = {
   student_name?: string | null
   class_name?: string | null
   session_title?: string | null
+  service?: string | null
   provider?: string | null
   model?: string | null
   cost_eur: number
+  usage_details?: Record<string, unknown> | null
   cost_credits: number
 }
 
@@ -31,10 +33,9 @@ const poolCreditColor = '#0e7490'
 
 function formatCreditValue(value: number) {
   if (value === 0) return '0'
-  if (value < 0.001) return '<0,001'
   return value.toLocaleString('it-IT', {
-    minimumFractionDigits: value < 1 ? 3 : 0,
-    maximumFractionDigits: value < 1 ? 3 : 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: value < 1 ? 6 : 2,
   })
 }
 
@@ -46,6 +47,8 @@ function formatWhen(value: string) {
     minute: '2-digit',
   }).format(new Date(value))
 }
+
+const CreditRing = ProgressRing
 
 export function CreditBalancePill({ audience, accentColor }: CreditBalancePillProps) {
   const [balance, setBalance] = useState<CreditBalance | null>(null)
@@ -71,7 +74,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
     }
 
     loadBalance()
-    const interval = window.setInterval(loadBalance, 30000)
+    const interval = window.setInterval(loadBalance, 15000)
     window.addEventListener('focus', loadBalance)
 
     return () => {
@@ -79,7 +82,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       window.clearInterval(interval)
       window.removeEventListener('focus', loadBalance)
     }
-  }, [audience])
+  }, [audience, open])
 
   useEffect(() => {
     if (!open) return
@@ -89,10 +92,10 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       setHistoryLoading(true)
       try {
         const response = audience === 'student'
-          ? await studentApi.getCreditHistory(20)
+          ? await studentApi.getCreditHistory(50)
           : audience === 'studentPool'
             ? await creditsApi.getStudentPoolHistory(50)
-            : await creditsApi.getHistory(20)
+            : await creditsApi.getHistory(50)
         if (mounted) setHistory(response.data)
       } catch (err) {
         if (mounted) setHistory([])
@@ -117,86 +120,106 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const credits = balance?.credits_remaining
-  const isLow = typeof credits === 'number' && credits < 20
-  const label = typeof credits === 'number' ? credits.toLocaleString('it-IT') : '--'
+  const remaining = balance?.credits_remaining
+  const used = balance?.credits_used ?? 0
+  const cap = balance?.credits_cap
   const isPool = audience === 'studentPool'
-  // For a student's own pill, the binding cap can be their individual quota OR the shared class
-  // pool (whichever is smaller — see credit_service.get_balance). Read limit_level back from the
-  // balance payload instead of hardcoding "docente" for every non-teacher audience.
   const isStudentPoolLimiting = audience === 'student' && balance?.limit_level === 'STUDENT_POOL'
   const mainColor = isPool || isStudentPoolLimiting ? poolCreditColor : teacherCreditColor
+  const remainingRatio = typeof cap === 'number' && cap > 0
+    ? Math.max(0, Math.min((remaining ?? Math.max(cap - used, 0)) / cap, 1))
+    : 1
+  const ringColor = remainingRatio <= 0.1 ? '#dc2626' : remainingRatio <= 0.3 ? '#d97706' : mainColor
+  const percentAvailable = Math.round(remainingRatio * 100)
   const title = isPool
     ? 'Pool crediti studenti'
     : audience === 'student'
       ? (isStudentPoolLimiting ? 'Pool della classe' : 'I tuoi crediti')
       : 'Crediti AI docente'
-  const shortLabel = isPool
-    ? 'pool'
-    : audience === 'student'
-      ? (isStudentPoolLimiting ? 'pool' : 'tuoi')
-      : 'docente'
-  const Icon = isPool || isStudentPoolLimiting ? Users : Moon
+  const remainingLabel = typeof remaining === 'number' ? formatCreditValue(remaining) : 'Illimitati'
 
   return (
     <div className="relative" ref={panelRef}>
       <button
         type="button"
-        className="navbar-inline-control flex h-8 min-w-[48px] flex-col items-center justify-center gap-0 rounded-lg px-2 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
+        className="navbar-inline-control flex h-8 w-9 items-center justify-center rounded-lg p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
         style={{
-          color: isLow ? '#dc2626' : mainColor,
-          borderColor: isLow ? 'rgba(220,38,38,0.35)' : 'transparent',
+          color: ringColor,
           '--btn-tone': accentColor,
           '--tw-ring-color': accentColor,
         } as CSSProperties}
-        aria-label={`${title}: ${label}`}
+        aria-label={`${title}: ${percentAvailable}% disponibile, ${remainingLabel} crediti rimasti`}
+        title={`${title} · ${percentAvailable}% disponibile`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="flex items-center gap-0.5 text-[12px] font-black tabular-nums">
-          {label}
-          <Icon className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-        </span>
-        <span className="text-[7px] font-bold uppercase tracking-[0.08em] opacity-75">{shortLabel}</span>
+        <CreditRing value={remainingRatio} color={ringColor} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-black text-slate-900">{title}</p>
-            <p className="mt-0.5 text-xs font-medium text-slate-500">
-              {label} disponibili{typeof balance?.credits_cap === 'number' ? ` su ${balance.credits_cap.toLocaleString('it-IT')}` : ''}
-            </p>
+        <div className="absolute right-0 top-full z-50 mt-2 w-[640px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
+          <div className="border-b border-slate-100 px-4 py-3.5">
+            <div className="flex items-center gap-3">
+              <CreditRing value={remainingRatio} color={ringColor} size={38} />
+              <div>
+                <p className="text-sm font-black text-slate-900">{title}</p>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">Aggiornato automaticamente · {percentAvailable}% del plafond disponibile</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                ['Disponibili', remainingLabel],
+                ['Consumati', formatCreditValue(used)],
+                ['Plafond', typeof cap === 'number' ? formatCreditValue(cap) : 'Illimitato'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+                  <p className="mt-0.5 text-sm font-black tabular-nums text-slate-900">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="max-h-80 overflow-y-auto p-2">
+          <div className="border-b border-slate-100 px-4 py-2.5">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-600">Storico consumi</p>
+          </div>
+          <div className="max-h-80 overflow-auto">
             {historyLoading ? (
               <div className="px-3 py-6 text-center text-sm text-slate-500">Caricamento...</div>
             ) : history.length === 0 ? (
               <div className="px-3 py-6 text-center text-sm text-slate-500">Nessuna chiamata recente</div>
             ) : (
-              <div className="space-y-1">
-                {history.map((item) => (
-                  <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-3 py-2 hover:bg-slate-50">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700">{formatWhen(item.timestamp)}</p>
-                      {isPool ? (
-                        <>
-                          <p className="truncate text-xs font-semibold text-slate-600">{item.student_name || 'Studente'}</p>
-                          <p className="truncate text-xs text-slate-500">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || 'Sessione'}</p>
-                        </>
-                      ) : (
-                        <p className="truncate text-xs text-slate-500">{item.provider || 'provider'}{item.model ? ` · ${item.model}` : ''}</p>
-                      )}
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2">Data</th>
+                    <th className="px-3 py-2">Servizio</th>
+                    {isPool && <th className="px-3 py-2">Studente / sessione</th>}
+                    <th className="px-3 py-2">Provider / modello</th>
+                    <th className="px-4 py-2 text-right">Crediti</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {history.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/80">
+                      <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-600">{formatWhen(item.timestamp)}</td>
+                      <td className="px-3 py-2.5 font-black text-slate-800">{item.service || 'Servizi AI'}</td>
                       {isPool && (
-                        <p className="truncate text-[11px] text-slate-400">{item.provider || 'provider'}{item.model ? ` · ${item.model}` : ''}</p>
+                        <td className="max-w-44 px-3 py-2.5">
+                          <p className="truncate font-bold text-slate-700">{item.student_name || 'Studente'}</p>
+                          <p className="truncate text-[11px] text-slate-400">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || 'Sessione'}</p>
+                        </td>
                       )}
-                    </div>
-                    <div className="self-center text-right text-xs font-black tabular-nums" style={{ color: mainColor }}>
-                      {formatCreditValue(item.cost_credits)} crediti
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      <td className="max-w-48 px-3 py-2.5">
+                        <p className="truncate font-semibold text-slate-600">{item.provider || '—'}</p>
+                        <p className="truncate text-[11px] text-slate-400">{item.model || '—'}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right font-black tabular-nums" style={{ color: mainColor }}>
+                        {formatCreditValue(item.cost_credits)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>

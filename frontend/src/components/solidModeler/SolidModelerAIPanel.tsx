@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from 'lucide-react'
 import type { AgentStepEvent, SceneObject } from './types'
 
@@ -39,6 +40,10 @@ interface Props {
   onScene: (objects: SceneObject[]) => void
   /** Session student: authenticate with the student token and hide the premium model. */
   student?: boolean
+  /** Saved project shown in the editor: runs are tied to it so they can be resumed after a page change. */
+  projectId?: string | null
+  /** Save the scene if needed and return its project id (the agent saves its final scene there). */
+  ensureProjectId?: () => Promise<string | null>
 }
 
 function authHeader(student: boolean): Record<string, string> {
@@ -54,7 +59,7 @@ function authHeader(student: boolean): Record<string, string> {
   }
 }
 
-export default function SolidModelerAIPanel({ objects, selection, onRunStart, onScene, student = false }: Props) {
+export default function SolidModelerAIPanel({ objects, selection, onRunStart, onScene, student = false, projectId = null, ensureProjectId }: Props) {
   const models = student ? MODELS.filter(m => !STUDENT_BLOCKED_MODELS.has(m.value)) : MODELS
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState(MODELS[0].value)
@@ -62,12 +67,31 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [running, setRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const jobIdRef = useRef<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const patchLast = (fn: (t: ChatTurn) => ChatTurn) =>
     setTurns(prev => prev.map((t, i) => (i === prev.length - 1 ? fn(t) : t)))
 
   const scrollDown = () => requestAnimationFrame(() => logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }))
+
+  // Apply the agent's NDJSON events (a new run or the replay of a background job) to the last turn.
+  async function consumeAgentStream(res: Response) {
+    let started = false
+    await readEventStream(res, 'ndjson', (ev) => {
+      if (ev.scene) {
+        if (!started) { onRunStart(); started = true }
+        onScene(ev.scene as SceneObject[])
+      }
+      if (ev.type === 'start') patchLast(t => ({ ...t, model: ev.model }))
+      else if (ev.type === 'step') {
+        patchLast(t => ({ ...t, steps: [...t.steps.filter(s => s.step !== ev.step), ev as AgentStepEvent] }))
+        scrollDown()
+      } else if (ev.type === 'done') patchLast(t => ({ ...t, status: 'done', message: ev.message, cost: ev.cost }))
+      else if (ev.type === 'error') patchLast(t => ({ ...t, status: 'error', message: ev.detail || ev.message }))
+    })
+    patchLast(t => (t.status === 'running' ? { ...t, status: 'error', message: 'Connessione interrotta: l\'agente continua in background, riapri il progetto tra poco.' } : t))
+  }
 
   async function run(text = prompt) {
     const request = text.trim()
@@ -79,8 +103,8 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
     scrollDown()
     const controller = new AbortController()
     abortRef.current = controller
-    let started = false
     try {
+      const modelId = ensureProjectId ? await ensureProjectId().catch(() => null) : projectId
       const res = await fetch('/api/v1/solid-modeler/agent', {
         method: 'POST',
         credentials: 'include',
@@ -93,45 +117,58 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
           provider: provider === 'default' ? null : provider,
           model: provider === 'default' ? null : modelName,
           max_steps: maxSteps,
+          model_id: modelId || undefined,
         }),
       })
       if (!res.ok || !res.body) {
         const detail = await res.json().catch(() => null)
         throw new Error(detail?.detail || `Errore ${res.status}`)
       }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const ev = JSON.parse(line)
-          if (ev.scene) {
-            if (!started) { onRunStart(); started = true }
-            onScene(ev.scene as SceneObject[])
-          }
-          if (ev.type === 'start') patchLast(t => ({ ...t, model: ev.model }))
-          else if (ev.type === 'step') {
-            patchLast(t => ({ ...t, steps: [...t.steps, ev as AgentStepEvent] }))
-            scrollDown()
-          } else if (ev.type === 'done') patchLast(t => ({ ...t, status: 'done', message: ev.message, cost: ev.cost }))
-          else if (ev.type === 'error') patchLast(t => ({ ...t, status: 'error', message: ev.detail }))
-        }
-      }
-      patchLast(t => (t.status === 'running' ? { ...t, status: 'error', message: 'Connessione interrotta.' } : t))
+      jobIdRef.current = res.headers.get('X-Job-Id')
+      notifyJobsChanged()
+      await consumeAgentStream(res)
     } catch (err) {
       const aborted = (err as Error).name === 'AbortError'
       patchLast(t => ({ ...t, status: aborted ? 'stopped' : 'error', message: aborted ? 'Interrotto: la scena resta all\'ultimo passo.' : (err as Error).message }))
     } finally {
       setRunning(false)
       abortRef.current = null
+      jobIdRef.current = null
+      notifyJobsChanged()
       scrollDown()
     }
+  }
+
+  // Back on a project whose agent run is still going server-side: replay it and keep following.
+  useEffect(() => {
+    if (!projectId || abortRef.current) return
+    let cancelled = false
+    void findActiveJob('solid_modeler_agent', projectId).then(async (job) => {
+      if (cancelled || !job || abortRef.current) return
+      const controller = new AbortController()
+      abortRef.current = controller
+      jobIdRef.current = job.id
+      setRunning(true)
+      setTurns(prev => [...prev, { prompt: job.description || 'Richiesta in corso', steps: [], status: 'running' }])
+      try {
+        const res = await followJobStream(job.id, controller.signal)
+        if (res.ok) await consumeAgentStream(res)
+        else patchLast(t => ({ ...t, status: 'done', message: 'L\'agente ha finito mentre eri altrove: il modello salvato è già aggiornato.' }))
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') patchLast(t => ({ ...t, status: 'error', message: (err as Error).message }))
+      } finally {
+        if (abortRef.current === controller) { abortRef.current = null; jobIdRef.current = null }
+        setRunning(false)
+        scrollDown()
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  const stop = () => {
+    void cancelJob(jobIdRef.current)
+    abortRef.current?.abort()
   }
 
   return (
@@ -210,7 +247,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             {[3, 4, 6, 8, 10].map(n => <option key={n} value={n}>{n} passi</option>)}
           </select>
           {running ? (
-            <button type="button" onClick={() => abortRef.current?.abort()} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">
+            <button type="button" onClick={stop} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">
               <Square className="h-3 w-3" /> Stop
             </button>
           ) : (

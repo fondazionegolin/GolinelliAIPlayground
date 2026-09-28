@@ -20,19 +20,40 @@ class MeshyService:
     async def start_text_to_3d(
         self,
         prompt: str,
-        negative_prompt: str = "low quality, low resolution, ugly",
+        *,
+        ai_model: str = "meshy-7.1",
+        model_type: str = "standard",
+        geometry_resolution: str = "standard",
+        should_remesh: bool = False,
+        topology: str = "triangle",
+        target_polycount: int = 30000,
+        pose_mode: str = "",
+        target_formats: Optional[list[str]] = None,
+        auto_size: bool = False,
+        alpha_thumbnail: bool = False,
     ) -> str:
         """Start a text-to-3D preview task. Returns the task_id."""
         if not settings.MESHY_API_KEY:
             raise ValueError("MESHY_API_KEY not configured")
 
-        # v2 preview only accepts art_style="realistic"
-        payload = {
+        actual_model = "meshy-t2" if model_type == "smart-topology" else ai_model
+        payload: dict = {
             "mode": "preview",
             "prompt": prompt,
-            "art_style": "realistic",
-            "negative_prompt": negative_prompt,
+            "model_type": model_type,
+            "ai_model": actual_model,
+            "geometry_resolution": geometry_resolution,
+            "pose_mode": pose_mode,
+            "target_formats": target_formats or ["glb", "obj", "fbx", "stl", "usdz"],
+            "auto_size": auto_size,
+            "alpha_thumbnail": alpha_thumbnail,
         }
+        if model_type == "smart-topology":
+            payload.update({"topology": "triangle", "target_polycount": min(target_polycount, 15000)})
+        else:
+            payload.update({"should_remesh": should_remesh})
+            if should_remesh:
+                payload.update({"topology": topology, "target_polycount": target_polycount})
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -100,21 +121,50 @@ class MeshyService:
         self,
         image_data: str,  # base64-encoded image (no data URI prefix)
         image_mime: str = "image/jpeg",
+        texture_prompt: Optional[str] = None,
+        ai_model: str = "meshy-7.1",
+        model_type: str = "standard",
+        geometry_resolution: str = "standard",
+        should_texture: bool = True,
         enable_pbr: bool = True,
-        topology: str = "quad",
+        texture_resolution: str = "2k",
+        should_remesh: bool = False,
+        topology: str = "triangle",
         target_polycount: int = 30000,
+        pose_mode: str = "",
+        image_enhancement: bool = True,
+        target_formats: Optional[list[str]] = None,
+        auto_size: bool = False,
+        alpha_thumbnail: bool = False,
     ) -> str:
         """Start an image-to-3D task (v1). Returns the task_id."""
         if not settings.MESHY_API_KEY:
             raise ValueError("MESHY_API_KEY not configured")
 
         image_url = f"data:{image_mime};base64,{image_data}"
+        actual_model = "meshy-t2" if model_type == "smart-topology" else ai_model
         payload: dict = {
             "image_url": image_url,
-            "enable_pbr": enable_pbr,
-            "topology": topology,
-            "target_polycount": target_polycount,
+            "model_type": model_type,
+            "ai_model": actual_model,
+            "geometry_resolution": geometry_resolution,
+            "should_texture": should_texture,
+            "pose_mode": pose_mode,
+            "image_enhancement": image_enhancement,
+            "target_formats": target_formats or ["glb", "obj", "fbx", "stl", "usdz"],
+            "auto_size": auto_size,
+            "alpha_thumbnail": alpha_thumbnail,
         }
+        if should_texture:
+            payload.update({"enable_pbr": enable_pbr, "texture_resolution": texture_resolution})
+            if texture_prompt:
+                payload["texture_prompt"] = texture_prompt
+        if model_type == "smart-topology":
+            payload["target_polycount"] = min(target_polycount, 15000)
+        else:
+            payload["should_remesh"] = should_remesh
+            if should_remesh:
+                payload.update({"topology": topology, "target_polycount": target_polycount})
 
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
@@ -141,6 +191,16 @@ class MeshyService:
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def delete_task(self, mode: str, task_id: str) -> None:
+        """Stop/remove a task on Meshy (used when the user interrupts a generation)."""
+        if not settings.MESHY_API_KEY:
+            return
+        url = f"{MESHY_V2_URL}/text-to-3d/{task_id}" if mode == "text" else f"{MESHY_V1_URL}/image-to-3d/{task_id}"
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.delete(url, headers=self._headers())
+            if resp.status_code not in (200, 204, 404):
+                resp.raise_for_status()
 
 
 meshy_service = MeshyService()

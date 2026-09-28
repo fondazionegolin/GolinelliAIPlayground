@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-25T07:35:14.705976+00:00",
-  "version_label": "2026.09.25-d4204a4c",
+  "generated_at": "2026-09-25T07:41:33.010326+00:00",
+  "version_label": "2026.09.25-6435e7d4",
   "title": "Aggiornamenti branch UI_experiment",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "d4204a4cf8136cee383f6e006195550877017bd1",
+  "git_ref": "6435e7d419aec6212fd4df16baa82b67c754f8cc",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(ui,3d-lab): student page frames, solid modeler, document cards",
-      "description": "Feat(ui,3d-lab): student page frames, solid modeler, document cards"
+      "title": "Feat(3d-lab): open solid modeler to teachers, session module for students",
+      "description": "Feat(3d-lab): open solid modeler to teachers, session module for students"
     }
   ]
 }

@@ -24,6 +24,7 @@ from app.models.notebook_assignment import NotebookAssignment, NotebookFork
 from app.models.session import Class, Session, SessionStudent
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.services.llm_service import llm_service
+from app.services import background_jobs
 from app.services.credit_service import credit_service
 from app.api.v1.endpoints.coding import _resolve_coding_model, CODING_MODEL_CHOICES
 import logging
@@ -1833,11 +1834,30 @@ async def notebook_assist_stream(
             if not task.done():
                 task.cancel()
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        if event.get("type") == "stage":
+            message = event.get("message") or {}
+            state.data["stages"] = state.data.get("stages", 0) + 1
+            # The pipeline runs a few agent stages; approach 90% as they complete.
+            state.progress = min(0.9, 0.3 * state.data["stages"])
+            agent = str(message.get("agent_name") or "Agente")
+            state.label = f"{agent}: {str(message.get('content') or '').strip()[:140]}"
+        elif event.get("type") == "done":
+            state.label = str(event.get("summary") or "Analisi completata")[:200]
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(actor),
+        kind="notebook_assist",
+        title=f"Notebook · {nb.title or 'Assistente codice'}"[:200],
+        description=str(user_prompt)[:4000],
+        route="module:notebook" if actor.is_student else f"/teacher/notebooks/notebook/{nb.id}",
+        resource_id=str(nb.id),
+        stream=event_stream(),
+        event_format="sse",
+        progress_fn=track_progress,
+        expected_seconds=140.0,
     )
+    return background_jobs.stream_response(job_id, "text/event-stream")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ from app.models.invitation import ClassTeacher
 from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.solid_model import SolidModel
 from app.models.user import User
+from app.services import background_jobs
 from app.services.credit_service import credit_service
 from app.services.llm_service import llm_service
 from app.services.solid_modeler_agent import (
@@ -91,6 +92,9 @@ class AgentRequest(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     max_steps: int = Field(default=6, ge=2, le=10)
+    # Project the run belongs to: the final scene is saved there server-side, so the result is kept
+    # even if the user leaves the page before the agent finishes.
+    model_id: Optional[uuid.UUID] = None
 
 
 def _line(payload: dict) -> bytes:
@@ -119,6 +123,22 @@ async def run_modeler_agent(
     selection = [s for s in body.selection if any(o["id"] == s for o in scene)]
     max_steps = body.max_steps
     system_prompt = SYSTEM_PROMPT.replace("{max_steps}", str(max_steps))
+    model_id = None
+    if body.model_id:
+        async with AsyncSessionLocal() as db:
+            model_id = (await _own_model(db, body.model_id, actor)).id
+
+    async def save_scene(final_scene: list[dict]) -> None:
+        if not model_id:
+            return
+        try:
+            async with AsyncSessionLocal() as db:
+                model = await db.get(SolidModel, model_id)
+                if model is not None:
+                    model.scene = final_scene
+                    await db.commit()
+        except Exception:
+            logger.exception("solid modeler agent: could not save scene to model %s", model_id)
 
     async def stream():
         executor = SceneExecutor(scene)
@@ -186,19 +206,45 @@ async def run_modeler_agent(
             yield _line({"type": "error", "detail": f"Errore dell'agente: {exc}", "scene": executor.scene})
             return
 
+        await save_scene(executor.scene)
         yield _line({
             "type": "done",
             "message": final_message or "Ho costruito il modello: controlla le parti e ritocca a mano se serve.",
             "scene": executor.scene,
             "summary": describe_scene(executor.scene),
             "cost": round(total_cost, 6),
+            "saved_to_model": bool(model_id),
         })
 
-    return StreamingResponse(
-        stream(),
-        media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        kind = event.get("type")
+        if kind == "thinking":
+            step = int(event.get("step") or 1)
+            state.progress = (step - 1) / max_steps
+            state.label = f"Passo {step} di {max_steps}: l'agente progetta il modello"
+        elif kind == "step":
+            step = int(event.get("step") or 1)
+            state.progress = step / max_steps
+            thought = str(event.get("thought") or "").strip().splitlines()
+            state.label = f"Passo {step} di {max_steps}" + (f": {thought[0][:140]}" if thought else "")
+        elif kind == "done":
+            state.label = "Modello pronto"
+        elif kind == "error":
+            state.label = str(event.get("detail") or "Errore")[:200]
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(actor),
+        kind="solid_modeler_agent",
+        title="Modello 3D con l'AI",
+        description=body.prompt,
+        route="module:models3d" if actor.is_student else "/teacher/3d-lab",
+        resource_id=str(model_id) if model_id else None,
+        stream=stream(),
+        event_format="ndjson",
+        progress_fn=track_progress,
+        expected_seconds=25.0 * max_steps,
     )
+    return background_jobs.stream_response(job_id, "application/x-ndjson")
 
 
 # ── Projects (server persistence) ─────────────────────────────────────────

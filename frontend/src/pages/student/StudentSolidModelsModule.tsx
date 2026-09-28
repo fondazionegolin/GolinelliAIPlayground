@@ -11,26 +11,20 @@ const SolidModeler = lazy(() => import('@/components/solidModeler/SolidModeler')
 
 const spinner = <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
 
-/**
- * Student 3D Lab. With the session `models3d` module enabled (desktop) the student gets
- * their own solid modeler; the teacher-shared gallery is always one tab away.
- */
-export default function StudentSolidModelsModule({ canEdit = false }: { canEdit?: boolean }) {
+/** Student 3D Lab: generative AI, desktop solid modeler, and teacher-shared gallery. */
+export default function StudentSolidModelsModule({ canEdit = false }: { canEdit?: boolean; sessionId?: string }) {
   const { isMobile } = useMobile()
   const [view, setView] = useState<'modeler' | 'shared'>('modeler')
-  if (!canEdit || isMobile || view === 'shared') {
-    return <SharedModelsGallery onBackToModeler={canEdit && !isMobile ? () => setView('modeler') : undefined} />
-  }
+  // Generative AI 3D (Meshy) has its own navbar entry; this module is the solid modeler + shared gallery.
+  if (!canEdit || isMobile) return <SharedModelsGallery />
+  if (view === 'shared') return <SharedModelsGallery onBack={() => setView('modeler')} />
+
   const tabs = (
-    <>
-      <Button type="button" tone="accent" surface="solid" density="compact" className="rounded-full">
-        <Box /> I miei modelli
-      </Button>
-      <Button type="button" onClick={() => setView('shared')} tone="neutral" surface="ghost" density="compact" className="rounded-full">
-        <Users /> Condivisi dal docente
-      </Button>
-    </>
+    <Button type="button" onClick={() => setView('shared')} tone="neutral" surface="ghost" density="compact" className="rounded-full">
+      <Users /> Condivisi dal docente
+    </Button>
   )
+
   return (
     <div className="relative h-full min-h-0">
       <Suspense fallback={spinner}>
@@ -41,7 +35,7 @@ export default function StudentSolidModelsModule({ canEdit = false }: { canEdit?
 }
 
 /** Read-only gallery of 3D Lab models the teacher shared with the student's class. */
-function SharedModelsGallery({ onBackToModeler }: { onBackToModeler?: () => void }) {
+function SharedModelsGallery({ onBack }: { onBack?: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const list = useQuery({
     queryKey: ['student-solid-models'],
@@ -77,9 +71,9 @@ function SharedModelsGallery({ onBackToModeler }: { onBackToModeler?: () => void
   return (
     <div className="h-full overflow-y-auto p-4 lg:p-6">
       <div className="mx-auto max-w-5xl">
-        {onBackToModeler && (
-          <button type="button" onClick={onBackToModeler} className="mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
-            <ArrowLeft className="h-4 w-4" /> I miei modelli
+        {onBack && (
+          <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">
+            <ArrowLeft className="h-4 w-4" /> Torna al 3D Lab
           </button>
         )}
         <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">3D Lab</p>

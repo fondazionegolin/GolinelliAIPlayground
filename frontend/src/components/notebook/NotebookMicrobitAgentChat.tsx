@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bot, Check, GitCompare, History, Loader2, Send, X } from 'lucide-react'
 import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
+import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
 
 interface Props {
@@ -314,40 +315,52 @@ export default function NotebookMicrobitAgentChat({
     })
     if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
     if (!response.ok || !response.body) throw new Error('stream non partito')
+    notifyJobsChanged()
+    await consumeAssistStream(response)
+  }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+  // Bubbles and proposals from the assistant stream (a new request or the replay of a background job).
+  const consumeAssistStream = async (response: Response) => {
     let finished = false
-    while (!finished) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let sep: number
-      while ((sep = buffer.indexOf('\n\n')) >= 0) {
-        const frame = buffer.slice(0, sep)
-        buffer = buffer.slice(sep + 2)
-        const dataLine = frame.split('\n').find((l) => l.startsWith('data: '))
-        if (!dataLine) continue
-        let event: any
-        try { event = JSON.parse(dataLine.slice(6)) } catch { continue }
-        if (event.type === 'stage' && event.message) {
-          // Ogni bolla d'agente compare appena lo stadio finisce.
-          setMessages((prev) => [...prev, event.message as NotebookTutorMessage])
-        } else if (event.type === 'done') {
-          const summary = event.summary || 'Modifica pronta.'
-          const proposals = (event.proposals || []) as NotebookCodeProposal[]
-          onProposals(summary, proposals)
-          if (Array.isArray(event.history)) setMessages(event.history as NotebookTutorMessage[])
-          finished = true
-        } else if (event.type === 'error') {
-          throw new Error(event.message || 'Generazione non riuscita.')
-        }
-        // 'ping' (heartbeat) ignorato.
+    await readEventStream(response, 'sse', (event) => {
+      if (event.type === 'stage' && event.message) {
+        // Ogni bolla d'agente compare appena lo stadio finisce.
+        setMessages((prev) => [...prev, event.message as NotebookTutorMessage])
+      } else if (event.type === 'done') {
+        const summary = event.summary || 'Modifica pronta.'
+        const proposals = (event.proposals || []) as NotebookCodeProposal[]
+        onProposals(summary, proposals)
+        if (Array.isArray(event.history)) setMessages(event.history as NotebookTutorMessage[])
+        finished = true
+        return true
+      } else if (event.type === 'error') {
+        throw new Error(event.message || 'Generazione non riuscita.')
       }
-    }
+      // 'ping' (heartbeat) ignorato.
+    })
     if (!finished) throw new Error('stream interrotto')
   }
+
+  // La pipeline gira sul server come job in background: tornando sul notebook si riaggancia
+  // alla richiesta ancora in corso invece di perderla.
+  useEffect(() => {
+    if (!useStreaming) return
+    let cancelled = false
+    void findActiveJob('notebook_assist', notebookId).then(async (job) => {
+      if (!job || cancelled) return
+      setLoading(true)
+      try {
+        const response = await followJobStream(job.id)
+        if (response.ok) await consumeAssistStream(response)
+      } catch {
+        // l'indicatore in navbar continua a seguire il job
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notebookId, useStreaming])
 
   const send = async () => {
     const text = input.trim()

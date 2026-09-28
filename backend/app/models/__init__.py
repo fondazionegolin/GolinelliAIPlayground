@@ -18,7 +18,8 @@ from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport, FeedbackBoardCollaborator, FeedbackBoardConfig
-from app.models.board import Board, BoardCard
+from app.models.board import Board, BoardCard, BoardShare
+from app.models.background_job import BackgroundJob
 from app.models.notebook import Notebook
 from app.models.notebook_version import NotebookVersion
 from app.models.notebook_assignment import NotebookAssignment, NotebookFork
@@ -93,6 +94,8 @@ __all__ = [
     "FeedbackBoardConfig",
     "Board",
     "BoardCard",
+    "BoardShare",
+    "BackgroundJob",
     "Notebook",
     "NotebookVersion",
     "UserDesktop",

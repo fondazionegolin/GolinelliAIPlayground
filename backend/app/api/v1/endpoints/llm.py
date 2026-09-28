@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from typing import Annotated, Optional, List, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import logging
 import base64
@@ -20,11 +20,13 @@ import math
 from pathlib import Path
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
-from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent
+from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent, conversation_message_order
+from app.core.permissions import teacher_can_access_session
+from app.services import background_jobs
 from app.models.credits import CreditTransaction
 from app.models.enums import MessageRole, CreditTransactionType
 from app.schemas.llm import (
@@ -55,6 +57,12 @@ from app.realtime.gateway import notify_teacher_content_alert, sio
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Model marker for an assistant row that only records a failed generation (kept for the teacher's
+# history, never replayed to the LLM as context).
+STREAM_ERROR_MODEL = "stream_error"
+# Strong references to in-flight generation tasks (asyncio only keeps weak ones).
+_BACKGROUND_STREAM_TASKS: set[asyncio.Task] = set()
 
 
 def _extract_json_object(raw: str) -> dict:
@@ -1183,34 +1191,36 @@ async def get_session_conversations_detailed(
     from sqlalchemy import func as sqlfunc
     from app.models.session import SessionStudent
     
-    # Verify teacher owns session
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Owner, class co-teachers and teachers invited to the session can all read the history.
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
-    # Get conversations with student info and message count
-    result = await db.execute(
-        select(Conversation, SessionStudent)
-        .join(SessionStudent, Conversation.student_id == SessionStudent.id)
-        .where(Conversation.session_id == session_id)
-        .order_by(Conversation.updated_at.desc())
-    )
-    rows = result.all()
-    
-    # Get message counts for each conversation
-    conversations_data = []
-    for conv, student in rows:
-        msg_count_result = await db.execute(
-            select(sqlfunc.count(ConversationMessage.id))
-            .where(ConversationMessage.conversation_id == conv.id)
+
+    # Conversations with student info, message count and last message time in one query
+    message_stats = (
+        select(
+            ConversationMessage.conversation_id.label("conversation_id"),
+            sqlfunc.count(ConversationMessage.id).label("message_count"),
+            sqlfunc.max(ConversationMessage.created_at).label("last_message_at"),
         )
-        message_count = msg_count_result.scalar() or 0
-        
+        .group_by(ConversationMessage.conversation_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(Conversation, SessionStudent, message_stats.c.message_count, message_stats.c.last_message_at)
+        .join(SessionStudent, Conversation.student_id == SessionStudent.id)
+        .outerjoin(message_stats, message_stats.c.conversation_id == Conversation.id)
+        .where(Conversation.session_id == session_id)
+    )
+    rows = sorted(
+        result.all(),
+        key=lambda row: max(filter(None, [row[0].updated_at, row[3]])),
+        reverse=True,
+    )
+
+    conversations_data = []
+    for conv, student, message_count, last_message_at in rows:
+        message_count = message_count or 0
+        updated_at = max(filter(None, [conv.updated_at, last_message_at]))
         conversations_data.append({
             "id": str(conv.id),
             "student_id": str(student.id),
@@ -1221,9 +1231,9 @@ async def get_session_conversations_detailed(
             "llm_model": conv.llm_model,
             "message_count": message_count,
             "created_at": conv.created_at.isoformat(),
-            "updated_at": conv.updated_at.isoformat(),
+            "updated_at": updated_at.isoformat(),
         })
-    
+
     return conversations_data
 
 
@@ -1244,20 +1254,13 @@ async def get_conversation_messages(
     if auth.is_student:
         if conversation.student_id != auth.student.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    else:
-        result = await db.execute(
-            select(Session)
-            .join(Class)
-            .where(Session.id == conversation.session_id)
-            .where(Class.teacher_id == auth.teacher.id)
-        )
-        if not result.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    elif not await teacher_can_access_session(db, auth.teacher, conversation.session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     result = await db.execute(
         select(ConversationMessage)
         .where(ConversationMessage.conversation_id == conversation_id)
-        .order_by(ConversationMessage.created_at.asc())
+        .order_by(*conversation_message_order())
     )
     return result.scalars().all()
 
@@ -1422,7 +1425,7 @@ async def send_message(
     result = await db.execute(
         select(ConversationMessage)
         .where(ConversationMessage.conversation_id == conversation_id)
-        .order_by(ConversationMessage.created_at.asc())
+        .order_by(*conversation_message_order())
     )
     history = result.scalars().all()
     
@@ -1780,9 +1783,13 @@ async def send_message_stream(
     hist_result = await db.execute(
         select(ConversationMessage)
         .where(ConversationMessage.conversation_id == conversation_id)
-        .order_by(ConversationMessage.created_at.asc())
+        .order_by(*conversation_message_order())
     )
-    messages = [{"role": m.role.value, "content": m.content or ""} for m in hist_result.scalars().all()]
+    messages = [
+        {"role": m.role.value, "content": m.content or ""}
+        for m in hist_result.scalars().all()
+        if m.model != STREAM_ERROR_MODEL
+    ]
 
     pii_prefix = ""
     if moderation_result.pii_found:
@@ -1810,85 +1817,127 @@ async def send_message_stream(
     custom_profile_prompt = profile_override.custom_system_prompt if profile_override else None
     ui_language = get_ui_language(http_request)
 
-    async def generate_stream():
+    # Generation runs in a background task with its own DB session, so the reply is persisted for the
+    # teacher's history even if the student closes the page mid-stream or the provider fails.
+    tenant_id, student_id = student.tenant_id, student.id
+    teacher_id, class_id, session_id = class_obj.teacher_id, class_obj.id, session_obj.id
+    conversation_session_id = conversation.session_id
+    events: asyncio.Queue = asyncio.Queue()
+
+    async def produce():
         from app.services.teacher_agent import generate_generic_response_stream
-        from app.services.llm_service import _needs_web_search
 
+        full_content = pii_prefix
+        error_message: str | None = None
         try:
-            if _needs_web_search(messages):
-                yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
-
-            full_content = pii_prefix
             async for chunk in generate_generic_response_stream(
                 messages, provider, model, profile_key,
                 custom_system_prompt=custom_profile_prompt,
                 ui_language=ui_language,
             ):
                 full_content += chunk
-                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
-
-            # Persist assistant message
-            estimated_usage = enrich_usage_with_environmental_impact(
-                build_estimated_token_usage(messages, full_content),
-                provider=provider,
-                model=model,
-            )
-
-            assistant_message = ConversationMessage(
-                tenant_id=student.tenant_id,
-                conversation_id=conversation_id,
-                role=MessageRole.ASSISTANT,
-                content=full_content,
-                provider=provider,
-                model=model,
-                token_usage_json=estimated_usage,
-            )
-            db.add(assistant_message)
-            conversation.updated_at = datetime.utcnow()
-            await db.commit()
-            await db.refresh(assistant_message)
-
-            estimated_cost = credit_service.calculate_cost_for_model(
-                provider,
-                model,
-                int(estimated_usage.get("prompt_tokens") or 0),
-                int(estimated_usage.get("completion_tokens") or 0),
-            )
-            await safe_track_usage(
-                db, student.tenant_id, provider, model, estimated_cost,
-                {
-                    **estimated_usage,
-                    "type": "student_chat_stream",
-                    "profile_key": profile_key,
-                },
-                class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
-                context="student_chat_stream",
-            )
-
-            yield f"data: {json.dumps({'type': 'done', 'content': full_content, 'message_id': str(assistant_message.id), 'provider': provider, 'model': model, 'token_usage': estimated_usage})}\n\n"
-
-            # Notify teacher of updated conversation
-            try:
-                from sqlalchemy import func as sql_func
-                count_result = await db.execute(
-                    select(sql_func.count()).select_from(ConversationMessage)
-                    .where(ConversationMessage.conversation_id == conversation_id)
-                )
-                msg_count = count_result.scalar_one() or 0
-                await sio.emit("conversation_updated", {
-                    "conversation_id": str(conversation_id),
-                    "session_id": str(conversation.session_id),
-                    "message_count": msg_count,
-                    "updated_at": conversation.updated_at.isoformat(),
-                }, room=f"session:{conversation.session_id}")
-            except Exception as e:
-                logger.warning(f"Socket notify failed: {e}")
-
+                events.put_nowait({"type": "chunk", "content": chunk})
         except Exception as e:
             logger.error(f"Student stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            error_message = str(e)
+
+        has_reply = bool(full_content.strip())
+        saved_content = full_content
+        saved_model = model
+        if error_message:
+            notice = "⚠️ Risposta non completata: il servizio AI ha restituito un errore."
+            saved_content = f"{full_content}\n\n{notice}" if has_reply else notice
+            if not has_reply:
+                saved_model = STREAM_ERROR_MODEL
+        estimated_usage = enrich_usage_with_environmental_impact(
+            build_estimated_token_usage(messages, full_content),
+            provider=provider,
+            model=model,
+        )
+        try:
+            async with AsyncSessionLocal() as persist_db:
+                assistant_message = ConversationMessage(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    role=MessageRole.ASSISTANT,
+                    content=saved_content,
+                    provider=provider,
+                    model=saved_model,
+                    token_usage_json=estimated_usage,
+                )
+                persist_db.add(assistant_message)
+                await persist_db.execute(
+                    update(Conversation).where(Conversation.id == conversation_id).values(updated_at=datetime.utcnow())
+                )
+                await persist_db.commit()
+                await persist_db.refresh(assistant_message)
+
+                if has_reply:
+                    estimated_cost = credit_service.calculate_cost_for_model(
+                        provider,
+                        model,
+                        int(estimated_usage.get("prompt_tokens") or 0),
+                        int(estimated_usage.get("completion_tokens") or 0),
+                    )
+                    await safe_track_usage(
+                        persist_db, tenant_id, provider, model, estimated_cost,
+                        {
+                            **estimated_usage,
+                            "type": "student_chat_stream",
+                            "profile_key": profile_key,
+                        },
+                        teacher_id, class_id, session_id, student_id,
+                        context="student_chat_stream",
+                    )
+
+                if error_message:
+                    events.put_nowait({"type": "error", "message": error_message})
+                else:
+                    events.put_nowait({
+                        "type": "done",
+                        "content": full_content,
+                        "message_id": str(assistant_message.id),
+                        "provider": provider,
+                        "model": model,
+                        "token_usage": estimated_usage,
+                    })
+
+                try:
+                    from sqlalchemy import func as sql_func
+                    msg_count = (await persist_db.execute(
+                        select(sql_func.count()).select_from(ConversationMessage)
+                        .where(ConversationMessage.conversation_id == conversation_id)
+                    )).scalar_one() or 0
+                    await sio.emit("conversation_updated", {
+                        "conversation_id": str(conversation_id),
+                        "session_id": str(conversation_session_id),
+                        "message_count": msg_count,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }, room=f"session:{conversation_session_id}")
+                except Exception as e:
+                    logger.warning(f"Socket notify failed: {e}")
+        except Exception as e:
+            logger.exception("Student stream: could not persist assistant reply for conversation %s", conversation_id)
+            events.put_nowait({"type": "error", "message": error_message or str(e)})
+        finally:
+            events.put_nowait(None)
+
+    task = asyncio.create_task(produce())
+    _BACKGROUND_STREAM_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_STREAM_TASKS.discard)
+
+    async def generate_stream():
+        from app.services.llm_service import _needs_web_search
+
+        if _needs_web_search(messages):
+            yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+        while True:
+            event = await events.get()
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
         generate_stream(),
@@ -2675,7 +2724,7 @@ async def send_message_with_files(
     result = await db.execute(
         select(ConversationMessage)
         .where(ConversationMessage.conversation_id == conversation_id)
-        .order_by(ConversationMessage.created_at.asc())
+        .order_by(*conversation_message_order())
     )
     history = result.scalars().all()
     
@@ -3554,15 +3603,64 @@ async def teacher_chat_stream(
             logger.error(f"Streaming error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return StreamingResponse(
-        generate_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
+    # Where to save the exchange if the teacher leaves before the reply is ready.
+    persist_conversation_id = request.get("conversation_id")
+    persist_user_content = str(request.get("user_message") or content)
+    teacher_id, teacher_tenant_id = teacher.id, teacher.tenant_id
+
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        kind = event.get("type")
+        if kind == "status":
+            state.label = str(event.get("message") or "")[:200] or state.label
+        elif kind == "chunk":
+            state.data["text"] = state.data.get("text", "") + str(event.get("content") or "")
+            state.label = "Scrittura della risposta…"
+        elif kind == "done":
+            state.data["final"] = event
+            state.label = "Risposta pronta"
+
+    async def persist_if_abandoned(status_: str, state: background_jobs.ProgressState, listening: bool) -> None:
+        final = state.data.get("final")
+        if listening or status_ != "succeeded" or not final or not persist_conversation_id:
+            return
+        from app.models import TeacherConversation, TeacherConversationMessage
+        try:
+            conversation_uuid = UUID(str(persist_conversation_id))
+        except ValueError:
+            return
+        async with AsyncSessionLocal() as persist_db:
+            conversation = (await persist_db.execute(
+                select(TeacherConversation)
+                .where(TeacherConversation.id == conversation_uuid, TeacherConversation.teacher_id == teacher_id)
+            )).scalar_one_or_none()
+            if conversation is None:
+                return
+            persist_db.add(TeacherConversationMessage(
+                tenant_id=teacher_tenant_id, conversation_id=conversation_uuid, role="user",
+                content=persist_user_content, model=final.get("model"),
+            ))
+            persist_db.add(TeacherConversationMessage(
+                tenant_id=teacher_tenant_id, conversation_id=conversation_uuid, role="assistant",
+                content=str(final.get("content") or ""), provider=final.get("provider"), model=final.get("model"),
+                attachments_json={"token_usage_json": final.get("token_usage")} if final.get("token_usage") else None,
+            ))
+            conversation.updated_at = datetime.utcnow()
+            await persist_db.commit()
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner(tenant_id=teacher.tenant_id, user_id=teacher.id),
+        kind="teacher_chat",
+        title="Assistente docente",
+        description=persist_user_content[:4000],
+        route="/teacher/assistant",
+        resource_id=str(persist_conversation_id) if persist_conversation_id else None,
+        stream=generate_stream(),
+        event_format="sse",
+        progress_fn=track_progress,
+        expected_seconds=45.0,
+        on_finish=persist_if_abandoned,
     )
+    return background_jobs.stream_response(job_id, "text/event-stream")
 
 
 @router.post("/teacher/chat-with-files")

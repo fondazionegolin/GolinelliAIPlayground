@@ -94,6 +94,7 @@ class CreditUsageHistoryItem(BaseModel):
     timestamp: datetime
     provider: Optional[str] = None
     model: Optional[str] = None
+    service: str = "Servizi AI"
     cost_eur: float
     cost_credits: float
     usage_details: Optional[Dict[str, Any]] = None

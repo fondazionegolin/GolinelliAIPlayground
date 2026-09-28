@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, BookOpen, Code2, KanbanSquare, Box } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box } from 'lucide-react'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
@@ -14,6 +15,7 @@ import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
+import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { StudentNotificationBell } from './StudentNotificationBell'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
@@ -38,6 +40,8 @@ interface StudentNavbarProps {
   enabledModules?: string[]
   chatAvailable?: boolean
   pendingTasksCount?: number
+  /** Teachers watching this student's screen right now (subjective view). */
+  observingTeachers?: string[]
 }
 
 export function StudentNavbar({
@@ -53,6 +57,7 @@ export function StudentNavbar({
   enabledModules,
   chatAvailable = true,
   pendingTasksCount = 0,
+  observingTeachers = [],
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -261,6 +266,7 @@ export function StudentNavbar({
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { key: 'boards', label: 'Board', icon: KanbanSquare },
     { key: 'models3d', label: '3D Lab', icon: Box },
+    { key: 'models3d_ai', label: 'AI 3D', icon: MushroomIcon },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])
@@ -277,8 +283,17 @@ export function StudentNavbar({
     onNavigate?.(key)
   }
 
+  const isObserved = !hasTeacherModeBanner && observingTeachers.length > 0
+
   return (
     <>
+      {/* Student side of the subjective view: a teacher is watching this screen */}
+      {isObserved && (
+        <div role="status" aria-live="polite" className="fixed left-0 right-0 top-16 z-[60] flex items-center justify-center gap-2 bg-[var(--logo-violet)] px-4 py-1.5 text-xs font-semibold text-white">
+          <Eye className="h-3.5 w-3.5 flex-shrink-0" />
+          <span>{t('navbar.observed_banner', { teachers: observingTeachers.join(', ') })}</span>
+        </div>
+      )}
       {/* Teacher preview / subjective-view banner */}
       {hasTeacherModeBanner && (
         <div className={`fixed left-0 right-0 z-[60] bg-[var(--logo-violet)] px-4 py-1.5 text-xs font-semibold text-white ${subjectiveMode ? 'top-16' : 'top-0'} flex items-center justify-center gap-3`}>
@@ -415,10 +430,12 @@ export function StudentNavbar({
 
                 <StudentNotificationBell accentColor={accentTheme.accent} onNavigate={onNavigate} />
 
+                <BackgroundJobsIndicator accentColor={accentTheme.accent} student />
                 <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
               </div>
 
-              <div className="lg:hidden">
+              <div className="flex items-center gap-1 lg:hidden">
+                <BackgroundJobsIndicator accentColor={accentTheme.accent} student />
                 <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
               </div>
 

@@ -172,6 +172,7 @@
     "preview_exit": "Esci dall'anteprima",
     "subjective_banner": "Stai entrando nella vista soggettiva dello studente: {{nickname}}",
     "subjective_exit": "Torna al pannello docente",
+    "observed_banner": "{{teachers}} sta osservando la tua schermata in vista soggettiva",
     "nickname_locked": "Il nickname non può essere modificato",
     "image_only_error": "Per favore seleziona un file immagine",
     "image_max_5mb": "Il file deve essere inferiore a 5MB",

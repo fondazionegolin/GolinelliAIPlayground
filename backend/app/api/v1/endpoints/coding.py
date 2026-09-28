@@ -48,6 +48,7 @@ from app.schemas.coding import (
     DesignSystemSuggestResponse,
     DesignSystemUpdate,
 )
+from app.services import background_jobs
 from app.services.credit_service import credit_service
 from app.services.environmental_impact import (
     build_estimated_token_usage,
@@ -4007,11 +4008,43 @@ async def generate_project_code_stream(
                 pass
             yield _sse({"type": "error", "message": str(exc)})
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        kind = event.get("type")
+        data = state.data
+        if kind == "status":
+            state.label = str(event.get("message") or "")[:200] or state.label
+            if "total" not in data:
+                state.progress = max(state.progress or 0.0, 0.05)
+        elif kind == "plan":
+            data["total"] = max(1, len(event.get("files") or []))
+            data["done"] = set()
+            state.progress = 0.15
+            state.label = f"Piano pronto: {data['total']} file da scrivere"
+        elif kind == "file_start":
+            state.label = f"Scrittura di {event.get('path')}"
+        elif kind == "file_done":
+            done = data.setdefault("done", set())
+            done.add(str(event.get("path")))
+            total = max(data.get("total") or len(done), len(done))
+            state.progress = 0.15 + 0.8 * len(done) / total
+            state.label = f"{len(done)} di {total} file pronti"
+        elif kind == "done":
+            state.label = "Versione pronta"
+            state.result = {"project_id": str(project_pk)}
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(actor),
+        kind="vibe_generate",
+        title=f"Vibe Lab · {project_title}"[:200],
+        description=(user_prompt or ("Correzione automatica degli errori" if is_fix else "Generazione del progetto"))[:4000],
+        route="module:coding" if actor.is_student else "/teacher/coding",
+        resource_id=str(project_pk),
+        stream=event_stream(),
+        event_format="sse",
+        progress_fn=track_progress,
+        expected_seconds=150.0,
     )
+    return background_jobs.stream_response(job_id, "text/event-stream")
 
 
 @router.post("/projects/{project_id}/ui-review")

@@ -1004,31 +1004,6 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                   </div>
                 )}
 
-                <div className="border-t border-slate-100 pt-4">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-slate-800">
-                      {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
-                      {formData.temperature.toFixed(1)}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={formData.temperature}
-                    onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                    className="h-2 w-full cursor-pointer"
-                    style={{ accentColor: selectedColor.hex }}
-                  />
-                  <div className="mt-1 flex justify-between text-xs text-slate-400">
-                    <span>{t('teacherbot.temp_precise')}</span>
-                    <span>{t('teacherbot.temp_creative')}</span>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">{t('teacherbot.temperature_hint')}</p>
-                </div>
               </section>
               )}
 

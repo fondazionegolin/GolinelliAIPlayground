@@ -1198,7 +1198,7 @@ export default function ChatSidebar({
                     >
                       <Paperclip className="h-3 w-3" />
                     </span>
-                    <span className="truncate flex-1">{att.filename || 'Allegato'}</span>
+                    <span className="min-w-0 flex-1 break-words leading-snug [overflow-wrap:anywhere]">{att.filename || 'Allegato'}</span>
                     <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover/att:opacity-90" />
                   </button>
                 ))}

@@ -20,7 +20,7 @@ from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
 from app.models.teacherbot import (
     Teacherbot, TeacherbotStatus, TeacherbotPublication,
-    TeacherbotConversation, TeacherbotMessage
+    TeacherbotConversation, TeacherbotMessage, teacherbot_message_order
 )
 from app.models.teacherbot_share_link import (
     TeacherbotShareLink, TeacherbotShareConversation, TeacherbotShareMessage
@@ -548,9 +548,8 @@ async def get_session_teacherbot_conversations(
         .join(Teacherbot, TeacherbotConversation.teacherbot_id == Teacherbot.id)
         .outerjoin(TeacherbotMessage, TeacherbotMessage.conversation_id == TeacherbotConversation.id)
         .where(TeacherbotConversation.session_id == session_id)
-        .where(Teacherbot.teacher_id == teacher.id)
         .group_by(TeacherbotConversation.id, SessionStudent.id, Teacherbot.id)
-        .order_by(TeacherbotConversation.created_at.desc())
+        .order_by(TeacherbotConversation.updated_at.desc())
     )
     rows = result.all()
 
@@ -929,31 +928,28 @@ async def get_teacherbot_conversation_messages_teacher(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    """Get messages for a specific teacherbot conversation (teacher view)"""
-    # Verify ownership of the teacherbot
+    """Get messages for a specific teacherbot conversation (teacher view).
+    Readable by the bot owner and by any teacher with access to the conversation's session."""
+    from app.core.permissions import teacher_can_access_session
     result = await db.execute(
-        select(Teacherbot)
-        .where(Teacherbot.id == teacherbot_id)
-        .where(Teacherbot.teacher_id == teacher.id)
-    )
-    bot = result.scalar_one_or_none()
-    if not bot:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
-
-    # Verify conversation belongs to this teacherbot
-    result = await db.execute(
-        select(TeacherbotConversation)
+        select(TeacherbotConversation, Teacherbot)
+        .join(Teacherbot, Teacherbot.id == TeacherbotConversation.teacherbot_id)
         .where(TeacherbotConversation.id == conversation_id)
         .where(TeacherbotConversation.teacherbot_id == teacherbot_id)
     )
-    conv = result.scalar_one_or_none()
-    if not conv:
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    conv, bot = row
+    if bot.teacher_id != teacher.id and not (
+        conv.session_id and await teacher_can_access_session(db, teacher, conv.session_id)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
     result = await db.execute(
         select(TeacherbotMessage)
         .where(TeacherbotMessage.conversation_id == conversation_id)
-        .order_by(TeacherbotMessage.created_at.asc())
+        .order_by(*teacherbot_message_order())
     )
     messages = result.scalars().all()
     return [
@@ -1470,7 +1466,7 @@ async def get_teacherbot_conversation_messages(
     result = await db.execute(
         select(TeacherbotMessage)
         .where(TeacherbotMessage.conversation_id == conversation_id)
-        .order_by(TeacherbotMessage.created_at.asc())
+        .order_by(*teacherbot_message_order())
     )
     return result.scalars().all()
 
@@ -1775,13 +1771,14 @@ async def send_teacherbot_message(
     )
     db.add(user_msg)
     conv.updated_at = datetime.now(timezone.utc)
-    await db.flush()
+    # Commit now: the student's question stays in the teacher's history even if generation fails.
+    await db.commit()
 
     # Get conversation history
     result = await db.execute(
         select(TeacherbotMessage)
         .where(TeacherbotMessage.conversation_id == conversation_id)
-        .order_by(TeacherbotMessage.created_at.asc())
+        .order_by(*teacherbot_message_order())
     )
     history = result.scalars().all()
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
@@ -2014,21 +2011,26 @@ async def send_teacherbot_message_with_files(
         full_content = files_context + "\n" + content if content else files_context
 
     # Save user message
+    attachment_names = ", ".join(fc["filename"] for fc in file_contents) if file_contents else ""
+    stored_content = content or "[Allegati caricati]"
+    if attachment_names:
+        stored_content = f"{stored_content}\n\n📎 {attachment_names}"
     user_msg = TeacherbotMessage(
         tenant_id=student.tenant_id,
         conversation_id=conversation_id,
         role="user",
-        content=content or "[Allegati caricati]",
+        content=stored_content,
     )
     db.add(user_msg)
     conv.updated_at = datetime.now(timezone.utc)
-    await db.flush()
+    # Commit now: the student's question stays in the teacher's history even if generation fails.
+    await db.commit()
 
     # Get conversation history
     result = await db.execute(
         select(TeacherbotMessage)
         .where(TeacherbotMessage.conversation_id == conversation_id)
-        .order_by(TeacherbotMessage.created_at.asc())
+        .order_by(*teacherbot_message_order())
     )
     history = result.scalars().all()
     
@@ -2250,7 +2252,7 @@ async def end_teacherbot_conversation(
     result = await db.execute(
         select(TeacherbotMessage)
         .where(TeacherbotMessage.conversation_id == conversation_id)
-        .order_by(TeacherbotMessage.created_at.asc())
+        .order_by(*teacherbot_message_order())
     )
     messages = result.scalars().all()
 

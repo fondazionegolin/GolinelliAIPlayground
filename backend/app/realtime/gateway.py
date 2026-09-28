@@ -27,6 +27,17 @@ connected_users: dict[str, dict] = {}  # sid -> user info
 session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info
 subjective_view_states: dict[str, dict] = {}  # student_id -> latest collaborative UI state
+subjective_observers: dict[str, dict[str, str]] = {}  # student_id -> {observer sid: teacher name}
+
+
+def _observer_payload(student_id: str) -> dict:
+    names = sorted(set((subjective_observers.get(student_id) or {}).values()))
+    return {"active": bool(names), "teachers": names}
+
+
+async def _announce_observers(student_id: str, to: Optional[str] = None) -> None:
+    """Tell the student (all their tabs, or one sid) whether a teacher is watching their view."""
+    await sio.emit("subjective_observer_changed", _observer_payload(student_id), room=to or f"subjective-student:{student_id}")
 student_nicknames: dict[str, str] = {}  # student_id -> nickname
 student_avatars: dict[str, str] = {}  # student_id -> avatar_url
 student_accents: dict[str, str] = {}  # student_id -> ui_accent
@@ -297,6 +308,7 @@ def get_user_from_token(token: str) -> Optional[dict]:
             "nickname": payload.get("nickname"),
             "subjective_observer": bool(payload.get("subjective_observer")),
             "observer_teacher_id": payload.get("observer_teacher_id"),
+            "observer_teacher_name": payload.get("observer_teacher_name") or "Il docente",
         }
     elif token_type == "access":
         return {
@@ -360,6 +372,8 @@ async def connect(sid, environ, auth):
         if user.get("subjective_observer"):
             await sio.enter_room(sid, f"session:{session_id}")
             await sio.enter_room(sid, f"subjective-observer:{student_id}")
+            subjective_observers.setdefault(student_id, {})[sid] = user.get("observer_teacher_name") or "Il docente"
+            await _announce_observers(student_id)
             print(f"[Gateway] Teacher observer joined subjective view for student {student_id}")
             return True
 
@@ -379,6 +393,8 @@ async def connect(sid, environ, auth):
         # Also join personal room for private messages
         await sio.enter_room(sid, f"student:{student_id}")
         await sio.enter_room(sid, f"subjective-student:{student_id}")
+        if subjective_observers.get(student_id):
+            await _announce_observers(student_id, to=sid)
 
         # Notify others in session
         await sio.emit(
@@ -435,6 +451,12 @@ async def disconnect(sid):
     print(f"[Gateway] User disconnected: {user.get('id')} ({user.get('type')}) sid={sid}")
 
     if user.get("subjective_observer"):
+        watchers = subjective_observers.get(user["id"])
+        if watchers is not None:
+            watchers.pop(sid, None)
+            if not watchers:
+                subjective_observers.pop(user["id"], None)
+            await _announce_observers(user["id"])
         return
 
     if user["type"] == "student":

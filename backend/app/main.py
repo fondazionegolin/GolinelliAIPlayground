@@ -30,6 +30,8 @@ async def lifespan(app: FastAPI):
     await storage_service.ensure_bucket()
     from app.services.toy_lm_trainer import toy_lm_service
     toy_lm_service.start_queue_processor()
+    from app.services.background_jobs import mark_interrupted_jobs
+    await mark_interrupted_jobs()
     yield
     # Shutdown
 

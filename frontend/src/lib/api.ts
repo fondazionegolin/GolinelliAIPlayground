@@ -10,13 +10,12 @@ const api = axios.create({
   withCredentials: true,
 })
 
-api.interceptors.request.use((config) => {
+export const getApiAuthHeaders = (): Record<string, string> => {
   const studentToken = localStorage.getItem('student_token')
   const publicLiveToken = window.location.pathname.startsWith('/live/') ? sessionStorage.getItem('public_live_token') : null
   const isTeacherStudentMode = localStorage.getItem('_preview_mode') === 'true'
     || Boolean(localStorage.getItem('_subjective_mode'))
   const isStudentRoute = window.location.pathname.startsWith('/student')
-  const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   let hasTeacherAuth = false
   try {
     const raw = localStorage.getItem('eduai-auth')
@@ -32,10 +31,17 @@ api.interceptors.request.use((config) => {
   // Important: don't send student-token when teacher auth is active,
   // otherwise mixed auth routes may resolve the request as student.
   if (publicLiveToken) {
-    config.headers['student-token'] = publicLiveToken
-  } else if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
-    config.headers['student-token'] = studentToken
+    return { 'student-token': publicLiveToken }
   }
+  if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
+    return { 'student-token': studentToken }
+  }
+  return {}
+}
+
+api.interceptors.request.use((config) => {
+  Object.assign(config.headers, getApiAuthHeaders())
+  const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   config.headers['Accept-Language'] = appLanguage
   config.headers['X-App-Language'] = appLanguage
   return config
@@ -1243,6 +1249,26 @@ export const feedbackApi = {
   removeCollaborator: (teacherId: string) => api.delete(`/feedback/board/collaborators/${teacherId}`),
 }
 
+export type BoardCardFields = {
+  title?: string
+  description?: string
+  column_id?: string
+  color?: string
+  coding_project_id?: string | null
+  coding_status?: string | null
+  sort_order?: string
+  labels?: string[]
+  assignees?: { kind: 'teacher' | 'student'; id: string }[]
+  priority?: 'alta' | 'media' | 'bassa' | null
+  story_points?: number | null
+  card_type?: 'epic' | 'story' | 'task' | null
+  sprint_id?: string | null
+}
+
+export type BoardSprintInput = { id?: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null }
+
+export type BoardShareTarget = { id: string; can_edit: boolean }
+
 export const boardsApi = {
   templates: () => api.get('/boards/templates'),
   list: (sessionId?: string) => api.get('/boards', { params: { session_id: sessionId } }),
@@ -1255,23 +1281,39 @@ export const boardsApi = {
     visibility?: 'private' | 'session_shared'
     students_can_edit?: boolean
   }) => api.post('/boards', data),
+  generate: (data: { framework: 'scrum' | 'kanban'; prompt?: string; title?: string; session_id?: string; file?: File | null }) => {
+    const form = new FormData()
+    form.append('framework', data.framework)
+    if (data.prompt) form.append('prompt', data.prompt)
+    if (data.title) form.append('title', data.title)
+    if (data.session_id) form.append('session_id', data.session_id)
+    if (data.file) form.append('file', data.file)
+    return api.post<{ job_id: string }>('/boards/generate', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+  },
   get: (id: string) => api.get(`/boards/${id}`),
   delete: (id: string) => api.delete(`/boards/${id}`),
   update: (id: string, data: {
     title?: string
     description?: string
     columns?: { id: string; label: string; hint?: string; color?: string }[]
+    labels?: { id?: string; name: string; color?: string }[]
+    sprints?: BoardSprintInput[]
     visibility?: 'private' | 'session_shared'
     students_can_edit?: boolean
+    session_id?: string
     coding_project_id?: string | null
     move_cards_from_column_id?: string
     move_cards_to_column_id?: string
   }) => api.patch(`/boards/${id}`, data),
-  createCard: (boardId: string, data: { title: string; description?: string; column_id?: string; color?: string }) =>
+  members: (id: string) => api.get(`/boards/${id}/members`),
+  shares: (id: string) => api.get(`/boards/${id}/shares`),
+  replaceShares: (id: string, data: { teachers: BoardShareTarget[]; students: BoardShareTarget[] }) =>
+    api.put(`/boards/${id}/shares`, data),
+  createCard: (boardId: string, data: BoardCardFields & { title: string }) =>
     api.post(`/boards/${boardId}/cards`, data),
   createCardsBulk: (boardId: string, data: { cards: { title: string; description?: string; column_id?: string; color?: string }[] }) =>
     api.post(`/boards/${boardId}/cards/bulk`, data),
-  updateCard: (boardId: string, cardId: string, data: { title?: string; description?: string; column_id?: string; color?: string; coding_project_id?: string | null; coding_status?: string | null; sort_order?: string }) =>
+  updateCard: (boardId: string, cardId: string, data: BoardCardFields) =>
     api.patch(`/boards/${boardId}/cards/${cardId}`, data),
   deleteCard: (boardId: string, cardId: string) =>
     api.delete(`/boards/${boardId}/cards/${cardId}`),
@@ -1488,14 +1530,75 @@ type MeshyTaskResult = {
   id: string
   status: 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'
   progress: number
-  model_urls?: { glb?: string; fbx?: string; obj?: string; usdz?: string }
+  model_urls?: { glb?: string; fbx?: string; obj?: string; stl?: string; usdz?: string; '3mf'?: string }
   thumbnail_url?: string
   error?: { message?: string }
 }
 
+export type BackgroundJobStatus = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
+
+export type BackgroundJob = {
+  id: string
+  kind: string
+  title: string
+  description?: string | null
+  route?: string | null
+  resource_id?: string | null
+  status: BackgroundJobStatus
+  progress?: number | null
+  progress_display?: number | null
+  progress_label?: string | null
+  error?: string | null
+  result?: Record<string, any> | null
+  live: boolean
+  created_at: string
+  updated_at?: string | null
+  finished_at?: string | null
+  seen_at?: string | null
+}
+
+export const jobsApi = {
+  list: (params?: { kind?: string; resource_id?: string; active?: boolean }) =>
+    api.get<BackgroundJob[]>('/jobs', { params }),
+  get: (id: string) => api.get<BackgroundJob>(`/jobs/${id}`),
+  cancel: (id: string) => api.post<{ cancelled: boolean }>(`/jobs/${id}/cancel`),
+  markSeen: (ids: string[]) => api.post('/jobs/seen', { ids }),
+  streamUrl: (id: string) => `/api/v1/jobs/${id}/stream`,
+}
+
+export type MeshyAiModel = 'meshy-6-lite' | 'meshy-6' | 'meshy-7.1' | 'latest'
+
+export interface MeshyGenerationOptions {
+  ai_model: MeshyAiModel
+  model_type: 'standard' | 'smart-topology'
+  geometry_resolution: 'standard' | '2k' | '4k'
+  should_texture: boolean
+  enable_pbr: boolean
+  texture_resolution: '2k' | '4k' | '8k'
+  should_remesh: boolean
+  topology: 'triangle' | 'quad'
+  target_polycount: number
+  pose_mode: '' | 'a-pose' | 't-pose'
+  image_enhancement: boolean
+  auto_size: boolean
+  alpha_thumbnail: boolean
+  target_formats: Array<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | '3mf'>
+}
+
+export interface MeshyGenerateRequest {
+  prompt?: string
+  image_data?: string
+  image_mime?: string
+  options: MeshyGenerationOptions
+}
+
 export const meshyApi = {
+  generate3D: (body: MeshyGenerateRequest) =>
+    api.post<{ task_id: string; job_id?: string; task_type: 'text' | 'image'; ai_model: string; meshy_credits: number }>('/meshy/generate-3d', body),
   startTextTo3D: (prompt: string, negative_prompt?: string) =>
-    api.post<{ task_id: string }>('/meshy/text-to-3d', { prompt, negative_prompt }),
+    api.post<{ task_id: string; job_id?: string }>('/meshy/text-to-3d', { prompt, negative_prompt }),
+  shareToChat: (data: { session_id: string; label: string; thumbnail_url?: string; glb_url?: string }) =>
+    api.post<{ message_id: string }>('/meshy/share-to-chat', data, { timeout: 120000 }),
   getTextTo3DStatus: (taskId: string) =>
     api.get<MeshyTaskResult>(`/meshy/text-to-3d/${taskId}`),
   startImageTo3D: (
@@ -1505,7 +1608,7 @@ export const meshyApi = {
     topology: string = 'quad',
     target_polycount: number = 30000,
   ) =>
-    api.post<{ task_id: string }>('/meshy/image-to-3d', { image_data, image_mime, enable_pbr, topology, target_polycount }),
+    api.post<{ task_id: string; job_id?: string }>('/meshy/image-to-3d', { image_data, image_mime, enable_pbr, topology, target_polycount }),
   getImageTo3DStatus: (taskId: string) =>
     api.get<MeshyTaskResult>(`/meshy/image-to-3d/${taskId}`),
   generateImage: (prompt: string, size?: string, quality?: string, style?: string) =>

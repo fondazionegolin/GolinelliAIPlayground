@@ -61,7 +61,7 @@ interface ClassData {
   school_grade?: string | null
   created_at: string
   session_count?: number
-  role?: 'owner' | 'invited'
+  role?: 'owner' | 'invited' | 'session_shared'
   owner_name?: string
   archived_at?: string | null
   school_tenant_id?: string | null
@@ -82,6 +82,7 @@ interface SessionData {
   deleted_at?: string | null
   deleted_by_id?: string | null
   purge_after?: string | null
+  co_teachers?: string[]
 }
 
 type SessionStatusFilter = 'all' | 'active' | 'paused' | 'draft' | 'ended'
@@ -582,7 +583,7 @@ export default function TeacherClassesSessionsManager({
                   <p className="truncate text-sm font-semibold text-slate-400">{selectedClass.school_grade || t('classes.not_set')}</p>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              {selectedClass.role !== 'session_shared' && <div className="mt-4 grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setShowTeachersModal(true)} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-black text-slate-700">
                   <UserPlus className="h-5 w-5" />
                   {isEnglish ? 'Teachers' : 'Docenti'}
@@ -591,7 +592,7 @@ export default function TeacherClassesSessionsManager({
                   <Edit2 className="h-5 w-5" />
                   {isEnglish ? 'Edit class' : 'Modifica classe'}
                 </button>
-              </div>
+              </div>}
               {isEditingClass && (
                 <div className="mt-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <Input value={editClassName} onChange={(event) => setEditClassName(event.target.value)} className="h-12 bg-white text-base" />
@@ -612,14 +613,14 @@ export default function TeacherClassesSessionsManager({
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'} className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100" />
               </label>
-              <button
+              {selectedClass.role !== 'session_shared' && <button
                 type="button"
                 onClick={() => openNewSession(selectedClass.id)}
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg"
                 aria-label={t('sessions.new_session')}
               >
                 <Plus className="h-5 w-5" />
-              </button>
+              </button>}
             </div>
 
             <div className="mt-6 flex items-center justify-between px-1">
@@ -1032,11 +1033,14 @@ export default function TeacherClassesSessionsManager({
                           {cls.role === 'invited' && (
                             <><span className="text-slate-300">·</span><span className="inline-flex items-center gap-1"><Share2 className="h-3 w-3" />{cls.owner_name ? (isEnglish ? `by ${cls.owner_name}` : `di ${cls.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}</span></>
                           )}
+                          {cls.role === 'session_shared' && (
+                            <><span className="text-slate-300">·</span><span className="inline-flex items-center gap-1"><Share2 className="h-3 w-3" />{isEnglish ? `Sessions shared${cls.owner_name ? ` by ${cls.owner_name}` : ''}` : `Sessioni condivise${cls.owner_name ? ` da ${cls.owner_name}` : ''}`}</span></>
+                          )}
                         </span>
                       </span>
                     </button>
 
-                    <div className="flex shrink-0 items-center gap-1">
+                    {cls.role !== 'session_shared' && <div className="flex shrink-0 items-center gap-1">
                       <Button onClick={() => openNewSession(cls.id)} tone="accent" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
                         <Plus className="mr-1 h-3.5 w-3.5" />
                         {t('sessions.new_session')}
@@ -1060,7 +1064,7 @@ export default function TeacherClassesSessionsManager({
                           <Archive className="h-3.5 w-3.5" />
                         </IconButton>
                       )}
-                    </div>
+                    </div>}
                   </div>
 
                   {isEditing && (
@@ -1090,7 +1094,7 @@ export default function TeacherClassesSessionsManager({
 
                   {/* Folder body: the class sessions */}
                   {expanded && (
-                    <div className="px-4 pb-4">
+                    <div className="mb-4 ml-7 mr-4 mt-1 border-l-2 border-slate-200/80 pl-4 md:ml-[2.6rem] md:pl-5">
                       {isLoading ? (
                         <div className="space-y-2">{[1, 2].map((item) => <div key={item} className="h-12 animate-pulse rounded-xl bg-slate-100" />)}</div>
                       ) : visibleSessions.length === 0 && endedSessions.length === 0 ? (
@@ -1436,11 +1440,19 @@ function SessionLine({
             </IconButton>
           </form>
         ) : (
-          <span className="flex min-w-0 items-center gap-2">
-            <span className={`truncate text-sm font-bold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
-            {isCurrent && (
-              <span className="shrink-0 rounded-full bg-[#facc15] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#713f12]">
-                {isEnglish ? 'Current session' : 'Sessione corrente'}
+          <span className="block min-w-0">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className={`truncate text-sm font-bold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
+              {isCurrent && (
+                <span className="shrink-0 rounded-full bg-[#facc15] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#713f12]">
+                  {isEnglish ? 'Current session' : 'Sessione corrente'}
+                </span>
+              )}
+            </span>
+            {(session.co_teachers?.length ?? 0) > 0 && (
+              <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500" title={session.co_teachers!.join(', ')}>
+                <UserPlus className="h-3 w-3 shrink-0" />
+                <span className="truncate">{isEnglish ? 'with' : 'con'} {session.co_teachers!.join(', ')}</span>
               </span>
             )}
           </span>

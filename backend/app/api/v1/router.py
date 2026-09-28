@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, system_health, turing, agentic, solid_modeler
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
+from app.api.v1.endpoints import jobs
 
 api_router = APIRouter()
 
@@ -41,3 +42,4 @@ api_router.include_router(collaboration.router, tags=["collaboration"])
 api_router.include_router(turing.router, prefix="/turing", tags=["turing-test"])
 api_router.include_router(agentic.router, prefix="/agentic", tags=["agentic-workflows"])
 api_router.include_router(solid_modeler.router, prefix="/solid-modeler", tags=["solid-modeler"])
+api_router.include_router(jobs.router, prefix="/jobs", tags=["background-jobs"])

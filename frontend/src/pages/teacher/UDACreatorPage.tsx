@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { udaApi } from '@/lib/api'
+import { getApiAuthHeaders, udaApi } from '@/lib/api'
+import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import {
@@ -212,53 +213,64 @@ export default function UDACreatorPage() {
 
   // ─── Generate content via SSE ─────────────────────────────────────────────
 
+  const handleGenerationEvent = (ev: any) => {
+    if (ev.event === 'item_start') {
+      setGenProgress(p => [...p, { text: `${ev.title} (${ev.type})`, state: 'running' }])
+    } else if (ev.event === 'item_done') {
+      setGenProgress(p => p.map((item, i) => i === p.length - 1 ? { text: ev.title, state: 'done' } : item))
+    } else if (ev.event === 'item_error') {
+      setGenProgress(p => [...p, { text: ev.error, state: 'error' }])
+    } else if (ev.event === 'done') {
+      setGenProgress(p => [...p, { text: 'Generazione completata', state: 'done' }])
+    } else if (ev.type === 'error') {
+      setGenProgress(p => [...p, { text: ev.message || 'Generazione interrotta', state: 'error' }])
+    }
+  }
+
   const startGeneration = async () => {
     if (!classId || !udaId) return
     setGenerating(true)
     setGenProgress([])
-    const token = (() => {
-      try {
-        const raw = localStorage.getItem('eduai-auth')
-        return raw ? JSON.parse(raw)?.state?.accessToken : null
-      } catch { return null }
-    })()
-
     try {
       const res = await fetch(udaApi.generateContent(classId, udaId), {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+        headers: getApiAuthHeaders(),
       })
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      if (!reader) return
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value)
-        const lines = text.split('\n').filter(l => l.startsWith('data:'))
-        for (const line of lines) {
-          try {
-            const ev = JSON.parse(line.slice(5).trim())
-            if (ev.event === 'item_start') {
-              setGenProgress(p => [...p, { text: `${ev.title} (${ev.type})`, state: 'running' }])
-            } else if (ev.event === 'item_done') {
-              setGenProgress(p => p.map((item, i) => i === p.length - 1 ? { text: ev.title, state: 'done' } : item))
-            } else if (ev.event === 'item_error') {
-              setGenProgress(p => [...p, { text: ev.error, state: 'error' }])
-            } else if (ev.event === 'done') {
-              setGenProgress(p => [...p, { text: 'Generazione completata', state: 'done' }])
-            }
-          } catch { /* ignore */ }
-        }
-      }
+      if (!res.ok) throw new Error(`Errore ${res.status}`)
+      notifyJobsChanged()
+      await readEventStream(res, 'sse', handleGenerationEvent)
     } catch {
       toast({ title: 'Errore generazione contenuti', variant: 'destructive' })
     } finally {
       setGenerating(false)
+      notifyJobsChanged()
       queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
     }
   }
+
+  // Generation runs server-side as a background job: when the teacher comes back to this UDA,
+  // replay the running job so the progress list is rebuilt and keeps updating.
+  useEffect(() => {
+    if (!udaId) return
+    let cancelled = false
+    void findActiveJob('uda_generate', udaId).then(async (job) => {
+      if (!job || cancelled) return
+      setGenerating(true)
+      setGenProgress([])
+      try {
+        const res = await followJobStream(job.id)
+        if (res.ok) await readEventStream(res, 'sse', handleGenerationEvent)
+      } catch {
+        // the navbar indicator keeps tracking the job
+      } finally {
+        if (!cancelled) setGenerating(false)
+        queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [udaId])
 
   // ─── Chat send ────────────────────────────────────────────────────────────
 

@@ -6,9 +6,12 @@ import {
   Upload, X, Share2, Trash2, Wand2, ImageIcon, Type,
   Lightbulb, ArrowRight, CheckCircle2, ChevronDown, ChevronUp,
 } from 'lucide-react'
-import { meshyApi, chatApi } from '@/lib/api'
+import { Link } from 'react-router-dom'
+import { meshyApi, jobsApi, type BackgroundJob } from '@/lib/api'
+import { notifyJobsChanged } from '@/lib/backgroundJobs'
 import { Button } from '@/design/primitives/Button'
 import { useMobile } from '@/hooks/useMobile'
+import UnifiedMeshyLab from '@/components/meshy/UnifiedMeshyLab'
 
 const SolidModeler = lazy(() => import('@/components/solidModeler/SolidModeler'))
 
@@ -130,71 +133,51 @@ const POLYCOUNT_OPTS = [
 
 // ── localStorage helpers ───────────────────────────────────────────────────
 
-const KEY = 'teacher_3d_assets'
+const TEACHER_ASSET_KEY = 'teacher_3d_assets'
 const MODE_MIGRATION: Record<string, Mode> = { text: 'txt23d', image: 'img23d', txt2img: 'txt2img' }
 
-function loadAssets(): Asset3D[] {
+function loadAssets(key: string): Asset3D[] {
   try {
-    const raw: Asset3D[] = JSON.parse(localStorage.getItem(KEY) || '[]')
+    const raw: Asset3D[] = JSON.parse(localStorage.getItem(key) || '[]')
     return raw
       .map(a => ({ ...a, mode: (MODE_MIGRATION[a.mode] ?? a.mode) as Mode }))
       .filter(a => a.mode in S)
   } catch { return [] }
 }
-function saveAssets(a: Asset3D[]) { localStorage.setItem(KEY, JSON.stringify(a)) }
+function saveAssets(key: string, assets: Asset3D[]) { localStorage.setItem(key, JSON.stringify(assets)) }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-interface Props { sessionId?: string }
+interface Props { sessionId?: string; student?: boolean }
 
-const LAB_TAB_KEY = 'teacher_3d_lab_tab'
-
-// Solid modeler (Tinkercad-like) needs a desktop pointer: mobile keeps the generative lab only.
-export default function Teacher3DLabPage({ sessionId }: Props) {
+/** Two separate navbar entries: "3D Lab" (Tinkercad-like solid modeler) and "AI 3D" (Meshy generation). */
+export default function Teacher3DLabPage({ sessionId, view = 'modeler' }: Props & { view?: 'generate' | 'modeler' }) {
   const { isMobile } = useMobile()
-  const [tab, setTab] = useState<'generate' | 'modeler'>(() => {
-    try { return localStorage.getItem(LAB_TAB_KEY) === 'modeler' ? 'modeler' : 'generate' } catch { return 'generate' }
-  })
-  if (isMobile) return <MeshyLab sessionId={sessionId} />
-  const choose = (t: 'generate' | 'modeler') => {
-    setTab(t)
-    try { localStorage.setItem(LAB_TAB_KEY, t) } catch { /* ignore */ }
-  }
-  const tabs = (
-    <>
-      {([['generate', 'Generativo AI', Sparkles], ['modeler', 'Modellatore solido', Box]] as const).map(([id, label, Icon]) => (
-        <Button
-          key={id}
-          type="button"
-          onClick={() => choose(id)}
-          tone={tab === id ? 'accent' : 'neutral'}
-          surface={tab === id ? 'solid' : 'ghost'}
-          density="compact"
-          className="rounded-full"
-          title={id === 'modeler' ? 'Modellatore solido (beta)' : label}
-        >
-          <Icon /> <span className="hidden 2xl:inline">{label}</span><span className="2xl:hidden">{id === 'modeler' ? 'Modellatore' : 'Generativo'}</span>
-          {id === 'modeler' && <span className="rounded-full bg-white/70 px-1.5 text-[9px] font-black uppercase tracking-wide text-violet-700">β</span>}
-        </Button>
-      ))}
-    </>
-  )
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      {tab === 'generate' && <div className="flex items-center gap-1 border-b border-slate-200 bg-white/70 px-3 py-1.5">{tabs}</div>}
-      <div className="relative min-h-0 flex-1">
-        {tab === 'generate' ? <MeshyLab sessionId={sessionId} /> : (
-          <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
-            <SolidModeler leading={tabs} />
-          </Suspense>
-        )}
+  if (view === 'generate') return <UnifiedMeshyLab sessionId={sessionId} />
+  // The solid modeler needs a desktop pointer.
+  if (isMobile) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <Box className="h-10 w-10 text-slate-300" />
+        <p className="text-sm font-bold text-slate-700">Il modellatore 3D si usa da computer.</p>
+        <Link to="/teacher/ai-3d" className="inline-flex items-center gap-1.5 rounded-full bg-[var(--logo-violet)] px-4 py-2 text-xs font-bold text-white">
+          <Sparkles className="h-3.5 w-3.5" /> Apri AI 3D
+        </Link>
       </div>
+    )
+  }
+  return (
+    <div className="relative h-full min-h-0">
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+        <SolidModeler />
+      </Suspense>
     </div>
   )
 }
 
-function MeshyLab({ sessionId }: Props) {
+export function MeshyLab({ sessionId, student = false }: Props) {
   const { isMobile, isTablet } = useMobile()
+  const assetKey = student ? `student_3d_assets_${sessionId || 'session'}` : TEACHER_ASSET_KEY
   const compactUi = isMobile || isTablet
   const [mode, setMode] = useState<Mode | null>(() => compactUi ? null : 'txt23d')
 
@@ -231,9 +214,46 @@ function MeshyLab({ sessionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // library
-  const [assets, setAssets] = useState<Asset3D[]>(loadAssets)
+  const [assets, setAssets] = useState<Asset3D[]>(() => loadAssets(assetKey))
   const [viewingAsset, setViewingAsset] = useState<Asset3D | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+
+  // Meshy runs as a server-side background job: after a page change or reload, pick up the task
+  // still running and add models finished meanwhile to the library.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      for (const [kind, jobMode] of [['meshy_text_to_3d', 'txt23d'], ['meshy_image_to_3d', 'img23d']] as const) {
+        let jobs: BackgroundJob[] = []
+        try { jobs = (await jobsApi.list({ kind })).data } catch { continue }
+        if (cancelled) return
+        const running = jobs.find(job => job.status === 'running' && job.resource_id)
+        if (running) {
+          setTaskMode(jobMode)
+          if (jobMode === 'txt23d' && running.description) setTxt3dPrompt(current => current || running.description || '')
+          setTaskId(current => current || running.resource_id || null)
+        }
+        const finished: Asset3D[] = jobs
+          .filter(job => job.status === 'succeeded' && job.result?.model_urls?.glb)
+          .map(job => ({
+            id: String(job.result?.task_id || job.resource_id),
+            label: job.description || 'Modello 3D',
+            mode: jobMode,
+            glbUrl: job.result!.model_urls.glb,
+            thumbnailUrl: job.result?.thumbnail_url,
+            createdAt: job.finished_at || job.created_at,
+          }))
+        if (finished.length) {
+          setAssets(prev => {
+            const fresh = finished.filter(asset => !prev.some(item => item.id === asset.id))
+            if (!fresh.length) return prev
+            const updated = [...fresh, ...prev]; saveAssets(assetKey, updated); return updated
+          })
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [assetKey])
 
   // Auto-save succeeded task
   useEffect(() => {
@@ -249,7 +269,7 @@ function MeshyLab({ sessionId }: Props) {
       }
       setAssets(prev => {
         if (prev.find(x => x.id === a.id)) return prev
-        const updated = [a, ...prev]; saveAssets(updated); return updated
+        const updated = [a, ...prev]; saveAssets(assetKey, updated); return updated
       })
     }
   }, [task?.status]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -311,10 +331,12 @@ function MeshyLab({ sessionId }: Props) {
         if (!txt3dPrompt.trim()) return
         const r = await meshyApi.startTextTo3D(txt3dPrompt.trim(), txt3dNeg)
         setTaskId(r.data.task_id); setTaskMode('txt23d')
+        notifyJobsChanged()
       } else {
         if (!imgSrc) return
         const r = await meshyApi.startImageTo3D(imgSrc.base64, imgSrc.mime, pbr, topology, polycount)
         setTaskId(r.data.task_id); setTaskMode('img23d')
+        notifyJobsChanged()
       }
     } catch (e: unknown) {
       setError3d((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Errore')
@@ -322,15 +344,14 @@ function MeshyLab({ sessionId }: Props) {
   }
 
   function deleteAsset(id: string) {
-    setAssets(prev => { const u = prev.filter(a => a.id !== id); saveAssets(u); return u })
+    setAssets(prev => { const u = prev.filter(a => a.id !== id); saveAssets(assetKey, u); return u })
     if (viewingAsset?.id === id) setViewingAsset(null)
   }
 
   async function shareAsset(a: Asset3D) {
     if (!sessionId) { showToast('Nessuna sessione attiva'); return }
     try {
-      const attachments = a.thumbnailUrl ? [{ url: a.thumbnailUrl, type: 'image', name: a.label }] : []
-      await chatApi.sendSessionMessage(sessionId, `🧊 Modello 3D: "${a.label}"`, attachments)
+      await meshyApi.shareToChat({ session_id: sessionId, label: a.label, thumbnail_url: a.thumbnailUrl, glb_url: a.glbUrl })
       showToast('Condiviso in chat!')
     } catch { showToast('Errore nella condivisione') }
   }

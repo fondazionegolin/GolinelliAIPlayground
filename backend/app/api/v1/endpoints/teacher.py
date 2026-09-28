@@ -560,6 +560,39 @@ async def list_classes(
             "school_tenant_id": cls.school_tenant_id,
         })
 
+    # Classes reached only through a directly shared session (SessionTeacher): the teacher sees
+    # the class as a container for those sessions, not the rest of the class.
+    listed_class_ids = {cls["id"] for cls in classes_response}
+    session_shared_query = (
+        select(Class, User)
+        .join(Session, Session.class_id == Class.id)
+        .join(SessionTeacher, SessionTeacher.session_id == Session.id)
+        .join(User, Class.teacher_id == User.id)
+        .where(SessionTeacher.teacher_id == teacher.id)
+        .where(Session.deleted_at.is_(None))
+        .distinct()
+    )
+    if not include_archived:
+        session_shared_query = session_shared_query.where(Class.archived_at.is_(None))
+    result = await db.execute(session_shared_query)
+    for cls, owner in result.all():
+        if cls.id in listed_class_ids:
+            continue
+        owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or owner.email
+        classes_response.append({
+            "id": cls.id,
+            "tenant_id": cls.tenant_id,
+            "teacher_id": cls.teacher_id,
+            "name": cls.name,
+            "school_grade": cls.school_grade,
+            "created_at": cls.created_at,
+            "archived_at": cls.archived_at,
+            "role": "session_shared",
+            "owner_name": owner_name,
+            "school_tenant_id": cls.school_tenant_id,
+        })
+        listed_class_ids.add(cls.id)
+
     class_ids = [cls["id"] for cls in classes_response]
     session_counts: dict[UUID, int] = {}
     if class_ids:
@@ -570,6 +603,17 @@ async def list_classes(
             .group_by(Session.class_id)
         )
         session_counts = {class_id: count for class_id, count in counts_result.all()}
+    session_only_ids = [cls["id"] for cls in classes_response if cls["role"] == "session_shared"]
+    if session_only_ids:
+        shared_counts = await db.execute(
+            select(Session.class_id, func.count(Session.id))
+            .join(SessionTeacher, SessionTeacher.session_id == Session.id)
+            .where(Session.class_id.in_(session_only_ids))
+            .where(SessionTeacher.teacher_id == teacher.id)
+            .where(Session.deleted_at.is_(None))
+            .group_by(Session.class_id)
+        )
+        session_counts.update({class_id: count for class_id, count in shared_counts.all()})
 
     for cls in classes_response:
         cls["session_count"] = session_counts.get(cls["id"], 0)
@@ -713,16 +757,48 @@ async def list_sessions(
     teacher: Annotated[User, Depends(get_current_teacher)],
     include_deleted: bool = False,
 ):
-    # Verify class access (owner or invited)
+    # Verify class access (owner or invited); otherwise fall back to directly shared sessions only.
     class_ = await get_class_with_access_check(db, teacher, class_id)
-    if not class_:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-
     query = select(Session).where(Session.class_id == class_id)
+    if not class_:
+        query = query.where(
+            Session.id.in_(select(SessionTeacher.session_id).where(SessionTeacher.teacher_id == teacher.id))
+        )
     if not include_deleted:
         query = query.where(Session.deleted_at.is_(None))
     result = await db.execute(query.order_by(Session.created_at.desc()))
-    return result.scalars().all()
+    sessions = result.scalars().all()
+
+    # Co-teacher names per session: class-level invitees apply to every session, plus direct session invitees.
+    def _name(user: User) -> str:
+        return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+
+    class_co_teachers = [
+        (user.id, _name(user))
+        for user in (await db.execute(
+            select(User).join(ClassTeacher, ClassTeacher.teacher_id == User.id).where(ClassTeacher.class_id == class_id)
+        )).scalars().all()
+    ]
+    session_co_teachers: dict[UUID, list[tuple[UUID, str]]] = {}
+    if sessions:
+        rows = await db.execute(
+            select(SessionTeacher.session_id, User)
+            .join(User, SessionTeacher.teacher_id == User.id)
+            .where(SessionTeacher.session_id.in_([s.id for s in sessions]))
+        )
+        for session_id, user in rows.all():
+            session_co_teachers.setdefault(session_id, []).append((user.id, _name(user)))
+
+    out = []
+    for session in sessions:
+        names: dict[UUID, str] = {}
+        for user_id, name in class_co_teachers + session_co_teachers.get(session.id, []):
+            if user_id != teacher.id:
+                names.setdefault(user_id, name)
+        item = SessionResponse.model_validate(session)
+        item.co_teachers = sorted(names.values(), key=str.lower)
+        out.append(item)
+    return out
 
 
 @router.post("/classes/{class_id}/sessions", response_model=SessionResponse)
@@ -939,6 +1015,8 @@ async def create_student_subjective_view_token(
         extra_claims={
             "subjective_observer": True,
             "observer_teacher_id": str(teacher.id),
+            # Shown to the student in the "your teacher is watching" banner.
+            "observer_teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email,
         },
         expires_delta=timedelta(minutes=30),
     )

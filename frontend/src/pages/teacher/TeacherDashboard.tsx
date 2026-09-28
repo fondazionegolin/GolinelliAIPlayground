@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch } from 'lucide-react'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
@@ -237,6 +238,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
+    { path: '/teacher/ai-3d', label: 'AI 3D', icon: MushroomIcon },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
     ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
@@ -436,7 +438,8 @@ export default function TeacherDashboard() {
               <Route path="teacherbots" element={<TeacherbotsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
-              <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} view="modeler" />} />
+              <Route path="ai-3d" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} view="generate" />} />
               <Route path="classes" element={<ClassesPage currentSession={currentSession} />} />
               <Route path="sessions" element={<SessionsPage currentSession={currentSession} />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />
