@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey, func
+from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, ForeignKey, CheckConstraint, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
@@ -20,6 +20,9 @@ class Board(Base):
     columns_json = Column(JSONB, default=list, nullable=False)
     visibility = Column(String(20), nullable=False, default="private")  # private|session_shared
     students_can_edit = Column(Boolean, nullable=False, default=False)
+    framework = Column(String(20), nullable=True)  # scrum|kanban
+    labels_json = Column(JSONB, default=list, nullable=False)  # [{id, name, color}]
+    sprints_json = Column(JSONB, default=list, nullable=False)  # [{id, name, goal, start_date, end_date}]
     created_by_display_name = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -39,5 +42,30 @@ class BoardCard(Base):
     created_by_display_name = Column(String(256), nullable=True)
     last_actor_display_name = Column(String(256), nullable=True)
     sort_order = Column(String(32), nullable=True)
+    labels = Column(JSONB, default=list, nullable=False)  # label ids from Board.labels_json
+    assignees = Column(JSONB, default=list, nullable=False)  # [{kind: teacher|student, id, name}]
+    card_type = Column(String(16), nullable=True)  # epic|story|task
+    priority = Column(String(16), nullable=True)  # alta|media|bassa
+    story_points = Column(Integer, nullable=True)
+    sprint_id = Column(String(48), nullable=True)  # id from Board.sprints_json
+    parent_card_id = Column(UUID(as_uuid=True), ForeignKey("board_cards.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class BoardShare(Base):
+    """Direct share of a board with one teacher (user_id) or one session student (student_id)."""
+    __tablename__ = "board_shares"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id = Column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
+    can_edit = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("(user_id IS NULL) <> (student_id IS NULL)", name="ck_board_shares_one_target"),
+        UniqueConstraint("board_id", "user_id", name="uq_board_shares_user"),
+        UniqueConstraint("board_id", "student_id", name="uq_board_shares_student"),
+    )
