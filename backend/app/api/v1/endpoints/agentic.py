@@ -47,7 +47,7 @@ def _workflow_payload(workflow: AgenticWorkflow) -> dict[str, Any]:
 def _node_run_payload(node_run: AgenticNodeRun) -> dict[str, Any]:
     return {
         "id": str(node_run.id), "node_instance_id": node_run.node_instance_id,
-        "node_type": node_run.node_type, "label": node_run.label, "sequence": node_run.sequence,
+        "node_type": node_run.node_type, "label": node_run.label, "sequence": node_run.sequence, "visit": node_run.visit,
         "status": node_run.status, "input": node_run.input_json, "output": node_run.output_json,
         "provider": node_run.provider, "model": node_run.model,
         "prompt_tokens": node_run.prompt_tokens, "completion_tokens": node_run.completion_tokens,

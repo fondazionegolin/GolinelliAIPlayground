@@ -65,6 +65,8 @@ class AgenticNodeRun(Base):
     node_type = Column(String(80), nullable=False)
     label = Column(String(180), nullable=False)
     sequence = Column(Integer, nullable=False)
+    # Loops re-enter nodes: each pass through a node in the same run is a new row with visit + 1.
+    visit = Column(Integer, nullable=False, default=0, server_default="0")
     status = Column(String(32), nullable=False, default="queued", server_default="queued")
     input_json = Column(JSONB, nullable=False, default=dict, server_default="{}")
     output_json = Column(JSONB, nullable=False, default=dict, server_default="{}")
@@ -80,5 +82,5 @@ class AgenticNodeRun(Base):
     run = relationship("AgenticWorkflowRun", back_populates="node_runs")
 
     __table_args__ = (
-        UniqueConstraint("run_id", "node_instance_id", name="uq_agentic_node_runs_run_node"),
+        UniqueConstraint("run_id", "node_instance_id", "visit", name="uq_agentic_node_runs_run_node_visit"),
     )

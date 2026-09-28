@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.user import User
-from app.services.dataflow_nodes import NODE_REGISTRY, execute_data_node, interpolate_variables
+from app.services.dataflow_nodes import DEFAULT_EXIT_PHRASES, NODE_REGISTRY, execute_data_node, interpolate_variables
 from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service
 
 
@@ -31,6 +31,45 @@ def configured_models() -> list[dict[str, str]]:
 
 def _edge_port(edge: dict[str, Any], side: str) -> str:
     return str(edge.get(f"{side}Port") or edge.get("type") or ("result" if side == "source" else "input"))
+
+
+LOOP_NODE = "control.repeat_until"
+LOOP_PORT = "repeat"
+# The LLM appends this marker when it decides a continuous conversation is over; it is stripped before display.
+EXIT_MARKER = "[[FINE_CONVERSAZIONE]]"
+
+
+def _is_flow_type(node_type: str) -> bool:
+    return node_type.startswith("chatbot.") or node_type.startswith("control.") or node_type == "llm_chatbot"
+
+
+def _is_loop_edge(edge: dict[str, Any], node_by_id: dict[str, dict[str, Any]]) -> bool:
+    """The only edges allowed to point backwards: the «Ripeti» port of a repeat-until node."""
+    source = node_by_id.get(edge.get("from"))
+    return bool(source) and source.get("id") == LOOP_NODE and _edge_port(edge, "source") == LOOP_PORT
+
+
+def _forward_graph(graph: dict[str, Any]) -> dict[str, Any]:
+    """The graph without loop edges: always acyclic, used for ordering and dependency resolution."""
+    node_by_id = {node["instanceId"]: node for node in graph["nodes"]}
+    return {**graph, "edges": [edge for edge in graph["edges"] if not _is_loop_edge(edge, node_by_id)]}
+
+
+def _loop_body(graph: dict[str, Any], start: str, loop_node: str) -> set[str]:
+    """Nodes to run again when «Ripeti» jumps back to ``start``: everything on a forward path start → loop node."""
+    edges = _forward_graph(graph)["edges"]
+
+    def reach(origin: str, forward: bool) -> set[str]:
+        seen, pending = {origin}, [origin]
+        while pending:
+            current = pending.pop()
+            for edge in edges:
+                src, dst = (edge["from"], edge["to"]) if forward else (edge["to"], edge["from"])
+                if src == current and dst not in seen:
+                    seen.add(dst); pending.append(dst)
+        return seen
+
+    return (reach(start, True) & reach(loop_node, False)) | {start}
 
 
 def validate_graph(graph: dict[str, Any]) -> None:
@@ -58,15 +97,17 @@ def validate_graph(graph: dict[str, Any]) -> None:
         if target_port not in {item["name"] for item in target_spec["inputs"]}:
             raise ValueError(f"Porta di ingresso inesistente: {target_port}")
         key = (edge["to"], target_port)
-        if key in occupied_inputs:
+        # Flow nodes can be entered from several places (e.g. first time + «Ripeti»); data inputs take one value.
+        if key in occupied_inputs and not _is_flow_type(str(node_by_id[edge["to"]].get("id") or "")):
             raise ValueError(f"La porta {target_port} ha già una connessione")
         occupied_inputs.add(key)
+        if _is_loop_edge(edge, node_by_id) and not _is_flow_type(str(node_by_id[edge["to"]].get("id") or "")):
+            raise ValueError("«Ripeti» di 'Ripeti finché' può tornare solo a un nodo del chatbot (es. Domanda o Messaggio)")
         output_type = next(item["type"] for item in source_spec["outputs"] if item["name"] == source_port)
         input_type = next(item["type"] for item in target_spec["inputs"] if item["name"] == target_port)
         if output_type != input_type and "ANY" not in {output_type, input_type}:
             raise ValueError(f"Tipi incompatibili: {output_type} → {input_type}")
-    def _is_flow_node(node_id: str) -> bool:
-        return node_id.startswith("chatbot.") or node_id.startswith("control.") or node_id == "llm_chatbot"
+    _is_flow_node = _is_flow_type
 
     for node in nodes:
         if not _is_flow_node(str(node.get("id") or "")):
@@ -92,7 +133,10 @@ def validate_graph(graph: dict[str, Any]) -> None:
             raise ValueError("Un flusso chatbot deve avere esattamente un nodo 'Inizio conversazione'")
         if not any(node.get("id") == "chatbot.end" for node in nodes):
             raise ValueError("Un flusso chatbot deve avere almeno un nodo 'Fine conversazione'")
-    _execution_order(graph)
+    try:
+        _execution_order(_forward_graph(graph))
+    except ValueError:
+        raise ValueError("Il workflow contiene un ciclo: per tornare indietro usa l'uscita «Ripeti» del nodo 'Ripeti finché'") from None
 
 
 def _execution_order(graph: dict[str, Any]) -> list[dict[str, Any]]:
@@ -131,7 +175,8 @@ async def _node_inputs(db: AsyncSession, run: AgenticWorkflowRun, graph: dict[st
         source_run = runs.get(edge["from"])
         output = (source_run.output_json if source_run else {}) or {}
         value = output.get(_edge_port(edge, "source"))
-        values[_edge_port(edge, "target")] = value
+        if value is not None or _edge_port(edge, "target") not in values:
+            values[_edge_port(edge, "target")] = value
         active = active or (value is not None and value is not False)
     return values, active
 
@@ -148,7 +193,7 @@ def _format_context(value: Any, label: str) -> str | None:
         lines += ["| " + " | ".join(str(row.get(c, "")) for c in cols) + " |" for row in preview]
         note = f"\n… e altre {len(rows) - len(preview)} righe" if len(rows) > len(preview) else ""
         return f"{label} — tabella ({value.get('rowCount', len(rows))} righe):\n" + "\n".join(lines) + note
-    if isinstance(value, dict) and value.get("kind") in {"scatter", "histogram"}:
+    if isinstance(value, dict) and value.get("kind") in {"scatter", "scatter3d", "histogram"}:
         axis = value.get("labels") or {}
         title = value.get("title") or "Grafico"
         if value.get("kind") == "histogram":
@@ -173,10 +218,104 @@ def _format_context(value: Any, label: str) -> str | None:
     return f"{label}: {str(value)[:2000]}"
 
 
+def _pick_model(node_type: str, config: dict[str, Any]) -> tuple[str, str]:
+    models = configured_models()
+    # Conversational/judging nodes favour the lightest configured model (latency matters more than raw quality);
+    # ai.generate_dataset keeps the first configured model.
+    if node_type != "ai.generate_dataset" and models:
+        light_priority = ["anthropic", "gemini", "openai"]
+        default_choice = next((item for provider_name in light_priority for item in models if item["provider"] == provider_name), models[0])
+    else:
+        default_choice = models[0] if models else None
+    provider = str(config.get("provider") or (default_choice["provider"] if default_choice else settings.DEFAULT_LLM_PROVIDER))
+    model = str(config.get("model") or (default_choice["model"] if default_choice else settings.DEFAULT_LLM_MODEL))
+    if models and not any(item["provider"] == provider and item["model"] == model for item in models):
+        raise ValueError(f"Il modello {provider}/{model} non è attivo in GOLIAI")
+    return provider, model
+
+
+def _exit_phrases(config: dict[str, Any]) -> list[str]:
+    return [item.strip().lower() for item in str(config.get("exit_phrases") or DEFAULT_EXIT_PHRASES).split(",") if item.strip()]
+
+
+async def _llm_reply(config: dict[str, Any], inputs: dict[str, Any], state: dict[str, Any],
+                     messages: list[dict[str, str]], continuous: bool) -> tuple[str, bool, Any]:
+    """One chatbot turn. Returns (visible text, whether the model closed the conversation, raw response)."""
+    provider, model = _pick_model("llm_chatbot", config)
+    system_prompt = interpolate_variables(config.get("system_prompt") or "Sei un assistente utile.", state.get("variables") or {})
+    context_parts = [part for idx in (1, 2, 3) if (part := _format_context(inputs.get(f"context_{idx}"), f"Contesto {idx}"))]
+    if context_parts:
+        system_prompt += "\n\nContesto fornito dai nodi collegati:\n\n" + "\n\n".join(context_parts)
+    if continuous:
+        system_prompt += (
+            "\n\nQuesta è una conversazione continua a più turni. Quando l'utente mostra di voler chiudere o di essere "
+            f"soddisfatto (per esempio: {', '.join(_exit_phrases(config))}), rispondi con un breve saluto conclusivo e "
+            f"termina il messaggio con {EXIT_MARKER}. Non usare mai quel marcatore in nessun altro caso."
+        )
+    response = await llm_service.generate(
+        messages=messages, system_prompt=system_prompt, provider=provider, model=model,
+        max_tokens=min(4096, max(128, int(config.get("max_tokens", 1024)))),
+    )
+    content = response.content or ""
+    ended = EXIT_MARKER in content
+    return content.replace(EXIT_MARKER, "").strip(), ended, response
+
+
+def _llm_payload(content: str, response: Any) -> dict[str, Any]:
+    return {"message": content, "provider": response.provider, "model": response.model,
+            "tokens_used": response.prompt_tokens + response.completion_tokens}
+
+
+async def _repeat_until(inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
+                        key: str) -> tuple[dict[str, Any], str | None, str | None, int, int]:
+    """Check a value; route to ok / repeat / exhausted and count attempts in the run state."""
+    value = inputs.get("value")
+    if isinstance(value, dict):
+        value = value.get("message") or value.get("response") or value.get("content") or json.dumps(value, ensure_ascii=False)
+    text = "" if value is None else str(value).strip()
+    mode = str(config.get("mode") or "contiene")
+    expected = str(config.get("expected") or "")
+    options = [item.strip().lower() for item in expected.split(",") if item.strip()]
+    provider = model = None
+    prompt_tokens = completion_tokens = 0
+    if mode == "uguale":
+        ok = text.lower().strip(" .!?") in options
+    elif mode == "verifica_ai":
+        if not expected.strip():
+            raise ValueError("Scrivi il criterio da verificare, ad esempio «la risposta è 56»")
+        provider, model = _pick_model("llm_chatbot", config)
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": f"Criterio: {expected}\nRisposta dello studente: {text or '(vuota)'}\n\nLa risposta soddisfa il criterio? Rispondi solo SI oppure NO."}],
+            system_prompt="Sei un valutatore rigoroso ma ragionevole: accetti formulazioni diverse e piccoli errori di battitura se il significato è corretto.",
+            provider=provider, model=model, max_tokens=20,
+        )
+        ok = response.content.strip().upper().lstrip("*«\"' ").startswith(("SI", "SÌ", "YES"))
+        provider, model = response.provider, response.model
+        prompt_tokens, completion_tokens = response.prompt_tokens, response.completion_tokens
+    elif mode == "vero_falso":
+        ok = bool(value) and text.lower() not in {"", "false", "falso", "no", "0", "none"}
+    else:
+        ok = any(option in text.lower() for option in options)
+    counts = state.setdefault("loop_counts", {})
+    attempts = int(counts.get(key, 0)) + 1
+    limit = max(1, int(config.get("max_attempts") or 3))
+    passthrough: Any = text or True
+    if ok or attempts >= limit:
+        counts[key] = 0
+        route = "ok" if ok else "exhausted"
+    else:
+        counts[key] = attempts
+        route = "repeat"
+    output = {port_name: (passthrough if port_name == route else None) for port_name in ("ok", "repeat", "exhausted")}
+    return {**output, "attempts": attempts, "max_attempts": limit, "passed": ok}, provider, model, prompt_tokens, completion_tokens
+
+
 async def _execute(
     node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
-    db: AsyncSession | None = None, actor: User | None = None,
+    db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
+    if node_type == LOOP_NODE:
+        return await _repeat_until(inputs, config, state, instance_id or "default")
     if node_type == "data.saved_dataset":
         if db is None:
             raise ValueError("Il dataset salvato è disponibile solo eseguendo il workflow")
@@ -188,20 +327,22 @@ async def _execute(
         if not dataset:
             raise ValueError("Il dataset selezionato non è più disponibile")
         return {"table": dataset.table_json}, None, None, 0, 0
+    if node_type == "data.new_table":
+        output = await execute_data_node(node_type, inputs, config, state)
+        table = output["table"]
+        if config.get("save_to_library") and db is not None and actor is not None:
+            if not table.get("rows"):
+                raise ValueError("La nuova tabella è vuota: niente da salvare in libreria")
+            db.add(AgenticDataset(
+                tenant_id=actor.tenant_id, created_by_user_id=actor.id,
+                title=(str(config.get("title") or "").strip() or "Nuova tabella")[:180],
+                source="workflow", row_count=int(table.get("rowCount") or len(table["rows"])), table_json=table,
+            ))
+            await db.commit()
+        return output, None, None, 0, 0
     if node_type not in {"llm_chatbot", "ai.generate_dataset"}:
         return await execute_data_node(node_type, inputs, config, state), None, None, 0, 0
-    models = configured_models()
-    # llm_chatbot favours the lightest/fastest configured model by default (low latency matters more
-    # than raw quality for a conversational node); ai.generate_dataset keeps the first configured model.
-    if node_type == "llm_chatbot" and models:
-        light_priority = ["anthropic", "gemini", "openai"]
-        default_choice = next((item for provider_name in light_priority for item in models if item["provider"] == provider_name), models[0])
-    else:
-        default_choice = models[0] if models else None
-    provider = str(config.get("provider") or (default_choice["provider"] if default_choice else settings.DEFAULT_LLM_PROVIDER))
-    model = str(config.get("model") or (default_choice["model"] if default_choice else settings.DEFAULT_LLM_MODEL))
-    if models and not any(item["provider"] == provider and item["model"] == model for item in models):
-        raise ValueError(f"Il modello {provider}/{model} non è attivo in GOLIAI")
+    provider, model = _pick_model(node_type, config)
     if node_type == "ai.generate_dataset":
         requested_rows = min(300, max(5, int(config.get("rows", 30))))
         requested_columns = str(config.get("columns") or "").strip()
@@ -237,20 +378,16 @@ async def _execute(
             metadata["saved_to_library"] = True
         return {"table": table, "metadata": metadata}, response.provider, response.model, response.prompt_tokens, response.completion_tokens
 
-    message = inputs.get("message") or "Continua la conversazione"
+    message = inputs.get("message") or "Inizia la conversazione"
     if isinstance(message, dict):
         message = message.get("content") or message.get("message") or json.dumps(message, ensure_ascii=False)
-    system_prompt = interpolate_variables(config.get("system_prompt") or "Sei un assistente utile.", state.get("variables") or {})
-    context_parts = [part for idx in (1, 2, 3) if (part := _format_context(inputs.get(f"context_{idx}"), f"Contesto {idx}"))]
-    if context_parts:
-        system_prompt += "\n\nContesto fornito dai nodi collegati:\n\n" + "\n\n".join(context_parts)
-    response = await llm_service.generate(
-        messages=[{"role": "user", "content": str(message)}], system_prompt=system_prompt,
-        provider=provider, model=model, max_tokens=min(4096, max(128, int(config.get("max_tokens", 1024)))),
-    )
-    payload = {"message": response.content, "provider": response.provider, "model": response.model,
-               "tokens_used": response.prompt_tokens + response.completion_tokens}
-    return {"response": payload, "next": response.content}, response.provider, response.model, response.prompt_tokens, response.completion_tokens
+    continuous = bool(config.get("continuous"))
+    content, ended, response = await _llm_reply(config, inputs, state, [{"role": "user", "content": str(message)}], continuous)
+    output: dict[str, Any] = {"response": _llm_payload(content, response), "next": content}
+    if continuous:
+        # History holds the turns of the loop (the seed message was already shown by the node that produced it).
+        output.update({"seed": str(message), "history": [{"role": "assistant", "content": content}], "turns": 1, "ended": ended})
+    return output, response.provider, response.model, response.prompt_tokens, response.completion_tokens
 
 
 async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: User | None = None) -> dict[str, Any]:
@@ -280,7 +417,8 @@ async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db
 
 
 async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticWorkflowRun, actor: User) -> AgenticWorkflowRun:
-    graph = workflow.graph_json
+    # Batch runs execute each node once in topological order: loop edges are ignored here.
+    graph = _forward_graph(workflow.graph_json)
     order = _execution_order(graph)
     state = {"variables": dict((run.input_json or {}).get("variables") or {})}
     run.status = "running"
@@ -314,7 +452,7 @@ async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticW
             node_run.status = "running"
             await db.commit()
             started = time.perf_counter()
-            output, provider, model, prompt_tokens, completion_tokens = await _execute(node["id"], inputs, config, state, db=db, actor=actor)
+            output, provider, model, prompt_tokens, completion_tokens = await _execute(node["id"], inputs, config, state, db=db, actor=actor, instance_id=node["instanceId"])
             node_run.output_json = output
             node_run.provider = provider
             node_run.model = model
@@ -349,16 +487,20 @@ class _AwaitingInput(Exception):
         self.node_run = node_run
 
 
-async def _get_or_create_node_run(db: AsyncSession, run: AgenticWorkflowRun, node: dict[str, Any], sequence: int) -> AgenticNodeRun:
+async def _find_node_run(db: AsyncSession, run: AgenticWorkflowRun, node_instance_id: str, visit: int) -> AgenticNodeRun | None:
     result = await db.execute(select(AgenticNodeRun).where(
-        AgenticNodeRun.run_id == run.id, AgenticNodeRun.node_instance_id == node["instanceId"],
+        AgenticNodeRun.run_id == run.id, AgenticNodeRun.node_instance_id == node_instance_id, AgenticNodeRun.visit == visit,
     ))
-    node_run = result.scalar_one_or_none()
+    return result.scalar_one_or_none()
+
+
+async def _get_or_create_node_run(db: AsyncSession, run: AgenticWorkflowRun, node: dict[str, Any], sequence: int, visit: int = 0) -> AgenticNodeRun:
+    node_run = await _find_node_run(db, run, node["instanceId"], visit)
     if node_run:
         return node_run
     node_run = AgenticNodeRun(
         run_id=run.id, node_instance_id=node["instanceId"], node_type=node["id"],
-        label=str(node.get("label") or NODE_REGISTRY[node["id"]]["label"]), sequence=sequence,
+        label=str(node.get("label") or NODE_REGISTRY[node["id"]]["label"]), sequence=sequence, visit=visit,
     )
     db.add(node_run)
     return node_run
@@ -377,7 +519,8 @@ async def _ensure_executed(
     someone else's dependency is simply reused.
     """
     node = node_by_id[node_instance_id]
-    node_run = await _get_or_create_node_run(db, run, node, sequence[0])
+    visits = state.setdefault("visits", {})
+    node_run = await _get_or_create_node_run(db, run, node, sequence[0], int(visits.get(node_instance_id, 0)))
     if node_run.status == "completed":
         return node_run.output_json or {}
     if node_run.status == "waiting":
@@ -386,11 +529,20 @@ async def _ensure_executed(
         raise ValueError(f"Riferimento ciclico rilevato su '{node.get('label') or node['id']}'")
     visiting.add(node_instance_id)
     sequence[0] += 1
-    incoming = [edge for edge in graph["edges"] if edge["to"] == node_instance_id]
+    incoming = [edge for edge in graph["edges"] if edge["to"] == node_instance_id and not _is_loop_edge(edge, node_by_id)]
     inputs: dict[str, Any] = {}
     for edge in incoming:
-        source_output = await _ensure_executed(db, run, graph, node_by_id, edge["from"], state, visiting, sequence, actor)
-        inputs[_edge_port(edge, "target")] = source_output.get(_edge_port(edge, "source"))
+        source_id = edge["from"]
+        if _is_flow_type(str(node_by_id[source_id].get("id") or "")):
+            # Flow predecessors are only ever reached by walking the conversation; one that has not run on this
+            # pass (another branch, or the path that loops back here) contributes nothing instead of running now.
+            source_run = await _find_node_run(db, run, source_id, int(visits.get(source_id, 0)))
+            source_output = (source_run.output_json or {}) if source_run and source_run.status == "completed" else {}
+        else:
+            source_output = await _ensure_executed(db, run, graph, node_by_id, source_id, state, visiting, sequence, actor)
+        value = source_output.get(_edge_port(edge, "source"))
+        if value is not None or _edge_port(edge, "target") not in inputs:
+            inputs[_edge_port(edge, "target")] = value
     visiting.discard(node_instance_id)
 
     config = node.get("config") if isinstance(node.get("config"), dict) else {}
@@ -415,17 +567,42 @@ async def _ensure_executed(
     node_run.started_at = datetime.now(timezone.utc)
     await db.commit()
     started = time.perf_counter()
-    output, provider, model, prompt_tokens, completion_tokens = await _execute(node["id"], inputs, config, state, db=db, actor=actor)
+    output, provider, model, prompt_tokens, completion_tokens = await _execute(node["id"], inputs, config, state, db=db, actor=actor, instance_id=node_instance_id)
     node_run.output_json = output
     node_run.provider = provider
     node_run.model = model
     node_run.prompt_tokens = prompt_tokens
     node_run.completion_tokens = completion_tokens
     node_run.duration_ms = int((time.perf_counter() - started) * 1000)
+    if node["id"] == "llm_chatbot" and config.get("continuous") and not output.get("ended"):
+        # Continuous chat: the node keeps the floor and waits for the next student message.
+        node_run.status = "waiting"
+        await db.commit()
+        raise _AwaitingInput(node_run)
     node_run.status = "completed"
     node_run.completed_at = datetime.now(timezone.utc)
     await db.commit()
     return output
+
+
+async def _continue_llm_conversation(node: dict[str, Any], node_run: AgenticNodeRun, user_input: str, state: dict[str, Any]) -> bool:
+    """Run one more turn of a continuous ``llm_chatbot``. Returns True when the conversation is over."""
+    config = node.get("config") if isinstance(node.get("config"), dict) else {}
+    previous = dict(node_run.output_json or {})
+    history = list(previous.get("history") or []) + [{"role": "user", "content": user_input}]
+    seed = str(previous.get("seed") or "Inizia la conversazione")
+    content, ended, response = await _llm_reply(config, node_run.input_json or {}, state, [{"role": "user", "content": seed}, *history], True)
+    history.append({"role": "assistant", "content": content})
+    turns = int(previous.get("turns") or 1) + 1
+    # The model decides when to stop; an explicit closing phrase or the turn cap are hard stops on top of that.
+    closing = user_input.strip().lower().strip(" .!?,") in _exit_phrases(config)
+    ended = ended or closing or turns >= max(1, int(config.get("max_turns") or 20))
+    node_run.output_json = {"response": _llm_payload(content, response), "next": content, "seed": seed,
+                            "history": history, "turns": turns, "ended": ended}
+    node_run.provider, node_run.model = response.provider, response.model
+    node_run.prompt_tokens = int(node_run.prompt_tokens or 0) + response.prompt_tokens
+    node_run.completion_tokens = int(node_run.completion_tokens or 0) + response.completion_tokens
+    return ended
 
 
 def _active_flow_edges(graph: dict[str, Any], node_instance_id: str, output: dict[str, Any]) -> list[dict[str, Any]]:
@@ -449,8 +626,11 @@ async def advance_conversation(
     """
     graph = workflow.graph_json
     node_by_id = {node["instanceId"]: node for node in graph["nodes"]}
-    state: dict[str, Any] = {"variables": dict((run.input_json or {}).get("variables") or {})}
-    current = (run.input_json or {}).get("current_node_id")
+    saved = run.input_json or {}
+    # visits: how many times each node was re-entered by a loop; loop_counts: attempts per «Ripeti finché».
+    state: dict[str, Any] = {"variables": dict(saved.get("variables") or {}), "visits": dict(saved.get("visits") or {}),
+                             "loop_counts": dict(saved.get("loop_counts") or {})}
+    current = saved.get("current_node_id")
 
     max_sequence = await db.execute(select(func.coalesce(func.max(AgenticNodeRun.sequence), -1)).where(AgenticNodeRun.run_id == run.id))
     sequence = [int(max_sequence.scalar_one()) + 1]
@@ -461,7 +641,8 @@ async def advance_conversation(
     await db.commit()
 
     def _persist_position(node_id: str | None) -> None:
-        run.input_json = {**(run.input_json or {}), "current_node_id": node_id, "variables": state["variables"]}
+        run.input_json = {**(run.input_json or {}), "current_node_id": node_id, "variables": state["variables"],
+                          "visits": state["visits"], "loop_counts": state["loop_counts"]}
 
     try:
         if current is None:
@@ -470,14 +651,18 @@ async def advance_conversation(
                 raise ValueError("Il workflow chatbot deve avere un nodo 'Inizio conversazione'")
             current = start_node["instanceId"]
         elif user_input is not None:
-            result = await db.execute(select(AgenticNodeRun).where(
-                AgenticNodeRun.run_id == run.id, AgenticNodeRun.node_instance_id == current, AgenticNodeRun.status == "waiting",
-            ))
-            node_run = result.scalar_one_or_none()
-            if not node_run:
+            node_run = await _find_node_run(db, run, current, int(state["visits"].get(current, 0)))
+            if not node_run or node_run.status != "waiting":
                 raise ValueError("La conversazione non è in attesa di una risposta")
             node = node_by_id[current]
-            if node["id"] == "chatbot.ask":
+            if node["id"] == "llm_chatbot":
+                if not await _continue_llm_conversation(node, node_run, user_input, state):
+                    run.status = "waiting"
+                    run.output_json = {"waiting_for": current, "kind": "text"}
+                    _persist_position(current)
+                    await db.commit()
+                    return run
+            elif node["id"] == "chatbot.ask":
                 node_run.output_json = {"response": user_input, "question": (node_run.output_json or {}).get("question")}
             else:
                 config = node.get("config") if isinstance(node.get("config"), dict) else {}
@@ -521,7 +706,12 @@ async def advance_conversation(
                 _persist_position(None)
                 await db.commit()
                 return run
-            current = active_edges[0]["to"]
+            step = active_edges[0]
+            if _is_loop_edge(step, node_by_id):
+                # «Ripeti»: every node between the target and this loop node runs again on a fresh visit.
+                for body_node in _loop_body(graph, step["to"], current):
+                    state["visits"][body_node] = int(state["visits"].get(body_node, 0)) + 1
+            current = step["to"]
         raise ValueError("Il flusso conversazionale ha superato il numero massimo di passi consentiti in un turno")
     except ValueError as exc:
         run.status = "failed"

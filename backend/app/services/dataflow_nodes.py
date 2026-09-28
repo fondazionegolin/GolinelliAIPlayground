@@ -16,6 +16,11 @@ import numpy as np
 import pandas as pd
 
 
+DEFAULT_EXIT_PHRASES = "grazie, ok basta, basta così, sono soddisfatto, ho capito, fine, ciao"
+# contiene = una delle parole (CSV); uguale = coincide con uno dei valori (CSV); verifica_ai = giudizio LLM sul criterio;
+# vero_falso = il valore collegato è già un booleano/esito.
+REPEAT_MODES = ("contiene", "uguale", "verifica_ai", "vero_falso")
+
 NodeHandler = Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], Awaitable[dict[str, Any]]]
 MODEL_STORE: dict[str, Any] = {}
 VARIABLE_PATTERN = re.compile(r"\$([A-Za-z_]\w*)")
@@ -56,12 +61,29 @@ NODE_SPECS = [
         param("kind", "SELECT", "Tipo", "regression", options=["regression", "classification", "blobs", "moons", "circles"]),
         param("samples", "INTEGER", "Righe", 100, min=10, max=5000), param("features", "INTEGER", "Feature", 3, min=2, max=20),
         param("seed", "INTEGER", "Seed", 42)], "Genera dati riproducibili per esperimenti ML."),
-    spec("math.numeric_input", "Valore numerico", "Matematica", [], [port("value", "ANY")],
+    spec("math.numeric_input", "Valore numerico", "Sorgenti", [], [port("value", "ANY")],
          [param("value", "NUMBER", "Valore", 0)], "Immette un numero nel flusso."),
+    spec("data.new_table", "Nuova tabella da input", "Sorgenti", [port("table", "TABLE", "Dati in ingresso")], [port("table", "TABLE")], [
+        param("columns", "COLUMNS", "Colonne da copiare (vuoto = tutte, nell'ordine scelto)", ""),
+        param("rename", "STRING", "Rinomina (vecchio:nuovo, separati da virgola)", "", required=False),
+        param("title", "STRING", "Nome della nuova tabella", "Nuova tabella"),
+        param("save_to_library", "BOOLEAN", "Salva nella libreria dataset", False)],
+        "Materializza in una nuova tabella i dati arrivati da un altro nodo (es. dopo Seleziona colonne); può riordinare, rinominare e salvare in libreria.", "never"),
     spec("data.select", "Seleziona colonne", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")], [
         param("mode", "SELECT", "Modalità", "include", options=["include", "exclude"]), param("columns", "COLUMNS", "Colonne", "")], "Include o esclude colonne."),
     spec("data.filter", "Filtra righe", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")],
-         [param("expression", "CODE", "Espressione pandas", "x > 0")], "Filtra una tabella con una query."),
+         [param("expression", "CODE", "Espressione pandas (vuota = nessun filtro)", "")], "Filtra una tabella con una query, es. eta > 18 and citta == 'Bologna'."),
+    spec("data.rename_columns", "Rinomina colonne", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")],
+         [param("rename", "STRING", "Rinomina (vecchio:nuovo, separati da virgola)", "")], "Cambia il nome di una o più colonne."),
+    spec("data.sort", "Ordina righe", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")], [
+        param("column", "COLUMN", "Colonna", ""), param("order", "SELECT", "Ordine", "ascending", options=["ascending", "descending"]),
+        param("limit", "INTEGER", "Tieni prime N righe (0 = tutte)", 0, min=0)], "Ordina la tabella per una colonna, opzionalmente tenendo le prime N righe."),
+    spec("data.group_by", "Raggruppa e aggrega", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")], [
+        param("group_column", "COLUMN", "Raggruppa per", ""), param("value_columns", "COLUMNS", "Colonne da aggregare (vuoto = numeriche)", ""),
+        param("aggregation", "SELECT", "Aggregazione", "mean", options=["mean", "sum", "count", "min", "max", "median"])], "Crea una tabella riassuntiva per gruppo (media, somma, conteggio…)."),
+    spec("data.compute_column", "Colonna calcolata", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")], [
+        param("name", "STRING", "Nome nuova colonna", "nuova_colonna"), param("expression", "CODE", "Formula (es. costo_euro / kwh)", "")],
+        "Aggiunge una colonna calcolata a partire dalle altre."),
     spec("data.dropna", "Rimuovi mancanti", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")],
          [param("how", "SELECT", "Regola", "any", options=["any", "all"])], "Rimuove righe con valori mancanti."),
     spec("data.transform", "Trasforma dati", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")], [
@@ -115,9 +137,18 @@ NODE_SPECS = [
         port("context_3", "ANY", "Contesto 3", required=False),
     ], [port("response", "ANY", "Risposta"), port("next", "ANY", "Continua")], [
         param("system_prompt", "CODE", "Condizionamento di sistema", "Sei un assistente utile. Usa il contesto collegato (tabelle, grafici, testo di altri nodi) per rispondere in modo pertinente."),
-        param("temperature", "SLIDER", "Temperatura", .3, min=0, max=1, step=.1), param("max_tokens", "INTEGER", "Token massimi", 1024)],
-        "Risponde con un modello cloud; può leggere fino a 3 nodi di contesto (tabelle, grafici, testo) e relazionarli secondo il condizionamento di sistema.", "never"),
+        param("continuous", "BOOLEAN", "Iterazione continua", False),
+        param("exit_phrases", "STRING", "Frasi di chiusura (esempi per il modello)", DEFAULT_EXIT_PHRASES),
+        param("max_turns", "INTEGER", "Turni massimi in iterazione continua", 20, min=1, max=100),
+        param("max_tokens", "INTEGER", "Token massimi", 1024)],
+        "Risponde con un modello cloud; può leggere fino a 3 nodi di contesto. Con l'iterazione continua dialoga a più turni finché lo studente non chiude (es. \"grazie\", \"ok basta\").", "never"),
     spec("control.if_else", "IF / ELSE", "Controllo", [port("condition", "ANY")], [port("yes", "ANY"), port("no", "ANY")], [], "Attiva un ramo booleano.", "never"),
+    spec("control.repeat_until", "Ripeti finché", "Controllo", [port("value", "ANY", "Valore da verificare")],
+         [port("ok", "ANY", "Condizione ok"), port("repeat", "ANY", "Ripeti ↺"), port("exhausted", "ANY", "Tentativi finiti")], [
+        param("mode", "SELECT", "Condizione", "contiene", options=list(REPEAT_MODES)),
+        param("expected", "STRING", "Valore atteso / criterio", "56"),
+        param("max_attempts", "INTEGER", "Tentativi massimi", 3, min=1, max=20)],
+        "Verifica un valore (es. la risposta a una Domanda): se la condizione è soddisfatta prosegue da «Condizione ok», altrimenti «Ripeti» può tornare a un nodo precedente; dopo i tentativi massimi esce da «Tentativi finiti».", "never"),
     spec("control.compare_numbers", "Confronta numeri", "Controllo", [port("a", "ANY"), port("b", "ANY")], [port("yes", "ANY"), port("no", "ANY")], [param("operator", "SELECT", "Operatore", ">", options=[">", ">=", "<", "<=", "==", "!="])], "Confronta due valori per il branching.", "never"),
     spec("control.counter", "Contatore", "Controllo", [port("trigger", "ANY", required=False)], [port("value", "ANY")], [param("start", "INTEGER", "Inizio", 0), param("step", "INTEGER", "Passo", 1)], "Incrementa un contatore di sessione.", "never"),
     spec("chatbot.end", "Fine conversazione", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("result", "ANY", "Esito")], [param("message", "STRING", "Messaggio finale", "Conversazione conclusa.")], "Chiude il ramo conversazionale: ogni percorso del flusso deve terminare qui.", "never"),
@@ -174,6 +205,33 @@ def require_columns(df: pd.DataFrame, requested: Any, *, fallback: list[str] | N
     return names
 
 
+def rename_mapping(df: pd.DataFrame, raw: Any) -> dict[str, str]:
+    """Parse ``vecchio:nuovo, altro:nome`` into a pandas rename map, validating the source names."""
+    mapping: dict[str, str] = {}
+    for chunk in str(raw or "").split(","):
+        if not chunk.strip():
+            continue
+        if ":" not in chunk:
+            raise ValueError(f"Rinomina non valida: '{chunk.strip()}'. Usa il formato vecchio:nuovo")
+        old, new = (part.strip() for part in chunk.split(":", 1))
+        if old and new:
+            mapping[old] = new
+    require_columns(df, list(mapping), label="colonne da rinominare")
+    return mapping
+
+
+def numeric_values(value: Any) -> np.ndarray:
+    """Coerce scalars, lists and tables (first numeric column) into a float array."""
+    if isinstance(value, dict) and isinstance(value.get("rows"), list):
+        df = table_frame(value).select_dtypes(include="number")
+        if df.empty:
+            raise ValueError("La tabella collegata non contiene colonne numeriche")
+        return df.iloc[:, 0].dropna().to_numpy(dtype=float)
+    if isinstance(value, dict) and "result" in value:
+        value = value["result"]
+    return np.asarray(value if isinstance(value, list) else [value], dtype=float)
+
+
 def preferred_column(df: pd.DataFrame, requested: Any, *, numeric: bool = False,
                      exclude: set[str] | None = None, label: str = "colonna") -> str:
     excluded = exclude or set()
@@ -224,15 +282,54 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
     if node_type.startswith("data.") or node_type.startswith("nlp."):
         source = inputs.get("table") or inputs.get("table_1")
         df = table_frame(source)
+        if node_type == "data.new_table":
+            names = require_columns(df, config.get("columns"), fallback=list(df.columns), label="colonne da copiare")
+            df = df[names].copy().rename(columns=rename_mapping(df, config.get("rename")))
+            return {"table": json_value(df.reset_index(drop=True))}
         if node_type == "data.select":
             requested = columns(config.get("columns"))
             selected = require_columns(df, requested, fallback=[] if config.get("mode") == "exclude" else list(df.columns), label="colonne selezionate")
             df = df.drop(columns=selected) if config.get("mode") == "exclude" else df[selected]
-        elif node_type == "data.filter": df = df.query(str(config.get("expression") or "index == index"))
+        elif node_type == "data.filter":
+            expression = str(config.get("expression") or "").strip()
+            if expression:
+                try:
+                    df = df.query(expression)
+                except Exception as exc:
+                    raise ValueError(f"Espressione di filtro non valida ({exc}). Colonne disponibili: {', '.join(available_columns(df))}") from exc
+        elif node_type == "data.rename_columns": df = df.rename(columns=rename_mapping(df, config.get("rename")))
+        elif node_type == "data.sort":
+            name = preferred_column(df, config.get("column"), label="colonna di ordinamento")
+            df = df.sort_values(name, ascending=config.get("order", "ascending") != "descending", kind="stable")
+            limit = int(config.get("limit") or 0)
+            if limit > 0: df = df.head(limit)
+        elif node_type == "data.group_by":
+            group = preferred_column(df, config.get("group_column"), label="colonna di raggruppamento")
+            agg = str(config.get("aggregation", "mean"))
+            values = require_columns(df, config.get("value_columns"), fallback=[str(c) for c in df.select_dtypes(include="number").columns if str(c) != group], label="colonne da aggregare")
+            values = [name for name in values if name != group]
+            if agg == "count" or not values:
+                df = df.groupby(group, dropna=False).size().reset_index(name="conteggio")
+            else:
+                non_numeric = [name for name in values if not pd.api.types.is_numeric_dtype(df[name])]
+                if non_numeric: raise ValueError(f"Aggregazione '{agg}' richiede colonne numeriche: {', '.join(non_numeric)}")
+                df = df.groupby(group, dropna=False)[values].agg(agg).reset_index()
+        elif node_type == "data.compute_column":
+            name = str(config.get("name") or "").strip() or "nuova_colonna"
+            expression = str(config.get("expression") or "").strip()
+            if not expression: raise ValueError("Scrivi una formula, ad esempio costo_euro / kwh")
+            try:
+                df[name] = df.eval(expression)
+            except Exception as exc:
+                raise ValueError(f"Formula non valida ({exc}). Colonne disponibili: {', '.join(available_columns(df))}") from exc
         elif node_type == "data.dropna": df = df.dropna(how=str(config.get("how", "any")))
         elif node_type == "data.slice": df = df.iloc[int(config.get("start", 0)):int(config.get("end", len(df))):max(1, int(config.get("step", 1)))]
         elif node_type == "data.merge_columns":
             frames = [df] + ([table_frame(inputs["table_2"])] if inputs.get("table_2") is not None else [])
+            if config.get("merge_mode") != "vertical" and len(frames) == 2:
+                # Side-by-side merge: suffix clashing names instead of producing duplicate keys that JSON would collapse.
+                clash = set(map(str, frames[0].columns)) & set(map(str, frames[1].columns))
+                frames[1] = frames[1].rename(columns={name: f"{name}_2" for name in clash})
             df = pd.concat(frames, axis=0 if config.get("merge_mode") == "vertical" else 1, ignore_index=config.get("merge_mode") == "vertical")
         elif node_type == "data.convert_to_number":
             for name in require_columns(df, config.get("columns"), fallback=list(df.columns), label="colonne da convertire"):
@@ -270,16 +367,23 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         return {"table": json_value(df.reset_index(drop=True))}
     if node_type == "math.operation":
         a, b, op = inputs.get("a", 0), inputs.get("b"), config.get("operation", "add")
+        # Lists/tables become numpy arrays so "vector" maths is element-wise instead of list concatenation.
+        if isinstance(a, (list, dict)): a = numeric_values(a)
+        if isinstance(b, (list, dict)): b = numeric_values(b)
+        if isinstance(a, np.ndarray) and op in {"sqrt", "log", "sin", "cos", "round"}:
+            return {"result": json_value({"sqrt": np.sqrt, "log": np.log, "sin": np.sin, "cos": np.cos, "round": np.round}[op](a))}
         if b is None and op in {"add", "subtract"}: b = 0
         if b is None and op in {"multiply", "divide", "power", "modulo"}: b = 1
         fn = {"add": lambda: a+b, "subtract": lambda: a-b, "multiply": lambda: a*b, "divide": lambda: a/b, "power": lambda: a**b, "modulo": lambda: a%b, "sqrt": lambda: math.sqrt(a), "log": lambda: math.log(a), "sin": lambda: math.sin(a), "cos": lambda: math.cos(a), "round": lambda: round(a)}[op]
         return {"result": json_value(fn())}
     if node_type == "math.result":
-        value = inputs.get("value"); values = np.asarray(value if isinstance(value, list) else [value], dtype=float); agg = config.get("aggregation", "mean")
+        values = numeric_values(inputs.get("value")); agg = config.get("aggregation", "mean")
+        if not values.size: raise ValueError("Nessun valore numerico da riassumere")
         funcs = {"first": lambda: values[0], "last": lambda: values[-1], "mean": values.mean, "sum": values.sum, "min": values.min, "max": values.max, "median": lambda: np.median(values), "std": values.std, "all": lambda: values}
         return {"result": json_value(funcs[agg]()), "metrics": {"count": int(values.size), "mean": float(values.mean()), "std": float(values.std())}}
     if node_type == "math.aggregate":
-        values = np.asarray([value for key in ("a", "b", "c") for value in ([inputs.get(key)] if not isinstance(inputs.get(key), list) else inputs.get(key)) if value is not None], dtype=float)
+        values = np.concatenate([numeric_values(inputs[key]) for key in ("a", "b", "c") if inputs.get(key) is not None] or [np.asarray([], dtype=float)])
+        if not values.size: raise ValueError("Collega almeno un valore numerico")
         agg = str(config.get("aggregation", "mean")); fn = {"mean": values.mean, "sum": values.sum, "min": values.min, "max": values.max, "std": values.std}[agg]
         return {"result": json_value(fn())}
     if node_type in {"math.equation", "math.evaluate", "math.function_analysis"}:
@@ -321,7 +425,8 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
     if node_type == "ml.predict":
         descriptor = inputs["model"]; stored = MODEL_STORE.get(descriptor.get("handle") if isinstance(descriptor, dict) else descriptor)
         if not stored: raise ValueError("Il modello non è più disponibile: riesegui il nodo di training")
-        df = table_frame(inputs["data"]); df["prediction"] = stored["model"].predict(df[stored["features"]]); return {"predictions": json_value(df)}
+        df = table_frame(inputs["data"]); features = require_columns(df, stored["features"], label="feature richieste dal modello")
+        df["prediction"] = stored["model"].predict(df[features]); return {"predictions": json_value(df)}
     if node_type == "ml.kmeans_clustering":
         df = table_frame(inputs["table"]); names = require_columns(df, config.get("columns"), fallback=[str(c) for c in df.select_dtypes(include="number").columns], label="feature")
         if not names: raise ValueError("Il clustering richiede almeno una colonna numerica")

@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { agenticApi } from '@/lib/api'
-import { Button, IconButton } from '@/design'
+import { Button } from '@/design'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
@@ -13,7 +13,7 @@ import {
   Activity, BarChart3, Braces, ChevronDown, ChevronRight,
   Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2,
   ArrowLeft, Cloud, CloudOff, Eraser, Network, PanelRightClose, Play, Save, Search,
-  Sigma, Split, Square, Trash2, Undo2, Wrench, X, ZoomIn, ZoomOut, Minus, Paperclip,
+  Sigma, Split, Square, Trash2, Undo2, Wrench, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle,
 } from 'lucide-react'
 
 type Port = { name: string; type: string; label: string; required?: boolean }
@@ -22,7 +22,7 @@ type NodeSpec = { id: string; label: string; category: string; description: stri
 type NodeStatus = 'idle' | 'running' | 'complete' | 'waiting' | 'skipped' | 'error'
 type CanvasNode = { id: string; instanceId: string; x: number; y: number; status: NodeStatus; config: Record<string, unknown> }
 type Edge = { id: string; from: string; to: string; sourcePort: string; targetPort: string }
-type NodeRun = { node_instance_id: string; label: string; status: string; output?: Record<string, unknown>; error?: string | null; duration_ms?: number | null }
+type NodeRun = { node_instance_id: string; visit?: number; label: string; status: string; output?: Record<string, unknown>; error?: string | null; duration_ms?: number | null }
 type WorkflowRun = { id: string; status: string; output?: Record<string, unknown>; error?: string | null; nodes: NodeRun[] }
 type TableEditorState = { chart: SheetChartConfig; styles: SheetCellStyles; dimensions: SheetDimensions }
 // `detached` tables (e.g. data behind a chart) open in the spreadsheet for exploration only: nothing is written back.
@@ -44,8 +44,9 @@ const FALLBACK_SPECS: NodeSpec[] = [
   makeSpec('data.custom_input', 'Tabella manuale', 'Sorgenti', 'Crea una tabella da JSON o CSV, anche caricando un file.', [], [['table', 'TABLE']], [['data', 'CODE', 'Dati', '[{"x":1,"y":2}]']]),
   makeSpec('data.saved_dataset', 'Dataset salvato', 'Sorgenti', 'Riusa un dataset già generato o caricato.', [], [['table', 'TABLE']], [['dataset_id', 'DATASET', 'Dataset', '']]),
   makeSpec('math.numeric_input', 'Valore numerico', 'Sorgenti', 'Immette un numero.', [], [['value', 'ANY']], [['value', 'NUMBER', 'Valore', 0]]),
+  makeSpec('data.new_table', 'Nuova tabella da input', 'Sorgenti', 'Materializza in una nuova tabella i dati arrivati da un altro nodo.', [['table', 'TABLE']], [['table', 'TABLE']], [['columns', 'COLUMNS', 'Colonne da copiare', ''], ['rename', 'STRING', 'Rinomina (vecchio:nuovo)', ''], ['title', 'STRING', 'Nome della nuova tabella', 'Nuova tabella'], ['save_to_library', 'BOOLEAN', 'Salva nella libreria dataset', false]]),
   makeSpec('data.select', 'Seleziona colonne', 'Trasformazioni', 'Include o esclude colonne.', [['table', 'TABLE']], [['table', 'TABLE']], [['mode', 'SELECT', 'Modalità', 'include', ['include', 'exclude']], ['columns', 'COLUMNS', 'Colonne', '']]),
-  makeSpec('data.filter', 'Filtra righe', 'Trasformazioni', 'Filtra con una query pandas.', [['table', 'TABLE']], [['table', 'TABLE']], [['expression', 'CODE', 'Espressione', 'feature_1 > 0']]),
+  makeSpec('data.filter', 'Filtra righe', 'Trasformazioni', 'Filtra con una query pandas.', [['table', 'TABLE']], [['table', 'TABLE']], [['expression', 'CODE', 'Espressione', '']]),
   makeSpec('data.split', 'Train / test split', 'Trasformazioni', 'Divide il dataset.', [['table', 'TABLE']], [['train', 'TABLE'], ['test', 'TABLE']], [['test_size', 'SLIDER', 'Quota test', .2], ['seed', 'INTEGER', 'Seed', 42]]),
   makeSpec('math.operation', 'Operazione', 'Matematica', 'Esegue un calcolo.', [['a', 'ANY'], ['b', 'ANY', false]], [['result', 'ANY']], [['operation', 'SELECT', 'Operazione', 'add', ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt']]]),
   makeSpec('ml.regression', 'Regressione', 'Machine Learning', 'Addestra un regressore.', [['train', 'TABLE']], [['model', 'MODEL'], ['metrics', 'METRICS'], ['predictions', 'TABLE']], [['target_column', 'COLUMN', 'Target', 'target'], ['feature_columns', 'COLUMNS', 'Feature', ''], ['algorithm', 'SELECT', 'Algoritmo', 'linear', ['linear', 'ridge', 'random_forest']], ['cv_folds', 'INTEGER', 'Cross validation', 5]]),
@@ -56,12 +57,15 @@ const FALLBACK_SPECS: NodeSpec[] = [
   makeSpec('chatbot.say', 'Messaggio', 'Chatbot', 'Invia un messaggio.', [['trigger', 'ANY', false]], [['next', 'ANY']], [['message', 'STRING', 'Messaggio', 'Ciao!']]),
   makeSpec('chatbot.ask', 'Domanda', 'Chatbot', 'Attende la risposta reale.', [['trigger', 'ANY', false]], [['response', 'ANY']], [['question', 'STRING', 'Domanda', 'Come posso aiutarti?'], ['test_response', 'STRING', 'Risposta test', '']]),
   makeSpec('chatbot.if_contains', 'Contiene parole', 'Chatbot', 'Ramifica il dialogo.', [['text', 'ANY']], [['yes', 'ANY'], ['no', 'ANY']], [['keywords', 'STRING', 'Parole', 'urgente']]),
-  makeSpec('llm_chatbot', 'Chatbot LLM', 'Chatbot', 'Risponde con un modello cloud usando fino a 3 contesti.', [['message', 'ANY', false], ['context_1', 'ANY', false], ['context_2', 'ANY', false], ['context_3', 'ANY', false]], [['response', 'ANY'], ['next', 'ANY']], [['system_prompt', 'CODE', 'Condizionamento di sistema', 'Sei un assistente utile.']]),
+  makeSpec('llm_chatbot', 'Chatbot LLM', 'Chatbot', 'Risponde con un modello cloud usando fino a 3 contesti.', [['message', 'ANY', false], ['context_1', 'ANY', false], ['context_2', 'ANY', false], ['context_3', 'ANY', false]], [['response', 'ANY'], ['next', 'ANY']], [['system_prompt', 'CODE', 'Condizionamento di sistema', 'Sei un assistente utile.'], ['continuous', 'BOOLEAN', 'Iterazione continua', false], ['exit_phrases', 'STRING', 'Frasi di chiusura (esempi per il modello)', 'grazie, ok basta, basta così, sono soddisfatto, ho capito, fine, ciao'], ['max_turns', 'INTEGER', 'Turni massimi in iterazione continua', 20]]),
   makeSpec('chatbot.end', 'Fine conversazione', 'Chatbot', 'Chiude il ramo conversazionale.', [['trigger', 'ANY', false]], [['result', 'ANY']], [['message', 'STRING', 'Messaggio finale', 'Conversazione conclusa.']]),
+  makeSpec('control.repeat_until', 'Ripeti finché', 'Controllo', 'Verifica un valore: se la condizione è soddisfatta prosegue, altrimenti «Ripeti» torna a un nodo precedente.', [['value', 'ANY']], [['ok', 'ANY'], ['repeat', 'ANY'], ['exhausted', 'ANY']], [['mode', 'SELECT', 'Condizione', 'contiene', ['contiene', 'uguale', 'verifica_ai', 'vero_falso']], ['expected', 'STRING', 'Valore atteso / criterio', '56'], ['max_attempts', 'INTEGER', 'Tentativi massimi', 3]]),
   makeSpec('control.if_else', 'IF / ELSE', 'Controllo', 'Attiva uno dei due rami.', [['condition', 'ANY']], [['yes', 'ANY'], ['no', 'ANY']], []),
 ]
 
 const INLINE_PARAMS: Record<string, string[]> = {
+  'data.select': ['columns'],
+  'data.new_table': ['columns'],
   'chatbot.start': ['welcome_message'],
   'chatbot.say': ['message'],
   'chatbot.ask': ['question'],
@@ -70,33 +74,72 @@ const INLINE_PARAMS: Record<string, string[]> = {
   'chatbot.multi_choice': ['question'],
   'chatbot.save_variable': ['variable_name'],
   'chatbot.end': ['message'],
-  'llm_chatbot': ['system_prompt'],
+  'llm_chatbot': ['system_prompt', 'continuous'],
+  'control.repeat_until': ['mode', 'expected', 'max_attempts'],
   'control.compare_numbers': ['operator'],
 }
 
 const CATEGORY_STYLE: Record<string, { dot: string; soft: string; ink: string; icon: typeof Database }> = {
-  Sorgenti: { dot: '#0284c7', soft: 'bg-sky-50 border-sky-200', ink: 'text-sky-700', icon: Database },
-  Trasformazioni: { dot: '#0d9488', soft: 'bg-teal-50 border-teal-200', ink: 'text-teal-700', icon: Split },
-  Testo: { dot: '#db2777', soft: 'bg-pink-50 border-pink-200', ink: 'text-pink-700', icon: Braces },
-  Matematica: { dot: '#7c3aed', soft: 'bg-violet-50 border-violet-200', ink: 'text-violet-700', icon: Sigma },
-  'Machine Learning': { dot: '#16a34a', soft: 'bg-green-50 border-green-200', ink: 'text-green-700', icon: Network },
-  Visualizzazioni: { dot: '#ea580c', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-700', icon: BarChart3 },
-  Chatbot: { dot: '#4f46e5', soft: 'bg-indigo-50 border-indigo-200', ink: 'text-indigo-700', icon: MessageSquareText },
-  Controllo: { dot: '#ca8a04', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
+  Sorgenti: { dot: '#0369a1', soft: 'bg-sky-50 border-sky-200', ink: 'text-sky-700', icon: Database },
+  Trasformazioni: { dot: '#0f766e', soft: 'bg-teal-50 border-teal-200', ink: 'text-teal-700', icon: Split },
+  Testo: { dot: '#be185d', soft: 'bg-pink-50 border-pink-200', ink: 'text-pink-700', icon: Braces },
+  Matematica: { dot: '#6d28d9', soft: 'bg-violet-50 border-violet-200', ink: 'text-violet-700', icon: Sigma },
+  'Machine Learning': { dot: '#15803d', soft: 'bg-green-50 border-green-200', ink: 'text-green-700', icon: Network },
+  Visualizzazioni: { dot: '#c2410c', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-700', icon: BarChart3 },
+  Chatbot: { dot: '#4338ca', soft: 'bg-indigo-50 border-indigo-200', ink: 'text-indigo-700', icon: MessageSquareText },
+  Controllo: { dot: '#a16207', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
 }
 
-// Same soft lift as the page frames: nodes float as light glass cards on the canvas.
-const NODE_SHADOW = '0 4px 14px rgba(72,92,126,.07), 0 16px 36px rgba(93,111,142,.08)'
-function nodeBoxShadow(status: NodeStatus, isSelected: boolean): string {
-  // "complete" is the normal resting state, not a status that needs a highlight — no ring for it,
-  // so a finished canvas doesn't turn into a wall of colored outlines. Only states that need the
-  // teacher's attention (running/waiting/error) or active editing (selected) get a soft glow.
-  const ring = status === 'running' ? 'rgba(56,189,248,.35)' : isSelected ? 'rgba(15,23,42,.18)' : status === 'waiting' ? 'rgba(245,158,11,.35)' : status === 'error' ? 'rgba(244,63,94,.35)' : null
-  return ring ? `0 0 0 1.5px ${ring}, 0 0 22px ${ring}, ${NODE_SHADOW}` : `0 0 0 1px rgba(255,255,255,.7), ${NODE_SHADOW}`
+// Nodes reuse the navbar pill material (luminous white surface, inset highlight, cluster shadow) plus a deeper
+// drop shadow so they float above the canvas; the category color lives only in icon, label and run button.
+const NODE_SHADOW = 'var(--ds-shadow-cluster), 0 18px 36px -14px rgba(72,92,126,.26)'
+const PILL_STYLE = { backgroundColor: 'var(--ds-navbar-cluster)', backgroundImage: 'var(--ds-navbar-cluster-bg)', boxShadow: 'var(--ds-shadow-cluster)' }
+const tint = (color: string, amount: number) => `color-mix(in srgb, ${color} ${amount}%, white)`
+function nodeBoxShadow(status: NodeStatus, isSelected: boolean, accent: string, active: boolean): string {
+  // "complete" is the normal resting state — no ring, so a finished canvas doesn't turn into a wall of outlines.
+  if (active) return `0 0 0 2px ${accent}, 0 0 0 7px color-mix(in srgb, ${accent} 16%, transparent), 0 22px 44px -12px rgba(72,92,126,.34)`
+  const ring = status === 'running' ? accent : status === 'waiting' ? '#f59e0b' : status === 'error' ? '#f43f5e' : isSelected ? '#334155' : null
+  return ring ? `0 0 0 2px ${ring}, ${NODE_SHADOW}` : NODE_SHADOW
 }
+
+// Canvas dots are 24px apart; the snap step is expressed in dots (½, 1, 5, 10) or disabled.
+const GRID = 24
+const SNAP_STEPS = [0, .5, 1, 5, 10] as const
+const snapValue = (value: number, dots: number) => dots ? Math.round(value / (GRID * dots)) * GRID * dots : value
+const REPLAY_STEP_MS = 650
+const readStored = (key: string) => { try { return window.localStorage.getItem(key) } catch { return null } }
+const writeStored = (key: string, value: string) => { try { window.localStorage.setItem(key, value) } catch { /* storage unavailable */ } }
+const typesCompatible = (from: string, to: string) => from === to || from === 'ANY' || to === 'ANY'
+const isFlowNode = (id: string) => id.startsWith('chatbot.') || id.startsWith('control.') || id === 'llm_chatbot'
+// «Ripeti» of a repeat-until node is the only port allowed to point backwards and close a loop.
+const LOOP_NODE = 'control.repeat_until'
+const LOOP_PORT = 'repeat'
+
+// Port dots are colored by data type so compatible ends are recognisable before dragging.
+const TYPE_COLOR: Record<string, string> = { TABLE: '#0d9488', MODEL: '#16a34a', METRICS: '#ea580c', PARAMS: '#7c3aed', SERIES: '#0284c7', ARRAY_3D: '#db2777', ANY: '#64748b' }
+
+const DATAFLOW_CSS = `
+@keyframes dfHalo { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--df-accent) 40%, transparent); } 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--df-accent) 0%, transparent), 0 0 30px color-mix(in srgb, var(--df-accent) 30%, transparent); } }
+.df-halo { animation: dfHalo 1.3s ease-in-out infinite; }
+@keyframes dfFlow { to { stroke-dashoffset: -28; } }
+.df-flow { stroke-dasharray: 9 5; animation: dfFlow .6s linear infinite; }
+@keyframes dfPort { 50% { outline-color: rgba(124,58,237,0); outline-offset: 5px; } }
+.df-port-target { outline: 3px solid rgba(124,58,237,.4); outline-offset: 1px; animation: dfPort .9s ease-in-out infinite; }
+/* Squircle: smooth superellipse corners where supported, a plain round corner elsewhere. */
+.df-squircle { border-radius: 22px; }
+.df-squircle-top { border-radius: 22px 22px 0 0; }
+.df-squircle-sm { border-radius: 14px; }
+@supports (corner-shape: squircle) {
+  .df-squircle { border-radius: 40px; corner-shape: squircle; }
+  .df-squircle-top { border-radius: 40px 40px 0 0; corner-shape: squircle; }
+  .df-squircle-sm { border-radius: 24px; corner-shape: squircle; }
+}
+@media (prefers-reduced-motion: reduce) { .df-halo, .df-flow, .df-port-target { animation: none; } .df-travel { display: none; } }
+`
 
 const NODE_WIDTH = 300
-const PORT_TOP = 72
+// Fallback geometry, used only until the real port positions have been measured from the DOM.
+const PORT_TOP = 61
 const PORT_HEIGHT = 28
 const nodeWidth = (spec: NodeSpec) => spec.category === 'Visualizzazioni' ? 430 : spec.id === 'ml.kmeans_clustering' ? 500 : NODE_WIDTH
 const defaults = (spec: NodeSpec) => Object.fromEntries(spec.params.map((param) => [param.name, param.default ?? '']))
@@ -146,6 +189,18 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [chatInput, setChatInput] = useState('')
   const [tableModal, setTableModal] = useState<TableModalState | null>(null)
   const [explorer, setExplorer] = useState<ExplorerTarget | null>(null)
+  const [snapDots, setSnapDots] = useState<number>(() => { const stored = readStored('dataflow-snap'); const value = stored === null ? .5 : Number(stored); return (SNAP_STEPS as readonly number[]).includes(value) ? value : .5 })
+  const [followRun, setFollowRun] = useState(() => readStored('dataflow-follow') !== '0')
+  // Execution focus: the node being executed right now, and every node the current run has already reached.
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
+  const [runTrail, setRunTrail] = useState<Set<string>>(new Set())
+  const [cameraGlide, setCameraGlide] = useState(false)
+  // Port centres measured from the DOM, relative to the node's top-left corner (`${node}::in|out::${port}`).
+  const [anchors, setAnchors] = useState<Record<string, { x: number; y: number }>>({})
+  const anchorSignatureRef = useRef('')
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const replayedRef = useRef<{ runId: string; seen: Set<string> }>({ runId: '', seen: new Set() })
+  const glideTimerRef = useRef<number | undefined>(undefined)
   const viewportRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ startX: number; startY: number; positions: Record<string, { x: number; y: number }>; moved: boolean; nodeId: string; shiftKey: boolean } | null>(null)
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
@@ -163,8 +218,52 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const lastSavedRef = useRef('')
   const saveNowRef = useRef<() => Promise<string | null>>(async () => null)
 
+  const { data: datasetsResponse } = useQuery({ queryKey: ['agentic-datasets'], queryFn: () => agenticApi.listDatasets(), staleTime: 15_000 })
   const selected = nodes.find((node) => node.instanceId === selectedId)
-  const specOf = (node: CanvasNode) => specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)!
+  // Unknown ids (e.g. a node removed from the catalogue) degrade to an inert card instead of crashing the canvas.
+  const specOf = (node: CanvasNode): NodeSpec => specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)
+    || { id: node.id, label: node.id, category: 'Controllo', description: 'Nodo non disponibile nel catalogo corrente.', inputs: [], outputs: [], params: [] }
+  const liveRef = useRef({ nodes, zoom, followRun })
+  liveRef.current = { nodes, zoom, followRun }
+  const focusMode = running || activeNodeId !== null || (chatWindow && activeRun?.status === 'waiting')
+
+  useLayoutEffect(() => {
+    const root = canvasRef.current
+    if (!root) return
+    const next: Record<string, { x: number; y: number }> = {}
+    root.querySelectorAll<HTMLElement>('[data-anchor]').forEach((element) => {
+      const article = element.closest<HTMLElement>('[data-node]')
+      if (!article) return
+      // offsetLeft/Top ignore CSS transforms (zoom, dot scaling), so these are exact unscaled canvas offsets.
+      let x = element.offsetWidth / 2; let y = element.offsetHeight / 2
+      let current: HTMLElement | null = element
+      while (current && current !== article) { x += current.offsetLeft; y += current.offsetTop; current = current.offsetParent as HTMLElement | null }
+      if (current === article) next[element.dataset.anchor!] = { x: x + article.clientLeft, y: y + article.clientTop }
+    })
+    const signature = JSON.stringify(next)
+    if (signature !== anchorSignatureRef.current) { anchorSignatureRef.current = signature; setAnchors(next) }
+  })
+
+  const portPoint = (node: CanvasNode, direction: 'in' | 'out', portName: string) => {
+    const measured = anchors[`${node.instanceId}::${direction}::${portName}`]
+    if (measured) return { x: node.x + measured.x, y: node.y + measured.y }
+    const spec = specOf(node); const list = direction === 'in' ? spec.inputs : spec.outputs
+    const index = Math.max(0, list.findIndex((item) => item.name === portName))
+    return { x: node.x + (direction === 'in' ? 0 : nodeWidth(spec)), y: node.y + PORT_TOP + index * PORT_HEIGHT + PORT_HEIGHT / 2 }
+  }
+
+  const focusCamera = (nodeId: string) => {
+    const { nodes: currentNodes, zoom: currentZoom, followRun: follow } = liveRef.current
+    const node = currentNodes.find((item) => item.instanceId === nodeId)
+    if (!follow || !node || !viewportRef.current) return
+    const rect = viewportRef.current.getBoundingClientRect()
+    const centerX = node.x + nodeWidth(specOf(node)) / 2; const centerY = node.y + 110
+    window.clearTimeout(glideTimerRef.current)
+    setCameraGlide(true)
+    setPan({ x: rect.width * .55 - centerX * currentZoom, y: rect.height * .45 - centerY * currentZoom })
+    glideTimerRef.current = window.setTimeout(() => setCameraGlide(false), 600)
+  }
+  const stopGlide = () => { window.clearTimeout(glideTimerRef.current); setCameraGlide(false) }
   const selectedSpec = selected ? specOf(selected) : undefined
   const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
   const chatLog = useMemo(() => buildChatLog(activeRun, nodes), [activeRun, nodes])
@@ -246,12 +345,55 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     })).filter((group) => group.items.length)
   }, [query, specs])
 
-  const addNode = (id: string, x = 700, y = 500) => {
+  // Picks the best output→input pair between two nodes: exact type first, then ANY; required inputs first,
+  // free inputs only, and flow ports that already continue elsewhere are skipped (one successor per flow port).
+  const bestPortPair = (source: CanvasNode, targetSpec: NodeSpec, targetId: string | null, currentEdges = edges): { from: Port; to: Port } | null => {
+    const sourceSpec = specOf(source)
+    const inputs = [...targetSpec.inputs].filter((port) => !targetId || !currentEdges.some((edge) => edge.to === targetId && edge.targetPort === port.name))
+      .sort((a, b) => Number(b.required !== false) - Number(a.required !== false))
+    const outputs = sourceSpec.outputs.filter((port) => !isFlowNode(source.id) || !currentEdges.some((edge) => edge.from === source.instanceId && edge.sourcePort === port.name))
+    for (const exact of [true, false]) {
+      for (const input of inputs) {
+        const output = outputs.find((port) => exact ? port.type === input.type && port.type !== 'ANY' : typesCompatible(port.type, input.type))
+        if (output) return { from: output, to: input }
+      }
+    }
+    return null
+  }
+
+  const addNode = (id: string, x?: number, y?: number, autoWire = false) => {
     const spec = specs.find((item) => item.id === id)
     if (!spec) return
-    const node: CanvasNode = { id, instanceId: `${id}-${Date.now()}`, x, y, status: 'idle', config: defaults(spec) }
-    setNodes((current) => [...current, node]); setSelectedId(node.instanceId)
+    const instanceId = `${id}-${Date.now()}`
+    let px = x; let py = y
+    let config: Record<string, unknown> = defaults(spec)
+    let newEdge: Edge | null = null
+    // Double-click from the library continues the flow: the new node lands right of the selected one, already wired.
+    const anchor = autoWire ? nodes.find((item) => item.instanceId === selectedId) : undefined
+    if (anchor) {
+      px = anchor.x + nodeWidth(specOf(anchor)) + 110; py = anchor.y
+      const pair = bestPortPair(anchor, spec, null)
+      if (pair) {
+        newEdge = { id: `edge-${Date.now()}`, from: anchor.instanceId, to: instanceId, sourcePort: pair.from.name, targetPort: pair.to.name }
+        const inferred = inferOutputColumns(anchor.instanceId, pair.from.name)
+        if (inferred.length) config = recommendedConfig({ id, instanceId, x: 0, y: 0, status: 'idle', config }, inferred)
+      }
+    }
+    if (px === undefined || py === undefined) {
+      const rect = viewportRef.current?.getBoundingClientRect()
+      px = rect ? (rect.width / 2 - pan.x) / zoom - nodeWidth(spec) / 2 : 700
+      py = rect ? (rect.height / 2 - pan.y) / zoom - 80 : 500
+    }
+    const node: CanvasNode = { id, instanceId, x: snapValue(px, snapDots), y: snapValue(py, snapDots), status: 'idle', config }
+    setNodes((current) => [...current, node]); setSelectedId(instanceId); setSelectedIds(new Set([instanceId]))
+    if (newEdge) setEdges((current) => [...current, newEdge!])
   }
+
+  const datasetColumns = (datasetId: unknown): string[] => {
+    const list: Array<{ id: string; columns?: string[] }> = datasetsResponse?.data || []
+    return list.find((item) => item.id === String(datasetId || ''))?.columns || []
+  }
+  const parseRename = (raw: unknown) => Object.fromEntries(String(raw || '').split(',').map((chunk) => chunk.split(':').map((part) => part.trim())).filter((pair) => pair.length === 2 && pair[0] && pair[1]))
 
   const inferOutputColumns = (nodeId: string, sourcePort?: string, visited = new Set<string>()): string[] => {
     if (visited.has(nodeId)) return []
@@ -274,8 +416,25 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       } catch { /* CSV and invalid drafts are resolved after execution. */ }
     }
     if (node.id === 'math.evaluate') return ['x', 'y']
+    if (node.id === 'data.saved_dataset') return datasetColumns(node.config.dataset_id)
+    const upstreamOf = (port: string) => { const edge = edges.find((item) => item.to === nodeId && item.targetPort === port); return edge ? inferOutputColumns(edge.from, edge.sourcePort, new Set(visited)) : [] }
     const upstream = edges.find((edge) => edge.to === nodeId && ['table', 'train', 'data', 'table_1'].includes(edge.targetPort))
     let names = upstream ? inferOutputColumns(upstream.from, upstream.sourcePort, visited) : []
+    const csv = (value: unknown) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean)
+    const renamed = (list: string[], raw: unknown) => { const map = parseRename(raw); return list.map((name) => map[name] || name) }
+    if (node.id === 'data.merge_columns') {
+      const second = upstreamOf('table_2')
+      names = node.config.merge_mode === 'vertical' ? [...names, ...second] : [...names, ...second.map((name) => names.includes(name) ? `${name}_2` : name)]
+    }
+    if (node.id === 'data.new_table') { const chosen = csv(node.config.columns).filter((name) => names.includes(name)); names = renamed(chosen.length ? chosen : names, node.config.rename) }
+    if (node.id === 'data.rename_columns') names = renamed(names, node.config.rename)
+    if (node.id === 'data.compute_column') names = [...names, String(node.config.name || 'nuova_colonna')]
+    if (node.id === 'nlp.sentiment') names = [...names, 'polarity', 'sentiment']
+    if (node.id === 'data.group_by' && names.length) {
+      const group = names.includes(String(node.config.group_column)) ? String(node.config.group_column) : names[0]
+      const values = csv(node.config.value_columns).filter((name) => names.includes(name) && name !== group)
+      names = node.config.aggregation === 'count' ? [group, 'conteggio'] : [group, ...(values.length ? values : names.filter((name) => name !== group))]
+    }
     if (node.id === 'data.select') {
       const selected = String(node.config.columns || '').split(',').map((value) => value.trim()).filter(Boolean)
       if (selected.length) names = node.config.mode === 'exclude' ? names.filter((name) => !selected.includes(name)) : names.filter((name) => selected.includes(name))
@@ -286,6 +445,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     return [...new Set(names)]
   }
 
+  const specOfId = (id: string) => specs.find((item) => item.id === id) || FALLBACK_SPECS.find((item) => item.id === id)
   const inputColumnsFor = (node: CanvasNode): string[] => {
     const incoming = edges.filter((edge) => edge.to === node.instanceId)
     return [...new Set(incoming.flatMap((edge) => inferOutputColumns(edge.from, edge.sourcePort)))]
@@ -300,7 +460,8 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (node.id === 'plot.2d') {
       choose('x', available[0]); choose('y', available.find((name) => name !== config.x) || available[0])
       if (config.color && !available.includes(String(config.color))) config.color = ''
-    } else if (node.id === 'plot.histogram') choose('column', available[0])
+    } else if (node.id === 'plot.histogram' || node.id === 'data.sort') choose('column', available[0])
+    else if (node.id === 'data.group_by') choose('group_column', available[0])
     else if (node.id === 'data.filter' && (!config.expression || String(config.expression).trim() === 'x > 0')) config.expression = `${available[0]} > 0`
     else if (['nlp.clean_text', 'nlp.sentiment'].includes(node.id)) choose('column', available.find((name) => /text|testo|comment|frase|message/i.test(name)) || available[0])
     else if (['ml.regression', 'ml.classification'].includes(node.id)) {
@@ -313,16 +474,40 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const selected = String(config.columns || '').split(',').filter((name) => available.includes(name))
       if (!selected.length) config.columns = available.join(',')
     }
+    // Generic pass for every other column parameter: drop names that no longer exist upstream.
+    for (const param of specOfId(node.id)?.params || []) {
+      const value = String(config[param.name] ?? '').trim()
+      if (!value) continue
+      if (param.type === 'COLUMNS') config[param.name] = value.split(',').map((name) => name.trim()).filter((name) => available.includes(name)).join(',')
+      else if (param.type === 'COLUMN' && !available.includes(value)) config[param.name] = param.required === false ? '' : available[0]
+    }
     return config
   }
+  // Column parameters pointing at columns the upstream data no longer has (shown as a one-click fix on the node).
+  const staleColumns = (node: CanvasNode, available: string[]): string[] => {
+    if (!available.length) return []
+    return [...new Set((specOfId(node.id)?.params || []).filter((param) => param.type === 'COLUMN' || param.type === 'COLUMNS')
+      .flatMap((param) => String(node.config[param.name] ?? '').split(',').map((name) => name.trim()).filter(Boolean))
+      .filter((name) => !available.includes(name)))]
+  }
 
+  const isLoopEdge = (edge: Edge) => edge.sourcePort === LOOP_PORT && nodes.find((item) => item.instanceId === edge.from)?.id === LOOP_NODE
   const connectTo = (nodeId: string, port: Port) => {
     const source = connectingRef.current
     if (!source || source.nodeId === nodeId) return
-    if (source.type !== port.type && source.type !== 'ANY' && port.type !== 'ANY') {
+    if (!typesCompatible(source.type, port.type)) {
       setError(`Connessione non valida: ${source.type} non può entrare in ${port.type}`); cancelConnection(); return
     }
-    setEdges((current) => [...current.filter((edge) => !(edge.to === nodeId && edge.targetPort === port.name)), {
+    const targetNode = nodes.find((item) => item.instanceId === nodeId)
+    const loopEdge = nodes.find((item) => item.instanceId === source.nodeId)?.id === LOOP_NODE && source.port === LOOP_PORT
+    if (loopEdge && !(targetNode && isFlowNode(targetNode.id))) { setError('«Ripeti» può tornare solo a un nodo del chatbot (es. Domanda o Messaggio)'); cancelConnection(); return }
+    // Reject edges that would close a loop (target already reaches source downstream) — except «Ripeti», which exists for that.
+    const forward = edges.filter((edge) => !isLoopEdge(edge))
+    const reaches = (from: string, goal: string, seen = new Set<string>()): boolean => from === goal || (!seen.has(from) && (seen.add(from), forward.some((edge) => edge.from === from && reaches(edge.to, goal, seen))))
+    if (!loopEdge && reaches(nodeId, source.nodeId)) { setError('Connessione non valida: creerebbe un ciclo. Per tornare indietro usa «Ripeti» del nodo Ripeti finché'); cancelConnection(); return }
+    // Flow nodes can be entered from several places (first pass + «Ripeti»); data inputs keep a single source.
+    const multiEntry = !!targetNode && isFlowNode(targetNode.id)
+    setEdges((current) => [...current.filter((edge) => !(edge.to === nodeId && edge.targetPort === port.name && (!multiEntry || edge.from === source.nodeId))), {
       id: `edge-${Date.now()}`, from: source.nodeId, to: nodeId, sourcePort: source.port, targetPort: port.name,
     }])
     const inferred = inferOutputColumns(source.nodeId, source.port)
@@ -343,21 +528,32 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       if (!nodeId || nodeId === source.nodeId) return
       const node = nodes.find((item) => item.instanceId === nodeId)
       const port = node && specOf(node).inputs.find((item) => item.name === portName)
-      if (!port) return
-      const rect = element.getBoundingClientRect()
+      if (!port || !typesCompatible(source.type, port.type)) return
+      // Measure from the dot itself (the button spans the whole label), so the nearest dot wins.
+      const rect = (element.querySelector<HTMLElement>('[data-anchor]') || element).getBoundingClientRect()
       const distance = Math.hypot(clientX - (rect.left + rect.width / 2), clientY - (rect.top + rect.height / 2))
       if (distance <= 44 && (!best || distance < best.distance)) best = { nodeId, port, distance }
     })
     return best
+  }
+  // Releasing on a node's body (not on a dot) wires the best free compatible input automatically.
+  const nodeBodyTarget = (clientX: number, clientY: number): { nodeId: string; port: Port } | null => {
+    const source = connectingRef.current
+    if (!source) return null
+    const nodeId = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-node]')?.dataset.node
+    const node = nodeId && nodeId !== source.nodeId ? nodes.find((item) => item.instanceId === nodeId) : undefined
+    if (!node) return null
+    const inputs = specOf(node).inputs
+    const free = inputs.filter((port) => !edges.some((edge) => edge.to === node.instanceId && edge.targetPort === port.name))
+    const port = free.find((item) => item.type === source.type && item.type !== 'ANY') || free.find((item) => typesCompatible(source.type, item.type)) || inputs.find((item) => typesCompatible(source.type, item.type))
+    return port ? { nodeId: node.instanceId, port } : null
   }
   const startConnection = (nodeId: string, port: Port, clientX?: number, clientY?: number) => {
     const next = { nodeId, port: port.name, type: port.type }
     connectingRef.current = next; setConnecting(next); setError('')
     connectStartRef.current = clientX === undefined || clientY === undefined ? null : { x: clientX, y: clientY, moved: false }
     const node = nodes.find((item) => item.instanceId === nodeId)
-    const nodeSpec = node && specOf(node)
-    const index = Math.max(0, nodeSpec?.outputs.findIndex((item) => item.name === port.name) ?? 0)
-    if (node && nodeSpec) setConnectionPoint({ x: node.x + nodeWidth(nodeSpec), y: node.y + PORT_TOP + index * PORT_HEIGHT + PORT_HEIGHT / 2 })
+    if (node) setConnectionPoint(portPoint(node, 'out', port.name))
   }
 
   useEffect(() => {
@@ -368,7 +564,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     }
     const release = (event: PointerEvent) => {
       if (!connectingRef.current) return
-      const target = nearestInputPort(event.clientX, event.clientY)
+      const target = nearestInputPort(event.clientX, event.clientY) || nodeBodyTarget(event.clientX, event.clientY)
       if (target) { connectTo(target.nodeId, target.port); return }
       // A drag that ends on nothing cancels; a plain click keeps click-to-connect mode alive.
       if (connectStartRef.current?.moved) cancelConnection()
@@ -394,6 +590,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const target = event.target as HTMLElement
     if (!target.closest('[data-canvas-background]') || !viewportRef.current) return
     if (connectingRef.current) { cancelConnection(); return }
+    stopGlide()
     if (event.button === 1) {
       panRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y }
     } else if (event.button === 0 && event.shiftKey) {
@@ -419,9 +616,14 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const dx = (event.clientX - drag.startX) / zoom
       const dy = (event.clientY - drag.startY) / zoom
       if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 4) drag.moved = true
+      // Snap the grabbed node to the grid and move the rest of the selection by the same offset,
+      // so a multi-selection keeps its internal layout.
+      const primary = drag.positions[drag.nodeId]
+      const offsetX = primary && snapDots ? snapValue(primary.x + dx, snapDots) - primary.x : dx
+      const offsetY = primary && snapDots ? snapValue(primary.y + dy, snapDots) - primary.y : dy
       setNodes((current) => current.map((node) => {
         const base = drag.positions[node.instanceId]
-        return base ? { ...node, x: base.x + dx, y: base.y + dy } : node
+        return base && (node.x !== base.x + offsetX || node.y !== base.y + offsetY) ? { ...node, x: base.x + offsetX, y: base.y + offsetY } : node
       }))
     } else if (panRef.current) {
       const panStart = panRef.current
@@ -466,6 +668,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const wheelZoom = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault()
     if (!viewportRef.current) return
+    stopGlide()
     const rect = viewportRef.current.getBoundingClientRect()
     const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top
     const newZoom = Math.min(2.5, Math.max(.15, zoom * (event.deltaY < 0 ? 1.08 : 1 / 1.08)))
@@ -491,7 +694,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       if (visiting.has(currentNode.instanceId)) throw new Error('Il workflow contiene una connessione ciclica')
       visiting.add(currentNode.instanceId)
       const inputValues: Record<string, unknown> = {}
-      for (const edge of edges.filter((item) => item.to === currentNode.instanceId)) {
+      for (const edge of edges.filter((item) => item.to === currentNode.instanceId && !isLoopEdge(item))) {
         const source = nodes.find((item) => item.instanceId === edge.from)
         if (!source) throw new Error('Una connessione fa riferimento a un nodo non più presente')
         const sourceOutput = resolved[source.instanceId] || await executeResolved(source)
@@ -518,31 +721,63 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     } catch { /* The failing node already exposes its actionable error inline. */ }
   }
 
+  const setNodeStatus = (ids: string[], status: NodeStatus) => setNodes((current) => current.map((node) => ids.includes(node.instanceId) ? { ...node, status } : node))
+  // While the server is working, light up where execution starts so the canvas never looks frozen.
+  const focusPending = (ids: string[]) => {
+    const present = ids.filter((id) => liveRef.current.nodes.some((node) => node.instanceId === id))
+    if (!present.length) return
+    setNodeStatus(present, 'running'); setActiveNodeId(present[0])
+    setRunTrail((current) => new Set([...current, ...present])); focusCamera(present[0])
+  }
+  // Replays a run step by step: each newly reached node becomes the focused one, the camera follows it and the
+  // edge it came from animates. Across chatbot turns only nodes not yet shown are replayed.
   const applyRun = async (run: WorkflowRun) => {
     setActiveRun(run)
     setOutputs((current) => ({ ...current, ...Object.fromEntries(run.nodes.filter((item) => item.output).map((item) => [item.node_instance_id, item.output!])) }))
-    const touched = new Set(run.nodes.map((item) => item.node_instance_id))
-    setNodes((current) => current.map((node) => touched.has(node.instanceId) ? node : { ...node, status: 'idle' }))
+    if (replayedRef.current.runId !== run.id) {
+      replayedRef.current = { runId: run.id, seen: new Set() }
+      const touched = new Set(run.nodes.map((item) => item.node_instance_id))
+      setNodes((current) => current.map((node) => touched.has(node.instanceId) || node.status === 'running' ? node : { ...node, status: 'idle' }))
+    }
+    const seen = replayedRef.current.seen
     for (const item of run.nodes) {
       if (stoppedRef.current) break
-      setNodes((current) => current.map((node) => node.instanceId === item.node_instance_id ? { ...node, status: 'running' } : node))
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      if (stoppedRef.current) break
+      // Loops and continuous chats revisit nodes: a new pass or a new chat turn is a new step to show.
+      const key = `${item.node_instance_id}:${item.visit ?? 0}:${item.status}:${String(item.output?.turns ?? '')}`
+      if (seen.has(key)) continue
+      seen.add(key)
       const status: NodeStatus = item.status === 'completed' ? 'complete' : item.status === 'failed' ? 'error' : item.status === 'waiting' ? 'waiting' : item.status === 'skipped' ? 'skipped' : 'idle'
-      setNodes((current) => current.map((node) => node.instanceId === item.node_instance_id ? { ...node, status } : node))
+      if (status === 'skipped') { setNodeStatus([item.node_instance_id], status); continue }
+      setRunTrail((current) => new Set([...current, item.node_instance_id]))
+      setActiveNodeId(item.node_instance_id); focusCamera(item.node_instance_id)
+      setNodeStatus([item.node_instance_id], 'running')
+      await new Promise((resolve) => setTimeout(resolve, REPLAY_STEP_MS))
+      if (stoppedRef.current) break
+      setNodeStatus([item.node_instance_id], status)
+      if (item.status === 'failed' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: String(item.error) }))
     }
+    const waitingFor = run.status === 'waiting' ? String(run.output?.waiting_for || '') : ''
+    if (waitingFor && !stoppedRef.current) { setActiveNodeId(waitingFor); focusCamera(waitingFor); return }
+    if (!stoppedRef.current) await new Promise((resolve) => setTimeout(resolve, 450))
+    setActiveNodeId(null)
   }
+  const clearFocus = () => { setActiveNodeId(null); setRunTrail(new Set()) }
   const run = async () => {
     setRunning(true); setError(''); stoppedRef.current = false
     const controller = new AbortController(); abortRef.current = controller
     try {
       const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
       const id = await persist(); if (!id) throw new Error('Il workflow non è stato salvato')
+      setRunTrail(new Set()); setNodeErrors({})
+      focusPending(chatbotFlow ? nodes.filter((node) => node.id === 'chatbot.start').map((node) => node.instanceId) : nodes.filter((node) => !edges.some((edge) => edge.to === node.instanceId)).map((node) => node.instanceId))
       const response = await agenticApi.createRun(id, {}, chatbotFlow ? sessionId : undefined, controller.signal)
       if (chatbotFlow) setChatWindow(true)
       await applyRun(response.data)
     }
-    catch (reason: any) { if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || reason?.message || 'Esecuzione non riuscita') }
+    catch (reason: any) {
+      if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || reason?.message || 'Esecuzione non riuscita')
+      setNodes((current) => current.map((node) => node.status === 'running' ? { ...node, status: 'idle' } : node)); clearFocus()
+    }
     finally { setRunning(false); abortRef.current = null }
   }
   const answer = async (value?: string) => {
@@ -550,22 +785,29 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (!activeRun || !content) return
     setRunning(true); stoppedRef.current = false
     const controller = new AbortController(); abortRef.current = controller
+    const waitingFor = String(activeRun.output?.waiting_for || '')
+    // The answered question is processed first: show that immediately while the server works.
+    if (waitingFor) focusPending([waitingFor])
     try { const response = await agenticApi.provideInput(activeRun.id, content, controller.signal); setChatInput(''); await applyRun(response.data) }
-    catch (reason: any) { if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || 'Risposta non inviata') }
+    catch (reason: any) {
+      if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || 'Risposta non inviata')
+      if (waitingFor) { setNodeStatus([waitingFor], 'waiting'); setActiveNodeId(waitingFor) }
+    }
     finally { setRunning(false); abortRef.current = null }
   }
   const stopWorkflow = async () => {
     stoppedRef.current = true
     abortRef.current?.abort()
-    setRunning(false)
+    setRunning(false); clearFocus()
+    setNodes((current) => current.map((node) => node.status === 'running' ? { ...node, status: 'idle' } : node))
     setError('Esecuzione interrotta')
     if (activeRun) { try { await agenticApi.stopRun(activeRun.id) } catch { /* best effort */ } }
   }
   const reset = () => {
-    const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null)
+    const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null); clearFocus()
   }
   const clearCanvas = () => {
-    setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection()
+    setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection(); clearFocus()
   }
   const updateNodeParam = (nodeId: string, name: string, value: unknown) => {
     setNodes((current) => current.map((item) => item.instanceId === nodeId ? { ...item, status: 'idle', config: { ...item.config, [name]: value } } : item))
@@ -620,18 +862,23 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-[17rem] shrink-0 flex-col border-r border-slate-200 bg-white max-sm:hidden">
         <div className="border-b border-slate-100 p-4"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Node library</p><h2 className="mt-1 text-base font-black">Primitive dataflow</h2></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{specs.length}</span></div><div className="relative mt-3"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca nodo o tipo" className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 text-xs outline-none" /></div></div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">{grouped.map(({ category, items }) => { const style = CATEGORY_STYLE[category]; const Icon = style.icon; const shut = collapsed.has(category); return <section key={category}><button onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next })} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"><span className="h-2 w-2 rounded-full" style={{ background: style.dot }} /><span className="flex-1 text-left">{category}</span><span>{items.length}</span>{shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>{!shut && <div className="space-y-1 pb-2">{items.map((item) => <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-dataflow-node', item.id)} onDoubleClick={() => addNode(item.id)} className="group flex w-full items-start gap-2.5 rounded-xl border border-transparent px-2 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${style.soft} ${style.ink}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-700">{item.label}</span><span className="block line-clamp-2 text-[10px] leading-4 text-slate-400">{item.description}</span><span className="mt-1 block truncate text-[8px] font-bold text-slate-400">{item.inputs.map((port) => port.type).join(' + ') || 'SOURCE'} → {item.outputs.map((port) => port.type).join(' + ')}</span></span><GripVertical className="mt-1 h-3.5 w-3.5 text-slate-200" /></button>)}</div>}</section> })}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">{grouped.map(({ category, items }) => { const style = CATEGORY_STYLE[category]; const Icon = style.icon; const shut = collapsed.has(category); return <section key={category}><button onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next })} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"><span className="h-2 w-2 rounded-full" style={{ background: style.dot }} /><span className="flex-1 text-left">{category}</span><span>{items.length}</span>{shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>{!shut && <div className="space-y-1 pb-2">{items.map((item) => <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-dataflow-node', item.id)} onDoubleClick={() => addNode(item.id, undefined, undefined, true)} title="Trascina sul canvas, oppure doppio clic per aggiungerlo e collegarlo al nodo selezionato" className="group flex w-full items-start gap-2.5 rounded-xl border border-transparent px-2 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-700">{item.label}</span><span className="block line-clamp-2 text-[10px] leading-4 text-slate-400">{item.description}</span><span className="mt-1 block truncate text-[8px] font-bold text-slate-400">{item.inputs.map((port) => port.type).join(' + ') || 'SOURCE'} → {item.outputs.map((port) => port.type).join(' + ')}</span></span><GripVertical className="mt-1 h-3.5 w-3.5 text-slate-200" /></button>)}</div>}</section> })}</div>
       </aside>
 
-      <main className="relative min-w-0 flex-1 overflow-hidden bg-[#f4f6f9]">
-        <div className="absolute left-3 top-3 z-30 flex rounded-xl border border-slate-200 bg-white p-1 shadow"><button onClick={() => zoomBy(1 / 1.2)} className="p-2"><ZoomOut className="h-4 w-4" /></button><span className="w-11 py-2 text-center text-[10px] font-black">{Math.round(zoom * 100)}%</span><button onClick={() => zoomBy(1.2)} className="p-2"><ZoomIn className="h-4 w-4" /></button><button onClick={() => { setZoom(.75); setPan({ x: 60, y: 60 }) }} className="p-2"><Maximize2 className="h-4 w-4" /></button></div>
-        {connecting && <div className="absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white">Da {connecting.port} · rilascia su una porta IN compatibile · <kbd className="rounded bg-white/15 px-1">Esc</kbd> o <button onClick={cancelConnection} className="text-white/70 underline">annulla</button></div>}
-        {selectedIds.size > 1 && <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white"><span>{selectedIds.size} nodi selezionati</span><button onClick={() => { setNodes((current) => current.filter((item) => !selectedIds.has(item.instanceId))); setEdges((current) => current.filter((edge) => !selectedIds.has(edge.from) && !selectedIds.has(edge.to))); setSelectedIds(new Set()); setSelectedId('') }} className="flex items-center gap-1 rounded-full bg-rose-500 px-2 py-1"><Trash2 className="h-3 w-3" /> Elimina</button><button onClick={() => setSelectedIds(new Set())} className="text-white/60">annulla</button></div>}
+      <main className="relative min-w-0 flex-1 overflow-hidden bg-[var(--ds-canvas)]">
+        <style>{DATAFLOW_CSS}</style>
+        <div className="absolute left-3 top-3 z-30 flex flex-wrap items-center gap-2">
+          <div className="flex rounded-full p-1 text-slate-600" style={PILL_STYLE}><button onClick={() => zoomBy(1 / 1.2)} className="p-2" title="Riduci"><ZoomOut className="h-4 w-4" /></button><span className="w-11 py-2 text-center text-[10px] font-black">{Math.round(zoom * 100)}%</span><button onClick={() => zoomBy(1.2)} className="p-2" title="Ingrandisci"><ZoomIn className="h-4 w-4" /></button><button onClick={() => { setZoom(.75); setPan({ x: 60, y: 60 }) }} className="p-2" title="Vista iniziale"><Maximize2 className="h-4 w-4" /></button></div>
+          <div className="flex items-center gap-0.5 rounded-full p-1" style={PILL_STYLE} role="radiogroup" aria-label="Passo della griglia magnetica"><Grid3x3 className="ml-2 mr-1 h-4 w-4 text-slate-400" aria-hidden />{SNAP_STEPS.map((step) => <button key={step} role="radio" aria-checked={snapDots === step} onClick={() => { setSnapDots(step); writeStored('dataflow-snap', String(step)) }} title={step ? `Sposta i nodi a passi di ${step === .5 ? 'mezzo pallino' : `${step} pallin${step === 1 ? 'o' : 'i'}`}` : 'Movimento libero'} className={`h-8 min-w-8 rounded-full px-2.5 text-[10px] font-black transition-colors ${snapDots === step ? 'bg-[var(--ds-choice-surface)] text-[var(--ds-choice-ink)]' : 'text-slate-500 hover:bg-slate-100/70'}`}>{step === 0 ? 'Off' : step === .5 ? '½' : step}</button>)}</div>
+          <button onClick={() => { const next = !followRun; setFollowRun(next); writeStored('dataflow-follow', next ? '1' : '0') }} aria-pressed={followRun} title="Durante l'esecuzione la vista segue il nodo attivo" style={PILL_STYLE} className="flex h-10 items-center gap-2 rounded-full pl-3.5 pr-1.5 text-[11px] font-bold text-slate-700"><Crosshair className={`h-4 w-4 ${followRun ? 'text-[#6d28d9]' : 'text-slate-400'}`} /> Segui esecuzione<span className={`relative ml-1 h-6 w-10 rounded-full transition-colors ${followRun ? 'bg-[#6d28d9]' : 'bg-slate-200'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${followRun ? 'left-[18px]' : 'left-0.5'}`} /></span></button>
+        </div>
+        {connecting && <div className="absolute bottom-14 left-1/2 z-30 -translate-x-1/2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white">Da {connecting.port} ({connecting.type}) · rilascia su una porta evidenziata o sul corpo di un nodo · <kbd className="rounded bg-white/15 px-1">Esc</kbd> o <button onClick={cancelConnection} className="text-white/70 underline">annulla</button></div>}
+        {selectedIds.size > 1 && <div className="absolute bottom-14 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white"><span>{selectedIds.size} nodi selezionati</span><button onClick={() => { setNodes((current) => current.filter((item) => !selectedIds.has(item.instanceId))); setEdges((current) => current.filter((edge) => !selectedIds.has(edge.from) && !selectedIds.has(edge.to))); setSelectedIds(new Set()); setSelectedId('') }} className="flex items-center gap-1 rounded-full bg-rose-500 px-2 py-1"><Trash2 className="h-3 w-3" /> Elimina</button><button onClick={() => setSelectedIds(new Set())} className="text-white/60">annulla</button></div>}
         <div
           ref={viewportRef}
           data-canvas-background
           className={`relative h-full select-none overscroll-contain ${panRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
-          style={{ backgroundImage: 'radial-gradient(circle,#cbd5e1 1.1px,transparent 1.1px)', backgroundSize: `${24 * zoom}px ${24 * zoom}px`, backgroundPosition: `${pan.x}px ${pan.y}px`, touchAction: 'none' }}
+          style={{ backgroundImage: 'radial-gradient(circle,#d2d8e2 1.2px,transparent 1.2px)', backgroundSize: `${GRID * zoom}px ${GRID * zoom}px`, backgroundPosition: `${pan.x - GRID * zoom / 2}px ${pan.y - GRID * zoom / 2}px`, transition: cameraGlide ? 'background-position .55s cubic-bezier(.2,.8,.2,1)' : undefined, touchAction: 'none' }}
           onPointerDown={backgroundPointerDown}
           onPointerMove={pointerMove}
           onPointerUp={stopPointer}
@@ -642,37 +889,65 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
             event.preventDefault()
             const rect = event.currentTarget.getBoundingClientRect()
             const worldX = (event.clientX - rect.left - pan.x) / zoom - NODE_WIDTH / 2
-            const worldY = (event.clientY - rect.top - pan.y) / zoom - 40
+            const worldY = (event.clientY - rect.top - pan.y) / zoom - 28
             addNode(event.dataTransfer.getData('application/x-dataflow-node'), worldX, worldY)
           }}
         >
-          <div data-canvas-background className="absolute left-0 top-0 origin-top-left select-none" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
+          <div ref={canvasRef} data-canvas-background className="absolute left-0 top-0 origin-top-left select-none" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transition: cameraGlide ? 'transform .55s cubic-bezier(.2,.8,.2,1)' : undefined }}>
             <svg className="absolute left-0 top-0 overflow-visible" style={{ width: 1, height: 1 }}>{edges.map((edge) => {
               const from = nodes.find((node) => node.instanceId === edge.from); const to = nodes.find((node) => node.instanceId === edge.to)
               if (!from || !to) return null
-              const fromSpec = specOf(from); const toSpec = specOf(to)
-              const outputIndex = Math.max(0, fromSpec.outputs.findIndex((port) => port.name === edge.sourcePort)); const inputIndex = Math.max(0, toSpec.inputs.findIndex((port) => port.name === edge.targetPort))
-              const x1 = from.x + nodeWidth(fromSpec); const y1 = from.y + PORT_TOP + outputIndex * PORT_HEIGHT + PORT_HEIGHT / 2; const x2 = to.x; const y2 = to.y + PORT_TOP + inputIndex * PORT_HEIGHT + PORT_HEIGHT / 2; const bend = Math.max(70, Math.abs(x2 - x1) * .42)
-              return <g key={edge.id} className="group cursor-pointer" onClick={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)) }}><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={`M${x1},${y1} C${x1+bend},${y1} ${x2-bend},${y2} ${x2},${y2}`} fill="none" stroke={edge.from === selectedId || edge.to === selectedId ? '#334155' : '#b6c0cd'} strokeWidth="2" className="pointer-events-none group-hover:stroke-rose-400" /><text x={(x1+x2)/2} y={(y1+y2)/2-7} textAnchor="middle" fill="#64748b" fontSize="9" fontWeight="700" className="pointer-events-none">{edge.sourcePort} → {edge.targetPort}</text></g>
+              const a = portPoint(from, 'out', edge.sourcePort); const b = portPoint(to, 'in', edge.targetPort)
+              const bend = Math.max(70, Math.abs(b.x - a.x) * .42)
+              const loop = isLoopEdge(edge)
+              // A «Ripeti» edge usually points backwards: route it as a dashed arc under the nodes instead of through them.
+              const backwards = loop && b.x < a.x + 40
+              const path = backwards
+                ? `M${a.x},${a.y} C${a.x + 170},${a.y + 240} ${b.x - 170},${b.y + 240} ${b.x},${b.y}`
+                : `M${a.x},${a.y} C${a.x + bend},${a.y} ${b.x - bend},${b.y} ${b.x},${b.y}`
+              const labelY = backwards ? (a.y + b.y) / 2 + 172 : (a.y + b.y) / 2 - 7
+              // Live = the edge execution just travelled to reach the focused node; traversed = already walked in this run.
+              const live = activeNodeId === edge.to && runTrail.has(edge.from)
+              const traversed = focusMode && runTrail.has(edge.from) && runTrail.has(edge.to)
+              const accent = (CATEGORY_STYLE[specOf(to).category] || CATEGORY_STYLE.Controllo).dot
+              const related = edge.from === selectedId || edge.to === selectedId
+              const stroke = live ? accent : traversed ? '#475569' : related ? '#334155' : loop ? '#a78bfa' : '#b8c1ce'
+              return <g key={edge.id} className="group cursor-pointer" style={{ opacity: focusMode && !live && !traversed ? .3 : 1, transition: 'opacity .35s ease' }} onClick={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)) }}><title>Clic per eliminare il collegamento</title><path d={path} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={path} fill="none" stroke={stroke} strokeWidth={live ? 3 : traversed ? 2.5 : 2} strokeLinecap="round" strokeDasharray={loop && !live ? '7 6' : undefined} className={`pointer-events-none group-hover:stroke-rose-400 ${live ? 'df-flow' : ''}`} />{live && <circle r="5" fill={accent} className="df-travel pointer-events-none"><animateMotion dur={`${REPLAY_STEP_MS}ms`} repeatCount="indefinite" path={path} /></circle>}{(!focusMode || loop) && <text x={(a.x + b.x) / 2} y={labelY} textAnchor="middle" fill={loop ? '#7c3aed' : '#94a3b8'} fontSize={loop ? 11 : 9} fontWeight="700" className="pointer-events-none">{loop ? '↺ ripeti' : `${edge.sourcePort} → ${edge.targetPort}`}</text>}</g>
             })}{connecting && connectionPoint && (() => {
               const from = nodes.find((node) => node.instanceId === connecting.nodeId)
               if (!from) return null
-              const outputIndex = Math.max(0, specOf(from).outputs.findIndex((port) => port.name === connecting.port))
-              const x1 = from.x + nodeWidth(specOf(from)); const y1 = from.y + PORT_TOP + outputIndex * PORT_HEIGHT + PORT_HEIGHT / 2
-              const bend = Math.max(60, Math.abs(connectionPoint.x - x1) * .42)
-              return <g className="pointer-events-none"><path d={`M${x1},${y1} C${x1+bend},${y1} ${connectionPoint.x-bend},${connectionPoint.y} ${connectionPoint.x},${connectionPoint.y}`} fill="none" stroke="#475569" strokeWidth="2.5" strokeDasharray="7 5" /><circle cx={connectionPoint.x} cy={connectionPoint.y} r="6" fill="#475569" opacity=".85" /></g>
+              const a = portPoint(from, 'out', connecting.port)
+              const bend = Math.max(60, Math.abs(connectionPoint.x - a.x) * .42)
+              return <g className="pointer-events-none"><path d={`M${a.x},${a.y} C${a.x + bend},${a.y} ${connectionPoint.x - bend},${connectionPoint.y} ${connectionPoint.x},${connectionPoint.y}`} fill="none" stroke={TYPE_COLOR[connecting.type] || '#475569'} strokeWidth="2.5" strokeDasharray="7 5" /><circle cx={connectionPoint.x} cy={connectionPoint.y} r="6" fill={TYPE_COLOR[connecting.type] || '#475569'} opacity=".85" /></g>
             })()}{rubberBox && <rect x={rubberBox.x} y={rubberBox.y} width={rubberBox.w} height={rubberBox.h} fill="rgba(124,58,237,.1)" stroke="#7c3aed" strokeWidth={1.5} strokeDasharray="4 3" />}</svg>
 
             {nodes.map((node) => {
               const spec = specOf(node); const style = CATEGORY_STYLE[spec.category] || CATEGORY_STYLE.Controllo; const Icon = style.icon; const portRows = Math.max(spec.inputs.length, spec.outputs.length); const output = outputs[node.instanceId]
               const isSelected = selectedIds.has(node.instanceId)
-              return <article data-node key={node.instanceId} onPointerDown={(event) => nodePointerDown(event, node, false)} className={`absolute overflow-visible rounded-[22px] bg-white/75 backdrop-blur-xl transition-shadow ${node.status === 'running' ? 'animate-pulse' : ''} ${node.status === 'skipped' ? 'opacity-55' : ''}`} style={{ left: node.x, top: node.y, width: nodeWidth(spec), boxShadow: nodeBoxShadow(node.status, isSelected) }}>
-                <div className="rounded-[22px]">
-                  <div onPointerDown={(event) => beginMove(event, node)} className="flex cursor-grab items-center gap-3 rounded-t-[22px] px-3 py-2.5 active:cursor-grabbing" style={{ background: `radial-gradient(ellipse at 12% 0%, color-mix(in srgb, ${style.dot} 16%, transparent) 0%, transparent 70%), linear-gradient(180deg, color-mix(in srgb, ${style.dot} 7%, rgba(255,255,255,.6)), rgba(255,255,255,0))` }}><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 shadow-[0_1px_3px_rgba(15,23,42,.08)]" style={{ color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-semibold uppercase tracking-wider" style={{ color: `color-mix(in srgb, ${style.dot} 70%, #64748b)` }}>{spec.category}</span></span><IconButton onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} surface="solid" size="sm" className="rounded-full bg-white/80 shadow-[0_1px_3px_rgba(15,23,42,.08)] hover:bg-white" style={{ color: style.dot }} title="Esegui solo questo nodo">{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}</IconButton></div>
+              const isActive = activeNodeId === node.instanceId || node.status === 'running'
+              const isWaiting = node.status === 'waiting'
+              const inTrail = runTrail.has(node.instanceId)
+              const dimmed = focusMode && !isActive && !isWaiting
+              const available = inputColumnsFor(node)
+              const stale = staleColumns(node, available)
+              const outputColumns = (port: Port) => port.type === 'TABLE' ? inferOutputColumns(node.instanceId, port.name) : []
+              return <article data-node={node.instanceId} key={node.instanceId} onPointerDown={(event) => nodePointerDown(event, node, false)} className="df-squircle absolute overflow-visible" style={{ ...PILL_STYLE, left: node.x, top: node.y, width: nodeWidth(spec), boxShadow: nodeBoxShadow(node.status, isSelected, style.dot, isActive), opacity: dimmed ? (inTrail ? .8 : .4) : node.status === 'skipped' ? .55 : 1, filter: dimmed && !inTrail ? 'saturate(.3)' : undefined, zIndex: isActive || isWaiting ? 20 : isSelected ? 10 : undefined, transition: 'opacity .35s ease, filter .35s ease, box-shadow .25s ease', ['--df-accent' as string]: isWaiting ? '#f59e0b' : style.dot }}>
+                {(isActive || isWaiting) && <span className="df-halo df-squircle pointer-events-none absolute inset-0" />}
+                {(isActive || isWaiting) && <span className="pointer-events-none absolute -top-8 left-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white" style={{ background: isWaiting ? '#f59e0b' : style.dot }}>{isWaiting ? <><MessageSquareText className="h-3 w-3" /> In attesa di risposta</> : <><Activity className="h-3 w-3" /> In esecuzione</>}</span>}
+                <div>
+                  <div onPointerDown={(event) => beginMove(event, node)} className="df-squircle-top flex h-14 cursor-grab items-center gap-3 px-3.5 shadow-[0_1px_0_rgba(112,121,140,0.10)] active:cursor-grabbing"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-black uppercase tracking-wider" style={{ color: style.dot }}>{spec.category}</span></span><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-[filter] hover:brightness-95 disabled:opacity-60" style={{ background: tint(style.dot, 13), color: style.dot }} title="Esegui solo questo nodo" aria-label="Esegui solo questo nodo">{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}</button></div>
 
-                  <div className="border-y border-slate-200/40 py-1" style={{ minHeight: portRows * PORT_HEIGHT + 8 }}>{Array.from({ length: portRows }).map((_, index) => { const input = spec.inputs[index]; const outputPort = spec.outputs[index]; return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left ${connecting ? 'text-violet-700' : ''}`}><span className={`absolute left-[-8px] top-1/2 z-10 h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_0_0_1.5px_rgba(15,23,42,.35),0_2px_5px_rgba(15,23,42,.25)] ${connecting ? 'animate-pulse bg-violet-500' : 'bg-slate-500'}`} style={{ scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span><code className="text-[7px] text-slate-300">{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px] text-slate-300">{outputPort.type}</code><span className="truncate">{outputPort.label}</span><span className={`absolute right-[-8px] top-1/2 z-10 h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_0_0_1.5px_rgba(15,23,42,.35),0_2px_5px_rgba(15,23,42,.25)] ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'bg-violet-600 ring-4 ring-violet-200' : 'bg-slate-800'}`} style={{ scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div> })}</div>
+                  <div className="py-1 shadow-[0_1px_0_rgba(112,121,140,0.10)]" style={{ minHeight: portRows * PORT_HEIGHT + 8 }}>{Array.from({ length: portRows }).map((_, index) => {
+                    const input = spec.inputs[index]; const outputPort = spec.outputs[index]
+                    const compatible = !!connecting && !!input && connecting.nodeId !== node.instanceId && typesCompatible(connecting.type, input.type)
+                    const inputLinked = !!input && edges.some((edge) => edge.to === node.instanceId && edge.targetPort === input.name)
+                    const columnsOut = outputPort ? outputColumns(outputPort) : []
+                    return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} title={`${input.label} · ${input.type}${input.required === false ? ' · opzionale' : ''}`} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left transition-opacity ${connecting && !compatible ? 'opacity-30' : ''} ${compatible ? 'text-slate-900' : ''}`}><span data-anchor={`${node.instanceId}::in::${input.name}`} className={`absolute left-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${compatible ? 'df-port-target' : ''}`} style={{ background: inputLinked || compatible ? TYPE_COLOR[input.type] || '#64748b' : '#fff', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[input.type] || '#64748b'}`, scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span>{input.required === false && <span className="text-[7px] font-semibold text-slate-300">opz.</span>}<code className="text-[7px]" style={{ color: TYPE_COLOR[input.type] || '#cbd5e1' }}>{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} title={columnsOut.length ? `${outputPort.label} · ${outputPort.type}\nColonne: ${columnsOut.join(', ')}` : `${outputPort.label} · ${outputPort.type} — trascina su un nodo per collegare`} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px]" style={{ color: TYPE_COLOR[outputPort.type] || '#cbd5e1' }}>{outputPort.type}{columnsOut.length ? ` · ${columnsOut.length} col` : ''}</code><span className="truncate">{outputPort.label}</span><span data-anchor={`${node.instanceId}::out::${outputPort.name}`} className={`absolute right-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'ring-4 ring-slate-200' : ''}`} style={{ background: TYPE_COLOR[outputPort.type] || '#1e293b', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[outputPort.type] || '#1e293b'}`, scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div>
+                  })}</div>
 
-                  {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 border-b border-slate-200/40 p-2.5" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
+                  {stale.length > 0 && <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[9px] font-bold text-amber-800" onPointerDown={(event) => event.stopPropagation()}><AlertTriangle className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">Colonne non trovate: {stale.join(', ')}</span><button type="button" onClick={() => setNodes((current) => current.map((item) => item.instanceId === node.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item, available) } : item))} className="shrink-0 rounded-md bg-amber-500 px-2 py-0.5 text-white hover:bg-amber-600">Correggi</button></div>}
+
+                  {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 p-2.5 shadow-[0_1px_0_rgba(112,121,140,0.10)]" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? available : undefined} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
 
                   <NodePreview output={output} error={nodeErrors[node.instanceId]} nodeLabel={spec.label} onOpenTable={(outputPort, table) => setTableModal({ nodeId: node.instanceId, outputPort, nodeLabel: spec.label, table, editor: node.config._tableEditor as Partial<TableEditorState> | undefined })} onExplore={setExplorer} />
                 </div>
@@ -680,7 +955,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[10px] text-slate-500 shadow"><MousePointer2 className="mr-1 inline h-3 w-3" /> Trascina lo sfondo per spostarti · Shift+trascina per selezione multipla · rotella per zoom sul cursore · clic su un nodo per selezionarlo</div>
+        <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-9rem)] truncate rounded-full px-4 py-2 text-[10px] text-slate-500" style={PILL_STYLE}><MousePointer2 className="mr-1 inline h-3 w-3" /> Trascina lo sfondo per spostarti · Shift+trascina per selezione multipla · rotella per zoom · doppio clic in libreria aggiunge e collega al nodo selezionato · rilascia un collegamento sul corpo di un nodo per scegliere la porta automaticamente</div>
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
         {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{error}</span><button onClick={() => setError('')} aria-label="Chiudi errore"><X className="h-3.5 w-3.5" /></button></div>}
@@ -705,7 +980,7 @@ function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { out
   const openMetrics = metrics ? () => onExplore({ kind: 'metrics', title: `${nodeLabel} · metriche`, metrics }) : undefined
   const [firstTable, ...otherTables] = tableEntries
   // Stop pointer events here: the node captures the pointer for dragging, which would swallow clicks on previews.
-  return <div className="overflow-hidden rounded-b-[22px]" onPointerDown={(event) => event.stopPropagation()}>
+  return <div className="overflow-hidden rounded-b-[22px] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-b-[40px]" onPointerDown={(event) => event.stopPropagation()}>
     {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || `${nodeLabel} · grafico`, plot: plotEntry[1] })} onOpenMetrics={openMetrics} /></div>}
     {!plotEntry && metrics && <MetricCards metrics={metrics} onOpen={openMetrics} />}
     {firstTable && <MiniTable table={firstTable[1]} label={firstTable[0]} onOpen={() => onOpenTable(firstTable[0], firstTable[1])} />}
@@ -918,6 +1193,7 @@ function buildChatLog(run: WorkflowRun | null, nodes: CanvasNode[]): ChatEntry[]
     const output = item.output || {}
     if (node.id === 'chatbot.start') { const welcome = String(node.config.welcome_message ?? '').trim(); if (welcome) log.push({ role: 'bot', text: welcome }) }
     else if (node.id === 'chatbot.say') log.push({ role: 'bot', text: String(output.message ?? node.config.message ?? '') })
+    else if (node.id === 'llm_chatbot' && Array.isArray(output.history)) (output.history as Array<{ role: string; content: string }>).forEach((turn) => log.push({ role: turn.role === 'user' ? 'user' : 'bot', text: String(turn.content ?? '') }))
     else if (node.id === 'llm_chatbot') { const payload = output.response as { message?: string } | undefined; if (payload?.message) log.push({ role: 'bot', text: payload.message }) }
     else if (node.id === 'chatbot.end') log.push({ role: 'bot', text: String(node.config.message ?? output.result ?? '') })
     else if (node.id === 'chatbot.ask') {
