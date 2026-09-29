@@ -495,11 +495,11 @@ export default function RealtimeInterrogationPanel({
   }, [])
 
   const cardStyle = {
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    backgroundColor: 'rgb(var(--c-white) / 0.82)',
     backdropFilter: 'blur(30px) saturate(140%)',
     WebkitBackdropFilter: 'blur(30px) saturate(140%)',
-    borderColor: 'rgba(148, 163, 184, 0.24)',
-    boxShadow: '0 24px 70px rgba(15, 23, 42, 0.18)',
+    borderColor: 'rgba(163, 163, 163, 0.24)',
+    boxShadow: '0 24px 70px rgba(23, 23, 23, 0.18)',
   } as const
 
   const statusLabel = turnState === 'recording'

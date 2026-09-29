@@ -750,7 +750,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     src={activeGlb}
                     alt="modello 3D"
                     auto-rotate camera-controls shadow-intensity="1"
-                    style={{ width: '100%', height: '460px', background: '#0f172a' }}
+                    style={{ width: '100%', height: '460px', background: '#171717' }}
                   />
                 </motion.div>
               )}

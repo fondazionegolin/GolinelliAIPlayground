@@ -1,8 +1,8 @@
 const PASTEL_FAMILIES = {
   neutral: {
-    surface: 'border-0 bg-[rgba(255,255,255,0.78)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-white hover:shadow-[var(--ds-shadow-2)]',
-    iconBg: 'bg-[rgba(23,21,27,0.08)]',
-    iconText: 'text-[#17151b]',
+    surface: 'border-0 bg-white/[0.78] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-white hover:shadow-[var(--ds-shadow-2)]',
+    iconBg: 'bg-neutral-900/[0.08]',
+    iconText: 'text-neutral-900',
   },
   brand: {
     surface: 'border-0 bg-[rgba(254,0,77,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(254,0,77,0.10)] hover:shadow-[var(--ds-shadow-2)]',
@@ -12,27 +12,27 @@ const PASTEL_FAMILIES = {
   info: {
     surface: 'border-0 bg-[rgba(62,169,244,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(62,169,244,0.10)] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(62,169,244,0.14)]',
-    iconText: 'text-[#1278bd]',
+    iconText: 'text-[var(--logo-blue-strong)]',
   },
   support: {
     surface: 'border-0 bg-[rgba(123,105,201,0.07)] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[rgba(123,105,201,0.10)] hover:shadow-[var(--ds-shadow-2)]',
     iconBg: 'bg-[rgba(123,105,201,0.14)]',
-    iconText: 'text-[#55449c]',
+    iconText: 'text-[var(--logo-violet-strong)]',
   },
   success: {
-    surface: 'border-0 bg-[#eef7fe] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#f6fbff] hover:shadow-[var(--ds-shadow-2)]',
-    iconBg: 'bg-[#d9ecfd]',
-    iconText: 'text-[#1d7dd8]',
+    surface: 'border-0 bg-sky-50 bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-sky-100/70 hover:shadow-[var(--ds-shadow-2)]',
+    iconBg: 'bg-sky-100',
+    iconText: 'text-sky-700',
   },
   warning: {
-    surface: 'border-0 bg-[#f7eff9] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#fcf8fd] hover:shadow-[var(--ds-shadow-2)]',
-    iconBg: 'bg-[#ebd9f0]',
-    iconText: 'text-[#9452a3]',
+    surface: 'border-0 bg-fuchsia-50 bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-fuchsia-100/70 hover:shadow-[var(--ds-shadow-2)]',
+    iconBg: 'bg-fuchsia-100',
+    iconText: 'text-fuchsia-700',
   },
   danger: {
-    surface: 'border-0 bg-[#fdf0f5] bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-[#fff6fa] hover:shadow-[var(--ds-shadow-2)]',
-    iconBg: 'bg-[#f8d6e5]',
-    iconText: 'text-[#b51f5f]',
+    surface: 'border-0 bg-pink-50 bg-[image:var(--ds-semantic-shading)] shadow-[var(--ds-shadow-1)] hover:bg-pink-100/70 hover:shadow-[var(--ds-shadow-2)]',
+    iconBg: 'bg-pink-100',
+    iconText: 'text-pink-700',
   },
 } as const
 

@@ -139,7 +139,7 @@ function McqBars({ responses, options, correctOption }: {
     value: responses.filter(r => r.response.selected_option === i).length,
     isCorrect: correctOption !== null && correctOption !== undefined && correctOption === i,
     color: (correctOption !== null && correctOption !== undefined)
-      ? (correctOption === i ? '#10b981' : '#94a3b8')
+      ? (correctOption === i ? '#10b981' : '#a3a3a3')
       : MCQ_COLORS[i % MCQ_COLORS.length],
   }))
   if (responses.length === 0) {

@@ -170,7 +170,7 @@ export function FloatingHelper({ hideTrigger = false, open: controlledOpen, onOp
         <div className="fixed z-[70] w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl animate-in slide-in-from-top-4 duration-200" style={{ left: modalLeft, top: modalTop }}>
           {/* Header */}
           <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fce7f3' }}>
+            <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgb(var(--c-pink-100))' }}>
               <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: '#e85c8d' }} />
             </div>
             <div className="min-w-0 flex-1">

@@ -63,8 +63,8 @@ export const PRIMITIVES: PrimitiveDef[] = [
   { kind: 'tube', label: 'Tubo', size: [20, 20, 20], color: '#f97316', params: { wall: 0.12 } },
   { kind: 'star', label: 'Stella', size: [30, 30, 6], color: '#eab308', params: { points: 5, inner: 0.5 } },
   { kind: 'text', label: 'Testo', size: [40, 12, 5], color: '#0f766e', params: { text: 'Ciao' } },
-  { kind: 'box', label: 'Foro cubo', size: [20, 20, 20], color: '#94a3b8', hole: true },
-  { kind: 'cylinder', label: 'Foro cilindro', size: [20, 20, 20], color: '#94a3b8', hole: true, params: { sides: 32 } },
+  { kind: 'box', label: 'Foro cubo', size: [20, 20, 20], color: '#a3a3a3', hole: true },
+  { kind: 'cylinder', label: 'Foro cilindro', size: [20, 20, 20], color: '#a3a3a3', hole: true, params: { sides: 32 } },
 ]
 
 export const KIND_LABEL: Record<PrimitiveKind | 'group', string> = {
@@ -74,7 +74,7 @@ export const KIND_LABEL: Record<PrimitiveKind | 'group', string> = {
 
 export const COLOR_SWATCHES = [
   '#e8453c', '#f97316', '#f59e0b', '#facc15', '#22c55e', '#0f766e',
-  '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#94a3b8', '#f8fafc', '#1e293b',
+  '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#a3a3a3', '#fafafa', '#262626',
 ]
 
 export const PLATE_SIZE = 200

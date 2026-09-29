@@ -134,7 +134,7 @@ const TEMPLATES = [
         id: mkId(), type: 'connector',
         fromId: centerId, fromAnchor: 'bottom',
         toId: p.id, toAnchor: 'top',
-        color: '#94a3b8', width: 2,
+        color: '#a3a3a3', width: 2,
       }))
       return { type: 'canvas_v1', items: [center, ...postits, ...connectors] }
     },
@@ -147,7 +147,7 @@ const TEMPLATES = [
     create(): CanvasDoc {
       const title: CanvasItem = {
         id: mkId(), type: 'text', x: 260, y: 40, w: 860, h: 60,
-        text: 'Sessione di feedback', color: '#1e293b',
+        text: 'Sessione di feedback', color: '#262626',
         textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 22, fontWeight: '600' },
       }
       const wwwId = mkId(), ebiId = mkId()
@@ -236,7 +236,7 @@ const TEMPLATES = [
         items.push({ id: mkId(), type: 'postit', x: 60 + i * 300, y: 260, w: 220, h: 220, text: '', color: '#dbeafe', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId } as CanvasItem)
       })
       for (let i = 0; i < frameIds.length - 1; i++) {
-        items.push({ id: mkId(), type: 'connector', fromId: frameIds[i], fromAnchor: 'right', toId: frameIds[i + 1], toAnchor: 'left', color: '#64748b', width: 2.5 } as CanvasItem)
+        items.push({ id: mkId(), type: 'connector', fromId: frameIds[i], fromAnchor: 'right', toId: frameIds[i + 1], toAnchor: 'left', color: '#737373', width: 2.5 } as CanvasItem)
       }
       return { type: 'canvas_v1', items }
     },
@@ -273,7 +273,7 @@ const ensureTextStyle = (item: CanvasItem): CanvasItem => {
     return {
       ...item,
       text: item.text || '',
-      textColor: item.textColor || '#0f172a',
+      textColor: item.textColor || '#171717',
       borderWidth: item.borderWidth ?? 2.5,
       borderStyle: item.borderStyle || 'solid',
       textStyle: { ...DEFAULT_TEXT_STYLE, ...(item.textStyle || {}) },
@@ -1075,9 +1075,9 @@ export function CollaborativeCanvas({
     const id = mkId()
     if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', backgroundColor: '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     return null
   }
 
@@ -1580,7 +1580,7 @@ export function CollaborativeCanvas({
           id: mkId(), type: 'connector',
           fromId: connectorDrag.fromId, fromAnchor: connectorDrag.fromAnchor,
           toId: target.id, toAnchor: target.anchor,
-          color: '#334155', width: 2,
+          color: '#404040', width: 2,
         }
         setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
         setSelectedId(connector.id)
@@ -2028,7 +2028,7 @@ export function CollaborativeCanvas({
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' } })} className={`h-6 w-6 rounded border text-xs font-bold ${selectedTextStyle.fontWeight === '600' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>B</button>
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' } })} className={`h-6 w-6 rounded border text-xs italic ${selectedTextStyle.fontStyle === 'italic' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>I</button>
               {selectedItem.type === 'shape' && (
-                <label className="flex items-center gap-1 text-slate-400">Colore <Input type="color" value={selectedItem.textColor || '#0f172a'} onChange={(e) => updateItem(selectedItem.id, { textColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+                <label className="flex items-center gap-1 text-slate-400">Colore <Input type="color" value={selectedItem.textColor || '#171717'} onChange={(e) => updateItem(selectedItem.id, { textColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
               )}
               {selectedItem.type === 'postit' && (
                 <div className="flex gap-1">
@@ -2109,7 +2109,7 @@ export function CollaborativeCanvas({
             cursor,
             touchAction: 'none',
             overscrollBehavior: 'none',
-            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.3) 1px, transparent 0)',
+            backgroundImage: 'radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0)',
             backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`,
           }}
@@ -2300,7 +2300,7 @@ export function CollaborativeCanvas({
                         onChange={(e) => updateItem(item.id, { text: e.target.value })}
                         className="absolute inset-[12%] z-[1] resize-none bg-transparent text-center"
                         style={{
-                          color: item.textColor || '#0f172a',
+                          color: item.textColor || '#171717',
                           fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                           fontSize: `${item.textStyle?.fontSize || 14}px`,
                           fontWeight: item.textStyle?.fontWeight || 'normal',

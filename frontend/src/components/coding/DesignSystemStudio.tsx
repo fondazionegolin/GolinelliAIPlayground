@@ -46,8 +46,8 @@ const DEFAULT_TOKENS: DesignTokens = {
   palette: {
     primary: '#2563eb', primaryText: '#ffffff',
     accent: '#f59e0b', accentText: '#1f2937',
-    background: '#f8fafc', surface: '#ffffff',
-    text: '#0f172a', textMuted: '#64748b', border: '#e2e8f0',
+    background: '#fafafa', surface: '#ffffff',
+    text: '#171717', textMuted: '#737373', border: '#e5e5e5',
     success: '#16a34a', danger: '#dc2626',
   },
   typography: { fontHeading: 'sans', fontBody: 'sans', baseSize: 16, scaleRatio: 1.25, headingWeight: 700, bodyWeight: 400 },
@@ -83,8 +83,8 @@ function btnRadius(t: DesignTokens): number {
 }
 function shadowValue(level: string): string {
   if (level === 'none') return 'none'
-  if (level === 'strong') return '0 4px 6px rgba(15,23,42,.10), 0 12px 28px rgba(15,23,42,.16)'
-  return '0 1px 2px rgba(15,23,42,.06), 0 6px 16px rgba(15,23,42,.08)'
+  if (level === 'strong') return '0 4px 6px rgba(23,23,23,.10), 0 12px 28px rgba(23,23,23,.16)'
+  return '0 1px 2px rgba(23,23,23,.06), 0 6px 16px rgba(23,23,23,.08)'
 }
 function rgba(hex: string, alpha: number): string {
   const h = expandHex(hex).slice(1)

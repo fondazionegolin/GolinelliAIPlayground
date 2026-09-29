@@ -38,6 +38,8 @@ import {
   type DispensaExercise,
 } from '@/components/teacher/reportTemplates'
 import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
+import { useUiThemeStore } from '@/stores/uiTheme'
+import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -575,7 +577,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   }) as CSSProperties, [accentTheme])
   // Soft material bubble: accent tint, internal light and no drawn outline.
   const userBubbleStyle = useMemo(() => ({
-    backgroundColor: 'color-mix(in srgb, var(--teacher-accent) 7%, white)',
+    backgroundColor: 'color-mix(in srgb, var(--teacher-accent) 7%, var(--mix-base))',
     backgroundImage: 'var(--ds-semantic-shading)',
     borderColor: 'transparent',
     color: '#6d28d9', // violet-700
@@ -715,6 +717,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   }
 
   const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
+  const uiDark = useUiThemeStore((st) => st.theme === 'dark')
+  // Dark theme: a user-picked (usually pastel) chat colour becomes a faint tint of the dark surface.
+  const chatSurface = chatBg && uiDark ? `color-mix(in srgb, ${chatBg} 12%, #202327)` : chatBg
 
   useEffect(() => {
     try {
@@ -2844,20 +2849,22 @@ REGOLE IMPORTANTI:
                 {/* Unified card: sidebar + chat together */}
                 <div className={`teacher-support-frame flex-1 flex h-full overflow-hidden ${sidebarMode ? '' : isMobile ? '' : 'ds-page-frame'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition-all duration-300`}>
+                 <aside className={`teacher-support-history ${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-16' : 'w-64'} flex shrink-0 flex-col overflow-hidden transition-all duration-300`}>
                   {isSidebarCollapsed ? (
-                    /* Collapsed: just expand button */
-                    <div className="flex flex-col items-center gap-3 p-2 pt-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setIsSidebarCollapsed(false)}
-                        className="h-8 w-8 rounded-lg bg-[var(--logo-violet-10)] p-0 text-[var(--logo-violet)] ring-1 ring-[var(--logo-violet-22)] hover:bg-[var(--logo-violet-10)]"
-                        title="Espandi"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <SidebarRail
+                      bare
+                      expandLabel="Espandi conversazioni"
+                      onExpand={() => setIsSidebarCollapsed(false)}
+                      onCreate={handleNewChat}
+                      createLabel="Nuova chat"
+                      items={conversations.map(conv => ({
+                        id: conv.id,
+                        title: conv.title,
+                        icon: <MessageCircle className="h-4 w-4" />,
+                        selected: currentConversationId === conv.id,
+                        onClick: () => openConversation(conv),
+                      }))}
+                    />
                   ) : (
                     <>
                       <div className="flex shrink-0 items-center gap-2.5 px-4 py-3 shadow-[var(--ds-shadow-1)]">
@@ -2868,15 +2875,7 @@ REGOLE IMPORTANTI:
                           <p className="truncate text-sm font-black leading-tight text-[var(--text-primary)]">Chatbot docente</p>
                           <p className="truncate text-[10px] text-[var(--text-muted)]">Conversazioni e strumenti didattici</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsSidebarCollapsed(true)}
-                          className="h-7 w-7 shrink-0 rounded-md p-0 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)]"
-                          title="Comprimi"
-                        >
-                          <ChevronDown className="h-4 w-4 rotate-90" />
-                        </Button>
+                        <SidebarCollapseButton onClick={() => setIsSidebarCollapsed(true)} label="Comprimi conversazioni" />
                       </div>
 
                       <div className="shrink-0 px-3 pt-3">
@@ -2962,8 +2961,8 @@ REGOLE IMPORTANTI:
                  <main
                    className="teacher-support-main relative flex min-w-0 flex-1 flex-col overflow-hidden"
                    style={chatBg && !sidebarMode
-                     ? { backgroundColor: chatBg, backgroundImage: 'linear-gradient(145deg, rgba(255,255,255,0.30), transparent 52%, rgba(164,196,235,0.06))' }
-                     : isMobile
+                     ? { backgroundColor: chatSurface, backgroundImage: uiDark ? undefined : 'linear-gradient(145deg, rgba(255,255,255,0.30), transparent 52%, rgba(164,196,235,0.06))' }
+                     : isMobile && !uiDark
                        ? { backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(185, 215, 255, 0.16), transparent 42%), linear-gradient(150deg, rgba(255,255,255,0.98), rgba(246,250,255,0.94))' }
                        : undefined}
                  >

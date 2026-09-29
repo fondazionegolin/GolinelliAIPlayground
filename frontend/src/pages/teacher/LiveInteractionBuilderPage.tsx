@@ -625,7 +625,7 @@ function McqOptionRow({
       value={item}
       dragListener={false}
       dragControls={dragControls}
-      whileDrag={{ scale: 1.02, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)' }}
+      whileDrag={{ scale: 1.02, boxShadow: '0 10px 24px rgba(23, 23, 23, 0.12)' }}
       className="relative z-0 list-none data-[dragging=true]:z-20"
     >
       <div className="flex items-center gap-2">
@@ -817,7 +817,7 @@ function SlideCard({
       dragListener={false}
       dragControls={dragControls}
       onDragStart={onDragStart}
-      whileDrag={{ scale: 1.015, boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16)' }}
+      whileDrag={{ scale: 1.015, boxShadow: '0 18px 45px rgba(23, 23, 23, 0.16)' }}
       className="relative z-0 list-none rounded-xl data-[dragging=true]:z-20"
     >
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1689,7 +1689,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                       </div>
                     </div>
 
-                    <div className="bg-slate-50/70 px-5 py-5 shadow-[inset_0_1px_0_rgba(148,163,184,0.10),inset_0_-1px_0_rgba(148,163,184,0.10)] sm:px-6">
+                    <div className="bg-slate-50/70 px-5 py-5 shadow-[inset_0_1px_0_rgba(163,163,163,0.10),inset_0_-1px_0_rgba(163,163,163,0.10)] sm:px-6">
                       <ContentPreviewStrip item={item} />
                     </div>
 
@@ -1756,7 +1756,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                     <p className="mt-1.5 text-sm text-slate-500">
                       {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> {new Date(item.created_at).toLocaleDateString('it-IT')}
                     </p>
-                    <div className="mt-auto flex flex-wrap items-center gap-2 pt-4 shadow-[0_-1px_0_rgba(148,163,184,0.10)]">
+                    <div className="mt-auto flex flex-wrap items-center gap-2 pt-4 shadow-[0_-1px_0_rgba(163,163,163,0.10)]">
                       <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
                         <FileBarChart2 className="h-3.5 w-3.5" /> Report
                       </Button>

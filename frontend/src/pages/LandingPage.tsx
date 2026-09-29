@@ -121,7 +121,7 @@ const DottedGridBackground = () => {
 
           ctx.beginPath()
           ctx.arc(dotX, dotY, radius, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(148, 163, 184, ${alpha})`
+          ctx.fillStyle = `rgba(163, 163, 163, ${alpha})`
           ctx.fill()
         }
       }
@@ -341,7 +341,7 @@ function MobileNavButton({
   )
 }
 
-function TabButton({ active, children, onClick, color = '#1e293b' }: {
+function TabButton({ active, children, onClick, color = '#262626' }: {
   active: boolean
   children: React.ReactNode
   onClick: () => void

@@ -1,3 +1,5 @@
+const { surfaceColors, textColors, darkPalettePlugin } = require("./tailwind.darkPalette.cjs")
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
@@ -6,6 +8,10 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    // Palette routed through CSS variables so `.dark` can remap it (see tailwind.darkPalette.cjs).
+    colors: surfaceColors,
+    textColor: ({ theme }) => ({ ...theme("colors"), ...textColors }),
+    placeholderColor: ({ theme }) => ({ ...theme("colors"), ...textColors }),
     container: {
       center: true,
       padding: "2rem",
@@ -91,5 +97,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography"), darkPalettePlugin],
 }

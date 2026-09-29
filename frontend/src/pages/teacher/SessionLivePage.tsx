@@ -487,7 +487,7 @@ export default function SessionLivePage() {
                         <h2 className="text-base font-black text-slate-900">Moduli visibili agli studenti</h2>
                         <p className="text-xs text-slate-500">Attiva gli strumenti che gli studenti vedono nella sessione.</p>
                       </div>
-                      <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,white)] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
+                      <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
                         {displayModules.filter((mod) => mod.is_enabled).length} di {displayModules.length} attivi
                       </span>
                     </div>
@@ -572,7 +572,7 @@ export default function SessionLivePage() {
                               }
                             }}
                             className={`ui-card-interactive group flex min-h-[168px] cursor-pointer flex-col rounded-[var(--ds-radius-control)] p-4 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${mod.is_enabled
-                              ? 'bg-[color-mix(in_srgb,var(--logo-violet)_8%,white)] shadow-[var(--ds-shadow-1)]'
+                              ? 'bg-[color-mix(in_srgb,var(--logo-violet)_8%,var(--mix-base))] shadow-[var(--ds-shadow-1)]'
                               : 'bg-white/60 shadow-[var(--ds-shadow-inset)]'
                               }`}
                           >

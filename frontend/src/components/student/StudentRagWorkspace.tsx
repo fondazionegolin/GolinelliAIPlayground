@@ -361,13 +361,13 @@ function DocumentPanel({
               className="rounded-xl border p-2.5 transition-all cursor-pointer"
               style={{
                 borderColor: isSelected ? hex2rgba(theme.accent, 0.4) : 'rgba(203,213,225,0.6)',
-                backgroundColor: isSelected ? '#f8fafc' : 'white',
+                backgroundColor: isSelected ? '#fafafa' : 'white',
               }}>
               <div className="flex items-start gap-2">
 	                  <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
 	                    style={isSelected
 	                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)' }
-	                    : { borderColor: '#cbd5e1' }}>
+	                    : { borderColor: '#d4d4d4' }}>
                   {isSelected && <CheckCircle2 className="h-3 w-3" />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -395,8 +395,8 @@ function DocumentPanel({
                       title="Anteprima documento"
 	                      className="p-1 rounded-lg transition-colors"
 	                      style={isActive
-	                        ? { color: theme.text, backgroundColor: '#f1f5f9' }
-	                        : { color: '#94a3b8' }}>
+	                        ? { color: theme.text, backgroundColor: 'rgb(var(--c-neutral-100))' }
+	                        : { color: '#a3a3a3' }}>
                       <Eye className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -541,7 +541,7 @@ function ChatPanel({
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
-	                    style={{ backgroundColor: '#64748b', animationDelay: `${d}ms` }} />
+	                    style={{ backgroundColor: '#737373', animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
@@ -558,7 +558,7 @@ function ChatPanel({
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-2 h-2 rounded-full animate-bounce"
-	                    style={{ backgroundColor: '#64748b', animationDelay: `${d}ms` }} />
+	                    style={{ backgroundColor: '#737373', animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
@@ -578,9 +578,9 @@ function ChatPanel({
       {/* Input */}
       <div className="shrink-0 pt-3 border-t border-slate-200 mt-3">
 	        <div className={`flex gap-2 items-end rounded-[24px] border bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 ${isLoading ? 'opacity-70' : ''}`}
-          style={{ borderColor: isLoading ? '#e2e8f0' : '#cbd5e1' }}
+          style={{ borderColor: isLoading ? '#e5e5e5' : '#d4d4d4' }}
           onFocus={(e) => { if (!isLoading) (e.currentTarget as HTMLDivElement).style.borderColor = theme.accent }}
-          onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#cbd5e1' }}>
+          onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d4d4d4' }}>
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder={isLoading ? 'Elaborazione in corso…' :
@@ -640,8 +640,8 @@ function SourcePanel({
         {labelBadge && (
           <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
             style={labelBadge.amber
-              ? { backgroundColor: '#fef3c7', color: '#92400e' }
-	              : { backgroundColor: '#f1f5f9', color: theme.text }}>
+              ? { backgroundColor: 'rgb(var(--c-amber-100))', color: 'rgb(var(--t-amber-800))' }
+	              : { backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>
             {labelBadge.text}
           </span>
         )}
@@ -672,13 +672,13 @@ function SourcePanel({
               style={isHighlighted
                 ? {
                     borderColor: hex2rgba(theme.accent, 0.5),
-	                    backgroundColor: '#f8fafc',
+	                    backgroundColor: 'rgb(var(--c-neutral-50))',
                     boxShadow: `0 0 0 2px ${hex2rgba(theme.accent, 0.2)}`,
                   }
-                : { borderColor: '#e2e8f0', backgroundColor: 'white' }}>
+                : { borderColor: '#e5e5e5', backgroundColor: 'white' }}>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
-	                  style={{ backgroundColor: '#f1f5f9', color: theme.text }}>
+	                  style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>
                   {sourceChunks || pendingChunks ? `[[${i + 1}]]` : `#${(chunk.chunk_index ?? i) + 1}`}
                 </span>
                 {chunk.document_title && (
@@ -964,7 +964,7 @@ export default function StudentRagWorkspace({
                   return (
                     <div key={s.id}
                       className="flex items-start gap-2 w-full px-3 py-2 rounded-xl text-left transition-colors hover:bg-slate-50"
-	                      style={isCurrent ? { backgroundColor: '#f8fafc' } : {}}>
+	                      style={isCurrent ? { backgroundColor: 'rgb(var(--c-neutral-50))' } : {}}>
                       <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400" />
                       <button
                         onClick={() => { setSessionMenuOpen(false); onSwitchSession(s.id) }}
@@ -974,7 +974,7 @@ export default function StudentRagWorkspace({
                           <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
                           {isCurrent && (
 	                            <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-bold"
-	                              style={{ backgroundColor: '#f1f5f9', color: theme.text }}>
+	                              style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>
                               attiva
                             </span>
                           )}
@@ -1035,9 +1035,9 @@ export default function StudentRagWorkspace({
             <div className="flex items-center justify-end px-3 pt-3 shrink-0">
               <button onClick={() => setKbCollapsed(true)} title="Comprimi"
                 className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
-                style={{ color: '#94a3b8' }}
+                style={{ color: '#a3a3a3' }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = theme.text)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}>
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#a3a3a3')}>
                 <PanelLeftClose className="h-4 w-4" />
               </button>
             </div>

@@ -100,6 +100,7 @@ class SessionStudent(Base):
     password_hash = Column(Text, nullable=True)
     avatar_url = Column(Text, nullable=True)
     ui_accent = Column(String(32), nullable=True)
+    ui_theme = Column(String(16), nullable=True)
     is_frozen = Column(Boolean, default=False, nullable=False)
     frozen_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

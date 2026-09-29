@@ -539,7 +539,7 @@ export function UnifiedToolbar({
               {selectedBlock.type !== 'line' && (
                 <input
                   type="color"
-                  value={selectedBlock.style?.fill || '#e2e8f0'}
+                  value={selectedBlock.style?.fill || '#e5e5e5'}
                   onChange={(e) => onUpdateBlockStyle('fill', e.target.value)}
                   className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
                   title="Riempimento"
@@ -547,7 +547,7 @@ export function UnifiedToolbar({
               )}
               <input
                 type="color"
-                value={selectedBlock.style?.stroke || '#1e293b'}
+                value={selectedBlock.style?.stroke || '#262626'}
                 onChange={(e) => onUpdateBlockStyle('stroke', e.target.value)}
                 className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
                 title="Bordo"

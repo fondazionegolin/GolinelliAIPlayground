@@ -133,7 +133,7 @@ export default function AdminOverviewPage() {
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dailyHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
@@ -152,7 +152,7 @@ export default function AdminOverviewPage() {
                   yAxisId="right"
                   type="monotone"
                   dataKey="cost"
-                  stroke="#64748b"
+                  stroke="#737373"
                   strokeWidth={2}
                   dot={false}
                   name="Costo €"
@@ -217,7 +217,7 @@ export default function AdminOverviewPage() {
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
                             u.type === 'teacher'
-                              ? 'bg-[#1a1a2e]/10 text-[#1a1a2e]'
+                              ? 'bg-[#1a1a2e]/10 text-neutral-900'
                               : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >

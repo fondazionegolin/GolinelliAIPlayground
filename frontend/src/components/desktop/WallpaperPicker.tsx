@@ -47,20 +47,20 @@ export const SOLID_COLORS = [
   { key: 'solid_ink',     value: '#0a0a0a' },
   { key: 'solid_charcoal',value: '#1c1c1e' },
   { key: 'solid_graphite',value: '#2a2a2e' },
-  { key: 'solid_slate',   value: '#0f172a' },
+  { key: 'solid_slate',   value: '#171717' },
   { key: 'solid_navy',    value: '#0d1b2a' },
 ]
 
 /** Returns the CSS background value for a wallpaper key. */
 export function getWallpaperStyle(key: string): string {
-  if (!key) return '#0f172a'
+  if (!key) return '#171717'
   if (key.startsWith('data:') || key.startsWith('url:')) {
     const url = key.startsWith('url:') ? key.slice(4) : key
     return `url(${url}) center/cover no-repeat`
   }
   // Any CSS color starting with # or hsl(...) etc.
   if (key.startsWith('#') || key.startsWith('hsl') || key.startsWith('rgb')) return key
-  return SOLID_COLORS.find(c => c.key === key)?.value ?? '#0f172a'
+  return SOLID_COLORS.find(c => c.key === key)?.value ?? '#171717'
 }
 
 // ── Image compression ─────────────────────────────────────────────────────────

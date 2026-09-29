@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
-  Bot, CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Download, Loader2, FileUp
+  CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp
 } from 'lucide-react'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
@@ -20,6 +19,7 @@ import DocumentAgentChat, { type DocumentAssistContext } from '@/components/docu
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -1435,7 +1435,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
                         {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
@@ -1469,7 +1469,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
+                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
                           {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                           {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
@@ -1494,7 +1494,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div
                     key={doc.id}
                     onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                   >
                     {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                     {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
@@ -1689,127 +1689,80 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
-        {/* Header / Meta-Toolbar */}
-        <div className="relative z-30 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-          <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2">
-             <Button
-               variant="ghost"
-               size="sm"
-               onClick={() => setViewMode('list')}
-               className="shrink-0 gap-1 font-semibold text-slate-600"
-             >
-               <ChevronLeft className="h-4 w-4" />
-               {t('documents.title_my_documents')}
-             </Button>
-
-             <div className="h-7 w-px bg-slate-200" />
-
-             <Input
-               value={document.title}
-               onChange={(e) => handleTitleChange(e.target.value)}
-               disabled={isEditorReadOnly}
-               className="h-10 w-[min(28vw,360px)] border-indigo-200 bg-indigo-50/60 px-3 font-bold text-slate-900 shadow-none focus-visible:ring-indigo-200"
-               placeholder={filenamePlaceholder}
-             />
-             <Button
-               tone="accent"
-               surface="soft"
-               onClick={() => setShowNewModal(true)}
-               className="shrink-0"
-             >
-               <Plus className="mr-2 h-4 w-4" />
-               {t('documents.new')}
-             </Button>
-             {isReadOnlyLesson && (
-               <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800">
-                 {isEnglishUi ? 'Lesson' : 'Lezione'}
-               </span>
-             )}
-             {activeSubmittedDocument && (
-               <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-black ${activeSubmittedDocument.correction?.status === 'pending' ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
-                 {activeSubmittedDocument.correction?.status === 'pending'
-                   ? (isEnglishUi ? 'Teacher corrections' : 'Correzioni del docente')
-                   : (isEnglishUi ? 'Submitted work' : 'Consegna')}
-               </span>
-             )}
-          </div>
-
-          <div className="flex shrink-0 gap-2">
-             {!isEditorReadOnly && !['canvas', 'web'].includes(mode) && (
-               <label className="relative flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 font-bold text-slate-700 shadow-sm">
-                 {documentExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                 <span className="hidden xl:inline">{isEnglishUi ? 'Export' : 'Esporta'}</span>
-                 <select
-                   aria-label={isEnglishUi ? 'Export format' : 'Formato di esportazione'}
-                   disabled={documentExporting}
-                   value=""
-                   onChange={(event) => {
-                     const format = event.target.value as 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx'
-                     event.target.value = ''
-                     if (format) void exportCurrentDocument(format)
-                   }}
-                   className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait"
-                 >
-                   <option value="">{isEnglishUi ? 'Choose format' : 'Scegli formato'}</option>
-                   <option value="pdf">PDF</option>
-                   {mode === 'slides' && <option value="pptx">PPTX</option>}
-                   {mode === 'slides' && <option value="ppt">PPT</option>}
-                   {(mode === 'slides' || mode === 'document' || mode === 'sheet') && <option value="docx">DOCX</option>}
-                   {mode === 'document' && <option value="doc">DOC</option>}
-                   {mode === 'sheet' && <option value="xlsx">XLSX</option>}
-                 </select>
-               </label>
-             )}
-             {(mode === 'slides' || mode === 'document') && !isEditorReadOnly && (
-                 <Button
-                   variant="outline"
-                   onClick={() => setPresentationChatOpen(v => !v)}
-                   className={`rounded-lg font-bold ${presentationChatOpen ? 'border-violet-300 bg-violet-100 text-violet-800' : 'border-slate-200 bg-white text-slate-700'}`}
-                 >
-                   <Bot className="h-4 w-4 mr-2" />
-                   {isEnglishUi ? 'Document Builder' : 'Assistente documento'}
-                 </Button>
-             )}
-             {mode === 'slides' && !isEditorReadOnly && (
-                 <Button
-                   variant="outline"
-                   onClick={saveCurrentPresentationAsTemplate}
-                   className="rounded-lg border-slate-200 bg-white font-bold text-slate-700"
-                 >
-                   <Save className="h-4 w-4 mr-2" />
-                   Template
-                 </Button>
-             )}
-             {isReadOnlyLesson ? (
-               <Button variant="outline" disabled>
-                 <BookOpen className="h-4 w-4 mr-2" />
-                 {isEnglishUi ? 'Teacher content (read only)' : 'Contenuto del docente (sola lettura)'}
-               </Button>
-             ) : activeSubmittedDocument ? (
-               <Button variant="outline" disabled>
-                 <CheckCircle className="h-4 w-4 mr-2" />
-                 {isEnglishUi ? 'Submitted work (read only)' : 'Consegna (sola lettura)'}
-               </Button>
-             ) : submitted ? (
-               <Button variant="outline" onClick={resetDocument}>
-                 <Plus className="h-4 w-4 mr-2" />
-                 {t('documents.new_document')}
-               </Button>
-             ) : (
-               <Button
-                 tone="accent"
-                 surface="solid"
-                 onClick={() => setShowSubmitModal(true)}
-                 className="rounded-lg border border-emerald-200 bg-emerald-100 font-black text-emerald-800 hover:bg-emerald-200"
-               >
-                 <Send className="h-4 w-4 mr-2" />
-                 {t('documents.send_to_teacher')}
-               </Button>
-             )}
-          </div>
-          </div>
-        </div>
+        <DocumentEditorHeader
+          mode={mode}
+          backLabel={t('documents.title_my_documents')}
+          onBack={() => setViewMode('list')}
+          title={document.title}
+          onTitleChange={handleTitleChange}
+          titleDisabled={isEditorReadOnly}
+          titlePlaceholder={filenamePlaceholder}
+          badges={(
+            <>
+              {isReadOnlyLesson && (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                  {isEnglishUi ? 'Lesson · read only' : 'Lezione · sola lettura'}
+                </span>
+              )}
+              {activeSubmittedDocument && (
+                <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${activeSubmittedDocument.correction?.status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>
+                  {activeSubmittedDocument.correction?.status === 'pending'
+                    ? (isEnglishUi ? 'Teacher corrections' : 'Correzioni del docente')
+                    : (isEnglishUi ? 'Submitted · read only' : 'Consegna · sola lettura')}
+                </span>
+              )}
+            </>
+          )}
+          tools={(
+            <>
+              <HeaderIconButton label={t('documents.new')} onClick={() => setShowNewModal(true)}>
+                <Plus className="h-4 w-4" />
+              </HeaderIconButton>
+              {mode === 'slides' && !isEditorReadOnly && (
+                <HeaderIconButton label={isEnglishUi ? 'Save as template' : 'Salva come template'} onClick={saveCurrentPresentationAsTemplate}>
+                  <Save className="h-4 w-4" />
+                </HeaderIconButton>
+              )}
+              {!isEditorReadOnly && !['canvas', 'web'].includes(mode) && (
+                <HeaderExportMenu
+                  label={isEnglishUi ? 'Export' : 'Esporta'}
+                  exporting={documentExporting}
+                  onExport={(format) => void exportCurrentDocument(format)}
+                  formats={[
+                    { value: 'pdf' as const, label: 'PDF' },
+                    ...(mode === 'slides' ? [{ value: 'pptx' as const, label: 'PowerPoint (.pptx)' }, { value: 'ppt' as const, label: 'PowerPoint 97-2003 (.ppt)' }] : []),
+                    ...(mode === 'slides' || mode === 'document' || mode === 'sheet' ? [{ value: 'docx' as const, label: 'Word (.docx)' }] : []),
+                    ...(mode === 'document' ? [{ value: 'doc' as const, label: 'Word 97-2003 (.doc)' }] : []),
+                    ...(mode === 'sheet' ? [{ value: 'xlsx' as const, label: 'Excel (.xlsx)' }] : []),
+                  ]}
+                />
+              )}
+              {(mode === 'slides' || mode === 'document') && !isEditorReadOnly && (
+                <>
+                  <HeaderToolDivider />
+                  <HeaderIconButton
+                    label={isEnglishUi ? 'Document assistant' : 'Assistente documento'}
+                    onClick={() => setPresentationChatOpen(v => !v)}
+                    active={presentationChatOpen}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </HeaderIconButton>
+                </>
+              )}
+            </>
+          )}
+          primary={isReadOnlyLesson || activeSubmittedDocument ? undefined : submitted ? (
+            <Button tone="neutral" surface="solid" density="compact" className="rounded-full" onClick={resetDocument}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              {t('documents.new_document')}
+            </Button>
+          ) : (
+            <Button tone="accent" surface="solid" density="compact" className="rounded-full" onClick={() => setShowSubmitModal(true)}>
+              <Send className="h-4 w-4 mr-1.5" />
+              {t('documents.send_to_teacher')}
+            </Button>
+          )}
+        />
 
         {activeSubmittedDocument?.correction?.status === 'pending' && (
           <div
@@ -2184,7 +2137,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
              {/* MODE: PDF */}
              {mode === 'pdf' && (
-               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(23,23,23,0.12)] overflow-hidden">
                  <iframe
                    src={document.textContent || ''}
                    className="w-full h-full border-0"
@@ -2194,7 +2147,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              )}
 
              {mode === 'web' && (
-               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(23,23,23,0.12)] overflow-hidden">
                  {document.webUrl ? (
                    <iframe
                      src={document.webUrl}
@@ -2216,14 +2169,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className="mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
+                 className="theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
                    minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
                    backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
-                   boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+                   boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
@@ -2269,7 +2222,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         right: docMargins.horizontal,
                         bottom: docMargins.vertical,
                         left: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(148, 163, 184, 0.35) 21px, rgba(148, 163, 184, 0.35) 22px, transparent 22px, transparent 28px)'
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)'
                       }}
                     />
                   )}

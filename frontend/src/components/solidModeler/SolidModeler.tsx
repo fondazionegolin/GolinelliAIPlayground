@@ -17,6 +17,7 @@ import {
 } from './sceneOps'
 import type { PrimitiveDef, PrimitiveKind, PrimitiveObject, SceneObject, Vec3 } from './types'
 import { COLOR_SWATCHES, KIND_LABEL, PRIMITIVES } from './types'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
 const ICONS: Record<PrimitiveKind | 'group', LucideIcon> = {
   box: Box, cylinder: Cylinder, sphere: Circle, cone: Cone, pyramid: Pyramid, hemisphere: Circle,
@@ -98,6 +99,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
   const [selection, setSelection] = useState<string[]>([])
   const [snap, setSnap] = useState(1)
   const [panel, setPanel] = useState<'shape' | 'ai'>('ai')
+  const [libraryCollapsed, setLibraryCollapsed] = useSidebarCollapsed('solid-modeler-library')
   const [hover, setHover] = useState<string | null>(null)
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [shareId, setShareId] = useState<string | null>(null)
@@ -371,8 +373,28 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
 
       <div className="flex min-h-0 flex-1">
         {/* Library + object list */}
-        <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white/80">
-          <p className="px-3 pb-1 pt-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Forme base</p>
+        {libraryCollapsed && (
+          <SidebarRail
+            label="Forme e oggetti"
+            expandLabel="Espandi forme e oggetti"
+            onExpand={() => setLibraryCollapsed(false)}
+            items={PRIMITIVES.map((def, i) => {
+              const PrimitiveIcon = ICONS[def.kind]
+              return {
+                id: `${def.kind}-${i}`,
+                title: `${def.label} — clic per aggiungere al centro`,
+                icon: <PrimitiveIcon className="h-4 w-4" style={{ color: def.hole ? '#a3a3a3' : def.color }} />,
+                marker: '',
+                onClick: () => addPrimitive(def),
+              }
+            })}
+          />
+        )}
+        <aside className={`flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white/80 ${libraryCollapsed ? 'hidden' : ''}`}>
+          <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
+            <p className="pt-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Forme base</p>
+            <SidebarCollapseButton onClick={() => setLibraryCollapsed(true)} label="Comprimi forme e oggetti" />
+          </div>
           <div className="grid grid-cols-3 gap-1.5 px-2">
             {PRIMITIVES.map((def, i) => {
               const Icon = ICONS[def.kind]
@@ -388,7 +410,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                     def.hole ? 'border-dashed border-slate-300 bg-slate-50 text-slate-500' : 'border-slate-200 bg-white text-slate-700'
                   }`}
                 >
-                  <Icon className="h-6 w-6" style={{ color: def.hole ? '#94a3b8' : def.color }} strokeWidth={2.2} />
+                  <Icon className="h-6 w-6" style={{ color: def.hole ? '#a3a3a3' : def.color }} strokeWidth={2.2} />
                   <span className="px-0.5 text-center">{def.label}</span>
                 </button>
               )
@@ -407,7 +429,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
                   onClick={e => setSelection(e.shiftKey || e.ctrlKey || e.metaKey ? (sel ? selection.filter(s => s !== o.id) : [...selection, o.id]) : [o.id])}
                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[11px] ${sel ? 'bg-blue-50 font-bold text-blue-800' : 'text-slate-700 hover:bg-slate-50'}`}
                 >
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: o.hole ? 'repeating-linear-gradient(45deg,#94a3b8 0 2px,#fff 2px 4px)' : o.color }} />
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: o.hole ? 'repeating-linear-gradient(45deg,#a3a3a3 0 2px,#fff 2px 4px)' : o.color }} />
                   <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                   <span className="truncate">{o.name}</span>
                 </button>

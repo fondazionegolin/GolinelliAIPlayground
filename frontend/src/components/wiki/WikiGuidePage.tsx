@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, CheckCircle2, Layers3, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
 export interface WikiFeature {
   title: string
@@ -102,6 +103,8 @@ export default function WikiGuidePage({
     contentRef.current?.scrollTo({ top: 0 })
   }, [activeSectionId, query])
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed('wiki')
+
   const handleSelectSection = (sectionId: string) => {
     setActiveSectionId(sectionId)
     setActiveFeatureTitle(null)
@@ -120,7 +123,26 @@ export default function WikiGuidePage({
 
   return (
     <div className="flex h-full min-h-0 bg-white">
-      <aside className="hidden w-80 shrink-0 border-r border-slate-200 bg-white/94 backdrop-blur-xl md:flex md:flex-col">
+      {sidebarCollapsed && (
+        <SidebarRail
+          className="hidden md:flex"
+          label={title}
+          expandLabel="Espandi indice"
+          onExpand={() => setSidebarCollapsed(false)}
+          items={filteredSections.map((section) => {
+            const SectionIcon = section.icon
+            return {
+              id: section.id,
+              title: section.title,
+              icon: <SectionIcon className="h-4 w-4" />,
+              marker: '',
+              selected: activeSection?.id === section.id,
+              onClick: () => handleSelectSection(section.id),
+            }
+          })}
+        />
+      )}
+      <aside className={`hidden w-80 shrink-0 border-r border-slate-200 bg-white/94 backdrop-blur-xl md:flex-col ${sidebarCollapsed ? '' : 'md:flex'}`}>
         <div className="border-b border-slate-200 px-4 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100" style={{ color: accentText }}>
@@ -132,6 +154,9 @@ export default function WikiGuidePage({
               </p>
               <h1 className="truncate text-sm font-bold text-slate-950">{title}</h1>
             </div>
+            <span className="ml-auto">
+              <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label="Comprimi indice" />
+            </span>
           </div>
           <p className="mt-3 text-xs leading-5 text-slate-500">{intro}</p>
         </div>

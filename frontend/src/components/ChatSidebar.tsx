@@ -893,7 +893,7 @@ export default function ChatSidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[10px] font-bold text-[#181b1e] uppercase">{t('chat_sidebar.new_assistant')}</span>
+                  <span className="text-[10px] font-bold text-neutral-900 uppercase">{t('chat_sidebar.new_assistant')}</span>
                 </div>
                 <p className="text-xs font-semibold text-slate-800 truncate">{data.name}</p>
                 {data.synopsis && (
@@ -920,10 +920,10 @@ export default function ChatSidebar({
           className="ds-semantic-surface mx-2 cursor-pointer rounded-xl bg-[rgba(123,105,201,0.055)] p-3 transition-colors hover:bg-[rgba(123,105,201,0.09)] group"
         >
           <div className="flex items-center gap-2 mb-1">
-            <Bell className="h-3 w-3 text-[#181b1e]" />
-            <span className="text-[10px] font-bold text-[#181b1e] uppercase">{t('chat_sidebar.notification')}</span>
+            <Bell className="h-3 w-3 text-neutral-900" />
+            <span className="text-[10px] font-bold text-neutral-900 uppercase">{t('chat_sidebar.notification')}</span>
           </div>
-          <p className="text-xs font-semibold text-slate-800 group-hover:text-[#181b1e]">{content}</p>
+          <p className="text-xs font-semibold text-slate-800 group-hover:text-neutral-900">{content}</p>
         </div>
       )
     }
@@ -1108,18 +1108,18 @@ export default function ChatSidebar({
                     className="w-full rounded-xl border border-[rgba(123,105,201,0.20)] bg-[rgba(123,105,201,0.075)] px-3 py-2 text-left shadow-sm transition-colors hover:border-[rgba(123,105,201,0.34)] hover:bg-[rgba(123,105,201,0.11)]"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] text-[#55449c]">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] text-[var(--logo-violet-strong)]">
                         <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Vibe Lab</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[var(--logo-violet-strong)]">Commit Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">
                           {att.contributor_name || 'Studente'} ha inviato una proposta
                         </p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">{att.status || 'pending'}</p>
                       </div>
                     </div>
-                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] px-2 py-1.5 text-xs font-semibold text-[#55449c] transition-colors hover:bg-[rgba(123,105,201,0.22)]">
+                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] px-2 py-1.5 text-xs font-semibold text-[var(--logo-violet-strong)] transition-colors hover:bg-[rgba(123,105,201,0.22)]">
                       Apri commit
                     </span>
                   </button>
@@ -1428,7 +1428,7 @@ export default function ChatSidebar({
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-[#181b1e]/10 text-[#181b1e] text-xs font-bold">
+                  <AvatarFallback className="bg-[#181b1e]/10 text-neutral-900 text-xs font-bold">
                     {(user.nickname || 'Guest').substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -1449,7 +1449,7 @@ export default function ChatSidebar({
                     setActiveTab('private')
                     setActivePrivateChat(user.student_id)
                   }}
-                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
+                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-neutral-900 hover:bg-[#181b1e]/5"
                 >
                   <MessageCircle className="h-4 w-4" />
                 </Button>
@@ -1572,7 +1572,7 @@ export default function ChatSidebar({
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-[#181b1e]">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-neutral-900">
                 {ownerTag}
               </span>
             </div>
@@ -1618,7 +1618,7 @@ export default function ChatSidebar({
             </div>
             <div className="flex flex-wrap gap-1 mt-2">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-[#181b1e]">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-neutral-900">
                 {ownerTag}
               </span>
             </div>
@@ -1802,7 +1802,7 @@ export default function ChatSidebar({
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
             <button
               onClick={() => setActiveFolder(null)}
-              className={`font-semibold ${!activeFolder ? 'text-[#181b1e]' : 'text-slate-500 hover:text-[#181b1e]'}`}
+              className={`font-semibold ${!activeFolder ? 'text-neutral-900' : 'text-slate-500 hover:text-neutral-900'}`}
             >
               {sidebarLabels.allFiles}
             </button>
@@ -1817,7 +1817,7 @@ export default function ChatSidebar({
 
         <div className="p-3 space-y-3">
           {filesDropActive && (
-            <div className="border-2 border-dashed border-[#181b1e]/40 bg-[#181b1e]/5/70 text-[#181b1e] rounded-xl p-6 text-center text-sm font-semibold">
+            <div className="border-2 border-dashed border-[#181b1e]/40 bg-[#181b1e]/5/70 text-neutral-900 rounded-xl p-6 text-center text-sm font-semibold">
               {t('chat_sidebar.upload_hint')}
             </div>
           )}
@@ -1843,7 +1843,7 @@ export default function ChatSidebar({
                   className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-[#181b1e]/30 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-2">
-                    <Folder className="h-5 w-5 text-[#181b1e]" />
+                    <Folder className="h-5 w-5 text-neutral-900" />
                     <span className="font-semibold text-slate-800 truncate">{folder}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-2">{(folderMap[folder] || []).length} file</p>
@@ -1912,7 +1912,7 @@ export default function ChatSidebar({
             <Button
               variant="ghost"
               size="icon"
-              className={`h-6 w-6 ${isPinned ? 'text-[#181b1e] bg-[#181b1e]/5' : 'text-slate-400'}`}
+              className={`h-6 w-6 ${isPinned ? 'text-neutral-900 bg-[#181b1e]/5' : 'text-slate-400'}`}
               onClick={onPinToggle}
               title={isPinned ? sidebarLabels.unpin : sidebarLabels.pin}
             >
@@ -2006,7 +2006,7 @@ export default function ChatSidebar({
       {/* Input area - only show for session chat or when a private chat is selected */}
       {showInputArea && (
         <div
-          className="shrink-0 bg-[var(--ds-surface)] p-4 shadow-[0_-4px_14px_rgba(15,23,42,0.045)]"
+          className="shrink-0 bg-[var(--ds-surface)] p-4 shadow-[0_-4px_14px_rgba(23,23,23,0.045)]"
           style={isMobileView ? { paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' } : undefined}
         >
           {attachedFiles.length > 0 && (
@@ -2109,8 +2109,8 @@ export default function ChatSidebar({
       {dragActive && (
         <div className="absolute inset-0 bg-[#181b1e]/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-[#181b1e]/40 rounded-lg">
           <div className="text-center">
-            <ImageIcon className="h-12 w-12 text-[#181b1e] mx-auto mb-2" />
-            <p className="text-sm font-semibold text-[#181b1e]">{t('chat_sidebar.drop_files_here')}</p>
+            <ImageIcon className="h-12 w-12 text-neutral-900 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-neutral-900">{t('chat_sidebar.drop_files_here')}</p>
           </div>
         </div>
       )}

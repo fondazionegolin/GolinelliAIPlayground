@@ -92,10 +92,10 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
         <div className="p-4 border-b border-[#181b1e]/10 bg-[#181b1e]/5 flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="bg-[#181b1e]/10 p-2 rounded-lg shrink-0">
-              <MessageSquare className="h-5 w-5 text-[#181b1e]" />
+              <MessageSquare className="h-5 w-5 text-neutral-900" />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-xs font-bold text-[#181b1e] uppercase tracking-wide block mb-1">
+              <label className="text-xs font-bold text-neutral-900 uppercase tracking-wide block mb-1">
                 Chat sessione
               </label>
               <select
@@ -128,7 +128,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
         <div className="flex-1 overflow-hidden relative bg-slate-50/50">
           {loading && sessions.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-              <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
+              <Loader2 className="h-8 w-8 animate-spin text-neutral-900" />
             </div>
           ) : selectedSessionId && teacherProfile ? (
             <ChatSidebar

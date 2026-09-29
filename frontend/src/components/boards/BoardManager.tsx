@@ -13,6 +13,7 @@ import {
   WorkspaceExplorerSidebar,
 } from '@/components/WorkspaceExplorerSidebar'
 import { useMobile } from '@/hooks/useMobile'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import BoardShareDialog from './BoardShareDialog'
 import BoardLabelsDialog, { type BoardLabel } from './BoardLabelsDialog'
 import BoardSprintsDialog, { type BoardSprint } from './BoardSprintsDialog'
@@ -77,7 +78,7 @@ type BoardPatch = {
   move_cards_to_column_id?: string
 }
 
-const TASK_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#64748b']
+const TASK_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#737373']
 const PRIORITY_STYLE: Record<Priority, { label: string; className: string }> = {
   alta: { label: 'Alta', className: 'bg-red-50 text-red-700' },
   media: { label: 'Media', className: 'bg-amber-50 text-amber-700' },
@@ -160,6 +161,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [viewMode, setViewMode] = useState<'board' | 'timeline'>('board')
   const [boardListSearch, setBoardListSearch] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [sidebarCollapsed, toggleSidebar] = useSidebarCollapsed('boards')
   const [mobileColumnId, setMobileColumnId] = useState<string | null>(null)
 
   const { data: templates = [] } = useQuery({
@@ -486,12 +488,30 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent text-slate-900 lg:flex-row">
-      {(!isMobile || !board) && <WorkspaceExplorerSidebar>
+      {!isMobile && sidebarCollapsed && (
+        <SidebarRail
+          label="Board"
+          expandLabel="Espandi elenco board"
+          onExpand={() => toggleSidebar(false)}
+          onCreate={() => { toggleSidebar(false); setShowCreateForm(true) }}
+          createLabel="Nuova board"
+          items={boards.map((item) => ({
+            id: item.id,
+            title: item.title,
+            icon: <KanbanSquare className="h-4 w-4" />,
+            selected: board?.id === item.id,
+            onClick: () => setSelectedId(item.id),
+          }))}
+        />
+      )}
+      {(isMobile ? !board : !sidebarCollapsed) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isStudent ? 'Spazio studente' : 'Pannello docente'}
           title="Board"
           description={isMobile ? '' : (isStudent ? 'Board personali e condivise in un unico explorer.' : 'Crea e condividi board nella sessione attiva.')}
           action={(
+            <div className="flex shrink-0 items-center gap-1.5">
+            {!isMobile && <SidebarCollapseButton onClick={() => toggleSidebar(true)} label="Comprimi elenco board" />}
             <Button
               type="button"
               onClick={() => setShowCreateForm((value) => !value)}
@@ -504,6 +524,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
+            </div>
           )}
           searchValue={boardListSearch}
           onSearchChange={setBoardListSearch}
@@ -965,7 +986,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       >
                         <div className="flex items-start gap-2">
                           <h4 className="min-w-0 flex-1 text-sm font-bold leading-5 text-slate-900">{card.title}</h4>
-                          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#cbd5e1' }} aria-hidden="true" />
+                          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
                         </div>
                         {((card.card_type && card.card_type !== 'task') || (card.labels || []).some((id) => labelById[id]) || (card.sprint_id && sprintById[card.sprint_id])) && (
                           <div className="mt-2 flex flex-wrap gap-1">
@@ -1345,7 +1366,7 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div className="ds-popover flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[var(--ds-radius-card)] sm:rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-card-title">
         <div className="flex items-start gap-3 px-6 pb-3 pt-6">
-          <span className="mt-2 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#cbd5e1' }} aria-hidden="true" />
+          <span className="mt-2 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: card.color || '#d4d4d4' }} aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-wide">
               {card.card_type && (
@@ -1407,7 +1428,7 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
                     {children.map((child) => (
                       <li key={child.id}>
                         <button type="button" onClick={() => onOpenCard(child.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#cbd5e1' }} />
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color || '#d4d4d4' }} />
                           <span className="min-w-0 flex-1 truncate font-bold">{child.title}</span>
                           <span className="shrink-0 text-[10px] text-slate-400">{columns.find((item) => item.id === child.column_id)?.label}</span>
                         </button>

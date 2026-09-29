@@ -20,6 +20,7 @@ class User(Base):
     institution = Column(String, nullable=True)
     avatar_url = Column(Text, nullable=True)
     ui_accent = Column(String(32), nullable=True)
+    ui_theme = Column(String(16), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     deactivated_at = Column(DateTime(timezone=True), nullable=True)
     deactivated_by_admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)

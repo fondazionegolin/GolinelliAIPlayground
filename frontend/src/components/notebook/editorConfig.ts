@@ -101,10 +101,10 @@ const highlightStyles: Record<NotebookTheme, HighlightStyle> = {
     { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#a78bfa' },
     { tag: [tags.className, tags.typeName, tags.definition(tags.typeName)],      color: '#34d399' },
     { tag: [tags.operator],                                        color: '#93c5fd' },
-    { tag: [tags.punctuation],                                     color: '#94a3b8' },
-    { tag: tags.variableName,                                      color: '#e2e8f0' },
-    { tag: tags.propertyName,                                      color: '#cbd5e1' },
-    { tag: tags.definition(tags.variableName),                     color: '#e2e8f0' },
+    { tag: [tags.punctuation],                                     color: '#a3a3a3' },
+    { tag: tags.variableName,                                      color: '#e5e5e5' },
+    { tag: tags.propertyName,                                      color: '#d4d4d4' },
+    { tag: tags.definition(tags.variableName),                     color: '#e5e5e5' },
   ]),
 
   // background #1f2230  (dracula)
@@ -155,18 +155,18 @@ const highlightStyles: Record<NotebookTheme, HighlightStyle> = {
     { tag: tags.propertyName,                                      color: '#fde68a' },
   ]),
 
-  // background #0f172a  (p5js / deep navy)
+  // background #171717  (p5js / deep navy)
   p5js: HighlightStyle.define([
     { tag: [tags.keyword, tags.modifier],                          color: '#2dd4bf', fontWeight: '700' },
     { tag: [tags.self],                                            color: '#2dd4bf', fontWeight: '700' },
     { tag: [tags.bool, tags.null],                                 color: '#f472b6', fontWeight: '700' },
     { tag: [tags.string, tags.special(tags.string)],               color: '#86efac' },
     { tag: tags.number,                                            color: '#fb923c' },
-    { tag: [tags.comment, tags.lineComment, tags.blockComment],    color: '#64748b', fontStyle: 'italic' },
+    { tag: [tags.comment, tags.lineComment, tags.blockComment],    color: '#737373', fontStyle: 'italic' },
     { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#38bdf8' },
     { tag: [tags.className, tags.typeName, tags.definition(tags.typeName)],      color: '#34d399' },
     { tag: [tags.operator],                                        color: '#7dd3fc' },
-    { tag: [tags.punctuation],                                     color: '#94a3b8' },
+    { tag: [tags.punctuation],                                     color: '#a3a3a3' },
     { tag: tags.variableName,                                      color: '#f0fdfa' },
     { tag: tags.propertyName,                                      color: '#bfdbfe' },
   ]),
@@ -183,7 +183,7 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-content': { color: '#e5eefc', caretColor: '#60a5fa' },
     '.cm-scroller': { backgroundColor: '#111827' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#60a5fa' },
-    '.cm-gutters': { backgroundColor: '#0f172a', color: '#93c5fd', border: 'none' },
+    '.cm-gutters': { backgroundColor: '#171717', color: '#93c5fd', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fef08a', fontWeight: '700' },
   }, { dark: true }),
@@ -197,11 +197,11 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fef08a', fontWeight: '700' },
   }, { dark: true }),
   light: EditorView.theme({
-    '&': { color: '#0f172a', backgroundColor: '#ffffff' },
-    '.cm-content': { color: '#0f172a', caretColor: '#0f766e' },
+    '&': { color: '#171717', backgroundColor: '#ffffff' },
+    '.cm-content': { color: '#171717', caretColor: '#0f766e' },
     '.cm-scroller': { backgroundColor: '#ffffff' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#0f766e' },
-    '.cm-gutters': { backgroundColor: '#f1f5f9', color: '#64748b', border: 'none' },
+    '.cm-gutters': { backgroundColor: '#f5f5f5', color: '#737373', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#a16207', fontWeight: '700' },
   }),
@@ -215,9 +215,9 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fde047', fontWeight: '700' },
   }, { dark: true }),
   p5js: EditorView.theme({
-    '&': { color: '#f0fdfa', backgroundColor: '#0f172a' },
+    '&': { color: '#f0fdfa', backgroundColor: '#171717' },
     '.cm-content': { color: '#f0fdfa', caretColor: '#2dd4bf' },
-    '.cm-scroller': { backgroundColor: '#0f172a' },
+    '.cm-scroller': { backgroundColor: '#171717' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#2dd4bf' },
     '.cm-gutters': { backgroundColor: '#111827', color: '#5eead4', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
@@ -451,8 +451,8 @@ export function getNotebookThemeSurface(theme: NotebookTheme) {
     }
   }
   return {
-    shell: 'border border-sky-400/25 bg-[#111827] ring-1 ring-sky-200/10',
-    toolbar: 'border-sky-400/20 bg-gradient-to-r from-[#0b2542] via-[#0f172a] to-[#172033]',
+    shell: 'border border-sky-400/25 bg-gray-900 ring-1 ring-sky-200/10',
+    toolbar: 'border-sky-400/20 bg-gradient-to-r from-[#0b2542] via-neutral-900 to-[#172033]',
     label: 'text-slate-100/80',
     subtle: 'text-sky-100/65',
     accent: 'bg-sky-400',

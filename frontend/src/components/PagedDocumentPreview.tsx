@@ -37,21 +37,21 @@ export function PagedDocumentPreview({
             box-sizing: border-box;
             padding: ${margins.vertical}px ${margins.horizontal}px;
             font-family: "Merriweather", "Times New Roman", serif;
-            color: #0f172a;
+            color: #171717;
           }
           .doc-header {
             display: flex;
             align-items: center;
             gap: 24px;
             padding-bottom: 16px;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e5e5e5;
             margin-bottom: 16px;
           }
           .doc-logo {
             width: 80px;
             height: 80px;
             object-fit: contain;
-            background: #f8fafc;
+            background: #fafafa;
             border-radius: 12px;
             border: 1px dashed #cbd5f5;
           }
@@ -62,7 +62,7 @@ export function PagedDocumentPreview({
           }
           .doc-subtitle {
             font-size: 16px;
-            color: #64748b;
+            color: #737373;
             margin: 4px 0 0 0;
           }
           .doc-content {
@@ -92,7 +92,7 @@ export function PagedDocumentPreview({
           }
           .pagedjs_page {
             background: #ffffff;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+            box-shadow: 0 10px 30px rgba(23, 23, 23, 0.12);
           }
         </style>
         <div class="doc-root">

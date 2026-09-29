@@ -48,11 +48,13 @@ def _quiz_score_from_submission(content: str | None) -> str | None:
     return None
 
 STUDENT_ACCENTS = {"cyan", "orange", "black", "red"}
+UI_THEMES = {"light", "dark"}
 
 
 class UpdateProfileRequest(BaseModel):
     avatar_url: str | None = None
     ui_accent: str | None = None
+    ui_theme: str | None = None
 
 
 class SubmitDocumentRequest(BaseModel):
@@ -368,6 +370,7 @@ async def get_profile(
         "nickname": student.nickname,
         "avatar_url": student.avatar_url,
         "ui_accent": student.ui_accent if student.ui_accent in STUDENT_ACCENTS else None,
+        "ui_theme": student.ui_theme if student.ui_theme in UI_THEMES else None,
         "created_at": student.created_at.isoformat() if student.created_at else None,
     }
 
@@ -385,6 +388,10 @@ async def update_profile(
         if request.ui_accent not in STUDENT_ACCENTS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_accent")
         student.ui_accent = request.ui_accent
+    if request.ui_theme is not None:
+        if request.ui_theme not in UI_THEMES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_theme")
+        student.ui_theme = request.ui_theme
     
     await db.commit()
     await db.refresh(student)
@@ -394,6 +401,7 @@ async def update_profile(
         "nickname": student.nickname,
         "avatar_url": student.avatar_url,
         "ui_accent": student.ui_accent,
+        "ui_theme": student.ui_theme,
     }
 
 

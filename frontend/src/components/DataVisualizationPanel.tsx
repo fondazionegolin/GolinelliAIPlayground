@@ -366,7 +366,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
       height: 420,
       margin: { l: 65, r: 30, t: 30, b: 60 },
       paper_bgcolor: 'rgba(0,0,0,0)',
-      plot_bgcolor: '#f8fafc',
+      plot_bgcolor: '#fafafa',
       font: { family: 'Inter, ui-sans-serif, sans-serif', size: 12 },
       legend: { font: { size: 11 } },
     }
@@ -382,8 +382,8 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
     }
     return {
       ...base,
-      xaxis: { title: safeX, gridcolor: '#e2e8f0', zeroline: false, automargin: true },
-      yaxis: { title: safeY, gridcolor: '#e2e8f0', zeroline: false, automargin: true },
+      xaxis: { title: safeX, gridcolor: '#e5e5e5', zeroline: false, automargin: true },
+      yaxis: { title: safeY, gridcolor: '#e5e5e5', zeroline: false, automargin: true },
     }
   }, [mode, safeX, safeY, safeZ])
 

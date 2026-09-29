@@ -19,6 +19,8 @@ import {
   WorkspaceExplorerList,
   WorkspaceExplorerSidebar,
 } from '@/components/WorkspaceExplorerSidebar'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
+import { useMobile } from '@/hooks/useMobile'
 
 interface NotebookMeta {
   id: string
@@ -257,6 +259,8 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const { isMobile } = useMobile()
+  const [explorerCollapsed, setExplorerCollapsed] = useSidebarCollapsed('notebooks')
   const [showCreate, setShowCreate] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('python')
@@ -489,12 +493,29 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-transparent lg:flex-row">
-      <WorkspaceExplorerSidebar>
+      {!isMobile && explorerCollapsed && (
+        <SidebarRail
+          label="Coding Lab"
+          expandLabel={isEnglish ? 'Expand notebook list' : 'Espandi elenco notebook'}
+          onExpand={() => setExplorerCollapsed(false)}
+          onCreate={() => { setExplorerCollapsed(false); setShowCreate(true) }}
+          createLabel={isEnglish ? 'New notebook' : 'Nuovo notebook'}
+          items={visibleNotebooks.map((notebook) => ({
+            id: notebook.id,
+            title: notebook.title,
+            icon: <ProjectIcon type={notebook.project_type} className="h-4 w-4" />,
+            onClick: () => openNotebook(notebook.id),
+          }))}
+        />
+      )}
+      {(isMobile || !explorerCollapsed) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
           title="Coding Lab"
           description={isEnglish ? 'Notebooks and coding projects in one explorer.' : 'Notebook e progetti di coding in un unico explorer.'}
           action={(
+            <div className="flex shrink-0 items-center gap-1.5">
+            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label="Comprimi elenco" />}
             <Button
               type="button"
               onClick={() => setShowCreate(true)}
@@ -507,6 +528,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
+            </div>
           )}
           searchValue={search}
           onSearchChange={setSearch}
@@ -551,7 +573,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             </div>
           )}
         </WorkspaceExplorerList>
-      </WorkspaceExplorerSidebar>
+      </WorkspaceExplorerSidebar>}
       <main className="min-w-0 flex-1 overflow-y-auto">
         <section className="ds-frame-header">
           <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">

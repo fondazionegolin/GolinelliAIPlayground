@@ -17,8 +17,8 @@ export function formatCompact(value: unknown) { if (value === null || value === 
 const Plot = lazy(() => import('react-plotly.js'))
 
 const PALETTES: Record<string, string[]> = {
-  Piattaforma: ['#7c3aed', '#06b6d4', '#f59e0b', '#f43f5e', '#22c55e', '#3b82f6', '#a855f7', '#64748b'],
-  Tenue: ['#64748b', '#94a3b8', '#0ea5e9', '#14b8a6', '#f472b6', '#fb923c', '#a78bfa', '#475569'],
+  Piattaforma: ['#7c3aed', '#06b6d4', '#f59e0b', '#f43f5e', '#22c55e', '#3b82f6', '#a855f7', '#737373'],
+  Tenue: ['#737373', '#a3a3a3', '#0ea5e9', '#14b8a6', '#f472b6', '#fb923c', '#a78bfa', '#525252'],
   Contrasto: ['#111827', '#dc2626', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#be185d'],
 }
 
@@ -35,7 +35,7 @@ export function OutputExplorerModal({ target, onClose, onOpenTable }: { target: 
   const Icon = target.kind === 'plot' ? BarChart3 : target.kind === 'metrics' ? Gauge : Braces
   const subtitle = target.kind === 'plot' ? 'Explorer interattivo del grafico' : target.kind === 'metrics' ? 'Metriche calcolate dal nodo' : 'Output completo del nodo'
   return <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-sm md:p-5" role="dialog" aria-modal="true" aria-label={target.title} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <div className="flex h-[96vh] w-[98vw] max-w-[1800px] flex-col overflow-hidden rounded-2xl bg-[#f4f5f7] shadow-2xl">
+    <div className="flex h-[96vh] w-[98vw] max-w-[1800px] flex-col overflow-hidden rounded-2xl bg-neutral-100 shadow-2xl">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><Icon className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{target.title}</h2><p className="text-[10px] text-slate-500">{subtitle} · Esc per chiudere</p></div>
@@ -130,7 +130,7 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
     if (settings.chart === 'density') {
       return [
         { type: 'histogram2dcontour', x: xs, y: ys, colorscale: 'Blues', reversescale: false, showscale: true, contours: { coloring: 'heatmap' }, opacity: settings.opacity, name: 'Densità' },
-        { type: 'scatter', mode: 'markers', x: xs, y: ys, name: 'Punti', marker: { size: 3, color: '#0f172a', opacity: .45 } },
+        { type: 'scatter', mode: 'markers', x: xs, y: ys, name: 'Punti', marker: { size: 3, color: '#171717', opacity: .45 } },
       ]
     }
     const base = groups.map((group, index) => {
@@ -143,12 +143,12 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
     })
     if (settings.trend && regression && xs.length) {
       const lo = Math.min(...xs); const hi = Math.max(...xs)
-      base.push({ type: 'scatter', mode: 'lines', name: `Tendenza (R² ${regression.r2.toFixed(3)})`, x: [lo, hi], y: [regression.slope * lo + regression.intercept, regression.slope * hi + regression.intercept], line: { color: '#0f172a', width: 2 } } as never)
+      base.push({ type: 'scatter', mode: 'lines', name: `Tendenza (R² ${regression.r2.toFixed(3)})`, x: [lo, hi], y: [regression.slope * lo + regression.intercept, regression.slope * hi + regression.intercept], line: { color: '#171717', width: 2 } } as never)
     }
     return base
   }, [colors, groups, isHistogram, points, regression, settings, xs, ys])
 
-  const axis = (label: string, log: boolean, extra: Record<string, unknown> = {}) => ({ title: { text: label }, type: log ? 'log' : 'linear', showgrid: settings.grid, gridcolor: '#e2e8f0', zeroline: false, ...extra })
+  const axis = (label: string, log: boolean, extra: Record<string, unknown> = {}) => ({ title: { text: label }, type: log ? 'log' : 'linear', showgrid: settings.grid, gridcolor: '#e5e5e5', zeroline: false, ...extra })
   const layout = settings.chart === 'scatter3d'
     ? { autosize: true, title: { text: settings.title }, margin: { l: 0, r: 0, t: 48, b: 0 }, paper_bgcolor: 'rgba(0,0,0,0)', showlegend: groups.length > 1,
         scene: { xaxis: { title: settings.xLabel, showgrid: settings.grid }, yaxis: { title: settings.yLabel, showgrid: settings.grid }, zaxis: { title: settings.zLabel, showgrid: settings.grid } } }

@@ -65,6 +65,7 @@ from app.core.config import settings
 
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
+UI_THEMES = {"light", "dark"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
 
 
@@ -310,6 +311,7 @@ class ProfileResponse(BaseModel):
     institution: str | None = None
     avatar_url: str | None = None
     ui_accent: str | None = None
+    ui_theme: str | None = None
 
 
 class ProfileUpdate(BaseModel):
@@ -318,6 +320,7 @@ class ProfileUpdate(BaseModel):
     institution: str | None = None
     avatar_url: str | None = None
     ui_accent: str | None = None
+    ui_theme: str | None = None
 
 
 class CanvasUpsertRequest(BaseModel):
@@ -360,6 +363,7 @@ async def get_profile(
         institution=teacher.institution,
         avatar_url=teacher.avatar_url,
         ui_accent=teacher.ui_accent if teacher.ui_accent in TEACHER_ACCENTS else None,
+        ui_theme=teacher.ui_theme if teacher.ui_theme in UI_THEMES else None,
     )
 
 
@@ -382,6 +386,10 @@ async def update_profile(
         if request.ui_accent not in TEACHER_ACCENTS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_accent")
         teacher.ui_accent = request.ui_accent
+    if request.ui_theme is not None:
+        if request.ui_theme not in UI_THEMES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_theme")
+        teacher.ui_theme = request.ui_theme
 
     await db.commit()
     await db.refresh(teacher)
@@ -393,6 +401,7 @@ async def update_profile(
         institution=teacher.institution,
         avatar_url=teacher.avatar_url,
         ui_accent=teacher.ui_accent,
+        ui_theme=teacher.ui_theme,
     )
 
 @router.post("/avatar")

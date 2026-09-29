@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
+import { useUiThemeScope } from '@/stores/uiTheme'
 import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box } from 'lucide-react'
@@ -209,6 +210,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
 
 export default function StudentDashboard() {
   const { studentSession, logout } = useAuthStore()
+  useUiThemeScope()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   usePlatformRealtimeSync(queryClient)
@@ -1071,7 +1073,7 @@ function StudentMobileShell({
           >
             {!activeModule ? (
               <div className="mx-auto h-full max-w-screen-sm overflow-y-auto overscroll-contain py-4">
-                <section className="relative overflow-hidden rounded-[30px] bg-slate-950 p-6 text-white shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+                <section className="relative overflow-hidden rounded-[30px] bg-slate-950 p-6 text-white shadow-[0_22px_50px_rgba(23,23,23,0.22)]">
                   <div className="absolute -right-14 -top-16 h-44 w-44 rounded-full bg-sky-400/25 blur-2xl" />
                   <div className="relative">
                     <div className="mb-8 flex items-center gap-2 text-xs font-bold text-emerald-300">
@@ -1092,7 +1094,7 @@ function StudentMobileShell({
                       <button
                         key={tile.key}
                         onClick={() => handleNavigate(tile.key)}
-                        className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl active:scale-[0.98]"
+                        className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/85 p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)] backdrop-blur-xl active:scale-[0.98]"
                       >
                         <div className="flex items-start justify-between">
                           <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] ${index === 1 ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700'}`}>
@@ -1121,7 +1123,7 @@ function StudentMobileShell({
                 </div>
               </div>
             ) : (
-              <div className={`mx-auto flex h-full min-h-0 flex-col overflow-hidden ${isImmersiveModule ? 'w-full max-w-none rounded-none border-0 bg-transparent shadow-none' : 'max-w-screen-sm rounded-[16px] border border-slate-900/10 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.14)]'}`}>
+              <div className={`mx-auto flex h-full min-h-0 flex-col overflow-hidden ${isImmersiveModule ? 'w-full max-w-none rounded-none border-0 bg-transparent shadow-none' : 'max-w-screen-sm rounded-[16px] border border-slate-900/10 bg-white/90 shadow-[0_18px_48px_rgba(23,23,23,0.14)]'}`}>
                 {!isImmersiveModule && (
                   <div className="flex items-center gap-3 border-b border-slate-200 px-3 py-2.5">
                     {activeModule !== 'self_assessment' && (

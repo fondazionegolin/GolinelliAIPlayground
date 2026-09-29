@@ -96,7 +96,7 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
               onClick={() => handleNavigate(item.key)}
               className="flex flex-col items-center justify-center w-full h-14 gap-0.5"
               whileTap={{ scale: 0.9 }}
-              style={{ color: isActive ? accentTheme.text : '#94a3b8' }}
+              style={{ color: isActive ? accentTheme.text : '#a3a3a3' }}
             >
               <div className="relative">
                 <motion.div

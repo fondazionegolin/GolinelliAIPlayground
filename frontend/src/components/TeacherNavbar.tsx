@@ -16,6 +16,8 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
+import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
+import { useUiThemeStore } from '@/stores/uiTheme'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
@@ -79,9 +81,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
+  // The fixed brand accent ink is dark slate; on dark surfaces use the primary text tone.
+  const uiDark = useUiThemeStore((s) => s.theme === 'dark')
+  const accentText = uiDark ? 'var(--text-primary)' : accentTheme.text
   const accentVars = buildAccentNavbarStyle(accentTheme, {
     '--teacher-accent': accentTheme.accent,
-    '--teacher-accent-text': accentTheme.text,
+    '--teacher-accent-text': accentText,
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
@@ -90,11 +95,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   useEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--app-accent', accentTheme.accent)
-    root.style.setProperty('--app-accent-text', accentTheme.text)
+    root.style.setProperty('--app-accent-text', accentText)
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-  }, [accentTheme])
+  }, [accentTheme, accentText])
 
   useEffect(() => {
     setVoiceActive(false)
@@ -652,6 +657,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       </p>
                       <p className="text-xs text-slate-500 truncate mt-0.5">{profile.email}</p>
                     </div>
+                    <ThemeToggleMenuItem persist={(ui_theme) => teacherApi.updateProfile({ ui_theme }).then(invalidateProfile)} />
                     <button
                       onClick={() => {
                         setShowSettings(true)
@@ -966,7 +972,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Change password section */}
-          <div className="pt-4 shadow-[0_-1px_0_rgba(112,121,140,0.10)]">
+          <div className="pt-4 shadow-[0_-1px_0_rgba(120,120,124,0.10)]">
             <button
               type="button"
               onClick={() => setShowPasswordSection(v => !v)}

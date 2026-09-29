@@ -58,7 +58,7 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[]) {
       }
       .empty {
         padding: 1.5rem;
-        color: #94a3b8;
+        color: #a3a3a3;
         font-family: system-ui, sans-serif;
         font-size: 0.875rem;
       }

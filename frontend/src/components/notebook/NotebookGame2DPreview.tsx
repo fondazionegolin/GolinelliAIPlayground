@@ -25,8 +25,8 @@ function buildPreviewDoc(source: string) {
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #020617;
-        color: #e2e8f0;
+        background: #0A0A0A;
+        color: #e5e5e5;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       #game {
@@ -43,7 +43,7 @@ function buildPreviewDoc(source: string) {
       }
       .boot {
         padding: 1rem;
-        color: #94a3b8;
+        color: #a3a3a3;
         font-size: 0.875rem;
       }
     </style>
@@ -113,7 +113,7 @@ function buildPreviewDoc(source: string) {
             const height = asNumber(world.height, 540);
             this.physics.world.setBounds(0, 0, width, height);
             this.cameras.main.setBounds(0, 0, width, height);
-            this.cameras.main.setBackgroundColor(world.background || '#0f172a');
+            this.cameras.main.setBackgroundColor(world.background || '#171717');
 
             this.platforms = this.physics.add.staticGroup();
             this.hazards = this.physics.add.staticGroup();
@@ -146,7 +146,7 @@ function buildPreviewDoc(source: string) {
                 asNumber(entity.y, height / 2),
                 asNumber(entity.width, 80),
                 asNumber(entity.height, 24),
-                hexColor(entity.color, kind === 'hazard' ? '#ef4444' : kind === 'enemy' ? '#fb7185' : '#475569'),
+                hexColor(entity.color, kind === 'hazard' ? '#ef4444' : kind === 'enemy' ? '#fb7185' : '#525252'),
               );
 
               if (kind === 'hazard') {
@@ -210,8 +210,8 @@ function buildPreviewDoc(source: string) {
             this.hud = this.add.text(16, 14, '', {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
               fontSize: '14px',
-              color: '#e2e8f0',
-              backgroundColor: 'rgba(15, 23, 42, 0.72)',
+              color: '#e5e5e5',
+              backgroundColor: 'rgba(23, 23, 23, 0.72)',
               padding: { x: 10, y: 6 },
             }).setScrollFactor(0);
             this.message = this.add.text(width / 2, 86, '', {
@@ -219,7 +219,7 @@ function buildPreviewDoc(source: string) {
               fontSize: '20px',
               fontStyle: '700',
               color: '#ffffff',
-              backgroundColor: 'rgba(15, 23, 42, 0.78)',
+              backgroundColor: 'rgba(23, 23, 23, 0.78)',
               padding: { x: 14, y: 8 },
             }).setOrigin(0.5).setScrollFactor(0).setVisible(false);
             this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
@@ -300,7 +300,7 @@ function buildPreviewDoc(source: string) {
             parent: 'game',
             width,
             height,
-            backgroundColor: world.background || '#0f172a',
+            backgroundColor: world.background || '#171717',
             physics: {
               default: 'arcade',
               arcade: {

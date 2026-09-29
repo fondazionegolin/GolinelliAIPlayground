@@ -119,7 +119,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
                         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-900/[0.04]"
                         title={`${card.title}${column ? ` — ${column.label}` : ''}`}
                       >
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: column?.color || '#cbd5e1' }} />
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: column?.color || '#d4d4d4' }} />
                         <span className={`min-w-0 flex-1 truncate text-xs ${isDone ? 'text-slate-400 line-through' : 'font-bold text-slate-700'}`}>{card.title}</span>
                         {card.story_points ? <span className="shrink-0 text-[10px] text-slate-400">{card.story_points}</span> : null}
                       </button>

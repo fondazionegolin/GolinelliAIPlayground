@@ -127,9 +127,9 @@ export default function NotebookTutorChat({
   if (isFloating) {
     rootClass += `${isDragging ? '' : 'transition-[height,width] duration-200'} `
     rootClass += `${collapsed ? 'h-[56px] w-[320px]' : 'h-[640px] w-[400px]'} `
-    rootClass += `rounded-xl border border-slate-200 shadow-[0_18px_50px_rgba(15,23,42,0.18)] pointer-events-auto `
+    rootClass += `rounded-xl border border-slate-200 shadow-[0_18px_50px_rgba(23,23,23,0.18)] pointer-events-auto `
   } else if (isSidebar) {
-    rootClass += `h-full rounded-xl border border-slate-200 shadow-[0_4px_24px_rgba(15,23,42,0.10)] `
+    rootClass += `h-full rounded-xl border border-slate-200 shadow-[0_4px_24px_rgba(23,23,23,0.10)] `
   } else {
     // docked
     rootClass += `${collapsed ? 'h-[58px]' : 'h-[300px] md:h-[340px]'} border-t border-slate-200 `

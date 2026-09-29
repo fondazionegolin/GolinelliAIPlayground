@@ -18,6 +18,8 @@ import { CreditBalancePill } from './CreditBalancePill'
 import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { StudentNotificationBell } from './StudentNotificationBell'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { ThemeToggleMenuItem } from './ThemeToggleMenuItem'
+import { useUiThemeStore } from '@/stores/uiTheme'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
 
 interface StudentProfile {
@@ -158,24 +160,32 @@ export function StudentNavbar({
     nickname: t('navbar.role_student')
   })
   const accentTheme = getStudentAccentTheme(accent)
+  // The fixed brand accent ink is dark slate; on dark surfaces use the primary text tone.
+  const uiDark = useUiThemeStore((s) => s.theme === 'dark')
+  const accentText = uiDark ? 'var(--text-primary)' : accentTheme.text
   const accentVars = buildAccentNavbarStyle(accentTheme, {
     '--student-accent': accentTheme.accent,
     '--student-accent-soft': accentTheme.soft,
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
-    '--student-accent-text': accentTheme.text,
+    '--student-accent-text': accentText,
   }) as CSSProperties
 
   useEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--app-accent', accentTheme.accent)
-    root.style.setProperty('--app-accent-text', accentTheme.text)
+    root.style.setProperty('--app-accent-text', accentText)
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#f1f3f5')
-    root.style.setProperty('--surface-page', '#f1f3f5')
-  }, [accentTheme])
+    if (uiDark) {
+      root.style.removeProperty('--app-body-bg')
+      root.style.removeProperty('--surface-page')
+    } else {
+      root.style.setProperty('--app-body-bg', '#f1f3f5')
+      root.style.setProperty('--surface-page', '#f1f3f5')
+    }
+  }, [accentTheme, accentText, uiDark])
 
   useEffect(() => {
     setVoiceActive(false)
@@ -205,6 +215,9 @@ export function StudentNavbar({
           uiAccent: data.ui_accent || undefined,
         })
         profileIdRef.current = data.id
+        if (data.ui_theme === 'light' || data.ui_theme === 'dark') {
+          useUiThemeStore.getState().setTheme(data.ui_theme)
+        }
         if (data.ui_accent && onAccentChange) {
           const serverAccent = data.ui_accent as StudentAccentId
           onAccentChange(serverAccent)
@@ -471,6 +484,7 @@ export function StudentNavbar({
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{t('navbar.role_student')}</p>
                     </div>
+                    <ThemeToggleMenuItem persist={(ui_theme) => studentApi.updateProfile({ ui_theme })} />
                     <button
                       onClick={() => {
                         setShowSettings(true)
@@ -575,7 +589,7 @@ export function StudentNavbar({
                         color: '#fff',
                       }
                     : {
-                        backgroundColor: 'rgba(255,255,255,0.56)',
+                        backgroundColor: 'rgb(var(--c-white) / 0.56)',
                         borderColor: 'rgba(255,255,255,0.34)',
                       }}
                 >

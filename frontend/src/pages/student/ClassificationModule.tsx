@@ -949,7 +949,7 @@ function MLLabHome({
                 whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => onSelect(m.key)}
-                className={`mobile-card-standard group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(15,23,42,0.13)] md:block ${m.cardBorder}`}
+                className={`mobile-card-standard group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(23,23,23,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(23,23,23,0.13)] md:block ${m.cardBorder}`}
               >
                 <div className={`relative hidden h-48 overflow-hidden border-b border-slate-200 p-3 md:block ${m.panelBg}`}>
                   <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/70 blur-2xl" />

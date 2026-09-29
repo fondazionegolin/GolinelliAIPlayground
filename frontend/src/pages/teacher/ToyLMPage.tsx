@@ -26,6 +26,8 @@ import { teacherApi } from '@/lib/api'
 import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import ToyLMEmbeddingPanel, { type ToyLMEmbeddingPayload } from '@/components/toy-lm/ToyLMEmbeddingPanel'
+import { useUiThemeStore } from '@/stores/uiTheme'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -198,6 +200,7 @@ export default function ToyLMPage() {
 
   // UI
   const [showCreate, setShowCreate] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed('toy-lm')
   const [statusMsg, setStatusMsg] = useState('')
   const [isWorking, setIsWorking] = useState(false)
   const [isPausedLocally, setIsPausedLocally] = useState(false)
@@ -606,7 +609,24 @@ export default function ToyLMPage() {
     <div className="flex h-full min-w-0 flex-col bg-transparent text-[var(--text-primary)] md:flex-row" style={LAB_ACCENT}>
 
       {/* ══ Left sidebar: models ══ */}
-      <aside className="flex max-h-[16rem] w-full shrink-0 flex-col border-b border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm md:max-h-none md:w-64 md:border-b-0 md:border-r">
+      {sidebarCollapsed && (
+        <SidebarRail
+          className="hidden md:flex"
+          label="ToyGPT"
+          expandLabel="Espandi elenco modelli"
+          onExpand={() => setSidebarCollapsed(false)}
+          onCreate={() => { setSidebarCollapsed(false); openCreate() }}
+          createLabel="Nuovo modello"
+          items={jobs.map(job => ({
+            id: job.id,
+            title: job.name,
+            icon: <Network className="h-4 w-4" />,
+            selected: selectedJobId === job.id,
+            onClick: () => handleSelectJob(job),
+          }))}
+        />
+      )}
+      <aside className={`flex max-h-[16rem] w-full shrink-0 flex-col border-b border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm md:max-h-none md:w-64 md:border-b-0 md:border-r ${sidebarCollapsed ? 'md:hidden' : ''}`}>
         <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]">
             <Network className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
@@ -615,6 +635,9 @@ export default function ToyLMPage() {
             <p className="truncate text-sm font-black leading-tight">ToyGPT</p>
             <p className="text-[10px] text-[var(--text-muted)]">Crea un modello linguistico da zero</p>
           </div>
+          <span className="ml-auto hidden md:block">
+            <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label="Comprimi elenco modelli" />
+          </span>
         </div>
 
         <div className="px-3 pt-3">
@@ -902,7 +925,7 @@ export default function ToyLMPage() {
                 </div>
 
                 {isQueued && (
-                  <div className="rounded-xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-3 py-2 text-xs text-[#1278bd]">
+                  <div className="rounded-xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-3 py-2 text-xs text-[var(--logo-blue-strong)]">
                     In coda per la GPU — posizione {selectedJob.queuePosition}. Il training partirà automaticamente.
                   </div>
                 )}
@@ -1101,8 +1124,8 @@ function StatusPill({ job, isRunning, isQueued, currentEpoch }: {
   job: Job; isRunning: boolean; isQueued: boolean; currentEpoch: number
 }) {
   const { cls, text } =
-    isRunning ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[#1278bd]', text: `in training · epoch ${currentEpoch}` } :
-    isQueued ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[#1278bd]', text: `in coda · pos. ${job.queuePosition}` } :
+    isRunning ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: `in training · epoch ${currentEpoch}` } :
+    isQueued ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: `in coda · pos. ${job.queuePosition}` } :
     job.status === 'completed' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'completato' } :
     job.status === 'paused' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'in pausa' } :
     { cls: 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)]', text: job.status }
@@ -1148,6 +1171,10 @@ function ArchRow({ label, val }: { label: string; val: string }) {
 function ChartPanel({ title, dataKey, data, color, height = 190, tone = 'slate' }: {
   title: string; dataKey: string; data: unknown[]; color: string; height?: number; tone?: keyof typeof PASTEL_SURFACES
 }) {
+  const dark = useUiThemeStore((s) => s.theme === 'dark')
+  const grid = dark ? 'rgba(255,255,255,0.07)' : '#e5e5e5'
+  const axis = dark ? 'rgba(255,255,255,0.14)' : '#d4d4d4'
+  const tick = dark ? '#7d838d' : '#a3a3a3'
   return (
     <Card className={`rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES[tone]}`}>
       <SubLabel>{title}</SubLabel>
@@ -1155,10 +1182,10 @@ function ChartPanel({ title, dataKey, data, color, height = 190, tone = 'slate' 
         {data.length > 0 ? (
           <ResponsiveContainer width="100%" height={height}>
             <LineChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="globalStep" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#cbd5e1" />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#cbd5e1" domain={['auto','auto']} />
-              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 11, boxShadow: '0 8px 22px rgba(23,21,27,0.06)' }} labelStyle={{ color: '#64748b' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={grid} />
+              <XAxis dataKey="globalStep" tick={{ fill: tick, fontSize: 10 }} stroke={axis} />
+              <YAxis tick={{ fill: tick, fontSize: 10 }} stroke={axis} domain={['auto','auto']} />
+              <Tooltip contentStyle={{ background: 'var(--ds-surface-raised)', border: '1px solid var(--ds-choice-border)', color: 'var(--text-primary)', borderRadius: 12, fontSize: 11, boxShadow: '0 8px 22px rgba(23,21,27,0.06)' }} labelStyle={{ color: 'var(--text-muted)' }} />
               <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>

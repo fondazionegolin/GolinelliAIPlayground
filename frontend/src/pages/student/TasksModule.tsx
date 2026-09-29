@@ -933,7 +933,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
                     className="w-full text-left p-3.5 rounded-lg border transition-all flex items-center justify-between gap-3 backdrop-blur-sm"
                     style={{
                       backgroundColor: isSelected ? '#ede9fe' : '#ffffff',
-                      borderColor: isSelected ? '#a78bfa' : '#cbd5e1',
+                      borderColor: isSelected ? '#a78bfa' : '#d4d4d4',
                     }}
                   >
                     <span className={`text-sm font-semibold ${isSelected ? 'text-violet-950' : 'text-slate-700'}`}>
@@ -943,7 +943,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
                       className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                       style={{
                         backgroundColor: isSelected ? '#ffffff' : 'transparent',
-                        borderColor: isSelected ? '#7c3aed' : '#cbd5e1',
+                        borderColor: isSelected ? '#7c3aed' : '#d4d4d4',
                       }}
                     >
                       {isSelected && <Check className="h-3 w-3 text-violet-800" />}

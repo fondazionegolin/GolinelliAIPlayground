@@ -100,7 +100,7 @@ function DottedGridBackground() {
             0,
             Math.PI * 2,
           )
-          ctx.fillStyle = `rgba(148,163,184,${Math.min(0.28 + displacement * 0.007, 0.68)})`
+          ctx.fillStyle = `rgba(163,163,163,${Math.min(0.28 + displacement * 0.007, 0.68)})`
           ctx.fill()
         }
       }
@@ -113,7 +113,7 @@ function DottedGridBackground() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="fixed inset-0 -z-10" style={{ background: '#f8fafc' }} />
+  return <canvas ref={canvasRef} className="fixed inset-0 -z-10" style={{ background: '#fafafa' }} />
 }
 
 function SectionCard({

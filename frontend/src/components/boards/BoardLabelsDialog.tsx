@@ -3,7 +3,7 @@ import { Plus, Tags, Trash2, X } from 'lucide-react'
 
 export type BoardLabel = { id: string; name: string; color: string }
 
-export const LABEL_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#6366f1', '#84cc16', '#64748b']
+export const LABEL_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#6366f1', '#84cc16', '#737373']
 
 type DraftLabel = { id?: string; name: string; color: string }
 

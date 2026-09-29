@@ -231,7 +231,7 @@ function resolveLegacySize(size?: LegacySize) {
   }
 }
 
-// A solid background-COLOR utility (bg-pink-500, bg-[#fff], bg-black/80, …) but
+// A solid background-COLOR utility (bg-pink-500, bg-white, bg-black/80, …) but
 // NOT a gradient or an explicit background-image utility.
 const BG_COLOR_OVERRIDE = /\bbg-(?:\[(?:#|rgb|hsl)|[a-z]+-\d+|black|white|transparent|current)\b/
 const BG_IMAGE_OR_GRADIENT = /\b(?:bg-\[image:|bg-gradient|from-|via-|to-)/

@@ -343,7 +343,7 @@ export default function DesktopPage({
     )
   }
 
-  const bgStyle = activeDesktop ? getWallpaperStyle(activeDesktop.wallpaper_key) : '#0f172a'
+  const bgStyle = activeDesktop ? getWallpaperStyle(activeDesktop.wallpaper_key) : '#171717'
 
   return (
     <div

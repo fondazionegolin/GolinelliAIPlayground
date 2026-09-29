@@ -136,6 +136,7 @@
   "navbar": {
     "settings": "Impostazioni",
     "logout": "Esci",
+    "dark_mode": "Tema scuro",
     "profile": "Profilo",
     "role_student": "Studente",
     "role_teacher": "Docente",

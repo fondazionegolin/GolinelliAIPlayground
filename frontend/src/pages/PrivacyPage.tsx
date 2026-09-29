@@ -53,7 +53,7 @@ const DottedGridBackground = () => {
           const disp = Math.sqrt(dx * dx + dy * dy)
           ctx.beginPath()
           ctx.arc(gx + dx, gy + dy, Math.min(DOT_R * (1 + disp * 0.045), DOT_R * 3.5), 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(148,163,184,${Math.min(0.28 + disp * 0.007, 0.68)})`
+          ctx.fillStyle = `rgba(163,163,163,${Math.min(0.28 + disp * 0.007, 0.68)})`
           ctx.fill()
         }
       }
@@ -61,7 +61,7 @@ const DottedGridBackground = () => {
     rafId = requestAnimationFrame(frame)
     return () => { cancelAnimationFrame(rafId); window.removeEventListener('resize', resize) }
   }, [])
-  return <canvas ref={canvasRef} className="fixed inset-0 -z-10" style={{ background: '#f8fafc' }} />
+  return <canvas ref={canvasRef} className="fixed inset-0 -z-10" style={{ background: '#fafafa' }} />
 }
 
 // ── Reusable components ───────────────────────────────────────────────────────

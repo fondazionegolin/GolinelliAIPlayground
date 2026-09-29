@@ -181,7 +181,7 @@ export const studentApi = {
   updateCanvas: (sessionId: string, canvasName: string, data: { title?: string; content_json: string; base_version?: number }) =>
     api.put(`/student/sessions/${sessionId}/canvas`, data, { params: { canvas_name: canvasName } }),
   getProfile: () => api.get('/student/profile'),
-  updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
+  updateProfile: (data: { avatar_url?: string; ui_accent?: string; ui_theme?: 'light' | 'dark' }) =>
     api.patch('/student/profile', data),
   getCreditBalance: () => api.get('/student/credits/balance'),
   listConsents: () => api.get('/student/consents'),
@@ -565,7 +565,7 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }, { signal }),
   // Profile
   getProfile: () => api.get('/teacher/profile'),
-  updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
+  updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string; ui_theme?: 'light' | 'dark' }) =>
     api.put('/teacher/profile', data),
   uploadAvatar: (file: File) => {
     const formData = new FormData()

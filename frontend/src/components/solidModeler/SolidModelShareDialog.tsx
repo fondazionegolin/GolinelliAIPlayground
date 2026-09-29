@@ -31,7 +31,7 @@ export default function SolidModelShareDialog({ modelId, name, onClose }: Props)
 
   useEffect(() => {
     if (!publicUrl) { setQr(''); return }
-    QRCode.toDataURL(publicUrl, { width: 640, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#0f172a', light: '#ffffff' } })
+    QRCode.toDataURL(publicUrl, { width: 640, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#171717', light: '#ffffff' } })
       .then(setQr)
       .catch(() => setQr(''))
   }, [publicUrl])

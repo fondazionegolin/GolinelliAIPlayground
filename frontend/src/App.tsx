@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
+import { useUiThemeRouteGuard } from '@/stores/uiTheme'
 import { Toaster } from '@/components/ui/toaster'
 import { CookieBanner } from '@/components/CookieBanner'
 import { LegalConsentGate } from '@/components/LegalConsentGate'
@@ -38,6 +39,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 
 function App() {
   const { user, studentSession } = useAuthStore()
+  useUiThemeRouteGuard(useLocation().pathname)
   
   const getDefaultRoute = (): string | null => {
     if (studentSession) return '/student'

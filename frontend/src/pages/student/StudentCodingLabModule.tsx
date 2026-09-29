@@ -56,6 +56,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { useAuthStore } from '@/stores/auth'
 import { TEACHER_PROFILE_KEY, type TeacherProfileData } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
+import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -521,6 +522,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
+  const [explorerCollapsed, setExplorerCollapsed] = useSidebarCollapsed('vibe-lab')
   const filteredProjects = useMemo(() => {
     const query = projectListSearch.trim().toLocaleLowerCase('it')
     if (!query) return projects
@@ -1778,12 +1780,30 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           {designNotice}
         </div>
       )}
-      {!isMobile && <WorkspaceExplorerSidebar>
+      {!isMobile && explorerCollapsed && (
+        <SidebarRail
+          label="Vibe Lab"
+          expandLabel="Espandi elenco progetti"
+          onExpand={() => setExplorerCollapsed(false)}
+          onCreate={() => { setExplorerCollapsed(false); handleStartNewProject() }}
+          createLabel="Nuovo progetto"
+          items={projects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            icon: <Code2 className="h-4 w-4" />,
+            selected: selectedProjectId === project.id,
+            onClick: () => openProjectFromList(project),
+          }))}
+        />
+      )}
+      {!isMobile && !explorerCollapsed && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
           eyebrow={isTeacher ? 'Pannello docente' : 'Spazio studente'}
           title="Vibe Lab"
           description="Progetti, versioni e condivisioni in un unico explorer."
           action={(
+            <div className="flex shrink-0 items-center gap-1.5">
+            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label="Comprimi elenco progetti" />}
             <Button
               type="button"
               onClick={handleStartNewProject}
@@ -1797,6 +1817,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
+            </div>
           )}
           searchValue={projectListSearch}
           onSearchChange={setProjectListSearch}
@@ -1833,7 +1854,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
           )}
         </WorkspaceExplorerList>
-        <div className="px-4 py-3 shadow-[0_-1px_0_rgba(148,163,184,0.10)]">
+        <div className="px-4 py-3 shadow-[0_-1px_0_rgba(163,163,163,0.10)]">
           <Button
             type="button"
             onClick={() => setShowTutorial(true)}
@@ -2259,7 +2280,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <PublicationBanner url={publication.url} onClose={() => setPublication(null)} />
             )}
             {activeWorkbench === 'preview' && shareUrl && (
-              <div className="border-b border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-4 py-2 text-xs font-semibold text-[#1278bd]">
+              <div className="border-b border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-4 py-2 text-xs font-semibold text-[var(--logo-blue-strong)]">
                 {shareUrl}
               </div>
             )}
@@ -3396,7 +3417,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
                 key={file.path}
                 type="button"
                 onClick={() => onShowFileDiff(String(file.path))}
-                className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-bold text-[#1278bd] hover:border-[rgba(62,169,244,0.42)]"
+                className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-bold text-[var(--logo-blue-strong)] hover:border-[rgba(62,169,244,0.42)]"
                 title="Mostra modifiche (rosso = prima, celeste = dopo)"
               >
                 {file.path} · {file.lines} righe
@@ -3787,7 +3808,7 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
 function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
   const lineCount = file.content.split('\n').length
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
         <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-100">
           markdown generato · {lineCount} ln
@@ -3828,7 +3849,7 @@ function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChan
   ], [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-900 px-3 py-2">
         <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-100">
           {language} · {lineCount} ln
@@ -4003,7 +4024,7 @@ function DiffViewer({
             </button>
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#0f172a] py-2 font-mono text-[12px] leading-relaxed">
+        <div className="min-h-0 flex-1 overflow-auto bg-neutral-900 py-2 font-mono text-[12px] leading-relaxed">
           {!hasChanges && (
             <div className="px-4 py-6 text-center text-xs text-slate-400">Nessuna differenza rispetto alla versione precedente.</div>
           )}

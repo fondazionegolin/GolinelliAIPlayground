@@ -195,8 +195,8 @@ export default function ToyLMEmbeddingPanel({
             <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-white">
               <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="block h-[260px] w-full sm:h-[320px]" role="img" aria-label="Proiezione degli embedding dei token">
                 <rect x="0" y="0" width={SVG_W} height={SVG_H} fill="#ffffff" />
-                <line x1={PAD} y1={SVG_H - PAD} x2={SVG_W - PAD} y2={SVG_H - PAD} stroke="#e2e8f0" />
-                <line x1={PAD} y1={PAD} x2={PAD} y2={SVG_H - PAD} stroke="#e2e8f0" />
+                <line x1={PAD} y1={SVG_H - PAD} x2={SVG_W - PAD} y2={SVG_H - PAD} stroke="#e5e5e5" />
+                <line x1={PAD} y1={PAD} x2={PAD} y2={SVG_H - PAD} stroke="#e5e5e5" />
                 <text x={SVG_W - PAD} y={SVG_H - 10} textAnchor="end" className="fill-slate-400 text-[11px]">dim {axisX + 1}</text>
                 <text x={10} y={PAD - 12} className="fill-slate-400 text-[11px]">dim {axisY + 1}</text>
 

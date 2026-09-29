@@ -79,12 +79,12 @@ export const roleThemes: Record<RoleThemeId, RoleTheme> = {
 const BRAND_THEME: AccentTheme = {
   id: 'red',
   label: 'Brand',
-  accent: '#475569',  // slate-600 — buttons reset to neutral grey
-  text: '#334155',    // slate-700
-  soft: 'rgba(71, 85, 105, 0.08)',
-  softMid: 'rgba(71, 85, 105, 0.12)',
-  softStrong: '#475569',
-  border: '#475569',
+  accent: '#525252',  // slate-600 — buttons reset to neutral grey
+  text: '#404040',    // slate-700
+  soft: 'rgba(82, 82, 82, 0.08)',
+  softMid: 'rgba(82, 82, 82, 0.12)',
+  softStrong: '#525252',
+  border: '#525252',
 }
 
 export function getAccentTheme(_accent?: string): AccentTheme {

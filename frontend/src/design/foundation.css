@@ -28,20 +28,20 @@
   --ds-navbar-active: rgba(255,255,255,0.94);
   --ds-navbar-active-bg:
     linear-gradient(180deg, rgba(255,255,255,0.99), rgba(251,252,254,0.96));
-  --ds-navbar-active-ink: #334155;
-  --ds-navbar-active-border: rgba(100,116,139,0.11);
-  --ds-navbar-active-shadow: 0 2px 6px rgba(72,92,126,0.055);
+  --ds-navbar-active-ink: #404040;
+  --ds-navbar-active-border: rgba(115,115,115,0.11);
+  --ds-navbar-active-shadow: 0 2px 6px rgba(88,88,92,0.055);
   --ds-switch-active: rgba(255,255,255,0.94);
   --ds-switch-active-bg:
     linear-gradient(180deg, rgba(255,255,255,0.99), rgba(251,252,254,0.96));
-  --ds-switch-active-border: rgba(100,116,139,0.11);
-  --ds-switch-active-shadow: 0 2px 6px rgba(72,92,126,0.055);
+  --ds-switch-active-border: rgba(115,115,115,0.11);
+  --ds-switch-active-shadow: 0 2px 6px rgba(88,88,92,0.055);
   /* Selected state (nav tabs, filters, chips): flat soft grey + near-black ink. No hue, no glow,
      no blur — the fill alone marks the choice. */
-  --ds-choice-tone: #64748b;
+  --ds-choice-tone: #737373;
   --ds-choice-surface: #eceef2;
   --ds-choice-ink: #111827;
-  --ds-choice-border: rgba(15,23,42,0.09);
+  --ds-choice-border: rgba(23,23,23,0.09);
   --ds-choice-blur: none;
   /* Hairline for resting button chrome; selected states carry no ring. */
   --ds-choice-ring: 0 0 0 1px var(--ds-choice-border);
@@ -53,8 +53,8 @@
   /* Generic button chrome (.app-button-chrome, Button solid/neutral): white, neutral hairline. */
   --ds-button-bg: linear-gradient(#ffffff, #ffffff);
   --ds-button-bg-hover: linear-gradient(#f6f7f9, #f6f7f9);
-  --ds-button-shadow: 0 1px 2px rgba(15,23,42,0.05);
-  --ds-button-shadow-hover: 0 2px 6px rgba(15,23,42,0.08);
+  --ds-button-shadow: 0 1px 2px rgba(23,23,23,0.05);
+  --ds-button-shadow-hover: 0 2px 6px rgba(23,23,23,0.08);
   --ds-selected: var(--ds-choice-surface);
   --ds-overlay: rgba(24, 28, 38, 0.34);
 
@@ -63,78 +63,93 @@
   --ds-selection-shading:
     radial-gradient(ellipse at 30% 4%, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.26) 46%, transparent 76%),
     radial-gradient(ellipse at 78% 115%, rgba(123,105,201,0.075) 0%, transparent 68%);
-  --ds-shadow-1: 0 2px 7px rgba(72,92,126,0.075), 0 8px 18px rgba(93,111,142,0.035);
-  --ds-shadow-2: 0 5px 16px rgba(72,92,126,0.085), 0 14px 30px rgba(93,111,142,0.055);
-  --ds-shadow-3: 0 10px 28px rgba(72,92,126,0.11), 0 24px 48px rgba(93,111,142,0.07);
-  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 0 rgba(132,153,184,0.055);
-  --ds-shadow-control: var(--ds-shadow-inset), 0 3px 9px rgba(72,92,126,0.075);
-  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 5px 13px rgba(72,92,126,0.10);
-  --ds-shadow-cluster: var(--ds-shadow-inset), 0 2px 5px rgba(55,70,102,0.11), 0 8px 20px rgba(72,92,126,0.13);
+  --ds-shadow-1: 0 2px 7px rgba(88,88,92,0.075), 0 8px 18px rgba(104,104,108,0.035);
+  --ds-shadow-2: 0 5px 16px rgba(88,88,92,0.085), 0 14px 30px rgba(104,104,108,0.055);
+  --ds-shadow-3: 0 10px 28px rgba(88,88,92,0.11), 0 24px 48px rgba(104,104,108,0.07);
+  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 0 rgba(150,150,154,0.055);
+  --ds-shadow-control: var(--ds-shadow-inset), 0 3px 9px rgba(88,88,92,0.075);
+  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 5px 13px rgba(88,88,92,0.10);
+  --ds-shadow-cluster: var(--ds-shadow-inset), 0 2px 5px rgba(70,70,74,0.11), 0 8px 20px rgba(88,88,92,0.13);
   --ds-shadow-focus: 0 0 0 3px rgba(123,105,201,0.14), var(--ds-shadow-control);
 
   --ds-radius-control: 0.875rem;
   --ds-radius-panel: 1.25rem;
   --ds-radius-frame: 1.125rem;
   --ds-frame-gutter: 1rem;
-  --ds-frame-divider: rgba(100,116,139,0.10);
+  --ds-frame-divider: rgba(115,115,115,0.10);
   --ds-radius-card: 1.5rem;
   --ds-radius-pill: 999px;
 }
 
+/* Dark: the same floating material, light inverted. Canvas is a very dark neutral grey whose
+   feathered patches are *lighter* (the light theme's grey patches, reversed); surfaces step up
+   in small luminance increments, lifted by wide soft black shadows and a faint top highlight. */
 .dark {
-  --ds-canvas: #151820;
-  --ds-canvas-base: #151820;
-  --ds-frame-divider: rgba(255,255,255,0.08);
+  --ds-canvas: #141518;
+  --ds-canvas-base: #141518;
   --ds-canvas-mesh:
-    radial-gradient(ellipse 46vmax 38vmax at 4% 8%, rgba(255,255,255,0.035) 0%, transparent 72%),
-    radial-gradient(ellipse 52vmax 40vmax at 96% 22%, rgba(0,0,0,0.18) 0%, transparent 72%),
-    radial-gradient(ellipse 48vmax 38vmax at 70% 98%, rgba(255,255,255,0.03) 0%, transparent 72%);
-  --ds-surface: rgba(31, 35, 46, 0.96);
-  --ds-surface-raised: rgba(39, 44, 57, 0.98);
-  --ds-surface-muted: rgba(45, 50, 64, 0.94);
-  --ds-surface-tint: rgba(64, 56, 96, 0.9);
-  --ds-control: rgba(43, 48, 61, 0.94);
-  --ds-control-hover: rgba(53, 59, 74, 0.98);
+    radial-gradient(ellipse 46vmax 38vmax at 4% 8%, rgba(255,255,255,0.040) 0%, rgba(255,255,255,0.014) 42%, transparent 74%),
+    radial-gradient(ellipse 52vmax 40vmax at 96% 22%, rgba(255,255,255,0.032) 0%, rgba(255,255,255,0.011) 42%, transparent 74%),
+    radial-gradient(ellipse 48vmax 38vmax at 70% 98%, rgba(255,255,255,0.036) 0%, rgba(255,255,255,0.012) 42%, transparent 74%),
+    radial-gradient(ellipse 40vmax 34vmax at 18% 82%, rgba(0,0,0,0.20) 0%, transparent 72%),
+    radial-gradient(ellipse 38vmax 30vmax at 48% 40%, rgba(255,255,255,0.018) 0%, transparent 72%);
+  --ds-surface: rgba(29, 31, 35, 0.92);
+  --ds-navbar: #1d1f23;
+  --ds-surface-raised: rgba(35, 38, 43, 0.97);
+  --ds-surface-muted: rgba(40, 43, 48, 0.94);
+  --ds-surface-tint: rgba(50, 47, 68, 0.92);
+  --ds-control: rgba(40, 43, 49, 0.96);
+  --ds-control-hover: rgba(46, 49, 55, 0.99);
+  --ds-cluster: rgba(34, 36, 41, 0.96);
   --ds-cluster-bg:
-    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.07) 0%, transparent 58%),
-    linear-gradient(145deg, rgba(38,43,55,0.96), rgba(46,52,66,0.94));
-  --ds-navbar-cluster: rgba(43, 42, 39, 0.96);
+    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.05) 0%, transparent 58%),
+    linear-gradient(145deg, rgba(36,38,43,0.96), rgba(31,33,38,0.94));
+  --ds-navbar-cluster: rgba(32, 34, 38, 0.98);
   --ds-navbar-cluster-bg:
-    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.08) 0%, transparent 58%),
-    linear-gradient(145deg, rgba(48,47,43,0.97), rgba(38,39,43,0.96));
-  --ds-navbar-active: #292e39;
-  --ds-navbar-active-bg: linear-gradient(145deg, #252a34, #343a47);
-  --ds-navbar-active-ink: #f8fafc;
-  --ds-navbar-active-border: rgba(255,255,255,0.10);
-  --ds-navbar-active-shadow: inset 3px 3px 7px rgba(0,0,0,0.34), inset -2px -2px 6px rgba(255,255,255,0.07);
-  --ds-switch-active: #272c37;
-  --ds-switch-active-bg: linear-gradient(145deg, #242933, #333945);
-  --ds-switch-active-border: rgba(255,255,255,0.10);
-  --ds-switch-active-shadow: inset 3px 3px 7px rgba(0,0,0,0.34), inset -2px -2px 6px rgba(255,255,255,0.065);
-  --ds-selected: rgba(70, 61, 106, 0.94);
-  --ds-choice-surface: rgba(255,255,255,0.10);
-  --ds-choice-ink: #f8fafc;
-  --ds-choice-border: rgba(255,255,255,0.12);
+    radial-gradient(ellipse at 25% 0%, rgba(255,255,255,0.06) 0%, transparent 62%),
+    linear-gradient(145deg, rgba(36,38,43,0.98), rgba(30,32,36,0.96));
+  /* Active tab: one luminance step above the cluster, raised (not carved in). */
+  --ds-navbar-active: #33363c;
+  --ds-navbar-active-bg: linear-gradient(180deg, #3a3d43, #32353b);
+  --ds-navbar-active-ink: #eef0f3;
+  --ds-navbar-active-border: rgba(255,255,255,0.07);
+  --ds-navbar-active-shadow: 0 2px 6px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05);
+  --ds-switch-active: #33363c;
+  --ds-switch-active-bg: linear-gradient(180deg, #3a3d43, #32353b);
+  --ds-switch-active-border: rgba(255,255,255,0.07);
+  --ds-switch-active-shadow: 0 2px 6px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05);
+  --ds-choice-tone: #9aa0aa;
+  --ds-choice-surface: #36393f;
+  --ds-choice-ink: #eceef1;
+  --ds-choice-border: rgba(255,255,255,0.08);
   --ds-choice-blur: none;
   --ds-choice-ring: 0 0 0 1px var(--ds-choice-border);
   --ds-choice-ring-strong: 0 0 0 0 transparent;
   --ds-choice-bg: linear-gradient(var(--ds-choice-surface), var(--ds-choice-surface));
-  --ds-choice-bg-hover: linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14));
+  --ds-choice-bg-hover: linear-gradient(#3c3f45, #3c3f45);
   --ds-choice-shadow: 0 0 0 0 transparent;
   --ds-choice-shadow-hover: 0 0 0 0 transparent;
-  --ds-button-bg: linear-gradient(rgba(255,255,255,0.06), rgba(255,255,255,0.06));
-  --ds-button-bg-hover: linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10));
-  --ds-button-shadow: 0 1px 2px rgba(0,0,0,0.24);
-  --ds-button-shadow-hover: 0 3px 8px rgba(0,0,0,0.30);
-  --ds-overlay: rgba(4, 6, 12, 0.62);
-  --ds-reflection: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0) 52%);
-  --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.10), transparent 72%);
-  --ds-selection-shading: radial-gradient(ellipse at 34% 18%, rgba(255,255,255,0.13), transparent 74%);
-  --ds-shadow-1: 0 2px 8px rgba(0,0,0,0.18);
-  --ds-shadow-2: 0 10px 28px rgba(0,0,0,0.24);
-  --ds-shadow-3: 0 22px 52px rgba(0,0,0,0.32);
-  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.07);
-  --ds-shadow-cluster: var(--ds-shadow-inset), 0 3px 12px rgba(0,0,0,0.28);
+  --ds-button-bg: linear-gradient(#282b31, #282b31);
+  --ds-button-bg-hover: linear-gradient(#2e3137, #2e3137);
+  --ds-button-shadow: 0 1px 2px rgba(0,0,0,0.30);
+  --ds-button-shadow-hover: 0 3px 8px rgba(0,0,0,0.36);
+  --ds-selected: var(--ds-choice-surface);
+  --ds-overlay: rgba(0, 0, 0, 0.55);
+
+  --ds-reflection: radial-gradient(ellipse at 30% 12%, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.012) 40%, transparent 72%);
+  --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 42%, transparent 74%);
+  --ds-selection-shading:
+    radial-gradient(ellipse at 30% 4%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.018) 46%, transparent 76%),
+    radial-gradient(ellipse at 78% 115%, rgba(171,159,240,0.06) 0%, transparent 68%);
+  --ds-shadow-1: 0 2px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.16);
+  --ds-shadow-2: 0 6px 18px rgba(0,0,0,0.32), 0 16px 36px rgba(0,0,0,0.20);
+  --ds-shadow-3: 0 12px 32px rgba(0,0,0,0.40), 0 28px 56px rgba(0,0,0,0.26);
+  --ds-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.20);
+  --ds-shadow-control: var(--ds-shadow-inset), 0 3px 9px rgba(0,0,0,0.28);
+  --ds-shadow-control-hover: var(--ds-shadow-inset), 0 5px 13px rgba(0,0,0,0.34);
+  --ds-shadow-cluster: var(--ds-shadow-inset), 0 2px 5px rgba(0,0,0,0.30), 0 8px 20px rgba(0,0,0,0.28);
+  --ds-shadow-focus: 0 0 0 3px rgba(171,159,240,0.22), var(--ds-shadow-control);
+  --ds-frame-divider: rgba(255,255,255,0.06);
 }
 
 @layer components {
@@ -212,7 +227,7 @@
 
   .ds-divider {
     border: 0;
-    background: rgba(112, 121, 140, 0.12);
+    background: rgba(120, 120, 124, 0.12);
   }
 
   .ui-card {
@@ -267,7 +282,7 @@
     background:
       var(--ds-reflection),
       linear-gradient(160deg, rgba(255,255,255,0.98), rgba(247,250,255,0.94));
-    box-shadow: 5px 0 16px rgba(93,111,142,0.055), inset -1px 0 rgba(255,255,255,0.72);
+    box-shadow: 5px 0 16px rgba(104,104,108,0.055), inset -1px 0 rgba(255,255,255,0.72);
   }
 
   .teacher-support-main {
@@ -281,11 +296,11 @@
     border: 0 !important;
     background:
       linear-gradient(180deg, rgba(255,255,255,0.90), rgba(250,252,255,0.78));
-    box-shadow: 0 5px 14px rgba(93,111,142,0.045), inset 0 1px rgba(255,255,255,0.95);
+    box-shadow: 0 5px 14px rgba(104,104,108,0.045), inset 0 1px rgba(255,255,255,0.95);
   }
 
   .teacher-support-composer {
-    box-shadow: 0 -5px 15px rgba(93,111,142,0.05), inset 0 1px rgba(255,255,255,0.92);
+    box-shadow: 0 -5px 15px rgba(104,104,108,0.05), inset 0 1px rgba(255,255,255,0.92);
   }
 
   .teacher-support-hero {
@@ -299,7 +314,7 @@
     background:
       radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.98), transparent 48%),
       linear-gradient(155deg, rgba(255,255,255,0.96), rgba(247,251,255,0.92));
-    box-shadow: -4px 0 16px rgba(93,111,142,0.065) !important;
+    box-shadow: -4px 0 16px rgba(104,104,108,0.065) !important;
   }
 
   .ds-semantic-surface,
@@ -313,7 +328,7 @@
 
   .ds-semantic-info {
     border: 0 !important;
-    background-color: color-mix(in srgb, var(--logo-blue) 9%, white);
+    background-color: color-mix(in srgb, var(--logo-blue) 9%, var(--mix-base));
     background-image: var(--ds-semantic-shading);
     box-shadow: var(--ds-shadow-1);
   }
@@ -323,7 +338,7 @@
   }
 
   .class-chat-bubble-own {
-    background-color: color-mix(in srgb, var(--logo-violet) 5%, white);
+    background-color: color-mix(in srgb, var(--logo-violet) 5%, var(--mix-base));
   }
 
   .class-chat-attachment {
@@ -492,7 +507,7 @@
     left: 8%;
     height: 28px;
     pointer-events: none;
-    background: radial-gradient(ellipse at center, rgba(117,135,166,0.055), transparent 72%);
+    background: radial-gradient(ellipse at center, rgba(130,130,134,0.055), transparent 72%);
     filter: blur(8px);
   }
 
@@ -542,6 +557,154 @@
   .student-ai-card-badge {
     border-color: transparent !important;
     background-image: var(--ds-semantic-shading) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 2px 6px rgba(72,92,126,0.045) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 2px 6px rgba(88,88,92,0.045) !important;
   }
+}
+
+/* Dark-mode counterparts for the material classes above that hard-code white layers. */
+@layer components {
+  .dark .ds-divider {
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .dark .ds-control:active,
+  .dark .ui-cta:active {
+    box-shadow: var(--ds-shadow-inset), 0 1px 2px rgba(0,0,0,0.30);
+  }
+
+  .dark .ui-card-interactive:hover {
+    background-color: #292c32;
+  }
+
+  .dark .ui-cta {
+    color: var(--logo-violet-strong);
+  }
+
+  .dark .teacher-support-frame:not(.ds-page-frame) {
+    background: rgba(35, 38, 43, 0.86);
+  }
+
+  .dark .teacher-support-history,
+  .dark .ds-frame-sidebar {
+    background:
+      var(--ds-reflection),
+      linear-gradient(160deg, rgba(33,35,40,0.98), rgba(29,31,35,0.96));
+    box-shadow: 5px 0 16px rgba(0,0,0,0.22), inset -1px 0 rgba(255,255,255,0.03);
+  }
+
+  .dark .teacher-support-main {
+    background:
+      radial-gradient(ellipse at 48% 0%, rgba(255,255,255,0.03) 0%, transparent 62%),
+      linear-gradient(155deg, #23262b 0%, #212428 55%, #1f2226 100%);
+  }
+
+  .dark .teacher-support-header,
+  .dark .teacher-support-composer {
+    background: linear-gradient(180deg, rgba(38,41,46,0.94), rgba(34,37,42,0.88));
+    box-shadow: 0 5px 14px rgba(0,0,0,0.20), inset 0 1px rgba(255,255,255,0.04);
+  }
+
+  .dark .teacher-support-composer {
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.22), inset 0 1px rgba(255,255,255,0.04);
+  }
+
+  .dark .class-chat-material {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.035), transparent 48%),
+      linear-gradient(155deg, rgba(35,38,43,0.98), rgba(30,32,37,0.96));
+    box-shadow: -4px 0 16px rgba(0,0,0,0.26) !important;
+  }
+
+  .dark .ds-semantic-info {
+    background-color: color-mix(in srgb, var(--logo-blue) 12%, #23262b);
+  }
+
+  .dark .class-chat-bubble {
+    background-color: rgba(44, 47, 53, 0.94);
+  }
+
+  .dark .class-chat-bubble-own {
+    background-color: color-mix(in srgb, var(--logo-violet) 16%, #2a2d33);
+  }
+
+  .dark .class-chat-attachment {
+    background-color: rgba(44, 47, 53, 0.94);
+  }
+
+  .dark .teacher-chat-bubble-assistant {
+    background-color: rgba(44, 47, 53, 0.80);
+  }
+
+  .dark .student-access-card {
+    background-color: rgba(35, 38, 43, 0.92) !important;
+  }
+
+  .dark .student-ai-library {
+    background:
+      radial-gradient(ellipse at 50% -12%, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.012) 45%, transparent 70%),
+      linear-gradient(180deg, rgba(33,35,40,0.80), rgba(29,31,35,0.76));
+  }
+
+  .dark .student-ai-library-hero::after {
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.25), transparent 72%);
+  }
+
+  .dark .student-ai-filter-count {
+    background: rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .dark .student-ai-card {
+    background-color: rgba(38, 41, 46, 0.92) !important;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.012) 48%, transparent 72%),
+      radial-gradient(ellipse at 94% 112%, rgb(var(--student-ai-card-accent) / 0.12) 0%, transparent 66%) !important;
+  }
+
+  .dark .student-ai-card:hover {
+    background-color: rgba(44, 47, 53, 0.97) !important;
+  }
+
+  .dark .student-ai-card-badge {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 6px rgba(0,0,0,0.25) !important;
+  }
+
+  /* Typography plugin: flip prose to its built-in inverted palette. */
+  .dark .prose {
+    --tw-prose-body: var(--tw-prose-invert-body);
+    --tw-prose-headings: var(--tw-prose-invert-headings);
+    --tw-prose-lead: var(--tw-prose-invert-lead);
+    --tw-prose-links: var(--tw-prose-invert-links);
+    --tw-prose-bold: var(--tw-prose-invert-bold);
+    --tw-prose-counters: var(--tw-prose-invert-counters);
+    --tw-prose-bullets: var(--tw-prose-invert-bullets);
+    --tw-prose-hr: var(--tw-prose-invert-hr);
+    --tw-prose-quotes: var(--tw-prose-invert-quotes);
+    --tw-prose-quote-borders: var(--tw-prose-invert-quote-borders);
+    --tw-prose-captions: var(--tw-prose-invert-captions);
+    --tw-prose-kbd: var(--tw-prose-invert-kbd);
+    --tw-prose-kbd-shadows: var(--tw-prose-invert-kbd-shadows);
+    --tw-prose-code: var(--tw-prose-invert-code);
+    --tw-prose-pre-code: var(--tw-prose-invert-pre-code);
+    --tw-prose-pre-bg: var(--tw-prose-invert-pre-bg);
+    --tw-prose-th-borders: var(--tw-prose-invert-th-borders);
+    --tw-prose-td-borders: var(--tw-prose-invert-td-borders);
+  }
+}
+
+/* `.theme-keep` (document paper, slides…): besides the light palette restored by
+   tailwind.darkPalette.cjs, bring back light-theme ink and semantic tokens. */
+.dark .theme-keep {
+  color-scheme: light;
+  color: #17151b;
+  --mix-base: #ffffff;
+  --text-primary: #17151b;
+  --text-muted: #6e6679;
+  --text-secondary: #1278bd;
+  --foreground: 260 13% 9%;
+  --muted-foreground: 215 16% 47%;
+  --border: 214 32% 91%;
+  --logo-blue-strong: #1278bd;
+  --logo-violet-strong: #55449c;
+  --canvas-dot: #d6d6d6;
 }

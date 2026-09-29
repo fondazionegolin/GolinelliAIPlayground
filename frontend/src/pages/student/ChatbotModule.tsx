@@ -43,6 +43,8 @@ import type { SharedRoom } from '@/components/student/SharedChatPanel'
 import type { ShareTarget } from '@/components/student/ShareWithModal'
 import { collaborationApi } from '@/lib/api'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
+import { useUiThemeStore } from '@/stores/uiTheme'
+import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
 
 // Deterministic colour per nickname so each collaborator is visually distinct.
 const COLLAB_NAME_COLORS = ['#e3004a', '#7b69c9', '#1278bd', '#0d9488', '#d97706', '#9333ea', '#0891b2']
@@ -213,20 +215,20 @@ const MACRO_AREA_COLORS: Record<MacroAreaKey, {
   },
   teacherbots: {
     surface: 'bg-[rgba(123,105,201,0.08)] border-[rgba(123,105,201,0.20)] hover:bg-[rgba(123,105,201,0.12)] hover:border-[rgba(123,105,201,0.30)]',
-    iconChip: 'bg-[rgba(123,105,201,0.16)] text-[#55449c]',
-    badge: 'bg-[rgba(123,105,201,0.16)] text-[#55449c]',
+    iconChip: 'bg-[rgba(123,105,201,0.16)] text-[var(--logo-violet-strong)]',
+    badge: 'bg-[rgba(123,105,201,0.16)] text-[var(--logo-violet-strong)]',
     line: 'rgba(123,105,201,0.32)',
   },
   learning: {
     surface: 'bg-[rgba(62,169,244,0.09)] border-[rgba(62,169,244,0.22)] hover:bg-[rgba(62,169,244,0.13)] hover:border-[rgba(62,169,244,0.32)]',
-    iconChip: 'bg-[rgba(62,169,244,0.16)] text-[#1278bd]',
-    badge: 'bg-[rgba(62,169,244,0.16)] text-[#1278bd]',
+    iconChip: 'bg-[rgba(62,169,244,0.16)] text-[var(--logo-blue-strong)]',
+    badge: 'bg-[rgba(62,169,244,0.16)] text-[var(--logo-blue-strong)]',
     line: 'rgba(62,169,244,0.34)',
   },
   rag: {
     surface: 'bg-[rgba(23,21,27,0.05)] border-[rgba(23,21,27,0.14)] hover:bg-[rgba(23,21,27,0.08)] hover:border-[rgba(23,21,27,0.20)]',
-    iconChip: 'bg-[rgba(23,21,27,0.08)] text-[#17151b]',
-    badge: 'bg-[rgba(23,21,27,0.08)] text-[#17151b]',
+    iconChip: 'bg-[rgba(23,21,27,0.08)] text-neutral-900',
+    badge: 'bg-[rgba(23,21,27,0.08)] text-neutral-900',
     line: 'rgba(23,21,27,0.22)',
   },
 }
@@ -767,11 +769,13 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   }
 
   const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
+  const uiDark = useUiThemeStore((st) => st.theme === 'dark')
+  const chatSurface = chatBg && uiDark ? `color-mix(in srgb, ${chatBg} 12%, #202327)` : chatBg
 
   const paletteGroups = useMemo(() => ([
     {
       label: 'Toni di grigio',
-      colors: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1', '#94a3b8'],
+      colors: ['#fafafa', '#f5f5f5', '#e5e5e5', '#d4d4d4', '#a3a3a3'],
     },
     {
       label: 'Toni di azzurro',
@@ -1287,9 +1291,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     boxShadow: `0 8px 20px color-mix(in srgb, ${activeBotAccent} 22%, transparent)`,
   }) as CSSProperties, [activeBotAccent])
   const activeBotSoftStyle = useMemo(() => ({
-    backgroundColor: `color-mix(in srgb, ${activeBotAccent} 9%, white)`,
+    backgroundColor: `color-mix(in srgb, ${activeBotAccent} 9%, var(--mix-base))`,
     borderColor: `color-mix(in srgb, ${activeBotAccent} 25%, transparent)`,
-    color: `color-mix(in srgb, ${activeBotAccent} 82%, #0f172a)`,
+    color: `color-mix(in srgb, ${activeBotAccent} 82%, #171717)`,
   }) as CSSProperties, [activeBotAccent])
 
   const handleDockOrClose = useCallback(() => {
@@ -2443,7 +2447,7 @@ REGOLE IMPORTANTI:
       )
     }
     return (
-      <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
+      <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-neutral-50))' }}>
         {/* Tab nav */}
         <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label="Sezioni Tutor AI">
           {([
@@ -2475,8 +2479,8 @@ REGOLE IMPORTANTI:
                 const surface = PROFILE_SURFACES_MOB[profile.key] || PROFILE_SURFACES_MOB.math_coach
                 return (
                   <motion.button key={profile.key} whileTap={{ scale: 0.98 }} onClick={() => handleSelectProfile(profile.key)}
-                    className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
-                    style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
+                    className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)]"
+                    style={{ backgroundColor: surface.bg, borderColor: 'rgba(163,163,163,0.16)' }}
                   >
                     <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
                       <div style={{ color: surface.text }}>{PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}</div>
@@ -2502,8 +2506,8 @@ REGOLE IMPORTANTI:
                   const surface = BOT_SURFACES_MOB[bot.color] || BOT_SURFACES_MOB.indigo
                   return (
                     <motion.button key={bot.id} whileTap={{ scale: 0.98 }} onClick={() => handleSelectTeacherbot(bot)}
-                      className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
-                      style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
+                      className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)]"
+                      style={{ backgroundColor: surface.bg, borderColor: 'rgba(163,163,163,0.16)' }}
                     >
                       <div className="flex h-12 w-12 items-center justify-center rounded-[18px]" style={{ backgroundColor: surface.icon }}>
                         <Wand2 className="h-6 w-6" style={{ color: surface.text }} />
@@ -2522,7 +2526,7 @@ REGOLE IMPORTANTI:
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setStudentbotEditorTarget('create')}
-                className="mobile-card-standard flex flex-col overflow-hidden rounded-[26px] border border-violet-200 bg-violet-50 p-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                className="mobile-card-standard flex flex-col overflow-hidden rounded-[26px] border border-violet-200 bg-violet-50 p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)]"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-violet-100 text-violet-700"><Plus className="h-6 w-6" /></div>
                 <div className="mt-auto text-base font-extrabold leading-tight text-violet-900">Crea bot</div>
@@ -2531,7 +2535,7 @@ REGOLE IMPORTANTI:
               {studentbotsData.map((bot) => {
                 const available = availableStudentbots.find((item) => item.id === bot.id)
                 return (
-                  <div key={bot.id} className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                  <div key={bot.id} className="mobile-card-standard group relative flex flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(23,23,23,0.08)]">
                     <button
                       type="button"
                       onClick={() => available && handleSelectTeacherbot(available)}
@@ -3327,7 +3331,7 @@ REGOLE IMPORTANTI:
                           <NavTreeConnector tint={MACRO_AREA_COLORS.assistants.line} isLast={i === filteredProfiles.length - 1} />
                           <button
                             onClick={() => handleSelectProfile(profile.key)}
-                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                           >
                             <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{profile.name}</span>
                             {usage > 0 && (
@@ -3351,7 +3355,7 @@ REGOLE IMPORTANTI:
                           <NavTreeConnector tint={MACRO_AREA_COLORS.teacherbots.line} isLast={i === filteredTeacherbots.length - 1} />
                           <button
                             onClick={() => handleSelectTeacherbot(bot)}
-                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                           >
                             <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{bot.name}</span>
                           </button>
@@ -3395,7 +3399,7 @@ REGOLE IMPORTANTI:
                                 setExpandedSection(null)
                                 setNavCollapsed(true)
                               }}
-                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                             >
                               <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{ragSession.name}</span>
                             </button>
@@ -3427,7 +3431,7 @@ REGOLE IMPORTANTI:
                             <NavTreeConnector tint={MACRO_AREA_COLORS.learning.line} isLast={i === lessonList.length - 1} />
                             <button
                               onClick={() => openLearningSession(session)}
-                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(23,23,23,0.08)]' : 'hover:bg-white/70'}`}
                             >
                               <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{session.topic}</span>
                             </button>
@@ -3460,7 +3464,7 @@ REGOLE IMPORTANTI:
 
       <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : 'ds-page-frame'}`}>
         {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
-	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
+	          <div className={`${showHistory ? 'w-64' : 'w-16'} ds-frame-sidebar hidden md:flex min-h-0 shrink-0 flex-col transition-all duration-200`}>
             {showHistory ? (
               <>
 	                <div className="border-b border-slate-200/70 bg-white/60 p-3 backdrop-blur-sm">
@@ -3469,14 +3473,7 @@ REGOLE IMPORTANTI:
                       <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
                       <p className="text-[11px] text-slate-400 mt-0.5">Conversazioni della vista attiva</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowHistory(false)}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
+                    <SidebarCollapseButton onClick={() => setShowHistory(false)} label="Comprimi cronologia" />
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -3597,23 +3594,39 @@ REGOLE IMPORTANTI:
                   )}
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowHistory(true)}
-                  className="h-full w-full p-0 rounded-none hover:bg-slate-100"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+              <SidebarRail
+                bare
+                expandLabel="Espandi cronologia"
+                onExpand={() => setShowHistory(true)}
+                onCreate={handleStartNewConversation}
+                createLabel="Nuova chat"
+                items={mainTab === 'rag'
+                  ? ragSessions.map((ragSession) => ({
+                    id: ragSession.id,
+                    title: ragSession.name,
+                    icon: <Database className="h-4 w-4" />,
+                    selected: ragSession.id === activeRagSessionId,
+                    onClick: () => { setActiveRagSessionId(ragSession.id); setMainTab('rag') },
+                  }))
+                  : conversations
+                    .filter(c => selectedTeacherbot
+                      ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
+                      : c.profile_key === selectedProfile)
+                    .map((conv) => ({
+                      id: conv.id,
+                      title: conv.title || 'Conversazione',
+                      icon: <MessageSquare className="h-4 w-4" />,
+                      selected: conversationId === conv.id,
+                      onClick: () => loadConversation(conv.id),
+                    }))}
+              />
             )}
           </div>
         )}
 
         <div
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-        style={chatBg && !sidebarMode ? { backgroundColor: chatBg } : undefined}
+        style={chatBg && !sidebarMode ? { backgroundColor: chatSurface } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
           e.currentTarget.classList.add('ring-2', 'ring-inset')
@@ -4027,10 +4040,10 @@ REGOLE IMPORTANTI:
           ) : (
             <>
 	              <div
-                  className="relative z-20 hidden shrink-0 items-center gap-3 border-b bg-white/95 px-4 py-2.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] backdrop-blur-md md:flex"
+                  className="relative z-20 hidden shrink-0 items-center gap-3 border-b bg-white/95 px-4 py-2.5 shadow-[0_1px_0_rgba(23,23,23,0.03)] backdrop-blur-md md:flex"
                   style={{
-                    borderBottomColor: `color-mix(in srgb, ${activeBotAccent} 24%, #e2e8f0)`,
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${activeBotAccent} 8%, white), rgba(255,255,255,0.96) 38%)`,
+                    borderBottomColor: `color-mix(in srgb, ${activeBotAccent} 24%, #e5e5e5)`,
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${activeBotAccent} 8%, var(--mix-base)), rgb(var(--c-white) / 0.96) 38%)`,
                   }}
                 >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={activeBotSolidStyle}>
@@ -4055,7 +4068,7 @@ REGOLE IMPORTANTI:
                   </p>
                 </div>
                 {!sidebarMode && (
-                  <label className="hidden w-56 shrink-0 items-center gap-2 rounded-xl border bg-white/90 px-3 py-2 shadow-sm xl:flex" style={{ borderColor: `color-mix(in srgb, ${activeBotAccent} 18%, #e2e8f0)` }}>
+                  <label className="hidden w-56 shrink-0 items-center gap-2 rounded-xl border bg-white/90 px-3 py-2 shadow-sm xl:flex" style={{ borderColor: `color-mix(in srgb, ${activeBotAccent} 18%, #e5e5e5)` }}>
                     <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <input
                       value={chatbotSearch}
@@ -4192,7 +4205,7 @@ REGOLE IMPORTANTI:
                                       setShowBgPalette(false)
                                     }}
                                     className={`h-6 w-6 rounded-md border transition-transform hover:scale-105 ${chatBg === color ? 'ring-2 ring-offset-1' : ''}`}
-	                                    style={chatBg === color ? { backgroundColor: color, boxShadow: '0 0 0 2px #0f172a' } : { backgroundColor: color }}
+	                                    style={chatBg === color ? { backgroundColor: color, boxShadow: '0 0 0 2px #171717' } : { backgroundColor: color }}
                                     title={color}
                                   />
                                 ))}
@@ -4324,7 +4337,7 @@ REGOLE IMPORTANTI:
                       const c = me ? accentTheme.accent : collabNameColor(p.nickname)
                       return (
                         <span key={p.id} className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold"
-                          style={{ borderColor: me ? accentTheme.accent : '#e2e8f0', backgroundColor: me ? accentTheme.soft : '#f8fafc', color: c }}>
+                          style={{ borderColor: me ? accentTheme.accent : '#e5e5e5', backgroundColor: me ? accentTheme.soft : '#fafafa', color: c }}>
                           <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: c }}>
                             {p.nickname.slice(0, 1).toUpperCase()}
                           </span>
@@ -4503,9 +4516,9 @@ REGOLE IMPORTANTI:
 	              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-xl rounded-bl-md px-4 py-3`}>
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
-	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
-	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#737373' }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#737373' }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#737373' }}></span>
                   </div>
                   <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>Sto pensando...</span>
                 </div>

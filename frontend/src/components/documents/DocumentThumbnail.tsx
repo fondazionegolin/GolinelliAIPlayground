@@ -105,7 +105,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
                   : block.type === 'rectangle' || block.type === 'ellipse'
                     ? {
                         backgroundColor: block.style.fill || 'transparent',
-                        border: `${block.style.strokeWidth ?? 1}px solid ${block.style.stroke || '#1e293b'}`,
+                        border: `${block.style.strokeWidth ?? 1}px solid ${block.style.stroke || '#262626'}`,
                         borderRadius: block.type === 'ellipse' ? '50%' : (block.style.cornerRadius ?? 0),
                       }
                     : {}),
@@ -133,7 +133,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
                 <img src={block.content} alt="" className="h-full w-full object-cover" />
               ) : block.type === 'line' ? (
                 <svg className="h-full w-full overflow-visible">
-                  <line x1={0} y1={0} x2={block.width} y2={block.height} stroke={block.style.stroke || '#1e293b'} strokeWidth={block.style.strokeWidth ?? 2} />
+                  <line x1={0} y1={0} x2={block.width} y2={block.height} stroke={block.style.stroke || '#262626'} strokeWidth={block.style.strokeWidth ?? 2} />
                 </svg>
               ) : null}
             </div>

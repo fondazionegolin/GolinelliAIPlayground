@@ -145,7 +145,7 @@
     --button-chrome-bg: var(--ds-button-bg);
     --button-chrome-bg-hover: var(--ds-button-bg-hover);
     --button-chrome-border: var(--ds-choice-border);
-    --button-chrome-border-hover: rgba(15,23,42,0.14);
+    --button-chrome-border-hover: rgba(23,23,23,0.14);
     --button-chrome-shadow: var(--ds-button-shadow);
     --button-chrome-shadow-hover: var(--ds-button-shadow-hover);
     --button-accent-bg: var(--button-chrome-bg);
@@ -161,12 +161,17 @@
     --selection-bg: var(--ds-choice-bg);
     --selection-bg-hover: var(--ds-choice-bg-hover);
     --selection-border: var(--ds-choice-border);
-    --selection-border-hover: rgba(15,23,42,0.14);
+    --selection-border-hover: rgba(23,23,23,0.14);
     --selection-text: var(--ds-choice-ink);
     --selection-active-bg: var(--ds-choice-bg);
     --selection-active-text: var(--ds-choice-ink);
     --selection-active-bg-hover: var(--ds-choice-bg-hover);
     --selection-shadow: var(--ds-choice-ring-strong), var(--ds-choice-shadow);
+
+    /* Base colour-mix tints blend into: white here, the dark surface under .dark. */
+    --mix-base: #ffffff;
+    /* Dotted editor canvases (Dataflow, boards, whiteboard). */
+    --canvas-dot: #d6d6d6;
 
     /* Core surfaces */
     --background: 0 0% 99%;
@@ -212,8 +217,8 @@
     /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
     --border-subtle: transparent;
     --border-strong: transparent;
-    --overlay-soft: rgba(15, 23, 42, 0.12);
-    --overlay-modal: rgba(15, 23, 42, 0.5);
+    --overlay-soft: rgba(23, 23, 23, 0.12);
+    --overlay-modal: rgba(23, 23, 23, 0.5);
     --shadow-sm: var(--ds-shadow-1);
     --shadow-md: var(--ds-shadow-2);
     --shadow-lg: var(--ds-shadow-3);
@@ -229,41 +234,60 @@
     --app-accent-border: var(--logo-violet-strong);
   }
 
+  /* Dark mode (teacher/student areas only, toggled by stores/uiTheme.ts): same soft-material
+     language with the light inverted — near-hueless dark greys, soft (never pure white) ink,
+     depth from wide black shadows plus a faint top highlight. Palette utilities are remapped
+     separately in tailwind.darkPalette.cjs. */
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217 33% 17%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 100% 70%;
-    --primary-foreground: 222 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 250 47% 68%;
+    --mix-base: #23262b;
+    --canvas-dot: rgba(255, 255, 255, 0.075);
+    --background: 228 7% 8%;
+    --foreground: 220 11% 91%;
+    --card: 216 10% 15%;
+    --card-foreground: 220 11% 91%;
+    --popover: 216 10% 15%;
+    --popover-foreground: 220 11% 91%;
+    --primary: 342 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 9% 20%;
+    --secondary-foreground: 220 11% 91%;
+    --muted: 220 9% 20%;
+    --muted-foreground: 223 7% 63%;
+    --accent: 342 30% 18%;
+    --accent-foreground: 342 100% 74%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 223 8% 22%;
+    --input: 223 8% 22%;
+    --ring: 250 70% 78%;
 
-    --app-body-bg: #111827;
-    --surface-page: var(--app-body-bg);
-    --surface-base: #1e293b;
-    --surface-elevated: rgba(30, 41, 59, 0.92);
-    --surface-muted: #334155;
-    --surface-glass: rgba(30, 41, 59, 0.82);
-    --surface-header: rgba(30, 41, 59, 0.94);
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --border-subtle: #334155;
-    --border-strong: #475569;
-    --overlay-soft: rgba(15, 23, 42, 0.36);
-    --overlay-modal: rgba(2, 6, 23, 0.72);
+    /* Readable brand inks on dark surfaces (solid fills keep the light values). */
+    --logo-blue-strong: #86c3ef;
+    --logo-violet-strong: #ab9ff0;
+    --brand-red-text: #ff6b93;
+    --brand-orange-text: #fb923c;
+    --brand-celeste-ink: #86c3ef;
+    --brand-pill-lavender: rgba(171, 159, 240, 0.14);
+    --brand-pill-lavender-hover: rgba(171, 159, 240, 0.20);
+    --brand-pill-lavender-border: rgba(171, 159, 240, 0.30);
+    --brand-pill-violet: #cfc6ff;
+    --brand-yellow-ink: #fde68a;
+
+    --button-chrome-border-hover: rgba(255,255,255,0.14);
+    --selection-border-hover: rgba(255,255,255,0.14);
+
+    --surface-muted: rgba(171, 159, 240, 0.07);
+    --text-primary: #e4e6ea;
+    --text-secondary: var(--brand-celeste-ink);
+    --text-muted: #9a9ea8;
+    --overlay-soft: rgba(0, 0, 0, 0.30);
+    --overlay-modal: rgba(0, 0, 0, 0.62);
+
+    --app-accent: #ab9ff0;
+    --app-accent-text: #ab9ff0;
+    --app-accent-soft: rgba(171, 159, 240, 0.10);
+    --app-accent-soft-strong: #ab9ff0;
+    --app-accent-border: #ab9ff0;
   }
 }
 
@@ -392,8 +416,8 @@
   .app-button-chrome-quiet {
     background-image: radial-gradient(ellipse at center,
       rgba(255,255,255,0.995) 0%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1%, white) 68%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3.5%, white) 100%);
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1%, var(--mix-base)) 68%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3.5%, var(--mix-base)) 100%);
     border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, #d8dde6);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.92), 0 1px 2px rgba(23,21,27,0.025);
   }
@@ -401,8 +425,8 @@
   .app-button-chrome-quiet:hover {
     background-image: radial-gradient(ellipse at center,
       rgba(255,255,255,0.995) 0%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, white) 66%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, white) 100%);
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, var(--mix-base)) 66%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, var(--mix-base)) 100%);
     border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 18%, #c9d0dc);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 1px 4px rgba(23,21,27,0.035);
   }
@@ -465,7 +489,8 @@
   }
 
   .brand-wordmark-ai {
-    color: color-mix(in srgb, var(--logo-pink) 88%, transparent);
+    /* Solid pictogram red: any transparency washes it out on the dark canvas. */
+    color: var(--logo-pink);
   }
 
   .teacher-support-message .chat-markdown {
@@ -658,7 +683,7 @@
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.78),
     inset 0 -10px 20px rgba(255,255,255,0.08),
-    0 10px 24px rgba(148, 163, 184, 0.16);
+    0 10px 24px rgba(163, 163, 163, 0.16);
   backdrop-filter: blur(18px) saturate(145%);
   -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
@@ -759,10 +784,10 @@
   box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.2) !important;
 }
 .ProseMirror {
-  caret-color: #64748b;  /* slate-500 */
+  caret-color: #737373;  /* slate-500 */
 }
 .ProseMirror:focus {
-  caret-color: #334155;  /* slate-700 for better visibility */
+  caret-color: #404040;  /* slate-700 for better visibility */
 }
 
 /* Keep the Document Builder selection visible while the user moves to the AI panel. */
@@ -776,9 +801,9 @@
   position: relative;
   margin: 0.75rem 0;
   padding: 1.25rem 0.75rem 0.5rem;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed #d4d4d4;
   border-radius: 0.5rem;
-  color: #475569;
+  color: #525252;
 }
 .ProseMirror .docx-region::before {
   content: attr(data-docx-region-label);
@@ -789,7 +814,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #64748b;
+  color: #737373;
 }
 .ProseMirror .docx-comment {
   border-bottom: 2px dotted #d97706;
@@ -813,7 +838,7 @@
 .ProseMirror .docx-table td {
   min-width: 3rem;
   padding: 0.35rem 0.5rem;
-  border: 1px solid #94a3b8;
+  border: 1px solid #a3a3a3;
   vertical-align: top;
 }
 .ProseMirror .docx-table th {
@@ -836,5 +861,62 @@
     font-weight: 700;    /* bold */
     font-feature-settings: 'liga' 1, 'calt' 1, 'dlig' 1;
     font-variant-ligatures: common-ligatures contextual discretionary-ligatures;
+  }
+}
+
+/* Dark-mode counterparts for component classes above that hard-code white glass layers. */
+@layer components {
+  .dark .brand-wordmark {
+    color: #d4d6da;
+  }
+
+  .dark .app-button-chrome-quiet,
+  .dark .app-button-chrome-quiet:hover {
+    background-image: radial-gradient(ellipse at center,
+      #2a2d33 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, #2a2d33) 100%);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.25);
+  }
+
+  .dark .navbar-widget-control,
+  .dark .navbar-inline-control:hover,
+  .dark .navbar-inline-control-active {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.035)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 5px 14px rgba(0,0,0,0.22);
+  }
+
+  .dark .navbar-widget-control:hover,
+  .dark .navbar-inline-control:hover {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
+  }
+
+  .dark .navbar-widget-control-inset {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .dark .navbar-widget-control-inset:hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  .dark .ai-mode-pill {
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02)),
+      radial-gradient(135% 135% at 16% 12%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 40%, transparent 100%);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(0,0,0,0.28);
+  }
+
+  .dark .ai-mode-pill::after {
+    opacity: 0.25;
   }
 }

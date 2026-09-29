@@ -49,6 +49,8 @@ import { FloatingClassChat } from '@/components/FloatingClassChat'
 import { useSocket } from '@/hooks/useSocket'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { useAuthStore } from '@/stores/auth'
+import { useUiThemeScope } from '@/stores/uiTheme'
+import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
 import { useToast } from '@/components/ui/use-toast'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
@@ -63,6 +65,7 @@ export default function TeacherDashboard() {
   const { toast } = useToast()
 
   const { data: teacherProfileData } = useTeacherProfile()
+  useUiThemeScope(teacherProfileData?.uiTheme)
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [isResizingChat, setIsResizingChat] = useState(false)
@@ -657,6 +660,9 @@ function TeacherMobileNavigation({
                 return <Link key={path} to={path} onClick={() => setOpen(false)} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 active:bg-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 opacity-50" /></Link>
               })}
             </nav>
+            <div className="border-t border-slate-100 py-1">
+              <ThemeToggleMenuItem persist={(ui_theme) => teacherApi.updateProfile({ ui_theme })} />
+            </div>
             <div className="flex items-center gap-2 border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-50 px-4 py-3.5 text-sm font-black text-orange-600"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
               <button type="button" onClick={onLogout} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
@@ -688,7 +694,7 @@ function MobileTeacherHome({
   ]
 
   return (
-    <div className="min-h-full w-full overflow-y-auto bg-[#f4f6f8] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+    <div className="min-h-full w-full overflow-y-auto bg-neutral-100 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
       <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 pb-6 pt-7 text-white shadow-2xl shadow-slate-300">
         <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-30 blur-3xl" style={{ backgroundColor: accentColor }} />
         <div className="relative">

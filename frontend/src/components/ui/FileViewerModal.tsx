@@ -172,12 +172,12 @@ function FileViewerContent({ file, onClose }: { file: FileViewerFile; onClose: (
           </div>
           <div className="flex items-center gap-2">
             <a href={file.url} target="_blank" rel="noopener noreferrer"
-              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-neutral-900 hover:bg-[#181b1e]/5 rounded-lg transition-colors"
               title={t('chat_sidebar.open_new_tab')}>
               <ExternalLink className="h-4 w-4" />
             </a>
             <a href={file.url} download={file.filename}
-              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-neutral-900 hover:bg-[#181b1e]/5 rounded-lg transition-colors"
               title={t('chat_sidebar.download')}>
               <Download className="h-4 w-4" />
             </a>

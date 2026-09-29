@@ -1030,7 +1030,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     <>
     <div className="flex h-full min-h-0 gap-3 bg-slate-100 p-4">
       {/* ── Main notebook card ───────────────────────────────────────────── */}
-      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(23,23,23,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Unified toolbar — riga singola, scorre in orizzontale su finestre strette */}
         <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:thin]">
           <IconButton

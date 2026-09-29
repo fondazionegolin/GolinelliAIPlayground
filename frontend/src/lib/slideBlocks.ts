@@ -57,7 +57,7 @@ export function createShapeBlock(type: BlockShapeType, dims: { width: number; he
       y: dims.height / 2,
       width: 200,
       height: 0,
-      style: { stroke: '#1e293b', strokeWidth: 2 },
+      style: { stroke: '#262626', strokeWidth: 2 },
     }
   }
 
@@ -70,8 +70,8 @@ export function createShapeBlock(type: BlockShapeType, dims: { width: number; he
     width: 200,
     height: 150,
     style: {
-      fill: '#e2e8f0',
-      stroke: '#1e293b',
+      fill: '#e5e5e5',
+      stroke: '#262626',
       strokeWidth: 2,
       ...(type === 'rectangle' ? { cornerRadius: 8 } : {}),
     },

@@ -60,7 +60,7 @@ type BoardConfig = {
 
 // ── Board taxonomy (mirrors backend contract) ─────────────────────────────────
 const DEFAULT_COLUMNS: BoardColumn[] = [
-  { id: 'inbox', label: 'Inbox / Nuovi', hint: 'Segnalazioni grezze da leggere e valutare', color: '#64748b' },
+  { id: 'inbox', label: 'Inbox / Nuovi', hint: 'Segnalazioni grezze da leggere e valutare', color: '#737373' },
   { id: 'triage', label: 'In Analisi / Triage', hint: 'Qualifica: bug, feature o errore d’uso. Assegna priorità', color: '#0ea5e9' },
   { id: 'qa', label: 'In Revisione / QA', hint: 'Verifica tecnica e qualitativa del fix', color: '#a855f7' },
   { id: 'released', label: 'Rilasciato / Chiuso', hint: 'Online e cliente avvisato', color: '#10b981' },
@@ -694,7 +694,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     if (!label) return
     const id = (label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`).slice(0, 20)
     updateConfigMutation.mutate({
-      columns: [...columns, { id, label, hint: 'Colonna personalizzata', color: '#64748b' }],
+      columns: [...columns, { id, label, hint: 'Colonna personalizzata', color: '#737373' }],
     })
     setNewColumnName('')
   }

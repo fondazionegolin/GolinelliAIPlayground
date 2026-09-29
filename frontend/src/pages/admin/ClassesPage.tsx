@@ -195,7 +195,7 @@ export default function ClassesPage() {
                     <ChevronRight className="h-4 w-4 text-slate-400" />
                   </div>
                   <div className="w-9 h-9 rounded-xl bg-[#1a1a2e]/10 flex items-center justify-center flex-shrink-0">
-                    <BookOpen className="h-4 w-4 text-[#1a1a2e]" />
+                    <BookOpen className="h-4 w-4 text-neutral-900" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

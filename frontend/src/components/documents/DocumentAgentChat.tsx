@@ -253,7 +253,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         <div ref={bottomRef} />
       </div>
 
-      <footer className="sticky bottom-0 z-10 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_18px_rgba(15,23,42,0.05)]">
+      <footer className="sticky bottom-0 z-10 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_18px_rgba(23,23,23,0.05)]">
         <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:border-violet-300">
           <textarea
             value={input}

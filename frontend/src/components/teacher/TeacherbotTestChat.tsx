@@ -133,7 +133,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
   if (isLoadingBot) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
+        <Loader2 className="h-8 w-8 animate-spin text-neutral-900" />
       </div>
     )
   }

@@ -297,7 +297,7 @@ export default function SchoolsPage() {
         {(['all', 'SCHOOL', 'INDIVIDUAL'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={filter === f ? { backgroundColor: '#fe004d', color: 'white' } : { color: '#64748b' }}>
+            style={filter === f ? { backgroundColor: '#fe004d', color: 'white' } : { color: '#737373' }}>
             {f === 'all' ? 'Tutti' : f === 'SCHOOL' ? '🏫 Scuole' : '👤 Individuali'}
           </button>
         ))}

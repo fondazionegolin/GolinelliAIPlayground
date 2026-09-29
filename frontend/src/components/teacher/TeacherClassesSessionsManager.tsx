@@ -111,7 +111,7 @@ export default function TeacherClassesSessionsManager({
   const { isMobile } = useMobile()
   const currentTeacherId = useAuthStore((state) => state.user?.id)
   // The selected class keeps a neutral accent; session status colours are handled separately.
-  const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#64748b', text: '#334155' }
+  const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#737373', text: '#404040' }
 
   const [selectedClassId, setSelectedClassId] = useState(searchParams.get('class') || '')
   const [showNewClassForm, setShowNewClassForm] = useState(false)
@@ -477,7 +477,7 @@ export default function TeacherClassesSessionsManager({
 
   if (isMobile) {
     return (
-      <div className="min-h-full w-full overflow-y-auto bg-[#f4f6f8] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+      <div className="min-h-full w-full overflow-y-auto bg-neutral-100 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
         {!selectedClass ? (
           <>
             <header className="flex items-start justify-between gap-4 px-1">
@@ -1007,14 +1007,14 @@ export default function TeacherClassesSessionsManager({
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${hasCurrent ? 'bg-[#fef3c7] text-[#a16207]' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${hasCurrent ? 'bg-amber-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>
                         {expanded ? <FolderOpen className="h-5 w-5" strokeWidth={1.75} /> : <Folder className="h-5 w-5" strokeWidth={1.75} />}
                       </span>
                       <span className="min-w-0">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate text-[15px] font-bold text-slate-950">{cls.name}</span>
                           {hasCurrent && (
-                            <span className="inline-flex shrink-0 items-center rounded-full bg-[#facc15] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#713f12]">
+                            <span className="inline-flex shrink-0 items-center rounded-full bg-yellow-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-yellow-900">
                               {isEnglish ? 'Current session' : 'Sessione corrente'}
                             </span>
                           )}
@@ -1222,7 +1222,7 @@ export default function TeacherClassesSessionsManager({
             size="sm"
             surface="elevated"
             className="rounded-xl"
-            style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
+            style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#171717', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
           >
             <DialogHeader>
               <DialogTitle>{t('sessions.new_session')}</DialogTitle>
@@ -1416,8 +1416,8 @@ function SessionLine({
         : 'bg-slate-500 text-white'
   // Yellow is reserved for the session selected in the navbar (the one actually in use).
   const rowSurface = isCurrent
-    ? 'bg-[#fef9c3] shadow-[0_0_0_1px_rgba(234,179,8,0.45),0_6px_16px_rgba(234,179,8,0.16)]'
-    : 'bg-white/70 shadow-[0_0_0_1px_rgba(100,116,139,0.08)] hover:bg-white hover:shadow-[0_0_0_1px_rgba(100,116,139,0.14),var(--ds-shadow-1)]'
+    ? 'bg-yellow-100 shadow-[0_0_0_1px_rgba(234,179,8,0.45),0_6px_16px_rgba(234,179,8,0.16)]'
+    : 'bg-white/70 shadow-[0_0_0_1px_rgba(115,115,115,0.08)] hover:bg-white hover:shadow-[0_0_0_1px_rgba(115,115,115,0.14),var(--ds-shadow-1)]'
   const openSession = () => navigate(`/teacher/sessions/${session.id}`)
 
   return (
@@ -1444,7 +1444,7 @@ function SessionLine({
             <span className="flex min-w-0 items-center gap-2">
               <span className={`truncate text-sm font-bold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
               {isCurrent && (
-                <span className="shrink-0 rounded-full bg-[#facc15] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#713f12]">
+                <span className="shrink-0 rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-yellow-900">
                   {isEnglish ? 'Current session' : 'Sessione corrente'}
                 </span>
               )}

@@ -7,6 +7,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Golinelli AI Playground</title>
     <script>
+      // Paint the cached dark theme before React boots (authenticated teacher/student areas only;
+      // the server profile preference is re-applied by useUiThemeScope once loaded).
+      (function () {
+        try {
+          if (/^\/(teacher|student)(\/|$)/.test(location.pathname) && localStorage.getItem('ui_theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script>
       // Cross-origin isolation (COOP/COEP) is intentionally DISABLED: it makes the page
       // cross-origin isolated, which blocks the Coding Lab's Sandpack bundler iframe
       // ("Couldn't connect to server / TIME_OUT"). We no longer register the coi-serviceworker.

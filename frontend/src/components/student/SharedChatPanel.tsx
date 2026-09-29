@@ -150,8 +150,8 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
                   key={p.id}
                   className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold"
                   style={{
-                    borderColor: me ? accent.accent : '#e2e8f0',
-                    backgroundColor: me ? accent.soft : '#f8fafc',
+                    borderColor: me ? accent.accent : '#e5e5e5',
+                    backgroundColor: me ? accent.soft : '#fafafa',
                     color: me ? accent.text : colorFor(p.nickname),
                   }}
                 >

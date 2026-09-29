@@ -92,7 +92,7 @@ interface DragState {
   hitId: string | null
 }
 
-const HOLE_COLOR = '#94a3b8'
+const HOLE_COLOR = '#a3a3a3'
 
 const snapTo = (v: number, step: number) => (step > 0 ? Math.round(v / step) * step : v)
 const round2 = (v: number) => Math.round(v * 100) / 100
@@ -224,10 +224,10 @@ export default function SolidModelerViewport({
     const cubeCamera = new THREE.OrthographicCamera(-1.05, 1.05, 1.05, -1.05, 0.1, 10)
     const cubeGeometry = new THREE.BoxGeometry(1.2, 1.2, 1.2).rotateX(Math.PI / 2)
     const cube = new THREE.Mesh(cubeGeometry, CUBE_FACES.map(f => new THREE.MeshBasicMaterial({
-      map: labelTexture(f.label, { bg: f.view === 'front' ? '#dbeafe' : '#f8fafc', fg: f.view === 'front' ? '#1e3a8a' : '#334155', font: f.label.length > 6 ? 40 : 50, border: '#94a3b8' }),
+      map: labelTexture(f.label, { bg: f.view === 'front' ? '#dbeafe' : '#fafafa', fg: f.view === 'front' ? '#1e3a8a' : '#404040', font: f.label.length > 6 ? 40 : 50, border: '#a3a3a3' }),
       toneMapped: false,
     })))
-    const cubeEdges = new THREE.LineSegments(new THREE.EdgesGeometry(cubeGeometry), new THREE.LineBasicMaterial({ color: '#64748b' }))
+    const cubeEdges = new THREE.LineSegments(new THREE.EdgesGeometry(cubeGeometry), new THREE.LineBasicMaterial({ color: '#737373' }))
     cube.add(cubeEdges)
     cubeScene.add(cube)
 
@@ -397,7 +397,7 @@ export default function SolidModelerViewport({
       // Holes get crisp edges so they read like Tinkercad's hatched shapes.
       const existingEdges = mesh.children.find(c => c.userData.edges)
       if (obj.hole && !existingEdges) {
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 25), new THREE.LineBasicMaterial({ color: '#475569', transparent: true, opacity: 0.8 }))
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 25), new THREE.LineBasicMaterial({ color: '#525252', transparent: true, opacity: 0.8 }))
         edges.userData.edges = true
         edges.raycast = () => {}
         mesh.add(edges)
@@ -451,7 +451,7 @@ export default function SolidModelerViewport({
       h.renderOrder = 10
       h.position.copy(pos)
       h.userData = { handle: kind, fixedScreen: true }
-      const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: '#1e293b', depthTest: false }))
+      const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: '#262626', depthTest: false }))
       outline.renderOrder = 11
       outline.raycast = () => {}
       h.add(outline)
@@ -460,10 +460,10 @@ export default function SolidModelerViewport({
     for (const sx of [-1, 1] as const) for (const sy of [-1, 1] as const) {
       addHandle(toWorld(sx > 0 ? lb.max.x : lb.min.x, sy > 0 ? lb.max.y : lb.min.y, lb.min.z), { type: 'corner', sx, sy }, '#ffffff')
     }
-    addHandle(toWorld(lb.max.x, lc.y, lb.min.z), { type: 'face', axis: 0, side: 1 }, '#e2e8f0')
-    addHandle(toWorld(lb.min.x, lc.y, lb.min.z), { type: 'face', axis: 0, side: -1 }, '#e2e8f0')
-    addHandle(toWorld(lc.x, lb.max.y, lb.min.z), { type: 'face', axis: 1, side: 1 }, '#e2e8f0')
-    addHandle(toWorld(lc.x, lb.min.y, lb.min.z), { type: 'face', axis: 1, side: -1 }, '#e2e8f0')
+    addHandle(toWorld(lb.max.x, lc.y, lb.min.z), { type: 'face', axis: 0, side: 1 }, '#e5e5e5')
+    addHandle(toWorld(lb.min.x, lc.y, lb.min.z), { type: 'face', axis: 0, side: -1 }, '#e5e5e5')
+    addHandle(toWorld(lc.x, lb.max.y, lb.min.z), { type: 'face', axis: 1, side: 1 }, '#e5e5e5')
+    addHandle(toWorld(lc.x, lb.min.y, lb.min.z), { type: 'face', axis: 1, side: -1 }, '#e5e5e5')
     addHandle(toWorld(lc.x, lc.y, lb.max.z), { type: 'face', axis: 2, side: 1 }, '#ffffff')
 
     // Elevation cone above the object.
@@ -473,7 +473,7 @@ export default function SolidModelerViewport({
     const liftHolder = new THREE.Group()
     liftHolder.position.copy(top)
     liftHolder.userData = { fixedScreen: true, screenScale: 0.011 }
-    const lift = new THREE.Mesh(cone, new THREE.MeshBasicMaterial({ color: '#0f172a', depthTest: false }))
+    const lift = new THREE.Mesh(cone, new THREE.MeshBasicMaterial({ color: '#171717', depthTest: false }))
     lift.position.z = 3.2
     lift.renderOrder = 10
     lift.userData = { handle: { type: 'lift' } satisfies HandleKind }

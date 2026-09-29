@@ -136,6 +136,7 @@
   "navbar": {
     "settings": "Settings",
     "logout": "Log out",
+    "dark_mode": "Dark mode",
     "profile": "Profile",
     "role_student": "Student",
     "role_teacher": "Teacher",

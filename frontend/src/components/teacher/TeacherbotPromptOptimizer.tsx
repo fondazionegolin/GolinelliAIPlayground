@@ -172,7 +172,7 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
                 {/* Loading */}
                 {isLoading && (
                     <div className="py-8 flex flex-col items-center justify-center gap-3">
-                        <Loader2 className={`h-8 w-8 animate-spin ${isExpand ? 'text-indigo-600' : 'text-[#181b1e]'}`} />
+                        <Loader2 className={`h-8 w-8 animate-spin ${isExpand ? 'text-indigo-600' : 'text-neutral-900'}`} />
                         <p className="text-sm text-slate-600 font-medium">
                             {isExpand ? 'Generazione regole in corso...' : "L'AI sta scrivendo il prompt migliore..."}
                         </p>

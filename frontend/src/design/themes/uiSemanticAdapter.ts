@@ -68,8 +68,8 @@ export const uiSemanticAdapter: UiSemanticAdapter = {
     inverse: 'transparent',
   },
   overlay: {
-    soft: 'rgba(15,23,42,0.12)',
-    modal: 'rgba(15,23,42,0.5)',
+    soft: 'rgba(23,23,23,0.12)',
+    modal: 'rgba(23,23,23,0.5)',
   },
   tones: {
     neutral: {

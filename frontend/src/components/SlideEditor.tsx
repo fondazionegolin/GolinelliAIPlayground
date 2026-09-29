@@ -428,7 +428,7 @@ export function SlideEditor({
       onDrop={handleDrop}
       style={{ 
         cursor: dragState?.isDragging ? 'grabbing' : 'default',
-        backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)',
+        backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)',
         backgroundSize: '20px 20px'
       }}
     >
@@ -465,7 +465,7 @@ export function SlideEditor({
               : block.type === 'rectangle' || block.type === 'ellipse'
                 ? {
                     backgroundColor: block.style.fill || 'transparent',
-                    border: `${block.style.strokeWidth ?? 1}px solid ${block.style.stroke || '#1e293b'}`,
+                    border: `${block.style.strokeWidth ?? 1}px solid ${block.style.stroke || '#262626'}`,
                     borderRadius: block.type === 'ellipse' ? '50%' : (block.style.cornerRadius ?? 0),
                   }
                 : {}),
@@ -526,7 +526,7 @@ export function SlideEditor({
                 y1={0}
                 x2={block.width}
                 y2={block.height}
-                stroke={block.style.stroke || '#1e293b'}
+                stroke={block.style.stroke || '#262626'}
                 strokeWidth={block.style.strokeWidth ?? 2}
               />
             </svg>

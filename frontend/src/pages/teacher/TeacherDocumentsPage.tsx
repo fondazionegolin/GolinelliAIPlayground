@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Download, Loader2, FileUp
+  Plus, Trash2, Upload, Monitor, FileText, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp
 } from 'lucide-react'
 import { filesApi, teacherApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
@@ -13,6 +12,7 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentCard from '@/components/documents/DocumentCard'
@@ -1843,110 +1843,79 @@ export default function TeacherDocumentsPage() {
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
-        {/* Header / Meta-Toolbar */}
-        <div className="relative h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30 shrink-0">
-          <div className="flex min-w-0 items-center gap-2">
-             <Button
-               variant="ghost"
-               size="sm"
-               onClick={closeDocumentEditor}
-               className="shrink-0 text-slate-600 gap-1 font-semibold"
-             >
-               <ChevronLeft className="h-4 w-4" />
-               {isEnglish ? 'All documents' : 'Tutti i documenti'}
-             </Button>
-             <div className="h-7 w-px bg-slate-200" />
-             <Input
-               value={document.title}
-               onChange={(e) => handleTitleChange(e.target.value)}
-               disabled={Boolean(activeStudentSubmissionId)}
-               className="h-10 w-[min(28vw,360px)] border-indigo-200 bg-indigo-50/60 px-3 font-bold text-slate-900 shadow-none focus-visible:ring-indigo-200"
-               placeholder={isEnglish ? 'Document title' : 'Titolo documento'}
-             />
-             <Button
-               onClick={() => setShowNewModal(true)}
-               tone="accent"
-               surface="soft"
-               density="default"
-               className="shrink-0"
-             >
-               <Plus className="h-4 w-4 mr-2" />
-               {isEnglish ? 'New' : 'Nuovo'}
-             </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-             <span className={`hidden text-xs font-semibold xl:inline ${draftSaveState === 'error' ? 'text-red-600' : draftSaveState === 'saved' ? 'text-emerald-600' : 'text-slate-400'}`}>
-               {activeStudentSubmissionId
-                 ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
-                 : draftSaveState === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…')
-                   : draftSaveState === 'saved' ? (activePublishedTaskId ? (isEnglish ? 'Saved in session' : 'Salvato nella sessione') : (isEnglish ? 'Saved' : 'Salvato'))
-                     : draftSaveState === 'error' ? (isEnglish ? 'Save error' : 'Errore salvataggio')
-                       : ''}
-             </span>
-             <Button
-               variant="ghost"
-               size="icon"
-               className="h-10 w-10 rounded-xl text-slate-600"
-               disabled={!draftId}
-               onClick={() => setShowVersionPanel(true)}
-               title={draftId ? (isEnglish ? 'Version history' : 'Cronologia versioni') : (isEnglish ? 'Version history is available for personal drafts' : 'La cronologia è disponibile per le bozze personali')}
-               aria-label={isEnglish ? 'Version history' : 'Cronologia versioni'}
-             >
-               <History className="h-4 w-4" />
-             </Button>
-             {(mode === 'document' || mode === 'slides') && (
-               <Button
-                 variant={documentAgentOpen ? 'default' : 'outline'}
-                 className="rounded-xl"
-                 onClick={() => setDocumentAgentOpen(value => !value)}
-               >
-                 <MonitorPlay className="mr-2 h-4 w-4" />
-                 {isEnglish ? 'Document assistant' : 'Assistente documento'}
-               </Button>
-             )}
-             {mode !== 'canvas' && mode !== 'web' && (
-               <label className="relative flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm">
-                 {documentExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                 <select
-                   aria-label={isEnglish ? 'Export document' : 'Esporta documento'}
-                   disabled={documentExporting}
-                   defaultValue=""
-                   className="max-w-[112px] cursor-pointer appearance-none bg-transparent pr-3 outline-none disabled:cursor-wait"
-                   onChange={(event) => {
-                     const format = event.target.value as 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx'
-                     if (format) void exportCurrentDocument(format)
-                     event.target.value = ''
-                   }}
-                 >
-                   <option value="" disabled>{isEnglish ? 'Export…' : 'Esporta…'}</option>
-                   <option value="pdf">PDF</option>
-                   {mode === 'slides' && <option value="pptx">PowerPoint (.pptx)</option>}
-                   {mode === 'slides' && <option value="ppt">PowerPoint 97-2003 (.ppt)</option>}
-                   {(mode === 'document' || mode === 'slides' || mode === 'sheet') && <option value="docx">Word (.docx)</option>}
-                   {mode === 'document' && <option value="pptx">PowerPoint (.pptx)</option>}
-                   {mode === 'sheet' && <option value="xlsx">Excel (.xlsx)</option>}
-                 </select>
-               </label>
-             )}
-             {activeStudentSubmissionId ? (
-               <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                 {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
-               </span>
-             ) : (
-               <Button
-                 tone="accent"
-                 surface={activePublishedTaskId ? 'soft' : 'solid'}
-                 density="default"
-                 onClick={() => setShowPublishModal(true)}
-                 title={activePublishedTaskId ? (isEnglish ? 'Already shared: edits are saved automatically. Publish a copy to another session.' : 'Già condiviso: le modifiche si salvano da sole. Pubblica una copia in un\'altra sessione.') : undefined}
-               >
-                 <Upload className="h-4 w-4 mr-2" />
-                 {activePublishedTaskId ? (isEnglish ? 'Share copy' : 'Condividi copia') : (isEnglish ? 'Publish' : 'Pubblica')}
-               </Button>
-             )}
-          </div>
-        </div>
+        <DocumentEditorHeader
+          mode={mode}
+          backLabel={isEnglish ? 'All documents' : 'Tutti i documenti'}
+          onBack={closeDocumentEditor}
+          title={document.title}
+          onTitleChange={handleTitleChange}
+          titleDisabled={Boolean(activeStudentSubmissionId)}
+          titlePlaceholder={isEnglish ? 'Document title' : 'Titolo documento'}
+          saveState={activeStudentSubmissionId ? correctionSaveState : draftSaveState}
+          saveLabel={activeStudentSubmissionId
+            ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
+            : draftSaveState === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…')
+              : draftSaveState === 'saved' ? (activePublishedTaskId ? (isEnglish ? 'Saved in session' : 'Salvato nella sessione') : (isEnglish ? 'Saved' : 'Salvato'))
+                : draftSaveState === 'error' ? (isEnglish ? 'Save error' : 'Errore salvataggio')
+                  : undefined}
+          tools={(
+            <>
+              <HeaderIconButton label={isEnglish ? 'New document' : 'Nuovo documento'} onClick={() => setShowNewModal(true)}>
+                <Plus className="h-4 w-4" />
+              </HeaderIconButton>
+              <HeaderIconButton
+                label={draftId ? (isEnglish ? 'Version history' : 'Cronologia versioni') : (isEnglish ? 'Version history is available for personal drafts' : 'La cronologia è disponibile per le bozze personali')}
+                onClick={() => setShowVersionPanel(true)}
+                disabled={!draftId}
+              >
+                <History className="h-4 w-4" />
+              </HeaderIconButton>
+              {mode !== 'canvas' && mode !== 'web' && (
+                <HeaderExportMenu
+                  label={isEnglish ? 'Export' : 'Esporta'}
+                  exporting={documentExporting}
+                  onExport={(format) => void exportCurrentDocument(format)}
+                  formats={[
+                    { value: 'pdf' as const, label: 'PDF' },
+                    ...(mode === 'slides' ? [{ value: 'pptx' as const, label: 'PowerPoint (.pptx)' }, { value: 'ppt' as const, label: 'PowerPoint 97-2003 (.ppt)' }] : []),
+                    ...(mode === 'document' || mode === 'slides' || mode === 'sheet' ? [{ value: 'docx' as const, label: 'Word (.docx)' }] : []),
+                    ...(mode === 'document' ? [{ value: 'pptx' as const, label: 'PowerPoint (.pptx)' }] : []),
+                    ...(mode === 'sheet' ? [{ value: 'xlsx' as const, label: 'Excel (.xlsx)' }] : []),
+                  ]}
+                />
+              )}
+              {(mode === 'document' || mode === 'slides') && (
+                <>
+                  <HeaderToolDivider />
+                  <HeaderIconButton
+                    label={isEnglish ? 'Document assistant' : 'Assistente documento'}
+                    onClick={() => setDocumentAgentOpen(value => !value)}
+                    active={documentAgentOpen}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </HeaderIconButton>
+                </>
+              )}
+            </>
+          )}
+          primary={activeStudentSubmissionId ? (
+            <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[11px] font-bold text-amber-800">
+              {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
+            </span>
+          ) : (
+            <Button
+              tone="accent"
+              surface={activePublishedTaskId ? 'soft' : 'solid'}
+              density="compact"
+              className="rounded-full"
+              onClick={() => setShowPublishModal(true)}
+              title={activePublishedTaskId ? (isEnglish ? 'Already shared: edits are saved automatically. Publish a copy to another session.' : 'Già condiviso: le modifiche si salvano da sole. Pubblica una copia in un\'altra sessione.') : undefined}
+            >
+              <Upload className="h-4 w-4 mr-1.5" />
+              {activePublishedTaskId ? (isEnglish ? 'Share copy' : 'Condividi copia') : (isEnglish ? 'Publish' : 'Pubblica')}
+            </Button>
+          )}
+        />
 
         {/* Unified Toolbar */}
         {mode !== 'sheet' && mode !== 'canvas' && mode !== 'web' && (
@@ -2053,7 +2022,7 @@ export default function TeacherDocumentsPage() {
           > 
 
              {mode === 'web' && (
-               <div className="w-full max-w-6xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+               <div className="w-full max-w-6xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(23,23,23,0.12)] overflow-hidden">
                  {document.webUrl ? (
                    <iframe
                      src={document.webUrl}
@@ -2077,14 +2046,14 @@ export default function TeacherDocumentsPage() {
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className="mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
+                 className="theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
                    minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
                    backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
-                   boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+                   boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
@@ -2130,7 +2099,7 @@ export default function TeacherDocumentsPage() {
                         right: docMargins.horizontal,
                         bottom: docMargins.vertical,
                         left: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(148, 163, 184, 0.35) 21px, rgba(148, 163, 184, 0.35) 22px, transparent 22px, transparent 28px)'
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)'
                       }}
                     />
                   )}

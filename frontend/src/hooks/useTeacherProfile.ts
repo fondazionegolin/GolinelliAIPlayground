@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { teacherApi } from '@/lib/api'
 import { DEFAULT_TEACHER_ACCENT, type TeacherAccentId } from '@/lib/teacherAccent'
+import type { UiTheme } from '@/stores/uiTheme'
 
 export const TEACHER_PROFILE_KEY = ['teacher-profile'] as const
 
@@ -10,6 +11,7 @@ export interface TeacherProfileData {
   email: string
   avatarUrl: string
   uiAccent: TeacherAccentId
+  uiTheme?: UiTheme | null
   institution: string
 }
 
@@ -25,6 +27,7 @@ export function useTeacherProfile() {
         avatarUrl: res.data.avatar_url || '',
         uiAccent: (res.data.ui_accent as TeacherAccentId) || DEFAULT_TEACHER_ACCENT,
         institution: res.data.institution || '',
+        uiTheme: res.data.ui_theme ?? null,
       }
     },
     staleTime: 5 * 60 * 1000,

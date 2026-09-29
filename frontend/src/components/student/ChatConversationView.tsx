@@ -290,7 +290,7 @@ export function ChatConversationView({
 
       {/* Composer: part of the viewport flex layout, never underneath the keyboard. */}
       {!hideComposer && <div
-        className="z-10 flex-shrink-0 border-t border-slate-200 bg-white px-3 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]"
+        className="z-10 flex-shrink-0 border-t border-slate-200 bg-white px-3 pt-2 shadow-[0_-8px_24px_rgba(23,23,23,0.05)]"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
         {/* Attached files preview */}

@@ -125,7 +125,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
+        <Loader2 className="h-8 w-8 animate-spin text-neutral-900" />
       </div>
     )
   }
@@ -181,7 +181,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                   className="w-full p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors text-left"
                 >
                   <div className="w-9 h-9 rounded-full bg-[#181b1e]/10 flex items-center justify-center flex-shrink-0">
-                    <User className="h-4 w-4 text-[#181b1e]" />
+                    <User className="h-4 w-4 text-neutral-900" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-800 text-sm">{report.student_nickname}</div>

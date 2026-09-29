@@ -176,7 +176,7 @@ export default function AdminBackendPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_25px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+      <div className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Admin / Backend</p>
@@ -193,7 +193,7 @@ export default function AdminBackendPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
           <div className="mb-4 flex items-center gap-2">
             <Database className="h-4 w-4 text-fuchsia-500" />
             <h2 className="text-base font-semibold text-slate-900">Release registrate</h2>
@@ -222,7 +222,7 @@ export default function AdminBackendPage() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
           {gitDraft && (
             <div className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-[24px] border border-fuchsia-200 bg-fuchsia-50/70 p-4">
               <div className="flex items-start gap-3">

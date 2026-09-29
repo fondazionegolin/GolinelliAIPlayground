@@ -8,8 +8,8 @@ interface NoteConfig {
 
 const NOTE_COLORS: Record<string, string> = {
   '#fef08a': '#1a1a00',
-  '#bfdbfe': '#0f172a',
-  '#bbf7d0': '#0f172a',
+  '#bfdbfe': '#171717',
+  '#bbf7d0': '#171717',
   '#fecaca': '#1a0000',
   '#e9d5ff': '#0f0a1a',
 }

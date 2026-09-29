@@ -710,12 +710,12 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value: number) => formatCurrency(Number(value || 0))} />
                   <Legend />
-                  <Line type="monotone" dataKey="teacher_cost" stroke="#334155" strokeWidth={2} dot={false} name="Docenti €" />
+                  <Line type="monotone" dataKey="teacher_cost" stroke="#404040" strokeWidth={2} dot={false} name="Docenti €" />
                   <Line type="monotone" dataKey="student_cost" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti €" />
                 </LineChart>
               </ResponsiveContainer>
@@ -748,7 +748,7 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
