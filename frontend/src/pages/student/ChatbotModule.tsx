@@ -339,6 +339,7 @@ interface Teacherbot {
   is_proactive: boolean
   proactive_message: string | null
   enable_live_voice?: boolean
+  enable_inquiry?: boolean
   enable_escape_room?: boolean
   is_studentbot?: boolean
 }
@@ -800,6 +801,13 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
   // Teacherbot state
   const [selectedTeacherbot, setSelectedTeacherbot] = useState<Teacherbot | null>(null)
+  // Inquiry bots skip the chat entirely and open the dedicated full-screen interview.
+  useEffect(() => {
+    if (selectedTeacherbot?.enable_inquiry && !sidebarMode) {
+      setVoiceSource({ kind: 'inquiry', teacherbotId: selectedTeacherbot.id, botName: selectedTeacherbot.name })
+      setShowVoiceInterrogation(true)
+    }
+  }, [selectedTeacherbot?.id, selectedTeacherbot?.enable_inquiry, sidebarMode])
   const [teacherbotConversationId, setTeacherbotConversationId] = useState<string | null>(null)
 
   // Save/restore last conversation — key is per-student to avoid cross-student bleed on shared devices
@@ -4153,15 +4161,21 @@ REGOLE IMPORTANTI:
                     <button
                       type="button"
                       onClick={() => {
-                        setVoiceSource({ kind: 'teacherbot', teacherbotId: selectedTeacherbot.id, botName: selectedTeacherbot.name })
+                        setVoiceSource({
+                          kind: selectedTeacherbot.enable_inquiry ? 'inquiry' : 'teacherbot',
+                          teacherbotId: selectedTeacherbot.id,
+                          botName: selectedTeacherbot.name,
+                        })
                         setShowVoiceInterrogation(true)
                       }}
                       className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
                       style={activeBotSolidStyle}
-                      title={uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
+                      title={selectedTeacherbot.enable_inquiry ? (uiLanguage === 'en' ? 'Start interview' : 'Avvia intervista') : (uiLanguage === 'en' ? 'Live voice' : 'Voce live')}
                     >
                       <Mic className="h-3.5 w-3.5" />
-                      {uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
+                      {selectedTeacherbot.enable_inquiry
+                        ? (uiLanguage === 'en' ? 'Interview' : 'Intervista')
+                        : (uiLanguage === 'en' ? 'Live voice' : 'Voce live')}
                     </button>
                   )}
                   {collaborationEnabled && !isTeacherPreview && !activeSharedRoom && (selectedTeacherbot || (selectedProfile && !learningMode)) && (
@@ -4631,7 +4645,10 @@ REGOLE IMPORTANTI:
             conversationHistory={messages
               .filter(message => message.content?.trim() && (message.role === 'user' || message.role === 'assistant'))
               .map(message => ({ role: message.role, content: message.content }))}
-            onClose={() => setShowVoiceInterrogation(false)}
+            onClose={() => {
+              setShowVoiceInterrogation(false)
+              if (voiceSource?.kind === 'inquiry' && !isTeacherPreview) setSelectedTeacherbot(null)
+            }}
             onTurn={(role, text) => {
               setMessages((prev) => [
                 ...prev,

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, system_health, turing, agentic, solid_modeler
+from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
@@ -15,6 +15,7 @@ api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])
 api_router.include_router(student.router, prefix="/student", tags=["student"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
+api_router.include_router(inquiry.router, prefix="/llm/realtime/inquiry", tags=["inquiry"])
 api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 api_router.include_router(ml.router, prefix="/ml", tags=["ml"])
 api_router.include_router(assessment.router, prefix="/self", tags=["self-assessment"])

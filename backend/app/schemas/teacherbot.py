@@ -4,6 +4,75 @@ from uuid import UUID
 from datetime import datetime
 
 
+# ==================== Inquiry (investigative NPC) ====================
+
+INQUIRY_FLAGS = ("defensive", "nervous", "persuasive", "dramatic", "humorous", "cooperative")
+
+
+class InquirySuspect(BaseModel):
+    id: str = Field(..., max_length=40)
+    name: str = Field(default="", max_length=80)
+    role: str = Field(default="", max_length=200)
+    personality: str = Field(default="", max_length=800)
+    knowledge: str = Field(default="", max_length=3000)  # what this NPC knows / hides / lies about
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
+    voice: Optional[str] = Field(default=None, max_length=20)
+    is_culprit: bool = False
+
+
+class InquiryClue(BaseModel):
+    id: str = Field(..., max_length=40)
+    suspect_id: Optional[str] = Field(default=None, max_length=40)  # who can give it; None = anyone
+    text: str = Field(..., max_length=1000)  # what the NPC lets slip once unlocked
+    tier: int = Field(default=1, ge=1, le=3)  # 1 easy · 2 needs trust/pressure · 3 needs both, late
+    unlock_hint: str = Field(default="", max_length=400)  # what kind of question earns this clue
+
+
+class InquiryConfig(BaseModel):
+    # Legacy single-NPC fields: folded into ``suspects`` on load.
+    npc_name: str = Field(default="", max_length=80)
+    npc_role: str = Field(default="", max_length=200)
+    npc_personality: str = Field(default="", max_length=800)
+    suspects: list[InquirySuspect] = Field(default_factory=list, max_length=8)
+    case_title: str = Field(default="", max_length=200)
+    case_brief: str = Field(default="", max_length=2000)  # what the student is told upfront
+    truth: str = Field(default="", max_length=6000)  # hidden full truth, never sent to the browser
+    final_question: str = Field(default="", max_length=400)
+    correct_answer: str = Field(default="", max_length=1200)
+    min_clues: int = Field(default=3, ge=1, le=10)
+    clues: list[InquiryClue] = Field(default_factory=list, max_length=20)
+    # Per-flag theatrical intensity 0 (off) .. 3 (maximum).
+    flag_intensity: dict[str, int] = Field(default_factory=lambda: {f: 2 for f in INQUIRY_FLAGS})
+
+    @model_validator(mode="after")
+    def _normalise(self):
+        if not self.suspects and (self.npc_name or self.npc_role or self.npc_personality):
+            self.suspects = [InquirySuspect(
+                id="s1", name=self.npc_name, role=self.npc_role, personality=self.npc_personality,
+            )]
+        ids = [sp.id for sp in self.suspects]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Duplicate suspect id")
+        for clue in self.clues:
+            if clue.suspect_id and clue.suspect_id not in ids:
+                clue.suspect_id = None
+        if len(self.suspects) > 1:
+            culprits = [sp for sp in self.suspects if sp.is_culprit]
+            if len(culprits) > 1:
+                for sp in culprits[1:]:
+                    sp.is_culprit = False
+        self.flag_intensity = {
+            f: max(0, min(3, int(self.flag_intensity.get(f, 2)))) for f in INQUIRY_FLAGS
+        }
+        seen: set[str] = set()
+        for clue in self.clues:
+            if clue.id in seen:
+                raise ValueError(f"Duplicate clue id: {clue.id}")
+            seen.add(clue.id)
+        self.min_clues = min(self.min_clues, max(1, len(self.clues))) if self.clues else self.min_clues
+        return self
+
+
 # ==================== Teacherbot Schemas ====================
 
 class TeacherbotCreate(BaseModel):
@@ -16,6 +85,8 @@ class TeacherbotCreate(BaseModel):
     is_proactive: bool = False
     proactive_message: Optional[str] = None
     enable_live_voice: bool = False
+    enable_inquiry: bool = False
+    inquiry_config: Optional[InquiryConfig] = None
     enable_escape_room: bool = False
     enable_reporting: bool = False
     report_prompt: Optional[str] = None
@@ -34,6 +105,8 @@ class TeacherbotUpdate(BaseModel):
     is_proactive: Optional[bool] = None
     proactive_message: Optional[str] = None
     enable_live_voice: Optional[bool] = None
+    enable_inquiry: Optional[bool] = None
+    inquiry_config: Optional[InquiryConfig] = None
     enable_escape_room: Optional[bool] = None
     enable_reporting: Optional[bool] = None
     report_prompt: Optional[str] = None
@@ -57,6 +130,8 @@ class TeacherbotResponse(BaseModel):
     is_proactive: bool
     proactive_message: Optional[str]
     enable_live_voice: bool
+    enable_inquiry: bool = False
+    inquiry_config: Optional[dict[str, Any]] = None
     enable_escape_room: bool
     enable_reporting: bool
     report_prompt: Optional[str]
@@ -250,6 +325,7 @@ class StudentTeacherbotResponse(BaseModel):
     is_proactive: bool
     proactive_message: Optional[str] = None
     enable_live_voice: bool = False
+    enable_inquiry: bool = False
     enable_escape_room: bool = False
     is_studentbot: bool = False
 
@@ -286,6 +362,7 @@ class ShareLinkVerifyRequest(BaseModel):
 
 class ShareLinkPublicInfo(BaseModel):
     """Non-sensitive bot info shown before the access-code gate"""
+    teacherbot_id: Optional[UUID] = None
     name: str
     synopsis: Optional[str]
     icon: str

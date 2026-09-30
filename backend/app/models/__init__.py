@@ -13,6 +13,7 @@ from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher,
 from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublication, TeacherbotConversation, TeacherbotMessage
 from app.models.teacherbot_share_link import TeacherbotShareLink, TeacherbotShareConversation, TeacherbotShareMessage
 from app.models.shared_chat import SharedChatRoom, SharedChatParticipant, SharedChatMessage
+from app.models.inquiry import InquirySession
 from app.models.document_draft import DocumentDraft, DocumentDraftVersion
 from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion

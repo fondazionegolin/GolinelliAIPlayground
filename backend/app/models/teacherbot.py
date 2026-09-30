@@ -36,6 +36,8 @@ class Teacherbot(Base):
     is_proactive = Column(Boolean, default=False, nullable=False)
     proactive_message = Column(Text, nullable=True)  # Initial message if proactive
     enable_live_voice = Column(Boolean, default=False, nullable=False)  # Realtime voice chat with this bot
+    enable_inquiry = Column(Boolean, default=False, nullable=False)  # Investigative NPC interrogation (implies live voice)
+    inquiry_config = Column(JSONB, nullable=True)  # Persona, hidden truth, tiered clues, flag tuning
     enable_escape_room = Column(Boolean, default=False, nullable=False)
     enable_reporting = Column(Boolean, default=False, nullable=False)
     report_prompt = Column(Text, nullable=True)  # Custom prompt for report generation

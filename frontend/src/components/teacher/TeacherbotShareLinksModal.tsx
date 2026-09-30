@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { X, Plus, Copy, Trash2, ArrowLeft, Loader2, Link2, Bot, User } from 'lucide-react'
+import { X, Plus, Copy, Trash2, ArrowLeft, Loader2, Link2, Bot, User, QrCode, Download } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 
@@ -54,7 +55,32 @@ function isExpired(link: ShareLink): boolean {
   return new Date(link.expires_at).getTime() <= Date.now()
 }
 
-type View = 'list' | 'create' | 'conversations' | 'messages'
+type View = 'list' | 'create' | 'conversations' | 'messages' | 'qr'
+
+/** QR for a share link; the access code can ride along so a scan opens the chat straight away. */
+function LinkQr({ url, name }: { url: string; name: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    QRCode.toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#181b1e', light: '#ffffff' } })
+      .then((d) => { if (active) setDataUrl(d) })
+      .catch(() => { if (active) setDataUrl(null) })
+    return () => { active = false }
+  }, [url])
+  if (!dataUrl) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <img src={dataUrl} alt={`QR code per ${name}`} className="h-64 w-64 rounded-xl border border-slate-200" />
+      <a
+        href={dataUrl}
+        download={`qr-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'chatbot'}.png`}
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+      >
+        <Download className="h-3.5 w-3.5" /> Scarica PNG
+      </a>
+    </div>
+  )
+}
 
 export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName, onClose }: TeacherbotShareLinksModalProps) {
   const { toast } = useToast()
@@ -65,6 +91,8 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
   const [accessCode, setAccessCode] = useState(() => generateAccessCode())
   const [selectedLink, setSelectedLink] = useState<ShareLink | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ShareConversation | null>(null)
+  const [qrLink, setQrLink] = useState<ShareLink | null>(null)
+  const [qrWithCode, setQrWithCode] = useState(true)
 
   const linksQuery = useQuery({
     queryKey: ['teacherbot-share-links', teacherbotId],
@@ -89,13 +117,15 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
       label: label.trim() || undefined,
       access_code: accessCode.trim() || undefined,
     }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['teacherbot-share-links', teacherbotId] })
       toast({ title: 'Link creato' })
       setLabel('')
       setAccessCode(generateAccessCode())
       setExpiresAt(defaultExpiryLocal())
-      setView('list')
+      // Land on the QR straight away: that's what gets projected or printed.
+      setQrLink(res.data as ShareLink)
+      setView('qr')
     },
     onError: () => {
       toast({ title: 'Errore', description: 'Impossibile creare il link', variant: 'destructive' })
@@ -111,6 +141,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
   })
 
   const linkUrl = (token: string) => `${window.location.origin}/bot/${token}`
+  const qrUrl = (link: ShareLink) => qrWithCode ? `${linkUrl(link.token)}?code=${encodeURIComponent(link.access_code)}` : linkUrl(link.token)
 
   const copyLink = async (token: string) => {
     try {
@@ -143,6 +174,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
               {view === 'create' && 'Nuovo link'}
               {view === 'conversations' && `Conversazioni — ${selectedLink?.label || linkUrl(selectedLink?.token || '')}`}
               {view === 'messages' && 'Conversazione'}
+              {view === 'qr' && `QR code — ${qrLink?.label || teacherbotName}`}
             </h3>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -182,6 +214,14 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                           >
                             <Copy className="h-3 w-3" /> Copia link
                           </button>
+                          {active && (
+                            <button
+                              onClick={() => { setQrLink(link); setView('qr') }}
+                              className="text-xs flex items-center gap-1 font-semibold text-slate-800 hover:text-black"
+                            >
+                              <QrCode className="h-3 w-3" /> QR code
+                            </button>
+                          )}
                           <button
                             onClick={() => { setSelectedLink(link); setView('conversations') }}
                             className="text-xs flex items-center gap-1 text-slate-600 hover:text-slate-900"
@@ -208,6 +248,17 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                 <Plus className="h-4 w-4 mr-2" /> Crea link
               </Button>
             </>
+          )}
+
+          {view === 'qr' && qrLink && (
+            <div className="space-y-4">
+              <LinkQr url={qrUrl(qrLink)} name={qrLink.label || teacherbotName} />
+              <label className="flex items-start gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={qrWithCode} onChange={(e) => setQrWithCode(e.target.checked)} className="mt-0.5" />
+                <span>Includi il codice di accesso nel QR: chi lo inquadra entra direttamente nella chat. Se lo togli, dovrà digitare il codice <b className="font-mono">{qrLink.access_code}</b>.</span>
+              </label>
+              <p className="break-all rounded-lg bg-slate-50 p-2 font-mono text-[11px] text-slate-500">{qrUrl(qrLink)}</p>
+            </div>
           )}
 
           {view === 'create' && (

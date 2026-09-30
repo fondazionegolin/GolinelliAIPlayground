@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button'
 import {
   ArrowLeft, Save, Loader2, Check, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Sparkles, Layers, Info, Palette, SlidersHorizontal, Terminal, Share2, Link2,
-  Send, RefreshCw, Bot, Users, User,
+  Send, RefreshCw, Bot, Users, User, Search, MessageSquare, DoorClosed,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { studentbotsApi, teacherbotsApi } from '@/lib/api'
+import { studentbotsApi, teacherbotsApi, type InquiryConfig } from '@/lib/api'
+import InquiryConfigEditor, { emptyInquiryConfig, normalizeInquiryConfig } from './InquiryConfigEditor'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
 import TeacherbotIconPicker from './TeacherbotIconPicker'
 import TeacherbotShareModal from './TeacherbotShareModal'
@@ -20,12 +21,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 
-type TabKey = 'info' | 'style' | 'options' | 'prompt' | 'kb'
+type TabKey = 'info' | 'style' | 'options' | 'inquiry' | 'prompt' | 'kb'
+type BotMode = 'chat' | 'escape_room' | 'inquiry'
 
 const TABS: { key: TabKey; label: string; icon: typeof Info }[] = [
   { key: 'info', label: 'Informazioni base', icon: Info },
   { key: 'style', label: 'Stile', icon: Palette },
   { key: 'options', label: 'Opzioni', icon: SlidersHorizontal },
+  { key: 'inquiry', label: 'Caso investigativo', icon: Search },
   { key: 'prompt', label: 'System prompt', icon: Terminal },
   { key: 'kb', label: 'Allegati', icon: Database },
 ]
@@ -47,6 +50,8 @@ interface FormData {
   is_proactive: boolean
   proactive_message: string
   enable_live_voice: boolean
+  enable_inquiry: boolean
+  inquiry_config: InquiryConfig | null
   enable_escape_room: boolean
   enable_reporting: boolean
   report_prompt: string
@@ -612,6 +617,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
     is_proactive: false,
     proactive_message: '',
     enable_live_voice: false,
+    enable_inquiry: false,
+    inquiry_config: null,
     enable_escape_room: false,
     enable_reporting: false,
     report_prompt: '',
@@ -673,6 +680,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
         is_proactive: teacherbot.is_proactive || false,
         proactive_message: teacherbot.proactive_message || '',
         enable_live_voice: teacherbot.enable_live_voice || false,
+        enable_inquiry: teacherbot.enable_inquiry || false,
+        inquiry_config: teacherbot.inquiry_config ? normalizeInquiryConfig(teacherbot.inquiry_config) : null,
         enable_escape_room: teacherbot.enable_escape_room || false,
         enable_reporting: teacherbot.enable_reporting || false,
         report_prompt: teacherbot.report_prompt || '',
@@ -682,6 +691,37 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
       })
     }
   }, [teacherbot])
+
+  // The three interaction styles are mutually exclusive: each one reshapes the rest of the form.
+  const mode: BotMode = formData.enable_inquiry ? 'inquiry' : formData.enable_escape_room ? 'escape_room' : 'chat'
+  const visibleTabs = TABS.filter((tab) => {
+    if (tab.key === 'inquiry') return !isStudentbot && mode === 'inquiry'
+    if (mode === 'inquiry') return tab.key !== 'prompt' && tab.key !== 'kb'  // everything lives in the case sheet
+    return true
+  })
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) setActiveTab(mode === 'inquiry' ? 'inquiry' : 'options')
+  }, [mode, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectMode = (next: BotMode) => {
+    if (next === mode) return
+    if (next === 'chat') {
+      setFormData({ ...formData, enable_inquiry: false, enable_escape_room: false, enable_live_voice: mode === 'inquiry' ? false : formData.enable_live_voice })
+    } else if (next === 'escape_room') {
+      setFormData({ ...formData, enable_inquiry: false, enable_escape_room: true, enable_live_voice: false, is_proactive: false })
+    } else {
+      setFormData({
+        ...formData,
+        enable_inquiry: true,
+        enable_escape_room: false,
+        enable_live_voice: true,
+        is_proactive: false,
+        enable_reporting: false,
+        inquiry_config: formData.inquiry_config ?? emptyInquiryConfig(),
+      })
+      setActiveTab('inquiry')
+    }
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -712,11 +752,36 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name.trim() || !formData.system_prompt.trim()) {
+    if (!formData.name.trim() || (mode !== 'inquiry' && !formData.system_prompt.trim())) {
       toast({ title: t('common.error'), description: t('teacherbot.name_required'), variant: 'destructive' })
       return
     }
-    saveMutation.mutate(formData)
+    if (formData.enable_inquiry && !isStudentbot) {
+      const cfg = formData.inquiry_config
+      const problems: string[] = []
+      const multiCast = (cfg?.suspects.length ?? 0) > 1
+      if (!cfg?.truth.trim()) problems.push('la verità segreta')
+      if (!cfg?.correct_answer.trim() || (!multiCast && !cfg.final_question.trim())) problems.push(multiCast ? 'la soluzione' : 'domanda finale e risposta corretta')
+      if (cfg?.suspects.some((sp) => !sp.name.trim())) problems.push('il nome di ogni sospettato')
+      if (multiCast && !cfg?.suspects.some((sp) => sp.is_culprit)) problems.push('quale sospettato è il colpevole')
+      if (!cfg?.clues.length || cfg.clues.some((c) => !c.text.trim())) problems.push('almeno un indizio (tutti compilati)')
+      if (problems.length) {
+        toast({ title: t('common.error'), description: `Inquiry: mancano ${problems.join(', ')}.`, variant: 'destructive' })
+        return
+      }
+    }
+    // Persist only a coherent combination of flags (older bots may carry leftovers from another mode).
+    const payload: FormData = { ...formData }
+    if (!isStudentbot && mode === 'escape_room') { payload.enable_live_voice = false; payload.is_proactive = false }
+    if (!isStudentbot && mode === 'inquiry') {
+      payload.enable_live_voice = true
+      payload.is_proactive = false
+      payload.enable_reporting = false
+      if (!payload.system_prompt.trim()) {
+        payload.system_prompt = `Intervista investigativa: ${payload.inquiry_config?.case_title || payload.name}`
+      }
+    }
+    saveMutation.mutate(payload)
   }
 
   const handleMouseUpWithEvent = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
@@ -830,7 +895,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
           className="flex items-center gap-1.5 rounded-[var(--selection-radius)] border p-1.5"
           style={buildAccentNavClusterStyle(getTeacherAccentTheme())}
         >
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const TabIcon = tab.icon
             const isTabActive = activeTab === tab.key
             return (
@@ -945,54 +1010,83 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                 <h3 className="text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
                 <p className="mb-3 mt-1 text-sm leading-5 text-slate-500">{t('teacherbot.options_hint')}</p>
 
-                <ToggleRow
-                  title={t('teacherbot.proactive')}
-                  description={t('teacherbot.proactive_desc')}
-                  checked={formData.is_proactive}
-                  onChange={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
-                />
+                {!isStudentbot && (
+                  <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                    {([
+                      { key: 'chat', title: 'Chat', desc: 'Conversazione libera con il tuo prompt, allegati e voce opzionale.', Icon: MessageSquare },
+                      { key: 'escape_room', title: 'Escape room', desc: 'Terminale a tappe al posto della chat libera.', Icon: DoorClosed },
+                      { key: 'inquiry', title: 'Inquiry', desc: 'Interrogatorio vocale di uno o più sospettati che sanno ma non vogliono svelare.', Icon: Search },
+                    ] as const).map(({ key, title, desc, Icon }) => {
+                      const active = mode === key
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => selectMode(key)}
+                          aria-pressed={active}
+                          className={`rounded-xl border p-3 text-left transition ${active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'}`}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-bold"><Icon className="h-4 w-4" />{title}</span>
+                          <span className={`mt-1 block text-xs leading-4 ${active ? 'text-slate-300' : 'text-slate-500'}`}>{desc}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
 
-                {formData.is_proactive && (
-                  <div className="pb-3">
-                    <FieldLabel>{t('teacherbot.initial_message_label')}</FieldLabel>
-                    <textarea
-                      value={formData.proactive_message}
-                      onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
-                      className="min-h-[74px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      placeholder={t('teacherbot.initial_message_placeholder')}
+                {mode === 'chat' && (
+                  <>
+                    <ToggleRow
+                      title={t('teacherbot.proactive')}
+                      description={t('teacherbot.proactive_desc')}
+                      checked={formData.is_proactive}
+                      onChange={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
                     />
-                  </div>
+
+                    {formData.is_proactive && (
+                      <div className="pb-3">
+                        <FieldLabel>{t('teacherbot.initial_message_label')}</FieldLabel>
+                        <textarea
+                          value={formData.proactive_message}
+                          onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
+                          className="min-h-[74px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                          placeholder={t('teacherbot.initial_message_placeholder')}
+                        />
+                      </div>
+                    )}
+
+                    <ToggleRow
+                      title={t('teacherbot.live_voice')}
+                      description={t('teacherbot.live_voice_desc')}
+                      checked={formData.enable_live_voice}
+                      onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
+                    />
+                  </>
                 )}
 
-                <ToggleRow
-                  title={t('teacherbot.live_voice')}
-                  description={t('teacherbot.live_voice_desc')}
-                  checked={formData.enable_live_voice}
-                  onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
-                />
-
-                {!isStudentbot && <ToggleRow
-                  title="Modalità escape room"
-                  description="Sostituisce la chat libera con un terminale a tappe. Specifica tema e numero di indizi nel system prompt (default: 5, massimo: 10)."
-                  checked={formData.enable_escape_room}
-                  onChange={() => setFormData({ ...formData, enable_escape_room: !formData.enable_escape_room })}
-                />}
-
-                {!isStudentbot && formData.enable_escape_room && (
-                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
+                {mode === 'escape_room' && (
+                  <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
                     <p className="font-bold">Come configurarla nel system prompt</p>
-                    <p className="mt-1">Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5”. Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.</p>
+                    <p className="mt-1">Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5” (default 5, massimo 10). Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.</p>
+                    <p className="mt-2 text-emerald-800/80">Messaggio iniziale e voce live non sono disponibili: l'escape room sostituisce la chat libera.</p>
                   </div>
                 )}
 
-                {!isStudentbot && <ToggleRow
+                {mode === 'inquiry' && (
+                  <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
+                    <p className="font-bold">Interrogatorio investigativo</p>
+                    <p className="mt-1">Personaggi, indizi, verità e domanda finale si configurano nella scheda <b>Caso investigativo</b>. La voce live è attiva automaticamente; system prompt, allegati e messaggio iniziale non servono. Le interviste svolte e le trascrizioni si consultano da quella scheda dopo il salvataggio.</p>
+                  </div>
+                )}
+
+                {!isStudentbot && mode !== 'inquiry' && <ToggleRow
                   title={t('teacherbot.reporting')}
                   description={t('teacherbot.reporting_desc')}
                   checked={formData.enable_reporting}
                   onChange={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
                 />}
 
-                {!isStudentbot && formData.enable_reporting && (
+                {!isStudentbot && mode !== 'inquiry' && formData.enable_reporting && (
                   <div className="pb-3">
                     <FieldLabel>{t('teacherbot.report_prompt_label')}</FieldLabel>
                     <textarea
@@ -1004,6 +1098,17 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                   </div>
                 )}
 
+              </section>
+              )}
+
+              {activeTab === 'inquiry' && mode === 'inquiry' && formData.inquiry_config && (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-3 text-base font-bold text-slate-950">Caso investigativo</h3>
+                <InquiryConfigEditor
+                  value={formData.inquiry_config}
+                  onChange={(next) => setFormData({ ...formData, inquiry_config: next })}
+                  teacherbotId={isEditing ? teacherbotId : undefined}
+                />
               </section>
               )}
 
@@ -1067,7 +1172,7 @@ Il tuo obiettivo è:
             </div>
           </div>
 
-          <aside className="hidden w-[380px] flex-shrink-0 flex-col border-l border-slate-200 bg-slate-50/60 p-4 lg:flex xl:w-[420px]">
+          <aside className={`hidden w-[380px] flex-shrink-0 flex-col border-l border-slate-200 bg-slate-50/60 p-4 xl:w-[420px] ${mode === 'inquiry' ? '' : 'lg:flex'}`}>
             <TeacherbotLivePreview teacherbotId={teacherbotId} formData={formData} variant={variant} />
           </aside>
         </div>

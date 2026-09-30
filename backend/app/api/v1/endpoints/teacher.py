@@ -523,6 +523,7 @@ async def list_classes(
         .where(Class.teacher_id == teacher.id)
         .order_by(Class.created_at.desc())
     )
+    owned_query = owned_query.where(Class.is_system.is_(False))
     if not include_archived:
         owned_query = owned_query.where(Class.archived_at.is_(None))
     result = await db.execute(owned_query)

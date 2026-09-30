@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     OPENAI_REALTIME_MODEL: str = "gpt-realtime-2.1-mini"
     OPENAI_REALTIME_VOICE: str = "marin"
     OPENAI_REALTIME_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
+    # Teacherbot "inquiry" mode (investigative NPC interview). Must be a Realtime-API model (WebRTC /realtime/calls).
+    # NOTE: gpt-live-1 is NOT usable here: it lives on the separate Live API (/v1/live/sessions).
+    OPENAI_REALTIME_INQUIRY_MODEL: str = "gpt-realtime-2.1"
+    # Cheap text LLM used to classify the student's intent each turn and to grade the final answer.
+    INQUIRY_CLASSIFIER_PROVIDER: str = "openai"
+    INQUIRY_CLASSIFIER_MODEL: str = ""
+    INQUIRY_GENERATOR_MODEL: str = ""  # cast/clue drafting; empty = default chat model
 
     # Realtime voice (LiveKit)
     LIVEKIT_URL: Optional[str] = None

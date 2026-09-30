@@ -21,6 +21,8 @@ class TeacherbotShareLink(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # Hidden session that hosts guests entering via this link (created lazily).
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
 
     teacherbot = relationship("Teacherbot", backref="share_links")
     created_by = relationship("User", foreign_keys=[created_by_id])

@@ -13,6 +13,7 @@ const api = axios.create({
 export const getApiAuthHeaders = (): Record<string, string> => {
   const studentToken = localStorage.getItem('student_token')
   const publicLiveToken = window.location.pathname.startsWith('/live/') ? sessionStorage.getItem('public_live_token') : null
+  const publicBotToken = window.location.pathname.startsWith('/bot/') ? sessionStorage.getItem('public_bot_token') : null
   const isTeacherStudentMode = localStorage.getItem('_preview_mode') === 'true'
     || Boolean(localStorage.getItem('_subjective_mode'))
   const isStudentRoute = window.location.pathname.startsWith('/student')
@@ -32,6 +33,9 @@ export const getApiAuthHeaders = (): Record<string, string> => {
   // otherwise mixed auth routes may resolve the request as student.
   if (publicLiveToken) {
     return { 'student-token': publicLiveToken }
+  }
+  if (publicBotToken) {
+    return { 'student-token': publicBotToken }
   }
   if (studentToken && (isTeacherStudentMode || isStudentRoute || !hasTeacherAuth)) {
     return { 'student-token': studentToken }
@@ -59,7 +63,7 @@ api.interceptors.response.use(
       const isStudentAccessFlow = url.includes('/student/join') || url.includes('/student/check-access')
       const isPublicTeacherbotLink = url.includes('/public/teacherbot-links')
       const isPublicLiveLink = url.includes('/public/live/')
-      const isPublicLivePage = window.location.pathname.startsWith('/live/')
+      const isPublicLivePage = window.location.pathname.startsWith('/live/') || window.location.pathname.startsWith('/bot/')
       // In preview/subjective mode StudentDashboard restores the backed-up teacher
       // session. A hard redirect here would win that race and land on /login.
       if (!isTeacherStudentMode && !url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink && !isPublicLiveLink && !isPublicLivePage) {
@@ -788,6 +792,42 @@ export const llmApi = {
       '/llm/realtime/teacherbot-session',
       { teacherbot_id: teacherbotId, language, ...opts }
     ),
+  createRealtimeInquirySession: (
+    teacherbotId: string,
+    language: string,
+    opts?: { voice?: string; restart?: boolean; suspect_id?: string }
+  ) =>
+    api.post<{ value: string; model: string; resumed: boolean; suspect_id: string; state: InquiryState }>(
+      '/llm/realtime/inquiry/session',
+      { teacherbot_id: teacherbotId, language, ...opts }
+    ),
+  inquiryOverview: (teacherbotId: string) =>
+    api.get<InquiryState>(`/llm/realtime/inquiry/overview/${teacherbotId}`),
+  inquiryTurn: (sessionId: string, text: string, language: string, suspectId?: string) =>
+    api.post<InquiryTurnResult>(`/llm/realtime/inquiry/${sessionId}/turn`, { text, language, suspect_id: suspectId }),
+  inquiryLog: (sessionId: string, turns: Array<{ role: 'user' | 'assistant'; text: string }>, suspectId?: string) =>
+    api.post(`/llm/realtime/inquiry/${sessionId}/log`, { turns, suspect_id: suspectId }),
+  inquiryAnswer: (sessionId: string, answer: string, accusedSuspectId?: string) =>
+    api.post<InquiryState & {
+      correct: boolean; score: number; feedback: string; correct_answer?: string; truth?: string
+      culprit?: { id: string; name: string }
+    }>(`/llm/realtime/inquiry/${sessionId}/answer`, { answer, accused_suspect_id: accusedSuspectId }),
+  generateInquirySuspects: (payload: {
+    case_title: string; case_brief: string; truth: string; count: number; language: string; existing_names?: string[]
+  }) =>
+    api.post<{
+      suspects: Array<InquirySuspect & { avatar_prompt: string }>
+      clues: InquiryClue[]
+      correct_answer: string
+      truth: string
+    }>('/llm/realtime/inquiry/generate-suspects', payload),
+  listInquirySessions: (teacherbotId: string) =>
+    api.get<Array<{
+      id: string; student: string | null; is_test: boolean; status: string; clues_found: number; attempts: number
+      verdict: { correct: boolean; score: number; feedback: string } | null; final_answer: string | null
+      trust: number; pressure: number; created_at: string | null
+      transcript: Array<{ role: string; text: string; flag?: string | null; intent?: string | null; ts: string }>
+    }>>(`/llm/realtime/inquiry/bots/${teacherbotId}/sessions`),
   getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
@@ -982,6 +1022,63 @@ export const collaborationApi = {
   closeRoom: (roomId: string) => api.post(`/collaboration/rooms/${roomId}/close`),
 }
 
+export const INQUIRY_FLAGS = ['defensive', 'nervous', 'persuasive', 'dramatic', 'humorous', 'cooperative'] as const
+export type InquiryFlag = (typeof INQUIRY_FLAGS)[number]
+
+export interface InquirySuspect {
+  id: string
+  name: string
+  role: string
+  personality: string
+  knowledge: string
+  avatar_url: string | null
+  voice: string | null
+  is_culprit: boolean
+}
+export interface InquiryClue { id: string; text: string; tier: 1 | 2 | 3; unlock_hint: string; suspect_id: string | null }
+export interface InquiryConfig {
+  npc_name: string
+  npc_role: string
+  npc_personality: string
+  suspects: InquirySuspect[]
+  case_title: string
+  case_brief: string
+  truth: string
+  final_question: string
+  correct_answer: string
+  min_clues: number
+  clues: InquiryClue[]
+  flag_intensity: Record<InquiryFlag, number>
+}
+
+export interface InquiryState {
+  session_id: string
+  status: 'active' | 'solved' | 'failed'
+  npc_name: string
+  case_title: string
+  case_brief: string
+  final_question: string
+  min_clues: number
+  total_clues: number
+  multi: boolean
+  suspects: Array<{ id: string; name: string; role: string; avatar_url: string | null; voice: string | null; clues_found: number; clues_total: number }>
+  accused_suspect_id: string | null
+  unlocked_clues: Array<{ id: string; text: string; tier: number; suspect_id: string | null; suspect_name: string | null }>
+  can_answer: boolean
+  attempts: number
+  max_attempts: number
+  verdict: { correct: boolean; score: number; feedback: string } | null
+}
+
+export interface InquiryTurnResult {
+  stage_direction: string
+  flag: InquiryFlag | null
+  intensity: number
+  new_clue: { id: string; text: string; tier: number } | null
+  state: InquiryState
+  debug?: { intent: string; targets: string[]; trust: number; pressure: number }
+}
+
 export const teacherbotsApi = {
   // Teacher endpoints
   list: () => api.get('/teacherbots'),
@@ -995,6 +1092,9 @@ export const teacherbotsApi = {
     system_prompt: string
     is_proactive?: boolean
     proactive_message?: string
+    enable_live_voice?: boolean
+    enable_inquiry?: boolean
+    inquiry_config?: InquiryConfig | null
     enable_reporting?: boolean
     enable_escape_room?: boolean
     report_prompt?: string
@@ -1012,6 +1112,9 @@ export const teacherbotsApi = {
     system_prompt?: string
     is_proactive?: boolean
     proactive_message?: string
+    enable_live_voice?: boolean
+    enable_inquiry?: boolean
+    inquiry_config?: InquiryConfig | null
     enable_reporting?: boolean
     enable_escape_room?: boolean
     report_prompt?: string
@@ -1142,6 +1245,10 @@ export const studentbotsApi = {
 
 export const publicTeacherbotApi = {
   getLinkInfo: (token: string) => api.get(`/public/teacherbot-links/${token}`),
+  enter: (token: string, accessCode: string) =>
+    api.post<{ join_token: string; student_id: string; session_id: string; teacherbot_id: string; nickname: string }>(
+      `/public/teacherbot-links/${token}/enter`, { access_code: accessCode }
+    ),
   verifyCode: (token: string, accessCode: string) =>
     api.post(`/public/teacherbot-links/${token}/verify`, { access_code: accessCode }),
   getMessages: (conversationId: string) =>

@@ -12,7 +12,9 @@ import secrets
 
 from app.core.database import get_db
 from app.core.permissions import teacher_can_access_class, get_class_with_access_check
-from app.core.security import generate_join_code
+from app.core.security import generate_join_code, create_student_join_token
+from datetime import timedelta
+from app.models.enums import SessionStatus
 from app.api.deps import get_current_teacher, get_current_student
 from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
@@ -99,6 +101,18 @@ async def _build_kb_context(db: AsyncSession, bot: "Teacherbot", query: str, ten
 
 # ==================== TEACHER ENDPOINTS ====================
 
+def _enforce_mode_exclusivity(bot: Teacherbot) -> None:
+    """Chat / escape room / inquiry are mutually exclusive: drop options the chosen mode cannot use."""
+    if bot.enable_inquiry:
+        bot.enable_escape_room = False
+        bot.enable_live_voice = True  # inquiry is voice-only
+        bot.is_proactive = False
+        bot.enable_reporting = False
+    elif bot.enable_escape_room:
+        bot.enable_live_voice = False
+        bot.is_proactive = False
+
+
 @router.get("/teacherbots", response_model=list[TeacherbotListResponse])
 async def list_teacherbots(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -158,7 +172,9 @@ async def create_teacherbot(
         system_prompt=request.system_prompt,
         is_proactive=request.is_proactive,
         proactive_message=request.proactive_message,
-        enable_live_voice=request.enable_live_voice,
+        enable_live_voice=request.enable_live_voice or request.enable_inquiry,
+        enable_inquiry=request.enable_inquiry,
+        inquiry_config=request.inquiry_config.model_dump() if request.inquiry_config else None,
         enable_escape_room=request.enable_escape_room,
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
@@ -167,6 +183,7 @@ async def create_teacherbot(
         temperature=request.temperature,
         status=TeacherbotStatus.DRAFT,
     )
+    _enforce_mode_exclusivity(bot)
     db.add(bot)
     await db.commit()
     await db.refresh(bot)
@@ -226,6 +243,12 @@ async def update_teacherbot(
         bot.proactive_message = request.proactive_message
     if request.enable_live_voice is not None:
         bot.enable_live_voice = request.enable_live_voice
+    if request.enable_inquiry is not None:
+        bot.enable_inquiry = request.enable_inquiry
+        if request.enable_inquiry:
+            bot.enable_live_voice = True  # inquiry is voice-only
+    if request.inquiry_config is not None:
+        bot.inquiry_config = request.inquiry_config.model_dump()
     if request.enable_escape_room is not None:
         bot.enable_escape_room = request.enable_escape_room
     if request.enable_reporting is not None:
@@ -241,6 +264,7 @@ async def update_teacherbot(
     if request.status is not None and request.status in [s.value for s in TeacherbotStatus]:
         bot.status = TeacherbotStatus(request.status)
 
+    _enforce_mode_exclusivity(bot)
     await db.commit()
     await db.refresh(bot)
     return bot
@@ -1306,6 +1330,7 @@ async def list_available_teacherbots(
             is_proactive=bot.is_proactive,
             proactive_message=bot.proactive_message if bot.is_proactive else None,
             enable_live_voice=bot.enable_live_voice,
+            enable_inquiry=bot.enable_inquiry,
             enable_escape_room=bot.enable_escape_room,
             is_studentbot=bot.creator_student_id == student.id,
         )
@@ -2395,6 +2420,11 @@ async def revoke_teacherbot_share_link(
 
     link.is_active = False
     link.revoked_at = datetime.now(timezone.utc)
+    if link.session_id:
+        # Cuts off guests already inside: their student token stops resolving.
+        guest_session = (await db.execute(select(Session).where(Session.id == link.session_id))).scalar_one_or_none()
+        if guest_session:
+            guest_session.status = SessionStatus.ENDED
     await db.commit()
     return {"message": "Link revoked"}
 
@@ -2511,6 +2541,7 @@ async def get_public_teacherbot_link_info(
     result = await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))
     bot = result.scalar_one()
     return ShareLinkPublicInfo(
+        teacherbot_id=bot.id,
         name=bot.name,
         synopsis=bot.synopsis,
         icon=bot.icon,
@@ -2557,6 +2588,114 @@ async def verify_public_teacherbot_link(
     await db.commit()
     await db.refresh(conversation)
     return conversation
+
+
+MAX_LINK_GUESTS = 500
+
+
+async def _ensure_link_session(db: AsyncSession, link: TeacherbotShareLink, bot: Teacherbot) -> Session:
+    """Hidden class + session hosting the guests of a link, with the bot published to it.
+
+    Guests are ordinary session students, so the whole student chat (voice, inquiry, escape room,
+    attachments, credits scoped to the bot's teacher) works unchanged.
+    """
+    session_obj = None
+    if link.session_id:
+        session_obj = (await db.execute(select(Session).where(Session.id == link.session_id))).scalar_one_or_none()
+    if session_obj is not None:
+        if session_obj.status != SessionStatus.ACTIVE:
+            session_obj.status = SessionStatus.ACTIVE
+        return session_obj
+
+    class_ = Class(
+        tenant_id=link.tenant_id,
+        teacher_id=link.created_by_id,
+        name=f"Link pubblico · {bot.name}"[:120],
+        is_system=True,
+    )
+    db.add(class_)
+    await db.flush()
+
+    join_code = "~" + generate_join_code(4)
+    while (await db.execute(select(Session.id).where(Session.join_code == join_code))).scalar_one_or_none():
+        join_code = "~" + generate_join_code(4)
+    session_obj = Session(
+        tenant_id=link.tenant_id,
+        class_id=class_.id,
+        created_by_teacher_id=link.created_by_id,
+        title=f"Link pubblico · {bot.name}"[:120],
+        join_code=join_code,
+        status=SessionStatus.ACTIVE,
+    )
+    db.add(session_obj)
+    await db.flush()
+
+    db.add(TeacherbotPublication(
+        tenant_id=link.tenant_id,
+        teacherbot_id=bot.id,
+        class_id=class_.id,
+        is_active=True,
+        published_by_id=link.created_by_id,
+    ))
+    if bot.status != TeacherbotStatus.PUBLISHED:
+        bot.status = TeacherbotStatus.PUBLISHED
+        bot.published_at = datetime.now(timezone.utc)
+    link.session_id = session_obj.id
+    await db.flush()
+    return session_obj
+
+
+@router.post("/public/teacherbot-links/{token}/enter")
+async def enter_public_teacherbot_link(
+    token: str,
+    request: ShareLinkVerifyRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Verify the access code and mint a guest student token for the full chat interface."""
+    link = await _get_active_share_link(db, token)
+    if _too_many_verify_attempts(token):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts, try again later")
+    if request.access_code.strip().upper() != link.access_code.upper():
+        _record_verify_attempt(token)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access code")
+
+    bot = (await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))).scalar_one()
+    if bot.status == TeacherbotStatus.ARCHIVED:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Bot archived")
+    session_obj = await _ensure_link_session(db, link, bot)
+
+    guests = (await db.scalar(
+        select(func.count()).select_from(SessionStudent).where(SessionStudent.session_id == session_obj.id)
+    )) or 0
+    if guests >= MAX_LINK_GUESTS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Link full")
+
+    nickname = f"Ospite {secrets.token_hex(2).upper()}"
+    student = SessionStudent(
+        tenant_id=session_obj.tenant_id,
+        session_id=session_obj.id,
+        nickname=nickname,
+        join_token="pending",
+        password_hash=None,
+        last_seen_at=datetime.now(timezone.utc),
+    )
+    db.add(student)
+    await db.flush()
+    remaining = link.expires_at - datetime.now(timezone.utc)
+    join_token = create_student_join_token(
+        str(session_obj.id), str(student.id), nickname,
+        extra_claims={"public_bot_link_id": str(link.id)},
+        expires_delta=min(timedelta(hours=12), remaining),
+    )
+    student.join_token = join_token
+    await db.commit()
+    return {
+        "join_token": join_token,
+        "student_id": str(student.id),
+        "session_id": str(session_obj.id),
+        "teacherbot_id": str(bot.id),
+        "nickname": nickname,
+    }
 
 
 @router.get("/public/teacherbot-links/conversations/{conversation_id}/messages", response_model=list[ShareMessageResponse])

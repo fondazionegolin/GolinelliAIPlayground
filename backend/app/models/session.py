@@ -16,6 +16,7 @@ class Class(Base):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     school_grade = Column(String(64), nullable=True)
+    is_system = Column(Boolean, default=False, nullable=False)  # hidden helper class (e.g. public bot links)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     archived_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

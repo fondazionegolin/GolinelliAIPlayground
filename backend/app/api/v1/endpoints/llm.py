@@ -493,6 +493,7 @@ def _voice_mode_wrapper(
     topic: Optional[str] = None,
     exam_mode: bool = True,
     history: Optional[list[RealtimeHistoryMessage]] = None,
+    opening: Optional[str] = None,
 ) -> str:
     """Wrap a base system prompt with spoken-conversation guidance + voice delivery directives.
 
@@ -556,6 +557,8 @@ def _voice_mode_wrapper(
         else:
             topic_line = "\n\nInizia salutando a voce lo studente e invitandolo a fare la prima domanda o a dirti di cosa ha bisogno."
 
+    if opening is not None:
+        topic_line = opening
     history_block = _format_voice_history(history or [], is_english)
     if history_block:
         topic_line = (
@@ -601,15 +604,18 @@ async def create_realtime_interrogation_session(
     return await _mint_realtime_voice_secret(instructions, request.voice, actor_id)
 
 
-async def _mint_realtime_voice_secret(instructions: str, voice_pref: Optional[str], actor_id: str) -> dict:
+async def _mint_realtime_voice_secret(
+    instructions: str, voice_pref: Optional[str], actor_id: str, model: Optional[str] = None
+) -> dict:
     """POST to OpenAI for a short-lived realtime client secret. Shared by all voice sessions."""
     voice = voice_pref if voice_pref in REALTIME_VOICES else settings.OPENAI_REALTIME_VOICE
     safety_identifier = hashlib.sha256(actor_id.encode("utf-8")).hexdigest()
+    model = model or settings.OPENAI_REALTIME_MODEL
 
     payload = {
         "session": {
             "type": "realtime",
-            "model": settings.OPENAI_REALTIME_MODEL,
+            "model": model,
             "instructions": instructions,
             "audio": {
                 "input": {
@@ -660,7 +666,7 @@ async def _mint_realtime_voice_secret(instructions: str, voice_pref: Optional[st
 
     return {
         "value": value,
-        "model": settings.OPENAI_REALTIME_MODEL,
+        "model": model,
         "expires_at": data.get("expires_at"),
     }
 
