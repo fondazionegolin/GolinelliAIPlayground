@@ -60,7 +60,20 @@ app.mount("/socket.io", socket_app)
 # Mount static files for chat uploads
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
+class PublicUploads(StaticFiles):
+    """Chat uploads are public by URL; drive blobs share the volume but are served only via /api/v1/drive."""
+
+    async def get_response(self, path, scope):
+        normalized = path.replace("\\", "/").lstrip("/")
+        if normalized == "drive" or normalized.startswith("drive/"):
+            from starlette.exceptions import HTTPException as StarletteHTTPException
+            raise StarletteHTTPException(status_code=404)
+        return await super().get_response(path, scope)
+
+
+app.mount("/uploads", PublicUploads(directory="uploads"), name="uploads")
 
 
 @app.get("/health")

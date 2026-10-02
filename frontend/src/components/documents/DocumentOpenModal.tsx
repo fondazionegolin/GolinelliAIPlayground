@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { filesApi } from '@/lib/api'
 import DocumentThumbnail from './DocumentThumbnail'
@@ -32,7 +32,8 @@ interface DocumentOpenModalProps {
 }
 
 export default function DocumentOpenModal({ document, onClose, onEdit, editLabel, isEnglish = false }: DocumentOpenModalProps) {
-  const [viewing, setViewing] = useState(false)
+  // Opening a document shows it straight away: there is no "view or edit" step.
+  const viewing = true
   const [slideIndex, setSlideIndex] = useState(0)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [sourceLoading, setSourceLoading] = useState(false)
@@ -101,7 +102,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 md:backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={document.title} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={`flex w-full flex-col overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl ${viewing ? 'h-[92vh] max-w-6xl' : 'max-w-xl'}`}>
+      <div className={`flex w-full flex-col overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl h-[92vh] max-w-6xl`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-4">
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${documentType === 'canvas' ? 'bg-amber-100 text-amber-700' : documentType === 'presentation' ? 'bg-indigo-100 text-indigo-700' : documentType === 'sheet' ? 'bg-sky-100 text-sky-700' : documentType === 'web' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-emerald-100 text-emerald-700'}`}>
             {typeIcon}
@@ -114,16 +115,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Close' : 'Chiudi'}><X className="h-5 w-5" /></button>
         </header>
 
-        {!viewing ? (
-          <div className="p-5">
-            <DocumentThumbnail contentJson={document.contentJson} type={document.type} title={document.title} className="mx-auto aspect-square w-full max-w-xs" />
-            <p className="mt-4 text-center text-sm text-slate-600">{isEnglish ? 'Open without changing it, or enter editing mode.' : 'Apri senza modificare il contenuto, oppure entra in modalità di editing.'}</p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Button variant="outline" className="h-12" onClick={() => setViewing(true)}><Eye className="mr-2 h-4 w-4" />{isEnglish ? 'View' : 'Visualizza'}</Button>
-              {onEdit && <Button className="h-12" onClick={() => void edit()}><Pencil className="mr-2 h-4 w-4" />{editLabel || (isEnglish ? 'Edit' : 'Modifica')}</Button>}
-            </div>
-          </div>
-        ) : (
+        {(
           <div className="relative min-h-0 flex-1 overflow-auto bg-slate-100 p-4 sm:p-7">
             {sourceLoading ? <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-slate-500" /></div>
               : sourceUrl ? <iframe src={sourceUrl} title={document.title} className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />

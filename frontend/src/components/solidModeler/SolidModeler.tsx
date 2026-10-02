@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/design/primitives/Button'
 import { IconButton } from '@/design/primitives/IconButton'
 import {
@@ -132,7 +133,16 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
     setTimeout(() => viewport.current?.setView('home'), 0)
   }, [])
   const snapshot = useCallback(() => viewport.current?.snapshot() ?? null, [])
-  const project = useSolidProject({ objects, resetScene, snapshot, student })
+  // Deep link (e.g. from the Files drive): ?model=<id> opens that project instead of the last one.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [initialId] = useState(() => searchParams.get('model'))
+  useEffect(() => {
+    if (!searchParams.has('model')) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('model')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+  const project = useSolidProject({ objects, resetScene, snapshot, student, initialId })
 
   // Drop selection ids that no longer exist (undo, AI edits).
   useEffect(() => {

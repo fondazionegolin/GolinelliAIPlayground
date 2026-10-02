@@ -33,6 +33,7 @@ from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDe
 from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
 from app.models.solid_model import SolidModel
+from app.models.drive import DriveItem, DriveShare
 
 __all__ = [
     "Tenant",
@@ -129,4 +130,6 @@ __all__ = [
     "AgenticWorkflowRun",
     "AgenticNodeRun",
     "SolidModel",
+    "DriveItem",
+    "DriveShare",
 ]

@@ -25,6 +25,7 @@ from typing import Any
 
 import fitz
 from bs4 import BeautifulSoup
+from lxml import etree
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -33,12 +34,21 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from PIL import Image, ImageOps
+
+from app.services import pptx_rich
+from app.services.docx_writer import html_to_docx
+from pptx.oxml.ns import qn as qn_pptx
 from pptx import Presentation
 from pptx.dml.color import RGBColor as PptxRGBColor
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_AUTO_SIZE, MSO_VERTICAL_ANCHOR, PP_ALIGN
 from pptx.util import Inches as PptxInches, Pt as PptxPt
 
+
+# The editor's own defaults: runs that resolve to these carry no inline style (keeps HTML clean and
+# makes export → import stable).
+EDITOR_DEFAULT_FONT = "Arial"
+EDITOR_DEFAULT_HALF_POINTS = 24
 
 SUPPORTED_IMPORT_EXTENSIONS = {"pdf", "ppt", "pptx", "doc", "docx", "md", "xls", "xlsx", "csv"}
 SUPPORTED_EXPORT_FORMATS = {"pdf", "ppt", "pptx", "doc", "docx", "xlsx"}
@@ -92,7 +102,7 @@ def _source_metadata(filename: str, mime_type: str, file_id: str | None) -> dict
     }
 
 
-def _run_libreoffice(input_bytes: bytes, source_ext: str, target_ext: str) -> bytes:
+def _run_libreoffice(input_bytes: bytes, source_ext: str, target_ext: str, input_filter: str | None = None) -> bytes:
     executable = shutil.which("libreoffice") or shutil.which("soffice")
     if not executable:
         raise RuntimeError("LibreOffice non è disponibile per questa conversione")
@@ -106,6 +116,7 @@ def _run_libreoffice(input_bytes: bytes, source_ext: str, target_ext: str) -> by
             "--nologo",
             "--nodefault",
             "--nofirststartwizard",
+            *([f"--infilter={input_filter}"] if input_filter else []),
             "--convert-to",
             target_ext,
             "--outdir",
@@ -210,10 +221,13 @@ def _docx_comments(data: bytes) -> dict[str, dict[str, str]]:
 def _docx_style_context(document: Any) -> dict[str, Any]:
     names: dict[str, str] = {}
     elements: dict[str, Any] = {}
+    default_paragraph = ""
     for style in document.styles.element:
         if style.tag != qn("w:style"):
             continue
         style_id = str(style.get(qn("w:styleId"), ""))
+        if style.get(qn("w:type")) == "paragraph" and style.get(qn("w:default")) in {"1", "true"}:
+            default_paragraph = style_id
         name = style.find(qn("w:name"))
         names[style_id] = str(name.get(qn("w:val"), style_id)) if name is not None else style_id
         elements[style_id] = style
@@ -223,7 +237,90 @@ def _docx_style_context(document: Any) -> dict[str, Any]:
         run_properties_default = defaults.find(qn("w:rPrDefault"))
         if run_properties_default is not None:
             run_defaults = run_properties_default.find(qn("w:rPr"))
-    return {"names": names, "elements": elements, "run_defaults": run_defaults}
+    return {
+        "names": names,
+        "elements": elements,
+        "run_defaults": run_defaults,
+        "numbering": _docx_numbering_formats(document),
+        "default_paragraph": default_paragraph,
+        "theme_fonts": _docx_theme_fonts(document),
+    }
+
+
+def _docx_theme_fonts(document: Any) -> dict[str, str]:
+    """{'major': …, 'minor': …} latin typefaces of the document theme (Word's default body font
+    is referenced as asciiTheme="minorHAnsi", never by name)."""
+    try:
+        theme_part = document.part.part_related_by(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
+        )
+        root = etree.fromstring(theme_part.blob)
+    except Exception:
+        return {}
+    namespace = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+    fonts: dict[str, str] = {}
+    for kind in ("major", "minor"):
+        latin = root.find(f".//{namespace}{kind}Font/{namespace}latin")
+        if latin is not None and latin.get("typeface"):
+            fonts[kind] = str(latin.get("typeface"))
+    return fonts
+
+
+def _docx_numbering_formats(document: Any) -> dict[tuple[str, int], str]:
+    """(numId, ilvl) → numFmt ('bullet', 'decimal', …) from numbering.xml."""
+    try:
+        numbering = document.part.numbering_part.element
+    except Exception:
+        return {}
+    abstract_formats: dict[str, dict[int, str]] = {}
+    for abstract in numbering.findall(qn("w:abstractNum")):
+        levels: dict[int, str] = {}
+        for level in abstract.findall(qn("w:lvl")):
+            fmt = level.find(qn("w:numFmt"))
+            try:
+                levels[int(level.get(qn("w:ilvl"), "0"))] = str(fmt.get(qn("w:val"), "bullet")) if fmt is not None else "bullet"
+            except ValueError:
+                continue
+        abstract_formats[str(abstract.get(qn("w:abstractNumId"), ""))] = levels
+    formats: dict[tuple[str, int], str] = {}
+    for num in numbering.findall(qn("w:num")):
+        abstract_ref = num.find(qn("w:abstractNumId"))
+        if abstract_ref is None:
+            continue
+        for level, fmt in abstract_formats.get(str(abstract_ref.get(qn("w:val"), "")), {}).items():
+            formats[(str(num.get(qn("w:numId"), "")), level)] = fmt
+    return formats
+
+
+def _docx_list_info(paragraph: Any, style_id: str, style_name: str, style_context: dict[str, Any]) -> tuple[str, int, bool] | None:
+    """(list id, level, ordered) for a list paragraph, following direct numPr then the style chain."""
+    num_pr = None
+    properties = paragraph.find(qn("w:pPr"))
+    if properties is not None:
+        num_pr = properties.find(qn("w:numPr"))
+    if num_pr is None:
+        for style in reversed(_docx_style_chain(style_id, style_context)):
+            style_ppr = style.find(qn("w:pPr"))
+            if style_ppr is not None and style_ppr.find(qn("w:numPr")) is not None:
+                num_pr = style_ppr.find(qn("w:numPr"))
+                break
+    lowered = style_name.lower()
+    if num_pr is not None:
+        num_id_el = num_pr.find(qn("w:numId"))
+        level_el = num_pr.find(qn("w:ilvl"))
+        num_id = str(num_id_el.get(qn("w:val"), "")) if num_id_el is not None else ""
+        if num_id == "0":
+            return None  # numbering explicitly removed
+        try:
+            level = int(level_el.get(qn("w:val"), "0")) if level_el is not None else 0
+        except ValueError:
+            level = 0
+        fmt = style_context.get("numbering", {}).get((num_id, level))
+        ordered = fmt not in {None, "bullet", "none"} if fmt else ("number" in lowered or "numer" in lowered)
+        return (num_id or style_id, level, ordered)
+    if "list" in lowered or "elenco" in lowered:
+        return (style_id, 0, "number" in lowered or "numer" in lowered)
+    return None
 
 
 def _docx_style_chain(style_id: str, style_context: dict[str, Any]) -> list[Any]:
@@ -252,7 +349,7 @@ def _docx_run_property(
     sources: list[Any] = []
     if style_context.get("run_defaults") is not None:
         sources.append(style_context["run_defaults"])
-    for style in _docx_style_chain(paragraph_style_id, style_context):
+    for style in _docx_style_chain(paragraph_style_id or style_context.get("default_paragraph", ""), style_context):
         inherited = style.find(qn("w:rPr"))
         if inherited is not None:
             sources.append(inherited)
@@ -279,6 +376,29 @@ def _docx_relationship(part: Any, relationship_id: str) -> Any | None:
         return part.rels[relationship_id]
     except (KeyError, TypeError):
         return None
+
+
+_BROWSER_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/svg+xml", "image/bmp"}
+_VECTOR_OFFICE_IMAGES = {"image/x-emf": "emf", "image/emf": "emf", "image/x-wmf": "wmf", "image/wmf": "wmf"}
+
+
+def _web_image(blob: bytes, content_type: str) -> tuple[bytes, str]:
+    """Office pictures a browser cannot show (EMF/WMF drawings, TIFF…) → PNG."""
+    content_type = (content_type or "").lower()
+    if content_type in _BROWSER_IMAGE_TYPES:
+        return blob, content_type
+    if content_type in _VECTOR_OFFICE_IMAGES:
+        try:
+            return _run_libreoffice(blob, _VECTOR_OFFICE_IMAGES[content_type], "png"), "image/png"
+        except Exception:
+            return b"", content_type
+    try:
+        with Image.open(io.BytesIO(blob)) as image:
+            output = io.BytesIO()
+            image.convert("RGBA").save(output, format="PNG")
+            return output.getvalue(), "image/png"
+    except Exception:
+        return blob, content_type or "image/png"
 
 
 def _docx_image_html(element: Any, part: Any) -> str:
@@ -316,8 +436,10 @@ def _docx_image_html(element: Any, part: Any) -> str:
             except (TypeError, ValueError):
                 width = height = ""
 
+    blob, content_type = _web_image(blob, str(getattr(target_part, "content_type", "image/png")))
+    if not blob:
+        return ""
     encoded = base64.b64encode(blob).decode("ascii")
-    content_type = str(getattr(target_part, "content_type", "image/png"))
     dimensions = f' width="{width}" height="{height}"' if width and height else ""
     return (
         f'<img src="data:{html.escape(content_type, quote=True)};base64,{encoded}"'
@@ -350,7 +472,19 @@ def _docx_run_html(
     properties = run.find(qn("w:rPr"))
     wrappers: list[str] = []
     styles: list[str] = []
-    if _docx_bool(_docx_run_property(properties, paragraph_style_id, style_context, "b")):
+    style_name = style_context["names"].get(paragraph_style_id, paragraph_style_id)
+    in_heading = bool(re.search(r"(?:heading|titolo)\s*[1-6]", style_name, re.IGNORECASE))
+
+    def direct(name: str) -> Any | None:
+        return properties.find(qn(f"w:{name}")) if properties is not None else None
+
+    def resolved(name: str) -> Any | None:
+        # Heading paragraphs: size/weight/colour/font implied by the <hN> tag unless set on the run.
+        if in_heading and name in {"b", "sz", "color", "rFonts"}:
+            return direct(name)
+        return _docx_run_property(properties, paragraph_style_id, style_context, name)
+
+    if _docx_bool(resolved("b")):
         wrappers.append("strong")
     if _docx_bool(_docx_run_property(properties, paragraph_style_id, style_context, "i")):
         wrappers.append("em")
@@ -368,9 +502,9 @@ def _docx_run_html(
     elif vertical_value == "subscript":
         wrappers.append("sub")
 
-    color = _docx_run_property(properties, paragraph_style_id, style_context, "color")
+    color = resolved("color")
     color_value = str(color.get(qn("w:val"), "")) if color is not None else ""
-    if re.fullmatch(r"[0-9A-Fa-f]{6}", color_value):
+    if re.fullmatch(r"[0-9A-Fa-f]{6}", color_value) and color_value.upper() != "000000":
         styles.append(f"color:#{color_value}")
 
     highlight = _docx_run_property(properties, paragraph_style_id, style_context, "highlight")
@@ -383,22 +517,26 @@ def _docx_run_html(
     if re.fullmatch(r"[0-9A-Fa-f]{6}", shading_fill) and shading_fill.lower() != "auto":
         styles.append(f"background-color:#{shading_fill}")
 
-    size = _docx_run_property(properties, paragraph_style_id, style_context, "sz")
+    size = resolved("sz")
     try:
         half_points = int(size.get(qn("w:val"), "0")) if size is not None else 0
     except (TypeError, ValueError):
         half_points = 0
-    if half_points:
+    if half_points and half_points != EDITOR_DEFAULT_HALF_POINTS:
         styles.append(f"font-size:{half_points / 2:g}pt")
 
-    fonts = _docx_run_property(properties, paragraph_style_id, style_context, "rFonts")
+    fonts = resolved("rFonts")
     if fonts is not None:
         family = (
             fonts.get(qn("w:ascii"))
             or fonts.get(qn("w:hAnsi"))
             or fonts.get(qn("w:eastAsia"))
         )
-        if family:
+        if not family:
+            theme_ref = str(fonts.get(qn("w:asciiTheme")) or fonts.get(qn("w:hAnsiTheme")) or "")
+            if theme_ref:
+                family = style_context.get("theme_fonts", {}).get("major" if theme_ref.startswith("major") else "minor")
+        if family and str(family).lower() != EDITOR_DEFAULT_FONT.lower():
             safe_family = str(family).replace('"', "").replace("'", "")
             styles.append(f"font-family:'{safe_family}'")
 
@@ -507,11 +645,11 @@ def _docx_paragraph_html(
     comments: dict[str, dict[str, str]],
     active_comments: set[str],
     style_context: dict[str, Any],
+    list_info_out: list[Any] | None = None,
 ) -> str:
     properties = paragraph.find(qn("w:pPr"))
     style_id = ""
     alignment = ""
-    is_list = False
     if properties is not None:
         style = properties.find(qn("w:pStyle"))
         style_id = str(style.get(qn("w:val"), "")) if style is not None else ""
@@ -524,7 +662,6 @@ def _docx_paragraph_html(
             "right": "right",
             "left": "left",
         }.get(alignment_value, "")
-        is_list = properties.find(qn("w:numPr")) is not None
 
     style_name = style_context["names"].get(style_id, style_id)
     heading = re.search(r"(?:heading|titolo)\s*([1-6])", style_name, re.IGNORECASE)
@@ -540,8 +677,13 @@ def _docx_paragraph_html(
     if heading:
         tag = f"h{heading.group(1)}"
         return f"<{tag}{style_attribute}>{content}</{tag}>"
-    if is_list or "list" in style_name.lower() or "elenco" in style_name.lower():
-        return f"<ul><li>{content}</li></ul>"
+    list_info = _docx_list_info(paragraph, style_id, style_name, style_context) if not heading else None
+    if list_info is not None:
+        if list_info_out is not None:
+            list_info_out.append(list_info)
+            return f"<p{style_attribute}>{content}</p>"
+        tag = "ol" if list_info[2] else "ul"
+        return f"<{tag}><li><p{style_attribute}>{content}</p></li></{tag}>"
     return f"<p{style_attribute}>{content}</p>"
 
 
@@ -551,34 +693,117 @@ def _docx_table_html(
     comments: dict[str, dict[str, str]],
     style_context: dict[str, Any],
 ) -> str:
-    rows: list[str] = []
-    active_comments: set[str] = set()
     row_elements = [child for child in table if child.tag == qn("w:tr")]
-    for row_index, row in enumerate(row_elements):
-        cells: list[str] = []
+    # First pass: grid positions, spans and vertical merges.
+    layout: list[list[dict[str, Any]]] = []
+    origins: dict[int, dict[str, Any]] = {}
+    for row in row_elements:
+        column = 0
+        cells: list[dict[str, Any]] = []
+        is_header_row = False
+        row_properties = row.find(qn("w:trPr"))
+        if row_properties is not None and row_properties.find(qn("w:tblHeader")) is not None:
+            is_header_row = True
         for cell in (child for child in row if child.tag == qn("w:tc")):
             properties = cell.find(qn("w:tcPr"))
-            attributes: list[str] = []
-            styles: list[str] = []
+            span = 1
+            merge_state = None
+            fill = ""
             if properties is not None:
                 grid_span = properties.find(qn("w:gridSpan"))
-                if grid_span is not None and grid_span.get(qn("w:val")):
-                    attributes.append(f'colspan="{html.escape(str(grid_span.get(qn("w:val"))), quote=True)}"')
+                try:
+                    span = max(1, int(grid_span.get(qn("w:val")))) if grid_span is not None else 1
+                except (TypeError, ValueError):
+                    span = 1
+                vertical_merge = properties.find(qn("w:vMerge"))
+                if vertical_merge is not None:
+                    merge_state = str(vertical_merge.get(qn("w:val"), "continue") or "continue")
                 shading = properties.find(qn("w:shd"))
                 fill = str(shading.get(qn("w:fill"), "")) if shading is not None else ""
-                if re.fullmatch(r"[0-9A-Fa-f]{6}", fill) and fill.lower() != "auto":
-                    styles.append(f"background-color:#{fill}")
-            if styles:
-                attributes.append(f'style="{html.escape(";".join(styles), quote=True)}"')
-            blocks = [
-                _docx_paragraph_html(child, part, comments, active_comments, style_context)
-                for child in cell
-                if child.tag == qn("w:p")
-            ]
-            tag = "th" if row_index == 0 else "td"
-            cells.append(f"<{tag} {' '.join(attributes)}>{''.join(blocks) or '<p><br></p>'}</{tag}>")
-        rows.append(f"<tr>{''.join(cells)}</tr>")
+            entry = {"element": cell, "span": span, "rowspan": 1, "fill": fill, "skip": False, "header": is_header_row}
+            if merge_state == "continue" and column in origins:
+                origins[column]["rowspan"] += 1
+                entry["skip"] = True
+            elif merge_state == "restart":
+                origins[column] = entry
+            else:
+                origins.pop(column, None)
+            cells.append(entry)
+            column += span
+        layout.append(cells)
+
+    has_declared_header = any(cell["header"] for cells in layout for cell in cells)
+    rows: list[str] = []
+    for row_index, cells in enumerate(layout):
+        rendered: list[str] = []
+        for entry in cells:
+            if entry["skip"]:
+                continue
+            attributes: list[str] = []
+            if entry["span"] > 1:
+                attributes.append(f'colspan="{entry["span"]}"')
+            if entry["rowspan"] > 1:
+                attributes.append(f'rowspan="{entry["rowspan"]}"')
+            if re.fullmatch(r"[0-9A-Fa-f]{6}", entry["fill"]) and entry["fill"].lower() != "auto":
+                attributes.append(f'style="background-color:#{entry["fill"]}"')
+            blocks = _docx_blocks_html(entry["element"], part, comments, style_context)
+            is_header = entry["header"] if has_declared_header else row_index == 0
+            tag = "th" if is_header else "td"
+            rendered.append(f"<{tag} {' '.join(attributes)}>{''.join(blocks) or '<p><br></p>'}</{tag}>")
+        rows.append(f"<tr>{''.join(rendered)}</tr>")
     return f"<table><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _docx_blocks_html(
+    container: Any,
+    part: Any,
+    comments: dict[str, dict[str, str]],
+    style_context: dict[str, Any],
+) -> list[str]:
+    """Blocks of a body/cell/header: paragraphs, tables and properly nested lists."""
+    output: list[str] = []
+    active_comments: set[str] = set()
+    open_lists: list[tuple[int, str]] = []  # (level, tag); each has an open <li>
+
+    def close_to(level: int) -> None:
+        while open_lists and open_lists[-1][0] > level:
+            output.append(f"</li></{open_lists.pop()[1]}>")
+
+    def close_all() -> None:
+        close_to(-1)
+
+    def emit_list_item(level: int, ordered: bool, content: str) -> None:
+        tag = "ol" if ordered else "ul"
+        close_to(level)
+        if open_lists and open_lists[-1][0] == level and open_lists[-1][1] != tag:
+            output.append(f"</li></{open_lists.pop()[1]}>")
+        if open_lists and open_lists[-1][0] == level:
+            output.append("</li><li>")
+        else:
+            output.append(f"<{tag}><li>")
+            open_lists.append((level, tag))
+        output.append(content)
+
+    for child in container:
+        if child.tag == qn("w:p"):
+            info: list[Any] = []
+            html_fragment = _docx_paragraph_html(child, part, comments, active_comments, style_context, info)
+            if info:
+                _, level, ordered = info[0]
+                emit_list_item(level, ordered, html_fragment)
+            else:
+                close_all()
+                output.append(html_fragment)
+        elif child.tag == qn("w:tbl"):
+            close_all()
+            output.append(_docx_table_html(child, part, comments, style_context))
+        elif child.tag == qn("w:sdt"):
+            content = child.find(qn("w:sdtContent"))
+            if content is not None:
+                close_all()
+                output.extend(_docx_blocks_html(content, part, comments, style_context))
+    close_all()
+    return output
 
 
 def _docx_part_blocks(
@@ -587,18 +812,7 @@ def _docx_part_blocks(
     comments: dict[str, dict[str, str]],
     style_context: dict[str, Any],
 ) -> list[str]:
-    output: list[str] = []
-    active_comments: set[str] = set()
-    for child in container:
-        if child.tag == qn("w:p"):
-            output.append(_docx_paragraph_html(child, part, comments, active_comments, style_context))
-        elif child.tag == qn("w:tbl"):
-            output.append(_docx_table_html(child, part, comments, style_context))
-        elif child.tag == qn("w:sdt"):
-            content = child.find(qn("w:sdtContent"))
-            if content is not None:
-                output.extend(_docx_part_blocks(content, part, comments, style_context))
-    return output
+    return _docx_blocks_html(container, part, comments, style_context)
 
 
 def _docx_region_html(kind: str, label: str, blocks: list[str]) -> str:
@@ -658,6 +872,34 @@ def _docx_to_html(data: bytes) -> str:
     return "\n".join(fragment for fragment in output if fragment) or "<p></p>"
 
 
+def _docx_margins_px(data: bytes) -> dict[str, int] | None:
+    """Page margins of the first section in editor pixels (96 dpi); the editor keeps them symmetric."""
+    try:
+        section = Document(io.BytesIO(data)).sections[0]
+    except Exception:
+        return None
+    def to_px(*values: Any) -> int | None:
+        known = [int(value) for value in values if value is not None]
+        return round(sum(known) / len(known) / 914400 * 96) if known else None
+    vertical = to_px(section.top_margin, section.bottom_margin)
+    horizontal = to_px(section.left_margin, section.right_margin)
+    if vertical is None or horizontal is None:
+        return None
+    return {"vertical": max(0, min(192, vertical)), "horizontal": max(0, min(192, horizontal))}
+
+
+def _docx_page_setup(data: bytes) -> dict[str, str] | None:
+    """{'size': 'a4'|'letter', 'orientation': 'portrait'|'landscape'} of the first section."""
+    try:
+        section = Document(io.BytesIO(data)).sections[0]
+        width_mm, height_mm = section.page_width.mm, section.page_height.mm
+    except Exception:
+        return None
+    short, long = sorted((width_mm, height_mm))
+    size = "letter" if abs(short - 215.9) < 3 and abs(long - 279.4) < 3 else "a4"
+    return {"size": size, "orientation": "landscape" if width_mm > height_mm else "portrait"}
+
+
 def _pdf_to_html(data: bytes) -> str:
     pdf = fitz.open(stream=data, filetype="pdf")
     pages: list[str] = []
@@ -688,54 +930,206 @@ def _pdf_first_page_preview(data: bytes) -> str | None:
         pdf.close()
 
 
+def _pptx_background(slide: Any, theme: Any) -> tuple[str | None, bytes | None, str | None]:
+    """(colour, image bytes, image mime) of the slide background, inherited from layout/master."""
+    owners = [slide]
+    try:
+        owners += [slide.slide_layout, slide.slide_layout.slide_master]
+    except Exception:
+        pass
+    for owner in owners:
+        background = owner._element.find(".//" + qn_pptx("p:bg"))
+        if background is None:
+            continue
+        properties = background.find(qn_pptx("p:bgPr"))
+        if properties is not None:
+            color = pptx_rich.color_of(properties, theme)
+            if color:
+                return f"#{color}", None, None
+            blip = properties.find(".//" + qn_pptx("a:blip"))
+            if blip is not None:
+                relationship_id = blip.get(qn_pptx("r:embed"))
+                try:
+                    image_part = owner.part.related_part(relationship_id)
+                    return None, image_part.blob, image_part.content_type
+                except Exception:
+                    pass
+        reference = background.find(qn_pptx("p:bgRef"))
+        if reference is not None:
+            # bgRef carries the colour element directly (theme background style + colour).
+            scheme = reference.find(qn_pptx("a:schemeClr"))
+            srgb = reference.find(qn_pptx("a:srgbClr"))
+            if srgb is not None and srgb.get("val"):
+                return f"#{srgb.get('val').upper()}", None, None
+            if scheme is not None:
+                base = theme.colors.get(pptx_rich.SCHEME_ALIASES.get(scheme.get("val"), scheme.get("val")))
+                if base:
+                    return f"#{base}", None, None
+    return None, None, None
+
+
 def _pptx_to_native(data: bytes) -> dict[str, Any]:
     presentation = Presentation(io.BytesIO(data))
+    theme = pptx_rich.load_theme(presentation)
     width = int(presentation.slide_width or 1)
     height = int(presentation.slide_height or 1)
     format_name = "4:3" if abs((width / height) - (4 / 3)) < 0.08 else "16:9"
     target_width, target_height = ((800, 600) if format_name == "4:3" else (960, 540))
+    sx, sy = target_width / width, target_height / height
+    # 1 pt in canvas pixels: the canvas width spans the whole slide width.
+    pt_to_px = target_width / (width / 914400 * 72)
     slides: list[dict[str, Any]] = []
+
     for slide_index, slide in enumerate(presentation.slides):
         blocks: list[dict[str, Any]] = []
         title = f"Slide {slide_index + 1}"
-        for shape in slide.shapes:
-            x = round(shape.left / width * target_width, 2)
-            y = round(shape.top / height * target_height, 2)
-            block_width = max(8, round(shape.width / width * target_width, 2))
-            block_height = max(8, round(shape.height / height * target_height, 2))
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                image = shape.image
-                encoded = base64.b64encode(image.blob).decode("ascii")
-                blocks.append({
-                    "id": str(uuid.uuid4()), "type": "image", "content": f"data:{image.content_type};base64,{encoded}",
-                    "x": x, "y": y, "width": block_width, "height": block_height, "style": {},
-                })
-                continue
-            if not getattr(shape, "has_text_frame", False) or not shape.text.strip():
-                continue
-            text = shape.text.strip()
-            if getattr(slide.shapes, "title", None) is shape:
-                title = text.splitlines()[0][:200]
-            paragraph = shape.text_frame.paragraphs[0] if shape.text_frame.paragraphs else None
-            run = paragraph.runs[0] if paragraph and paragraph.runs else None
-            font_size = round((run.font.size.pt if run and run.font.size else (30 if y < 120 else 18)) * target_width / 960, 1)
-            color = "#1e293b"
-            try:
-                if run and run.font.color and run.font.color.type and run.font.color.rgb:
-                    color = f"#{run.font.color.rgb}"
-            except AttributeError:
-                pass
-            alignment = "left"
-            if paragraph and paragraph.alignment == PP_ALIGN.CENTER:
-                alignment = "center"
-            elif paragraph and paragraph.alignment == PP_ALIGN.RIGHT:
-                alignment = "right"
+        background_color, background_image, background_mime = _pptx_background(slide, theme)
+        if background_image:
             blocks.append({
-                "id": str(uuid.uuid4()), "type": "text", "content": text,
-                "x": x, "y": y, "width": block_width, "height": block_height,
-                "style": {"fontSize": font_size, "color": color, "fontWeight": "bold" if run and run.font.bold else "normal", "textAlign": alignment, "lineHeight": 1.2},
+                "id": str(uuid.uuid4()), "type": "image", "locked": True,
+                "content": f"data:{background_mime or 'image/png'};base64,{base64.b64encode(background_image).decode('ascii')}",
+                "x": 0, "y": 0, "width": target_width, "height": target_height, "style": {},
             })
-        slides.append({"id": str(uuid.uuid4()), "title": title, "blocks": blocks})
+
+        def box(emu_x: float, emu_y: float, emu_w: float, emu_h: float, minimum: float = 8) -> dict[str, float]:
+            return {
+                "x": round(emu_x * sx, 2), "y": round(emu_y * sy, 2),
+                "width": max(minimum, round(emu_w * sx, 2)), "height": max(minimum, round(emu_h * sy, 2)),
+            }
+
+        def add_text(shape: Any, geometry: dict[str, float], rotation: float) -> None:
+            nonlocal title
+            imported = pptx_rich.text_frame_to_html(shape, slide, presentation, theme, pt_to_px)
+            if not imported.plain.strip():
+                return
+            try:
+                title_shape = slide.shapes.title
+                is_title = title_shape is not None and title_shape._element is shape._element
+            except Exception:
+                is_title = False
+            if is_title:
+                title = imported.plain.strip().splitlines()[0][:200]
+            frame = shape.text_frame
+            padding = 0.0
+            try:
+                padding = round(((frame.margin_left or 0) + (frame.margin_top or 0)) / 2 * sx, 1)
+            except Exception:
+                pass
+            blocks.append({
+                "id": str(uuid.uuid4()), "type": "text", "content": imported.html, **geometry,
+                **({"rotation": rotation} if rotation else {}),
+                "style": {
+                    "fontSize": imported.font_px or round(18 * pt_to_px, 1),
+                    "color": imported.color or "#000000",
+                    **({"fontFamily": imported.font_family} if imported.font_family else {}),
+                    "fontWeight": "bold" if imported.bold else "normal",
+                    "textAlign": imported.align or "left",
+                    "lineHeight": 1.2,
+                    **({"padding": padding} if padding else {}),
+                },
+            })
+
+        def walk(shapes: Any, transform: tuple[float, float, float, float]) -> None:
+            ox, oy, gx, gy = transform
+            for shape in shapes:
+                try:
+                    left, top = float(shape.left or 0), float(shape.top or 0)
+                    shape_w, shape_h = float(shape.width or 0), float(shape.height or 0)
+                except Exception:
+                    continue
+                emu_x, emu_y = ox + left * gx, oy + top * gy
+                emu_w, emu_h = shape_w * gx, shape_h * gy
+                rotation = float(getattr(shape, "rotation", 0) or 0)
+                shape_type = getattr(shape, "shape_type", None)
+
+                if shape_type == MSO_SHAPE_TYPE.GROUP:
+                    xfrm = shape._element.find(qn_pptx("p:grpSpPr")).find(qn_pptx("a:xfrm"))
+                    child_offset = xfrm.find(qn_pptx("a:chOff")) if xfrm is not None else None
+                    child_extent = xfrm.find(qn_pptx("a:chExt")) if xfrm is not None else None
+                    if child_offset is not None and child_extent is not None:
+                        ch_x, ch_y = float(child_offset.get("x", 0)), float(child_offset.get("y", 0))
+                        ch_w, ch_h = float(child_extent.get("cx", 1)) or 1, float(child_extent.get("cy", 1)) or 1
+                        scale_x, scale_y = emu_w / ch_w, emu_h / ch_h
+                        walk(shape.shapes, (emu_x - ch_x * scale_x, emu_y - ch_y * scale_y, scale_x, scale_y))
+                    else:
+                        walk(shape.shapes, transform)
+                    continue
+
+                image = None
+                try:
+                    image = shape.image  # pictures and picture placeholders
+                except Exception:
+                    image = None
+                if image is not None:
+                    image_blob, image_type = _web_image(image.blob, image.content_type)
+                    if not image_blob:
+                        continue
+                    blocks.append({
+                        "id": str(uuid.uuid4()), "type": "image",
+                        "content": f"data:{image_type};base64,{base64.b64encode(image_blob).decode('ascii')}",
+                        **box(emu_x, emu_y, emu_w, emu_h), **({"rotation": rotation} if rotation else {}), "style": {},
+                    })
+                    continue
+
+                if getattr(shape, "has_table", False):
+                    rows = []
+                    for row in shape.table.rows:
+                        cells = [html.escape(cell.text.strip()) for cell in row.cells]
+                        rows.append(f"<p>{' &nbsp;|&nbsp; '.join(cells)}</p>")
+                    blocks.append({
+                        "id": str(uuid.uuid4()), "type": "text", "content": "".join(rows) or "<p></p>",
+                        **box(emu_x, emu_y, emu_w, emu_h),
+                        "style": {"fontSize": round(12 * pt_to_px, 1), "color": "#000000", "textAlign": "left", "lineHeight": 1.3},
+                    })
+                    continue
+
+                element_name = shape._element.tag.rsplit("}", 1)[-1]
+                if element_name == "cxnSp" or shape_type == MSO_SHAPE_TYPE.LINE:
+                    line = shape._element.find(".//" + qn_pptx("a:ln"))
+                    stroke = pptx_rich.color_of(line, theme) if line is not None else None
+                    width_emu = float(line.get("w", 12700)) if line is not None else 12700
+                    blocks.append({
+                        "id": str(uuid.uuid4()), "type": "line", "content": "",
+                        **box(emu_x, emu_y, emu_w, emu_h, minimum=1), **({"rotation": rotation} if rotation else {}),
+                        "style": {"stroke": f"#{stroke or '000000'}", "strokeWidth": max(1, round(width_emu / 12700 * pt_to_px, 1))},
+                    })
+                    continue
+
+                geometry = shape._element.find(".//" + qn_pptx("a:prstGeom"))
+                preset = geometry.get("prst") if geometry is not None else None
+                sp_pr = shape._element.find(qn_pptx("p:spPr"))
+                fill = pptx_rich.color_of(sp_pr, theme) if sp_pr is not None else None
+                if fill is None and sp_pr is not None and sp_pr.find(qn_pptx("a:noFill")) is None:
+                    style_fill = shape._element.find(".//" + qn_pptx("p:style") + "/" + qn_pptx("a:fillRef"))
+                    fill = pptx_rich.color_of(style_fill, theme) if style_fill is not None else None
+                    if style_fill is not None and fill is None:
+                        scheme = style_fill.find(qn_pptx("a:schemeClr"))
+                        if scheme is not None:
+                            fill = theme.colors.get(pptx_rich.SCHEME_ALIASES.get(scheme.get("val"), scheme.get("val")))
+                line = sp_pr.find(qn_pptx("a:ln")) if sp_pr is not None else None
+                stroke = pptx_rich.color_of(line, theme) if line is not None and line.find(qn_pptx("a:noFill")) is None else None
+                is_shape = preset in {"rect", "roundRect", "ellipse", "snipRect", "round2SameRect"} and (fill or stroke)
+                if is_shape:
+                    style: dict[str, Any] = {"fill": f"#{fill}" if fill else "transparent", "stroke": f"#{stroke}" if stroke else "transparent"}
+                    if line is not None and line.get("w"):
+                        style["strokeWidth"] = max(1, round(float(line.get("w")) / 12700 * pt_to_px, 1))
+                    if preset == "roundRect":
+                        style["cornerRadius"] = round(min(emu_w, emu_h) * sx * 0.16, 1)
+                    blocks.append({
+                        "id": str(uuid.uuid4()), "type": "ellipse" if preset == "ellipse" else "rectangle", "content": "",
+                        **box(emu_x, emu_y, emu_w, emu_h), **({"rotation": rotation} if rotation else {}), "style": style,
+                    })
+                if getattr(shape, "has_text_frame", False):
+                    add_text(shape, box(emu_x, emu_y, emu_w, emu_h), rotation)
+
+        walk(slide.shapes, (0.0, 0.0, 1.0, 1.0))
+        native_slide: dict[str, Any] = {"id": str(uuid.uuid4()), "title": title, "blocks": blocks}
+        if background_color:
+            native_slide["backgroundColor"] = background_color
+        notes = pptx_rich.read_notes(slide)
+        if notes:
+            native_slide["notes"] = notes
+        slides.append(native_slide)
     return {"type": "presentation_v2", "format": format_name, "slides": slides or [{"id": str(uuid.uuid4()), "title": "Slide 1", "blocks": []}]}
 
 
@@ -830,6 +1224,12 @@ def import_document(filename: str, data: bytes, mime_type: str = "", file_id: st
         doc_type = "sheet"
     elif modern_extension == "docx":
         content = {"type": "document_v1", "htmlContent": _docx_to_html(working)}
+        margins = _docx_margins_px(working)
+        if margins:
+            content["margins"] = margins
+        page = _docx_page_setup(working)
+        if page:
+            content["page"] = page
         doc_type = "document"
     elif extension == "md":
         content = {"type": "document_v1", "htmlContent": _markdown_to_html(data.decode("utf-8", errors="replace"))}
@@ -846,39 +1246,19 @@ def import_document(filename: str, data: bytes, mime_type: str = "", file_id: st
     return ImportedDocument(_safe_title(filename), doc_type, json.dumps(content, ensure_ascii=False), extension)
 
 
-def _append_html_to_docx(document: Document, raw_html: str) -> None:
-    soup = BeautifulSoup(raw_html or "<p></p>", "html.parser")
-    for node in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "table", "img"]):
-        if node.find_parent(["p", "li", "table"]) and node.name != "img":
-            continue
-        if node.name.startswith("h"):
-            document.add_heading(node.get_text(" ", strip=True), level=min(6, int(node.name[1])))
-        elif node.name == "li":
-            document.add_paragraph(node.get_text(" ", strip=True), style="List Bullet")
-        elif node.name == "table":
-            rows = node.find_all("tr")
-            column_count = max((len(row.find_all(["th", "td"])) for row in rows), default=1)
-            table = document.add_table(rows=max(1, len(rows)), cols=max(1, column_count))
-            table.style = "Table Grid"
-            for row_index, row in enumerate(rows):
-                for column_index, cell in enumerate(row.find_all(["th", "td"])):
-                    table.cell(row_index, column_index).text = cell.get_text(" ", strip=True)
-        elif node.name == "img":
-            source = str(node.get("src") or "")
-            match = re.match(r"data:([^;]+);base64,(.+)", source, re.DOTALL)
-            if match:
-                try:
-                    document.add_picture(io.BytesIO(base64.b64decode(match.group(2))), width=Inches(5.8))
-                except Exception:
-                    pass
-        else:
-            paragraph = document.add_paragraph(node.get_text(" ", strip=True))
-            style = str(node.get("style") or "")
-            if "text-align: center" in style:
-                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-
 def _native_to_docx(content: dict[str, Any], title: str) -> bytes:
+    is_presentation = content.get("type") == "presentation_v2" or isinstance(content.get("slides"), list)
+    is_sheet = content.get("type") == "sheet_v1" or isinstance(content.get("data"), list)
+    if not is_presentation and not is_sheet:
+        return html_to_docx(
+            str(content.get("htmlContent") or content.get("content") or ""),
+            title=title,
+            margins_px=content.get("margins") if isinstance(content.get("margins"), dict) else None,
+            header=content.get("header") if isinstance(content.get("header"), dict) else None,
+            page=content.get("page") if isinstance(content.get("page"), dict) else None,
+            header_footer=content.get("headerFooter") if isinstance(content.get("headerFooter"), dict) else None,
+            page_breaks=content.get("pageBreaks") if isinstance(content.get("pageBreaks"), list) else None,
+        )
     document = Document()
     section = document.sections[0]
     section.top_margin = Inches(0.65)
@@ -905,8 +1285,6 @@ def _native_to_docx(content: dict[str, Any], title: str) -> bytes:
         for row_index, row in enumerate(rows):
             for column_index, value in enumerate(row):
                 table.cell(row_index, column_index).text = str(value)
-    else:
-        _append_html_to_docx(document, str(content.get("htmlContent") or content.get("content") or ""))
     output = io.BytesIO()
     document.save(output)
     return output.getvalue()
@@ -954,34 +1332,14 @@ def _add_text_to_slide(
 ) -> None:
     box = slide.shapes.add_textbox(PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
     frame = box.text_frame
-    frame.clear()
     frame.word_wrap = True
-    frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    frame.auto_size = MSO_AUTO_SIZE.NONE
     frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
     padding = max(0.0, float(style.get("padding") or 0))
     frame.margin_left = frame.margin_right = PptxInches(padding * scale_x)
     frame.margin_top = frame.margin_bottom = PptxInches(padding * scale_y)
-    paragraph = frame.paragraphs[0]
-    paragraph.text = text
-    run = paragraph.runs[0]
-    # The editor stores CSS pixels; Office uses points (1 CSS px = 0.75 pt).
-    run.font.size = PptxPt(max(6, min(72, float(style.get("fontSize") or 18) * 0.75)))
-    if style.get("fontFamily"):
-        run.font.name = str(style["fontFamily"])
-    run.font.color.rgb = _pptx_rgb(style.get("color"), "000000")
-    run.font.bold = str(style.get("fontWeight") or "").lower() in {"bold", "600", "700", "800", "900"}
-    run.font.italic = str(style.get("fontStyle") or "").lower() == "italic"
-    run.font.underline = "underline" in str(style.get("textDecoration") or "").lower()
-    alignment = style.get("textAlign")
-    paragraph.alignment = (
-        PP_ALIGN.CENTER if alignment == "center"
-        else PP_ALIGN.RIGHT if alignment == "right"
-        else PP_ALIGN.JUSTIFY if alignment == "justify"
-        else PP_ALIGN.LEFT
-    )
-    line_height = style.get("lineHeight")
-    if isinstance(line_height, (int, float)) and line_height > 0:
-        paragraph.line_spacing = float(line_height)
+    # Canvas pixels → points so text keeps its size relative to the slide (canvas width = slide width).
+    pptx_rich.fill_text_frame(frame, text, style, px_to_pt=scale_x * 72)
     background = style.get("backgroundColor")
     if not _is_transparent(background):
         box.fill.solid()
@@ -1066,17 +1424,48 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
         chunks = [lines[index:index + 8] for index in range(0, len(lines), 8)] or [[title]]
         native_slides = [{"title": title if index == 0 else f"{title} · {index + 1}", "blocks": [{"type": "text", "content": "\n".join(chunk), "x": 70, "y": 100, "width": 820, "height": 360, "style": {"fontSize": 24}}]} for index, chunk in enumerate(chunks)]
     for index, native_slide in enumerate(native_slides):
-        slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+        # "Title Only" layout: the slide title lives in a real title placeholder (outline view,
+        # accessibility, re-import) when a text block carries it; otherwise the placeholder is dropped.
+        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        slide_title = str(native_slide.get("title") or "").strip()
+        title_block_id = None
+        for candidate in native_slide.get("blocks") or []:
+            if candidate.get("type") != "text" or candidate.get("hidden"):
+                continue
+            first_line = BeautifulSoup(str(candidate.get("content") or ""), "html.parser").get_text("\n").strip().split("\n")[0].strip()
+            if slide_title and first_line == slide_title:
+                title_block_id = candidate.get("id") or id(candidate)
+                break
+        title_placeholder = slide.shapes.title
+        if title_placeholder is not None and title_block_id is None:
+            title_placeholder._element.getparent().remove(title_placeholder._element)
+            title_placeholder = None
         background = native_slide.get("backgroundColor")
         if not _is_transparent(background):
             slide.background.fill.solid()
             slide.background.fill.fore_color.rgb = _pptx_rgb(background, "FFFFFF")
-        blocks = sorted(native_slide.get("blocks") or [], key=lambda block: float(block.get("zIndex", 0) or 0))
+        blocks = sorted(
+            (block for block in native_slide.get("blocks") or [] if not block.get("hidden")),
+            key=lambda block: float(block.get("zIndex", 0) or 0),
+        )
         for block in blocks:
             block_x, block_y, block_width, block_height = _pptx_box(block, canvas_width, canvas_height)
             x, y = block_x * scale_x, block_y * scale_y
             width, height = block_width * scale_x, block_height * scale_y
-            if block.get("type") == "text":
+            if block.get("type") == "text" and title_placeholder is not None and (block.get("id") or id(block)) == title_block_id:
+                title_placeholder.left, title_placeholder.top = PptxInches(x), PptxInches(y)
+                title_placeholder.width, title_placeholder.height = PptxInches(width), PptxInches(height)
+                frame = title_placeholder.text_frame
+                frame.word_wrap = True
+                frame.auto_size = MSO_AUTO_SIZE.NONE
+                style = block.get("style") or {}
+                padding = max(0.0, float(style.get("padding") or 0))
+                frame.margin_left = frame.margin_right = PptxInches(padding * scale_x)
+                frame.margin_top = frame.margin_bottom = PptxInches(padding * scale_y)
+                frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+                pptx_rich.fill_text_frame(frame, str(block.get("content") or ""), style, px_to_pt=scale_x * 72)
+                _set_shape_rotation(title_placeholder, block)
+            elif block.get("type") == "text":
                 _add_text_to_slide(
                     slide,
                     str(block.get("content") or ""),
@@ -1088,14 +1477,19 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
             elif block.get("type") == "image":
                 match = re.match(r"data:([^;]+);base64,(.+)", str(block.get("content") or ""), re.DOTALL)
                 if match:
+                    raw = base64.b64decode(match.group(2))
                     try:
-                        image = _cover_image_bytes(base64.b64decode(match.group(2)), block_width, block_height)
+                        image = _cover_image_bytes(raw, block_width, block_height)
+                    except Exception:
+                        image = raw  # undecodable by Pillow: let PowerPoint render the original bytes
+                    try:
                         picture = slide.shapes.add_picture(io.BytesIO(image), PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
                         _set_shape_rotation(picture, block)
                     except Exception:
                         pass
             elif block.get("type") in {"rectangle", "ellipse", "line"}:
                 _add_shape_to_slide(slide, block, x, y, width, height)
+        pptx_rich.write_notes(slide, str(native_slide.get("notes") or ""))
     output = io.BytesIO()
     presentation.save(output)
     return output.getvalue()

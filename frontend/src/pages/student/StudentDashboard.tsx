@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box } from 'lucide-react'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box, FolderOpen } from 'lucide-react'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -22,6 +22,7 @@ const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const StudentSolidModelsModule = lazy(() => import('./StudentSolidModelsModule'))
 const StudentMeshyLab = lazy(() => import('@/components/meshy/UnifiedMeshyLab'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
+const StudentDriveBrowser   = lazy(() => import('@/components/drive/DriveBrowser').then((module) => ({ default: module.DriveBrowser })))
 import ChatSidebar from '@/components/ChatSidebar'
 
 // Right padding (pr-4) around the class-chat card; added to the column width so the
@@ -175,6 +176,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-fuchsia-200/80',
       shadowClass: 'shadow-fuchsia-100/40',
     },
+    files: {
+      label: 'Files',
+      description: 'Materiali e cartelle condivisi dal docente',
+      icon: FolderOpen,
+      colorClass: 'text-blue-800',
+      bgClass: 'bg-blue-100',
+      borderClass: 'border-blue-200/80',
+      shadowClass: 'shadow-blue-100/40',
+    },
     boards: {
       label: 'Board',
       description: 'Organizza task e idee con la classe',
@@ -201,6 +211,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
   'classe',
   'self_assessment',
   'documents',
+  'files',
   'classification',
   'coding',
   'boards',
@@ -608,7 +619,7 @@ export default function StudentDashboard() {
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat' && m.is_enabled !== false) ?? false
   const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration' && m.is_enabled !== false) ?? false
   const sessionModules = sessionInfo?.enabled_modules?.filter((m) => m.is_enabled !== false).map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', ...(sharedBoards.length ? ['boards'] : []), ...(sharedSolidModels.length ? ['models3d'] : [])])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'files', ...(sharedBoards.length ? ['boards'] : []), ...(sharedSolidModels.length ? ['models3d'] : [])])]
   const chatbotEnabled = enabledModules.includes('chatbot')
 
   const dockStudentChat = () => {
@@ -901,12 +912,13 @@ function StudentMobileShell({
     { key: 'classe', label: 'Classe', detail: 'Chat e videocall', icon: Video },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : 'Tutto in ordine', icon: ClipboardList },
     { key: 'documents', label: t('navbar.nav_documents'), detail: 'Materiali in sola lettura', icon: FileText },
+    { key: 'files', label: t('navbar.nav_files'), detail: 'Materiali condivisi dal docente', icon: FolderOpen },
     { key: 'classification', label: 'ML Lab', detail: 'Allena e prova modelli', icon: Brain },
     { key: 'coding', label: 'Vibe Lab', detail: 'Crea app con l’AI', icon: Code2 },
     { key: 'boards', label: 'Board', detail: 'Task e idee', icon: KanbanSquare },
     { key: 'models3d', label: 'Modelli 3D', detail: 'Guarda e scarica STL', icon: Box },
     { key: 'models3d_ai', label: 'AI 3D', detail: 'Genera modelli con l’AI', icon: MushroomIcon },
-  ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents'].includes(item.key) || enabledModules.includes(item.key))
+  ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
   const isImmersiveModule = !!activeModule && activeModule !== 'live'
@@ -1522,6 +1534,14 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <StudentSolidModelsModule canEdit={modelerEnabled} sessionId={sessionId} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'files') {
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <StudentDriveBrowser mode="student" />
       </div>
     )
   }

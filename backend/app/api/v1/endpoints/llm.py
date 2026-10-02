@@ -51,6 +51,7 @@ from app.services.presentation_layouts import (
     render_slide_blocks,
 )
 from app.services.slide_sanitizer import sanitize_slide_text_html
+from app.services import document_assist
 from app.models.alert import ContentAlert
 from app.realtime.gateway import notify_teacher_content_alert, sio
 
@@ -2325,7 +2326,7 @@ async def document_context_assist(
     target_kind = str(target.get("kind") or "").strip()
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
-    if target_kind not in {"selected_text", "slide_block", "slide", "presentation"}:
+    if target_kind not in {"selected_text", "document", "slide_block", "slide", "presentation"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select text, a slide object, a slide, or the presentation first")
 
     provider = request.get("provider")
@@ -2358,6 +2359,215 @@ async def document_context_assist(
     )
     if not allowed:
         raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    if request.get("mode") == "plan" and target_kind in {"selected_text", "document"}:
+        # Interpretation step: no document text is edited, the user confirms the understanding first.
+        try:
+            stats = json.dumps(request.get("document_stats") or {}, ensure_ascii=False)[:9000]
+            history = [
+                {"role": "assistant" if item.get("role") == "assistant" else "user", "content": str(item.get("content") or "")[:1200]}
+                for item in (request.get("history") or [])[-6:]
+                if isinstance(item, dict) and item.get("content")
+            ]
+            selected_excerpt = str(target.get("text") or "")[:1500] if target_kind == "selected_text" else ""
+            plan_prompt = (
+                f"Lingua interfaccia: {language}\nstat (struttura attuale):\n{stats}\n"
+                + (f"Testo selezionato (estratto):\n{selected_excerpt}\n" if selected_excerpt else "")
+                + f"\nRichiesta utente:\n{prompt}"
+            )
+            response = await llm_service.generate(
+                messages=[*history, {"role": "user", "content": plan_prompt}],
+                system_prompt=document_assist.PLAN_SYSTEM_PROMPT,
+                provider=provider,
+                model=model,
+                temperature=0.1,
+                max_tokens=1500,
+                allow_web_search=False,
+            )
+            payload = _extract_json_object(response.content)
+            approach = payload.get("approach") if payload.get("approach") in {"format", "write", "rewrite", "ask"} else "rewrite"
+            operations = document_assist.sanitize_operations(payload.get("operations")) if approach == "format" else []
+            if approach == "format" and not operations:
+                approach = "rewrite"
+            write_spec = (
+                document_assist.sanitize_write_spec(payload.get("write"), has_selection=target_kind == "selected_text")
+                if approach == "write" else None
+            )
+            understanding = str(payload.get("understanding") or "").strip()[:700]
+            question = str(payload.get("question") or "").strip()[:400] if approach == "ask" else ""
+            if approach == "ask" and not question:
+                approach = "rewrite"
+            if not understanding and not question:
+                raise ValueError("Piano vuoto")
+            real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER
+            real_model = response.model or model or settings.DEFAULT_LLM_MODEL
+            cost = credit_service.calculate_cost_for_model(real_provider, real_model, response.prompt_tokens, response.completion_tokens)
+            await safe_track_usage(
+                db, tenant_id, real_provider, real_model, cost,
+                enrich_usage_with_environmental_impact({
+                    "type": "document_context_assist",
+                    "target_kind": target_kind,
+                    "phase": "plan",
+                    "prompt_tokens": response.prompt_tokens,
+                    "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.prompt_tokens + response.completion_tokens,
+                }, provider=real_provider, model=real_model),
+                teacher_id, class_id, session_id, student_id,
+                context="document_context_assist",
+            )
+            return {"plan": {"understanding": understanding, "approach": approach, "question": question, "operations": operations, "write": write_spec}}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Document assist planning failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
+
+    if request.get("mode") == "write" and target_kind in {"selected_text", "document"}:
+        # Generative branch ("vibe writing"): expand / continue / draft with the document as context.
+        try:
+            context = request.get("writing_context") if isinstance(request.get("writing_context"), dict) else {}
+            context = {**context, "title": context.get("title") or (request.get("document_context") or {}).get("title")}
+            spec = document_assist.sanitize_write_spec(request.get("write_spec"), has_selection=target_kind == "selected_text")
+            understanding = str(request.get("understanding") or "")[:700]
+            previous = str(request.get("previous_draft") or "")[:40000]
+            result = await document_assist.write_text(
+                generate=llm_service.generate,
+                instruction=prompt,
+                understanding=understanding,
+                spec=spec,
+                context=context,
+                language=language,
+                provider=provider,
+                model=model,
+                previous_draft=previous,
+            )
+            html = document_assist.sanitize_document_html(result.html)
+            if not document_assist.plain_words(html):
+                raise ValueError("Il testo generato è vuoto")
+            last = result.responses[-1]
+            real_provider = last.provider or provider or settings.DEFAULT_LLM_PROVIDER
+            real_model = last.model or model or settings.DEFAULT_LLM_MODEL
+            cost = credit_service.calculate_cost_for_model(real_provider, real_model, result.prompt_tokens, result.completion_tokens)
+            await safe_track_usage(
+                db, tenant_id, real_provider, real_model, cost,
+                enrich_usage_with_environmental_impact({
+                    "type": "document_context_assist",
+                    "target_kind": target_kind,
+                    "phase": "write",
+                    "write_task": spec["task"],
+                    "calls": len(result.responses),
+                    "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
+                    "total_tokens": result.prompt_tokens + result.completion_tokens,
+                }, provider=real_provider, model=real_model),
+                teacher_id, class_id, session_id, student_id,
+                context="document_context_assist",
+            )
+            summary = f"Ho scritto circa {result.words} parole ({spec['target_words']} richieste)."
+            return {
+                "summary": summary,
+                "proposal": {
+                    "kind": "write",
+                    "html": html,
+                    "words": result.words,
+                    "task": spec["task"],
+                    "placement": spec["placement"],
+                    "target_words": spec["target_words"],
+                    "merge_first_paragraph": bool(request.get("merge_first_paragraph")) if previous.strip() else spec["merge_first_paragraph"],
+                    "spec": spec,
+                },
+                "agent_steps": [{"agent": "Writer", "summary": step} for step in result.steps],
+            }
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except Exception as exc:
+            logger.exception("Document write failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
+
+    if target_kind in {"selected_text", "document"}:
+        # Text editing is chunked so documents/selections larger than one model call can be edited.
+        try:
+            if target_kind == "document":
+                html = str(target.get("html") or "")
+                if not html.strip():
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Il documento è vuoto")
+                protected, images = document_assist.protect_images(html)
+                if len(protected) > document_assist.DOCUMENT_MAX_CHARS:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Il documento è troppo grande per una modifica globale: seleziona una porzione.",
+                    )
+                chunks = document_assist.split_html_blocks(protected)
+                mode_kind, scope_label = "html", "intero documento"
+            else:
+                text = str(target.get("text") or "")
+                if len(text) > document_assist.DOCUMENT_MAX_CHARS:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="La selezione è troppo grande: seleziona una porzione più piccola.",
+                    )
+                images = {}
+                chunks = document_assist.split_text_blocks(text)
+                mode_kind, scope_label = "text", "testo selezionato"
+            doc_title = str((request.get("document_context") or {}).get("title") or "")
+            result = await document_assist.edit_chunks(
+                chunks,
+                instruction=prompt,
+                mode=mode_kind,
+                generate=llm_service.generate,
+                language=language,
+                document_title=doc_title,
+                scope_label=scope_label,
+                provider=provider,
+                model=model,
+            )
+            if target_kind == "document":
+                proposal = {
+                    "kind": "document",
+                    "replacement_html": document_assist.sanitize_document_html(
+                        document_assist.restore_images(result.text, images)
+                    ),
+                }
+                summary = f"Ho modificato l'intero documento ({result.chunks} parti)." if result.chunks > 1 else "Ho modificato l'intero documento."
+            else:
+                proposal = {"kind": "selected_text", "replacement_text": result.text}
+                summary = "Ho preparato la modifica del testo selezionato."
+
+            last = result.responses[-1]
+            real_provider = last.provider or provider or settings.DEFAULT_LLM_PROVIDER
+            real_model = last.model or model or settings.DEFAULT_LLM_MODEL
+            cost = credit_service.calculate_cost_for_model(real_provider, real_model, result.prompt_tokens, result.completion_tokens)
+            await safe_track_usage(
+                db, tenant_id, real_provider, real_model, cost,
+                enrich_usage_with_environmental_impact({
+                    "type": "document_context_assist",
+                    "target_kind": target_kind,
+                    "chunks": result.chunks,
+                    "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
+                    "total_tokens": result.prompt_tokens + result.completion_tokens,
+                }, provider=real_provider, model=real_model),
+                teacher_id, class_id, session_id, student_id,
+                context="document_context_assist",
+            )
+            return {
+                "summary": summary,
+                "proposal": proposal,
+                "agent_steps": [
+                    {"agent": "Context Analyst", "summary": f"Ho diviso il contenuto in {result.chunks} parti da elaborare." if result.chunks > 1 else "Ha isolato il contenuto da modificare."},
+                    {"agent": "Document Builder", "summary": summary},
+                    {"agent": "Reviewer", "summary": "La proposta è pronta per la conferma."},
+                ],
+            }
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except Exception as exc:
+            logger.exception("Document text assist failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
 
     target_payload = json.dumps(target, ensure_ascii=False)[:60000 if target_kind == "presentation" else 10000]
     document_context = json.dumps(request.get("document_context") or {}, ensure_ascii=False)[:5000]

@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Plus, Trash2, Upload, Monitor, FileText, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp
-} from 'lucide-react'
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp, PanelTop } from 'lucide-react'
 import { filesApi, teacherApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
@@ -12,8 +11,16 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
-import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
+import DocumentPageWidget from '@/components/documents/DocumentPageWidget'
+import { DocumentRuler } from '@/components/documents/DocumentRuler'
+import { DocumentPageDecorations } from '@/components/documents/DocumentPageDecorations'
+import { DocumentHeaderFooterDialog } from '@/components/documents/DocumentHeaderFooterDialog'
+import { DEFAULT_HEADER_FOOTER, readHeaderFooter, type HeaderFooterConfig } from '@/lib/documentHeaderFooter'
+import { applyFormatOperations, type FormatOperation, type FormatRange } from '@/lib/documentFormatOps'
+import { applyWriteProposal, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentCard from '@/components/documents/DocumentCard'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
@@ -22,6 +29,7 @@ import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -56,6 +64,7 @@ interface Document {
   slides: Slide[]
   textContent?: string
   header?: DocumentHeader
+  headerFooter?: HeaderFooterConfig
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   sheetStyles?: SheetCellStyles
@@ -211,9 +220,32 @@ export default function TeacherDocumentsPage() {
   
   // Slide Editor State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const applySlidesSnapshot = useCallback((slides: Slide[]) => {
+    setDocument(prev => ({ ...prev, slides }))
+    setCurrentSlideIndex(index => Math.max(0, Math.min(index, slides.length - 1)))
+  }, [])
+  // Deck-level undo/redo (blocks, slides, layout). Text typed inside a slide box has its own
+  // TipTap history, so Ctrl+Z there stays native.
+  const slideHistory = useUndoHistory(document.slides, applySlidesSnapshot, { resetKey: document.id })
+  useEffect(() => {
+    if (mode !== 'slides') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || isNativeUndoTarget(event.target)) return
+      const key = event.key.toLowerCase()
+      const wantsRedo = (key === 'z' && event.shiftKey) || key === 'y'
+      if (key !== 'z' && key !== 'y') return
+      event.preventDefault()
+      if (wantsRedo) slideHistory.redo()
+      else slideHistory.undo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mode, slideHistory])
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
+  const [pageSetup, setPageSetup] = useState<PageSetup>(DEFAULT_PAGE_SETUP)
+  const docPage = pageDimensions(pageSetup)
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -224,6 +256,9 @@ export default function TeacherDocumentsPage() {
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
+  const docScrollRef = useRef<HTMLDivElement>(null)
+  const [headerFooterDialog, setHeaderFooterDialog] = useState<'header' | 'footer' | null>(null)
+  const [headerFooterTab, setHeaderFooterTab] = useState<'header' | 'footer'>('header')
   const toolbarHostRef = useRef<HTMLDivElement>(null)
   
   // UI State
@@ -244,9 +279,15 @@ export default function TeacherDocumentsPage() {
     while (used.has(`${base} (${suffix})`.toLocaleLowerCase())) suffix += 1
     return `${base} (${suffix})`
   }
-  const [documentAgentOpen, setDocumentAgentOpen] = useState(false)
+  const [documentAgentOpen, setDocumentAgentOpenRaw] = useState(readDocumentAgentPreference)
+  const setDocumentAgentOpen = useCallback((next: boolean | ((value: boolean) => boolean)) => {
+    setDocumentAgentOpenRaw((value) => {
+      const resolved = typeof next === 'function' ? next(value) : next
+      saveDocumentAgentPreference(resolved)
+      return resolved
+    })
+  }, [])
   const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
-  const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
   const [draggedSlideIds, setDraggedSlideIds] = useState<string[]>([])
   const [showVersionPanel, setShowVersionPanel] = useState(false)
@@ -261,14 +302,15 @@ export default function TeacherDocumentsPage() {
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
   const documentAssistContext: DocumentAssistContext | null = (() => {
-    if (mode === 'document' && documentSelection) {
+    if (mode === 'document') {
       return {
-        id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
-        kind: 'selected_text',
-        label: isEnglish ? 'Selected text' : 'Testo selezionato',
-        detail: documentSelection.text,
-        target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
-        beforePreview: documentSelection.text,
+        id: `document-${document.id}`,
+        kind: 'document',
+        label: isEnglish ? 'Whole document' : 'Tutto il documento',
+        detail: `${document.title} · ${documentPageCount} ${isEnglish ? (documentPageCount === 1 ? 'page' : 'pages') : (documentPageCount === 1 ? 'pagina' : 'pagine')}`,
+        target: {},
+        resolveTarget: () => ({ html: editor?.getHTML() ?? document.textContent ?? '' }),
+        beforePreview: `${document.title} · ${documentPageCount} ${isEnglish ? 'pages' : 'pagine'}`,
       }
     }
     if (mode === 'slides' && selectedBlock) {
@@ -307,7 +349,15 @@ export default function TeacherDocumentsPage() {
     beforePreview: `${document.title}\n${document.slides.length} slide`,
   } : null
   const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
-  const selectionAssistContext: DocumentAssistContext | null = mode === 'slides' && selectedSlides.length > 1 ? {
+  const textSelectionAssistContext: DocumentAssistContext | null = mode === 'document' && documentSelection ? {
+    id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
+    kind: 'selected_text',
+    label: isEnglish ? 'Selected text' : 'Testo selezionato',
+    detail: documentSelection.text,
+    target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
+    beforePreview: documentSelection.text,
+  } : null
+  const selectionAssistContext: DocumentAssistContext | null = textSelectionAssistContext ?? (mode === 'slides' && selectedSlides.length > 1 ? {
     id: `slide-selection-${selectedSlides.map((slide) => slide.id).join('-')}`,
     kind: 'presentation',
     label: isEnglish ? 'Selected slides' : 'Slide selezionate',
@@ -319,7 +369,7 @@ export default function TeacherDocumentsPage() {
       selected_slide_ids: selectedSlides.map((slide) => slide.id),
     },
     beforePreview: `${selectedSlides.length} ${isEnglish ? 'selected slides' : 'slide selezionate'}`,
-  } : null
+  } : null)
 
   useEffect(() => {
     if (!editor) return
@@ -335,10 +385,40 @@ export default function TeacherDocumentsPage() {
     }
   }, [editor])
 
+  const assistRange = (target: DocumentAssistContext): FormatRange => {
+    if (!editor || target.kind !== 'selected_text') return null
+    const size = editor.state.doc.content.size
+    const from = typeof target.target.from === 'number' ? target.target.from : 0
+    const to = typeof target.target.to === 'number' ? target.target.to : size
+    return { from: Math.max(0, Math.min(from, size)), to: Math.max(0, Math.min(to, size)) }
+  }
+  const assistTarget = (target: DocumentAssistContext) => ({
+    kind: target.kind,
+    from: typeof target.target.from === 'number' ? target.target.from : undefined,
+    to: typeof target.target.to === 'number' ? target.target.to : undefined,
+  })
+  const getDocumentAssistStats = (target: DocumentAssistContext) => editor ? buildPlanStats(editor, document.title, assistTarget(target), assistRange(target)) : {}
+  const getDocumentWritingContext = (target: DocumentAssistContext) => editor ? buildWritingContext(editor, document.title, assistTarget(target)) : {}
+  const applyDocumentAssistOperations = (operations: FormatOperation[], target: DocumentAssistContext) =>
+    editor ? applyFormatOperations(editor, operations, assistRange(target)).lines : []
+
   const applyDocumentAgentProposal = (proposal: Record<string, unknown>) => {
     const clientContext = proposal.client_context && typeof proposal.client_context === 'object'
       ? proposal.client_context as Record<string, unknown>
       : {}
+    if (proposal.kind === 'write' && editor && typeof proposal.html === 'string') {
+      applyWriteProposal(editor, proposal as unknown as WriteProposal)
+      setDocumentSelection(null)
+      return
+    }
+    if (proposal.kind === 'document' && editor && typeof proposal.replacement_html === 'string') {
+      const sentHtml = typeof clientContext.html === 'string' ? clientContext.html : null
+      if (sentHtml !== null && sentHtml !== editor.getHTML()
+        && !window.confirm(isEnglish ? 'The document changed after the request. Replace it anyway?' : 'Il documento è cambiato dopo la richiesta. Sostituirlo comunque?')) return
+      editor.chain().focus().setContent(proposal.replacement_html, { emitUpdate: true }).run()
+      setDocumentSelection(null)
+      return
+    }
     if (proposal.kind === 'selected_text' && editor && typeof proposal.replacement_text === 'string') {
       const from = typeof clientContext.from === 'number' ? clientContext.from : documentSelection?.from
       const to = typeof clientContext.to === 'number' ? clientContext.to : documentSelection?.to
@@ -520,7 +600,7 @@ export default function TeacherDocumentsPage() {
           ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
             ? parseCanvasContent(document.canvasContent)
-          : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+          : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, headerFooter: document.headerFooter, margins: docMargins, page: pageSetup }
     const contentJson = JSON.stringify({ ...nativeContent, ...(document.source ? { source: document.source, imported: true } : {}) })
     return {
       title: document.title || 'Senza titolo',
@@ -564,7 +644,7 @@ export default function TeacherDocumentsPage() {
     setDocumentExporting(true)
     try {
       const payload = buildDraftPayload()
-      const response = await filesApi.exportDocument({ title: payload.title, content_json: payload.content_json, target_format: targetFormat })
+      const response = await filesApi.exportDocument({ title: payload.title, content_json: mode === 'document' ? withPageBreaks(payload.content_json, editor?.view.dom as HTMLElement | undefined) : payload.content_json, target_format: targetFormat })
       downloadExportedDocument(response.data, payload.title, targetFormat)
       toast({ title: isEnglish ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
     } catch (error: any) {
@@ -865,7 +945,7 @@ export default function TeacherDocumentsPage() {
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, viewMode, activePublishedTaskId, activeStudentSubmissionId])
+  }, [document, mode, docMargins, pageSetup, viewMode, activePublishedTaskId, activeStudentSubmissionId])
 
   useEffect(() => {
     if (viewMode !== 'editor' || !activeStudentSubmissionId) return
@@ -889,7 +969,7 @@ export default function TeacherDocumentsPage() {
     }, 700)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, viewMode, activeStudentSubmissionId])
+  }, [document, mode, docMargins, pageSetup, viewMode, activeStudentSubmissionId])
 
   // Load document
   const loadDocument = (doc: StoredDocument) => {
@@ -985,6 +1065,7 @@ export default function TeacherDocumentsPage() {
         setMode('document')
         setDraftId(null)
         draftIdRef.current = null
+        setPageSetup(readPageSetup(content.page))
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -998,6 +1079,7 @@ export default function TeacherDocumentsPage() {
           slides: [],
           textContent: content.htmlContent || content.content || EMPTY_DOC_HTML,
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          headerFooter: readHeaderFooter(content.headerFooter),
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
@@ -1123,6 +1205,7 @@ export default function TeacherDocumentsPage() {
         setMode('document')
         setDraftId(doc.id)
         draftIdRef.current = doc.id
+        setPageSetup(readPageSetup(content.page))
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -1136,6 +1219,7 @@ export default function TeacherDocumentsPage() {
           slides: [],
           textContent: content.htmlContent || content.content || '',
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          headerFooter: readHeaderFooter(content.headerFooter),
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
@@ -1454,8 +1538,9 @@ export default function TeacherDocumentsPage() {
           type: 'document_v1',
           title: document.title,
           htmlContent: document.textContent,
-          header: document.header,
-          margins: docMargins
+          header: document.header, headerFooter: document.headerFooter,
+          margins: docMargins,
+          page: pageSetup,
         })
         taskType = 'lesson'
       }
@@ -1535,35 +1620,6 @@ export default function TeacherDocumentsPage() {
       toast({ title: isEnglish ? 'Publish failed' : 'Errore pubblicazione', variant: 'destructive' })
     }
   }
-
-  useEffect(() => {
-    if (!draggingMargin || mode !== 'document') return
-
-    const onMouseMove = (event: MouseEvent) => {
-      const page = documentPageRef.current
-      if (!page) return
-      const rect = page.getBoundingClientRect()
-      const pageWidth = FORMAT_DIMENSIONS.a4.width
-      const scaleFactor = rect.width / pageWidth
-      if (scaleFactor <= 0) return
-
-      const rawMargin = draggingMargin === 'left'
-        ? (event.clientX - rect.left) / scaleFactor
-        : (rect.right - event.clientX) / scaleFactor
-
-      const nextMargin = Math.max(16, Math.min(220, Math.round(rawMargin)))
-      setDocMargins(prev => ({ ...prev, horizontal: nextMargin }))
-    }
-
-    const onMouseUp = () => setDraggingMargin(null)
-
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [draggingMargin, mode])
 
   useEffect(() => {
     const updateAnchor = () => {
@@ -1719,7 +1775,7 @@ export default function TeacherDocumentsPage() {
                         title={doc.title}
                         type={doc.type}
                         contentJson={doc.contentJson}
-                        onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
+                        onOpen={() => void loadDraft(doc)}
                         onDelete={() => void handleDeleteDraft(doc)}
                         deleteLabel={isEnglish ? 'Delete draft' : 'Elimina bozza'}
                         meta={<p className="truncate">{formatDocumentDateTime(doc.updatedAt)}</p>}
@@ -1758,7 +1814,7 @@ export default function TeacherDocumentsPage() {
                         <button
                           key={doc.id}
                           type="button"
-                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc), editLabel: isEnglish ? 'Correct' : 'Correggi' })}
+                          onClick={() => void loadDocument(doc)}
                           title={`${doc.title} · ${doc.authorName}`}
                           className={`flex max-w-[260px] shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
                         >
@@ -1780,7 +1836,7 @@ export default function TeacherDocumentsPage() {
                           title={doc.title}
                           type={doc.type}
                           contentJson={doc.contentJson}
-                          onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc), editLabel: isEnglish ? 'Correct' : 'Correggi' })}
+                          onOpen={() => void loadDocument(doc)}
                           onDelete={() => void handleDeletePublished(doc)}
                           deleteLabel={isEnglish ? 'Remove submission' : 'Rimuovi invio'}
                           status={doc.correction?.status === 'pending'
@@ -1809,7 +1865,7 @@ export default function TeacherDocumentsPage() {
                         title={doc.title}
                         type={doc.type}
                         contentJson={doc.contentJson}
-                        onOpen={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                        onOpen={() => void loadDocument(doc)}
                         onDelete={() => void handleDeletePublished(doc)}
                         deleteLabel={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
                         status={doc.status === 'draft'
@@ -1863,6 +1919,14 @@ export default function TeacherDocumentsPage() {
               <HeaderIconButton label={isEnglish ? 'New document' : 'Nuovo documento'} onClick={() => setShowNewModal(true)}>
                 <Plus className="h-4 w-4" />
               </HeaderIconButton>
+              {mode === 'document' && (
+                <>
+                <HeaderPageSetupMenu value={pageSetup} onChange={setPageSetup} disabled={Boolean(activeStudentSubmissionId)} />
+                <HeaderIconButton label={isEnglish ? 'Header and footer' : 'Intestazione e piè di pagina'} onClick={() => { setHeaderFooterTab('header'); setHeaderFooterDialog('header') }} active={Boolean(headerFooterDialog) } disabled={Boolean(activeStudentSubmissionId)}>
+                  <PanelTop className="h-4 w-4" />
+                </HeaderIconButton>
+                </>
+              )}
               <HeaderIconButton
                 label={draftId ? (isEnglish ? 'Version history' : 'Cronologia versioni') : (isEnglish ? 'Version history is available for personal drafts' : 'La cronologia è disponibile per le bozze personali')}
                 onClick={() => setShowVersionPanel(true)}
@@ -1922,9 +1986,8 @@ export default function TeacherDocumentsPage() {
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
+            slideHistory={mode === 'slides' ? slideHistory : undefined}
             editor={editor}
-            docScale={docScale}
-            setDocScale={setDocScale}
             showRuledLines={showRuledLines}
             onToggleRuledLines={() => setShowRuledLines(v => !v)}
             scale={scale}
@@ -2017,7 +2080,22 @@ export default function TeacherDocumentsPage() {
           </div>
 
           {/* Main Area */}
-          <div className={`flex-1 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {mode === 'document' && (
+            <DocumentRuler
+              scrollRef={docScrollRef}
+              pageRef={documentPageRef}
+              pageWidth={docPage.width}
+              scale={docScale}
+              marginHorizontal={docMargins.horizontal}
+              marginVertical={docMargins.vertical}
+              onHorizontalChange={(horizontal) => setDocMargins((previous) => ({ ...previous, horizontal }))}
+              onVerticalChange={(vertical) => setDocMargins((previous) => ({ ...previous, vertical }))}
+              disabled={Boolean(activeStudentSubmissionId)}
+              isEnglish={isEnglish}
+            />
+          )}
+          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
 
@@ -2046,67 +2124,57 @@ export default function TeacherDocumentsPage() {
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className="theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
+                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden`}
                  style={{
-                   width: FORMAT_DIMENSIONS.a4.width,
-                   minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
+                   width: docPage.width,
+                   minHeight: docPage.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${docPage.height}px, #e5e7eb ${docPage.height}px, #e5e7eb ${docPage.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
-                  {/* Top guides for lateral margins with drag handles */}
-                  <div className="pointer-events-none absolute top-3 left-0 right-0 z-10">
-                    <div className="relative h-4">
-                      <div
-                        className="absolute top-2 border-t border-slate-300"
-                        style={{ left: docMargins.horizontal, right: docMargins.horizontal }}
-                      />
-                      <div
-                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
-                        style={{ left: docMargins.horizontal }}
-                      />
-                      <div
-                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
-                        style={{ right: docMargins.horizontal }}
-                      />
-                      <button
-                        type="button"
-                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
-                        style={{ left: docMargins.horizontal }}
-                        onMouseDown={() => setDraggingMargin('left')}
-                        aria-label={isEnglish ? 'Adjust left margin' : 'Regola margine sinistro'}
-                        title={isEnglish ? 'Drag to adjust left margin' : 'Trascina per regolare margine sinistro'}
-                      />
-                      <button
-                        type="button"
-                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
-                        style={{ left: FORMAT_DIMENSIONS.a4.width - docMargins.horizontal }}
-                        onMouseDown={() => setDraggingMargin('right')}
-                        aria-label={isEnglish ? 'Adjust right margin' : 'Regola margine destro'}
-                        title={isEnglish ? 'Drag to adjust right margin' : 'Trascina per regolare margine destro'}
-                      />
-                    </div>
-                  </div>
-
-                  {showRuledLines && (
+                  <DocumentPageDecorations
+                    config={document.headerFooter ?? DEFAULT_HEADER_FOOTER}
+                    pageCount={documentPageCount}
+                    pageHeight={docPage.height}
+                    pageGap={DOC_PAGE_GAP}
+                    marginVertical={docMargins.vertical}
+                    marginHorizontal={docMargins.horizontal}
+                    isEnglish={isEnglish}
+                    onItemMove={Boolean(activeStudentSubmissionId) ? undefined : (band, itemId, x) => setDocument((current) => { const config = current.headerFooter ?? DEFAULT_HEADER_FOOTER; return { ...current, headerFooter: { ...config, [band]: { ...config[band], items: config[band].items.map((item) => item.id === itemId ? { ...item, x } : item) } } } })}
+                    onEdit={Boolean(activeStudentSubmissionId) ? undefined : (band) => { setHeaderFooterTab(band); setHeaderFooterDialog(band) }}
+                  />
+                  <DocumentHeaderFooterDialog
+                    open={headerFooterDialog !== null}
+                    onOpenChange={(open) => { if (!open) setHeaderFooterDialog(null) }}
+                    value={document.headerFooter ?? DEFAULT_HEADER_FOOTER}
+                    onChange={(next) => setDocument((current) => ({ ...current, headerFooter: next }))}
+                    initialTab={headerFooterTab}
+                    pageWidth={docPage.width}
+                    marginHorizontal={docMargins.horizontal}
+                    marginVertical={docMargins.vertical}
+                    isEnglish={isEnglish}
+                  />
+                  {showRuledLines && Array.from({ length: documentPageCount }, (_, pageIndex) => (
+                    // One ruled block per sheet: the lines restart on every page and never run through the gap or the margins.
                     <div
+                      key={pageIndex}
                       className="pointer-events-none absolute z-0"
                       style={{
-                        top: docMargins.vertical,
-                        right: docMargins.horizontal,
-                        bottom: docMargins.vertical,
+                        top: pageIndex * (docPage.height + DOC_PAGE_GAP) + docMargins.vertical,
+                        height: docPage.height - docMargins.vertical * 2,
                         left: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)'
+                        right: docMargins.horizontal,
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)',
                       }}
                     />
-                  )}
+                  ))}
 
                   <div
                     className="flex-1 flex flex-col relative z-10 cursor-text"
-                    style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
+                    style={{ minHeight: docPage.height - docMargins.vertical * 2 }}
                     onMouseDown={(e) => {
                       if (e.target !== e.currentTarget) return
                       if (editor && mode === 'document') {
@@ -2130,7 +2198,7 @@ export default function TeacherDocumentsPage() {
                       aiPanelAnchor={aiPanelAnchor}
                       enableSelectionAssist={false}
                       pagination={{
-                        pageHeight: FORMAT_DIMENSIONS.a4.height,
+                        pageHeight: docPage.height,
                         pageGap: DOC_PAGE_GAP,
                         marginTop: docMargins.vertical,
                         marginBottom: docMargins.vertical,
@@ -2223,6 +2291,19 @@ export default function TeacherDocumentsPage() {
              )}
 
           </div>
+          {mode === 'document' && (
+            <DocumentPageWidget
+              scrollRef={docScrollRef}
+              pageRef={documentPageRef}
+              pageHeight={docPage.height}
+              pageGap={DOC_PAGE_GAP}
+              pageCount={documentPageCount}
+              scale={docScale}
+              onScaleChange={setDocScale}
+              isEnglish={isEnglish}
+            />
+          )}
+          </div>
           {documentAgentOpen && (mode === 'slides' || mode === 'document') && (
             <>
               <button
@@ -2242,6 +2323,10 @@ export default function TeacherDocumentsPage() {
                   current_slide_index: currentSlideIndex,
                 }}
                 dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
+                variant={mode === 'document' ? 'document' : 'slides'}
+                getDocumentStats={getDocumentAssistStats}
+                onApplyOperations={applyDocumentAssistOperations}
+                getWritingContext={getDocumentWritingContext}
                 onApply={applyDocumentAgentProposal}
                 onClose={() => setDocumentAgentOpen(false)}
               />

@@ -87,12 +87,7 @@
 .dark {
   --ds-canvas: #141518;
   --ds-canvas-base: #141518;
-  --ds-canvas-mesh:
-    radial-gradient(ellipse 46vmax 38vmax at 4% 8%, rgba(255,255,255,0.040) 0%, rgba(255,255,255,0.014) 42%, transparent 74%),
-    radial-gradient(ellipse 52vmax 40vmax at 96% 22%, rgba(255,255,255,0.032) 0%, rgba(255,255,255,0.011) 42%, transparent 74%),
-    radial-gradient(ellipse 48vmax 38vmax at 70% 98%, rgba(255,255,255,0.036) 0%, rgba(255,255,255,0.012) 42%, transparent 74%),
-    radial-gradient(ellipse 40vmax 34vmax at 18% 82%, rgba(0,0,0,0.20) 0%, transparent 72%),
-    radial-gradient(ellipse 38vmax 30vmax at 48% 40%, rgba(255,255,255,0.018) 0%, transparent 72%);
+  --ds-canvas-mesh: none;
   --ds-surface: rgba(29, 31, 35, 0.92);
   --ds-navbar: #1d1f23;
   --ds-surface-raised: rgba(35, 38, 43, 0.97);
@@ -101,21 +96,17 @@
   --ds-control: rgba(40, 43, 49, 0.96);
   --ds-control-hover: rgba(46, 49, 55, 0.99);
   --ds-cluster: rgba(34, 36, 41, 0.96);
-  --ds-cluster-bg:
-    radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.05) 0%, transparent 58%),
-    linear-gradient(145deg, rgba(36,38,43,0.96), rgba(31,33,38,0.94));
+  --ds-cluster-bg: linear-gradient(#222429, #222429);
   --ds-navbar-cluster: rgba(32, 34, 38, 0.98);
-  --ds-navbar-cluster-bg:
-    radial-gradient(ellipse at 25% 0%, rgba(255,255,255,0.06) 0%, transparent 62%),
-    linear-gradient(145deg, rgba(36,38,43,0.98), rgba(30,32,36,0.96));
+  --ds-navbar-cluster-bg: linear-gradient(#202226, #202226);
   /* Active tab: one luminance step above the cluster, raised (not carved in). */
   --ds-navbar-active: #33363c;
-  --ds-navbar-active-bg: linear-gradient(180deg, #3a3d43, #32353b);
+  --ds-navbar-active-bg: linear-gradient(#33363c, #33363c);
   --ds-navbar-active-ink: #eef0f3;
   --ds-navbar-active-border: rgba(255,255,255,0.07);
   --ds-navbar-active-shadow: 0 2px 6px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05);
   --ds-switch-active: #33363c;
-  --ds-switch-active-bg: linear-gradient(180deg, #3a3d43, #32353b);
+  --ds-switch-active-bg: linear-gradient(#33363c, #33363c);
   --ds-switch-active-border: rgba(255,255,255,0.07);
   --ds-switch-active-shadow: 0 2px 6px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05);
   --ds-choice-tone: #9aa0aa;
@@ -136,11 +127,9 @@
   --ds-selected: var(--ds-choice-surface);
   --ds-overlay: rgba(0, 0, 0, 0.55);
 
-  --ds-reflection: radial-gradient(ellipse at 30% 12%, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.012) 40%, transparent 72%);
-  --ds-semantic-shading: radial-gradient(ellipse at 28% 8%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 42%, transparent 74%);
-  --ds-selection-shading:
-    radial-gradient(ellipse at 30% 4%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.018) 46%, transparent 76%),
-    radial-gradient(ellipse at 78% 115%, rgba(171,159,240,0.06) 0%, transparent 68%);
+  --ds-reflection: none;
+  --ds-semantic-shading: none;
+  --ds-selection-shading: none;
   --ds-shadow-1: 0 2px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.16);
   --ds-shadow-2: 0 6px 18px rgba(0,0,0,0.32), 0 16px 36px rgba(0,0,0,0.20);
   --ds-shadow-3: 0 12px 32px rgba(0,0,0,0.40), 0 28px 56px rgba(0,0,0,0.26);

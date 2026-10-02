@@ -59,6 +59,7 @@ class LiveEscapeParticipant(Base):
     current_step = Column(Integer, default=0, nullable=False)
     attempts = Column(Integer, default=0, nullable=False)
     inventory_json = Column(JSONB, default=list, nullable=False)
+    answers_json = Column(JSONB, default=list, nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

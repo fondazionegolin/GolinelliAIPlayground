@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { chatApi, filesApi, toyLmApi } from '@/lib/api'
+import { chatApi, toyLmApi } from '@/lib/api'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
+  File, Wand2, Users, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -20,17 +19,7 @@ import TuringTestPanel from '@/components/TuringTestPanel'
 
 export type { ChatMessage }
 
-type TabType = 'session' | 'private' | 'users' | 'files'
-
-interface SessionFile {
-  id: string
-  filename: string
-  mime_type: string
-  size_bytes: number
-  url: string
-  created_at: string
-  owner_type: 'student' | 'teacher'
-}
+type TabType = 'session' | 'private' | 'users'
 
 interface ToyLMModelAttachment {
   type: 'toy_lm_model'
@@ -59,14 +48,7 @@ interface CodingCommitAttachment {
   status?: string
 }
 
-type SessionFilesCache = {
-  files: SessionFile[]
-  updatedAt: number
-}
-
-const SESSION_FILES_CACHE = new Map<string, SessionFilesCache>()
 const RESOLVED_FILE_URL_CACHE = new Map<string, string>()
-const SESSION_FILES_CACHE_TTL = 60 * 1000
 
 interface ChatSidebarProps {
   sessionId: string
@@ -120,20 +102,7 @@ export default function ChatSidebar({
     unpin: isEnglish ? 'Unpin sidebar' : 'Sblocca Sidebar',
     sessionTab: isEnglish ? 'Class' : 'Classe',
     privateTab: isEnglish ? 'Private' : 'Privata',
-    filesTab: isEnglish ? 'Files' : 'File',
     usersTab: isEnglish ? 'Users' : 'Utenti',
-    searchFiles: isEnglish ? 'Search files or folders...' : 'Cerca file o cartelle...',
-    uploadFiles: isEnglish ? 'Upload files' : 'Carica file',
-    newFolder: isEnglish ? 'New folder' : 'Nuova cartella',
-    toggleView: isEnglish ? 'Change view' : 'Cambia vista',
-    listView: isEnglish ? 'List view' : 'Vista elenco',
-    gridView: isEnglish ? 'Grid view' : 'Vista griglia',
-    smallerIcons: isEnglish ? 'Smaller icons' : 'Riduci icone',
-    largerIcons: isEnglish ? 'Larger icons' : 'Aumenta icone',
-    all: isEnglish ? 'All' : 'Tutti',
-    images: isEnglish ? 'Images' : 'Immagini',
-    other: isEnglish ? 'Other' : 'Altro',
-    allFiles: isEnglish ? 'All files' : 'Tutti i file',
   }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
@@ -144,22 +113,11 @@ export default function ChatSidebar({
   const [activeTab, setActiveTab] = useState<TabType>('session')
   const [activePrivateChat, setActivePrivateChat] = useState<string | null>(null)
   const [viewingFile, setViewingFile] = useState<{ url: string; filename: string; type?: string } | null>(null)
-  const [sessionFiles, setSessionFiles] = useState<SessionFile[]>([])
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false)
-  const [filesSearch, setFilesSearch] = useState('')
-  const [filesDropActive, setFilesDropActive] = useState(false)
-  const [activeFolder, setActiveFolder] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'images' | 'pdf' | 'docs' | 'csv' | 'audio' | 'video' | 'other'>('all')
-  const [fileTags, setFileTags] = useState<Record<string, string[]>>({})
-  const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
-  const [filesViewMode, setFilesViewMode] = useState<'grid' | 'list'>('grid')
-  const [filesIconScale, setFilesIconScale] = useState(1)
   const [activeToyLMModel, setActiveToyLMModel] = useState<ToyLMModelAttachment | null>(null)
   const studentAccentTheme = getStudentAccentTheme(studentAccent)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prependScrollHeightRef = useRef<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const libraryFileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter = useRef(0)
   const prevMessagesCountRef = useRef(0)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
@@ -185,8 +143,8 @@ export default function ChatSidebar({
   } = useSocket(sessionId)
 
   const availableTabs: TabType[] = userType === 'student'
-    ? ['session', ...(privateChatEnabled ? (['private'] as const) : []), 'files']
-    : ['session', 'private', 'files', 'users']
+    ? ['session', ...(privateChatEnabled ? (['private'] as const) : [])]
+    : ['session', 'private', 'users']
 
   const getRelativePath = (file: File) => {
     const relativePath = (file as any).webkitRelativePath as string | undefined
@@ -248,104 +206,9 @@ export default function ChatSidebar({
     return resolved
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (!bytes && bytes !== 0) return ''
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-  }
-
-  const getFileTypeTag = (filename: string, mimeType?: string) => {
-    const ext = filename.split('.').pop()?.toLowerCase() || ''
-    if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'IMG'
-    if (ext === 'pdf' || mimeType === 'application/pdf') return 'PDF'
-    if (['doc', 'docx'].includes(ext) || mimeType?.includes('word')) return 'DOC'
-    if (['xls', 'xlsx', 'csv'].includes(ext) || mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || mimeType?.includes('csv')) return 'CSV'
-    if (['ppt', 'pptx'].includes(ext) || mimeType?.includes('presentation')) return 'PPT'
-    if (['txt', 'md', 'json', 'xml'].includes(ext)) return 'TXT'
-    return 'FILE'
-  }
-
-  const getFileCategory = (filename: string, mimeType?: string) => {
-    const ext = filename.split('.').pop()?.toLowerCase() || ''
-    if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'images'
-    if (ext === 'pdf' || mimeType === 'application/pdf') return 'pdf'
-    if (['doc', 'docx', 'rtf', 'odt'].includes(ext) || mimeType?.includes('word')) return 'docs'
-    if (['xls', 'xlsx', 'csv'].includes(ext) || mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || mimeType?.includes('csv')) return 'csv'
-    if (mimeType?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return 'audio'
-    if (mimeType?.startsWith('video/') || ['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(ext)) return 'video'
-    return 'other'
-  }
-
-  const addFileTag = (fileId: string, rawTag: string) => {
-    const tag = rawTag.trim()
-    if (!tag) return
-    setFileTags(prev => {
-      const current = prev[fileId] || []
-      if (current.includes(tag)) return prev
-      return { ...prev, [fileId]: [...current, tag] }
-    })
-  }
-
-  const removeFileTag = (fileId: string, tag: string) => {
-    setFileTags(prev => {
-      const current = prev[fileId] || []
-      const next = current.filter(t => t !== tag)
-      return { ...prev, [fileId]: next }
-    })
-  }
-
-  const loadSessionFiles = useCallback(async (force = false) => {
-    if (!force) {
-      const cached = SESSION_FILES_CACHE.get(sessionId)
-      if (cached && Date.now() - cached.updatedAt < SESSION_FILES_CACHE_TTL) {
-        setSessionFiles(cached.files)
-        return
-      }
-    }
-
-    setIsLoadingFiles(true)
-    try {
-      const res = await filesApi.listSessionFiles(sessionId)
-      const filesData = Array.isArray(res.data) ? res.data : []
-      setSessionFiles(filesData)
-      SESSION_FILES_CACHE.set(sessionId, { files: filesData, updatedAt: Date.now() })
-    } catch (e) {
-      console.error("Failed to load session files", e)
-    } finally {
-      setIsLoadingFiles(false)
-    }
-  }, [sessionId])
-
   useEffect(() => {
     setMessages(socketMessages)
   }, [socketMessages])
-
-  useEffect(() => {
-    if (activeTab === 'files') {
-      loadSessionFiles()
-    }
-  }, [activeTab, loadSessionFiles])
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`sessionFileTags:${sessionId}`)
-      if (stored) {
-        setFileTags(JSON.parse(stored))
-      }
-    } catch (e) {
-      console.error('Failed to load file tags', e)
-    }
-  }, [sessionId])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(`sessionFileTags:${sessionId}`, JSON.stringify(fileTags))
-    } catch (e) {
-      console.error('Failed to save file tags', e)
-    }
-  }, [fileTags, sessionId])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -477,13 +340,12 @@ export default function ChatSidebar({
       const { uploadedUrls, filenameMap } = await uploadFilesForMessage(files)
       if (uploadedUrls.length > 0) {
         await sendPublicMessage(fallbackText, uploadedUrls, filenameMap)
-        void loadSessionFiles(true)
       }
     } catch (error) {
       console.error('Failed to share dropped files to session', error)
       setAttachedFiles(prev => [...prev, ...files])
     }
-  }, [activeTab, loadSessionFiles, sendPublicMessage, uploadFilesForMessage])
+  }, [activeTab, sendPublicMessage, uploadFilesForMessage])
 
   const handleSend = async () => {
     if (!inputText.trim() && attachedFiles.length === 0) return
@@ -519,9 +381,6 @@ export default function ChatSidebar({
           setReplyingTo(null)
           await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap, replyId, replyPrev)
         }
-      }
-      if (uploadedUrls.length > 0) {
-        void loadSessionFiles(true)
       }
     } catch (e) {
       console.error("Failed to send", e)
@@ -658,59 +517,6 @@ export default function ChatSidebar({
     e.preventDefault()
     const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as File[]
     if (files.length > 0) setAttachedFiles(prev => [...prev, ...files])
-  }
-
-  const uploadSessionFiles = async (files: File[]) => {
-    if (files.length === 0) return
-    try {
-      const optimizedFiles = await optimizeImagesForUpload(files)
-      const formData = new FormData()
-      optimizedFiles.forEach(file => {
-        formData.append('files', file, getDisplayName(file))
-      })
-
-      const studentToken = localStorage.getItem('student_token')
-      const accessToken = localStorage.getItem('access_token') || localStorage.getItem('token')
-
-      const headers: Record<string, string> = {}
-      if (studentToken) {
-        headers['student-token'] = studentToken
-      } else if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
-
-      const res = await fetch(`/api/v1/chat/upload?session_id=${sessionId}`, {
-        method: 'POST',
-        headers,
-        body: formData
-      })
-
-      if (!res.ok) {
-        throw new Error('Upload failed')
-      }
-
-      await res.json()
-      await loadSessionFiles(true)
-    } catch (e) {
-      console.error("Failed to upload session files", e)
-    }
-  }
-
-  const createFolderWithKeep = async () => {
-    const rawName = window.prompt('Nome cartella')
-    if (!rawName) return
-    const safeName = rawName.trim().replace(/^\/+|\/+$/g, '')
-    if (!safeName) return
-    const keepFile = new globalThis.File([''], `${safeName}/.keep`, { type: 'text/plain' })
-    await uploadSessionFiles([keepFile])
-  }
-
-  const handleLibraryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    if (files.length > 0) {
-      uploadSessionFiles(files)
-    }
-    e.target.value = ''
   }
 
   useEffect(() => {
@@ -1461,410 +1267,6 @@ export default function ChatSidebar({
     )
   }
 
-  const renderFilesTab = () => {
-    const search = filesSearch.trim().toLowerCase()
-    const filteredFiles = sessionFiles.filter(file => {
-      if (!search) return true
-      return file.filename.toLowerCase().includes(search)
-    })
-
-    const gridMin = Math.max(140, Math.round(170 * filesIconScale))
-    const gridGap = Math.max(8, Math.round(12 * filesIconScale))
-
-    const rootFiles: Array<{ file: SessionFile; displayName: string }> = []
-    const folderMap: Record<string, Array<{ file: SessionFile; displayName: string }>> = {}
-    const folderNamesSet = new Set<string>()
-
-    filteredFiles.forEach(file => {
-      const parts = file.filename.split('/').filter(Boolean)
-      if (parts.length > 1) {
-        const folderName = parts[0]
-        const displayName = parts.slice(1).join('/')
-        folderNamesSet.add(folderName)
-        if (displayName === '.keep') {
-          return
-        }
-        if (!folderMap[folderName]) folderMap[folderName] = []
-        folderMap[folderName].push({ file, displayName })
-      } else {
-        if (file.filename === '.keep') {
-          return
-        }
-        rootFiles.push({ file, displayName: file.filename })
-      }
-    })
-
-    const renderFileCard = (entry: { file: SessionFile; displayName: string }, isNested: boolean) => {
-      const typeTag = getFileTypeTag(entry.displayName, entry.file.mime_type)
-      const ownerTag = entry.file.owner_type === 'teacher' ? 'Docente' : 'Studente'
-      const category = getFileCategory(entry.displayName, entry.file.mime_type)
-      const typeTagStyles = typeTag === 'PDF'
-        ? 'bg-red-100 text-red-700'
-        : typeTag === 'IMG'
-          ? 'bg-purple-100 text-purple-700'
-          : typeTag === 'DOC'
-            ? 'bg-blue-100 text-blue-700'
-            : typeTag === 'CSV'
-              ? 'bg-emerald-100 text-emerald-700'
-              : typeTag === 'PPT'
-                ? 'bg-orange-100 text-orange-700'
-                : 'bg-slate-100 text-slate-600'
-
-      const tags = fileTags[entry.file.id] || []
-      const showByFilter = activeFilter === 'all' || category === activeFilter
-      if (!showByFilter) return null
-
-      if (filesViewMode === 'list') {
-        const listThumbWidth = Math.max(48, Math.round(64 * filesIconScale))
-        const listThumbHeight = Math.max(36, Math.round(48 * filesIconScale))
-
-        return (
-          <div
-            key={entry.file.id}
-            draggable
-            onDragStart={(e) => {
-              const payload = JSON.stringify({
-                id: entry.file.id,
-                filename: entry.file.filename,
-                mime_type: entry.file.mime_type,
-                size_bytes: entry.file.size_bytes,
-                url: entry.file.url
-              })
-              e.dataTransfer.setData('application/x-session-file', payload)
-              e.dataTransfer.setData('text/plain', entry.file.filename)
-              e.dataTransfer.effectAllowed = 'copy'
-            }}
-            onClick={() => setViewingFile({ url: entry.file.url, filename: entry.file.filename, type: entry.file.mime_type })}
-            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md transition-all cursor-pointer"
-          >
-            <div
-              className="rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center flex-shrink-0"
-              style={{ width: `${listThumbWidth}px`, height: `${listThumbHeight}px` }}
-            >
-              {category === 'images' ? (
-                <img src={entry.file.url} alt={entry.displayName} className="w-full h-full object-cover" />
-              ) : (
-                <File className="h-5 w-5 text-slate-400" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-800 truncate">{entry.displayName}</p>
-              <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
-                <span>{formatFileSize(entry.file.size_bytes)}</span>
-                <span>•</span>
-                <span>{new Date(entry.file.created_at).toLocaleDateString()}</span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {tags.map(tag => (
-                  <button
-                    key={tag}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeFileTag(entry.file.id, tag)
-                    }}
-                    className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
-                    title="Rimuovi tag"
-                  >
-                    {tag} ✕
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-neutral-900">
-                {ownerTag}
-              </span>
-            </div>
-          </div>
-        )
-      }
-
-      return (
-        <div
-          key={entry.file.id}
-          draggable
-          onDragStart={(e) => {
-            const payload = JSON.stringify({
-              id: entry.file.id,
-              filename: entry.file.filename,
-              mime_type: entry.file.mime_type,
-              size_bytes: entry.file.size_bytes,
-              url: entry.file.url
-            })
-            e.dataTransfer.setData('application/x-session-file', payload)
-            e.dataTransfer.setData('text/plain', entry.file.filename)
-            e.dataTransfer.effectAllowed = 'copy'
-          }}
-          className={`group rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all cursor-pointer ${isNested ? 'ml-2' : ''}`}
-          onClick={() => setViewingFile({ url: entry.file.url, filename: entry.file.filename, type: entry.file.mime_type })}
-        >
-          <div className="aspect-[4/3] w-full rounded-t-xl overflow-hidden bg-slate-100 flex items-center justify-center">
-            {category === 'images' ? (
-              <img src={entry.file.url} alt={entry.displayName} className="w-full h-full object-cover" />
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-slate-400">
-                <File className="h-8 w-8" />
-                <span className="text-[10px] font-semibold uppercase">{typeTag}</span>
-              </div>
-            )}
-          </div>
-          <div className="p-3">
-            <p className="text-sm font-semibold text-slate-800 truncate">{entry.displayName}</p>
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
-              <span>{formatFileSize(entry.file.size_bytes)}</span>
-              <span>•</span>
-              <span>{new Date(entry.file.created_at).toLocaleDateString()}</span>
-            </div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-neutral-900">
-                {ownerTag}
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tags.map(tag => (
-                <button
-                  key={tag}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    removeFileTag(entry.file.id, tag)
-                  }}
-                  className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
-                  title="Rimuovi tag"
-                >
-                  {tag} ✕
-                </button>
-              ))}
-            </div>
-            <div className="mt-2">
-              <input
-                value={tagInputs[entry.file.id] || ''}
-                onChange={(e) => setTagInputs(prev => ({ ...prev, [entry.file.id]: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    addFileTag(entry.file.id, tagInputs[entry.file.id] || '')
-                    setTagInputs(prev => ({ ...prev, [entry.file.id]: '' }))
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="Aggiungi tag…"
-                className="w-full text-xs px-2 py-1 rounded-md border border-slate-200 focus:outline-none focus:ring-1 focus:ring-[#181b1e]"
-              />
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    const folderNames = Array.from(new Set([...folderNamesSet, ...Object.keys(folderMap)])).sort((a, b) => a.localeCompare(b))
-
-    const handleFilesDragOver = (e: React.DragEvent) => {
-      e.preventDefault()
-      setFilesDropActive(true)
-    }
-
-    const handleFilesDragLeave = () => {
-      setFilesDropActive(false)
-    }
-
-    const handleFilesDrop = async (e: React.DragEvent) => {
-      e.preventDefault()
-      setFilesDropActive(false)
-      const files = Array.from(e.dataTransfer.files || [])
-      if (files.length > 0) {
-        await uploadSessionFiles(files)
-      }
-    }
-
-    return (
-      <div
-        className="flex-1 overflow-y-auto bg-slate-50/30"
-        onDragOver={handleFilesDragOver}
-        onDragLeave={handleFilesDragLeave}
-        onDrop={handleFilesDrop}
-      >
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-4 py-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              value={filesSearch}
-              onChange={(e) => setFilesSearch(e.target.value)}
-              placeholder={sidebarLabels.searchFiles}
-              className="pl-9 h-9"
-            />
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="relative group">
-              <Button
-                size="icon"
-                tone="accent"
-                surface="solid"
-                onClick={() => libraryFileInputRef.current?.click()}
-                className="h-8 w-8"
-                title={sidebarLabels.uploadFiles}
-              >
-                <Upload className="h-4 w-4" />
-              </Button>
-              <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {sidebarLabels.uploadFiles}
-              </div>
-            </div>
-            <div className="relative group">
-              <Button
-                size="icon"
-                tone="accent"
-                surface="soft"
-                onClick={createFolderWithKeep}
-                className="h-8 w-8"
-                title={sidebarLabels.newFolder}
-              >
-                <Folder className="h-4 w-4" />
-              </Button>
-              <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {sidebarLabels.newFolder}
-              </div>
-            </div>
-            <div className="relative group">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => setFilesViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
-                className="h-8 w-8"
-                title={sidebarLabels.toggleView}
-              >
-                {filesViewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid2X2 className="h-4 w-4" />}
-              </Button>
-              <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {filesViewMode === 'grid' ? sidebarLabels.listView : sidebarLabels.gridView}
-              </div>
-            </div>
-            <div className="relative group">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => setFilesIconScale((s) => Math.max(0.8, Number((s - 0.1).toFixed(2))))}
-                className="h-8 w-8"
-                title={sidebarLabels.smallerIcons}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {sidebarLabels.smallerIcons}
-              </div>
-            </div>
-            <div className="relative group">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => setFilesIconScale((s) => Math.min(1.4, Number((s + 0.1).toFixed(2))))}
-                className="h-8 w-8"
-                title={sidebarLabels.largerIcons}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {sidebarLabels.largerIcons}
-              </div>
-            </div>
-            <input
-              ref={libraryFileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleLibraryFileSelect}
-            />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[
-              { key: 'all', label: sidebarLabels.all },
-              { key: 'images', label: sidebarLabels.images },
-              { key: 'pdf', label: 'PDF' },
-              { key: 'docs', label: 'Doc' },
-              { key: 'csv', label: 'CSV' },
-              { key: 'audio', label: 'Audio' },
-              { key: 'video', label: 'Video' },
-              { key: 'other', label: sidebarLabels.other },
-            ].map(item => (
-              <button
-                key={item.key}
-                onClick={() => setActiveFilter(item.key as typeof activeFilter)}
-                className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase transition-colors ${activeFilter === item.key
-                  ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-            <button
-              onClick={() => setActiveFolder(null)}
-              className={`font-semibold ${!activeFolder ? 'text-neutral-900' : 'text-slate-500 hover:text-neutral-900'}`}
-            >
-              {sidebarLabels.allFiles}
-            </button>
-            {activeFolder && (
-              <>
-                <span>/</span>
-                <span className="font-semibold text-slate-700">{activeFolder}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="p-3 space-y-3">
-          {filesDropActive && (
-            <div className="border-2 border-dashed border-[#181b1e]/40 bg-[#181b1e]/5/70 text-neutral-900 rounded-xl p-6 text-center text-sm font-semibold">
-              {t('chat_sidebar.upload_hint')}
-            </div>
-          )}
-
-          {isLoadingFiles && (
-            <div className="text-center py-8 text-slate-400 text-xs">{t('chat_sidebar.loading_files')}</div>
-          )}
-
-          {!isLoadingFiles && filteredFiles.length === 0 && (
-            <div className="text-center py-10 text-slate-300">
-              <Folder className="h-8 w-8 mx-auto mb-2" />
-              <p className="text-xs font-semibold uppercase tracking-wide">{t('chat_sidebar.no_files')}</p>
-              <p className="text-[10px] mt-1">{t('chat_sidebar.upload_hint')}</p>
-            </div>
-          )}
-
-          {!activeFolder && folderNames.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {folderNames.map(folder => (
-                <button
-                  key={folder}
-                  onClick={() => setActiveFolder(folder)}
-                  className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-[#181b1e]/30 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <Folder className="h-5 w-5 text-neutral-900" />
-                    <span className="font-semibold text-slate-800 truncate">{folder}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">{(folderMap[folder] || []).length} file</p>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div
-            className={`${filesViewMode === 'grid' ? 'grid' : 'space-y-2'}`}
-            style={filesViewMode === 'grid' ? { gridTemplateColumns: `repeat(auto-fill, minmax(${gridMin}px, 1fr))`, gap: `${gridGap}px` } : undefined}
-          >
-            {(activeFolder ? (folderMap[activeFolder] || []) : rootFiles)
-              .map(entry => renderFileCard(entry, !!activeFolder))
-              .filter(Boolean)}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   const showInputArea = activeTab === 'session' || (activeTab === 'private' && activePrivateChat)
 
   return (
@@ -1943,10 +1345,9 @@ export default function ChatSidebar({
             const tabLabels = {
               session: sidebarLabels.sessionTab,
               private: sidebarLabels.privateTab,
-              files: sidebarLabels.filesTab,
               users: sidebarLabels.usersTab,
             }
-            const TabIcons = { session: MessageSquare, private: MessagesSquare, files: Folder, users: Users }
+            const TabIcons = { session: MessageSquare, private: MessagesSquare, users: Users }
             const TabIcon = TabIcons[tab]
             return (
               <button
@@ -1998,7 +1399,6 @@ export default function ChatSidebar({
 
         {activeTab === 'private' && renderPrivateChatsTab()}
 
-        {activeTab === 'files' && renderFilesTab()}
 
         {activeTab === 'users' && renderUsersTab()}
       </div>

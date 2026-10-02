@@ -861,13 +861,21 @@ export const llmApi = {
     api.post('/llm/presentations/agent', data, { signal }),
   documentAssist: (data: {
     prompt: string
+    mode?: 'plan' | 'write'
+    document_stats?: Record<string, unknown>
+    history?: { role: string; content: string }[]
+    writing_context?: Record<string, unknown>
+    write_spec?: Record<string, unknown>
+    understanding?: string
+    previous_draft?: string
+    merge_first_paragraph?: boolean
     target: Record<string, unknown>
     document_context?: Record<string, unknown>
     dims?: { width: number; height: number }
     provider?: string
     model?: string
-  }, signal?: AbortSignal) =>
-    api.post('/llm/documents/assist', data, { signal }),
+  }, signal?: AbortSignal, timeout?: number) =>
+    api.post('/llm/documents/assist', data, { signal, ...(timeout ? { timeout } : {}) }),
   teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, imageProvider?: string, imageSize?: string, signal?: AbortSignal) =>
     api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model, image_provider: imageProvider, image_size: imageSize }, { signal }),
   teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[], imageProvider?: string, imageSize?: string, signal?: AbortSignal) => {
@@ -1003,6 +1011,44 @@ export const filesApi = {
     api.get(`/files/${fileId}/download-url`),
   listSessionFiles: (sessionId: string) =>
     api.get(`/files/session/${sessionId}`),
+}
+
+export type DriveView = 'folder' | 'recent' | 'starred' | 'trash' | 'shared' | 'search'
+export type DriveShareTarget = { target_type: 'session' | 'class' | 'teacher'; target_id?: string; email?: string; role: 'viewer' | 'editor' }
+
+export const driveApi = {
+  tree: () => api.get('/drive/tree'),
+  list: (params: { view?: DriveView; parent_id?: string | null; q?: string; sync?: boolean }) =>
+    api.get('/drive/items', { params: { ...params, parent_id: params.parent_id || undefined } }),
+  get: (itemId: string) => api.get(`/drive/items/${itemId}`),
+  usage: () => api.get('/drive/usage'),
+  createFolder: (name: string, parentId?: string | null) => api.post('/drive/folders', { name, parent_id: parentId || null }),
+  upload: (files: File[], parentId: string | null, paths: string[], onProgress?: (fraction: number) => void) => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file, file.name))
+    if (parentId) formData.append('parent_id', parentId)
+    formData.append('paths', JSON.stringify(paths))
+    return api.post('/drive/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0,
+      onUploadProgress: (event) => onProgress?.(event.total ? event.loaded / event.total : 0),
+    })
+  },
+  update: (itemId: string, data: { name?: string; starred?: boolean }) => api.patch(`/drive/items/${itemId}`, data),
+  move: (ids: string[], parentId: string | null) => api.post('/drive/move', { ids, parent_id: parentId }),
+  trash: (ids: string[]) => api.post('/drive/trash', { ids }),
+  restore: (ids: string[]) => api.post('/drive/restore', { ids }),
+  purge: (ids: string[]) => api.post('/drive/purge', { ids }),
+  emptyTrash: () => api.delete('/drive/trash'),
+  content: (itemId: string) => api.get(`/drive/items/${itemId}/content`, { responseType: 'blob' }),
+  document: (itemId: string) => api.get(`/drive/items/${itemId}/document`),
+  exportItem: (itemId: string, format?: string) =>
+    api.get(`/drive/items/${itemId}/export`, { params: { format }, responseType: 'blob', timeout: 0 }),
+  zip: (ids: string[]) => api.post('/drive/zip', { ids }, { responseType: 'blob', timeout: 0 }),
+  shareTargets: () => api.get('/drive/share-targets'),
+  getShares: (itemId: string) => api.get(`/drive/items/${itemId}/shares`),
+  putShares: (itemId: string, shares: DriveShareTarget[]) => api.put(`/drive/items/${itemId}/shares`, { shares }),
+  setPublicLink: (itemId: string, enabled: boolean) => api.post(`/drive/items/${itemId}/public-link`, { enabled }),
 }
 
 export const collaborationApi = {

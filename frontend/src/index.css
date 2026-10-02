@@ -1,4 +1,5 @@
 @import './design/foundation.css';
+@import './design/officeFonts.css';
 
 /* Base fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -872,9 +873,8 @@
 
   .dark .app-button-chrome-quiet,
   .dark .app-button-chrome-quiet:hover {
-    background-image: radial-gradient(ellipse at center,
-      #2a2d33 0%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, #2a2d33) 100%);
+    background-image: none;
+    background-color: #2a2d33;
     border-color: rgba(255,255,255,0.08);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.25);
   }
@@ -882,9 +882,7 @@
   .dark .navbar-widget-control,
   .dark .navbar-inline-control:hover,
   .dark .navbar-inline-control-active {
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.035)),
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, transparent);
+    background: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, #2a2d33);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.06),
       0 5px 14px rgba(0,0,0,0.22);
@@ -892,9 +890,7 @@
 
   .dark .navbar-widget-control:hover,
   .dark .navbar-inline-control:hover {
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05)),
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
+    background: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, #31343a);
   }
 
   .dark .navbar-widget-control-inset {
@@ -909,9 +905,7 @@
   }
 
   .dark .ai-mode-pill {
-    background:
-      linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02)),
-      radial-gradient(135% 135% at 16% 12%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 40%, transparent 100%);
+    background: #2a2d33;
     border-color: rgba(255,255,255,0.08);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(0,0,0,0.28);
   }
@@ -919,4 +913,84 @@
   .dark .ai-mode-pill::after {
     opacity: 0.25;
   }
+}
+
+/* Slide text blocks (editor + thumbnails): restore list markers removed by Tailwind preflight,
+   so bullets imported from PowerPoint read as bullets. */
+:where(.slide-text-block, .slide-text-rich) :where(ul, ol) {
+  margin: 0;
+  padding-left: 1.25em;
+}
+:where(.slide-text-block, .slide-text-rich) ul { list-style: disc; }
+:where(.slide-text-block, .slide-text-rich) ul ul { list-style: circle; }
+:where(.slide-text-block, .slide-text-rich) ul ul ul { list-style: square; }
+:where(.slide-text-block, .slide-text-rich) ol { list-style: decimal; }
+:where(.slide-text-block, .slide-text-rich) ol ol { list-style: lower-alpha; }
+:where(.slide-text-block, .slide-text-rich) li > p { margin: 0; }
+
+/* Editable tables: cell selection (merge) highlight. */
+.ProseMirror .docx-table td,
+.ProseMirror .docx-table th {
+  position: relative;
+}
+.ProseMirror .docx-table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--logo-violet) 16%, transparent);
+}
+
+/* Word-processor sheet typography. Single source of truth shared with the DOCX/PDF export
+   (backend docx_writer: Arial 12 pt body leading at 21 pt, headings 20/16/14/12 pt at 1.2×,
+   no implicit paragraph spacing), so what the sheet shows is what the exported file contains. */
+.document-sheet .ProseMirror {
+  font-family: 'Arial', 'Arimo', Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 28px;
+}
+.document-sheet .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+.document-sheet .ProseMirror h1 { font-size: 20pt; }
+.document-sheet .ProseMirror h2 { font-size: 16pt; }
+.document-sheet .ProseMirror h3 { font-size: 14pt; }
+.document-sheet .ProseMirror :is(h4, h5, h6) { font-size: 12pt; }
+
+/* Ruled mode: every line (headings included) takes one 28 px row so text sits on the ruling. */
+.document-ruled .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+  line-height: 28px;
+}
+
+/* Lists on the sheet: Tailwind's reset removes markers, so draw them (and match the DOCX export's hanging indent). */
+.document-sheet .ProseMirror ul { list-style: disc; padding-left: 1.5em; }
+.document-sheet .ProseMirror ul ul { list-style: circle; }
+.document-sheet .ProseMirror ul ul ul { list-style: square; }
+.document-sheet .ProseMirror ol { list-style: decimal; padding-left: 1.75em; }
+.document-sheet .ProseMirror ol ol { list-style: lower-alpha; }
+.document-sheet .ProseMirror ol ol ol { list-style: lower-roman; }
+.document-sheet .ProseMirror li > p { margin: 0; }
+.document-sheet .ProseMirror li::marker { color: #475569; }
+
+/* Navbar cluster submenus: the panel unrolls downward (or sideways from the rail), items follow in a short stagger. */
+@keyframes nav-cluster-unroll {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.92); clip-path: inset(0 0 100% 0 round var(--ds-radius-panel)); }
+  to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round var(--ds-radius-panel)); }
+}
+@keyframes nav-cluster-unroll-side {
+  from { opacity: 0; transform: translateX(-6px); clip-path: inset(0 100% 0 0 round var(--ds-radius-panel)); }
+  to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round var(--ds-radius-panel)); }
+}
+@keyframes nav-cluster-item-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.nav-cluster-unroll { transform-origin: top center; animation: nav-cluster-unroll 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.nav-cluster-unroll-side { transform-origin: left center; animation: nav-cluster-unroll-side 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.nav-cluster-item { animation: nav-cluster-item-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-cluster-unroll, .nav-cluster-unroll-side, .nav-cluster-item { animation: none; }
 }

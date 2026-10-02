@@ -1,14 +1,24 @@
 {
-  "generated_at": "2026-09-25T07:41:33.010326+00:00",
-  "version_label": "2026.09.25-6435e7d4",
-  "title": "Aggiornamenti branch UI_experiment",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "6435e7d419aec6212fd4df16baa82b67c754f8cc",
+  "generated_at": "2026-09-28T15:33:25.437161+00:00",
+  "version_label": "2026.09.28-3600f56f",
+  "title": "Aggiornamenti branch staging",
+  "summary": "Bozza generata automaticamente da 3 commit nuovi.",
+  "git_ref": "3600f56faac01001b5ea4d75956e4c7c1a3737c8",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(3d-lab): open solid modeler to teachers, session module for students",
-      "description": "Feat(3d-lab): open solid modeler to teachers, session module for students"
+      "title": "Feat(boards): AI backlog, labels, sprints, timeline, per-user sharing",
+      "description": "Feat(boards): AI backlog, labels, sprints, timeline, per-user sharing"
+    },
+    {
+      "category": "improved",
+      "title": "Feat(dataflow): repeat-until loops and multi-visit node runs",
+      "description": "Feat(dataflow): repeat-until loops and multi-visit node runs"
+    },
+    {
+      "category": "improved",
+      "title": "Feat(platform): background jobs, reliable chat history, AI 3D, session UI",
+      "description": "Feat(platform): background jobs, reliable chat history, AI 3D, session UI"
     }
   ]
 }

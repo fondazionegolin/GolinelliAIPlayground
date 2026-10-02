@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box, FolderOpen } from 'lucide-react'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
@@ -274,6 +274,7 @@ export function StudentNavbar({
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: AcademicAiIcon },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileEdit },
+    { key: 'files', label: t('navbar.nav_files'), icon: FolderOpen },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
@@ -282,7 +283,7 @@ export function StudentNavbar({
     { key: 'models3d_ai', label: 'AI 3D', icon: MushroomIcon },
   ]
   // Always show core modules; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])
+  const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'files'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
@@ -337,7 +338,7 @@ export function StudentNavbar({
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border border-[var(--brand-yellow)] bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-sm backdrop-blur-sm transition hover:bg-[var(--brand-yellow)]"
+                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA

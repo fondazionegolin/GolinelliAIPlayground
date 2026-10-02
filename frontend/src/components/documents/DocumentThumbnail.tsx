@@ -113,7 +113,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
             >
               {block.type === 'text' ? (
                 <div
-                  className="h-full w-full whitespace-pre-wrap [&_p]:m-0"
+                  className="slide-text-rich h-full w-full whitespace-pre-wrap [&_p]:m-0"
                   style={{
                     fontFamily: block.style.fontFamily,
                     fontSize: block.style.fontSize,

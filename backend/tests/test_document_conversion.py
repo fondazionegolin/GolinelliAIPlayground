@@ -66,7 +66,7 @@ def _rich_docx_bytes() -> bytes:
     styled = paragraph.add_run("Colorato")
     styled.font.color.rgb = RGBColor(0x12, 0x34, 0x56)
     styled.font.highlight_color = WD_COLOR_INDEX.YELLOW
-    styled.font.name = "Arial"
+    styled.font.name = "Georgia"
     styled.font.size = Pt(18)
     paragraph.add_run(" ")
     inherited_style = document.styles.add_style("Evidenza importata", WD_STYLE_TYPE.CHARACTER)
@@ -225,11 +225,10 @@ def test_native_exports_produce_valid_office_files():
 
 
 def test_presentation_export_preserves_visual_elements_and_bounds():
-    pixel = (
-        "data:image/png;base64,"
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
-        "/x8AAusB9Y9Z24QAAAAASUVORK5CYII="
-    )
+    pixel_buffer = io.BytesIO()
+    from PIL import Image as PILImage
+    PILImage.new("RGB", (2, 2), (255, 0, 0)).save(pixel_buffer, format="PNG")
+    pixel = "data:image/png;base64," + base64.b64encode(pixel_buffer.getvalue()).decode("ascii")
     native = json.dumps({
         "type": "presentation_v2",
         "format": "4:3",
@@ -265,7 +264,8 @@ def test_presentation_export_preserves_visual_elements_and_bounds():
         assert shape.top + shape.height <= presentation.slide_height
     text_box = next(shape for shape in slide.shapes if getattr(shape, "has_text_frame", False))
     assert text_box.text == "Testo che deve restare nella slide"
-    assert text_box.text_frame.paragraphs[0].runs[0].font.size == Pt(18)
+    # 4:3 canvas is 800px over a 10in (720pt) slide: 24px → 21.6pt, same size relative to the slide.
+    assert text_box.text_frame.paragraphs[0].runs[0].font.size == Pt(21.6)
 
 
 def test_presentation_pdf_uses_the_complete_pptx_renderer():
@@ -298,7 +298,8 @@ def test_docx_import_preserves_editable_structure_styles_images_and_annotations(
     assert "color:#123456" in imported_html
     assert "background-color:#ffff00" in imported_html
     assert "font-size:18pt" in imported_html
-    assert "font-family:&#x27;Arial&#x27;" in imported_html
+    # Non-default fonts are kept; the editor default (Arial) is implied and not repeated inline.
+    assert "font-family:&#x27;Georgia&#x27;" in imported_html
     assert "color:#654321" in imported_html
     assert soup.find("em", string=lambda value: value and "Stile ereditato" in value)
 

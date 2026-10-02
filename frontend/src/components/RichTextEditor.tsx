@@ -11,6 +11,7 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import { Mathematics } from '@tiptap/extension-mathematics'
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { useEffect, useState, useCallback } from 'react'
 
 const ImportedImage = Image.extend({
@@ -19,11 +20,11 @@ const ImportedImage = Image.extend({
       ...this.parent?.(),
       width: {
         default: null,
-        parseHTML: element => element.getAttribute('width'),
+        parseHTML: element => element.getAttribute('width') || parseInt(element.style.width, 10) || null,
       },
       height: {
         default: null,
-        parseHTML: element => element.getAttribute('height'),
+        parseHTML: element => element.getAttribute('height') || parseInt(element.style.height, 10) || null,
       },
     }
   },
@@ -143,63 +144,33 @@ const DocxRegion = Node.create({
   },
 })
 
-const ImportedTable = Node.create({
-  name: 'importedTable',
-  group: 'block',
-  content: 'importedTableRow+',
-  isolating: true,
-  parseHTML: () => [{ tag: 'table' }],
-  renderHTML: ({ HTMLAttributes }) => ['table', mergeAttributes(HTMLAttributes, { class: 'docx-table' }), ['tbody', 0]],
-})
-
-const ImportedTableRow = Node.create({
-  name: 'importedTableRow',
-  content: '(importedTableCell|importedTableHeader)+',
-  parseHTML: () => [{ tag: 'tr' }],
-  renderHTML: ({ HTMLAttributes }) => ['tr', HTMLAttributes, 0],
-})
-
-const tableCellAttributes = {
-  colspan: {
-    default: 1,
-    parseHTML: (element: HTMLElement) => Number(element.getAttribute('colspan') || 1),
-  },
-  rowspan: {
-    default: 1,
-    parseHTML: (element: HTMLElement) => Number(element.getAttribute('rowspan') || 1),
-  },
+// Editable tables (official TipTap table: add/remove rows & columns, merge/split cells, header row).
+// Cells keep a background colour so DOCX shading survives import → edit → export.
+const cellBackground = {
   backgroundColor: {
     default: null,
     parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
+    renderHTML: (attributes: { backgroundColor?: string | null }) =>
+      attributes.backgroundColor ? { style: `background-color:${attributes.backgroundColor}` } : {},
   },
 }
-
-const ImportedTableCell = Node.create({
-  name: 'importedTableCell',
-  content: 'block+',
-  isolating: true,
-  addAttributes: () => tableCellAttributes,
-  parseHTML: () => [{ tag: 'td' }],
-  renderHTML({ HTMLAttributes }) {
-    const { backgroundColor, ...attributes } = HTMLAttributes
-    return ['td', mergeAttributes(attributes, backgroundColor ? { style: `background-color:${backgroundColor}` } : {}), 0]
+const EditableTableCell = TableCell.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ...cellBackground }
+  },
+})
+const EditableTableHeader = TableHeader.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ...cellBackground }
   },
 })
 
-const ImportedTableHeader = Node.create({
-  name: 'importedTableHeader',
-  content: 'block+',
-  isolating: true,
-  addAttributes: () => tableCellAttributes,
-  parseHTML: () => [{ tag: 'th' }],
-  renderHTML({ HTMLAttributes }) {
-    const { backgroundColor, ...attributes } = HTMLAttributes
-    return ['th', mergeAttributes(attributes, backgroundColor ? { style: `background-color:${backgroundColor}` } : {}), 0]
-  },
-})
 import { AITextAssistPanel } from './AITextAssistPanel'
 import { looksLikeMarkdown, renderMarkdownToHtml } from '@/lib/markdown'
 import { FontSizeExtension } from '@/lib/tiptapFontSize'
+import { ParagraphFormatExtension } from '@/lib/tiptapParagraphFormat'
+import { DocumentComposition } from '@/lib/tiptapComposition'
+import { SmartPaste } from '@/lib/tiptapPaste'
 import 'katex/dist/katex.min.css'
 
 interface RichTextEditorProps {
@@ -490,10 +461,14 @@ export function RichTextEditor({
       Color,
       FontFamily,
       FontSizeExtension,
+      ParagraphFormatExtension,
+      DocumentComposition,
+      SmartPaste,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
-      ImportedImage,
+      // Imported Word/PowerPoint pictures arrive as data: URIs and sit inside paragraphs.
+      ImportedImage.configure({ inline: true, allowBase64: true }),
       Link.configure({
         openOnClick: false,
       }),
@@ -503,10 +478,10 @@ export function RichTextEditor({
       DocumentCommentMark,
       DocumentRevisionMark,
       DocxRegion,
-      ImportedTable,
-      ImportedTableRow,
-      ImportedTableCell,
-      ImportedTableHeader,
+      Table.configure({ resizable: false, HTMLAttributes: { class: 'docx-table' } }),
+      TableRow,
+      EditableTableCell,
+      EditableTableHeader,
       LinkShortcut,
       Mathematics,
       PersistentSelectionHighlight,
@@ -514,6 +489,8 @@ export function RichTextEditor({
     ],
     content: content,
     editable: !readOnly,
+    // Italian spell-check/hyphenation in the browser, like Docs follows the document language.
+    editorProps: { attributes: { lang: 'it', spellcheck: 'true' } },
     onCreate: ({ editor }) => {
       onEditorReady?.(editor)
     },

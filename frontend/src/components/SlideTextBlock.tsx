@@ -6,6 +6,9 @@ import Text from '@tiptap/extension-text'
 import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
 import Underline from '@tiptap/extension-underline'
+import Strike from '@tiptap/extension-strike'
+import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list'
+import { UndoRedo } from '@tiptap/extensions'
 import TextAlign from '@tiptap/extension-text-align'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
@@ -60,6 +63,11 @@ export function SlideTextBlock({
       Bold,
       Italic,
       Underline,
+      Strike,
+      BulletList,
+      OrderedList,
+      ListItem,
+      UndoRedo,
       TextStyle,
       Color,
       FontFamily,

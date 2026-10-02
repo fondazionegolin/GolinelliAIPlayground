@@ -44,9 +44,11 @@ interface Options {
   snapshot: () => string | null
   /** Student-owned projects (session 3D Lab module): no legacy localStorage import. */
   student?: boolean
+  /** Project to open first (deep link), instead of the last opened one. */
+  initialId?: string | null
 }
 
-export function useSolidProject({ objects, resetScene, snapshot, student = false }: Options) {
+export function useSolidProject({ objects, resetScene, snapshot, student = false, initialId = null }: Options) {
   const queryClient = useQueryClient()
   const [projectId, setProjectId] = useState<string | null>(null)
   const [name, setName] = useState(DEFAULT_NAME)
@@ -131,7 +133,7 @@ export function useSolidProject({ objects, resetScene, snapshot, student = false
     if (ready || !projects.isSuccess) return
     const list = projects.data
     const wanted = readStorage(CURRENT_KEY)
-    const target = list.find(p => p.id === wanted) ?? list[0]
+    const target = initialId ? { id: initialId } : list.find(p => p.id === wanted) ?? list[0]
     if (!target) {
       applyLoaded(null, DEFAULT_NAME, [])
       setReady(true)
@@ -141,7 +143,7 @@ export function useSolidProject({ objects, resetScene, snapshot, student = false
       .then(res => applyLoaded(res.data.id, res.data.name, res.data.scene as SceneObject[]))
       .catch(() => applyLoaded(null, DEFAULT_NAME, []))
       .finally(() => setReady(true))
-  }, [projects.isSuccess, projects.data, ready, applyLoaded])
+  }, [projects.isSuccess, projects.data, ready, applyLoaded, initialId])
 
   // Debounced autosave.
   useEffect(() => {

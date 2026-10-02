@@ -16,9 +16,9 @@ import nh3
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_TAGS = {"p", "strong", "em", "u", "span", "br"}
-_ALLOWED_ATTRIBUTES = {"span": {"style"}}
-_ALLOWED_STYLE_PROPERTIES = {"color", "font-family", "font-weight", "font-style", "text-decoration", "font-size"}
+_ALLOWED_TAGS = {"p", "strong", "em", "u", "s", "span", "br", "ul", "ol", "li"}
+_ALLOWED_ATTRIBUTES = {"span": {"style"}, "p": {"style"}, "li": {"style"}}
+_ALLOWED_STYLE_PROPERTIES = {"color", "font-family", "font-weight", "font-style", "text-decoration", "font-size", "text-align"}
 
 
 def _clean_style(style: str) -> str:

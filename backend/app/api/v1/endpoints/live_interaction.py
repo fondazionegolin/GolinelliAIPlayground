@@ -181,6 +181,39 @@ async def _broadcast_state(session_id: str, li: LiveInteraction, response_count:
 
 async def _save_report(db: AsyncSession, li: LiveInteraction):
     try:
+        if li.interaction_type == "escape_room":
+            participants = (await db.execute(
+                select(LiveEscapeParticipant, SessionStudent.nickname)
+                .join(SessionStudent, LiveEscapeParticipant.student_id == SessionStudent.id)
+                .where(LiveEscapeParticipant.live_interaction_id == li.id)
+            )).all()
+            report = {
+                "live_interaction_id": str(li.id),
+                "title": li.title,
+                "session_id": str(li.session_id),
+                "status": li.status,
+                "interaction_type": "escape_room",
+                "challenges": li.slides_json or [],
+                "participants": [
+                    {
+                        "student_nickname": nickname,
+                        "current_step": participant.current_step,
+                        "attempts": participant.attempts,
+                        "answers": participant.answers_json or [],
+                        "started_at": participant.started_at.isoformat(),
+                        "completed_at": participant.completed_at.isoformat() if participant.completed_at else None,
+                    }
+                    for participant, nickname in participants
+                ],
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+            }
+            os.makedirs(REPORTS_DIR, exist_ok=True)
+            safe_title = "".join(c for c in li.title if c.isalnum() or c in (" ", "-", "_")).strip()[:50]
+            filename = f"{li.session_id}_{li.id}_{safe_title}.json"
+            with open(os.path.join(REPORTS_DIR, filename), "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            return
+
         rows = (await db.execute(
             select(LiveInteractionResponse, SessionStudent.nickname)
             .join(SessionStudent, LiveInteractionResponse.student_id == SessionStudent.id)
@@ -747,10 +780,12 @@ async def get_results(
             end_time = participant.completed_at or li.ended_at or datetime.now(timezone.utc)
             duration_seconds = max(0, int((end_time - participant.started_at).total_seconds()))
             leaderboard.append({
+                "student_id": str(participant.student_id),
                 "student_nickname": nickname,
                 "current_step": participant.current_step,
                 "total_steps": len(li.slides_json or []),
                 "attempts": participant.attempts,
+                "answers": participant.answers_json or [],
                 "inventory": participant.inventory_json or [],
                 "started_at": participant.started_at.isoformat(),
                 "completed_at": participant.completed_at.isoformat() if participant.completed_at else None,
@@ -767,6 +802,14 @@ async def get_results(
             "session_id": str(li.session_id),
             "status": li.status,
             "total_steps": len(li.slides_json or []),
+            "challenges": [
+                {
+                    "false_statement": challenge.get("false_statement", ""),
+                    "prompt": challenge.get("prompt", ""),
+                    "accepted_answers": challenge.get("accepted_answers") or [],
+                }
+                for challenge in (li.slides_json or [])
+            ],
             "started_at": li.started_at.isoformat() if li.started_at else None,
             "ended_at": li.ended_at.isoformat() if li.ended_at else None,
             "total_students": await _count_students(db, li.session_id),
@@ -1180,6 +1223,15 @@ async def submit_escape_answer(
                 except Exception:
                     pass
 
+    participant.answers_json = [
+        *(participant.answers_json or []),
+        {
+            "step_index": participant.current_step,
+            "value": submitted,
+            "correct": is_correct,
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
     participant.attempts += 1
     achievement = None
     if is_correct:

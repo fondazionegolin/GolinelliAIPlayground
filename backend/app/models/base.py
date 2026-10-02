@@ -12,6 +12,7 @@ from app.models.template_version import TenantTemplateVersion
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
 from app.models.solid_model import SolidModel
+from app.models.drive import DriveItem, DriveShare
 
 __all__ = [
     "Tenant",
@@ -48,4 +49,6 @@ __all__ = [
     "AgenticWorkflowRun",
     "AgenticNodeRun",
     "SolidModel",
+    "DriveItem",
+    "DriveShare",
 ]

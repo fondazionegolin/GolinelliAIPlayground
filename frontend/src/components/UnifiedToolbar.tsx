@@ -4,19 +4,28 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
   Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
-  Square, Circle, RotateCw, Magnet, Grid3x3, Layers
+  Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
 import { SlideBlock, SlideBlockType, SlideSnapOptions } from './SlideEditor'
 import { AIImageGeneratorModal } from './AIImageGeneratorModal'
+import { DocumentTableMenu } from '@/components/documents/DocumentTableMenu'
+import { useFormatPainter } from '@/hooks/useFormatPainter'
+import { LineSpacingMenu } from '@/components/documents/LineSpacingMenu'
+import { CompositionMenu } from '@/components/documents/CompositionMenu'
+import { applyFormatOperations, clearFormatting, STRUCTURE_CLEANUP } from '@/lib/documentFormatOps'
+import { useToast } from '@/components/ui/use-toast'
+import {
+  DEFAULT_DOC_FONT_PT, DOC_FONTS as FONTS, DOC_FONT_SIZES as FONT_SIZES, fontSizeToPoints, primaryFontFamily, setFontSize, stepFontSize,
+} from '@/lib/documentTextFormat'
 
 interface UnifiedToolbarProps {
   mode: 'document' | 'slides'
+  /** Slide-deck history (document mode uses the editor's own). */
+  slideHistory?: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }
   // Document Mode Props
   editor?: Editor | null
-  docScale?: number
-  setDocScale?: (s: number) => void
   // Slide Mode Props
   scale?: number
   setScale?: (s: number) => void
@@ -37,16 +46,10 @@ interface UnifiedToolbarProps {
   onToggleLayersPanel?: () => void
 }
 
-const FONTS = [
-  'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Impact', 'Comic Sans MS', 'Trebuchet MS', 'Arial Black'
-]
-const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48]
-
 export function UnifiedToolbar({
+  slideHistory,
   mode,
   editor,
-  docScale = 1,
-  setDocScale,
   scale = 1,
   setScale,
   onAddSlideBlock,
@@ -64,6 +67,8 @@ export function UnifiedToolbar({
   onToggleLayersPanel
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
+  const formatPainter = useFormatPainter(mode === 'document' ? editor : null)
+  const { toast } = useToast()
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   const [hasTextSelection, setHasTextSelection] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -79,6 +84,16 @@ export function UnifiedToolbar({
       onAddSlideImage(imageUrl)
     }
     setShowImageModal(false)
+  }
+
+  const cleanUpStructure = () => {
+    if (!editor) return
+    const { from, to, empty } = editor.state.selection
+    const { lines, changed } = applyFormatOperations(editor, STRUCTURE_CLEANUP, empty ? null : { from, to })
+    toast({
+      title: changed ? 'Struttura riordinata' : 'Nessuna modifica necessaria',
+      description: changed ? `${lines.join(' · ')}. Puoi annullare con Ctrl+Z.` : 'Non ho trovato righe vuote usate come spazio né titoli da riconoscere.',
+    })
   }
 
   const setLink = () => {
@@ -152,7 +167,7 @@ export function UnifiedToolbar({
     const node = toolbarRef.current
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width || window.innerWidth
-      setIsCompactLayout(width < 980)
+      setIsCompactLayout(width < 820)
     })
     observer.observe(node)
     return () => observer.disconnect()
@@ -170,7 +185,10 @@ export function UnifiedToolbar({
   }, [])
 
   const activeFontSizeAttr = editor?.getAttributes('textStyle')?.fontSize
-  const activeFontSize = Number.parseInt(String(activeFontSizeAttr || '16').replace('px', ''), 10) || 16
+  const activeFontSize = activeFontSizeAttr ? fontSizeToPoints(activeFontSizeAttr) : DEFAULT_DOC_FONT_PT
+  const fontSizeOptions = FONT_SIZES.includes(activeFontSize) ? FONT_SIZES : [...FONT_SIZES, activeFontSize].sort((a, b) => a - b)
+  const activeFontFamily = primaryFontFamily(editor?.getAttributes('textStyle')?.fontFamily) || 'Arial'
+  const fontOptions = FONTS.includes(activeFontFamily) ? FONTS : [activeFontFamily, ...FONTS]
 
   // Save editor selection before select/color-input steals browser focus
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null)
@@ -181,8 +199,11 @@ export function UnifiedToolbar({
     }
   }, [editor])
 
+  // Select/colour popups steal focus, so their range is remembered once and consumed once. A stale
+  // range must never leak into the +/- buttons (they keep the editor focused and need no restore).
   const restoreSelection = useCallback((chain: ReturnType<NonNullable<typeof editor>['chain']>) => {
     const s = savedSelectionRef.current
+    savedSelectionRef.current = null
     if (s && s.from !== s.to) {
       chain.setTextSelection({ from: s.from, to: s.to })
     }
@@ -191,11 +212,13 @@ export function UnifiedToolbar({
 
   const applyFontSize = (size: number) => {
     if (mode !== 'document' || !editor) return
-    const next = Math.max(10, Math.min(72, Math.round(size)))
-    restoreSelection(editor.chain().focus()).setMark('textStyle', { fontSize: `${next}px` }).run()
+    const s = savedSelectionRef.current
+    savedSelectionRef.current = null
+    if (s && s.from !== s.to) editor.chain().setTextSelection({ from: s.from, to: s.to }).run()
+    setFontSize(editor, size)
   }
-  const decreaseFontSize = () => applyFontSize(activeFontSize - 1)
-  const increaseFontSize = () => applyFontSize(activeFontSize + 1)
+  const decreaseFontSize = () => { if (editor) stepFontSize(editor, -1) }
+  const increaseFontSize = () => { if (editor) stepFontSize(editor, 1) }
 
   return (
     <div
@@ -210,20 +233,47 @@ export function UnifiedToolbar({
     >
       
       {/* History Group */}
-      {mode === 'document' && <div className={groupClass}>
-        <Button size="icon" variant="ghost" className="h-8 w-8" 
-          onClick={() => mode === 'document' ? editor?.chain().focus().undo().run() : null} 
-          disabled={mode === 'document' ? !editor?.can().undo() : true} // TODO: Implement slide undo
+      {(mode === 'document' || slideHistory) && <div className={groupClass}>
+        <Button size="icon" variant="ghost" className="h-8 w-8"
+          title="Annulla (Ctrl+Z)"
+          onClick={() => mode === 'document' ? editor?.chain().focus().undo().run() : slideHistory?.undo()}
+          disabled={mode === 'document' ? !editor?.can().undo() : !slideHistory?.canUndo}
         >
           <Undo className="h-4 w-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="h-8 w-8" 
-          onClick={() => mode === 'document' ? editor?.chain().focus().redo().run() : null} 
-          disabled={mode === 'document' ? !editor?.can().redo() : true}
+        <Button size="icon" variant="ghost" className="h-8 w-8"
+          title="Ripeti (Ctrl+Shift+Z)"
+          onClick={() => mode === 'document' ? editor?.chain().focus().redo().run() : slideHistory?.redo()}
+          disabled={mode === 'document' ? !editor?.can().redo() : !slideHistory?.canRedo}
         >
           <Redo className="h-4 w-4" />
         </Button>
       </div>}
+
+      {mode === 'document' && editor && (
+        <div className={groupClass}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className={`h-8 w-8 ${formatPainter.armed ? 'bg-violet-100 text-violet-700' : ''}`}
+            title={formatPainter.armed ? 'Seleziona il testo a cui applicare la formattazione (Esc per annullare)' : 'Copia formattazione: copia lo stile del testo o paragrafo corrente'}
+            aria-pressed={formatPainter.armed}
+            onClick={formatPainter.copy}
+          >
+            <Paintbrush className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Riordina struttura: righe vuote → spaziatura tra paragrafi, riconosce capitoli e titoli (solo sulla selezione, se presente)"
+            onClick={cleanUpStructure}
+          >
+            <ListTree className="h-4 w-4" />
+          </Button>
+          <CompositionMenu />
+        </div>
+      )}
 
       {/* DOCUMENT MODE TOOLBAR */}
       {mode === 'document' && editor && (
@@ -232,11 +282,13 @@ export function UnifiedToolbar({
           {!isCompactLayout && (
           <div className={groupClass}>
             <select
-              className="h-8 text-xs border rounded px-2 w-28"
+              className="h-8 text-xs border rounded px-2 w-32"
+              value={activeFontFamily}
               onMouseDown={saveSelection}
               onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
+              title="Carattere"
             >
-              {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+              {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
             </select>
             <div className="flex items-center gap-0.5 ml-1">
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title="Riduci font">
@@ -249,7 +301,7 @@ export function UnifiedToolbar({
                 onChange={(e) => applyFontSize(Number(e.target.value))}
                 title="Dimensione font"
               >
-                {FONT_SIZES.map((size) => (
+                {fontSizeOptions.map((size) => (
                   <option key={size} value={size}>{size}</option>
                 ))}
               </select>
@@ -291,6 +343,7 @@ export function UnifiedToolbar({
           {/* Alignment Group */}
           {!isCompactLayout && (
           <div className={groupClass}>
+            <LineSpacingMenu editor={editor} />
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
               <AlignLeft className="h-4 w-4" />
             </Button>
@@ -306,17 +359,31 @@ export function UnifiedToolbar({
           </div>
           )}
 
-          {/* Formatting Group */}
+          {/* Paragraph style, clear formatting, highlight */}
           {!isCompactLayout && (
           <div className={groupClass}>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
-              <Heading1 className="h-4 w-4" />
+            <select
+              className="h-8 w-36 rounded border px-2 text-xs"
+              value={editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'}
+              onChange={(event) => {
+                const value = event.target.value
+                const chain = editor.chain().focus()
+                if (value === 'p') chain.setParagraph().run()
+                else chain.setHeading({ level: Number(value.slice(1)) as 1 | 2 | 3 }).run()
+              }}
+              title="Stile del paragrafo (Ctrl+Alt+0…3)"
+            >
+              <option value="p">Testo normale</option>
+              <option value="h1">Titolo 1</option>
+              <option value="h2">Titolo 2</option>
+              <option value="h3">Titolo 3</option>
+            </select>
+            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('importedHighlight') ? 'bg-yellow-100' : ''}`} title="Evidenzia (Ctrl+Alt+H)"
+              onClick={() => (editor.isActive('importedHighlight') ? editor.chain().focus().unsetMark('importedHighlight').run() : editor.chain().focus().setMark('importedHighlight', { color: '#fef08a' }).run())}>
+              <Highlighter className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-              <Heading2 className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('paragraph') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setParagraph().run()}>
-              <Pilcrow className="h-4 w-4" />
+            <Button size="icon" variant="ghost" className="h-8 w-8" title="Cancella formattazione (Ctrl+\\)" onClick={() => clearFormatting(editor)}>
+              <Eraser className="h-4 w-4" />
             </Button>
           </div>
           )}
@@ -337,6 +404,7 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine">
               <ImageIcon className="h-4 w-4" />
             </Button>
+            <DocumentTableMenu editor={editor} />
               </>
             )}
             <Button
@@ -374,10 +442,12 @@ export function UnifiedToolbar({
                     <div className="flex items-center gap-2 pb-1 mb-1 border-b border-slate-100">
                       <select
                         className="h-8 text-xs border rounded px-2 w-full"
+                        value={activeFontFamily}
                         onMouseDown={saveSelection}
                         onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
+                        title="Carattere"
                       >
-                        {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                        {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
                       </select>
                     </div>
                     <div className="flex items-center gap-1 pb-1 mb-1 border-b border-slate-100">
@@ -391,8 +461,8 @@ export function UnifiedToolbar({
                         onChange={(e) => applyFontSize(Number(e.target.value))}
                         title="Dimensione font"
                       >
-                        {FONT_SIZES.map((size) => (
-                          <option key={size} value={size}>{size}px</option>
+                        {fontSizeOptions.map((size) => (
+                          <option key={size} value={size}>{size} pt</option>
                         ))}
                       </select>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title="Aumenta font">
@@ -426,6 +496,7 @@ export function UnifiedToolbar({
                     <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}><LinkIcon className="h-4 w-4" /></Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine"><ImageIcon className="h-4 w-4" /></Button>
+                      <DocumentTableMenu editor={editor} />
                       <Button
                         size="icon"
                         variant="ghost"
@@ -455,13 +526,7 @@ export function UnifiedToolbar({
                 <Rows3 className="h-4 w-4" />
               </Button>
             )}
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.max(0.5, docScale - 0.1))}>
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <span className="text-xs w-10 text-center">{Math.round(docScale * 100)}%</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.min(2, docScale + 0.1))}>
-              <ZoomIn className="h-4 w-4" />
-            </Button>
+            {/* Zoom now lives in the floating page/zoom widget at the bottom right of the sheet. */}
           </div>
 
         </>
@@ -634,10 +699,12 @@ export function UnifiedToolbar({
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
               <select
                 className="h-8 text-xs border rounded px-2 w-32"
-                value={activeFontFamily}
+                value={primaryFontFamily(activeFontFamily) || 'Arial'}
                 onChange={(e) => applyFontFamily(e.target.value)}
               >
-                {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                {(FONTS.includes(primaryFontFamily(activeFontFamily)) || !primaryFontFamily(activeFontFamily) ? FONTS : [primaryFontFamily(activeFontFamily), ...FONTS]).map(f => (
+                  <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>
+                ))}
               </select>
 
               <div className="flex items-center border rounded h-8 px-1">

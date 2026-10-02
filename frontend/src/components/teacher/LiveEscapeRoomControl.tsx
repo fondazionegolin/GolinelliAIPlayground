@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Clock3, Loader2, LockKeyhole, PackageOpen, Play, Square, Trophy, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, PackageOpen, Play, Square, Trophy, Users } from 'lucide-react'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -14,6 +14,7 @@ interface Interaction {
 }
 
 interface Participant {
+  student_id: string
   student_nickname: string
   current_step: number
   total_steps: number
@@ -22,6 +23,13 @@ interface Participant {
   duration_seconds: number
   completed: boolean
   rank?: number
+  answers: Array<{ step_index: number; value: string; correct: boolean; submitted_at: string }>
+}
+
+interface Challenge {
+  false_statement: string
+  prompt: string
+  accepted_answers: string[]
 }
 
 function formatTime(seconds: number) {
@@ -61,6 +69,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   })
 
   const participants: Participant[] = results?.participants || []
+  const challenges: Challenge[] = results?.challenges || []
   const completed = participants.filter(item => item.completed).length
   const totalStudents = results?.total_students || 0
   const liveSeconds = interaction.started_at ? Math.max(0, Math.floor((Date.now() - new Date(interaction.started_at).getTime()) / 1000)) : 0
@@ -93,10 +102,39 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
             <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-bold text-slate-900">{interaction.status === 'CLOSED' ? 'Classifica finale' : 'Avanzamento in tempo reale'}</h2></div>
             <div className="divide-y divide-slate-100">
               {participants.map((item, index) => (
-                <div key={item.student_nickname} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-4">
+                <div key={item.student_id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-4">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-bold text-slate-600">{item.completed ? item.rank || index + 1 : '—'}</span>
                   <div className="min-w-0"><div className="flex items-center gap-2"><span className="truncate font-semibold text-slate-800">{item.student_nickname}</span>{item.completed && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}</div><div className="mt-1 flex items-center gap-3 text-xs text-slate-500"><span>{item.current_step}/{item.total_steps} indizi</span><span>{item.attempts} tentativi</span><span className="truncate">{item.inventory.map(object => object.icon).join(' ')}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{ width: `${item.total_steps ? item.current_step / item.total_steps * 100 : 0}%` }} /></div></div>
                   <span className="font-mono text-sm font-bold text-slate-700">{formatTime(item.duration_seconds)}</span>
+                  {interaction.status === 'CLOSED' && (
+                    <details className="group col-span-3 mt-1 rounded-xl border border-slate-200 bg-slate-50/70">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold text-violet-700 marker:hidden">
+                        Domande e risposte <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="space-y-4 border-t border-slate-200 px-4 py-4">
+                        {challenges.map((challenge, stepIndex) => {
+                          const answers = (item.answers || []).filter(answer => answer.step_index === stepIndex)
+                          return (
+                            <div key={stepIndex} className="rounded-xl border border-slate-200 bg-white p-3">
+                              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Indizio {stepIndex + 1}</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{challenge.false_statement}</p>
+                              {challenge.prompt && <p className="mt-1 text-xs text-slate-500">{challenge.prompt}</p>}
+                              {answers.length > 0 ? (
+                                <ul className="mt-3 space-y-1.5">
+                                  {answers.map((answer, answerIndex) => (
+                                    <li key={answerIndex} className="flex items-start gap-2 text-sm">
+                                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${answer.correct ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{answer.correct ? 'Corretta' : 'Errata'}</span>
+                                      <span className="min-w-0 whitespace-pre-wrap break-words text-slate-700">{answer.value}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : <p className="mt-2 text-xs text-slate-500">{stepIndex <= item.current_step && item.attempts > 0 ? 'Risposte non disponibili per questa sessione.' : 'Nessuna risposta.'}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  )}
                 </div>
               ))}
               {participants.length === 0 && <p className="p-10 text-center text-sm text-slate-400">In attesa che gli studenti entrino nella stanza…</p>}

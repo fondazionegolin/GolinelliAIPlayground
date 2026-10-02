@@ -929,49 +929,47 @@ function SlideCard({
 }
 
 function ContentPreviewStrip({ item }: { item: LiveInteractionItem }) {
-  const previews = (item.slides_json || []).slice(0, 3)
+  const previews = (item.slides_json || []).slice(0, 2)
   if (!previews.length) return null
 
   return (
-    <div aria-label="Anteprima contenuti">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Anteprima contenuti</p>
-        {item.slides_count > previews.length && (
-          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
-            +{item.slides_count - previews.length} altri
-          </span>
-        )}
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        {previews.map((raw, idx) => {
+    <div aria-label="Anteprima contenuti" className="flex flex-wrap items-center gap-2">
+      {previews.map((raw, idx) => {
         if (item.interaction_type === 'escape_room') {
           const challenge = raw as Record<string, unknown>
-          const achievement = (challenge.achievement || {}) as Record<string, unknown>
           const label = String(challenge.false_statement || `Indizio ${idx + 1}`)
           return (
-            <div key={idx} className="min-w-0 rounded-2xl border border-violet-100 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-violet-600">
-                <span>Indizio {idx + 1}</span><span className="text-lg leading-none">{String(achievement.icon || '🗝️')}</span>
-              </div>
-              <p className="mt-3 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-700">{label}</p>
-            </div>
+            <span key={idx} title={label} className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-slate-600"><span className="shrink-0 font-bold">{idx + 1}.</span><span className="truncate">{label}</span></span>
           )
         }
         const slide = raw as Slide
         const Icon = SLIDE_ICONS[slide.type] || Zap
         const label = slide.question || slide.prompt || SLIDE_LABELS[slide.type]
         return (
-          <div key={idx} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-xl border ${SLIDE_COLORS[slide.type]}`}><Icon className="h-4 w-4" /></span>
-              <span className="text-xs font-black text-slate-400">{idx + 1}</span>
-            </div>
-            <p className="mt-3 whitespace-normal break-words text-sm font-semibold leading-5 text-slate-700">{label}</p>
-          </div>
+          <span key={idx} title={label} className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-slate-600"><Icon className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{label}</span></span>
         )
       })}
-      </div>
+      {item.slides_count > previews.length && (
+        <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-bold text-slate-500">+{item.slides_count - previews.length} altri</span>
+      )}
     </div>
+  )
+}
+
+function GameTypeBadge({ type }: { type?: LiveInteractionItem['interaction_type'] }) {
+  const escapeRoom = type === 'escape_room'
+  return (
+    <Badge
+      tone="neutral"
+      surface="soft"
+      density="default"
+      className={escapeRoom
+        ? 'bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
+        : 'bg-[var(--logo-blue-10)] text-[var(--logo-blue-strong)]'}
+    >
+      {escapeRoom ? <LockKeyhole className="h-3.5 w-3.5" /> : <BarChart2 className="h-3.5 w-3.5" />}
+      {escapeRoom ? 'Escape Room' : 'Quiz e sondaggi'}
+    </Badge>
   )
 }
 
@@ -1671,29 +1669,29 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                 <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{currentInteractions.length}</span>
               </div>
 
-              <div className="space-y-5">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {currentInteractions.map(item => (
-                  <article key={item.id} className="ui-card ui-card-interactive overflow-hidden">
-                    <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                  <article key={item.id} className="ui-card ui-card-interactive flex flex-col overflow-hidden">
+                    <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           {item.status === 'ACTIVE' && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />}
-                          {item.interaction_type === 'escape_room' && <Badge tone="accent" surface="soft" density="compact">Escape Room</Badge>}
+                          <GameTypeBadge type={item.interaction_type} />
                           {item.status === 'ACTIVE' && <Badge tone="success" surface="soft" density="compact">Live</Badge>}
                           {item.status === 'DRAFT' && <Badge tone="warning" surface="soft" density="compact">Bozza</Badge>}
                         </div>
-                        <h3 className="mt-3 break-words text-xl font-bold leading-snug text-slate-900">{item.title}</h3>
+                        <h3 className="mt-2 break-words text-lg font-bold leading-snug text-slate-900">{item.title}</h3>
                         <p className="mt-1.5 text-sm text-slate-500">
                           {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> Creata il {new Date(item.created_at).toLocaleDateString('it-IT')}
                         </p>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50/70 px-5 py-5 shadow-[inset_0_1px_0_rgba(163,163,163,0.10),inset_0_-1px_0_rgba(163,163,163,0.10)] sm:px-6">
+                    <div className="px-4 pb-3 sm:px-5">
                       <ContentPreviewStrip item={item} />
                     </div>
 
-                    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <div className="mt-auto flex flex-col gap-3 px-4 pb-4 pt-2 sm:px-5">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button tone="neutral" surface="outline" density="compact" onClick={() => setShareTarget(item)}>
                           <Share2 className="h-3.5 w-3.5" /> Link pubblico
@@ -1747,9 +1745,9 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
               <div className="grid gap-4 lg:grid-cols-2">
                 {archivedInteractions.map(item => (
-                  <article key={item.id} className="ui-card ui-card-interactive flex min-h-[190px] flex-col p-5">
+                  <article key={item.id} className="ui-card ui-card-interactive flex flex-col overflow-hidden p-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      {item.interaction_type === 'escape_room' && <Badge tone="accent" surface="soft" density="compact">Escape Room</Badge>}
+                      <GameTypeBadge type={item.interaction_type} />
                       <Badge tone="neutral" surface="soft" density="compact">Completata</Badge>
                     </div>
                     <h3 className="mt-3 break-words text-lg font-bold leading-snug text-slate-900">{item.title}</h3>

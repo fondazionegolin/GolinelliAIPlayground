@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch } from 'lucide-react'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
-import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -11,7 +9,9 @@ import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
-import { NavTab } from '@/components/ui/NavTab'
+import { NavClusterBar, NavClusterRail, isNavPathActive, type NavCluster } from '@/components/NavClusterMenu'
+import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
@@ -347,7 +347,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     return colors[charCode % colors.length]
   }
 
-  const isActive = (path: string) => location.pathname === path
+  const isActive = (path: string) => isNavPathActive(location.pathname, path)
 
   const { t } = useTranslation()
 
@@ -358,22 +358,38 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     staleTime: 5 * 60 * 1000,
   })
 
-  const navItems = [
-    { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
-    { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
-    { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
-    { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
-    { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
-    { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
-    { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
-    { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
-    { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
-    { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/ai-3d', label: 'AI 3D', icon: MushroomIcon },
-    { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
-    ...(isAdmin ? [{ path: '/teacher/agentic', label: 'Agentic β', icon: GitBranch }] : []),
-    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', icon: ShieldCheck }] : []),
+  const betaItems = [
+    ...(isAdmin ? [{ path: '/teacher/agentic', label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch }] : []),
+    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
+  const navClusters: NavCluster[] = [
+    { id: 'support', label: t('navbar.nav_support'), icon: AcademicAiIcon, items: [
+      { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
+    ] },
+    { id: 'classes', label: t('navbar.nav_classes'), icon: Users, items: [
+      { path: '/teacher/classes', label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount },
+      { path: '/teacher/live-interaction', label: 'Live', description: t('navbar.desc_live'), icon: Zap },
+      { path: '/teacher/boards', label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare },
+    ] },
+    { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
+      { path: '/teacher/documents', label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText },
+      { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot },
+      { path: '/teacher/ai-3d', label: 'AI 3D', description: t('navbar.desc_ai3d'), icon: MushroomIcon },
+      { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Box },
+    ] },
+    { id: 'labs', label: t('navbar.nav_labs'), icon: FlaskConical, items: [
+      { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2 },
+      { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2 },
+      { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain },
+      { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network },
+    ] },
+    { id: 'files', label: t('navbar.nav_files'), icon: FolderOpen, items: [
+      { path: '/teacher/files', label: t('navbar.nav_files'), description: t('navbar.desc_files'), icon: FolderOpen },
+    ] },
+    ...(betaItems.length ? [{ id: 'beta', label: t('navbar.nav_beta'), icon: Rocket, items: betaItems }] : []),
+  ]
+  // Flat list for the compact mobile strip
+  const navItems = navClusters.flatMap((cluster) => cluster.items)
 
   const handleNotificationClick = (notification: TeacherNotification) => {
     // Navigate to session if applicable
@@ -412,13 +428,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow-soft)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:bg-[var(--brand-yellow)]"
+                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA
                 </button>
               </div>
-              <div className="flex items-center gap-1.5 pt-0.5">
+              {/* Between xl and 2xl the always-labelled cluster bar needs the room: keep only the logo mark. */}
+              <div className="flex items-center gap-1.5 pt-0.5 xl:hidden 2xl:flex">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
@@ -426,25 +443,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </div>
             </div>
 
-            <div className="ds-cluster hidden 2xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
-              {(() => {
-                const activeIdx = navItems.findIndex(item => isActive(item.path))
-                return navItems.map((item, idx) => (
-                  <Link key={item.path} to={item.path}>
-                    <NavTab
-                      icon={item.icon}
-                      label={item.label}
-                      isActive={isActive(item.path)}
-                      isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      accentTextClass="text-[var(--teacher-accent-text)]"
-                      badgeCount={item.path === '/teacher/classes' ? invitationCount : 0}
-                    />
-                  </Link>
-                ))
-              })()}
+            <div className="ds-cluster hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+              <NavClusterBar clusters={navClusters} />
             </div>
 
-            <div className="ds-divider hidden 2xl:block h-8 w-px mx-1" />
+            <div className="ds-divider hidden xl:block h-8 w-px mx-1" />
 
             <div className="flex items-center gap-3">
               <div className="ds-cluster hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
@@ -727,8 +730,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <span className="relative">
                     {item.label}
-                    {item.path === '/teacher/classes' && invitationCount > 0 && (
-                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                    {(item.badgeCount ?? 0) > 0 && (
+                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{item.badgeCount! > 9 ? '9+' : item.badgeCount}</span>
                     )}
                   </span>
                 </Button>
@@ -739,39 +742,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       </nav>
 
       <aside
-        className="ds-navbar fixed left-0 top-16 bottom-0 z-40 hidden w-16 px-2 py-3 md:flex 2xl:hidden"
+        className="ds-navbar fixed left-0 top-16 bottom-0 z-40 hidden w-16 px-2 py-3 md:flex xl:hidden"
         style={accentVars}
         aria-label={t('navbar.nav_support')}
       >
-        <div className="flex w-full flex-col items-center gap-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActiveItem = isActive(item.path)
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                aria-label={item.label}
-                className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border-0 transition-all duration-150 hover:z-10 ${isActiveItem
-                  ? 'ds-selected text-[var(--selection-text)]'
-                  : 'ds-control text-slate-600 hover:text-[var(--selection-text)]'
-                  }`}
-              >
-                <Icon className="h-5 w-5" />
-                {item.path === '/teacher/classes' && invitationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white shadow-[var(--ds-shadow-1)]">{invitationCount > 9 ? '9+' : invitationCount}</span>
-                )}
-                <span
-                  aria-hidden="true"
-                  className="ds-popover pointer-events-none absolute left-full ml-2 flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 text-[11px] font-bold text-[var(--selection-text)] opacity-0 transition-[opacity,transform] duration-100 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 translate-x-[-3px]"
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  {item.label}
-                </span>
-              </Link>
-            )
-          })}
-        </div>
+        <NavClusterRail clusters={navClusters} />
       </aside>
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 

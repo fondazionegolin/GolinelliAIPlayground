@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, type Componen
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch } from 'lucide-react'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen } from 'lucide-react'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
@@ -28,6 +28,7 @@ const BoardManagerPage = lazy(() => import('./BoardManagerPage'))
 const StudentCodingLabModule = lazy(() => import('../student/StudentCodingLabModule'))
 const AgenticWorkflowStudioPage = lazy(() => import('./AgenticWorkflowStudioPage'))
 const AgenticWorkflowLibraryPage = lazy(() => import('./AgenticWorkflowLibraryPage'))
+const TeacherFilesPage = lazy(() => import('./TeacherFilesPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 
@@ -235,6 +236,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/sessions', label: t('navbar.sessions_title'), icon: PlayCircle },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
+    { path: '/teacher/files', label: t('navbar.nav_files'), icon: FolderOpen },
     { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
@@ -287,7 +289,7 @@ export default function TeacherDashboard() {
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : 'pt-16 md:pl-16 2xl:pl-0'}`}>
+      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : 'pt-16 md:pl-16 xl:pl-0'}`}>
 
         {/* ── Session Context Strip (left, desktop only) ── */}
         {!isMobile && currentSession && (
@@ -327,6 +329,16 @@ export default function TeacherDashboard() {
               style={railButtonStyle}
             >
               <History className="h-4 w-4" />
+            </button>
+
+            {/* Files of this session (drive) */}
+            <button
+              title={t('teacher_dashboard.session_files')}
+              onClick={() => navigate(`/teacher/files?session=${currentSession.id}`)}
+              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.pathname.startsWith('/teacher/files') ? 'app-button-chrome-active' : ''}`}
+              style={railButtonStyle}
+            >
+              <FolderOpen className="h-4 w-4" />
             </button>
 
             {/* Online students */}
@@ -438,6 +450,7 @@ export default function TeacherDashboard() {
               <Route index element={<div className="h-full bg-transparent" />} />
               <Route path="assistant" element={<div />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
+              <Route path="files" element={<TeacherFilesPage />} />
               <Route path="teacherbots" element={<TeacherbotsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />

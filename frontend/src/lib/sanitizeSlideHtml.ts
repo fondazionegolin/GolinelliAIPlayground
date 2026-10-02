@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify'
 
-const ALLOWED_STYLE_PROPERTIES = new Set(['color', 'font-family', 'font-weight', 'font-style', 'text-decoration', 'font-size'])
+const ALLOWED_STYLE_PROPERTIES = new Set(['color', 'font-family', 'font-weight', 'font-style', 'text-decoration', 'font-size', 'text-align'])
 
 // DOMPurify only allows/strips the whole "style" attribute — it has no built-in per-property
 // allowlist — so a hook filters individual declarations. Named + hooked once at module scope
@@ -31,7 +31,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
  */
 export function sanitizeSlideHtml(html: string): string {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'strong', 'em', 'u', 'span', 'br'],
+    ALLOWED_TAGS: ['p', 'strong', 'em', 'u', 's', 'span', 'br', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['style'],
   })
 }

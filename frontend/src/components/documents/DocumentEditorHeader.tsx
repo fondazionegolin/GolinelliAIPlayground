@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, Shapes } from 'lucide-react'
+import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, RectangleHorizontal, RectangleVertical, Shapes, Ruler } from 'lucide-react'
+import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
 
 export type DocumentEditorMode = 'document' | 'slides' | 'sheet' | 'canvas' | 'web' | 'pdf'
 
@@ -173,4 +174,62 @@ export function HeaderExportMenu<T extends string>({ label, formats, exporting =
 /** Hairline between groups inside the tools cluster. */
 export function HeaderToolDivider() {
   return <span className="mx-0.5 h-4 w-px bg-[var(--ds-frame-divider)]" aria-hidden />
+}
+
+/** Page setup tool (paper size + orientation) for text documents. */
+export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
+  value: PageSetup
+  onChange: (next: PageSetup) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const option = (active: boolean) =>
+    `flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold transition-colors ${active
+      ? 'bg-[image:var(--ds-choice-bg)] text-[var(--ds-choice-ink)] shadow-[var(--ds-shadow-1)]'
+      : 'text-slate-500 hover:bg-[var(--ds-control-hover)] hover:text-slate-900'}`
+
+  return (
+    <div ref={ref} className="relative">
+      <HeaderIconButton label="Impostazione pagina" onClick={() => setOpen((current) => !current)} active={open} disabled={disabled}>
+        <Ruler className="h-4 w-4" />
+      </HeaderIconButton>
+      {open && (
+        <div className="ds-popover absolute right-0 top-full z-50 mt-2 w-[220px] space-y-3 rounded-2xl p-3">
+          <div>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Formato</p>
+            <div className="flex gap-1">
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <button key={size.value} type="button" className={option(value.size === size.value)} onClick={() => onChange({ ...value, size: size.value })}>
+                  {size.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Orientamento</p>
+            <div className="flex gap-1">
+              <button type="button" className={option(value.orientation === 'portrait')} onClick={() => onChange({ ...value, orientation: 'portrait' })}>
+                <RectangleVertical className="h-3.5 w-3.5" /> Verticale
+              </button>
+              <button type="button" className={option(value.orientation === 'landscape')} onClick={() => onChange({ ...value, orientation: 'landscape' })}>
+                <RectangleHorizontal className="h-3.5 w-3.5" /> Orizz.
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] leading-4 text-slate-400">I margini si regolano trascinando i cursori del righello.</p>
+        </div>
+      )}
+    </div>
+  )
 }

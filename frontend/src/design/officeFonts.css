@@ -1,0 +1,202 @@
+/* Office fonts in imported documents. Each family name used by Word/PowerPoint maps first to
+   the locally installed font and otherwise to an open, metric-compatible clone (Carlito,
+   Caladea, Tinos, Arimo, Cousine — OFL/Apache, self-hosted), so line breaks and page layout
+   match the original even where Office fonts are missing. Aptos has no metric clone: Carlito
+   is the closest humanist substitute. */
+
+@font-face {
+  font-family: 'Calibri';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri'), url('/fonts/office/carlito-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri Italic'), url('/fonts/office/carlito-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Calibri Bold'), url('/fonts/office/carlito-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Calibri Bold Italic'), url('/fonts/office/carlito-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Aptos'), url('/fonts/office/carlito-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Aptos Italic'), url('/fonts/office/carlito-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Aptos Bold'), url('/fonts/office/carlito-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Aptos Bold Italic'), url('/fonts/office/carlito-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Cambria'), url('/fonts/office/caladea-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Cambria Italic'), url('/fonts/office/caladea-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Cambria Bold'), url('/fonts/office/caladea-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Cambria Bold Italic'), url('/fonts/office/caladea-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Times New Roman'), local('TimesNewRomanPSMT'), url('/fonts/office/tinos-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Times New Roman Italic'), local('TimesNewRomanPSMT Italic'), url('/fonts/office/tinos-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Times New Roman Bold'), local('TimesNewRomanPSMT Bold'), url('/fonts/office/tinos-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Times New Roman Bold Italic'), local('TimesNewRomanPSMT Bold Italic'), url('/fonts/office/tinos-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Arial'), local('ArialMT'), url('/fonts/office/arimo-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Arial Italic'), local('ArialMT Italic'), url('/fonts/office/arimo-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Arial Bold'), local('ArialMT Bold'), url('/fonts/office/arimo-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Arial Bold Italic'), local('ArialMT Bold Italic'), url('/fonts/office/arimo-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Helvetica';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Helvetica'), local('Arial'), url('/fonts/office/arimo-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Helvetica';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Helvetica Italic'), local('Arial Italic'), url('/fonts/office/arimo-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Helvetica';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Helvetica Bold'), local('Arial Bold'), url('/fonts/office/arimo-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Helvetica';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Helvetica Bold Italic'), local('Arial Bold Italic'), url('/fonts/office/arimo-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Courier New'), local('CourierNewPSMT'), url('/fonts/office/cousine-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Courier New Italic'), local('CourierNewPSMT Italic'), url('/fonts/office/cousine-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Courier New Bold'), local('CourierNewPSMT Bold'), url('/fonts/office/cousine-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Courier New Bold Italic'), local('CourierNewPSMT Bold Italic'), url('/fonts/office/cousine-700-italic.woff2') format('woff2');
+}

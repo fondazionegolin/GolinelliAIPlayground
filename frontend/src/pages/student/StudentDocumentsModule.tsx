@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
-  CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp
-} from 'lucide-react'
+  CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp, PanelTop } from 'lucide-react'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
@@ -16,10 +15,19 @@ import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
+import DocumentPageWidget from '@/components/documents/DocumentPageWidget'
+import { DocumentRuler } from '@/components/documents/DocumentRuler'
+import { DocumentPageDecorations } from '@/components/documents/DocumentPageDecorations'
+import { DocumentHeaderFooterDialog } from '@/components/documents/DocumentHeaderFooterDialog'
+import { DEFAULT_HEADER_FOOTER, readHeaderFooter, type HeaderFooterConfig } from '@/lib/documentHeaderFooter'
+import { applyFormatOperations, type FormatOperation, type FormatRange } from '@/lib/documentFormatOps'
+import { applyWriteProposal, buildPlanStats, buildWritingContext, type WriteProposal } from '@/lib/documentWriting'
 import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
-import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
+import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -46,6 +54,7 @@ interface Document {
   slides: Slide[]
   textContent?: string
   header?: DocumentHeader
+  headerFooter?: HeaderFooterConfig
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   sheetStyles?: SheetCellStyles
@@ -223,10 +232,33 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   // Slide Editor State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const applySlidesSnapshot = useCallback((slides: Slide[]) => {
+    setDocument(prev => ({ ...prev, slides }))
+    setCurrentSlideIndex(index => Math.max(0, Math.min(index, slides.length - 1)))
+  }, [])
+  // Deck-level undo/redo (blocks, slides, layout). Text typed inside a slide box has its own
+  // TipTap history, so Ctrl+Z there stays native.
+  const slideHistory = useUndoHistory(document.slides, applySlidesSnapshot, { resetKey: document.id })
+  useEffect(() => {
+    if (mode !== 'slides') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || isNativeUndoTarget(event.target)) return
+      const key = event.key.toLowerCase()
+      const wantsRedo = (key === 'z' && event.shiftKey) || key === 'y'
+      if (key !== 'z' && key !== 'y') return
+      event.preventDefault()
+      if (wantsRedo) slideHistory.redo()
+      else slideHistory.undo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mode, slideHistory])
   const [scale, setScale] = useState(1)
   const [mobileSlideScale, setMobileSlideScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
+  const [pageSetup, setPageSetup] = useState<PageSetup>(DEFAULT_PAGE_SETUP)
+  const docPage = pageDimensions(pageSetup)
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -239,17 +271,26 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const canvasRef = useRef<HTMLDivElement>(null)
   const mobileSlidesViewportRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
+  const docScrollRef = useRef<HTMLDivElement>(null)
+  const [headerFooterDialog, setHeaderFooterDialog] = useState<'header' | 'footer' | null>(null)
+  const [headerFooterTab, setHeaderFooterTab] = useState<'header' | 'footer'>('header')
   const toolbarHostRef = useRef<HTMLDivElement>(null)
 
   // UI State
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
   const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit?: () => void | Promise<void>; editLabel?: string } | null>(null)
-  const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [presentationTemplates, setPresentationTemplates] = useState<PresentationTemplate[]>([])
-  const [presentationChatOpen, setPresentationChatOpen] = useState(false)
+  const [presentationChatOpen, setPresentationChatOpenRaw] = useState(readDocumentAgentPreference)
+  const setPresentationChatOpen = useCallback((next: boolean | ((value: boolean) => boolean)) => {
+    setPresentationChatOpenRaw((value) => {
+      const resolved = typeof next === 'function' ? next(value) : next
+      saveDocumentAgentPreference(resolved)
+      return resolved
+    })
+  }, [])
   const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [documentImporting, setDocumentImporting] = useState(false)
   const [documentDragActive, setDocumentDragActive] = useState(false)
@@ -259,14 +300,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
   const documentAssistContext: DocumentAssistContext | null = (() => {
-    if (mode === 'document' && documentSelection) {
+    if (mode === 'document') {
       return {
-        id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
-        kind: 'selected_text',
-        label: isEnglishUi ? 'Selected text' : 'Testo selezionato',
-        detail: documentSelection.text,
-        target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
-        beforePreview: documentSelection.text,
+        id: `document-${document.id}`,
+        kind: 'document',
+        label: isEnglishUi ? 'Whole document' : 'Tutto il documento',
+        detail: `${document.title} · ${documentPageCount} ${isEnglishUi ? (documentPageCount === 1 ? 'page' : 'pages') : (documentPageCount === 1 ? 'pagina' : 'pagine')}`,
+        target: {},
+        resolveTarget: () => ({ html: editor?.getHTML() ?? document.textContent ?? '' }),
+        beforePreview: `${document.title} · ${documentPageCount} ${isEnglishUi ? 'pages' : 'pagine'}`,
       }
     }
     if (mode === 'slides' && selectedBlock) {
@@ -305,7 +347,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     beforePreview: `${document.title}\n${document.slides.length} slide`,
   } : null
   const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
-  const selectionAssistContext: DocumentAssistContext | null = mode === 'slides' && selectedSlides.length > 1 ? {
+  const textSelectionAssistContext: DocumentAssistContext | null = mode === 'document' && documentSelection ? {
+    id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
+    kind: 'selected_text',
+    label: isEnglishUi ? 'Selected text' : 'Testo selezionato',
+    detail: documentSelection.text,
+    target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
+    beforePreview: documentSelection.text,
+  } : null
+  const selectionAssistContext: DocumentAssistContext | null = textSelectionAssistContext ?? (mode === 'slides' && selectedSlides.length > 1 ? {
     id: `slide-selection-${selectedSlides.map((slide) => slide.id).join('-')}`,
     kind: 'presentation',
     label: isEnglishUi ? 'Selected slides' : 'Slide selezionate',
@@ -317,7 +367,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       selected_slide_ids: selectedSlides.map((slide) => slide.id),
     },
     beforePreview: `${selectedSlides.length} ${isEnglishUi ? 'selected slides' : 'slide selezionate'}`,
-  } : null
+  } : null)
 
   useEffect(() => {
     if (!editor) return
@@ -345,10 +395,40 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     })
   }, [currentSlide.id, document.slides, mode])
 
+  const assistRange = (target: DocumentAssistContext): FormatRange => {
+    if (!editor || target.kind !== 'selected_text') return null
+    const size = editor.state.doc.content.size
+    const from = typeof target.target.from === 'number' ? target.target.from : 0
+    const to = typeof target.target.to === 'number' ? target.target.to : size
+    return { from: Math.max(0, Math.min(from, size)), to: Math.max(0, Math.min(to, size)) }
+  }
+  const assistTarget = (target: DocumentAssistContext) => ({
+    kind: target.kind,
+    from: typeof target.target.from === 'number' ? target.target.from : undefined,
+    to: typeof target.target.to === 'number' ? target.target.to : undefined,
+  })
+  const getDocumentAssistStats = (target: DocumentAssistContext) => editor ? buildPlanStats(editor, document.title, assistTarget(target), assistRange(target)) : {}
+  const getDocumentWritingContext = (target: DocumentAssistContext) => editor ? buildWritingContext(editor, document.title, assistTarget(target)) : {}
+  const applyDocumentAssistOperations = (operations: FormatOperation[], target: DocumentAssistContext) =>
+    editor ? applyFormatOperations(editor, operations, assistRange(target)).lines : []
+
   const applyDocumentAgentProposal = (proposal: Record<string, unknown>) => {
     const clientContext = (proposal.client_context && typeof proposal.client_context === 'object')
       ? proposal.client_context as Record<string, unknown>
       : {}
+    if (proposal.kind === 'write' && editor && typeof proposal.html === 'string') {
+      applyWriteProposal(editor, proposal as unknown as WriteProposal)
+      setDocumentSelection(null)
+      return
+    }
+    if (proposal.kind === 'document' && editor && typeof proposal.replacement_html === 'string') {
+      const sentHtml = typeof clientContext.html === 'string' ? clientContext.html : null
+      if (sentHtml !== null && sentHtml !== editor.getHTML()
+        && !window.confirm(isEnglishUi ? 'The document changed after the request. Replace it anyway?' : 'Il documento è cambiato dopo la richiesta. Sostituirlo comunque?')) return
+      editor.chain().focus().setContent(proposal.replacement_html, { emitUpdate: true }).run()
+      setDocumentSelection(null)
+      return
+    }
     if (proposal.kind === 'selected_text' && editor && typeof proposal.replacement_text === 'string') {
       const from = typeof clientContext.from === 'number' ? clientContext.from : documentSelection?.from
       const to = typeof clientContext.to === 'number' ? clientContext.to : documentSelection?.to
@@ -501,7 +581,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
             ? { ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT), type: submission ? 'student_canvas' : 'canvas_v1', title: document.title }
-          : { type: submission ? 'student_document' : 'document_v1', title: document.title, htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+          : { type: submission ? 'student_document' : 'document_v1', title: document.title, htmlContent: document.textContent || '', header: document.header, headerFooter: document.headerFooter, margins: docMargins, page: pageSetup }
     return { type, contentJson: JSON.stringify({ ...nativeContent, ...(document.source ? { source: document.source, imported: true } : {}) }) }
   }
 
@@ -534,7 +614,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setDocumentExporting(true)
     try {
       const { contentJson } = buildNativeContentJson(false)
-      const response = await filesApi.exportDocument({ title: document.title, content_json: contentJson, target_format: targetFormat })
+      const response = await filesApi.exportDocument({ title: document.title, content_json: mode === 'document' ? withPageBreaks(contentJson, editor?.view.dom as HTMLElement | undefined) : contentJson, target_format: targetFormat })
       downloadExportedDocument(response.data, document.title, targetFormat)
       toast({ title: isEnglishUi ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
     } catch (error: any) {
@@ -745,7 +825,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }, 400)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, isEditorReadOnly, viewMode])
+  }, [document, mode, docMargins, pageSetup, isEditorReadOnly, viewMode])
 
   const loadDocumentFromJson = (
     doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'; contentJson: string },
@@ -848,6 +928,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       } else {
         setMode('document')
         setDraftId(externalReadOnly ? null : doc.id)
+        setPageSetup(readPageSetup(content.page))
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -861,6 +942,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           slides: [],
           textContent: content.htmlContent || content.content || EMPTY_DOC_HTML,
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          headerFooter: readHeaderFooter(content.headerFooter),
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
@@ -1225,35 +1307,6 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   }
 
   useEffect(() => {
-    if (!draggingMargin || mode !== 'document') return
-
-    const onMouseMove = (event: MouseEvent) => {
-      const page = documentPageRef.current
-      if (!page) return
-      const rect = page.getBoundingClientRect()
-      const pageWidth = FORMAT_DIMENSIONS.a4.width
-      const scaleFactor = rect.width / pageWidth
-      if (scaleFactor <= 0) return
-
-      const rawMargin = draggingMargin === 'left'
-        ? (event.clientX - rect.left) / scaleFactor
-        : (rect.right - event.clientX) / scaleFactor
-
-      const nextMargin = Math.max(16, Math.min(220, Math.round(rawMargin)))
-      setDocMargins(prev => ({ ...prev, horizontal: nextMargin }))
-    }
-
-    const onMouseUp = () => setDraggingMargin(null)
-
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [draggingMargin, mode])
-
-  useEffect(() => {
     const updateAnchor = () => {
       if (!toolbarHostRef.current) return
       const rect = toolbarHostRef.current.getBoundingClientRect()
@@ -1434,7 +1487,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
+                        onClick={() => void loadDraft(doc)}
                         className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
                         {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
@@ -1718,6 +1771,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               <HeaderIconButton label={t('documents.new')} onClick={() => setShowNewModal(true)}>
                 <Plus className="h-4 w-4" />
               </HeaderIconButton>
+              {mode === 'document' && (
+                <>
+                <HeaderPageSetupMenu value={pageSetup} onChange={setPageSetup} disabled={isEditorReadOnly} />
+                <HeaderIconButton label={isEnglishUi ? 'Header and footer' : 'Intestazione e piè di pagina'} onClick={() => { setHeaderFooterTab('header'); setHeaderFooterDialog('header') }} active={Boolean(headerFooterDialog) } disabled={isEditorReadOnly}>
+                  <PanelTop className="h-4 w-4" />
+                </HeaderIconButton>
+                </>
+              )}
               {mode === 'slides' && !isEditorReadOnly && (
                 <HeaderIconButton label={isEnglishUi ? 'Save as template' : 'Salva come template'} onClick={saveCurrentPresentationAsTemplate}>
                   <Save className="h-4 w-4" />
@@ -1806,9 +1867,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
+            slideHistory={mode === 'slides' ? slideHistory : undefined}
             editor={editor}
-            docScale={docScale}
-            setDocScale={setDocScale}
             showRuledLines={showRuledLines}
             onToggleRuledLines={() => setShowRuledLines(v => !v)}
             scale={scale}
@@ -1959,7 +2019,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   {draftDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
+                      onClick={() => void loadDraft(doc)}
                       className={`
                         group flex flex-col p-3 rounded-lg transition-all border cursor-pointer backdrop-blur-md
                         ${draftId === doc.id && !isReadOnlyLesson
@@ -2131,7 +2191,22 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           </div>
 
           {/* Main Area */}
-          <div className={`flex-1 flex items-start justify-center p-4 md:p-6 relative overflow-y-auto transition-colors ${isCorrectionPreview ? 'bg-amber-100' : 'bg-slate-100'}`}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {mode === 'document' && (
+            <DocumentRuler
+              scrollRef={docScrollRef}
+              pageRef={documentPageRef}
+              pageWidth={docPage.width}
+              scale={docScale}
+              marginHorizontal={docMargins.horizontal}
+              marginVertical={docMargins.vertical}
+              onHorizontalChange={(horizontal) => setDocMargins((previous) => ({ ...previous, horizontal }))}
+              onVerticalChange={(vertical) => setDocMargins((previous) => ({ ...previous, vertical }))}
+              disabled={isEditorReadOnly}
+              isEnglish={isEnglishUi}
+            />
+          )}
+          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-4 md:p-6 relative overflow-y-auto transition-colors ${isCorrectionPreview ? 'bg-amber-100' : 'bg-slate-100'}`}
                onClick={() => setSelectedBlockId(null)}
           >
 
@@ -2169,67 +2244,57 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'document' && (
                <div
                  ref={documentPageRef}
-                 className="theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
+                 className={`document-sheet ${showRuledLines ? 'document-ruled ' : ''}theme-keep mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden`}
                  style={{
-                   width: FORMAT_DIMENSIONS.a4.width,
-                   minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
+                   width: docPage.width,
+                   minHeight: docPage.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${docPage.height}px, #e5e7eb ${docPage.height}px, #e5e7eb ${docPage.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(23, 23, 23, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
-                  {/* Top guides for lateral margins with drag handles */}
-                  <div className="pointer-events-none absolute top-3 left-0 right-0 z-10">
-                    <div className="relative h-4">
-                      <div
-                        className="absolute top-2 border-t border-slate-300"
-                        style={{ left: docMargins.horizontal, right: docMargins.horizontal }}
-                      />
-                      <div
-                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
-                        style={{ left: docMargins.horizontal }}
-                      />
-                      <div
-                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
-                        style={{ right: docMargins.horizontal }}
-                      />
-                      <button
-                        type="button"
-                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
-                        style={{ left: docMargins.horizontal }}
-                        onMouseDown={() => setDraggingMargin('left')}
-                        aria-label={t('documents.margin_left')}
-                        title={t('documents.margin_left_drag')}
-                      />
-                      <button
-                        type="button"
-                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
-                        style={{ left: FORMAT_DIMENSIONS.a4.width - docMargins.horizontal }}
-                        onMouseDown={() => setDraggingMargin('right')}
-                        aria-label={t('documents.margin_right')}
-                        title={t('documents.margin_right_drag')}
-                      />
-                    </div>
-                  </div>
-
-                  {showRuledLines && (
+                  <DocumentPageDecorations
+                    config={document.headerFooter ?? DEFAULT_HEADER_FOOTER}
+                    pageCount={documentPageCount}
+                    pageHeight={docPage.height}
+                    pageGap={DOC_PAGE_GAP}
+                    marginVertical={docMargins.vertical}
+                    marginHorizontal={docMargins.horizontal}
+                    isEnglish={isEnglishUi}
+                    onItemMove={isEditorReadOnly ? undefined : (band, itemId, x) => setDocument((current) => { const config = current.headerFooter ?? DEFAULT_HEADER_FOOTER; return { ...current, headerFooter: { ...config, [band]: { ...config[band], items: config[band].items.map((item) => item.id === itemId ? { ...item, x } : item) } } } })}
+                    onEdit={isEditorReadOnly ? undefined : (band) => { setHeaderFooterTab(band); setHeaderFooterDialog(band) }}
+                  />
+                  <DocumentHeaderFooterDialog
+                    open={headerFooterDialog !== null}
+                    onOpenChange={(open) => { if (!open) setHeaderFooterDialog(null) }}
+                    value={document.headerFooter ?? DEFAULT_HEADER_FOOTER}
+                    onChange={(next) => setDocument((current) => ({ ...current, headerFooter: next }))}
+                    initialTab={headerFooterTab}
+                    pageWidth={docPage.width}
+                    marginHorizontal={docMargins.horizontal}
+                    marginVertical={docMargins.vertical}
+                    isEnglish={isEnglishUi}
+                  />
+                  {showRuledLines && Array.from({ length: documentPageCount }, (_, pageIndex) => (
+                    // One ruled block per sheet: the lines restart on every page and never run through the gap or the margins.
                     <div
+                      key={pageIndex}
                       className="pointer-events-none absolute z-0"
                       style={{
-                        top: docMargins.vertical,
-                        right: docMargins.horizontal,
-                        bottom: docMargins.vertical,
+                        top: pageIndex * (docPage.height + DOC_PAGE_GAP) + docMargins.vertical,
+                        height: docPage.height - docMargins.vertical * 2,
                         left: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)'
+                        right: docMargins.horizontal,
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(163, 163, 163, 0.35) 21px, rgba(163, 163, 163, 0.35) 22px, transparent 22px, transparent 28px)',
                       }}
                     />
-                  )}
+                  ))}
 
                   <div
                     className="flex-1 flex flex-col relative z-10"
-                    style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
+                    style={{ minHeight: docPage.height - docMargins.vertical * 2 }}
                     onMouseDown={(e) => {
                       if (e.target !== e.currentTarget) return
                       if (editor && mode === 'document') {
@@ -2246,7 +2311,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
                       pagination={{
-                        pageHeight: FORMAT_DIMENSIONS.a4.height,
+                        pageHeight: docPage.height,
                         pageGap: DOC_PAGE_GAP,
                         marginTop: docMargins.vertical,
                         marginBottom: docMargins.vertical,
@@ -2356,6 +2421,19 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              )}
 
           </div>
+          {mode === 'document' && (
+            <DocumentPageWidget
+              scrollRef={docScrollRef}
+              pageRef={documentPageRef}
+              pageHeight={docPage.height}
+              pageGap={DOC_PAGE_GAP}
+              pageCount={documentPageCount}
+              scale={docScale}
+              onScaleChange={setDocScale}
+              isEnglish={isEnglishUi}
+            />
+          )}
+          </div>
           {presentationChatOpen && !isEditorReadOnly && (mode === 'slides' || mode === 'document') && (
             <DocumentAgentChat
               context={documentAssistContext}
@@ -2368,6 +2446,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 current_slide_index: currentSlideIndex,
               }}
               dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
+              variant={mode === 'document' ? 'document' : 'slides'}
+              getDocumentStats={getDocumentAssistStats}
+              onApplyOperations={applyDocumentAssistOperations}
+              getWritingContext={getDocumentWritingContext}
               onApply={applyDocumentAgentProposal}
               onClose={() => setPresentationChatOpen(false)}
             />

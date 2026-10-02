@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     
     # File upload limits
     MAX_UPLOAD_SIZE_MB: int = 50
+    DRIVE_MAX_UPLOAD_MB: int = 200
+    DRIVE_QUOTA_MB: int = 10240
     OCR_MAX_UPLOAD_SIZE_MB: int = 20
     OCR_ENGINE: str = "auto"  # auto, paddle, trocr, tesseract
     OCR_LANGUAGE: str = "it"
