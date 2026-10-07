@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, BookOpen, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Share2, Sparkles, Trash2, X,
+  ArrowLeft, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Loader2, Music2, Plus, Search, Share2, Sparkles, Trash2, X,
 } from '@/components/icons'
 import { notebooksApi, teacherApi, type NotebookAssignment } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -12,21 +12,14 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/design/primitives/Button'
 import type { NotebookProjectType } from '@/components/notebook/types'
 import { useAuthStore } from '@/stores/auth'
-import {
-  WorkspaceExplorerBadge,
-  WorkspaceExplorerHeader,
-  WorkspaceExplorerItem,
-  WorkspaceExplorerList,
-  WorkspaceExplorerSidebar,
-} from '@/components/WorkspaceExplorerSidebar'
-import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
-import { useMobile } from '@/hooks/useMobile'
+import ProjectPreview, { colorOf } from '@/components/notebook/ProjectPreview'
 
 interface NotebookMeta {
   id: string
   title: string
   project_type: NotebookProjectType
   cell_count: number
+  preview?: string
   created_at: string
   updated_at: string
 }
@@ -105,7 +98,8 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
   },
 }
 
-const PROJECT_ORDER: NotebookProjectType[] = ['python', 'microbit', 'circuitplayground', 'p5js']
+// Coding Lab offers three kinds of project (Circuit Playground, Strudel and Game 2D are no longer created from here).
+const PROJECT_ORDER: NotebookProjectType[] = ['p5js', 'python', 'microbit']
 
 const READY_TEMPLATES: NotebookTemplate[] = [
   {
@@ -125,15 +119,6 @@ const READY_TEMPLATES: NotebookTemplate[] = [
     description: 'Sensori, display LED, musica e cruscotto seriale in un solo esempio.',
     descriptionEn: 'Sensors, LED display, music, and serial dashboard in one example.',
     chips: ['sensori', 'LED', 'musica'],
-  },
-  {
-    key: 'circuitplayground-sensor-party',
-    projectType: 'circuitplayground',
-    title: 'Sensor Party',
-    titleEn: 'Sensor Party',
-    description: 'NeoPixel animati da luce, suono, temperatura, accelerazione e gesture.',
-    descriptionEn: 'NeoPixels driven by light, sound, temperature, acceleration, and gestures.',
-    chips: ['NeoPixel', 'suono', 'gesture'],
   },
   {
     key: 'p5js-galaxy',
@@ -173,11 +158,6 @@ function getProjectDescription(type: NotebookProjectType, isEnglish: boolean) {
   return isEnglish ? 'Creative sketches and simulations.' : 'Sketch creativi e simulazioni.'
 }
 
-function formatNotebookCount(count: number, isEnglish: boolean) {
-  if (isEnglish) return count === 1 ? '1 notebook' : `${count} notebooks`
-  return count === 1 ? '1 notebook' : `${count} notebook`
-}
-
 function formatCellCount(count: number, isEnglish: boolean) {
   if (isEnglish) return count === 1 ? '1 cell' : `${count} cells`
   return count === 1 ? '1 cella' : `${count} celle`
@@ -198,55 +178,34 @@ function NotebookCard({
   isDeleting: boolean
   isEnglish: boolean
 }) {
-  const s = NOTEBOOK_STYLES[notebook.project_type]
   const updatedLabel = formatDistanceToNow(new Date(notebook.updated_at), { addSuffix: true, locale: isEnglish ? enUS : it })
 
   return (
     <motion.div
       whileHover={{ y: -2 }}
-      whileTap={{ scale: 0.97 }}
       onClick={onOpen}
-      className={`ui-card ui-card-interactive group relative flex min-h-[156px] cursor-pointer flex-col justify-between overflow-hidden p-4 text-left ${s.card}`}
+      className="ui-card ui-card-interactive group relative flex cursor-pointer flex-col gap-3 overflow-hidden p-3 text-left"
     >
-      <button
-        onClick={onDelete}
-        disabled={isDeleting}
-        className="absolute right-2 top-2 rounded-lg p-1 text-slate-400 opacity-70 transition-all hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
-        title={isEnglish ? 'Delete' : 'Elimina'}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
-
-      {onAssign && (
-        <button
-          onClick={onAssign}
-          className="absolute right-10 top-2 rounded-lg p-1 text-slate-400 opacity-70 transition-all hover:bg-indigo-50 hover:text-indigo-600 sm:opacity-0 sm:group-hover:opacity-100"
-          title={isEnglish ? 'Assign to a session' : 'Assegna a una sessione'}
-        >
-          <Share2 className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      <div className="flex items-start justify-between gap-3">
-        <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
-          <ProjectIcon type={notebook.project_type} className="h-6 w-6" />
+      <ProjectPreview type={notebook.project_type} code={notebook.preview} className="h-[8.75rem]" />
+      <div className="flex items-start gap-3 px-1 pb-1">
+        <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: colorOf(notebook.project_type) }}>
+          <ProjectIcon type={notebook.project_type} className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="line-clamp-2 text-sm font-extrabold leading-snug text-slate-950">{notebook.title}</span>
+          <p className="mt-0.5 truncate text-xs text-slate-500">
+            {getProjectLabel(notebook.project_type)} · {formatCellCount(notebook.cell_count, isEnglish)} · {updatedLabel}
+          </p>
         </div>
-        <span className={`mr-5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${s.badge}`}>
-          {getProjectLabel(notebook.project_type)}
-        </span>
-      </div>
-
-      <div className="mt-5 min-w-0">
-        <span className="line-clamp-2 text-base font-extrabold leading-tight text-slate-950">
-          {notebook.title}
-        </span>
-        <div className="mt-4 flex items-center justify-between gap-3 border-t-2 border-slate-300/90 pt-3">
-          <span className="text-xs font-semibold text-slate-500">
-            {formatCellCount(notebook.cell_count, isEnglish)}
-          </span>
-          <span className="truncate text-right text-xs text-slate-500">
-            {updatedLabel}
-          </span>
+        <div className="flex shrink-0 items-center opacity-70 transition sm:opacity-0 sm:group-hover:opacity-100">
+          {onAssign && (
+            <button onClick={onAssign} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600" title={isEnglish ? 'Assign to a session' : 'Assegna a una sessione'}>
+              <Share2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button onClick={onDelete} disabled={isDeleting} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500" title={isEnglish ? 'Delete' : 'Elimina'}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </motion.div>
@@ -259,8 +218,6 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const { isMobile } = useMobile()
-  const [explorerCollapsed, setExplorerCollapsed] = useSidebarCollapsed('notebooks')
   const [showCreate, setShowCreate] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('python')
@@ -363,24 +320,20 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   }
 
   const filtered = useMemo(() => {
-    if (!notebooks) return { python: [], microbit: [], circuitplayground: [], p5js: [], game2d: [], strudel: [] }
+    if (!notebooks) return { python: [], microbit: [], p5js: [] }
     const q = search.toLowerCase()
     const all = q ? notebooks.filter(n => n.title.toLowerCase().includes(q)) : notebooks
     return {
       python:  all.filter(n => n.project_type === 'python'),
       microbit: all.filter(n => n.project_type === 'microbit'),
-      circuitplayground: all.filter(n => n.project_type === 'circuitplayground'),
       p5js:    all.filter(n => n.project_type === 'p5js'),
-      game2d:  [],
-      strudel: [],
     }
   }, [notebooks, search])
 
   const totalCount = notebooks
     ? notebooks.filter(n => PROJECT_ORDER.includes(n.project_type)).length
     : 0
-  const visibleCount = filtered.python.length + filtered.microbit.length + filtered.circuitplayground.length + filtered.p5js.length
-  const visibleNotebooks = PROJECT_ORDER.flatMap((type) => filtered[type])
+  const visibleCount = filtered.python.length + filtered.microbit.length + filtered.p5js.length
 
   if (isLoading) {
     return (
@@ -392,358 +345,103 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     )
   }
 
-  if ((!notebooks || totalCount === 0) && !(isStudent && assignments.length > 0)) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-transparent lg:flex-row">
-        <WorkspaceExplorerSidebar>
-          <WorkspaceExplorerHeader
-            eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
-            title="Coding Lab"
-            description={isEnglish ? 'Notebooks and coding projects in one explorer.' : 'Notebook e progetti di coding in un unico explorer.'}
-            action={(
-              <Button
-                type="button"
-                onClick={() => setShowCreate(true)}
-                density="compact"
-                tone="accent"
-                surface="solid"
-                className="h-9 w-9 shrink-0 rounded-full p-0"
-                title={isEnglish ? 'New notebook' : 'Nuovo notebook'}
-                aria-label={isEnglish ? 'New notebook' : 'Nuovo notebook'}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            searchValue={search}
-            onSearchChange={setSearch}
-            searchPlaceholder={isEnglish ? 'Search notebooks...' : 'Cerca notebook...'}
-            clearSearchLabel={isEnglish ? 'Clear notebook search' : 'Cancella ricerca notebook'}
-          />
-          <WorkspaceExplorerList>
-            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
-              {isEnglish ? 'No notebooks yet.' : 'Nessun notebook ancora.'}
-            </p>
-          </WorkspaceExplorerList>
-        </WorkspaceExplorerSidebar>
-        <main className="relative min-w-0 flex-1 overflow-y-auto">
-          {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
-        <section className="flex min-h-full items-center justify-center px-4 py-10 text-center md:px-6">
-          <div className="w-full max-w-4xl">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-              <BookOpen className="h-9 w-9 text-indigo-500" />
-            </div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
-            <h3 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
-              {isEnglish ? 'Start with a clear workspace' : 'Parti da uno spazio di lavoro chiaro'}
-            </h3>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              {isEnglish
-                ? 'Choose Python for analysis, micro:bit or Circuit Playground for connected physical computing, or p5.js for visual sketches. Each notebook keeps code, outputs, previews, and tutor help together.'
-                : 'Scegli Python per analisi, micro:bit o Circuit Playground per physical computing collegato, oppure p5.js per sketch visuali. Ogni notebook tiene insieme codice, output, preview e supporto del tutor.'}
-            </p>
-
-            <PrimaryCreateButton
-              isEnglish={isEnglish}
-              onClick={() => setShowCreate(true)}
-              className="mt-7"
-            />
-
-            <ReadyTemplateGallery
-              templates={READY_TEMPLATES}
-              isEnglish={isEnglish}
-              onCreate={handleCreateFromTemplate}
-              isPending={createMutation.isPending}
-              open={templatesOpen}
-              onToggle={() => setTemplatesOpen(value => !value)}
-              className="mt-8"
-            />
-
-            <div className="mt-8 grid gap-3 md:grid-cols-4">
-              {PROJECT_ORDER.map(type => (
-                <ProjectSummary
-                  key={type}
-                  type={type}
-                  count={0}
-                  isEnglish={isEnglish}
-                  showCount={false}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-
-          <AnimatePresence>
-          {showCreate && (
-            <CreateDialog
-              newTitle={newTitle}
-              setNewTitle={setNewTitle}
-              newProjectType={newProjectType}
-              setNewProjectType={setNewProjectType}
-              isEnglish={isEnglish}
-              onCreate={handleCreate}
-              onCancel={() => setShowCreate(false)}
-              isPending={createMutation.isPending}
-            />
-          )}
-          </AnimatePresence>
-        </main>
-      </div>
-    )
-  }
+  const isEmpty = (!notebooks || totalCount === 0) && !(isStudent && assignments.length > 0)
+  const openCreate = (type: NotebookProjectType) => { setNewProjectType(type); setShowCreate(true) }
+  const askDelete = (message: string) => (id: string) => { if (confirm(message)) deleteMutation.mutate(id) }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-transparent lg:flex-row">
-      {!isMobile && explorerCollapsed && (
-        <SidebarRail
-          label="Coding Lab"
-          expandLabel={isEnglish ? 'Expand notebook list' : 'Espandi elenco notebook'}
-          onExpand={() => setExplorerCollapsed(false)}
-          onCreate={() => { setExplorerCollapsed(false); setShowCreate(true) }}
-          createLabel={isEnglish ? 'New notebook' : 'Nuovo notebook'}
-          items={visibleNotebooks.map((notebook) => ({
-            id: notebook.id,
-            title: notebook.title,
-            icon: <ProjectIcon type={notebook.project_type} className="h-4 w-4" />,
-            onClick: () => openNotebook(notebook.id),
-          }))}
-        />
-      )}
-      {(isMobile || !explorerCollapsed) && <WorkspaceExplorerSidebar>
-        <WorkspaceExplorerHeader
-          eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
-          title="Coding Lab"
-          description={isEnglish ? 'Notebooks and coding projects in one explorer.' : 'Notebook e progetti di coding in un unico explorer.'}
-          action={(
-            <div className="flex shrink-0 items-center gap-1.5">
-            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label="Comprimi elenco" />}
-            <Button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              density="compact"
-              tone="accent"
-              surface="solid"
-              className="h-9 w-9 shrink-0 rounded-full p-0"
-              title={isEnglish ? 'New notebook' : 'Nuovo notebook'}
-              aria-label={isEnglish ? 'New notebook' : 'Nuovo notebook'}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-            </div>
+    <div className="relative flex h-full min-h-0 flex-col overflow-y-auto bg-transparent">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10">
+        {/* header */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} />}
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</h1>
+          </div>
+          {!isEmpty && (
+            <label className="ui-search flex h-10 w-full items-center gap-2 px-3 sm:w-64">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isEnglish ? 'Search projects…' : 'Cerca progetti…'} aria-label={isEnglish ? 'Search projects' : 'Cerca progetti'} className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400" />
+            </label>
           )}
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder={isEnglish ? 'Search notebooks...' : 'Cerca notebook...'}
-          clearSearchLabel={isEnglish ? 'Clear notebook search' : 'Cancella ricerca notebook'}
-        />
-        <WorkspaceExplorerList>
-          {visibleNotebooks.length === 0 ? (
-            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
-              {search
-                ? (isEnglish ? `No notebook matches “${search}”.` : `Nessun notebook corrisponde a “${search}”.`)
-                : (isEnglish ? 'No notebooks yet.' : 'Nessun notebook ancora.')}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {visibleNotebooks.map((notebook) => (
-                <WorkspaceExplorerItem
-                  key={notebook.id}
-                  icon={<ProjectIcon type={notebook.project_type} className="h-4 w-4" />}
-                  title={notebook.title}
-                  subtitle={getProjectLabel(notebook.project_type)}
-                  onClick={() => openNotebook(notebook.id)}
-                  badges={(
-                    <>
-                      <WorkspaceExplorerBadge>{formatCellCount(notebook.cell_count, isEnglish)}</WorkspaceExplorerBadge>
-                      <WorkspaceExplorerBadge>{formatDistanceToNow(new Date(notebook.updated_at), { addSuffix: true, locale: isEnglish ? enUS : it })}</WorkspaceExplorerBadge>
-                    </>
-                  )}
-                  trailing={(
-                    <button
-                      type="button"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => { if (confirm(isEnglish ? 'Delete this notebook?' : 'Eliminare questo notebook?')) deleteMutation.mutate(notebook.id) }}
-                      className="flex w-10 items-center justify-center border-l border-white/70 text-slate-400 hover:bg-red-50/80 hover:text-red-600"
-                      aria-label={`${isEnglish ? 'Delete' : 'Elimina'} ${notebook.title}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                />
+          <PrimaryCreateButton isEnglish={isEnglish} onClick={() => setShowCreate(true)} />
+        </div>
+
+        {isStudent && assignments.length > 0 && (
+          <section className="mb-8 rounded-2xl bg-indigo-50/70 p-4 ring-1 ring-indigo-200">
+            <div className="mb-3">
+              <h3 className="text-sm font-extrabold text-indigo-950">{isEnglish ? 'Assigned by your teacher' : 'Assegnati dal docente'}</h3>
+              <p className="mt-1 text-xs text-indigo-700">{isEnglish ? 'Open your private copy. The teacher template will not change.' : 'Apri la tua copia privata: il template del docente non verrà modificato.'}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(assignments as NotebookAssignment[]).map(assignment => (
+                <div key={assignment.id} className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-slate-950">{assignment.title}</p>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{assignment.project_type}</p>
+                    </div>
+                    {assignment.submitted_at && <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />}
+                  </div>
+                  <Button type="button" tone="accent" surface="soft" density="compact" className="mt-4 w-full" disabled={forkMutation.isPending}
+                    onClick={() => assignment.fork_notebook_id ? openNotebook(assignment.fork_notebook_id) : forkMutation.mutate(assignment.id)}>
+                    {assignment.fork_notebook_id ? (isEnglish ? 'Open my copy' : 'Apri la mia copia') : (isEnglish ? 'Create my copy' : 'Crea la mia copia')}
+                  </Button>
+                </div>
               ))}
             </div>
-          )}
-        </WorkspaceExplorerList>
-      </WorkspaceExplorerSidebar>}
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <section className="ds-frame-header">
-          <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">
-            {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="mb-4" />}
-            <div className="mx-auto max-w-3xl text-center">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
-                {isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}
-              </h2>
-              <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+          </section>
+        )}
+
+        {isEmpty ? (
+          // first visit: a visual preview of what each kind of project does
+          <section className="mx-auto max-w-5xl text-center">
+            <h2 className="text-3xl font-black tracking-tight text-slate-950">{isEnglish ? 'What do you want to build?' : 'Che cosa vuoi creare?'}</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
               {isEnglish
-                  ? 'One focused place for code, outputs, connected boards, previews, and tutor hints. Pick the right format and keep every experiment easy to find.'
-                  : 'Un posto ordinato per codice, output, schede collegate, preview e indizi del tutor. Scegli il formato giusto e ritrova subito ogni esperimento.'}
-              </p>
-              <PrimaryCreateButton
-                isEnglish={isEnglish}
-                onClick={() => setShowCreate(true)}
-                className="mt-6"
-              />
-            </div>
-
-            <ReadyTemplateGallery
-              templates={READY_TEMPLATES}
-              isEnglish={isEnglish}
-              onCreate={handleCreateFromTemplate}
-              isPending={createMutation.isPending}
-              open={templatesOpen}
-              onToggle={() => setTemplatesOpen(value => !value)}
-              className="mt-7"
-            />
-          </div>
-        </section>
-
-        <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 md:px-6 md:pb-8">
-          {isStudent && assignments.length > 0 && (
-            <section className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
-              <div className="mb-3">
-                <h3 className="text-sm font-extrabold text-indigo-950">
-                  {isEnglish ? 'Assigned by your teacher' : 'Assegnati dal docente'}
-                </h3>
-                <p className="mt-1 text-xs text-indigo-700">
-                  {isEnglish ? 'Open your private copy. The teacher template will not change.' : 'Apri la tua copia privata: il template del docente non verrà modificato.'}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {(assignments as NotebookAssignment[]).map(assignment => (
-                  <div key={assignment.id} className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-extrabold text-slate-950">{assignment.title}</p>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{assignment.project_type}</p>
-                      </div>
-                      {assignment.submitted_at && <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />}
+                ? 'Pick a kind of project. Each one keeps code, results, previews and tutor help together.'
+                : 'Scegli un tipo di progetto. Ognuno tiene insieme codice, risultati, anteprime e aiuto del tutor.'}
+            </p>
+            <div className="mt-8 grid gap-4 text-left md:grid-cols-3">
+              {PROJECT_ORDER.map((type) => (
+                <button key={type} type="button" onClick={() => openCreate(type)} className="ui-card ui-card-interactive group flex flex-col gap-4 p-4 text-left">
+                  <ProjectPreview type={type} className="h-40" />
+                  <div className="flex items-start gap-3 px-1 pb-1">
+                    <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: colorOf(type) }}><ProjectIcon type={type} className="h-5 w-5" /></span>
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-950">{getProjectLabel(type)}</h3>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-500">{getProjectDescription(type, isEnglish)}</p>
                     </div>
-                    <Button
-                      type="button"
-                      tone="accent"
-                      surface="soft"
-                      density="compact"
-                      className="mt-4 w-full"
-                      disabled={forkMutation.isPending}
-                      onClick={() => assignment.fork_notebook_id ? openNotebook(assignment.fork_notebook_id) : forkMutation.mutate(assignment.id)}
-                    >
-                      {assignment.fork_notebook_id
-                        ? (isEnglish ? 'Open my copy' : 'Apri la mia copia')
-                        : (isEnglish ? 'Create my copy' : 'Crea la mia copia')}
-                    </Button>
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Layers3 className="h-4 w-4 text-slate-500" />
-                <span>{search ? formatNotebookCount(visibleCount, isEnglish) : formatNotebookCount(totalCount, isEnglish)}</span>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                {isEnglish
-                  ? 'Grouped by language so the workspace is easier to scan.'
-                  : 'Raggruppati per linguaggio, così lo spazio è più facile da leggere.'}
-              </p>
+                </button>
+              ))}
             </div>
-
-          </div>
-
-          {filtered.python.length > 0 && (
-            <Section
-              type="python"
-              notebooks={filtered.python}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this notebook?' : 'Eliminare questo notebook?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {filtered.microbit.length > 0 && (
-            <Section
-              type="microbit"
-              notebooks={filtered.microbit}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this micro:bit notebook?' : 'Eliminare questo notebook micro:bit?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {filtered.circuitplayground.length > 0 && (
-            <Section
-              type="circuitplayground"
-              notebooks={filtered.circuitplayground}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this Circuit Playground notebook?' : 'Eliminare questo notebook Circuit Playground?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {filtered.p5js.length > 0 && (
-            <Section
-              type="p5js"
-              notebooks={filtered.p5js}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this sketch?' : 'Eliminare questo sketch?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {filtered.game2d.length > 0 && (
-            <Section
-              type="game2d"
-              notebooks={filtered.game2d}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this 2D game?' : 'Eliminare questo gioco 2D?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {filtered.strudel.length > 0 && (
-            <Section
-              type="strudel"
-              notebooks={filtered.strudel}
-              onOpen={openNotebook}
-              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this sketch?' : 'Eliminare questo sketch?')) deleteMutation.mutate(id) }}
-              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
-              isEnglish={isEnglish}
-              isDeleting={deleteMutation.isPending}
-            />
-          )}
-
-          {search && visibleCount === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-              <p className="text-sm font-semibold text-slate-700">
-                {isEnglish ? `No notebook matches "${search}"` : `Nessun notebook corrisponde a "${search}"`}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {isEnglish ? 'Try a shorter title fragment.' : 'Prova con una parte più breve del titolo.'}
-              </p>
-            </div>
-          )}
-        </div>
+            <ReadyTemplateGallery templates={READY_TEMPLATES} isEnglish={isEnglish} onCreate={handleCreateFromTemplate} isPending={createMutation.isPending} open={templatesOpen} onToggle={() => setTemplatesOpen(value => !value)} className="mt-8" />
+          </section>
+        ) : (
+          <>
+            <ReadyTemplateGallery templates={READY_TEMPLATES} isEnglish={isEnglish} onCreate={handleCreateFromTemplate} isPending={createMutation.isPending} open={templatesOpen} onToggle={() => setTemplatesOpen(value => !value)} className="mb-8" />
+            {PROJECT_ORDER.map((type) => filtered[type as 'p5js' | 'python' | 'microbit'].length > 0 && (
+              <Section
+                key={type}
+                type={type}
+                notebooks={filtered[type as 'p5js' | 'python' | 'microbit']}
+                onOpen={openNotebook}
+                onDelete={askDelete(isEnglish ? 'Delete this project?' : 'Eliminare questo progetto?')}
+                onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
+                isEnglish={isEnglish}
+                isDeleting={deleteMutation.isPending}
+              />
+            ))}
+            {search && visibleCount === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-slate-700">{isEnglish ? `No project matches "${search}"` : `Nessun progetto corrisponde a "${search}"`}</p>
+                <p className="mt-1 text-xs text-slate-500">{isEnglish ? 'Try a shorter title fragment.' : 'Prova con una parte più breve del titolo.'}</p>
+              </div>
+            )}
+          </>
+        )}
       </main>
 
       <AnimatePresence>
@@ -925,41 +623,6 @@ function PrimaryCreateButton({
   )
 }
 
-function ProjectSummary({
-  type,
-  count,
-  isEnglish,
-  showCount = true,
-}: {
-  type: NotebookProjectType
-  count: number
-  isEnglish: boolean
-  showCount?: boolean
-}) {
-  const s = NOTEBOOK_STYLES[type]
-
-  return (
-    <div className={`rounded-lg border p-4 text-left shadow-sm ${s.panel}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className={`flex h-9 w-9 items-center justify-center rounded-lg bg-white/80 ${s.icon}`}>
-            <ProjectIcon type={type} className="h-5 w-5" />
-          </span>
-          <span className="text-sm font-extrabold">{getProjectLabel(type)}</span>
-        </div>
-        {showCount && (
-          <span className="rounded-full bg-white/75 px-2.5 py-1 text-[11px] font-bold">
-            {count}
-          </span>
-        )}
-      </div>
-      <p className="mt-3 text-xs leading-5 text-slate-600">
-        {getProjectDescription(type, isEnglish)}
-      </p>
-    </div>
-  )
-}
-
 function Section({
   type, notebooks, onOpen, onDelete, onAssign, isDeleting, isEnglish,
 }: {
@@ -971,23 +634,15 @@ function Section({
   isDeleting: boolean
   isEnglish: boolean
 }) {
-  const s = NOTEBOOK_STYLES[type]
-
   return (
-    <section className="mb-7">
-      <div className="mb-3">
-        <div className="flex items-center gap-3">
-          <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${s.section}`}>
-            <ProjectIcon type={type} className="h-4 w-4" />
-            <h3 className="text-xs font-extrabold uppercase tracking-wide">{getProjectLabel(type)}</h3>
-            <span className="text-xs font-bold opacity-75">{notebooks.length}</span>
-          </div>
-        </div>
-        <p className="mt-1.5 text-xs text-slate-500">
-          {getProjectDescription(type, isEnglish)}
-        </p>
+    <section className="mb-9">
+      <div className="mb-3 flex items-center gap-3 px-1">
+        <span className="ds-squircle flex h-8 w-8 items-center justify-center text-white" style={{ background: colorOf(type) }}><ProjectIcon type={type} className="h-4 w-4" /></span>
+        <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{getProjectLabel(type)}</h3>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">{notebooks.length}</span>
+        <p className="hidden text-xs text-slate-400 sm:block">{getProjectDescription(type, isEnglish)}</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {notebooks.map(nb => (
           <NotebookCard
             key={nb.id}
@@ -1042,7 +697,7 @@ function CreateDialog({
           </button>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {PROJECT_ORDER.map(type => {
             const s = NOTEBOOK_STYLES[type]
             const selected = newProjectType === type

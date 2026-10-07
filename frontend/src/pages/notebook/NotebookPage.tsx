@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
-  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Square, Terminal, Trash2, Wrench, X, Zap,
+  Brain, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Settings, Square, Terminal, Trash2, Wrench, X, Zap,
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { v4 as uuidv4 } from 'uuid'
-import { notebooksApi } from '@/lib/api'
+import { mlLabApi, notebooksApi, type MLLabProjectSummary } from '@/lib/api'
+import { type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+import P5ModelsDialog from '@/components/notebook/P5ModelsDialog'
 import { usePyodide } from '@/hooks/usePyodide'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import NotebookCell from '@/components/notebook/NotebookCell'
@@ -231,6 +233,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
+  const [modelsOpen, setModelsOpen] = useState(false)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const [mlModels, setMlModels] = useState<MlRuntimeModel[]>([])
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null)
   const [submitNotice, setSubmitNotice] = useState<string | null>(null)
   const p5IframeWindowRef = useRef<Window | null>(null)
@@ -456,6 +461,25 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     })
   }, [cells, scheduleSave, title])
 
+  // ML Lab models attached to the sketch live in the notebook's editor settings (saved with it).
+  const mlIdsKey = (editorSettings.ml_model_ids ?? []).join(',')
+  useEffect(() => {
+    const ids = mlIdsKey ? mlIdsKey.split(',') : []
+    if (ids.length === 0) { setMlModels([]); return }
+    let cancelled = false
+    Promise.all(ids.map((id) => mlLabApi.runtimeModel(id).then((response) => response.data as MlRuntimeModel).catch(() => null)))
+      .then((loaded) => { if (!cancelled) setMlModels(loaded.filter((model): model is MlRuntimeModel => Boolean(model))) })
+    return () => { cancelled = true }
+  }, [mlIdsKey])
+
+  const attachMlModel = useCallback((project: MLLabProjectSummary) => {
+    const current = editorSettings.ml_model_ids ?? []
+    if (!current.includes(project.id)) updateEditorSettings({ ml_model_ids: [...current, project.id] })
+  }, [editorSettings.ml_model_ids, updateEditorSettings])
+  const detachMlModel = useCallback((id: string) => {
+    updateEditorSettings({ ml_model_ids: (editorSettings.ml_model_ids ?? []).filter((item) => item !== id) })
+  }, [editorSettings.ml_model_ids, updateEditorSettings])
+
   const replaceLineRange = useCallback((source: string, lineStart: number, lineEnd: number, replacement: string) => {
     const lines = source.split('\n')
     const replacementLines = replacement.replace(/\r\n/g, '\n').split('\n')
@@ -545,6 +569,12 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   }, [renamingCellId, renameValue, scheduleSave])
 
   const activeCell = cells.find((cell) => cell.id === activeCellId) ?? cells[0]
+  const insertModelCode = useCallback((code: string, replace: boolean) => {
+    if (!activeCell) return
+    updateCell(activeCell.id, { source: replace ? code : `${activeCell.source.replace(/\s+$/, '')}\n${code}` })
+    setModelsOpen(false)
+    setPreviewNonce((value) => value + 1)
+  }, [activeCell, updateCell])
   const p5Files = cells.map((c) => ({ name: c.name ?? 'sketch.js', source: c.source }))
   const p5SourceKey = p5Files.map((f) => f.source).join('\n')
   const gameSource = activeCell?.source ?? ''
@@ -1074,72 +1104,16 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             {projectType}
           </span>
 
-          <div className="flex shrink-0 items-center gap-1">
-            <Select
-              value={editorSettings.theme}
-              onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
-              density="compact"
-              surface="glass"
-              className="w-[86px] h-8 px-2 pr-6 text-[11px]"
-              title={isEnglish ? 'Theme' : 'Tema'}
-            >
-              <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
-              <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
-              <option value="fancy">Fancy</option>
-              <option value="dracula">Dracula</option>
-              <option value="p5js">P5.js</option>
-            </Select>
-
-            <Select
-              value={editorSettings.font_size}
-              onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
-              density="compact"
-              surface="glass"
-              className="w-[58px] h-8 px-2 pr-6 text-[11px]"
-              title={isEnglish ? 'Font size' : 'Dimensione'}
-            >
-              {[12, 14, 16, 18, 20].map((size) => (
-                <option key={size} value={size}>{size}px</option>
-              ))}
-            </Select>
-
-            <Select
-              value={editorSettings.font_family}
-              onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
-              density="compact"
-              surface="glass"
-              className="w-[110px] h-8 px-2 pr-6 text-[11px]"
-              title="Font"
-            >
-              <option value="jetbrains">JetBrains Mono</option>
-              <option value="space">Space Mono</option>
-              <option value="courier">Courier Prime</option>
-              <option value="victor">Victor Mono</option>
-              <option value="plex">IBM Plex Mono</option>
-            </Select>
-
-            <input
-              type="range"
-              min={100}
-              max={900}
-              step={100}
-              value={fontWeight}
-              onChange={(e) => updateEditorSettings({ font_weight: Number(e.target.value) })}
-              className="w-14 accent-[var(--selection-border-hover)]"
-              title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}
-            />
-
+          <div className="flex shrink-0 items-center gap-1.5">
             {isDeviceNotebook(projectType) && projectType === 'circuitplayground' ? (
-              <span className="rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-2 py-1 text-[11px] font-semibold text-[var(--text-primary)]">
-                CircuitPython
-              </span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">CircuitPython</span>
             ) : isDeviceNotebook(projectType) && (
               <Select
                 value={deviceLanguage}
                 onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
                 density="compact"
                 surface="glass"
-                className="w-[100px] h-8 px-2 pr-6 text-[11px]"
+                className="h-8 w-[100px] px-2 pr-6 text-[11px]"
                 title={isEnglish ? 'Language' : 'Linguaggio'}
               >
                 <option value="python">Python</option>
@@ -1148,27 +1122,24 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             )}
 
             {projectType === 'microbit' && (
-              <IconButton
-                type="button"
-                size="sm"
-                tone="neutral"
-                surface="soft"
-                onClick={() => setMicrobitManualOpen(true)}
-                title="Manuale micro:bit"
-              >
+              <IconButton type="button" size="sm" tone="neutral" surface="soft" onClick={() => setMicrobitManualOpen(true)} title="Manuale micro:bit">
                 <BookOpen />
               </IconButton>
             )}
 
             {(projectType === 'p5js' || projectType === 'game2d') && (
-              <label className="flex h-8 items-center gap-1.5 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-2 text-[11px] font-semibold text-[var(--text-primary)]" title="Live preview">
+              <label
+                className="flex h-8 cursor-pointer items-center gap-2 rounded-full bg-slate-100/80 px-3 text-[11px] font-semibold text-slate-700"
+                title={isEnglish ? 'Live preview: the sketch updates while you type' : 'Anteprima live: lo sketch si aggiorna mentre scrivi'}
+              >
+                <span className={`h-2 w-2 rounded-full ${editorSettings.live_preview ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                Live
                 <input
                   type="checkbox"
                   checked={editorSettings.live_preview}
                   onChange={(e) => updateEditorSettings({ live_preview: e.target.checked })}
-                  className="rounded border-slate-300 bg-white accent-[var(--selection-border-hover)]"
+                  className="sr-only"
                 />
-                Live
               </label>
             )}
           </div>
@@ -1239,7 +1210,12 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             )}
             {projectType === 'p5js' && (
               <>
-                <Button type="button" density="compact" tone="neutral" surface="soft" onClick={() => setLibraryManagerOpen((v) => !v)} title="Gestisci librerie aggiuntive">
+                <Button type="button" density="compact" tone={mlModels.length ? 'accent' : 'neutral'} surface="soft" onClick={() => setModelsOpen(true)} title={isEnglish ? 'Use a model trained in the ML Lab (hands, pose, images)' : 'Usa un modello addestrato nel Lab ML (mani, pose, immagini)'}>
+                  <Brain />
+                  Modelli
+                  {mlModels.length > 0 && <span className="ml-0.5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{mlModels.length}</span>}
+                </Button>
+                <Button type="button" density="compact" tone="neutral" surface="soft" onClick={() => setLibraryManagerOpen((v) => !v)} title={isEnglish ? 'Manage extra libraries' : 'Gestisci librerie aggiuntive'}>
                   <PackagePlus />
                   Librerie
                   {(editorSettings.libraries ?? []).length > 0 && (
@@ -1248,14 +1224,14 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                     </span>
                   )}
                 </Button>
+                <span className="mx-1 h-5 w-px bg-slate-200" />
                 <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleP5Play} title={isEnglish ? 'Run sketch' : 'Esegui sketch'}>
                   <Play />
                   Play
                 </Button>
-                <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleP5Stop} disabled={!p5Playing} title={isEnglish ? 'Stop sketch' : 'Ferma sketch'}>
-                  <Pause />
-                  Stop
-                </Button>
+                <IconButton type="button" size="sm" tone="danger" surface="soft" onClick={handleP5Stop} disabled={!p5Playing} title={isEnglish ? 'Stop sketch' : 'Ferma sketch'}>
+                  <Square className="fill-current" />
+                </IconButton>
               </>
             )}
             {projectType === 'python' && (
@@ -1295,17 +1271,15 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             <div className={`flex shrink-0 items-center gap-1 text-[11px] ${gamePlaying ? 'text-cyan-700' : 'text-slate-500'}`} title={isEnglish ? 'Phaser runner' : 'Runner Phaser'}>
               <Gamepad2 className="h-3.5 w-3.5" />
             </div>
-          ) : (
-            <div className="flex shrink-0 items-center gap-1 text-[11px] text-emerald-700" title={isEnglish ? 'Interactive preview' : 'Preview interattiva'}>
-              <Monitor className="h-3.5 w-3.5" />
-            </div>
-          )}
+          ) : null}
 
           <div className="flex shrink-0 items-center text-[11px]" title={saveStatus === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…') : saveStatus === 'saved' ? (isEnglish ? 'Saved' : 'Salvato') : (isEnglish ? 'Unsaved' : 'Da salvare')}>
             {saveStatus === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
             {saveStatus === 'saved' && <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />}
             {saveStatus === 'unsaved' && <Save className="h-3.5 w-3.5 text-amber-400" />}
           </div>
+
+          <AppearanceMenu open={appearanceOpen} onToggle={() => setAppearanceOpen((value) => !value)} onClose={() => setAppearanceOpen(false)} settings={editorSettings} onChange={updateEditorSettings} isEnglish={isEnglish} />
 
           {notebookId && (
             <IconButton
@@ -1685,6 +1659,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       onRuntimeMessage={setPreviewRuntimeError}
                       onIframeLoad={(win) => { p5IframeWindowRef.current = win }}
                       activeLibraries={editorSettings.libraries ?? []}
+                      mlModels={mlModels}
                     />
                   </Suspense>
                 </div>
@@ -1939,6 +1914,15 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
       )}
 
     </div>
+    {modelsOpen && (
+      <P5ModelsDialog
+        attachedIds={editorSettings.ml_model_ids ?? []}
+        onAttach={attachMlModel}
+        onDetach={detachMlModel}
+        onInsert={insertModelCode}
+        onClose={() => setModelsOpen(false)}
+      />
+    )}
     <NotebookLibraryManager
       open={libraryManagerOpen}
       onClose={() => setLibraryManagerOpen(false)}
@@ -2290,5 +2274,63 @@ while True:
       />
     )}
     </>
+  )
+}
+
+
+/** Editor look (theme, font, size, weight) in one tidy popover instead of four controls in the toolbar. */
+function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish }: {
+  open: boolean
+  onToggle: () => void
+  onClose: () => void
+  settings: NotebookEditorSettings
+  onChange: (patch: Partial<NotebookEditorSettings>) => void
+  isEnglish: boolean
+}) {
+  const weight = settings.font_weight ?? 400
+  return (
+    <div className="relative shrink-0">
+      <IconButton type="button" size="sm" tone={open ? 'accent' : 'neutral'} surface={open ? 'soft' : 'ghost'} onClick={onToggle} title={isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'} aria-expanded={open}>
+        <Settings />
+      </IconButton>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={onClose} />
+          <div className="absolute right-0 top-full z-50 mt-2 w-64 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'}</p>
+            <label className="block text-xs font-semibold text-slate-600">
+              {isEnglish ? 'Theme' : 'Tema'}
+              <Select value={settings.theme} onChange={(e) => onChange({ theme: e.target.value as NotebookTheme })} density="compact" surface="glass" className="mt-1 h-8 w-full px-2 pr-6 text-[11px]">
+                <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
+                <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
+                <option value="fancy">Fancy</option>
+                <option value="dracula">Dracula</option>
+                <option value="p5js">P5.js</option>
+              </Select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Font
+              <Select value={settings.font_family} onChange={(e) => onChange({ font_family: e.target.value as NotebookFontFamily })} density="compact" surface="glass" className="mt-1 h-8 w-full px-2 pr-6 text-[11px]">
+                <option value="jetbrains">JetBrains Mono</option>
+                <option value="space">Space Mono</option>
+                <option value="courier">Courier Prime</option>
+                <option value="victor">Victor Mono</option>
+                <option value="plex">IBM Plex Mono</option>
+              </Select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              {isEnglish ? 'Size' : 'Dimensione'}
+              <Select value={settings.font_size} onChange={(e) => onChange({ font_size: Number(e.target.value) })} density="compact" surface="glass" className="mt-1 h-8 w-full px-2 pr-6 text-[11px]">
+                {[12, 14, 16, 18, 20].map((size) => <option key={size} value={size}>{size}px</option>)}
+              </Select>
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              {isEnglish ? 'Weight' : 'Spessore'} <span className="font-normal text-slate-400">{weight}</span>
+              <input type="range" min={100} max={900} step={100} value={weight} onChange={(e) => onChange({ font_weight: Number(e.target.value) })} className="mt-2 w-full accent-[var(--selection-border-hover)]" />
+            </label>
+          </div>
+        </>
+      )}
+    </div>
   )
 }

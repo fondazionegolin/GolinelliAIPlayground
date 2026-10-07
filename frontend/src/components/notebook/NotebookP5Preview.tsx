@@ -1,5 +1,6 @@
 import { AlertCircle } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
+import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 
 interface P5File {
   name: string
@@ -14,11 +15,15 @@ interface Props {
   onRuntimeMessage: (message: string | null) => void
   onIframeLoad?: (win: Window | null) => void
   activeLibraries?: string[]  // library IDs to inject
+  /** ML Lab models attached to the sketch: exposed as window.GolinelliML. */
+  mlModels?: MlRuntimeModel[]
 }
 
 const P5_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js'
 
-function buildPreviewDoc(files: P5File[], activeLibraries: string[]) {
+function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: MlRuntimeModel[] = []) {
+  // Defined before any sketch code runs; it lazy-loads the ML runtime from the platform (same origin as this app).
+  const mlStub = mlModels.length ? `<script>${buildMlStub(mlModels, window.location.origin).replace(/<\/script/gi, '<\\/script')}</script>` : ''
   const isEmpty = files.every((f) => !f.source.trim())
 
   // Resolve CDN URLs for active libraries (in order, preserving multi-script libs)
@@ -109,6 +114,7 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[]) {
     </script>
     <script src="${P5_CDN}"></script>
 ${libScriptTags}
+    ${mlStub}
     ${isEmpty ? '' : scriptBlocks}
     <script>
       notifyParent('ready', null)
@@ -125,9 +131,10 @@ export default function NotebookP5Preview({
   onRuntimeMessage,
   onIframeLoad,
   activeLibraries = [],
+  mlModels = [],
 }: Props) {
-  // Libraries that require camera need relaxed sandbox + allow attribute
-  const needsCamera = activeLibraries.some((id) => {
+  // Libraries (and ML Lab models) that need the camera get a relaxed sandbox + the allow attribute
+  const needsCamera = mlModels.length > 0 || activeLibraries.some((id) => {
     const lib = NOTEBOOK_LIBRARIES.find((l) => l.id === id)
     return lib?.requiresCamera ?? false
   })
@@ -146,6 +153,7 @@ export default function NotebookP5Preview({
             {activeLibNames.length > 0 && (
               <span className="ml-2 text-indigo-500">· {activeLibNames.join(', ')}</span>
             )}
+            {mlModels.length > 0 && <span className="ml-2 text-violet-500">· {mlModels.map((model) => model.name).join(', ')}</span>}
           </p>
         </div>
       </div>
@@ -153,7 +161,7 @@ export default function NotebookP5Preview({
         <iframe
           key={previewNonce}
           title="Anteprima p5.js"
-          srcDoc={buildPreviewDoc(files, activeLibraries)}
+          srcDoc={buildPreviewDoc(files, activeLibraries, mlModels)}
           sandbox={needsCamera ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
           allow={needsCamera ? 'camera; microphone' : undefined}
           className="h-full w-full border-0 bg-white"

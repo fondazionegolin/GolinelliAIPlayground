@@ -20,6 +20,7 @@ export interface NotebookEditorSettings {
   live_preview: boolean
   font_weight?: number
   libraries?: string[]  // IDs of loaded extra libraries
+  ml_model_ids?: string[]  // ML Lab projects attached to a p5.js sketch (window.GolinelliML)
   microbit_language?: 'python' | 'javascript'
   device_language?: 'python' | 'javascript'
 }

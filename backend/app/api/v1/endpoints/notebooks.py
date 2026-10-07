@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 from sqlalchemy import select
 from typing import Annotated, List, Optional
 from datetime import datetime
@@ -968,6 +969,47 @@ def _sanitize_tutor_history(raw_history: object, limit: int = 60) -> list[dict]:
 
 # ── List notebooks ──────────────────────────────────────────────────────────
 
+async def _ml_models_context(db: AsyncSession, nb: "Notebook") -> str:
+    """ML Lab models attached to a p5.js notebook: tells the tutor/code agent how to use them (window.GolinelliML)."""
+    ids = (nb.editor_settings or {}).get("ml_model_ids") if (nb.project_type or "") == "p5js" else None
+    if not isinstance(ids, list) or not ids:
+        return ""
+    try:
+        from app.models.ml_image_project import MLImageProject
+        rows = (await db.execute(
+            select(MLImageProject).options(defer(MLImageProject.data_json))
+            .where(MLImageProject.id.in_([UUID(str(i)) for i in ids[:6]]), MLImageProject.tenant_id == nb.tenant_id)
+        )).scalars().all()
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    kinds = {"movenet": "pose del corpo", "mediapipe-hand": "gesti delle mani"}
+    lines = []
+    for row in rows:
+        kind = next((label for key, label in kinds.items() if (row.engine or "").startswith(key)), "immagini")
+        classes = ", ".join(f"«{c.get('name')}»" for c in (row.summary_json or []) if isinstance(c, dict))
+        lines.append(f"- «{row.name}» · tipo: {kind} · classi: {classes}")
+    return (
+        "MODELLI ML COLLEGATI AL PROGETTO (Lab ML, vincolanti): usa QUESTI modelli tramite window.GolinelliML, già presente nella pagina. "
+        "NON importare MediaPipe/TensorFlow/ml5/PoseNet né aggiungere script. API: "
+        "`const model = await GolinelliML.load('<nome>')`; `model.start(video, {onResult: r => ...})` (r.label = classe riconosciuta o null se non sicuro, "
+        "r.confidence 0..1, r.detected, r.hand = 21 punti {x,y} pixel, r.pose = 17 punti {x,y,score}); `model.on('<classe>', callback, {minConfidence, holdMs})`. "
+        "Con p5: `capture = createCapture(VIDEO); capture.hide()` e passa `capture.elt`. Gestisci sempre label === null e detected === false.\n"
+        "Modelli disponibili:\n" + "\n".join(lines) + "\n"
+    )
+
+
+def _code_preview(cells: list | None, max_lines: int = 9, max_chars: int = 360) -> str:
+    """First lines of the first non-empty code cell: the static preview shown on the Coding Lab cards."""
+    for cell in cells or []:
+        if isinstance(cell, dict) and cell.get("type") == "code":
+            source = str(cell.get("source") or "").strip("\n")
+            if source.strip():
+                return "\n".join(source.splitlines()[:max_lines])[:max_chars]
+    return ""
+
+
 @router.get("/notebooks", response_model=List[dict])
 async def list_notebooks(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -986,6 +1028,7 @@ async def list_notebooks(
             "title": nb.title,
             "project_type": nb.project_type or "python",
             "cell_count": len(nb.cells) if nb.cells else 0,
+            "preview": _code_preview(nb.cells),
             "created_at": nb.created_at.isoformat(),
             "updated_at": nb.updated_at.isoformat(),
         }
@@ -1546,7 +1589,7 @@ Concetti chiave:
 """
     p5js_extra = ""
     if project_type == "p5js":
-        p5js_extra = "\n" + P5JS_REFERENCE + "\n"
+        p5js_extra = "\n" + P5JS_REFERENCE + "\n" + await _ml_models_context(db, nb)
     microbit_extra = ""
     if project_type == "microbit":
         microbit_extra = """
@@ -1656,6 +1699,9 @@ async def notebook_assist(
     last_output = request.get("last_output", "") or ""
     user_prompt = request.get("message", "") or "Analizza il codice e suggerisci correzioni mirate."
     project_type = nb.project_type or "python"
+    ml_context = await _ml_models_context(db, nb)
+    if ml_context:
+        user_prompt = f"{user_prompt}\n\n{ml_context}"
     provider, model, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
         project_type, active_source, last_output, user_prompt
     )
@@ -1746,6 +1792,9 @@ async def notebook_assist_stream(
     last_output = request.get("last_output", "") or ""
     user_prompt = request.get("message", "") or "Analizza il codice e suggerisci correzioni mirate."
     project_type = nb.project_type or "python"
+    ml_context = await _ml_models_context(db, nb)
+    if ml_context:
+        user_prompt = f"{user_prompt}\n\n{ml_context}"
     is_student = actor.is_student
     provider, model, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
         project_type, active_source, last_output, user_prompt

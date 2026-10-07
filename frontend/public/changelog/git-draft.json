@@ -1,24 +1,14 @@
 {
-  "generated_at": "2026-10-02T15:18:38.774762+00:00",
-  "version_label": "2026.10.02-a4d8e1f3",
-  "title": "Aggiornamenti branch feature/inquiry-mode",
-  "summary": "Bozza generata automaticamente da 3 commit nuovi.",
-  "git_ref": "a4d8e1f36377809d2de88c28ec4284f2c4ac6342",
+  "generated_at": "2026-10-07T13:56:25.540994+00:00",
+  "version_label": "2026.10.07-70cd64bc",
+  "title": "Aggiornamenti branch feature/iconstyle",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "70cd64bcc883f3c4d4e63cfce1b62598d2140b61",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(ui): dark mode for teacher/student areas",
-      "description": "Feat(ui): dark mode for teacher/student areas"
-    },
-    {
-      "category": "improved",
-      "title": "Feat(teacherbots): inquiry mode, multi-suspect cast, full-chat public links",
-      "description": "Feat(teacherbots): inquiry mode, multi-suspect cast, full-chat public links"
-    },
-    {
-      "category": "improved",
-      "title": "Feat(platform): clustered teacher navbar, Files drive, office documents",
-      "description": "Feat(platform): clustered teacher navbar, Files drive, office documents"
+      "title": "Feat(platform): ML Lab pose/hand, admin models & sessions, teacher memory",
+      "description": "Feat(platform): ML Lab pose/hand, admin models & sessions, teacher memory"
     }
   ]
 }

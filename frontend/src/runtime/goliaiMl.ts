@@ -40,6 +40,9 @@ export interface MlResult {
   pose?: Array<{ x: number; y: number; score?: number }>
   /** hand models: 21 landmarks in source pixels */
   hand?: Array<{ x: number; y: number }>
+  /** size in pixels of the analysed frame: scale landmarks with p.x / r.width * canvasWidth */
+  width?: number
+  height?: number
 }
 
 interface StartOptions {
@@ -117,7 +120,7 @@ class MlModel {
     const found = await extractFeatures(this.mode, source)
     if (!found) return { probs: null, extras: {} }
     const key = this.mode === 'pose' ? 'pose' : 'hand'
-    return { probs: predict(this.head, found.vector), extras: { [key]: found.overlay.points } as Partial<MlResult> }
+    return { probs: predict(this.head, found.vector), extras: { [key]: found.overlay.points, width: found.overlay.width, height: found.overlay.height } as Partial<MlResult> }
   }
 
   /** One recognition of a video, canvas, image or p5 element. */

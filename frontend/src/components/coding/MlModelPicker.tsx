@@ -35,7 +35,8 @@ const model = await window.GolinelliML.load('${sampleName}')   // per nome oppur
 const stop = model.start(videoElement, {
   onResult: (r) => { /* r.label = classe riconosciuta oppure null se non è sicuro; r.best = classe più probabile;
                         r.confidence 0..1; r.probs = { 'Nome classe': probabilità }; r.detected = false se non vede mano/persona;
-                        r.hand = 21 punti {x,y} in pixel (modelli mani); r.pose = 17 punti {x,y,score} in pixel (modelli pose) */ },
+                        r.hand = 21 punti {x,y} in pixel (modelli mani); r.pose = 17 punti {x,y,score} in pixel (modelli pose);
+                        r.width / r.height = dimensioni del frame analizzato: scala i punti con p.x / r.width * width */ },
 })
 
 // 2) eventi: scatta quando una classe resta attiva per holdMs, si riarma quando cambia
@@ -52,17 +53,17 @@ Il video della webcam è speculare per l'utente: mostralo specchiato con CSS (\`
 
 ## Esempio p5.js (gesti → azioni)
 \`\`\`js
-let capture, model, current = null, hand = null;
+let capture, model, current = null, hand = null, lastW = 640, lastH = 480;
 async function setup() {
   createCanvas(640, 480);
   capture = createCapture(VIDEO); capture.size(640, 480); capture.hide();
   model = await window.GolinelliML.load('${sampleName}');
-  model.start(capture.elt, { onResult: (r) => { current = r.label; hand = r.hand || r.pose || null; } });
+  model.start(capture.elt, { onResult: (r) => { current = r.label; hand = r.hand || r.pose || null; lastW = r.width || lastW; lastH = r.height || lastH; } });
   model.on('${sampleLabel}', () => { /* es. cambia colore, suona, avvia un'animazione */ });
 }
 function draw() {
   push(); translate(width, 0); scale(-1, 1); image(capture, 0, 0, width, height);
-  if (hand) { fill(255); noStroke(); hand.forEach((p) => circle(p.x * width / capture.width, p.y * height / capture.height, 8)); }
+  if (hand) { fill(255); noStroke(); hand.forEach((p) => circle(p.x / lastW * width, p.y / lastH * height, 8)); }
   pop();
   fill(255); textSize(28); text(current || 'Nessun gesto riconosciuto', 20, 40);
 }
