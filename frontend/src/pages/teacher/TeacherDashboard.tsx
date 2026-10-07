@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, type Componen
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen } from 'lucide-react'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen } from '@/components/icons'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
@@ -47,6 +47,8 @@ import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { FloatingClassChat } from '@/components/FloatingClassChat'
+import { ClassChatNudge } from '@/components/ClassChatNudge'
+import { useClassChatSidebar } from '@/hooks/useClassChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { useAuthStore } from '@/stores/auth'
@@ -54,7 +56,6 @@ import { useUiThemeScope } from '@/stores/uiTheme'
 import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
 import { useToast } from '@/components/ui/use-toast'
 
-const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 type SessionStudentSummary = { id: string; nickname: string; is_frozen: boolean }
 
 export default function TeacherDashboard() {
@@ -74,7 +75,8 @@ export default function TeacherDashboard() {
   const previewChatWidth = useCallback((width: number) => {
     if (chatColumnRef.current) chatColumnRef.current.style.width = `${width + CHAT_SIDEBAR_GUTTER}px`
   }, [])
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useClassChatSidebar('teacher', authStore.user?.id)
+  const [chatNudge, setChatNudge] = useState(0)
   const [showOnlineMenu, setShowOnlineMenu] = useState(false)
   const [teacherChatSidebarOpen, setTeacherChatSidebarOpen] = useState(false)
   const [subjectiveStudentId, setSubjectiveStudentId] = useState<string | null>(null)
@@ -158,17 +160,6 @@ export default function TeacherDashboard() {
       }))
     }
   }, [teacherProfileData])
-
-  useEffect(() => {
-    const handleResize = () => {
-      setShowSidebar(prev => (
-        window.innerWidth < CHATBAR_AUTO_HIDE_BREAKPOINT ? false : prev
-      ))
-    }
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
 
   const teacherTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
   const bgGradient = getAppBackgroundGradient(teacherTheme)
@@ -270,6 +261,7 @@ export default function TeacherDashboard() {
           }}
           chatSidebarOpen={showSidebar}
           onToggleChatSidebar={() => setShowSidebar(v => !v)}
+          onIncomingClassChat={() => setChatNudge((value) => value + 1)}
         />
       )}
 
@@ -568,11 +560,7 @@ export default function TeacherDashboard() {
         )}
       </div>
 
-      <FloatingHelper
-        hideTrigger={isMobile}
-        open={isMobile ? feedbackOpen : undefined}
-        onOpenChange={isMobile ? setFeedbackOpen : undefined}
-      />
+      <FloatingHelper open={feedbackOpen} onOpenChange={setFeedbackOpen} />
       {isMobile && activeSessionId && teacherProfile && (
         <FloatingClassChat
           sessionId={activeSessionId}
@@ -585,6 +573,9 @@ export default function TeacherDashboard() {
           onOpenChange={setClassChatOpen}
           onUnreadCountChange={setClassChatUnread}
         />
+      )}
+      {!isMobile && !showSidebar && chatNudge > 0 && (
+        <ClassChatNudge key={chatNudge} showAt="md" onOpen={() => { setShowSidebar(true); setChatNudge(0) }} onDone={() => setChatNudge(0)} />
       )}
     </AppBackground>
   )
@@ -670,7 +661,7 @@ function TeacherMobileNavigation({
             <nav className="flex-1 overflow-y-auto p-3">
               {items.map(({ path, label, icon: Icon, exact }) => {
                 const active = exact ? isHome : currentPath.startsWith(path)
-                return <Link key={path} to={path} onClick={() => setOpen(false)} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 active:bg-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 opacity-50" /></Link>
+                return <Link key={path} to={path} onClick={() => setOpen(false)} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 active:bg-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 opacity-50" /></Link>
               })}
             </nav>
             <div className="border-t border-slate-100 py-1">

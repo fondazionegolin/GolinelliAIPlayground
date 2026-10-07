@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'react-router-dom'
-import { Clock3, Gamepad2, Loader2, LockKeyhole, Radio, UserRound } from 'lucide-react'
+import { Clock3, Gamepad2, Loader2, LockKeyhole, Radio, UserRound } from '@/components/icons'
 
 import { liveInteractionApi } from '@/lib/api'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'

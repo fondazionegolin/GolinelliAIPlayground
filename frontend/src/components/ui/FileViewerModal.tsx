@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   X, Download, ExternalLink, File, FileText, FileSpreadsheet, Image as ImageIcon
-} from 'lucide-react'
+} from '@/components/icons'
 
 export interface FileViewerFile {
   url: string

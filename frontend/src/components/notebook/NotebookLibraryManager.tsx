@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, ChevronDown, ChevronRight, PackagePlus, Code2, Camera } from 'lucide-react'
+import { X, ChevronDown, ChevronRight, PackagePlus, Code2, Camera } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES, LIBRARY_CATEGORIES, type NotebookLibrary, type LibraryTemplate } from './notebookLibraries'
 
 interface Props {

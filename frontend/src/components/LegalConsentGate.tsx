@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ExternalLink, FileCheck2, Loader2, LockKeyhole, Scale, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ExternalLink, FileCheck2, Loader2, LockKeyhole, Scale, ShieldCheck } from '@/components/icons'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/ui/use-toast'

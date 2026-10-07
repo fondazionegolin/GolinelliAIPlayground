@@ -9,7 +9,7 @@ import httpx
 from app.core.database import get_db
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.models.session import Class, Session, SessionModule
-from app.services.meshy_service import OPENAI_IMAGE_MODEL, meshy_service
+from app.services.meshy_service import meshy_service
 from app.services import background_jobs
 from app.realtime.gateway import sio
 from app.services.credit_service import credit_service
@@ -123,7 +123,7 @@ async def generate_image(
         raise HTTPException(status_code=400, detail="Prompt required")
 
     tenant_id, credit_scope = await _credit_context(db, actor)
-    estimated_cost = credit_service.calculate_cost_for_model("openai", OPENAI_IMAGE_MODEL, 0, 0, image_count=1)
+    estimated_cost = credit_service.calculate_cost_for_model("openai", settings.OPENAI_IMAGE_MODEL, 0, 0, image_count=1)
     allowed = await credit_service.check_availability(
         db,
         tenant_id,
@@ -144,7 +144,7 @@ async def generate_image(
             db,
             tenant_id,
             "openai",
-            OPENAI_IMAGE_MODEL,
+            settings.OPENAI_IMAGE_MODEL,
             estimated_cost,
             {
                 "image_count": 1,

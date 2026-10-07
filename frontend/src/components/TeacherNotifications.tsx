@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, FileText, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
+import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, FileText, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 
 export interface QuizAnswer {
@@ -157,9 +157,9 @@ export default function TeacherNotifications({
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-96 bg-white rounded-lg shadow-lg border z-50">
+        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-[var(--ds-radius-panel)]">
           {/* Header */}
-          <div className="flex items-center justify-between p-2 border-b">
+          <div className="flex items-center justify-between px-3 py-2.5 shadow-[0_1px_0_rgba(120,120,124,0.12)]">
             <span className="text-sm font-medium text-gray-700">Notifiche ({notifications.length})</span>
             {notifications.length > 0 && (
               <Button

@@ -12,7 +12,7 @@ import {
   Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
   Building2,
-} from 'lucide-react'
+} from '@/components/icons'
 
 /* ─── types ──────────────────────────────────────────── */
 interface TeacherRequest {

@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Clock, Users, CheckCircle2, Zap, CloudLightning,
   ListChecks, MessageSquare, ThumbsUp, BarChart2, ArrowRight, Sparkles, Trophy,
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ── Types ──
 

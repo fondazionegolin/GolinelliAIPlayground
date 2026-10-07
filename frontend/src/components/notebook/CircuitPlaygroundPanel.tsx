@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Cable, CheckCircle2, Download, Loader2, Play, Send, Terminal, Unplug, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, Cable, CheckCircle2, Download, Loader2, Play, Send, Terminal, Unplug, Zap } from '@/components/icons'
 import { hardwareApi, type CircuitPlaygroundCompileResult } from '@/lib/api'
 
 type SerialPortLike = {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link2, Loader2, Share2, X } from 'lucide-react'
+import { Link2, Loader2, Share2, X } from '@/components/icons'
 import { boardsApi, type BoardShareTarget } from '@/lib/api'
 import { SearchPill } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
@@ -99,7 +99,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                     type="button"
                     disabled={boardPatchPending}
                     onClick={() => onBoardPatch({ session_id: activeSessionId })}
-                    className="mt-2 inline-flex h-9 items-center gap-1 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+                    className="mt-2 inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:opacity-40"
                   >
                     <Link2 className="h-4 w-4" /> Collega alla sessione attiva
                   </button>
@@ -162,7 +162,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
             type="button"
             disabled={save.isPending || isLoading}
             onClick={() => save.mutate()}
-            className="h-10 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {save.isPending ? 'Salvataggio…' : 'Salva condivisione'}
           </button>

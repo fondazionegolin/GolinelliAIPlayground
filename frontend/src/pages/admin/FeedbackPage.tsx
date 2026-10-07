@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
 import { ZoomableImage } from '@/components/ui/ZoomableImage'
-import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send, ImageIcon } from 'lucide-react'
+import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send, ImageIcon } from '@/components/icons'
 
 interface FeedbackReport {
   id: string

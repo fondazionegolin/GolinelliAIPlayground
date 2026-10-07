@@ -35,8 +35,8 @@ import {
   Sparkles,
   Smartphone,
   Wand2,
-  X,
-} from 'lucide-react'
+  X, Brain,
+} from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { codingApi, getApiAuthHeaders, llmApi, studentApi } from '@/lib/api'
@@ -45,6 +45,9 @@ import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorC
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
+import MlModelPicker, { ML_MODELS_PATH, buildMlModelsMarkdown } from '@/components/coding/MlModelPicker'
+import { buildMlStub, mlModelIdsFrom, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import {
   WorkspaceExplorerBadge,
   WorkspaceExplorerHeader,
@@ -532,8 +535,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
   activeWorkbenchRef.current = activeWorkbench
-  const previewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: true })), [files, isReactPreview])
-  const fullscreenPreviewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: false })), [files, isReactPreview])
+  // ML Lab models attached to this project (ml-models.md lists their ids); fetched once per set of ids.
+  const [mlModels, setMlModels] = useState<MlRuntimeModel[]>([])
+  const [mlPickerOpen, setMlPickerOpen] = useState(false)
+  const mlIdsKey = mlModelIdsFrom(files.find((file) => file.path === ML_MODELS_PATH)?.content).join(',')
+  useEffect(() => {
+    const ids = mlIdsKey ? mlIdsKey.split(',') : []
+    if (ids.length === 0) { setMlModels([]); return }
+    let cancelled = false
+    Promise.all(ids.map((id) => mlLabApi.runtimeModel(id).then((response) => response.data as MlRuntimeModel).catch(() => null)))
+      .then((loaded) => { if (!cancelled) setMlModels(loaded.filter((model): model is MlRuntimeModel => Boolean(model))) })
+    return () => { cancelled = true }
+  }, [mlIdsKey])
+  const previewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: true, mlModels })), [files, isReactPreview, mlModels])
+  const fullscreenPreviewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: false, mlModels })), [files, isReactPreview, mlModels])
   const hasPreview = isReactPreview ? files.length > 0 : Boolean(previewHtml)
   const latestVersion = useMemo(() => [...(projectDetail?.versions || [])].sort((a, b) => b.version_number - a.version_number)[0], [projectDetail])
   const sortedVersions = useMemo(() => [...(projectDetail?.versions || [])].sort((a, b) => b.version_number - a.version_number), [projectDetail])
@@ -1730,6 +1745,19 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     window.setTimeout(() => setDesignNotice(null), 6000)
   }
 
+  // Attaches (or detaches) ML Lab models: writes ml-models.md into the knowledge base, so the code generator knows
+  // they exist and how to call window.GolinelliML, and the preview gets the model payloads.
+  const applyMlModels = (projects: MLLabProjectSummary[]) => {
+    setMlPickerOpen(false)
+    const others = files.filter((file) => file.path !== ML_MODELS_PATH)
+    if (projects.length === 0) { setFiles(others); setDesignNotice('Modelli ML scollegati dal progetto.'); window.setTimeout(() => setDesignNotice(null), 5000); return }
+    setFiles([...others, { path: ML_MODELS_PATH, language: 'markdown', content: buildMlModelsMarkdown(projects) }])
+    setSelectedPath(ML_MODELS_PATH)
+    if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
+    setDesignNotice(`${projects.length === 1 ? 'Modello ML collegato' : `${projects.length} modelli ML collegati`}: la prossima generazione li userà con window.GolinelliML.`)
+    window.setTimeout(() => setDesignNotice(null), 6000)
+  }
+
   const addNewFile = () => {
     const raw = window.prompt('Nome del nuovo file (es. struttura.md, note.md). I file .md diventano knowledge base di progetto.')
     if (!raw) return
@@ -1924,7 +1952,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   setMobilePane('prompt')
                 }}
                 disabled={creating || generating || draftSaving}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] disabled:opacity-40"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] disabled:opacity-40"
                 aria-label="Nuovo progetto"
               >
                 <Plus className="h-5 w-5" />
@@ -2085,7 +2113,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         type="button"
                         onClick={submitInterview}
                         disabled={creating || generating}
-                        className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
+                        className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
                       >
                         {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                         Genera progetto
@@ -2329,6 +2357,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   <Plus className="h-3.5 w-3.5" />
                   File
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setMlPickerOpen(true)}
+                  title="Collega modelli del Lab ML (pose, gesti delle mani, immagini) a questo progetto"
+                  className={`ml-1 inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold hover:bg-white/10 ${mlModels.length ? 'border-violet-400/60 bg-violet-500/15 text-violet-200' : 'border-dashed border-white/20 bg-white/5 text-slate-300'}`}
+                >
+                  <Brain className="h-3.5 w-3.5" />
+                  Modelli ML{mlModels.length ? ` · ${mlModels.length}` : ''}
+                </button>
               </div>
               <div className="flex min-h-0 flex-1">
               <ProjectFileTree files={files} selectedPath={selectedFile?.path} onSelect={setSelectedPath} onAddFile={addNewFile} />
@@ -2353,6 +2390,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <CodingSandpackPreview
                   key={`${previewIdentityKey}:${mediaReloadNonce}`}
                   files={files}
+                  mlModels={mlModels}
                   enableInspector
                   forceVerticalScroll={isMobile}
                   className="h-full w-full"
@@ -2428,7 +2466,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </button>
           </div>
           {isReactPreview ? (
-            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} forceVerticalScroll={isMobile} className="min-h-0 flex-1" />
+            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} mlModels={mlModels} enableInspector={false} forceVerticalScroll={isMobile} className="min-h-0 flex-1" />
           ) : (
             <CodingSandpackPreview
               key={`fullscreen:${previewKey}:${fullscreenNonce}`}
@@ -2438,6 +2476,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             />
           )}
         </div>
+      )}
+      {mlPickerOpen && (
+        <MlModelPicker
+          attachedIds={mlModelIdsFrom(files.find((file) => file.path === ML_MODELS_PATH)?.content)}
+          onApply={applyMlModels}
+          onClose={() => setMlPickerOpen(false)}
+        />
       )}
       {diffView && (
         <DiffViewer
@@ -3497,7 +3542,7 @@ async function waitForImageUrl(url: string, timeoutMs = 12000): Promise<void> {
   }
 }
 
-function buildPreviewHtml(files: GeneratedFile[], options: { enableInspector?: boolean } = {}) {
+function buildPreviewHtml(files: GeneratedFile[], options: { enableInspector?: boolean; mlModels?: MlRuntimeModel[] } = {}) {
   if (!files.length) return ''
   const clean = (file: GeneratedFile) => {
     const low = file.path.toLowerCase()
@@ -3528,10 +3573,15 @@ function buildPreviewHtml(files: GeneratedFile[], options: { enableInspector?: b
   if (!/<script[\s>]/i.test(output) && wrappedJs) {
     output = output.replace(/<\/body>/i, `${wrappedJs}</body>`)
   }
+  // ML Lab models: define window.GolinelliML first, so the sketch's own scripts can call it straight away.
+  if (options.mlModels?.length) {
+    const stub = `<script>${buildMlStub(options.mlModels, window.location.origin).replace(/<\/script/gi, '<\\/script')}</script>`
+    output = /<head[^>]*>/i.test(output) ? output.replace(/<head[^>]*>/i, (tag) => `${tag}${stub}`) : `${stub}${output}`
+  }
   return injectPreviewRuntime(output, htmlFiles, safeCss, safeJs, options)
 }
 
-function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, css: string, js: string, options: { enableInspector?: boolean } = {}) {
+function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, css: string, js: string, options: { enableInspector?: boolean; mlModels?: MlRuntimeModel[] } = {}) {
   const sitePayload = JSON.stringify({ htmlFiles, css, js, enableInspector: options.enableInspector !== false }).replace(/</g, '\\u003c')
   const runtime = `<script>
 (() => {

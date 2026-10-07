@@ -5,17 +5,17 @@ import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion
 import { liveInteractionApi, teacherApi, teacherbotsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 import {
   Plus, Minus, Trash2, Play, ChevronDown,
-  ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
-  Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
-  ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText, Bot, LockKeyhole, Share2,
+  ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical,
+  HelpCircle, X, SkipForward, BarChart2, Smartphone,
+  ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText, Bot, LockKeyhole,
   Copy, LayoutTemplate, UsersRound, ChevronRight,
-} from 'lucide-react'
+} from '@/components/icons'
+import LiveSessionList from '@/components/live/LiveSessionList'
 
 // ── Types ──
 
@@ -928,51 +928,6 @@ function SlideCard({
   )
 }
 
-function ContentPreviewStrip({ item }: { item: LiveInteractionItem }) {
-  const previews = (item.slides_json || []).slice(0, 2)
-  if (!previews.length) return null
-
-  return (
-    <div aria-label="Anteprima contenuti" className="flex flex-wrap items-center gap-2">
-      {previews.map((raw, idx) => {
-        if (item.interaction_type === 'escape_room') {
-          const challenge = raw as Record<string, unknown>
-          const label = String(challenge.false_statement || `Indizio ${idx + 1}`)
-          return (
-            <span key={idx} title={label} className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-slate-600"><span className="shrink-0 font-bold">{idx + 1}.</span><span className="truncate">{label}</span></span>
-          )
-        }
-        const slide = raw as Slide
-        const Icon = SLIDE_ICONS[slide.type] || Zap
-        const label = slide.question || slide.prompt || SLIDE_LABELS[slide.type]
-        return (
-          <span key={idx} title={label} className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-slate-600"><Icon className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{label}</span></span>
-        )
-      })}
-      {item.slides_count > previews.length && (
-        <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-bold text-slate-500">+{item.slides_count - previews.length} altri</span>
-      )}
-    </div>
-  )
-}
-
-function GameTypeBadge({ type }: { type?: LiveInteractionItem['interaction_type'] }) {
-  const escapeRoom = type === 'escape_room'
-  return (
-    <Badge
-      tone="neutral"
-      surface="soft"
-      density="default"
-      className={escapeRoom
-        ? 'bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
-        : 'bg-[var(--logo-blue-10)] text-[var(--logo-blue-strong)]'}
-    >
-      {escapeRoom ? <LockKeyhole className="h-3.5 w-3.5" /> : <BarChart2 className="h-3.5 w-3.5" />}
-      {escapeRoom ? 'Escape Room' : 'Quiz e sondaggi'}
-    </Badge>
-  )
-}
-
 // ── Editor panel ──
 
 function InteractionEditor({
@@ -1285,15 +1240,23 @@ function DuplicateForAudienceModal({
       const classes = (await teacherApi.getClasses()).data as Array<{ id: string; name: string }>
       const groups = await Promise.all(classes.map(async classroom => {
         const sessions = (await teacherApi.getSessions(classroom.id)).data as Array<{ id: string; title?: string; name?: string; status: string }>
+        // The session the activity already lives in is always offered (even if paused): duplicating in place is a normal use.
         return sessions
-          .filter(session => session.status === 'active' && session.id !== currentSessionId)
+          .filter(session => session.status === 'active' || session.id === currentSessionId)
           .map(session => ({ id: session.id, title: session.title || session.name || 'Sessione', className: classroom.name, status: session.status }))
       }))
-      return groups.flat()
+      const all = groups.flat()
+      return [...all.filter(a => a.id === currentSessionId), ...all.filter(a => a.id !== currentSessionId)]
     },
   })
+  // Choose the current session by default, so «Duplica» works in one click.
+  useEffect(() => { if (!targetSessionId && audiences.some(a => a.id === currentSessionId)) setTargetSessionId(currentSessionId) }, [audiences, currentSessionId, targetSessionId])
   const duplicate = useMutation({
-    mutationFn: () => liveInteractionApi.duplicate(item.id, { target_session_id: targetSessionId }),
+    mutationFn: () => liveInteractionApi.duplicate(item.id, {
+      target_session_id: targetSessionId,
+      // Same session: tell the copy apart from the original.
+      title: targetSessionId === currentSessionId ? `${item.title} (copia)` : undefined,
+    }),
     onSuccess: () => {
       onDuplicated(targetSessionId)
       toast({ title: 'Sessione duplicata come nuova bozza' })
@@ -1318,10 +1281,10 @@ function DuplicateForAudienceModal({
           {!isLoading && audiences.map(audience => (
             <button key={audience.id} type="button" onClick={() => setTargetSessionId(audience.id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${targetSessionId === audience.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><UsersRound className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
+              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}{audience.id === currentSessionId && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-700">Questa sessione</span>}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
             </button>
           ))}
-          {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono sessioni attive disponibili.</p>}
+          {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono sessioni disponibili.</p>}
         </div>
         <div className="mt-6 flex items-center justify-center gap-3">
           <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
@@ -1442,7 +1405,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(true)
+  const [showTutorial, setShowTutorial] = useState(false) // on demand only: opened with the «?» button
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
   const [showEscapeModal, setShowEscapeModal] = useState(false)
@@ -1457,13 +1420,6 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
     queryFn: () => liveInteractionApi.list(activeSessionId!).then(r => r.data),
     enabled: !!activeSessionId,
   })
-  const orderedInteractions = [...(interactions || [])].sort((left, right) => {
-    const priority: Record<string, number> = { ACTIVE: 0, DRAFT: 1, CLOSED: 2 }
-    const statusDelta = (priority[left.status] ?? 3) - (priority[right.status] ?? 3)
-    return statusDelta || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
-  })
-  const currentInteractions = orderedInteractions.filter(item => item.status !== 'CLOSED')
-  const archivedInteractions = orderedInteractions.filter(item => item.status === 'CLOSED')
 
   const { data: teacherbots = [] } = useQuery<EscapeTeacherbotItem[]>({
     queryKey: ['teacherbots', 'live-escape-picker'],
@@ -1541,7 +1497,9 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             <button
               onClick={() => setShowTutorial(v => !v)}
               className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
-              title={showTutorial ? 'Nascondi tutorial' : 'Mostra tutorial'}
+              title={showTutorial ? 'Nascondi il tutorial' : 'Come funziona: mostra il tutorial'}
+              aria-label={showTutorial ? 'Nascondi il tutorial' : 'Mostra il tutorial'}
+              aria-pressed={showTutorial}
             >
               <HelpCircle className="h-4 w-4" />
             </button>
@@ -1658,119 +1616,14 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
       {/* List */}
       {activeSessionId && !isLoading && Boolean(interactions?.length) && (
-        <div className="space-y-10">
-          {currentInteractions.length > 0 && (
-            <section>
-              <div className="mb-4 flex items-end justify-between gap-4 px-1">
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">Da preparare e in corso</h2>
-                  <p className="mt-1 text-sm text-slate-500">Controlla i contenuti, condividi il link e avvia la sessione.</p>
-                </div>
-                <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">{currentInteractions.length}</span>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                {currentInteractions.map(item => (
-                  <article key={item.id} className="ui-card ui-card-interactive flex flex-col overflow-hidden">
-                    <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {item.status === 'ACTIVE' && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />}
-                          <GameTypeBadge type={item.interaction_type} />
-                          {item.status === 'ACTIVE' && <Badge tone="success" surface="soft" density="compact">Live</Badge>}
-                          {item.status === 'DRAFT' && <Badge tone="warning" surface="soft" density="compact">Bozza</Badge>}
-                        </div>
-                        <h3 className="mt-2 break-words text-lg font-bold leading-snug text-slate-900">{item.title}</h3>
-                        <p className="mt-1.5 text-sm text-slate-500">
-                          {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> Creata il {new Date(item.created_at).toLocaleDateString('it-IT')}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="px-4 pb-3 sm:px-5">
-                      <ContentPreviewStrip item={item} />
-                    </div>
-
-                    <div className="mt-auto flex flex-col gap-3 px-4 pb-4 pt-2 sm:px-5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button tone="neutral" surface="outline" density="compact" onClick={() => setShareTarget(item)}>
-                          <Share2 className="h-3.5 w-3.5" /> Link pubblico
-                        </Button>
-                        {item.status === 'DRAFT' && item.interaction_type !== 'escape_room' && (
-                          <Button tone="neutral" surface="outline" density="compact" onClick={() => setEditingId(item.id)}>
-                            <Pencil className="h-3.5 w-3.5" /> Modifica
-                          </Button>
-                        )}
-                        {item.status !== 'DRAFT' && (
-                          <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
-                            <FileBarChart2 className="h-3.5 w-3.5" /> Report
-                          </Button>
-                        )}
-                        <Button tone="neutral" surface="outline" density="compact" onClick={() => setDuplicateTarget(item)} title="Duplica la sessione">
-                          <Copy className="h-3.5 w-3.5" /> Duplica
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-end gap-2">
-                        {item.status !== 'ACTIVE' && (
-                          <Button tone="danger" surface="ghost" density="compact" onClick={() => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }} disabled={deleteMutation.isPending} title="Elimina">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        {item.status === 'ACTIVE' ? (
-                          <Button tone="success" surface="solid" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
-                            <Radio className="h-3.5 w-3.5" /> Pannello live
-                          </Button>
-                        ) : (
-                          <Button tone="accent" surface="solid" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
-                            <Play className="h-3.5 w-3.5" /> Avvia
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {archivedInteractions.length > 0 && (
-            <section>
-              <div className="mb-4 flex items-end justify-between gap-4 px-1">
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">Archivio</h2>
-                  <p className="mt-1 text-sm text-slate-500">Sessioni concluse, disponibili per report o riutilizzo.</p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{archivedInteractions.length}</span>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                {archivedInteractions.map(item => (
-                  <article key={item.id} className="ui-card ui-card-interactive flex flex-col overflow-hidden p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <GameTypeBadge type={item.interaction_type} />
-                      <Badge tone="neutral" surface="soft" density="compact">Completata</Badge>
-                    </div>
-                    <h3 className="mt-3 break-words text-lg font-bold leading-snug text-slate-900">{item.title}</h3>
-                    <p className="mt-1.5 text-sm text-slate-500">
-                      {item.slides_count} {item.interaction_type === 'escape_room' ? 'indizi' : 'slide'} <span className="px-1 text-slate-300">·</span> {new Date(item.created_at).toLocaleDateString('it-IT')}
-                    </p>
-                    <div className="mt-auto flex flex-wrap items-center gap-2 pt-4 shadow-[0_-1px_0_rgba(163,163,163,0.10)]">
-                      <Button tone="neutral" surface="outline" density="compact" onClick={() => navigate(`/teacher/live-interaction/${item.id}/control`)}>
-                        <FileBarChart2 className="h-3.5 w-3.5" /> Report
-                      </Button>
-                      <Button tone="neutral" surface="outline" density="compact" onClick={() => setDuplicateTarget(item)} title="Duplica la sessione">
-                        <Copy className="h-3.5 w-3.5" /> Duplica
-                      </Button>
-                      <Button className="ml-auto" tone="danger" surface="ghost" density="compact" onClick={() => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }} disabled={deleteMutation.isPending} title="Elimina">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
+        <LiveSessionList
+          items={interactions || []}
+          onOpen={item => navigate(`/teacher/live-interaction/${item.id}/control`)}
+          onShare={item => setShareTarget(item as LiveInteractionItem)}
+          onEdit={item => setEditingId(item.id)}
+          onDuplicate={item => setDuplicateTarget(item as LiveInteractionItem)}
+          onDelete={item => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }}
+        />
       )}
       {shareTarget && <LiveInteractionPublicShareModal interactionId={shareTarget.id} title={shareTarget.title} onClose={() => setShareTarget(null)} />}
       {duplicateTarget && activeSessionId && (

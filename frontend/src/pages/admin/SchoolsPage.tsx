@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   School, Pencil, Check, X, ChevronDown, ChevronUp,
   Loader2, Plus, Building2, User,
-} from 'lucide-react'
+} from '@/components/icons'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'

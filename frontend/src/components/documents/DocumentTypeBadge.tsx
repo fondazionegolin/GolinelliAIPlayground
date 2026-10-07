@@ -1,4 +1,4 @@
-import { FileSpreadsheet, FileText, Globe2, MonitorPlay, PenTool, type LucideIcon } from 'lucide-react'
+import { FileSpreadsheet, FileText, Globe2, MonitorPlay, PenTool, type LucideIcon } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
 
 export type DocumentKind = 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'

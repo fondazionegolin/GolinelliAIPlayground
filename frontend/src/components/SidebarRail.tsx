@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from '@/components/icons'
 import { Button } from '@/design'
 
 /** Collapsed/expanded state for a page sidebar, remembered per device under `storageKey`. */

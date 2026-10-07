@@ -6,6 +6,7 @@ POST /stt/translate   – LLM-based translation of transcribed text
 """
 
 import logging
+from app.services import model_roles
 from typing import Annotated, Optional
 
 import httpx
@@ -59,7 +60,7 @@ async def transcribe_with_whisper(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {api_key}"},
                 files={"file": (filename, audio_bytes, content_type)},
-                data={"model": "whisper-1", "response_format": "verbose_json", **extra},
+                data={"model": model_roles.model_for("stt.whisper"), "response_format": "verbose_json" if model_roles.model_for("stt.whisper") == "whisper-1" else "json", **extra},
             )
             response.raise_for_status()
             result = response.json()

@@ -4,7 +4,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Users,
-} from 'lucide-react'
+} from '@/components/icons'
 import WikiGuidePage, { type WikiSection } from '@/components/wiki/WikiGuidePage'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { useTranslation } from 'react-i18next'

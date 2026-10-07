@@ -23,6 +23,7 @@ class Board(Base):
     framework = Column(String(20), nullable=True)  # scrum|kanban
     labels_json = Column(JSONB, default=list, nullable=False)  # [{id, name, color}]
     sprints_json = Column(JSONB, default=list, nullable=False)  # [{id, name, goal, start_date, end_date}]
+    auto_sprint_weekly = Column(Boolean, nullable=False, default=False)
     created_by_display_name = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

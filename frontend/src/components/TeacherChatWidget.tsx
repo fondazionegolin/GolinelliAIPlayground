@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MessageSquare, X, Loader2, Trash2 } from 'lucide-react'
+import { MessageSquare, X, Loader2, Trash2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { teacherApi, chatApi } from '@/lib/api'
 import ChatSidebar from '@/components/ChatSidebar'

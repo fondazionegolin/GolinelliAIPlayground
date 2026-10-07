@@ -16,7 +16,7 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-} from 'lucide-react'
+} from '@/components/icons'
 
 const CONTACT_EMAIL = 'a.saracino@fondazionegolinelli.it'
 

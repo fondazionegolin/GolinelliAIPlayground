@@ -31,7 +31,7 @@ class Tenant(Base):
     # ── Limiti strutturali (configurabili dall'admin) ────────────────────────
     max_teachers = Column(Integer, nullable=False, default=5, server_default="5")
     max_students_per_teacher = Column(Integer, nullable=False, default=100, server_default="100")
-    max_students_per_class = Column(Integer, nullable=False, default=30, server_default="30")
+    max_students_per_class = Column(Integer, nullable=False, default=300, server_default="30")  # new tenants start at 300 per session
 
     # ── Budget mensile ────────────────────────────────────────────────────────
     # SCHOOL: pool condiviso docenti + studenti (default €10)

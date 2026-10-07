@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
   Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Square, Terminal, Trash2, Wrench, X, Zap,
-} from 'lucide-react'
+} from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { v4 as uuidv4 } from 'uuid'

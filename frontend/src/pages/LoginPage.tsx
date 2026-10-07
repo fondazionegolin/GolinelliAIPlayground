@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BrainCircuit, ShieldCheck, Sparkles, Workflow, FlaskConical, Eye } from 'lucide-react'
+import { BrainCircuit, ShieldCheck, Sparkles, Workflow, FlaskConical, Eye } from '@/components/icons'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { X, Upload, Check } from 'lucide-react'
+import { X, Upload, Check } from '@/components/icons'
 
 // ── Palette generation ────────────────────────────────────────────────────────
 // 16 columns × 16 rows = 256 colors

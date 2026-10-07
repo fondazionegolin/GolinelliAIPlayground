@@ -1,4 +1,4 @@
-import { Cloud, Droplets, Zap } from 'lucide-react'
+import { Cloud, Droplets, Zap } from '@/components/icons'
 import { useQuery } from '@tanstack/react-query'
 import { llmApi } from '@/lib/api'
 import {

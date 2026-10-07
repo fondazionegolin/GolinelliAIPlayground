@@ -1,5 +1,5 @@
 import type { SVGProps } from 'react'
-import { GraduationCap } from 'lucide-react'
+import { GraduationCap } from '@/components/icons'
 
 /** Identità AI condivisa: un segno accademico semplice, leggibile anche nella navbar. */
 export function AcademicAiIcon({ className, strokeWidth = 2.2, ...props }: SVGProps<SVGSVGElement>) {

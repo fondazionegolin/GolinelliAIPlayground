@@ -21,6 +21,9 @@ from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport, FeedbackBoardCollaborator, FeedbackBoardConfig
 from app.models.board import Board, BoardCard, BoardShare
 from app.models.background_job import BackgroundJob
+from app.models.ai_model import AIModel, AIModelRole, AIModelScan
+from app.models.teacher_memory import TeacherMemoryItem, TeacherMemoryPrefs
+from app.models.ml_image_project import MLImageProject
 from app.models.notebook import Notebook
 from app.models.notebook_version import NotebookVersion
 from app.models.notebook_assignment import NotebookAssignment, NotebookFork
@@ -98,6 +101,12 @@ __all__ = [
     "BoardCard",
     "BoardShare",
     "BackgroundJob",
+    "AIModel",
+    "AIModelScan",
+    "AIModelRole",
+    "TeacherMemoryItem",
+    "TeacherMemoryPrefs",
+    "MLImageProject",
     "Notebook",
     "NotebookVersion",
     "UserDesktop",

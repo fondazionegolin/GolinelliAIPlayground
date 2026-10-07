@@ -9,8 +9,8 @@ import {
   GraduationCap,
   School,
   FlaskConical
-} from 'lucide-react'
-import { X } from 'lucide-react'
+} from '@/components/icons'
+import { X } from '@/components/icons'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'

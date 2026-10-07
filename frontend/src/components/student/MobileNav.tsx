@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, MessageSquare, Bot, Brain, Code2 } from 'lucide-react'
+import { Home, MessageSquare, Bot, Brain, Code2 } from '@/components/icons'
 import { triggerHaptic } from '@/lib/haptics'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 import { useTranslation } from 'react-i18next'

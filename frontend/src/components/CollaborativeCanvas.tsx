@@ -7,7 +7,7 @@ import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
   RectangleHorizontal, Triangle, Undo2, Redo2, Maximize, Minimize,
   LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move,
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

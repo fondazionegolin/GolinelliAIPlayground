@@ -7,7 +7,7 @@ import {
   GraduationCap, ClipboardCheck, MessageSquare, User, Database, Lightbulb, Bot,
   ArrowLeft, Save, RotateCcw, MessageCircle, FileText, Sparkles, MonitorPlay,
   ExternalLink,
-} from 'lucide-react'
+} from '@/components/icons'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { TeacherbotPromptOptimizer } from '@/components/teacher/TeacherbotPromptOptimizer'
 import { Button } from '@/components/ui/button'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, UserPlus, Crown, Users, Trash2, Loader2, Mail, Clock, RefreshCw } from 'lucide-react'
+import { X, UserPlus, Crown, Users, Trash2, Loader2, Mail, Clock, RefreshCw } from '@/components/icons'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'

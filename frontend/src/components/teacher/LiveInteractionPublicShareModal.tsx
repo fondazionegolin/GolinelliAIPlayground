@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { Copy, ExternalLink, Link2, Loader2, Maximize2, QrCode, ShieldCheck, Trash2, X } from 'lucide-react'
+import { Copy, ExternalLink, Link2, Loader2, Maximize2, QrCode, ShieldCheck, Trash2, X } from '@/components/icons'
 
 import { liveInteractionApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'

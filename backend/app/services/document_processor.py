@@ -10,6 +10,7 @@ Pipeline:
 """
 
 import io
+from app.services import model_roles
 import re
 import json
 import base64
@@ -22,8 +23,6 @@ logger = logging.getLogger(__name__)
 MAX_SUMMARY_SOURCE_CHARS = 12000
 MAX_STRUCTURED_PREVIEW_CHARS = 4000
 MAX_VISUAL_PAGES = 8
-VISION_MODEL = "gpt-4o"
-VISION_PROVIDER = "openai"
 
 
 @dataclass
@@ -503,8 +502,8 @@ class DocumentProcessor:
                                 },
                             ],
                         }],
-                        provider=VISION_PROVIDER,
-                        model=VISION_MODEL,
+                        provider=model_roles.provider_for("vision"),
+                        model=model_roles.model_for("vision"),
                         temperature=0.2,
                         max_tokens=500,
                     )
@@ -551,8 +550,8 @@ class DocumentProcessor:
                         },
                     ],
                 }],
-                provider=VISION_PROVIDER,
-                model=VISION_MODEL,
+                provider=model_roles.provider_for("vision"),
+                model=model_roles.model_for("vision"),
                 temperature=0.2,
                 max_tokens=600,
             )

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
-import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from 'lucide-react'
+import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
 import { AITextAssistPanel } from './AITextAssistPanel'
 import { SlideTextBlock } from './SlideTextBlock'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'

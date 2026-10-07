@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Circle, Eye, EyeOff, GripVertical, Image as ImageIcon, Lock, Minus, Square, Type, Unlock } from 'lucide-react'
+import { Circle, Eye, EyeOff, GripVertical, Image as ImageIcon, Lock, Minus, Square, Type, Unlock } from '@/components/icons'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { reorderBlockLayer, toggleBlockHidden, toggleBlockLocked } from '@/lib/slideBlocks'
 

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Plus, Trash2, Upload, Monitor, FileText, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp, PanelTop } from 'lucide-react'
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp, PanelTop } from '@/components/icons'
 import { filesApi, teacherApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'

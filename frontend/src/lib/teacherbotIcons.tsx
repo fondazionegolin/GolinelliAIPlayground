@@ -6,9 +6,9 @@ import {
   BarChart3, PieChart, Presentation, ClipboardList, Award, Feather, Newspaper, Headphones, Mic,
   Paintbrush, Shapes, Infinity as InfinityIcon, Sigma, Binary, Theater, Drama,
   type LucideIcon,
-} from 'lucide-react'
+} from '@/components/icons'
 
-/** Curated set of lucide-react icons offered as custom teacherbot avatars — already-installed,
+/** Curated set of platform icons (@/components/icons) offered as custom teacherbot avatars — already-installed,
  * single-stroke icons that render legibly in either black (light background) or white (dark/
  * colored background) since they inherit `currentColor`. */
 export const TEACHERBOT_ICON_LIBRARY: { key: string; Icon: LucideIcon; label: string }[] = [

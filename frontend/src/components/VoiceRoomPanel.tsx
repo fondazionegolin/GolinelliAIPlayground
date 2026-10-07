@@ -15,7 +15,7 @@ import {
   Volume2,
   VolumeX,
   X,
-} from 'lucide-react'
+} from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { voiceApi } from '@/lib/api'

@@ -28,7 +28,7 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-query': ['@tanstack/react-query'],
-          'vendor-ui': ['framer-motion', 'lucide-react'],
+          'vendor-ui': ['framer-motion'],
           'vendor-i18n': ['react-i18next', 'i18next'],
           'vendor-markdown': ['react-markdown', 'remark-gfm', 'remark-math', 'rehype-katex', 'katex'],
           'vendor-editor': [

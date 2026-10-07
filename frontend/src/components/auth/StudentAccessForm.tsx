@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, KeyRound, UserRound } from 'lucide-react'
+import { ArrowLeft, ArrowRight, KeyRound, UserRound } from '@/components/icons'
 
 import { studentApi } from '@/lib/api'
 import { connectSocket } from '@/lib/socket'

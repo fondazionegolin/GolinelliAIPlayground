@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2 } from '@/components/icons'
 import DocumentThumbnail from './DocumentThumbnail'
 import type { DocumentKind } from './DocumentTypeBadge'
 

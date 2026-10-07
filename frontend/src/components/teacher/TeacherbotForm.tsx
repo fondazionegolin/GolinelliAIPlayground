@@ -5,7 +5,7 @@ import {
   ArrowLeft, Save, Loader2, Check, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Sparkles, Layers, Info, Palette, SlidersHorizontal, Terminal, Share2, Link2,
   Send, RefreshCw, Bot, Users, User, Search, MessageSquare, DoorClosed,
-} from 'lucide-react'
+} from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { studentbotsApi, teacherbotsApi, type InquiryConfig } from '@/lib/api'
 import InquiryConfigEditor, { emptyInquiryConfig, normalizeInquiryConfig } from './InquiryConfigEditor'

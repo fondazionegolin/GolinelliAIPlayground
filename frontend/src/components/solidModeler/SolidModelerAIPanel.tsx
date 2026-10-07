@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
-import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from '@/components/icons'
 import type { AgentStepEvent, SceneObject } from './types'
 
 const MODELS = [

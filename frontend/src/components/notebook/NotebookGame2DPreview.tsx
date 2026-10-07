@@ -1,4 +1,4 @@
-import { AlertCircle, Gamepad2 } from 'lucide-react'
+import { AlertCircle, Gamepad2 } from '@/components/icons'
 
 interface Props {
   source: string

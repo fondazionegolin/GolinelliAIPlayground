@@ -1,3 +1,6 @@
+import { useFileDropHighlight } from '@/hooks/useFileDropHighlight'
+import { DropOverlay } from '@/components/ui/DropOverlay'
+import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, type CSSProperties, Suspense } from 'react'
 import { type RagSession, getRagSessions, saveRagSession, createRagSession, deleteRagSession } from '@/lib/ragSessions'
 import { useTranslation } from 'react-i18next'
@@ -12,7 +15,7 @@ import {
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
   FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
-} from 'lucide-react'
+} from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -530,6 +533,7 @@ type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
 export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false }: ChatbotModuleProps) {
   const { t, i18n } = useTranslation()
+  const { active: dropActive, dropHighlightProps } = useFileDropHighlight()
   // True once "Apri in sidebar" has been clicked but the panel is still full-page — the dock only
   // takes effect on the next navigation, so the button pulses green to confirm the click registered.
   const isDockArmed = dockArmed && !sidebarMode
@@ -1663,7 +1667,7 @@ REGOLE IMPORTANTI:
 - Rispondi SOLO con il prompt ottimizzato.`
 
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.6-luna', abortController.signal)
+      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', modelsData?.default_provider || 'openai', modelsData?.default_model || 'gpt-5.6-luna', abortController.signal)
       const enhancedPrompt = expansionRes.data?.response?.trim() || messageContent
 
       setImageGenerationProgress({ status: 'Generazione immagine in corso...', step: 'generating', enhancedPrompt })
@@ -2467,7 +2471,7 @@ REGOLE IMPORTANTI:
             <button key={key} type="button" onClick={() => setMainTab(key)}
               className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-black transition-colors ${
                 mainTab === key
-                  ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
+                  ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
                   : 'bg-slate-100 text-slate-600'
               }`}
             >
@@ -2669,7 +2673,7 @@ REGOLE IMPORTANTI:
               <div className="flex gap-2 justify-end">
                 <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">Annulla</button>
                 <button onClick={handleGenerateLesson} disabled={!newLessonTopic.trim() || generatingLesson}
-                  className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-2 text-sm font-semibold border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   Genera
@@ -2974,7 +2978,7 @@ REGOLE IMPORTANTI:
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)]"
+                className="h-9 w-9 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)]"
                 onClick={() => setShowActionMenu((prev) => !prev)}
                 title="Strumenti chatbot"
               >
@@ -3487,8 +3491,7 @@ REGOLE IMPORTANTI:
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                   <button
                     onClick={handleStartNewConversation}
-                    className="flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm shadow-sm transition-colors"
-                    style={selectedSoftStyle}
+                    className="flex w-full items-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 py-2 text-left text-sm font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]"
                   >
                     <Sparkles className="h-4 w-4" />
                     Nuova chat
@@ -3635,16 +3638,15 @@ REGOLE IMPORTANTI:
         <div
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         style={chatBg && !sidebarMode ? { backgroundColor: chatSurface } : undefined}
-        onDragOver={(e) => {
-          e.preventDefault()
-          e.currentTarget.classList.add('ring-2', 'ring-inset')
-        }}
-        onDragLeave={(e) => {
-          e.currentTarget.classList.remove('ring-2', 'ring-inset')
-        }}
+        onDragOver={(e) => e.preventDefault()}
+        {...dropHighlightProps}
         onDrop={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.remove('ring-2', 'ring-inset')
+
+          if (e.dataTransfer.types.includes(DRIVE_ITEM_MIME)) {
+            void filesFromUniversalDrag(e.dataTransfer).then((dropped) => dropped.forEach(addFileWithPreview)).catch((err) => console.error('Failed to handle drive item drop', err))
+            return
+          }
 
           const sessionFileData = e.dataTransfer.getData('application/x-session-file')
           if (sessionFileData) {
@@ -3712,6 +3714,7 @@ REGOLE IMPORTANTI:
           files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
         >
+          <DropOverlay active={dropActive} label="Rilascia per allegare" hint="Il file verrà aggiunto al messaggio" />
           {mainTab === 'rag' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex shrink-0 items-center border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm">
@@ -4620,7 +4623,7 @@ REGOLE IMPORTANTI:
               <button
                 onClick={handleGenerateLesson}
                 disabled={!newLessonTopic.trim() || generatingLesson}
-                className="px-4 py-2 text-sm font-semibold border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 text-sm font-semibold border border-transparent bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
               >
                 {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Genera lezione
@@ -4844,7 +4847,7 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
                   </button>
                   <button
                     onClick={() => onGenerateQuiz?.(buildLearningQuizPrompt(topic, unit, uiLanguage))}
-                    className="rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 py-2 text-sm font-semibold text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] transition-colors"
+                    className="rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] px-4 py-2 text-sm font-semibold text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] transition-colors"
                   >
                     {uiLanguage === 'en' ? 'Generate quiz' : 'Genera quiz'}
                   </button>

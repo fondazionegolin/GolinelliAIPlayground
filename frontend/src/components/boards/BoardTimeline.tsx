@@ -1,4 +1,4 @@
-import { CalendarRange, Plus } from 'lucide-react'
+import { CalendarRange, Plus } from '@/components/icons'
 import type { BoardSprint } from './BoardSprintsDialog'
 
 type TimelineCard = {

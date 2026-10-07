@@ -5,7 +5,7 @@ import {
   CheckCircle2, Eye, ChevronDown, ChevronUp,
   Sparkles, PanelLeftClose, PanelLeftOpen, AlertCircle, Plus, Clock,
   Link2, ImageIcon,
-} from 'lucide-react'
+} from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { studentRagApi } from '@/lib/api'

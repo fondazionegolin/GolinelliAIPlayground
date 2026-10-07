@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare } from '@/components/icons'
 import ChatSidebar, { type ChatMessage } from '@/components/ChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
 import { useDraggableFloating } from '@/hooks/useDraggableFloating'
@@ -111,7 +111,7 @@ export function FloatingClassChat({
             if (consumeDragClick()) return
             setOpen(true)
           }}
-          className="fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-xl ring-1 ring-white/40 transition-transform hover:scale-105 active:scale-95"
+          className="fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-xl ring-1 ring-white/40 transition-transform hover:scale-105 active:scale-95"
           style={{ left: position.x, top: position.y }}
           aria-label="Apri chat di classe"
           title="Chat di classe · trascina in alto o in basso"

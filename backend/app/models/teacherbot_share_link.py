@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, func, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 import uuid
 
 from app.core.database import Base
@@ -24,7 +24,7 @@ class TeacherbotShareLink(Base):
     # Hidden session that hosts guests entering via this link (created lazily).
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
 
-    teacherbot = relationship("Teacherbot", backref="share_links")
+    teacherbot = relationship("Teacherbot", backref=backref("share_links", cascade="all, delete-orphan", passive_deletes=True))
     created_by = relationship("User", foreign_keys=[created_by_id])
     conversations = relationship("TeacherbotShareConversation", back_populates="share_link", lazy="dynamic", cascade="all, delete-orphan")
 

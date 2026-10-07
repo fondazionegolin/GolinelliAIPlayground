@@ -92,6 +92,8 @@
     --logo-pink: #fe004d;
     --logo-blue: #3ea9f4;
     --logo-violet: #7b69c9;
+    --icon-tint: #8e7fd0;
+    --icon-tint-amount: 45%;
     --logo-ink: #17151b;
     /* Darker, readable variants for text on light surfaces / fills behind white text.
        The vivid logo blue/violet fail contrast as text on white or behind white text. */
@@ -133,22 +135,22 @@
     --brand-yellow-ink: #854d0e;      /* readable text on yellow */
 
     /* Component control tokens: update these before touching individual screens. */
-    --button-radius: 1rem;
-    --button-height-compact: 2.25rem;
-    --button-height-default: 2.75rem;
-    --button-height-roomy: 3.125rem;
-    --button-height-icon: 2.75rem;
+    --button-radius: var(--selection-radius);
+    --button-height-compact: 2rem;
+    --button-height-default: 2.25rem;
+    --button-height-roomy: 2.75rem;
+    --button-height-icon: 2.25rem;
     --button-padding-x-compact: 0.875rem;
     --button-padding-x-default: 1.25rem;
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
     /* Buttons and selectors share the model-picker material surface. */
-    --button-chrome-bg: var(--ds-button-bg);
-    --button-chrome-bg-hover: var(--ds-button-bg-hover);
-    --button-chrome-border: var(--ds-choice-border);
-    --button-chrome-border-hover: rgba(23,23,23,0.14);
-    --button-chrome-shadow: var(--ds-button-shadow);
-    --button-chrome-shadow-hover: var(--ds-button-shadow-hover);
+    --button-chrome-bg: var(--ds-choice-bg);
+    --button-chrome-bg-hover: var(--ds-choice-bg-hover);
+    --button-chrome-border: transparent;
+    --button-chrome-border-hover: transparent;
+    --button-chrome-shadow: var(--ds-choice-shadow);
+    --button-chrome-shadow-hover: var(--ds-choice-shadow-hover);
     --button-accent-bg: var(--button-chrome-bg);
     --button-accent-shadow: var(--button-chrome-shadow);
     --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
@@ -265,6 +267,8 @@
     /* Readable brand inks on dark surfaces (solid fills keep the light values). */
     --logo-blue-strong: #86c3ef;
     --logo-violet-strong: #ab9ff0;
+    --icon-tint: #b9a8ff;
+    --icon-tint-amount: 28%;
     --brand-red-text: #ff6b93;
     --brand-orange-text: #fb923c;
     --brand-celeste-ink: #86c3ef;
@@ -274,7 +278,7 @@
     --brand-pill-violet: #cfc6ff;
     --brand-yellow-ink: #fde68a;
 
-    --button-chrome-border-hover: rgba(255,255,255,0.14);
+    --button-chrome-border-hover: transparent;
     --selection-border-hover: rgba(255,255,255,0.14);
 
     --surface-muted: rgba(171, 159, 240, 0.07);
@@ -391,7 +395,7 @@
     color: var(--ds-choice-ink);
     background-image: var(--button-chrome-bg);
     border: 0;
-    box-shadow: var(--ds-choice-ring), var(--button-chrome-shadow);
+    box-shadow: var(--button-chrome-shadow);
     backdrop-filter: var(--ds-choice-blur);
     -webkit-backdrop-filter: var(--ds-choice-blur);
     transition:
@@ -405,13 +409,20 @@
   .app-button-chrome:hover {
     transform: translateY(-1px);
     background-image: var(--button-chrome-bg-hover);
-    box-shadow: var(--ds-choice-ring), var(--button-chrome-shadow-hover);
+    box-shadow: var(--button-chrome-shadow-hover);
   }
 
   .app-button-chrome-active,
   .app-button-chrome-active:hover {
     background-image: var(--ds-choice-bg);
     box-shadow: none;
+  }
+
+  /* A rounded action uses its fill and focus state for definition. Keep dashed
+     upload/drop affordances; remove legacy outline utilities across pages. */
+  :where(button, a)[class*="rounded"][class*="border"]:not([class*="border-dashed"]),
+  :where(button, a)[class*="rounded"][class*="border"]:not([class*="border-dashed"]):hover {
+    border-color: transparent;
   }
 
   .app-button-chrome-quiet {
@@ -441,6 +452,22 @@
     box-shadow: none;
     color: var(--btn-tone, var(--app-accent-text));
     transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  @keyframes class-chat-nudge-bounce {
+    0% { transform: translate(110%, -50%); }
+    16% { transform: translate(-12px, -50%); }
+    25% { transform: translate(4px, -50%); }
+    32%, 78% { transform: translate(0, -50%); }
+    100% { transform: translate(110%, -50%); }
+  }
+
+  .class-chat-nudge {
+    animation: class-chat-nudge-bounce 4s ease-in-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .class-chat-nudge { animation: none; }
   }
 
   .navbar-widget-control,
@@ -772,7 +799,16 @@
 /* ── Form focus and validation ──────────────────────────────────────────── */
 /* Keep the interaction colour consistent even in legacy screens that still
    declare a local Tailwind focus colour. Red is reserved for invalid fields. */
-:where(input, textarea, select):focus-visible:not([aria-invalid='true']):not([data-invalid='true']) {
+/* Text fields never draw a focus box: the caret is the only indicator (no ring, no outline, no inner rectangle).
+   Selects keep the standard ring. The :not(#x) trick lifts specificity above every legacy local focus style. */
+html:not(#x) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']), textarea):is(:focus, :focus-visible):not([aria-invalid='true']):not([data-invalid='true']) {
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+:where(select):focus-visible:not([aria-invalid='true']):not([data-invalid='true']) {
   border-color: transparent !important;
   outline: none !important;
   box-shadow: var(--focus-shadow) !important;
@@ -978,11 +1014,11 @@
 /* Navbar cluster submenus: the panel unrolls downward (or sideways from the rail), items follow in a short stagger. */
 @keyframes nav-cluster-unroll {
   from { opacity: 0; transform: translateY(-6px) scaleY(0.92); clip-path: inset(0 0 100% 0 round var(--ds-radius-panel)); }
-  to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round var(--ds-radius-panel)); }
+  to { opacity: 1; transform: none; clip-path: inset(-64px -64px -64px -64px round 0); }
 }
 @keyframes nav-cluster-unroll-side {
   from { opacity: 0; transform: translateX(-6px); clip-path: inset(0 100% 0 0 round var(--ds-radius-panel)); }
-  to { opacity: 1; transform: none; clip-path: inset(0 0 0 0 round var(--ds-radius-panel)); }
+  to { opacity: 1; transform: none; clip-path: inset(-64px -64px -64px -64px round 0); }
 }
 @keyframes nav-cluster-item-in {
   from { opacity: 0; transform: translateY(-4px); }
@@ -993,4 +1029,28 @@
 .nav-cluster-item { animation: nav-cluster-item-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .nav-cluster-unroll, .nav-cluster-unroll-side, .nav-cluster-item { animation: none; }
+}
+
+/* Platform icons (components/icons): a light lilac tint blended into the inherited color, so icons stay
+   readable on solid buttons and colored text. Strength/hue differ in light vs dark. */
+.app-icon {
+  fill: color-mix(in srgb, var(--icon-tint) var(--icon-tint-amount), currentColor);
+}
+/* Webfont variant (Flaticon UIcons): the glyph scales with the element box (Tailwind size classes or --icon-size). */
+:where(.app-icon-font) { width: var(--icon-size, 24px); height: var(--icon-size, 24px); }
+.app-icon-font {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  color: color-mix(in srgb, var(--icon-tint) var(--icon-tint-amount), currentColor);
+}
+.app-icon-font::before { font-size: calc(100cqmin - 2px); line-height: 1; display: block; }
+
+
+/* Squircle tile: smooth superellipse corners where supported, a plain rounded square elsewhere. */
+.ds-squircle { border-radius: 28%; }
+@supports (corner-shape: squircle) {
+  .ds-squircle { border-radius: 52%; corner-shape: squircle; }
 }

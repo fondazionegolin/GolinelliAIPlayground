@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
-} from 'lucide-react'
+  File, Wand2, FolderOpen, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
+} from '@/components/icons'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
@@ -16,10 +16,13 @@ import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import TuringTestPanel from '@/components/TuringTestPanel'
+import { DropOverlay } from '@/components/ui/DropOverlay'
+import { SessionFilesExplorer } from '@/components/SessionFilesExplorer'
+import { DRIVE_ITEM_MIME, filesFromUniversalDrag, setFileDrag } from '@/lib/dragFiles'
 
 export type { ChatMessage }
 
-type TabType = 'session' | 'private' | 'users'
+type TabType = 'session' | 'private' | 'files'
 
 interface ToyLMModelAttachment {
   type: 'toy_lm_model'
@@ -102,7 +105,7 @@ export default function ChatSidebar({
     unpin: isEnglish ? 'Unpin sidebar' : 'Sblocca Sidebar',
     sessionTab: isEnglish ? 'Class' : 'Classe',
     privateTab: isEnglish ? 'Private' : 'Privata',
-    usersTab: isEnglish ? 'Users' : 'Utenti',
+    filesTab: isEnglish ? 'Files' : 'File',
   }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
@@ -144,7 +147,7 @@ export default function ChatSidebar({
 
   const availableTabs: TabType[] = userType === 'student'
     ? ['session', ...(privateChatEnabled ? (['private'] as const) : [])]
-    : ['session', 'private', 'users']
+    : ['session', 'private', 'files']
 
   const getRelativePath = (file: File) => {
     const relativePath = (file as any).webkitRelativePath as string | undefined
@@ -415,6 +418,17 @@ export default function ChatSidebar({
     e.stopPropagation()
     setDragActive(false)
     dragCounter.current = 0
+
+    // Drive items dragged from the session files explorer or the Files section
+    if (e.dataTransfer.types.includes(DRIVE_ITEM_MIME)) {
+      try {
+        const dropped = await filesFromUniversalDrag(e.dataTransfer)
+        if (dropped.length) await shareDroppedFilesToSession(dropped, `📎 ${dropped.map((file) => file.name).join(', ')}`)
+      } catch (err) {
+        console.error('Failed to handle drive item drop', err)
+      }
+      return
+    }
 
     // Check for session file drag (from internal file manager)
     const sessionFileData = e.dataTransfer.getData('application/x-session-file')
@@ -709,7 +723,7 @@ export default function ChatSidebar({
             </div>
             <button
               onClick={() => onNotificationClick?.(msg)}
-              className="mt-3 w-full py-2 border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="mt-3 w-full py-2 border border-transparent bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <Wand2 className="h-3.5 w-3.5" />
               Prova ora
@@ -940,12 +954,7 @@ export default function ChatSidebar({
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation()
-                      e.dataTransfer.setData('desktop/file', JSON.stringify({
-                        filename: att.filename || 'image.png',
-                        mime_type: att.type || 'image/png',
-                        url: att.url,
-                      }))
-                      e.dataTransfer.effectAllowed = 'copy'
+                      setFileDrag(e, { filename: att.filename || 'image.png', mime_type: att.type || 'image/png', url: att.url })
                     }}
                     className={`group relative aspect-[4/3] w-full overflow-hidden rounded-xl border text-left text-xs shadow-sm transition-colors cursor-grab active:cursor-grabbing ${
                       isMe
@@ -980,12 +989,7 @@ export default function ChatSidebar({
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation()
-                      e.dataTransfer.setData('desktop/file', JSON.stringify({
-                        filename: att.filename || 'file',
-                        mime_type: att.type || 'application/octet-stream',
-                        url: att.url,
-                      }))
-                      e.dataTransfer.effectAllowed = 'copy'
+                      setFileDrag(e, { filename: att.filename || 'file', mime_type: att.type || 'application/octet-stream', url: att.url })
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -1200,7 +1204,7 @@ export default function ChatSidebar({
         </div>
         {isUserScrolledUp && (
           <button
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-active-bg-hover)] transition-all z-10"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] text-[11px] font-medium shadow-lg hover:bg-[image:var(--selection-active-bg-hover)] transition-all z-10"
             onClick={() => {
               const container = scrollRef.current
               if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
@@ -1211,57 +1215,6 @@ export default function ChatSidebar({
             <ChevronDown className="h-3.5 w-3.5" />
             {unreadWhileScrolled > 0 ? `${unreadWhileScrolled} nuovi messaggi` : 'Scorri in basso'}
           </button>
-        )}
-      </div>
-    )
-  }
-
-  const renderUsersTab = () => {
-    return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/30">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-1">
-          Online ({onlineUsers.length})
-        </h3>
-        {onlineUsers.length === 0 ? (
-          <div className="text-center py-8 text-slate-400">
-            <p className="text-xs">{t('chat_sidebar.no_users_online')}</p>
-          </div>
-        ) : (
-          onlineUsers.map(user => (
-            <div
-              key={user.student_id}
-              className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-[#181b1e]/20 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-[#181b1e]/10 text-neutral-900 text-xs font-bold">
-                    {(user.nickname || 'Guest').substring(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-sm text-slate-800">{user.nickname || 'Unknown'}</p>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <p className="text-[10px] text-slate-500 uppercase font-medium">{user.role === 'teacher' ? 'Docente' : 'Studente'}</p>
-                  </div>
-                </div>
-              </div>
-              {userType === 'teacher' && user.role === 'student' && user.student_id !== currentUserId && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    startPrivateChat(user)
-                    setActiveTab('private')
-                    setActivePrivateChat(user.student_id)
-                  }}
-                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-neutral-900 hover:bg-[#181b1e]/5"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          ))
         )}
       </div>
     )
@@ -1278,6 +1231,7 @@ export default function ChatSidebar({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onDropCapture={() => { dragCounter.current = 0; setDragActive(false) }}
     >
       {/* Resize handle — grip centrato verticalmente, non su tutta l'altezza */}
       <div
@@ -1345,9 +1299,9 @@ export default function ChatSidebar({
             const tabLabels = {
               session: sidebarLabels.sessionTab,
               private: sidebarLabels.privateTab,
-              users: sidebarLabels.usersTab,
+              files: sidebarLabels.filesTab,
             }
-            const TabIcons = { session: MessageSquare, private: MessagesSquare, users: Users }
+            const TabIcons = { session: MessageSquare, private: MessagesSquare, files: FolderOpen }
             const TabIcon = TabIcons[tab]
             return (
               <button
@@ -1358,6 +1312,7 @@ export default function ChatSidebar({
                     const types = Array.from(e.dataTransfer.types || [])
                     if (
                       types.includes('application/x-session-file')
+                      || types.includes(DRIVE_ITEM_MIME)
                       || types.includes('application/x-chatbot-document')
                       || types.includes('application/x-chatbot-csv')
                       || types.includes('application/x-chatbot-image')
@@ -1400,7 +1355,7 @@ export default function ChatSidebar({
         {activeTab === 'private' && renderPrivateChatsTab()}
 
 
-        {activeTab === 'users' && renderUsersTab()}
+        {activeTab === 'files' && <SessionFilesExplorer sessionId={sessionId} isTeacher={userType === 'teacher'} />}
       </div>
 
       {/* Input area - only show for session chat or when a private chat is selected */}
@@ -1506,14 +1461,7 @@ export default function ChatSidebar({
         </div>
       )}
 
-      {dragActive && (
-        <div className="absolute inset-0 bg-[#181b1e]/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-[#181b1e]/40 rounded-lg">
-          <div className="text-center">
-            <ImageIcon className="h-12 w-12 text-neutral-900 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-neutral-900">{t('chat_sidebar.drop_files_here')}</p>
-          </div>
-        </div>
-      )}
+      <DropOverlay active={dragActive && activeTab !== 'files'} label={t('chat_sidebar.drop_files_here')} hint="Il file sarà condiviso con la classe" />
 
       {/* File Viewer Modal */}
       <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />

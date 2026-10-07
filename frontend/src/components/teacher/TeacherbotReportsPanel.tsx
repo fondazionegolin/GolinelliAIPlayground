@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, FileText, User, Calendar, MessageSquare, ChevronDown, ChevronUp, Loader2, Bot } from 'lucide-react'
+import { ArrowLeft, FileText, User, Calendar, MessageSquare, ChevronDown, ChevronUp, Loader2, Bot } from '@/components/icons'
 import { teacherbotsApi } from '@/lib/api'
 
 interface TeacherbotReportsPanelProps {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Clock3, KeyRound, Loader2, LockKeyhole, PackageOpen, Sparkles, Trophy } from 'lucide-react'
+import { Clock3, KeyRound, Loader2, LockKeyhole, PackageOpen, Sparkles, Trophy } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
 
 export interface LiveEscapeState {

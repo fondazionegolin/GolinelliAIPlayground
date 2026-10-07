@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box, FolderOpen } from 'lucide-react'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box, FolderOpen } from '@/components/icons'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -33,6 +33,8 @@ import { StudentNavbar } from '@/components/StudentNavbar'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { FloatingClassChat } from '@/components/FloatingClassChat'
+import { ClassChatNudge } from '@/components/ClassChatNudge'
+import { useClassChatSidebar } from '@/hooks/useClassChatSidebar'
 import TuringTestPanel from '@/components/TuringTestPanel'
 import { useIsIOS, useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
@@ -257,7 +259,8 @@ export default function StudentDashboard() {
   }, [])
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
   const [oggiImparoLesson, setOggiImparoLesson] = useState<string | null>(null)
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [showSidebar, setShowSidebar] = useClassChatSidebar('student', studentSession?.student_id)
+  const [chatNudge, setChatNudge] = useState(0)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
   const [sharedCodingProject, setSharedCodingProject] = useState<{ projectId: string; nonce: number } | null>(null)
   const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
@@ -594,17 +597,6 @@ export default function StudentDashboard() {
     }
   }, [sessionInfo?.session?.id, studentSession?.student_id, exitStudentSession])
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1100) {
-        setShowSidebar(false)
-      }
-    }
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
   // Listen for "Espandi" from OggiImparoWidget → navigate to chatbot with lesson context
   useEffect(() => {
     const handler = (e: Event) => {
@@ -701,6 +693,7 @@ export default function StudentDashboard() {
           joinCode={sessionInfo.session.join_code}
           chatSidebarOpen={showSidebar}
           onToggleChatSidebar={() => setShowSidebar(v => !v)}
+          onIncomingClassChat={() => setChatNudge((value) => value + 1)}
           accent={studentAccent}
           onAccentChange={setStudentAccent}
           enabledModules={enabledModules}
@@ -843,6 +836,9 @@ export default function StudentDashboard() {
         ) : null}
       </div>
       <FloatingHelper module={activeModule} />
+      {!showSidebar && chatNudge > 0 && (
+        <ClassChatNudge key={chatNudge} onOpen={() => { setShowSidebar(true); setChatNudge(0) }} onDone={() => setChatNudge(0)} />
+      )}
       {sessionInfo && (
         <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
       )}
@@ -1041,7 +1037,7 @@ function StudentMobileShell({
                       key={item.label}
                       onClick={() => handleNavigate(item.key)}
                       className={`flex min-h-[64px] w-full items-center gap-4 rounded-[20px] px-4 py-3 text-left transition active:scale-[0.98] ${
-                        isActive ? 'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-lg' : 'bg-slate-50 text-slate-800'
+                        isActive ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-lg' : 'bg-slate-50 text-slate-800'
                       }`}
                     >
                       <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isActive ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}>

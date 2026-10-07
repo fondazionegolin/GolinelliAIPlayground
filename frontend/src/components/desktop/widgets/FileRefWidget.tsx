@@ -1,4 +1,4 @@
-import { FileText, Image, FileArchive, File, Eye } from 'lucide-react'
+import { FileText, Image, FileArchive, File, Eye } from '@/components/icons'
 
 interface FileRefConfig {
   file_id?: string

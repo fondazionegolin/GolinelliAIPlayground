@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Plus } from '@/components/icons'
 
 const MIN_SCALE = 0.5
 const MAX_SCALE = 2

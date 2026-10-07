@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Mic, Square, X, GraduationCap, Volume2, Search, KeyRound, Send } from 'lucide-react'
+import { Loader2, Mic, Square, X, GraduationCap, Volume2, Search, KeyRound, Send } from '@/components/icons'
 import { llmApi, type InquiryState } from '@/lib/api'
 
 interface AccentColors {

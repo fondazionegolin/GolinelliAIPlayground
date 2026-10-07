@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, AsyncGenerator
 import logging
 
 from app.services.llm_service import llm_service
+from app.services import model_roles
 from app.services.ui_language import apply_output_language_instruction
 from app.schemas.content import (
     IntentResult,
@@ -349,8 +350,8 @@ Classifica l'intento e rispondi con JSON."""
         response = await llm_service.generate(
             messages=[{"role": "user", "content": classification_prompt}],
             system_prompt=INTENT_CLASSIFIER_PROMPT,
-            provider="openai",
-            model="gpt-5.6-luna",  # Fast and cost-efficient
+            provider=model_roles.provider_for("chat.default"),
+            model=model_roles.model_for("chat.default"),  # Fast and cost-efficient
             temperature=0.1,  # Low temperature for consistent classification
             max_tokens=200,
         )
@@ -745,7 +746,7 @@ async def generate_quiz_with_tools(
         try:
             # Call model with tools
             # GPT-5 and o-series models don't support custom temperature
-            if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+            if model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
                 response = await client.chat.completions.create(
                     model=model,
                     messages=full_messages,
@@ -849,7 +850,7 @@ async def generate_exercise_with_tools(
     for iteration in range(max_iterations):
         try:
             # GPT-5 and o-series models don't support custom temperature
-            if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+            if model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
                 response = await client.chat.completions.create(
                     model=model,
                     messages=full_messages,
@@ -1159,8 +1160,8 @@ async def generate_with_web_search_streaming(
         refinement = await llm_service.generate(
             messages=[{"role": "user", "content": refinement_prompt}],
             system_prompt="Sei un motore di ottimizzazione query.",
-            provider="openai", 
-            model="gpt-4o-mini",  # Use correct model name
+            provider=model_roles.provider_for("chat.light"),
+            model=model_roles.model_for("chat.light"),
             temperature=0.3,
             max_tokens=60
         )
@@ -1291,8 +1292,8 @@ async def run_teacher_agent(
     messages: list[dict],
     context: str,
     structured_context: Optional[dict] = None,
-    provider: str = "openai",
-    model: str = "gpt-5.6-luna",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
     actor_type: str = "TEACHER",
     profile_key: str = "teacher_support",
     ui_language: str = "it",
@@ -1314,14 +1315,16 @@ async def run_teacher_agent(
     Returns:
         Generated response string
     """
+    provider = provider or model_roles.provider_for("chat.default")
+    model = model or model_roles.model_for("chat.default")
     try:
         # 0. Handle specialized student profiles first
         if actor_type == "STUDENT" and profile_key == "math_coach":
             from app.services.math_agent import run_math_agent
             return await run_math_agent(
                 messages=messages,
-                provider=provider or "openai",
-                model=model or "gpt-4o-mini",
+                provider=model_roles.provider_for("chat.light"),
+                model=model_roles.model_for("chat.light"),
                 max_iterations=5,
                 school_grade=school_grade,
             )
@@ -1459,14 +1462,16 @@ async def generate_report_widgets(
     structured_context: Optional[dict],
     full_context: str = "",
     messages: Optional[list] = None,
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """
     Generate specialized markdown blocks for session/student selection widgets.
     If a session or students have already been selected (detected by UUID or
     explicit follow-up pattern), generate the actual LLM report directly.
     """
+    provider = provider or model_roles.provider_for("chat.light")
+    model = model or model_roles.model_for("chat.light")
     import re
 
     if not structured_context:

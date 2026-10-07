@@ -1,16 +1,22 @@
+import { useFileDropHighlight } from '@/hooks/useFileDropHighlight'
+import { DropOverlay } from '@/components/ui/DropOverlay'
+import { getResponseLength, setResponseLength, RESPONSE_LENGTH_OPTIONS, type ResponseLength } from '@/lib/responseLength'
+import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
-import { Button as DesignButton } from '@/design/primitives/Button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Video, ScanText, Youtube, PanelRightClose, Square, History
-} from 'lucide-react'
+  Video, ScanText, Youtube, PanelRightClose, Square, History, Brain
+} from '@/components/icons'
+import TeacherMemoryModal from '@/components/teacher/TeacherMemoryModal'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
-import { llmApi, teacherApi } from '@/lib/api'
-import { notifyJobsChanged } from '@/lib/backgroundJobs'
+import api, { llmApi, teacherApi } from '@/lib/api'
+import { notifyJobsChanged, cancelJob } from '@/lib/backgroundJobs'
+import ResearchPanel, { EMPTY_RESEARCH_RUN, applyResearchEvent, type ResearchRun } from '@/components/teacher/ResearchPanel'
+import ResearchPlanCard, { type ResearchPlan } from '@/components/teacher/ResearchPlanCard'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
@@ -61,6 +67,7 @@ const AGENT_MODES = [
   { id: 'brochure', label: 'Brochure' },
   { id: 'dispensa', label: 'Dispensa' },
   { id: 'html_page', label: 'Pagina Interattiva' },
+  { id: 'deep_research', label: 'Deep Research' },
 ] as const
 
 // Explicitly include hidden modes in type even though they're hidden from UI
@@ -485,8 +492,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [isLoading, setIsLoading] = useState(false)
   const activeGenerationAbortRef = useRef<AbortController | null>(null)
   const lastEscapeKeyAtRef = useRef(0)
-  const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
+  // Model choice is derived, never copied: in-session pick → the teacher's explicitly pinned default → the platform default
+  // set by the admin → first listed. No effect has to keep it in sync, so a change of the platform default always shows up.
+  const [showMemory, setShowMemory] = useState(false)
+  const [pickedModel, setSelectedModel] = useState<string | null>(null)
+  const [pinnedModel, setPinnedModel] = useState<string | null>(() =>
+    localStorage.getItem('default_model_pinned') === '1' ? localStorage.getItem('default_model') : null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [showActionMenu, setShowActionMenu] = useState(false)
@@ -505,6 +516,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [ocrOverlays, setOcrOverlays] = useState<Record<string, OcrOverlayData>>({})
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
+  const { active: dropActive, dropHighlightProps } = useFileDropHighlight()
+  const [responseLength, setResponseLengthState] = useState<ResponseLength>(() => getResponseLength())
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-2-2026-04-21'>('gpt-image-2-2026-04-21')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   // Analysis mode: session/task picker
@@ -522,6 +535,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [pendingDispensaPlan, setPendingDispensaPlan] = useState<DispensaPlan | null>(null)
   const [pendingDispensaRequest, setPendingDispensaRequest] = useState<string | null>(null)
   const [pendingDispensaFilesContext, setPendingDispensaFilesContext] = useState<string>('')
+  // Deep research: plan awaiting the teacher's approval, and the live trace of the running sub-agents.
+  const [pendingResearch, setPendingResearch] = useState<{ convId: string; request: string; plan: ResearchPlan } | null>(null)
+  const [researchRun, setResearchRun] = useState<ResearchRun>(EMPTY_RESEARCH_RUN)
+  const [researchRunConv, setResearchRunConv] = useState<string | null>(null)
+  const researchJobIdRef = useRef<string | null>(null)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const linkModalRef = useRef<HTMLDivElement>(null)
@@ -603,20 +621,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    if (!availableModels.length) return
-    const hasSelected = availableModels.some(m => m.id === selectedModel)
-    const hasDefault = availableModels.some(m => m.id === defaultModel)
-    const firstModel = availableModels[0].id
-
-    if (!hasSelected) {
-      setSelectedModel(firstModel)
-    }
-    if (!hasDefault) {
-      setDefaultModel(firstModel)
-      localStorage.setItem('default_model', firstModel)
-    }
-  }, [availableModels, selectedModel, defaultModel])
+  const platformDefaultModel = availableModelsResponse?.data?.default_model as string | undefined
+  const listed = (id?: string | null) => (id && availableModels.some(m => m.id === id) ? id : null)
+  const defaultModel = listed(pinnedModel) ?? listed(platformDefaultModel) ?? availableModels[0]?.id ?? FALLBACK_MODELS[0].id
+  const selectedModel = listed(pickedModel) ?? defaultModel
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -638,8 +646,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     e.stopPropagation()
     // User wants "choose default via checkbox". 
     // Let's assume radio behavior for default (only one default).
-    setDefaultModel(id) // Always set the clicked one as default
+    setPinnedModel(id) // Always set the clicked one as default
     localStorage.setItem('default_model', id)
+    localStorage.setItem('default_model_pinned', '1')
     toast({
       title: t('teacher_chat.default_model_updated'),
       description: t('teacher_chat.default_model_now', { model: availableModels.find(m => m.id === id)?.name })
@@ -1155,6 +1164,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
 
+    if (e.dataTransfer.types.includes(DRIVE_ITEM_MIME)) {
+      void filesFromUniversalDrag(e.dataTransfer).then(addFiles).catch((err) => console.error('Failed to handle drive item drop', err))
+      return
+    }
+
     const sessionFileData = e.dataTransfer.getData('application/x-session-file')
     if (sessionFileData) {
       try {
@@ -1341,7 +1355,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const executeRequest = async (provider: string, model: string) => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
         credentials: 'include',
         signal: opts?.signal,
         body: JSON.stringify({
@@ -1608,7 +1622,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6', maxTokens = 4096): Promise<string> => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
         credentials: 'include',
         signal,
         body: JSON.stringify({
@@ -1891,7 +1905,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     const response = await fetch('/api/v1/llm/teacher/chat-stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
       credentials: 'include',
       signal,
       body: JSON.stringify({
@@ -1912,6 +1926,129 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       })
     }
     return parseDispensaPlan(out)
+  }
+
+  // ── Deep research ──────────────────────────────────────────────────────────
+  const researchDocFor = (convId: string): GeneratedDoc | null => {
+    if (currentConversationId === convId && activeDoc?.type === 'research') return activeDoc
+    const cached = docCacheRef.current[convId]
+    return cached?.type === 'research' ? cached : null
+  }
+
+  const modelForResearch = () => {
+    const info = availableModels.find((m) => m.id === selectedModel)
+    return { provider: info?.provider || 'openai', model: selectedModel }
+  }
+
+  /** Step 1: ask the chatbot for the research topics (or a clarifying question) and show them for approval. */
+  const proposeResearch = async (convId: string, userMessage: Message, request: string, signal: AbortSignal) => {
+    const existing = researchDocFor(convId)
+    setStreamingStatus('🧭 Preparo il piano di ricerca…')
+    const { data } = await api.post('/llm/teacher/deep-research/plan', {
+      content: request,
+      history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+      existing_title: existing?.title,
+      ...modelForResearch(),
+    }, { signal })
+    setStreamingStatus(null)
+    let content: string
+    if (data.plan?.subtopics?.length) {
+      setPendingResearch({ convId, request, plan: data.plan })
+      content = [
+        existing ? `Per ampliare **${existing.title}** propongo di cercare:` : `Ecco come impostare la ricerca su **${data.plan.title}**:`,
+        '', ...data.plan.subtopics.map((s: { title: string }) => `- ${s.title}`), '',
+        'Modifica argomenti e query nel riquadro qui sotto (o scrivimi cosa cambiare), poi premi **Approva e avvia**: i sub-agent cercheranno e leggeranno le fonti finché gli argomenti non si esauriscono.',
+      ].join('\n')
+    } else {
+      setPendingResearch(null)
+      content = data.clarifying_question || 'Puoi descrivere meglio cosa vuoi approfondire?'
+    }
+    const assistantMessage: Message = { id: `resp-${Date.now()}`, role: 'assistant', content, timestamp: new Date() }
+    setMessages((prev) => [...prev, assistantMessage])
+    await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
+  }
+
+  /** Step 2: the approved plan runs as a background job; every sub-agent event updates the right-hand panel. */
+  const startResearchRun = async () => {
+    const pending = pendingResearch
+    if (!pending || isLoading) return
+    const { convId } = pending
+    const existing = researchDocFor(convId)
+    setPendingResearch(null)
+    const userMessage: Message = { id: `msg-${Date.now()}`, role: 'user', content: 'Approvo il piano di ricerca', timestamp: new Date() }
+    setMessages((prev) => [...prev, userMessage])
+    setIsLoading(true)
+    const abortController = new AbortController()
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = abortController
+    setResearchRun({ ...EMPTY_RESEARCH_RUN, status: 'running', statusText: 'Avvio dei sub-agent…' })
+    setResearchRunConv(convId)
+    setShowCanvas(true)
+    try {
+      const response = await fetch('/api/v1/llm/teacher/deep-research/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
+        credentials: 'include',
+        signal: abortController.signal,
+        body: JSON.stringify({
+          plan: pending.plan,
+          conversation_id: convId,
+          existing_document: existing ? { title: existing.title, content: existing.content, version: existing.version } : null,
+          ...modelForResearch(),
+        }),
+      })
+      if (!response.ok || !response.body) throw new Error('Impossibile avviare la ricerca')
+      researchJobIdRef.current = response.headers.get('X-Job-Id')
+      notifyJobsChanged()
+      let finalEvent: any = null
+      await consumeSseStream(response.body.getReader(), (data) => {
+        setResearchRun((prev) => applyResearchEvent(prev, data))
+        if (data.type === 'done') finalEvent = data
+        if (data.type === 'error') throw new Error(data.message || 'Ricerca non riuscita')
+      })
+      if (!finalEvent) throw new Error('La ricerca si è interrotta prima del termine')
+      const newDoc: GeneratedDoc = finalEvent.document
+      setActiveDoc(newDoc)
+      docCacheRef.current[convId] = newDoc
+      localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+      setConvsWithDocs((prev) => new Set([...prev, convId]))
+      teacherApi.saveConversationDocument(convId, newDoc).catch((e) => console.warn('Failed to save research document:', e))
+      const assistantMessage: Message = {
+        id: `resp-${Date.now()}`, role: 'assistant', content: finalEvent.content, timestamp: new Date(),
+        provider: finalEvent.provider, model: finalEvent.model, token_usage_json: finalEvent.token_usage,
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+      queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
+      await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return
+      setResearchRun((prev) => ({ ...prev, status: 'error', error: e?.message || 'Ricerca non riuscita' }))
+      setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `La ricerca non è andata a buon fine: ${e?.message || 'errore sconosciuto'}`, timestamp: new Date() }])
+    } finally {
+      if (activeGenerationAbortRef.current === abortController) {
+        activeGenerationAbortRef.current = null
+        setIsLoading(false)
+      }
+    }
+  }
+
+  const stopResearch = () => {
+    const jobId = researchJobIdRef.current
+    researchJobIdRef.current = null
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = null
+    setIsLoading(false)
+    setResearchRun((prev) => ({ ...prev, status: 'error', error: 'Ricerca interrotta dal docente' }))
+    cancelJob(jobId).catch(() => undefined)
+  }
+
+  const handleResearchDocEdit = (content: string) => {
+    if (!activeDoc || activeDoc.type !== 'research' || !currentConversationId) return
+    const edited = { ...activeDoc, content }
+    setActiveDoc(edited)
+    docCacheRef.current[currentConversationId] = edited
+    localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+    teacherApi.saveConversationDocument(currentConversationId, edited).catch((e) => console.warn('Failed to save research document:', e))
   }
 
   const handleSend = async (overrideInput?: string) => {
@@ -2144,8 +2281,8 @@ REGOLE IMPORTANTI:
           expansionPrompt,
           expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
-          'openai',
-          'gpt-5.6-luna',
+          availableModels.find(m => m.id === platformDefaultModel)?.provider || 'openai',
+          platformDefaultModel || 'gpt-5.6-luna',
           undefined,
           undefined,
           signal
@@ -2271,6 +2408,12 @@ REGOLE IMPORTANTI:
         } finally {
           setIsGeneratingDoc(false)
         }
+      } else if (agentMode === 'deep_research') {
+        const pendingForConv = pendingResearch?.convId === convId ? pendingResearch : null
+        const request = pendingForConv
+          ? `${pendingForConv.request}\n\nModifiche richieste dal docente: ${userInput}`
+          : userInput || messageContent
+        await proposeResearch(convId, userMessage, request, signal)
       } else if (agentMode === 'brochure' || agentMode === 'dispensa') {
         // DOCUMENT GENERATION/EDITING FLOW
         setIsGeneratingDoc(true)
@@ -2577,6 +2720,7 @@ REGOLE IMPORTANTI:
   }
 
   const handleNewChat = () => {
+    setAgentMode('default')
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
@@ -2667,6 +2811,9 @@ REGOLE IMPORTANTI:
     }
     if (mode === 'brochure') {
       return 'Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.'
+    }
+    if (mode === 'deep_research') {
+      return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, finché i contenuti non iniziano a sovrapporsi, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
     }
     if (mode === 'dispensa') {
       return 'Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.'
@@ -2803,7 +2950,9 @@ REGOLE IMPORTANTI:
 
   return (
     <>
-      <div className="teacher-support-shell h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      {showMemory && <TeacherMemoryModal onClose={() => setShowMemory(false)} />}
+      <div className="teacher-support-shell relative h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop} {...dropHighlightProps}>
+      <DropOverlay active={dropActive} label="Rilascia per allegare" hint="Il file verrà aggiunto al messaggio" />
         
 
 
@@ -2879,9 +3028,9 @@ REGOLE IMPORTANTI:
                       </div>
 
                       <div className="shrink-0 px-3 pt-3">
-                        <DesignButton tone="accent" surface="solid" density="compact" fullWidth onClick={handleNewChat}>
+                        <button type="button" onClick={handleNewChat} className="flex min-h-[var(--selection-height)] w-full items-center justify-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]">
                           <Plus className="h-3.5 w-3.5" /> Nuova chat
-                        </DesignButton>
+                        </button>
                       </div>
 
                       <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-3">
@@ -2989,6 +3138,27 @@ REGOLE IMPORTANTI:
                           <p className="text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-200">
                             Questo è il <strong>system prompt</strong> del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.
                           </p>
+                          <div>
+                            <p className="mb-2 text-xs font-bold text-slate-700">Formato delle risposte</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {RESPONSE_LENGTH_OPTIONS.map((option) => {
+                                const selected = responseLength === option.id
+                                return (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => { setResponseLengthState(option.id); setResponseLength(option.id) }}
+                                    className={`rounded-[var(--ds-radius-control)] px-3 py-2.5 text-left outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${selected ? 'ds-selected' : 'ds-control text-slate-700'}`}
+                                    aria-pressed={selected}
+                                  >
+                                    <span className="block text-xs font-extrabold">{option.label}</span>
+                                    <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">{option.description}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <p className="mt-1.5 text-[10px] text-slate-400">Si applica subito alle nuove risposte.</p>
+                          </div>
                           <textarea
                             value={promptEditorValue}
                             onChange={(e) => setPromptEditorValue(e.target.value)}
@@ -3250,6 +3420,15 @@ REGOLE IMPORTANTI:
                         >
                           <Settings className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowMemory(true)}
+                          className="text-slate-500 hover:text-slate-700"
+                          title="Memoria dell'assistente: cosa sa di te e di cosa fai"
+                        >
+                          <Brain className="h-4 w-4" />
+                        </Button>
                         <div className="relative">
                           <Button
                             variant="ghost"
@@ -3439,7 +3618,7 @@ REGOLE IMPORTANTI:
                                 <OcrImageOverlay overlay={ocrOverlays[msg.id]} />
                               )}
                               {/* Inline "Riapri documento" button for brochure/dispensa result messages */}
-                              {msg.role === 'assistant' && /\*\*(Brochure|Dispensa|Pagina Interattiva|Dashboard)/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
+                              {msg.role === 'assistant' && /\*\*(Brochure|Dispensa|Pagina Interattiva|Dashboard|Deep Research)|Ho aggiunto al documento/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
                                 <button
                                   onClick={() => {
                                     const doc = docCacheRef.current[currentConversationId!]
@@ -3585,6 +3764,17 @@ REGOLE IMPORTANTI:
 
                   <div className={`teacher-support-composer ${isMobile ? 'p-2' : 'p-4'}`} style={isMobile ? { paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' } : undefined}>
                     <div className={isMobile ? '' : 'max-w-3xl mx-auto'}>
+
+                      {agentMode === 'deep_research' && pendingResearch && pendingResearch.convId === currentConversationId && (
+                        <ResearchPlanCard
+                          plan={pendingResearch.plan}
+                          extending={!!researchDocFor(pendingResearch.convId)}
+                          disabled={isLoading}
+                          onChange={(plan) => setPendingResearch({ ...pendingResearch, plan })}
+                          onApprove={startResearchRun}
+                          onCancel={() => setPendingResearch(null)}
+                        />
+                      )}
 
                       {agentMode === 'dispensa' && pendingDispensaPlan && (
                         <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
@@ -4063,7 +4253,18 @@ REGOLE IMPORTANTI:
                     </div>
                   </div>
                 </main>
-                {showCanvas && activeDoc && !isMobile && !sidebarMode && (
+                {showCanvas && !isMobile && !sidebarMode && (researchRunConv === currentConversationId && researchRun.status !== 'idle' || activeDoc?.type === 'research') && (
+                  <div className="w-[55%] shrink-0 overflow-hidden">
+                    <ResearchPanel
+                      doc={activeDoc?.type === 'research' ? activeDoc : null}
+                      run={researchRunConv === currentConversationId ? researchRun : EMPTY_RESEARCH_RUN}
+                      onClose={() => setShowCanvas(false)}
+                      onStop={stopResearch}
+                      onDocChange={handleResearchDocEdit}
+                    />
+                  </div>
+                )}
+                {showCanvas && activeDoc && activeDoc.type !== 'research' && !isMobile && !sidebarMode && !(researchRunConv === currentConversationId && researchRun.status !== 'idle') && (
                   <div className="w-[55%] shrink-0 border-l border-slate-200 overflow-hidden">
                     <DocumentCanvas
                       doc={activeDoc}

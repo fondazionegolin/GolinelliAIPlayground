@@ -4,7 +4,7 @@ import {
   Shield, FileText, Users, Brain, Database, Lock, Scale,
   ChevronLeft, ExternalLink, AlertTriangle, Clock, Gavel,
   Bot, Eye, BookOpen, Server
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ── Dotted grid background (same as LandingPage) ──────────────────────────────
 const DottedGridBackground = () => {

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from typing import Annotated
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from pydantic import BaseModel
 
@@ -35,6 +35,7 @@ from app.schemas.auth import (
 from app.schemas.session import SessionResponse, SessionModuleResponse
 from app.schemas.credits import CreditUsageHistoryItem
 from app.realtime.gateway import notify_session_teacher, sio
+from app.services.session_capacity import concurrent_students, full_message
 
 router = APIRouter()
 
@@ -193,6 +194,11 @@ async def join_session(
     max_per_class = getattr(tenant, 'max_students_per_class', 30) if tenant else 30
 
     if existing:
+        # Returning students are only turned away when the room is full *and* they are not already counted as connected.
+        if (existing.last_seen_at is None or existing.last_seen_at < datetime.now(timezone.utc) - timedelta(minutes=5)):
+            connected = await concurrent_students(db, session.id, existing.id)
+            if connected >= max_per_class:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=full_message(connected, max_per_class))
         if existing.is_frozen:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -214,16 +220,10 @@ async def join_session(
         await db.commit()
         return response
 
-    # ── Verifica limite studenti per sessione corrente ──────────────────────
-    students_in_session = (await db.execute(
-        select(func.count(SessionStudent.id))
-        .where(SessionStudent.session_id == session.id)
-    )).scalar_one() or 0
-    if students_in_session >= max_per_class:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Sessione piena (max {max_per_class} studenti)",
-        )
+    # ── Limite sugli studenti connessi in contemporanea (non su tutti quelli mai entrati) ──
+    connected = await concurrent_students(db, session.id)
+    if connected >= max_per_class:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=full_message(connected, max_per_class))
 
 
     password = _validate_student_password(request.password)

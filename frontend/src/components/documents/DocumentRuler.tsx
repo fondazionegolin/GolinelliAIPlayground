@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Plus } from '@/components/icons'
 
 const PX_PER_CM = 96 / 2.54
 const MIN_MARGIN = 16

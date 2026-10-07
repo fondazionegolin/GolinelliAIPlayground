@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Send, Bot, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Send, Bot, Loader2, RefreshCw } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'

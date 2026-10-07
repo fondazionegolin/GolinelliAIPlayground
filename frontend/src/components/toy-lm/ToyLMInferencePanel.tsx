@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ChevronRight, RefreshCw, Type } from 'lucide-react'
+import { ChevronRight, RefreshCw, Type } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 
 export interface ToyLMGeneratePayload {

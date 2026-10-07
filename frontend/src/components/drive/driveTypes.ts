@@ -1,7 +1,7 @@
 import {
   Box, File, FileArchive, FileAudio, FileCode2, FileImage, FileSpreadsheet, FileText, FileVideo, Folder,
   Presentation, type LucideIcon,
-} from 'lucide-react'
+} from '@/components/icons'
 
 export type DriveRole = 'owner' | 'editor' | 'viewer'
 

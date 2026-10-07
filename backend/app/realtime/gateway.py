@@ -1,5 +1,5 @@
 import socketio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import json
 
@@ -201,7 +201,7 @@ def _voice_public_state(session_id: str) -> dict:
             }
             for student_id in queue_ids
         ],
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -258,7 +258,7 @@ async def revoke_student_session_access(session_id: str, reason: str, revoked_st
             print(f"[Gateway] Failed to revoke session access for sid {sid}: {e}")
 
 # Helper to send teacher notification
-async def notify_session_teacher(session_id: str, notification_data: dict):
+async def notify_session_teacher(session_id: str, notification_data: dict, exclude_teacher_id: Optional[str] = None):
     """Notify every teacher who can collaborate in the session navbar."""
     teacher_ids: set[str] = set()
     try:
@@ -284,6 +284,9 @@ async def notify_session_teacher(session_id: str, notification_data: dict):
         owner_id = await get_session_teacher_id(session_id)
         if owner_id:
             teacher_ids.add(owner_id)
+
+    if exclude_teacher_id:
+        teacher_ids.discard(str(exclude_teacher_id))
 
     for teacher_id in teacher_ids:
         print(f"[Gateway] Sending notification to teacher {teacher_id} for session {session_id}")
@@ -405,7 +408,7 @@ async def connect(sid, environ, auth):
                 "avatar_url": student_avatars.get(student_id),
                 "ui_accent": student_accents.get(student_id),
                 "status": "online",
-                "last_seen_at": datetime.utcnow().isoformat(),
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
             },
             room=f"session:{session_id}",
             skip_sid=sid,
@@ -422,7 +425,7 @@ async def connect(sid, environ, auth):
                     "student_id": student_id,
                     "nickname": nickname,
                     "message": f"{nickname} è entrato nella sessione",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
     else:
@@ -481,7 +484,7 @@ async def disconnect(sid):
                 {
                     "student_id": user["id"],
                     "status": "offline",
-                    "last_seen_at": datetime.utcnow().isoformat(),
+                    "last_seen_at": datetime.now(timezone.utc).isoformat(),
                 },
                 room=f"session:{session_id}",
             )
@@ -495,7 +498,7 @@ async def disconnect(sid):
                     "student_id": user["id"],
                     "nickname": nickname,
                     "message": f"{nickname} ha lasciato la sessione",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -632,7 +635,7 @@ async def heartbeat_activity(sid, data):
         "module_key": data.get("module_key"),
         "step": data.get("step"),
         "context": data.get("context"),
-        "last_event": datetime.utcnow().isoformat(),
+        "last_event": datetime.now(timezone.utc).isoformat(),
     }
     user_activities[student_id] = activity
     
@@ -664,7 +667,7 @@ def _clean_subjective_state(data: dict) -> dict:
     return {
         "module_key": module_key,
         "context": context,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -844,7 +847,7 @@ async def chat_public_message(sid, data):
         "attachments": attachments,
         "reply_to_id": reply_to_id,
         "reply_preview": reply_preview,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     await sio.emit(
@@ -857,20 +860,30 @@ async def chat_public_message(sid, data):
         room=f"session:{session_id}",
     )
     
-    # Send teacher notification for public chat if student
+    # Notify the session's teachers (owner + co-teachers). A teacher's own messages notify only the
+    # *other* teachers, so co-teachers get the same chat badge/nudge as a student message produces.
+    has_files = bool(attachments)
+    preview = text[:100] + ("..." if len(text) > 100 else "")
+    if has_files and not preview:
+        preview = "📎 File condiviso"
     if user["type"] == "student":
-        await notify_session_teacher(
-            session_id,
-            {
-                "type": "public_chat",
-                "session_id": session_id,
-                "student_id": user["id"],
-                "nickname": sender_name,
-                "message": f"{sender_name} ha inviato un messaggio nella chat di classe",
-                "preview": text[:100] + ("..." if len(text) > 100 else ""),
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+        notification_message = f"{sender_name} ha inviato un messaggio nella chat di classe"
+    else:
+        notification_message = f"{sender_name} ha {'condiviso un file' if has_files else 'scritto'} nella chat di classe"
+    await notify_session_teacher(
+        session_id,
+        {
+            "type": "public_chat",
+            "session_id": session_id,
+            "student_id": user["id"] if user["type"] == "student" else None,
+            "sender_id": user["id"],
+            "nickname": sender_name,
+            "message": notification_message,
+            "preview": preview,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+        exclude_teacher_id=user["id"] if user["type"] != "student" else None,
+    )
 
     return {"success": True}
 
@@ -955,7 +968,7 @@ async def chat_private_message(sid, data):
         "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "is_private": True,
     }
     
@@ -999,7 +1012,7 @@ async def chat_private_message(sid, data):
                 "nickname": sender_name,
                 "message": f"{sender_name} ti ha inviato un messaggio privato",
                 "preview": text[:50] + ("..." if len(text) > 50 else ""),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
     
@@ -1035,7 +1048,7 @@ async def voice_room_start(sid, data):
         "active_speaker_id": None,
         "active_speaker_ids": [],
         "queue": [],
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
     }
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -1055,7 +1068,7 @@ async def voice_room_end(sid, data):
         "active_speaker_id": None,
         "active_speaker_ids": [],
         "queue": [],
-        "ended_at": datetime.utcnow().isoformat(),
+        "ended_at": datetime.now(timezone.utc).isoformat(),
     }
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -1205,7 +1218,7 @@ async def teacher_publish_task(sid, data):
                 "sender_name": "Docente",
                 "sender_accent": teacher_accents.get(user["id"]),
                 "text": f"📋 Nuovo compito assegnato: {title}",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "is_notification": True,
                 "notification_type": task_type,
                 "notification_data": {"task_id": task_id, "title": title},
@@ -1249,7 +1262,7 @@ async def teacher_upload_document(sid, data):
                 "sender_name": "Docente",
                 "sender_accent": teacher_accents.get(user["id"]),
                 "text": f"📄 Nuovo documento caricato: {filename}",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "is_notification": True,
                 "notification_type": "document",
                 "notification_data": {"document_id": document_id, "filename": filename},
@@ -1277,7 +1290,7 @@ async def teacher_broadcast_message(sid, data):
         "sender_name": "Docente",
         "sender_accent": teacher_accents.get(user["id"]),
         "text": text,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     
     await sio.emit(
@@ -1468,6 +1481,6 @@ async def notify_teacher_content_alert(
             "risk_score": risk_score,
             "message": f"⚠️ Allarme sicurezza: {nickname} — {label}",
             "preview": preview[:120] + ("..." if len(preview) > 120 else ""),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import {
   ChevronRight, GraduationCap, Users, BookOpen,
   Search, Euro, Clock, Wifi, Building2,
-} from 'lucide-react'
+} from '@/components/icons'
 
 /* ─── types ─────────────────────────────────────────── */
 interface StudentInfo {

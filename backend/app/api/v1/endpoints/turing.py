@@ -362,6 +362,8 @@ async def send_teacher_message(session_id: UUID, experiment_id: UUID, participan
     db.add(message)
     await db.commit()
     await db.refresh(message)
+    await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": False},
+                   room=f"user:{participant.student_id}")
     await sio.emit("turing_message", {"experiment_id": str(experiment.id),
                                       "message": _message_payload(message, student_view=True)},
                    room=f"user:{participant.student_id}")
@@ -479,6 +481,9 @@ async def send_student_message(experiment_id: UUID, request: TuringMessageCreate
     if participant.is_human:
         await sio.emit("turing_message", {"experiment_id": str(experiment.id), "participant_id": str(participant.id),
                                           "message": _message_payload(question)}, room=f"user:{experiment.teacher_id}")
+        # Real sync: the student waits on the teacher, so the indicator lives until the teacher replies.
+        await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True, "phase": "thinking"},
+                       room=f"user:{student.id}")
         return {"message": _message_payload(question, student_view=True), "waiting_for_reply": True}
 
     await sio.emit("turing_typing", {"experiment_id": str(experiment.id), "typing": True, "phase": "thinking"},

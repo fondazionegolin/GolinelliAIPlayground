@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, X, Check, Loader2, Zap, Expand } from 'lucide-react'
+import { Sparkles, X, Check, Loader2, Zap, Expand } from '@/components/icons'
 import { llmApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 

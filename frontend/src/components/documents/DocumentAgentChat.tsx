@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, Loader2, MousePointer2, Send, Sparkles, X } from 'lucide-react'
+import { Bot, Check, Loader2, MousePointer2, Send, Sparkles, X } from '@/components/icons'
 import { llmApi } from '@/lib/api'
 import { useServerHealth } from '@/components/ServerHealthIndicator'
 import type { FormatOperation } from '@/lib/documentFormatOps'

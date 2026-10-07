@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, BookOpen, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Share2, Sparkles, Trash2, X,
-} from 'lucide-react'
+} from '@/components/icons'
 import { notebooksApi, teacherApi, type NotebookAssignment } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { enUS, it } from 'date-fns/locale'

@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity } from '@/components/icons'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -16,6 +16,8 @@ import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
 import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
+import AdminModelsPage from './AdminModelsPage'
+import AdminSessionsPage from './AdminSessionsPage'
 import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
 import StudentsPage from './StudentsPage'
@@ -27,12 +29,14 @@ const navItems = [
   { path: '/admin/schools', label: 'Scuole', icon: Building2, exact: false },
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
   { path: '/admin/licenses', label: 'Licenze', icon: FileCheck2, exact: false },
+  { path: '/admin/sessions', label: 'Sessioni', icon: Activity, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/students', label: 'Studenti', icon: Users, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
   { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
   { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
+  { path: '/admin/models', label: 'Modelli', icon: Bot, exact: false },
   { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
 
@@ -188,6 +192,8 @@ export default function AdminDashboard() {
                 <Route path="email" element={<TeacherRequestsPage />} />
                 <Route path="feedback" element={<FeedbackPage />} />
                 <Route path="feedback-board" element={<FeedbackBoardPage />} />
+                <Route path="sessions" element={<AdminSessionsPage />} />
+                <Route path="models" element={<AdminModelsPage />} />
                 <Route path="backend" element={<AdminBackendPage />} />
                 {/* Legacy redirects */}
                 <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />

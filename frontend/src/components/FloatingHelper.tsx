@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageSquarePlus, X, Send, Loader2, CheckCircle, Image as ImageIcon } from 'lucide-react'
+import { MessageSquarePlus, X, Send, Loader2, CheckCircle, Image as ImageIcon } from '@/components/icons'
 import { feedbackApi } from '@/lib/api'
 import { useDraggableFloating } from '@/hooks/useDraggableFloating'
 
@@ -56,7 +56,12 @@ export interface FloatingHelperProps {
   onOpenChange?: (open: boolean) => void
 }
 
-export function FloatingHelper({ hideTrigger = false, open: controlledOpen, onOpenChange }: FloatingHelperProps = {}) {
+export const OPEN_FEEDBACK_EVENT = 'golinelli:open-feedback'
+
+/** Opens the feedback modal from anywhere (user dropdown menus). */
+export const openFeedback = () => window.dispatchEvent(new Event(OPEN_FEEDBACK_EVENT))
+
+export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpenChange }: FloatingHelperProps = {}) {
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
@@ -77,6 +82,12 @@ export function FloatingHelper({ hideTrigger = false, open: controlledOpen, onOp
     : position.y + 60 + 420 <= window.innerHeight
       ? position.y + 60
       : Math.max(12, position.y - 420)
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true)
+    window.addEventListener(OPEN_FEEDBACK_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_FEEDBACK_EVENT, onOpen)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (open && textareaRef.current) {

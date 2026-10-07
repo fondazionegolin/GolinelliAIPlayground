@@ -8,7 +8,7 @@ import {
   Bug, Sparkles, Palette, MousePointerClick, AlertTriangle, Wand2, Wrench,
   CheckCircle, Mail, Globe, Monitor, ImageIcon, X, Share2, Trash2, Plus, Loader2,
   Send, Columns3, Settings2,
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface BoardCard {

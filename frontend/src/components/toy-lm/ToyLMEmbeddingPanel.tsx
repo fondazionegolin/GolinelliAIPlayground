@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Search, ScatterChart, Sigma } from 'lucide-react'
+import { RefreshCw, Search, ScatterChart, Sigma } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 
 export interface ToyLMEmbeddingToken {

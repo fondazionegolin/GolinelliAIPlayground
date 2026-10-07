@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Download, Home, Maximize } from 'lucide-react'
+import { Download, Home, Maximize } from '@/components/icons'
 import SolidModelerViewport, { type ViewportApi } from './SolidModelerViewport'
 import { exportSTL } from './geometry'
 import type { SceneObject } from './types'

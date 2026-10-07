@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, User } from 'lucide-react'
+import { ArrowLeft, User } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import { useTranslation } from 'react-i18next'

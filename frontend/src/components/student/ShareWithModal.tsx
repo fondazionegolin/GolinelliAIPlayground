@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Users, Loader2, Check, Search } from 'lucide-react'
+import { X, Users, Loader2, Check, Search } from '@/components/icons'
 import { collaborationApi } from '@/lib/api'
 import type { SharedRoom, SharedParticipant } from './SharedChatPanel'
 

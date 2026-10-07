@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle, Box, CheckCircle2, ChevronDown, Download, ImagePlus,
   Loader2, RotateCcw, Share2, Sparkles, Square, Trash2, X,
-} from 'lucide-react'
+} from '@/components/icons'
 import {
   jobsApi, meshyApi, type BackgroundJob,
   type MeshyAiModel, type MeshyGenerationOptions,

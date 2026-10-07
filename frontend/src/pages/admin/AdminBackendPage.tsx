@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Database, FilePlus2, Save, Sparkles, Trash2 } from 'lucide-react'
+import { Database, FilePlus2, Save, Sparkles, Trash2 } from '@/components/icons'
 
 import { adminApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'

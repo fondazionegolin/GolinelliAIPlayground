@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { 
   BookOpen, Presentation, Save, Edit2, Loader2, ListChecks, 
   ChevronLeft, ChevronRight, Plus, Trash2, Check, Target, Sparkles, BookMarked 
-} from 'lucide-react'
+} from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'

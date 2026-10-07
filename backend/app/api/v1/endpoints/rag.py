@@ -8,6 +8,7 @@ import re
 from collections import Counter
 
 from app.core.database import get_db
+from app.services import model_roles
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
@@ -676,8 +677,8 @@ async def student_generate_artifact(
     response = await llm_service.generate(
         messages=[{"role": "user", "content": prompt}],
         system_prompt=system_prompt,
-        provider="openai",
-        model="gpt-4o-mini",
+        provider=model_roles.provider_for("chat.light"),
+        model=model_roles.model_for("chat.light"),
         temperature=0.25,
         allow_web_search=False,
     )
@@ -992,8 +993,8 @@ async def student_rag_chat(
     llm_response = await llm_service.generate(
         messages=messages,
         system_prompt=system_prompt,
-        provider="openai",
-        model="gpt-4o-mini",
+        provider=model_roles.provider_for("chat.light"),
+        model=model_roles.model_for("chat.light"),
         temperature=0.03,
         allow_web_search=False,
     )

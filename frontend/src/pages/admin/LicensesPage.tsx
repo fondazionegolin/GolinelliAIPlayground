@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Clock, Loader2, Search, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Clock, Loader2, Search, ShieldCheck } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 
 type LegalDocument = {

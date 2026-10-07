@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Sparkles, Loader2, RefreshCw, ExternalLink } from 'lucide-react'
+import { Sparkles, Loader2, RefreshCw, ExternalLink } from '@/components/icons'
 import { llmApi } from '@/lib/api'
 
 interface OggiImparoConfig {

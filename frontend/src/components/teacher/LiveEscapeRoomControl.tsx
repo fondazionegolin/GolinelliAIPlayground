@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, PackageOpen, Play, Square, Trophy, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 

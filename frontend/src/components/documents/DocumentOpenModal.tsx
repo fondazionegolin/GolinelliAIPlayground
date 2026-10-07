@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { filesApi } from '@/lib/api'
 import DocumentThumbnail from './DocumentThumbnail'

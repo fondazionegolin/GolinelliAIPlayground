@@ -9,6 +9,7 @@ import json
 import logging
 
 from app.core.database import get_db
+from app.services import model_roles
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
@@ -592,7 +593,7 @@ async def desktop_agent(
 
     try:
         response = await llm_service.anthropic_client.messages.create(
-            model="claude-haiku-4-5-20251001",  # fast and cheap for UI interactions
+            model=model_roles.model_for("desktop.assistant"),  # fast and cheap for UI interactions
             system=system,
             messages=messages,
             max_tokens=1024,

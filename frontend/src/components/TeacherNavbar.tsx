@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket } from 'lucide-react'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket } from '@/components/icons'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
+import { openFeedback } from '@/components/FloatingHelper'
 import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
@@ -54,9 +55,10 @@ interface TeacherNavbarProps {
   onSessionChange?: (session: SessionInfo) => void
   chatSidebarOpen?: boolean
   onToggleChatSidebar?: () => void
+  onIncomingClassChat?: () => void
 }
 
-export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen = false, onToggleChatSidebar }: TeacherNavbarProps) {
+export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen = false, onToggleChatSidebar, onIncomingClassChat }: TeacherNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -204,12 +206,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   useEffect(() => {
     if (socketNotifications.length === 0) return
     const latestNotification = socketNotifications[socketNotifications.length - 1]
-    const type = (latestNotification.notification_data as { type?: string } | undefined)?.type
+    const chatData = latestNotification.notification_data as { type?: string; session_id?: string } | undefined
+    const type = chatData?.type
     if (type !== 'public_chat') return
     if (processedChatBadgeIdsRef.current.has(latestNotification.id)) return
     processedChatBadgeIdsRef.current.add(latestNotification.id)
+    if (chatData?.session_id && chatData.session_id !== currentSession?.id) return
+    if (chatSidebarOpen) return
     setChatBadge((n) => n + 1)
-  }, [socketNotifications])
+    onIncomingClassChat?.()
+  }, [socketNotifications, chatSidebarOpen, currentSession?.id, onIncomingClassChat])
 
   const handleClearNotifications = () => setTeacherNotifications([])
   const handleMarkAsRead = (id: string) => {
@@ -428,7 +434,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] !text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  style={{ color: '#000' }}
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA
@@ -512,7 +519,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-4 w-4" />
-                  {!voiceActive && chatBadge > 0 && (
+                  {chatBadge > 0 && (
                     <span
                       className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-[var(--ds-shadow-1)]"
                       style={{ backgroundColor: accentTheme.accent }}
@@ -520,7 +527,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       {chatBadge > 9 ? '9+' : chatBadge}
                     </span>
                   )}
-                  {voiceActive && (
+                  {voiceActive && chatBadge === 0 && (
                     <span
                       className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white shadow-[var(--ds-shadow-1)]"
                       style={{ backgroundColor: accentTheme.accent }}
@@ -536,7 +543,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="ds-popover absolute top-full right-0 mt-2 w-80 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  <div className="ds-popover nav-cluster-unroll absolute top-full right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)]">
                     {/* Header */}
                     <div className="px-5 py-4 bg-slate-50/65">
                       <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
@@ -661,6 +668,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <p className="text-xs text-slate-500 truncate mt-0.5">{profile.email}</p>
                     </div>
                     <ThemeToggleMenuItem persist={(ui_theme) => teacherApi.updateProfile({ ui_theme }).then(invalidateProfile)} />
+                    <button
+                      onClick={() => {
+                        openFeedback()
+                        setShowDropdown(false)
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <MessageSquarePlus className="h-4 w-4" />
+                      Feedback
+                    </button>
                     <button
                       onClick={() => {
                         setShowSettings(true)

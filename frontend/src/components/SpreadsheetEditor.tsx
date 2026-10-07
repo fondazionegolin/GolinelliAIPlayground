@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Check, ClipboardPaste, Copy, Download, Eraser, FileUp, Italic, Loader2, Plus, Scissors, Sigma, Trash2, TrendingUp, Wand2 } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Check, ClipboardPaste, Copy, Download, Eraser, FileUp, Italic, Loader2, Plus, Scissors, Sigma, Trash2, TrendingUp, Wand2 } from '@/components/icons'
 import { HyperFormula } from 'hyperformula'
 import * as XLSX from 'xlsx'
 import { llmApi } from '@/lib/api'

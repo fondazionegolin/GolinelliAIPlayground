@@ -12,7 +12,7 @@ import {
   Type,
   Wand2,
   X,
-} from 'lucide-react'
+} from '@/components/icons'
 import { designSystemApi } from '@/lib/api'
 import type { DesignSystem, DesignTokens } from '@/lib/api'
 

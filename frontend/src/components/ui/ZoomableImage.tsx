@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ZoomIn, ZoomOut, Download } from 'lucide-react'
+import { X, ZoomIn, ZoomOut, Download } from '@/components/icons'
 import { triggerHaptic } from '@/lib/haptics'
 
 interface ZoomableImageProps {

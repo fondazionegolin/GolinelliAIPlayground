@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Check, Search, Shuffle, X } from 'lucide-react'
+import { Check, Search, Shuffle, X } from '@/components/icons'
 import {
   TEACHERBOT_ICON_LIBRARY, TEACHERBOT_EMOJI_LIBRARY,
   encodeLucideIcon, encodeEmojiIcon, resolveTeacherbotIcon,

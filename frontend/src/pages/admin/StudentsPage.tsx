@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/design'
 import {
   Search, ChevronDown, ChevronUp, Loader2, ShieldCheck, ShieldAlert, Users, Activity, Euro, Clock, Eye,
-} from 'lucide-react'
+} from '@/components/icons'
 
 interface ConsentStatus {
   key: string

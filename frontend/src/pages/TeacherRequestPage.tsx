@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { GraduationCap, ArrowLeft, CheckCircle } from 'lucide-react'
+import { GraduationCap, ArrowLeft, CheckCircle } from '@/components/icons'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { useTranslation } from 'react-i18next'
 

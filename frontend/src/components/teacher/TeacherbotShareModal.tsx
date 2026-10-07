@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { X, Loader2, Users, UserRound, Check, Globe } from 'lucide-react'
+import { X, Loader2, Users, UserRound, Check, Globe } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
 

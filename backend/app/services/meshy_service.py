@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 MESHY_V1_URL = "https://api.meshy.ai/openapi/v1"
 MESHY_V2_URL = "https://api.meshy.ai/openapi/v2"
-OPENAI_IMAGE_MODEL = settings.OPENAI_IMAGE_MODEL
 
 
 class MeshyService:
@@ -96,7 +95,7 @@ class MeshyService:
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
         response = await client.images.generate(
-            model=OPENAI_IMAGE_MODEL,
+            model=settings.OPENAI_IMAGE_MODEL,
             prompt=prompt,
             size=size,  # type: ignore[arg-type]
             n=1,

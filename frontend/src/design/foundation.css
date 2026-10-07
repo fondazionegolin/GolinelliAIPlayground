@@ -13,6 +13,8 @@
   --ds-surface: rgba(255, 255, 255, 0.88);
   --ds-navbar: #ffffff;
   --ds-surface-raised: rgba(255, 255, 255, 0.96);
+  --ds-popover-solid: #ffffff;
+  --ds-shadow-popover: var(--ds-shadow-3);
   --ds-surface-muted: rgba(250, 252, 255, 0.92);
   --ds-surface-tint: rgba(244, 241, 255, 0.92);
   --ds-control: rgba(248, 250, 255, 0.96);
@@ -91,6 +93,8 @@
   --ds-surface: rgba(29, 31, 35, 0.92);
   --ds-navbar: #1d1f23;
   --ds-surface-raised: rgba(35, 38, 43, 0.97);
+  --ds-popover-solid: #262a30;
+  --ds-shadow-popover: var(--ds-shadow-3);
   --ds-surface-muted: rgba(40, 43, 48, 0.94);
   --ds-surface-tint: rgba(50, 47, 68, 0.92);
   --ds-control: rgba(40, 43, 49, 0.96);
@@ -210,8 +214,10 @@
     box-shadow: var(--ds-shadow-2);
   }
 
+  /* Floating menus are always opaque: translucent surfaces become unreadable over dense content. */
   .ds-popover {
-    box-shadow: var(--ds-shadow-3);
+    background-color: var(--ds-popover-solid);
+    box-shadow: var(--ds-shadow-popover);
   }
 
   .ds-divider {
@@ -348,7 +354,6 @@
 
   .ui-search:focus-within {
     background-color: var(--ds-control-hover);
-    box-shadow: var(--ds-shadow-focus);
   }
 
   .ui-cta {
@@ -394,7 +399,7 @@
     box-shadow: var(--ds-shadow-control);
   }
 
-  .teacher-ui :where(input, textarea, select)[class*="border-slate-"]:focus {
+  .teacher-ui :where(select)[class*="border-slate-"]:focus {
     border-color: transparent !important;
     outline: 0;
     box-shadow: var(--ds-shadow-focus) !important;

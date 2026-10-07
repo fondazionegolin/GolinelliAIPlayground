@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from '@/components/icons'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { LogoMark } from '@/components/LogoMark'
 import { useTranslation } from 'react-i18next'

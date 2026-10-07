@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Sparkles, Wand2, Wrench, X } from 'lucide-react'
+import { Sparkles, Wand2, Wrench, X } from '@/components/icons'
 
 import { platformApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'

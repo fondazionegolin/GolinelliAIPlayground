@@ -1,6 +1,6 @@
 import { ReactNode, useRef, useState, useCallback } from 'react'
 import { motion, PanInfo, useMotionValue, useTransform } from 'framer-motion'
-import { Copy, Reply, Trash2 } from 'lucide-react'
+import { Copy, Reply, Trash2 } from '@/components/icons'
 import { triggerHaptic } from '@/lib/haptics'
 
 interface SwipeableMessageProps {

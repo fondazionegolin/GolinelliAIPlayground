@@ -22,6 +22,8 @@ export type SandpackRuntimeError = {
   kind: 'compile' | 'runtime' | 'console'
 }
 
+import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+
 type Props = {
   /** React/Vite projects: a file tree bundled by Sandpack's react-ts template. Ignored when
    * `staticHtml` is set. */
@@ -34,6 +36,8 @@ type Props = {
    * is a real cross-origin document, so `allow="camera; microphone; ..."` (already set by
    * sandpack-client on every Sandpack preview, any template) actually takes effect. */
   staticHtml?: string
+  /** ML Lab models attached to the project: exposed to the app as window.GolinelliML. */
+  mlModels?: MlRuntimeModel[]
   /** Called whenever the running project emits compile/runtime errors (drives the agentic fix loop). */
   onErrors?: (errors: SandpackRuntimeError[]) => void
   /** Called once the project mounts and renders without errors. */
@@ -52,6 +56,13 @@ type Props = {
 const ENTRY_PATH = '/index.tsx'
 const HTML_PATH = '/public/index.html'
 const BRIDGE_PATH = '/golinelli-bridge.ts'
+const EMPTY_MODELS: MlRuntimeModel[] = []
+
+// The platform bridge, plus (when ML Lab models are attached) the window.GolinelliML stub.
+function buildBridgeSource(enableInspector: boolean, mlModels: MlRuntimeModel[] = []): string {
+  const base = buildBaseBridgeSource(enableInspector)
+  return mlModels.length ? `${base}\n${buildMlStub(mlModels, window.location.origin)}\n` : base
+}
 
 const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 <html lang="it">
@@ -69,7 +80,7 @@ const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 // The bridge runs inside the Sandpack preview iframe. It speaks the same postMessage protocol the
 // legacy srcDoc preview used (golinelli-coding-preview -> golinelli-coding-host), so the existing
 // parent handler in StudentCodingLabModule picks it up unchanged.
-function buildBridgeSource(enableInspector: boolean): string {
+function buildBaseBridgeSource(enableInspector: boolean): string {
   return `// AUTO-GENERATED platform bridge. Do not edit.
 const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; onDelta?: (text: string) => void }>()
 window.addEventListener('message', (event: MessageEvent) => {
@@ -373,6 +384,7 @@ function ErrorReporter({
 export default function CodingSandpackPreview({
   files = [],
   staticHtml,
+  mlModels = EMPTY_MODELS,
   onErrors,
   onReady,
   showConsole = false,
@@ -398,7 +410,7 @@ export default function CodingSandpackPreview({
       map[path] = { code: file.content }
     }
     // Platform-owned wiring — always overrides whatever the model produced for these paths.
-    map[BRIDGE_PATH] = { code: buildBridgeSource(enableInspector), hidden: true }
+    map[BRIDGE_PATH] = { code: buildBridgeSource(enableInspector, mlModels), hidden: true }
     map[HTML_PATH] = { code: buildHtmlDocument(forceVerticalScroll), hidden: true }
     // styles.css is always present so the entry can import it unconditionally.
     if (!map['/styles.css']) map['/styles.css'] = { code: '', hidden: true }
@@ -414,7 +426,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
       hidden: true,
     }
     return map
-  }, [files, enableInspector, forceVerticalScroll])
+  }, [files, enableInspector, forceVerticalScroll, mlModels])
 
   return (
     <div className={`golinelli-sp ${className || ''}`}>

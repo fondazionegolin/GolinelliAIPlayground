@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from '@/components/icons'
 
 export interface NavClusterItem {
   path: string
@@ -106,7 +106,7 @@ const focusFirstItem = (panel: HTMLDivElement | null) => {
 }
 
 /**
- * Horizontal navbar of functional clusters: icon and label always visible. Clusters with more than one
+ * Horizontal navbar of functional clusters: text-only tabs (icons live in the submenus). Clusters with more than one
  * page show a chevron and unroll their submenu downward on hover (or click/keyboard).
  */
 export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
@@ -122,14 +122,13 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
   }, [openId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex items-center gap-1" onMouseLeave={closeSoon}>
+    <div className="flex items-center gap-1.5" onMouseLeave={closeSoon}>
       {clusters.map((cluster) => {
-        const Icon = cluster.icon
         const active = clusterIsActive(pathname, cluster)
         const single = cluster.items.length === 1 ? cluster.items[0] : null
         const open = openId === cluster.id
         const tabClass = [
-          'group relative flex min-h-[var(--selection-height)] items-center gap-1.5 rounded-[var(--selection-radius)] px-[var(--selection-padding-x)] py-1.5',
+          'group relative flex min-h-[var(--selection-height)] items-center gap-1.5 rounded-[var(--selection-radius)] px-[calc(var(--selection-padding-x)+0.375rem)] py-1.5',
           'font-emphasis text-xs font-bold whitespace-nowrap transition-[background-color,box-shadow,color] duration-150',
           'focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]',
           active
@@ -140,7 +139,6 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
         ].join(' ')
         const content = (
           <>
-            <Icon className="h-4 w-4 shrink-0" />
             <span>{cluster.label}</span>
             {!single && (
               <ChevronDown

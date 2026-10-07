@@ -21,7 +21,7 @@ import {
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
   MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown,
   ListChecks, SquareKanban, Box
-} from 'lucide-react'
+} from '@/components/icons'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
@@ -1626,12 +1626,12 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
 
         <div className="flex items-end justify-between gap-3">
           <div className="flex min-w-0 flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={onToggle} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+          <Button size="sm" variant="outline" onClick={onToggle} className="min-w-[112px] px-4 text-xs font-semibold">
             {isExpanded ? <ChevronUp className="mr-1.5 h-3.5 w-3.5" /> : <ChevronDown className="mr-1.5 h-3.5 w-3.5" />}
             {isExpanded ? 'Chiudi' : 'Dettagli'}
           </Button>
           {task.status === 'draft' && (
-            <Button size="sm" variant="outline" onClick={onPublish} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+            <Button size="sm" variant="outline" onClick={onPublish} className="min-w-[112px] px-4 text-xs font-semibold">
               <Check className="mr-1.5 h-3.5 w-3.5" />
               Pubblica
             </Button>

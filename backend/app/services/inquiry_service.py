@@ -22,7 +22,7 @@ from typing import Optional
 
 from app.core.config import settings
 from app.schemas.teacherbot import INQUIRY_FLAGS, InquiryConfig, InquirySuspect
-from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service
+from app.services.llm_service import default_model_for, llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +88,8 @@ def _clip(v: int) -> int:
 
 
 def _classifier_model() -> tuple[str, str]:
-    provider = settings.INQUIRY_CLASSIFIER_PROVIDER or "openai"
-    model = settings.INQUIRY_CLASSIFIER_MODEL or (DEFAULT_OPENAI_CHAT_MODEL if provider == "openai" else None)
-    return provider, model or DEFAULT_OPENAI_CHAT_MODEL
+    provider = settings.INQUIRY_CLASSIFIER_PROVIDER or settings.DEFAULT_LLM_PROVIDER
+    return provider, settings.INQUIRY_CLASSIFIER_MODEL or default_model_for(provider)
 
 
 def _extract_json(raw: str) -> dict:
@@ -419,8 +418,8 @@ async def generate_cast(
     resp = await llm_service.generate(
         messages=[{"role": "user", "content": prompt}],
         system_prompt=system,
-        provider=settings.INQUIRY_CLASSIFIER_PROVIDER or "openai",
-        model=(settings.INQUIRY_GENERATOR_MODEL or DEFAULT_OPENAI_CHAT_MODEL),
+        provider=settings.INQUIRY_CLASSIFIER_PROVIDER or settings.DEFAULT_LLM_PROVIDER,
+        model=(settings.INQUIRY_GENERATOR_MODEL or default_model_for(settings.INQUIRY_CLASSIFIER_PROVIDER or settings.DEFAULT_LLM_PROVIDER)),
         temperature=0.9,
         max_tokens=4000,
         allow_web_search=False,

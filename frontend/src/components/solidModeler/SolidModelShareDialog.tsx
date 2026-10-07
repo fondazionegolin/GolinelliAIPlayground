@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { Check, Copy, Download, ExternalLink, Globe, Loader2, RefreshCw, Users, X } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, Globe, Loader2, RefreshCw, Users, X } from '@/components/icons'
 import { solidModelerApi, type SolidModelSummary } from '@/lib/api'
 
 interface Props {

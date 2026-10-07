@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, ReactNode } from 'react'
 import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion'
-import { Loader2, ArrowDown } from 'lucide-react'
+import { Loader2, ArrowDown } from '@/components/icons'
 import { triggerHaptic } from '@/lib/haptics'
 
 interface PullToRefreshProps {

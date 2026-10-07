@@ -1,5 +1,5 @@
 import { useState, useRef, KeyboardEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X } from '@/components/icons'
 
 interface Desktop {
   id: string

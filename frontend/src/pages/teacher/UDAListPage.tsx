@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { udaApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { ArrowLeft, Plus, BookOpen, Loader2, Trash2, CheckCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, BookOpen, Loader2, Trash2, CheckCircle, Clock } from '@/components/icons'
 
 interface Uda {
   id: string

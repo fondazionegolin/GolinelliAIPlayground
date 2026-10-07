@@ -6,6 +6,7 @@ are scoped to the current process and referenced by an opaque handle.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 import uuid
@@ -43,6 +44,17 @@ def spec(node_id: str, label: str, category: str, inputs: list[dict[str, Any]], 
          params: list[dict[str, Any]] | None = None, description: str = "", cache: str = "auto") -> dict[str, Any]:
     return {"id": node_id, "label": label, "category": category, "inputs": inputs, "outputs": outputs,
             "params": params or [], "description": description, "cachePolicy": cache}
+
+
+AI_TRANSFORM_TASKS = {
+    "custom": "Segui solo le istruzioni date dall'utente.",
+    "image_prompt": "Trasforma l'input in UN prompt ottimizzato per un generatore di immagini: soggetto, stile, composizione, luce, dettagli. Restituisci solo il prompt, senza virgolette né spiegazioni.",
+    "summarize": "Riassumi l'input in modo chiaro e fedele.",
+    "translate": "Traduci l'input nella lingua richiesta mantenendo formattazione e tono.",
+    "extract_table": "Estrai dall'input una tabella. Restituisci esclusivamente un array JSON di oggetti con chiavi coerenti, senza markdown.",
+    "make_slides": 'Crea una presentazione dall\'input. Restituisci esclusivamente un array JSON di slide {"title": str, "bullets": [str, ...]}, senza markdown.',
+    "make_quiz": 'Crea un quiz a risposta multipla dall\'input. Restituisci esclusivamente un array JSON di {"type": "mcq", "question": str, "options": [str, str, str, str], "correct_option": int}, senza markdown.',
+}
 
 
 NODE_SPECS = [
@@ -101,6 +113,20 @@ NODE_SPECS = [
         param("column", "COLUMN", "Colonna", "text"), param("lowercase", "BOOLEAN", "Minuscolo", True), param("remove_numbers", "BOOLEAN", "Rimuovi numeri", False)], "Normalizza una colonna testuale."),
     spec("nlp.sentiment", "Analisi del sentiment", "Testo", [port("table", "TABLE")], [port("table", "TABLE"), port("metrics", "METRICS")], [
         param("column", "COLUMN", "Colonna", "text"), param("neutral_threshold", "SLIDER", "Soglia neutra", .1, min=0, max=.5, step=.05)], "Calcola polarità e classe positive/negative/neutral."),
+    spec("ai.transform", "Elabora con AI", "Testo", [port("input", "ANY", "Input (testo, tabella, risposta…)", required=False), port("extra", "ANY", "Contesto aggiuntivo", required=False)],
+         [port("text", "ANY", "Testo"), port("table", "TABLE", "Tabella"), port("slides", "ANY", "Slide / quiz (JSON)")], [
+        param("task", "SELECT", "Compito", "custom", options=list(AI_TRANSFORM_TASKS)),
+        param("instruction", "CODE", "Istruzioni (obbligatorie per «custom», opzionali per gli altri)", ""),
+        param("language", "STRING", "Lingua di output", "italiano"),
+        param("provider", "STRING", "Provider (opzionale)", ""), param("model", "STRING", "Modello (opzionale)", ""),
+        param("max_tokens", "INTEGER", "Token massimi", 2048)],
+         "Elaborazione AI one-shot: ottimizza un prompt per immagini, riassumi, traduci, estrai una tabella da un testo, crea slide o un quiz live. Collega l'uscita giusta (testo, tabella, slide) al nodo successivo.", "never"),
+    spec("text.from_table", "Tabella → testo", "Testo", [port("table", "TABLE")], [port("text", "ANY")], [
+        param("format", "SELECT", "Formato", "markdown", options=["markdown", "csv", "json"]), param("max_rows", "INTEGER", "Righe massime", 50, min=1, max=1000)],
+         "Converte una tabella in testo (Markdown, CSV o JSON) per darla a un chatbot, a un prompt o a un documento."),
+    spec("text.template", "Componi testo", "Testo", [port("a", "ANY", required=False), port("b", "ANY", required=False), port("c", "ANY", required=False)], [port("text", "ANY")], [
+        param("template", "CODE", "Modello ({a}, {b}, {c})", "Disegna in modo dettagliato: {a}")],
+         "Costruisce un testo unendo più valori collegati (anche tabelle o risposte AI) in un modello, ad esempio per comporre un prompt."),
     spec("math.operation", "Operazione", "Matematica", [port("a", "ANY"), port("b", "ANY", required=False)], [port("result", "ANY")], [
         param("operation", "SELECT", "Operazione", "add", options=["add", "subtract", "multiply", "divide", "power", "modulo", "sqrt", "log", "sin", "cos", "round"])], "Calcolo scalare o vettoriale."),
     spec("math.result", "Risultato numerico", "Matematica", [port("value", "ANY")], [port("result", "ANY"), port("metrics", "METRICS")],
@@ -124,7 +150,7 @@ NODE_SPECS = [
     spec("chatbot.start", "Inizio conversazione", "Chatbot", [], [port("next", "ANY", "Avvio")],
          [param("welcome_message", "STRING", "Messaggio di benvenuto (opzionale)", "")], "Punto di ingresso del flusso: ogni chatbot deve iniziare da qui.", "never"),
     spec("chatbot.say", "Messaggio", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("next", "ANY", "Continua")], [param("message", "STRING", "Messaggio", "Ciao!")], "Invia un messaggio; richiama una variabile salvata con $nome.", "never"),
-    spec("chatbot.ask", "Domanda", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("response", "ANY", "Risposta")], [param("question", "STRING", "Domanda", "Come posso aiutarti?"), param("test_response", "STRING", "Risposta test (solo anteprima)", "")], "Sospende il flusso in attesa della risposta reale dello studente.", "never"),
+    spec("chatbot.ask", "Domanda", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("response", "ANY", "Risposta")], [param("question", "STRING", "Domanda", "Come posso aiutarti?"), param("test_response", "STRING", "Risposta test (solo anteprima)", "")], "Pone una domanda e sospende il flusso in attesa della risposta reale. Può essere il primo nodo di un dialogo.", "never"),
     spec("chatbot.if_contains", "Contiene parole", "Chatbot", [port("text", "ANY", "Testo")], [port("yes", "ANY", "Sì"), port("no", "ANY", "No")], [param("keywords", "STRING", "Parole (CSV)", "urgente"), param("case_sensitive", "BOOLEAN", "Maiuscole", False)], "Dirama il dialogo in base alle parole trovate.", "never"),
     spec("chatbot.yes_no", "Sì / No", "Chatbot", [port("text", "ANY", "Testo")], [port("yes", "ANY", "Sì"), port("no", "ANY", "No")], [], "Interpreta una risposta binaria.", "never"),
     spec("chatbot.multi_choice", "Scelta multipla", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("choice_1", "ANY"), port("choice_2", "ANY"), port("choice_3", "ANY"), port("choice_4", "ANY")], [param("question", "STRING", "Domanda", "Scegli"), *[param(f"option_{i}", "STRING", f"Opzione {i}", f"Opzione {i}") for i in range(1, 5)], param("test_choice", "INTEGER", "Scelta test (0 = nessuna, attende risposta reale)", 0, min=0, max=4)], "Sospende il flusso finché lo studente non sceglie un'opzione reale; attiva un solo ramo.", "never"),
@@ -153,6 +179,11 @@ NODE_SPECS = [
     spec("control.counter", "Contatore", "Controllo", [port("trigger", "ANY", required=False)], [port("value", "ANY")], [param("start", "INTEGER", "Inizio", 0), param("step", "INTEGER", "Passo", 1)], "Incrementa un contatore di sessione.", "never"),
     spec("chatbot.end", "Fine conversazione", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("result", "ANY", "Esito")], [param("message", "STRING", "Messaggio finale", "Conversazione conclusa.")], "Chiude il ramo conversazionale: ogni percorso del flusso deve terminare qui.", "never"),
 ]
+
+# Start/end nodes are no longer offered: a dialogue starts at its first node and ends where the path ends.
+# Saved workflows that still contain them keep running, so they stay registered but hidden from the palette.
+for _legacy in ("chatbot.start", "chatbot.end"):
+    next(item for item in NODE_SPECS if item["id"] == _legacy)["hidden"] = True
 
 NODE_REGISTRY = {item["id"]: item for item in NODE_SPECS}
 
@@ -246,6 +277,37 @@ def preferred_column(df: pd.DataFrame, requested: Any, *, numeric: bool = False,
     raise ValueError(f"Nessuna {label}{kind} disponibile. Colonne: {', '.join(available_columns(df)) or 'nessuna'}")
 
 
+def table_to_markdown(table: dict[str, Any], max_rows: int = 50) -> str:
+    rows = table.get("rows") or []
+    columns = table.get("columns") or (list(rows[0].keys()) if rows else [])
+    lines = ["| " + " | ".join(str(c) for c in columns) + " |", "| " + " | ".join("---" for _ in columns) + " |"]
+    lines += ["| " + " | ".join(str(row.get(c, "")).replace("\n", " ") for c in columns) + " |" for row in rows[:max_rows]]
+    if len(rows) > max_rows:
+        lines.append(f"… e altre {len(rows) - max_rows} righe")
+    return "\n".join(lines)
+
+
+def value_to_text(value: Any, max_rows: int = 50) -> str:
+    """Universal port coercion: any node output (LLM payload, table, plot, number, JSON) as plain text for a text input."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        if isinstance(value.get("rows"), list):
+            return table_to_markdown(value, max_rows)
+        if value.get("message") is not None and (value.get("provider") or value.get("model")):
+            return str(value["message"])
+        for key in ("text", "message", "content", "result"):
+            if isinstance(value.get(key), str):
+                return value[key]
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (dict, list)):
+        return json.dumps(json_value(value), ensure_ascii=False, indent=2)[:20000]
+    return str(value)
+
+
 async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     from sklearn.cluster import KMeans
     from sklearn.datasets import make_blobs, make_circles, make_classification, make_moons, make_regression
@@ -258,6 +320,20 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
     from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
     from sklearn.svm import SVC, SVR
 
+    if node_type == "text.from_table":
+        table = inputs.get("table") or {"columns": [], "rows": []}
+        frame = table_frame(table)
+        limit = max(1, int(config.get("max_rows", 50)))
+        fmt = str(config.get("format") or "markdown")
+        if fmt == "csv":
+            return {"text": frame.head(limit).to_csv(index=False)}
+        if fmt == "json":
+            return {"text": json.dumps(json_value(frame.head(limit)).get("rows", []), ensure_ascii=False, indent=2)}
+        return {"text": table_to_markdown(json_value(frame), limit)}
+    if node_type == "text.template":
+        values = {key: value_to_text(inputs.get(key)) for key in ("a", "b", "c")}
+        template = str(config.get("template") or "{a}")
+        return {"text": re.sub(r"\{([abc])\}", lambda m: values[m.group(1)], template)}
     if node_type == "math.numeric_input":
         return {"value": float(config.get("value", 0))}
     if node_type == "data.custom_input":

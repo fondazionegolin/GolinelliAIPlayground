@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, Expand, RefreshCw, Wand2, Loader2, X, Check } from 'lucide-react'
+import { Sparkles, Expand, RefreshCw, Wand2, Loader2, X, Check } from '@/components/icons'
 import { llmApi } from '@/lib/api'
 
 interface AITextAssistPanelProps {

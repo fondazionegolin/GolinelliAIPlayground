@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { X, GripHorizontal } from 'lucide-react'
+import { X, GripHorizontal } from '@/components/icons'
 
 interface WidgetShellProps {
   children: ReactNode

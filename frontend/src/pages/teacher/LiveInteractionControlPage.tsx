@@ -10,7 +10,7 @@ import LiveEscapeRoomControl from '@/components/teacher/LiveEscapeRoomControl'
 import {
   Play, SkipForward, Square, Users, Clock, CheckCircle2,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, Zap, ArrowLeft, Trophy,
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ── Types ──
 

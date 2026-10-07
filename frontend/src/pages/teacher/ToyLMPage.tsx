@@ -19,7 +19,7 @@ import {
   Upload, Play, Pause, Square, Network, FileText,
   Zap, RefreshCw, FlaskConical,
   Trash2, Plus, Pencil, X, Share2, HelpCircle, ArrowRight,
-} from 'lucide-react'
+} from '@/components/icons'
 import { Card } from '@/design/primitives/Card'
 import { Button } from '@/components/ui/button'
 import { teacherApi } from '@/lib/api'

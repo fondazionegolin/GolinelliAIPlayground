@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Box, Loader2, Users } from 'lucide-react'
+import { ArrowLeft, Box, Loader2, Users } from '@/components/icons'
 import { Button } from '@/design/primitives/Button'
 import { useMobile } from '@/hooks/useMobile'
 import { solidModelerApi } from '@/lib/api'

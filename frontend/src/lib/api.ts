@@ -1,3 +1,4 @@
+import { getResponseLength } from '@/lib/responseLength'
 import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
 import { LANG_STORAGE_KEY, normalizeLanguageCode } from '@/i18n/i18n'
@@ -48,6 +49,7 @@ api.interceptors.request.use((config) => {
   const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   config.headers['Accept-Language'] = appLanguage
   config.headers['X-App-Language'] = appLanguage
+  config.headers['X-Response-Length'] = getResponseLength()
   return config
 })
 
@@ -321,6 +323,17 @@ export const designSystemApi = {
 }
 
 export const adminApi = {
+  getActivity: (days = 30) => api.get('/admin/activity', { params: { days } }),
+  getAiModels: () => api.get('/admin/models'),
+  getModelRoles: () => api.get('/admin/models/roles'),
+  assignModelRole: (role: string, data: { provider: string; model_id: string }) => api.put(`/admin/models/roles/${role}`, data, { timeout: 90000 }),
+  resetModelRole: (role: string) => api.delete(`/admin/models/roles/${role}`),
+  scanAiModels: () => api.post('/admin/models/scan', undefined, { timeout: 120000 }),
+  createAiModel: (data: Record<string, unknown>) => api.post('/admin/models', data),
+  updateAiModel: (id: string, data: Record<string, unknown>) => api.patch(`/admin/models/${id}`, data),
+  applyAiModelProposal: (id: string) => api.post(`/admin/models/${id}/apply-proposal`),
+  dismissAiModelProposal: (id: string) => api.post(`/admin/models/${id}/dismiss-proposal`),
+  acknowledgeAiModel: (id: string) => api.post(`/admin/models/${id}/acknowledge`),
   getTenants: () => api.get('/admin/tenants'),
   createTenant: (data: { name: string; slug: string }) =>
     api.post('/admin/tenants', data),
@@ -1418,7 +1431,7 @@ export type BoardCardFields = {
   sprint_id?: string | null
 }
 
-export type BoardSprintInput = { id?: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null }
+export type BoardSprintInput = { id?: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null; auto_generated?: boolean }
 
 export type BoardShareTarget = { id: string; can_edit: boolean }
 
@@ -1451,6 +1464,7 @@ export const boardsApi = {
     columns?: { id: string; label: string; hint?: string; color?: string }[]
     labels?: { id?: string; name: string; color?: string }[]
     sprints?: BoardSprintInput[]
+    auto_sprint_weekly?: boolean
     visibility?: 'private' | 'session_shared'
     students_can_edit?: boolean
     session_id?: string
@@ -1806,4 +1820,32 @@ export const solidModelerApi = {
   getPublic: (token: string) => api.get<SolidModelReadonly>(`/solid-modeler/public/${token}`),
   studentList: () => api.get<{ id: string; name: string; thumbnail: string | null; object_count: number; updated_at: string }[]>('/solid-modeler/student/models'),
   studentGet: (id: string) => api.get<SolidModelReadonly>(`/solid-modeler/student/models/${id}`),
+}
+
+export const teacherMemoryApi = {
+  get: () => api.get('/teacher-memory'),
+  setEnabled: (enabled: boolean) => api.put('/teacher-memory/settings', { enabled }),
+  add: (text: string) => api.post('/teacher-memory', { text, kind: 'preference' }),
+  update: (id: string, data: { text?: string; pinned?: boolean }) => api.patch(`/teacher-memory/${id}`, data),
+  remove: (id: string) => api.delete(`/teacher-memory/${id}`),
+  clear: () => api.delete('/teacher-memory'),
+}
+
+export interface MLLabProjectSummary {
+  id: string; has_model?: boolean; name: string; engine: string; class_count: number; sample_count: number; accuracy: number | null
+  classes: Array<{ id: string; name: string; color: string; count: number; thumbs: string[] }>
+  created_at: string; updated_at: string
+}
+export interface MLLabProjectPayload {
+  name: string; engine: string; accuracy: number | null
+  summary: MLLabProjectSummary['classes']; data: Record<string, unknown>; session_id?: string | null
+}
+export const mlLabApi = {
+  list: () => api.get<{ projects: MLLabProjectSummary[] }>('/ml-lab/projects'),
+  get: (id: string) => api.get<MLLabProjectSummary & { data: Record<string, any> }>(`/ml-lab/projects/${id}`),
+  create: (payload: MLLabProjectPayload) => api.post<MLLabProjectSummary>('/ml-lab/projects', payload, { timeout: 60000 }),
+  update: (id: string, payload: MLLabProjectPayload) => api.put<MLLabProjectSummary>(`/ml-lab/projects/${id}`, payload, { timeout: 60000 }),
+  duplicate: (id: string) => api.post<MLLabProjectSummary>(`/ml-lab/projects/${id}/duplicate`),
+  runtimeModel: (id: string) => api.get(`/ml-lab/models/${id}`),
+  remove: (id: string) => api.delete(`/ml-lab/projects/${id}`),
 }

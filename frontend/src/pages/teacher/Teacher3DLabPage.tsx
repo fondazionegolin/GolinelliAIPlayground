@@ -5,7 +5,7 @@ import {
   Box, Loader2, Download, RotateCcw, Sparkles, AlertCircle,
   Upload, X, Share2, Trash2, Wand2, ImageIcon, Type,
   Lightbulb, ArrowRight, CheckCircle2, ChevronDown, ChevronUp,
-} from 'lucide-react'
+} from '@/components/icons'
 import { Link } from 'react-router-dom'
 import { meshyApi, jobsApi, type BackgroundJob } from '@/lib/api'
 import { notifyJobsChanged } from '@/lib/backgroundJobs'
@@ -418,7 +418,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
 
         {/* ── Workspace ── */}
         {(!compactUi || mode) && <div className="mx-auto max-w-5xl px-4 pb-10 pt-4 lg:px-6 lg:pt-6">
-          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-black text-[var(--selection-active-text)]"><ArrowRight className="h-4 w-4 rotate-180" /> Cambia strumento</button>}
+          {compactUi && <button type="button" onClick={() => { reset3d(); setMode(null) }} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-black text-[var(--selection-active-text)]"><ArrowRight className="h-4 w-4 rotate-180" /> Cambia strumento</button>}
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}

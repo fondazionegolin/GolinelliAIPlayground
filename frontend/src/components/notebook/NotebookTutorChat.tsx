@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal, History } from 'lucide-react'
+import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal, History } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'

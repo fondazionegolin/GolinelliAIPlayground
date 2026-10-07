@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Cookie, X } from 'lucide-react'
+import { Cookie, X } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
 
 const STORAGE_KEY = 'cookie_consent'

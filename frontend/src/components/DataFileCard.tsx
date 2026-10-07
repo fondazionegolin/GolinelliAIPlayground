@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileSpreadsheet, Hash, Type, Calendar, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { FileSpreadsheet, Hash, Type, Calendar, ChevronDown, ChevronUp, AlertCircle } from '@/components/icons'
 
 export interface SheetInfo {
   name: string

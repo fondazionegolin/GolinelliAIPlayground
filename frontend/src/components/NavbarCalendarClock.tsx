@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from '@/components/icons'
 import { calendarApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 
@@ -64,7 +64,7 @@ export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = fal
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--ds-radius-panel)]">
           {/* Month nav */}
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <button

@@ -12,7 +12,7 @@ import {
   Award, CheckCircle2,
   Monitor, PenTool, BookOpen,
   Search, LayoutGrid, List
-} from 'lucide-react'
+} from '@/components/icons'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 import { TrackedCorrectionText } from '@/components/tasks/TrackedCorrectionText'
 import ReactMarkdown from 'react-markdown'

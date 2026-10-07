@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Square, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Square, X } from '@/components/icons'
 import { jobsApi, type BackgroundJob } from '@/lib/api'
 import { cancelJob, JOBS_CHANGED_EVENT, useTicker } from '@/lib/backgroundJobs'
 import { useToast } from '@/components/ui/use-toast'

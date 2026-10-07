@@ -10,7 +10,7 @@ import {
   ArrowLeft, BookOpen, Lightbulb, List, Zap, Eye, Send,
   Pencil, Trash2, Loader2, ChevronDown, ChevronUp,
   Upload, Bot, X, Save, ChevronLeft, ChevronRight, Circle
-} from 'lucide-react'
+} from '@/components/icons'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

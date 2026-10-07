@@ -1,4 +1,4 @@
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
 
 interface P5File {

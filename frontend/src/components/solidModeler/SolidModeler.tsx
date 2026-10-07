@@ -7,7 +7,7 @@ import {
   ArrowDownToLine, Box, Circle, Cloud, CloudOff, Download, Grid3x3, Loader2, Share2, Cone, Copy, Cylinder, Donut, Eye, FileDown, FilePlus2, FileUp, FlipHorizontal2, FlipVertical2,
   FolderOpen, Group, Home, Layers, Maximize, Pyramid, Redo2, Sparkles, Star, Torus, Trash2, Triangle, Type, Undo2, Ungroup,
   type LucideIcon,
-} from 'lucide-react'
+} from '@/components/icons'
 import SolidModelerViewport, { type ViewName, type ViewportApi } from './SolidModelerViewport'
 import SolidModelerAIPanel from './SolidModelerAIPanel'
 import SolidModelShareDialog from './SolidModelShareDialog'

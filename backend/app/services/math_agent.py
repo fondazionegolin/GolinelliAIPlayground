@@ -11,6 +11,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from app.services.llm_service import llm_service
+from app.services import model_roles
 
 
 @dataclass
@@ -300,8 +301,8 @@ QUANDO LO STUDENTE DICE "è giusto X?" o "ho trovato X":
 
 async def run_math_agent(
     messages: list[dict],
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
     max_iterations: int = 5,
     school_grade: Optional[str] = None,
 ) -> str:
@@ -309,6 +310,8 @@ async def run_math_agent(
     Run the math agent with tool calling capabilities.
     Iteratively calls tools until a final answer is reached.
     """
+    provider = provider or model_roles.provider_for("chat.light")
+    model = model or model_roles.model_for("chat.light")
     from openai import AsyncOpenAI
     from app.core.config import settings
     from app.services.education_level import get_school_grade_instruction

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { RotateCcw, Save, Code2, Palette, Clock, Eye } from 'lucide-react'
+import { RotateCcw, Save, Code2, Palette, Clock, Eye } from '@/components/icons'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

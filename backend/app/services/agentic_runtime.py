@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import csv
+import logging
 import time
 from io import StringIO
 from datetime import datetime, timezone
@@ -14,16 +15,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.user import User
-from app.services.dataflow_nodes import DEFAULT_EXIT_PHRASES, NODE_REGISTRY, execute_data_node, interpolate_variables
+from app.services import platform_actions
+from app.services.dataflow_nodes import AI_TRANSFORM_TASKS, DEFAULT_EXIT_PHRASES, NODE_REGISTRY, execute_data_node, interpolate_variables, value_to_text
+
+platform_actions.register_nodes(NODE_REGISTRY)
 from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service
 
 
+logger = logging.getLogger(__name__)
+
+
 def configured_models() -> list[dict[str, str]]:
+    """Models a workflow node can use, following the admin's assignments (Admin → Modelli)."""
+    from app.services import model_roles
     models: list[dict[str, str]] = []
+    default_provider, default_model = model_roles.pair_for("chat.default")
+    fast_provider, fast_model = model_roles.pair_for("chat.fast")
     if settings.OPENAI_API_KEY:
-        models.append({"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.6 Luna"})
+        model = default_model if default_provider == "openai" else DEFAULT_OPENAI_CHAT_MODEL
+        models.append({"provider": "openai", "model": model, "name": model})
     if settings.ANTHROPIC_API_KEY:
-        models.append({"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5"})
+        model = fast_model if fast_provider == "anthropic" else "claude-haiku-4-5-20251001"
+        models.append({"provider": "anthropic", "model": model, "name": model})
     if settings.GEMINI_API_KEY:
         models.append({"provider": "gemini", "model": "gemini-3.8-flash", "name": "Gemini 3.8 Flash"})
     return models
@@ -120,23 +133,43 @@ def validate_graph(graph: dict[str, Any]) -> None:
             raise ValueError(f"Il nodo '{node_spec['label']}' richiede un collegamento per: {', '.join(sorted(missing))}")
     outgoing_counts: dict[tuple[str, str], int] = {}
     for edge in edges:
+        if not _is_flow_type(str(node_by_id[edge["to"]].get("id") or "")):
+            continue  # data consumers (images, documents, tables…) may all read the same output; only the dialogue is linear
         key = (edge["from"], _edge_port(edge, "source"))
         outgoing_counts[key] = outgoing_counts.get(key, 0) + 1
     for (source_id, port_name), count in outgoing_counts.items():
         source_node = node_by_id[source_id]
         if count > 1 and _is_flow_node(str(source_node.get("id") or "")):
             raise ValueError(f"La porta '{port_name}' di '{NODE_REGISTRY[source_node['id']]['label']}' può proseguire verso un solo nodo successivo")
-    chatbot_nodes = [node for node in nodes if str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot"]
-    if chatbot_nodes:
-        starts = [node for node in nodes if node.get("id") == "chatbot.start"]
-        if len(starts) != 1:
-            raise ValueError("Un flusso chatbot deve avere esattamente un nodo 'Inizio conversazione'")
-        if not any(node.get("id") == "chatbot.end" for node in nodes):
-            raise ValueError("Un flusso chatbot deve avere almeno un nodo 'Fine conversazione'")
+    if any(str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot" for node in nodes):
+        _entry_node(graph)  # raises when the dialogue has no unambiguous first node
     try:
         _execution_order(_forward_graph(graph))
     except ValueError:
         raise ValueError("Il workflow contiene un ciclo: per tornare indietro usa l'uscita «Ripeti» del nodo 'Ripeti finché'") from None
+
+
+def _entry_node(graph: dict[str, Any]) -> dict[str, Any]:
+    """First node of a dialogue: a legacy «Inizio conversazione», else the single chat node nobody leads into."""
+    nodes = [node for node in graph["nodes"] if isinstance(node, dict)]
+    legacy = [node for node in nodes if node.get("id") == "chatbot.start"]
+    if len(legacy) == 1:
+        return legacy[0]
+    if len(legacy) > 1:
+        raise ValueError("Un flusso chatbot può avere un solo nodo 'Inizio conversazione'")
+    node_by_id = {node["instanceId"]: node for node in nodes}
+    forward = _forward_graph(graph)["edges"]
+    candidates = [
+        node for node in nodes
+        if (str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot")
+        and not any(edge["to"] == node["instanceId"] and _is_flow_type(str(node_by_id[edge["from"]].get("id") or "")) for edge in forward)
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise ValueError("Il dialogo non ha un nodo iniziale: ogni nodo riceve già un collegamento da un altro nodo del dialogo")
+    names = ", ".join(f"«{node.get('label') or NODE_REGISTRY[node['id']]['label']}»" for node in candidates)
+    raise ValueError(f"Il dialogo ha più nodi iniziali ({names}): collegali in sequenza, così il primo è uno solo")
 
 
 def _execution_order(graph: dict[str, Any]) -> list[dict[str, Any]]:
@@ -310,12 +343,68 @@ async def _repeat_until(inputs: dict[str, Any], config: dict[str, Any], state: d
     return {**output, "attempts": attempts, "max_attempts": limit, "passed": ok}, provider, model, prompt_tokens, completion_tokens
 
 
+def _parse_json_payload(raw: str) -> Any:
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(cleaned)
+    except ValueError:
+        start, end = min((i for i in (cleaned.find("["), cleaned.find("{")) if i >= 0), default=-1), max(cleaned.rfind("]"), cleaned.rfind("}"))
+        if start >= 0 and end > start:
+            return json.loads(cleaned[start:end + 1])
+        raise
+
+
+async def _ai_transform(inputs: dict[str, Any], config: dict[str, Any], provider: str, model: str) -> tuple[dict[str, Any], str, str, int, int]:
+    """One-shot LLM transformation whose result is exposed on typed ports (text / table / slides)."""
+    task = str(config.get("task") or "custom")
+    if task not in AI_TRANSFORM_TASKS:
+        raise ValueError(f"Compito AI sconosciuto: {task}")
+    instruction = str(config.get("instruction") or "").strip()
+    if task == "custom" and not instruction:
+        raise ValueError("Con il compito «custom» scrivi le istruzioni per l'AI")
+    source = value_to_text(inputs.get("input")).strip()
+    extra = value_to_text(inputs.get("extra")).strip()
+    if not source and not extra and not instruction:
+        raise ValueError("Collega un input o scrivi delle istruzioni")
+    language = str(config.get("language") or "italiano")
+    system = f"{AI_TRANSFORM_TASKS[task]}\nRispondi in {language}."
+    if instruction and task != "custom":
+        system += f"\nIndicazioni aggiuntive: {instruction}"
+    user = (instruction + "\n\n" if task == "custom" else "") + (f"INPUT:\n{source}" if source else "")
+    if extra:
+        user += f"\n\nCONTESTO AGGIUNTIVO:\n{extra}"
+    response = await llm_service.generate(
+        messages=[{"role": "user", "content": user.strip() or "Procedi."}], system_prompt=system,
+        provider=provider, model=model, max_tokens=min(8192, max(256, int(config.get("max_tokens", 2048)))),
+    )
+    content = (response.content or "").strip()
+    output: dict[str, Any] = {"text": content}
+    if task in {"extract_table", "make_slides", "make_quiz"}:
+        try:
+            parsed = _parse_json_payload(content)
+        except ValueError:
+            raise ValueError("Il modello non ha restituito un JSON valido: riprova o semplifica l'input") from None
+        rows = parsed.get("rows") if isinstance(parsed, dict) and "rows" in parsed else parsed
+        if not isinstance(rows, list) or not rows or not all(isinstance(item, dict) for item in rows):
+            raise ValueError("Il modello non ha restituito una lista di oggetti")
+        if task == "extract_table":
+            columns = list(dict.fromkeys(str(key) for row in rows for key in row.keys()))
+            output["table"] = {"columns": columns, "rows": rows, "rowCount": len(rows)}
+        else:
+            output["slides"] = rows
+    return output, response.provider, response.model, response.prompt_tokens, response.completion_tokens
+
+
 async def _execute(
     node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
     db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
     if node_type == LOOP_NODE:
         return await _repeat_until(inputs, config, state, instance_id or "default")
+    if node_type.startswith("platform."):
+        if db is None or actor is None:
+            raise ValueError("I nodi di piattaforma si eseguono con un account docente")
+        return await platform_actions.run_platform_node(node_type, inputs, config, db, actor), None, None, 0, 0
     if node_type == "data.saved_dataset":
         if db is None:
             raise ValueError("Il dataset salvato è disponibile solo eseguendo il workflow")
@@ -340,9 +429,11 @@ async def _execute(
             ))
             await db.commit()
         return output, None, None, 0, 0
-    if node_type not in {"llm_chatbot", "ai.generate_dataset"}:
+    if node_type not in {"llm_chatbot", "ai.generate_dataset", "ai.transform"}:
         return await execute_data_node(node_type, inputs, config, state), None, None, 0, 0
     provider, model = _pick_model(node_type, config)
+    if node_type == "ai.transform":
+        return await _ai_transform(inputs, config, provider, model)
     if node_type == "ai.generate_dataset":
         requested_rows = min(300, max(5, int(config.get("rows", 30))))
         requested_columns = str(config.get("columns") or "").strip()
@@ -379,8 +470,7 @@ async def _execute(
         return {"table": table, "metadata": metadata}, response.provider, response.model, response.prompt_tokens, response.completion_tokens
 
     message = inputs.get("message") or "Inizia la conversazione"
-    if isinstance(message, dict):
-        message = message.get("content") or message.get("message") or json.dumps(message, ensure_ascii=False)
+    message = value_to_text(message)
     continuous = bool(config.get("continuous"))
     content, ended, response = await _llm_reply(config, inputs, state, [{"role": "user", "content": str(message)}], continuous)
     output: dict[str, Any] = {"response": _llm_payload(content, response), "next": content}
@@ -427,6 +517,11 @@ async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticW
     await db.commit()
     try:
         for sequence, node in enumerate(order):
+            if (await db.execute(select(AgenticWorkflowRun.status).where(AgenticWorkflowRun.id == run.id))).scalar_one() == "cancelled":
+                run.status = "cancelled"
+                await db.commit()
+                await db.refresh(run)
+                return run
             result = await db.execute(select(AgenticNodeRun).where(
                 AgenticNodeRun.run_id == run.id, AgenticNodeRun.node_instance_id == node["instanceId"],
             ))
@@ -646,10 +741,7 @@ async def advance_conversation(
 
     try:
         if current is None:
-            start_node = next((node for node in graph["nodes"] if node.get("id") == "chatbot.start"), None)
-            if not start_node:
-                raise ValueError("Il workflow chatbot deve avere un nodo 'Inizio conversazione'")
-            current = start_node["instanceId"]
+            current = _entry_node(graph)["instanceId"]
         elif user_input is not None:
             node_run = await _find_node_run(db, run, current, int(state["visits"].get(current, 0)))
             if not node_run or node_run.status != "waiting":
@@ -713,9 +805,19 @@ async def advance_conversation(
                     state["visits"][body_node] = int(state["visits"].get(body_node, 0)) + 1
             current = step["to"]
         raise ValueError("Il flusso conversazionale ha superato il numero massimo di passi consentiti in un turno")
-    except ValueError as exc:
+    except Exception as exc:
+        # Any failure (not only ValueError) must end the run: otherwise it stays «running» forever and the next
+        # message is rejected with «la conversazione non attende una risposta».
+        await db.rollback()
+        logger.exception("Conversation run %s failed", run.id)
+        failing = next((item for item in (await db.execute(select(AgenticNodeRun).where(
+            AgenticNodeRun.run_id == run.id, AgenticNodeRun.status == "running"))).scalars().all()), None)
+        if failing:
+            failing.status = "failed"
+            failing.error_message = str(exc) or exc.__class__.__name__
+            failing.completed_at = datetime.now(timezone.utc)
         run.status = "failed"
-        run.error_message = str(exc)
+        run.error_message = str(exc) or exc.__class__.__name__
         run.completed_at = datetime.now(timezone.utc)
         await db.commit()
     await db.refresh(run)

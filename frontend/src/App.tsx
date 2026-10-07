@@ -5,7 +5,7 @@ import { useUiThemeRouteGuard } from '@/stores/uiTheme'
 import { Toaster } from '@/components/ui/toaster'
 import { CookieBanner } from '@/components/CookieBanner'
 import { LegalConsentGate } from '@/components/LegalConsentGate'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 
 import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, X } from '@/components/icons'
 import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 
 export function WorkspaceExplorerSidebar({ children, className = '' }: { children: ReactNode; className?: string }) {

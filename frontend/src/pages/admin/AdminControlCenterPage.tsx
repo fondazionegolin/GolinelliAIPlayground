@@ -16,7 +16,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts'
-import { Activity, DollarSign, Zap, Wifi } from 'lucide-react'
+import { Activity, DollarSign, Zap, Wifi } from '@/components/icons'
 
 type OverviewData = {
   summary: {

@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { SpreadsheetEditor, type SheetCellStyles, type SheetChartConfig, type SheetDimensions } from '@/components/SpreadsheetEditor'
+import { ArtifactPreviews, extractArtifacts, hasArtifacts, type NodeArtifacts } from '@/components/agentic/NodeArtifacts'
 import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 import {
@@ -14,12 +15,16 @@ import {
   Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2,
   ArrowLeft, Cloud, CloudOff, Eraser, Network, Play, Save, Search,
   Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle,
-} from 'lucide-react'
+} from '@/components/icons'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
-type Port = { name: string; type: string; label: string; required?: boolean }
-type Param = { name: string; type: string; label: string; default?: unknown; options?: string[]; min?: number; max?: number; step?: number; required?: boolean }
-type NodeSpec = { id: string; label: string; category: string; description: string; inputs: Port[]; outputs: Port[]; params: Param[]; cachePolicy?: string }
+// Generic platform nodes carry the union of their functions' ports/params: `showFor` lists the functions an item
+// belongs to, `variants[fn]` overrides label/default/options/type for one function.
+type PerFunction<T> = { showFor?: string[]; variants?: Record<string, Partial<T>> }
+type Port = { name: string; type: string; label: string; required?: boolean } & PerFunction<{ name: string; type: string; label: string; required?: boolean }>
+type PlatformFunction = { id: string; label: string; description: string; sideEffects?: string; longRunning?: boolean }
+type Param = { name: string; type: string; label: string; default?: unknown; options?: string[]; optionLabels?: Record<string, string>; min?: number; max?: number; step?: number; required?: boolean; showFor?: string[]; variants?: Record<string, Partial<Param>> }
+type NodeSpec = { id: string; label: string; category: string; description: string; inputs: Port[]; outputs: Port[]; params: Param[]; cachePolicy?: string; functions?: PlatformFunction[]; hidden?: boolean }
 type NodeStatus = 'idle' | 'running' | 'complete' | 'waiting' | 'skipped' | 'error'
 type CanvasNode = { id: string; instanceId: string; x: number; y: number; status: NodeStatus; config: Record<string, unknown> }
 type Edge = { id: string; from: string; to: string; sourcePort: string; targetPort: string }
@@ -65,6 +70,11 @@ const FALLBACK_SPECS: NodeSpec[] = [
 ]
 
 const INLINE_PARAMS: Record<string, string[]> = {
+  'platform.files': ['function'],
+  'platform.documents': ['function'],
+  'platform.images': ['function'],
+  'platform.models3d': ['function'],
+  'platform.live': ['function'],
   'data.select': ['columns'],
   'data.new_table': ['columns'],
   'chatbot.start': ['welcome_message'],
@@ -89,6 +99,7 @@ const CATEGORY_STYLE: Record<string, { dot: string; soft: string; ink: string; i
   Visualizzazioni: { dot: '#c2410c', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-700', icon: BarChart3 },
   Chatbot: { dot: '#4338ca', soft: 'bg-indigo-50 border-indigo-200', ink: 'text-indigo-700', icon: MessageSquareText },
   Controllo: { dot: '#a16207', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
+  Piattaforma: { dot: '#be123c', soft: 'bg-rose-50 border-rose-200', ink: 'text-rose-700', icon: Cloud },
 }
 
 // Nodes reuse the navbar pill material (luminous white surface, inset highlight, cluster shadow) plus a deeper
@@ -111,6 +122,14 @@ const REPLAY_STEP_MS = 650
 const readStored = (key: string) => { try { return window.localStorage.getItem(key) } catch { return null } }
 const writeStored = (key: string, value: string) => { try { window.localStorage.setItem(key, value) } catch { /* storage unavailable */ } }
 const typesCompatible = (from: string, to: string) => from === to || from === 'ANY' || to === 'ANY'
+// First node(s) of a dialogue: a legacy «Inizio conversazione», else chat nodes that no other dialogue node leads into.
+const isChatNode = (id: string) => id.startsWith('chatbot.') || id === 'llm_chatbot'
+function dialogueEntryIds(nodes: CanvasNode[], edges: Edge[]): string[] {
+  const legacy = nodes.filter((node) => node.id === 'chatbot.start')
+  if (legacy.length) return legacy.map((node) => node.instanceId)
+  const byId = new Map(nodes.map((node) => [node.instanceId, node]))
+  return nodes.filter((node) => isChatNode(node.id) && !edges.some((edge) => edge.to === node.instanceId && edge.sourcePort !== 'repeat' && isFlowNode(byId.get(edge.from)?.id || ''))).map((node) => node.instanceId)
+}
 const isFlowNode = (id: string) => id.startsWith('chatbot.') || id.startsWith('control.') || id === 'llm_chatbot'
 // «Ripeti» of a repeat-until node is the only port allowed to point backwards and close a loop.
 const LOOP_NODE = 'control.repeat_until'
@@ -122,6 +141,12 @@ const TYPE_COLOR: Record<string, string> = { TABLE: '#0d9488', MODEL: '#16a34a',
 const DATAFLOW_CSS = `
 @keyframes dfHalo { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--df-accent) 40%, transparent); } 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--df-accent) 0%, transparent), 0 0 30px color-mix(in srgb, var(--df-accent) 30%, transparent); } }
 .df-halo { animation: dfHalo 1.3s ease-in-out infinite; }
+/* Running node: layered accent glow, lightened so it stays visible on dark canvases, pulsing in size and opacity. */
+@keyframes dfRunGlow {
+  0%, 100% { opacity: .55; box-shadow: 0 0 0 2px var(--df-glow), 0 0 14px 2px var(--df-glow), 0 0 34px 8px color-mix(in srgb, var(--df-glow) 55%, transparent); }
+  50% { opacity: 1; box-shadow: 0 0 0 3px var(--df-glow), 0 0 26px 7px var(--df-glow), 0 0 70px 20px color-mix(in srgb, var(--df-glow) 65%, transparent); }
+}
+.df-running-glow { --df-glow: color-mix(in srgb, var(--df-accent) 72%, white); animation: dfRunGlow 1s ease-in-out infinite; }
 @keyframes dfFlow { to { stroke-dashoffset: -28; } }
 .df-flow { stroke-dasharray: 9 5; animation: dfFlow .6s linear infinite; }
 @keyframes dfPort { 50% { outline-color: rgba(124,58,237,0); outline-offset: 5px; } }
@@ -135,7 +160,7 @@ const DATAFLOW_CSS = `
   .df-squircle-top { border-radius: 40px 40px 0 0; corner-shape: squircle; }
   .df-squircle-sm { border-radius: 24px; corner-shape: squircle; }
 }
-@media (prefers-reduced-motion: reduce) { .df-halo, .df-flow, .df-port-target { animation: none; } .df-travel { display: none; } }
+@media (prefers-reduced-motion: reduce) { .df-halo, .df-flow, .df-port-target { animation: none; } .df-running-glow { animation: none; opacity: 1; } .df-travel { display: none; } }
 `
 
 const NODE_WIDTH = 300
@@ -144,6 +169,18 @@ const PORT_TOP = 61
 const PORT_HEIGHT = 28
 const nodeWidth = (spec: NodeSpec) => spec.category === 'Visualizzazioni' ? 430 : spec.id === 'ml.kmeans_clustering' ? 500 : NODE_WIDTH
 const defaults = (spec: NodeSpec) => Object.fromEntries(spec.params.map((param) => [param.name, param.default ?? '']))
+const functionOf = (spec: NodeSpec, config: Record<string, unknown>) =>
+  spec.functions ? String(config.function || spec.params.find((param) => param.name === 'function')?.default || spec.functions[0]?.id || '') : ''
+// The spec a node shows for its selected function: only that function's ports and params, with per-function overrides applied.
+function effectiveSpec(spec: NodeSpec, config: Record<string, unknown>): NodeSpec {
+  if (!spec.functions) return spec
+  const fn = functionOf(spec, config)
+  const pick = <T extends { showFor?: string[]; variants?: Record<string, Partial<T>> }>(items: T[]): T[] =>
+    items.filter((item) => !item.showFor || item.showFor.includes(fn)).map((item) => ({ ...item, ...(item.variants?.[fn] || {}) }))
+  const current = spec.functions.find((item) => item.id === fn)
+  return { ...spec, inputs: pick(spec.inputs), outputs: pick(spec.outputs), params: pick(spec.params),
+    description: current ? `${current.label}. ${current.description}${current.longRunning ? ' (operazione lunga)' : ''}` : spec.description }
+}
 
 function template(specs: NodeSpec[]) {
   const make = (id: string, instanceId: string, x: number, y: number): CanvasNode => ({ id, instanceId, x, y, status: 'idle', config: defaults(specs.find((item) => item.id === id)!) })
@@ -223,8 +260,11 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const { data: datasetsResponse } = useQuery({ queryKey: ['agentic-datasets'], queryFn: () => agenticApi.listDatasets(), staleTime: 15_000 })
   const selected = nodes.find((node) => node.instanceId === selectedId)
   // Unknown ids (e.g. a node removed from the catalogue) degrade to an inert card instead of crashing the canvas.
-  const specOf = (node: CanvasNode): NodeSpec => specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)
-    || { id: node.id, label: node.id, category: 'Controllo', description: 'Nodo non disponibile nel catalogo corrente.', inputs: [], outputs: [], params: [] }
+  const specOf = (node: CanvasNode): NodeSpec => {
+    const found = specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)
+    return found ? effectiveSpec(found, node.config)
+      : { id: node.id, label: node.id, category: 'Controllo', description: 'Nodo non disponibile nel catalogo corrente.', inputs: [], outputs: [], params: [] }
+  }
   const liveRef = useRef({ nodes, zoom, followRun })
   liveRef.current = { nodes, zoom, followRun }
   const focusMode = running || activeNodeId !== null || (chatWindow && activeRun?.status === 'waiting')
@@ -343,7 +383,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const search = query.trim().toLowerCase()
     return Object.keys(CATEGORY_STYLE).map((category) => ({
       category,
-      items: specs.filter((item) => item.category === category && (!search || `${item.label} ${item.description} ${item.id}`.toLowerCase().includes(search))),
+      items: specs.filter((item) => !item.hidden && item.category === category && (!search || `${item.label} ${item.description} ${item.id}`.toLowerCase().includes(search))),
     })).filter((group) => group.items.length)
   }, [query, specs])
 
@@ -353,7 +393,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const sourceSpec = specOf(source)
     const inputs = [...targetSpec.inputs].filter((port) => !targetId || !currentEdges.some((edge) => edge.to === targetId && edge.targetPort === port.name))
       .sort((a, b) => Number(b.required !== false) - Number(a.required !== false))
-    const outputs = sourceSpec.outputs.filter((port) => !isFlowNode(source.id) || !currentEdges.some((edge) => edge.from === source.instanceId && edge.sourcePort === port.name))
+    const outputs = sourceSpec.outputs.filter((port) => !isFlowNode(source.id) || !isFlowNode(targetSpec.id) || !currentEdges.some((edge) => edge.from === source.instanceId && edge.sourcePort === port.name))
     for (const exact of [true, false]) {
       for (const input of inputs) {
         const output = outputs.find((port) => exact ? port.type === input.type && port.type !== 'ANY' : typesCompatible(port.type, input.type))
@@ -374,7 +414,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const anchor = autoWire ? nodes.find((item) => item.instanceId === selectedId) : undefined
     if (anchor) {
       px = anchor.x + nodeWidth(specOf(anchor)) + 110; py = anchor.y
-      const pair = bestPortPair(anchor, spec, null)
+      const pair = bestPortPair(anchor, effectiveSpec(spec, config), null)
       if (pair) {
         newEdge = { id: `edge-${Date.now()}`, from: anchor.instanceId, to: instanceId, sourcePort: pair.from.name, targetPort: pair.to.name }
         const inferred = inferOutputColumns(anchor.instanceId, pair.from.name)
@@ -771,7 +811,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
       const id = await persist(); if (!id) throw new Error('Il workflow non è stato salvato')
       setRunTrail(new Set()); setNodeErrors({})
-      focusPending(chatbotFlow ? nodes.filter((node) => node.id === 'chatbot.start').map((node) => node.instanceId) : nodes.filter((node) => !edges.some((edge) => edge.to === node.instanceId)).map((node) => node.instanceId))
+      focusPending(chatbotFlow ? dialogueEntryIds(nodes, edges) : nodes.filter((node) => !edges.some((edge) => edge.to === node.instanceId)).map((node) => node.instanceId))
       const response = await agenticApi.createRun(id, {}, chatbotFlow ? sessionId : undefined, controller.signal)
       if (chatbotFlow) setChatWindow(true)
       await applyRun(response.data)
@@ -802,8 +842,9 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     abortRef.current?.abort()
     setRunning(false); clearFocus()
     setNodes((current) => current.map((node) => node.status === 'running' ? { ...node, status: 'idle' } : node))
+    setNodes((current) => current.map((node) => node.status === 'waiting' ? { ...node, status: 'idle' } : node))
     setError('Esecuzione interrotta')
-    if (activeRun) { try { await agenticApi.stopRun(activeRun.id) } catch { /* best effort */ } }
+    if (activeRun) { try { const response = await agenticApi.stopRun(activeRun.id); setActiveRun(response.data) } catch { /* best effort */ } }
   }
   const reset = () => {
     const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null); clearFocus()
@@ -812,6 +853,22 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection(); clearFocus()
   }
   const updateNodeParam = (nodeId: string, name: string, value: unknown) => {
+    const target = nodes.find((item) => item.instanceId === nodeId)
+    const base = target && specs.find((item) => item.id === target.id)
+    if (target && base?.functions && name === 'function') {
+      // Switching function: adopt the new function's defaults for untouched params and drop links to ports that no longer exist.
+      const before = effectiveSpec(base, target.config); const nextConfig: Record<string, unknown> = { ...target.config, function: value }; const after = effectiveSpec(base, nextConfig)
+      for (const param of after.params) {
+        const previous = before.params.find((item) => item.name === param.name)
+        const current = nextConfig[param.name]
+        if (current === undefined || current === '' || (previous && current === (previous.default ?? ''))) nextConfig[param.name] = param.default ?? ''
+      }
+      setNodes((current) => current.map((item) => item.instanceId === nodeId ? { ...item, status: 'idle', config: nextConfig } : item))
+      setEdges((current) => current.filter((edge) => (edge.to !== nodeId || after.inputs.some((port) => port.name === edge.targetPort)) && (edge.from !== nodeId || after.outputs.some((port) => port.name === edge.sourcePort))))
+      setOutputs((current) => { const next = { ...current }; delete next[nodeId]; return next })
+      setNodeErrors((current) => ({ ...current, [nodeId]: '' }))
+      return
+    }
     setNodes((current) => current.map((item) => item.instanceId === nodeId ? { ...item, status: 'idle', config: { ...item.config, [name]: value } } : item))
     setOutputs((current) => { const next = { ...current }; delete next[nodeId]; return next })
     setNodeErrors((current) => ({ ...current, [nodeId]: '' }))
@@ -859,7 +916,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       <button onClick={() => navigate('/teacher/agentic')} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title="Torna ai workflow"><ArrowLeft className="h-4 w-4" /></button>
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white"><Network className="h-5 w-5" /></div>
       <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="text-sm font-black md:text-base">Dataflow Studio</h1><span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-black uppercase text-violet-700">Beta</span></div><label className="mt-1 flex items-center gap-1.5"><span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Nome workflow</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Workflow senza titolo" className="w-56 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /></label></div>
-      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{running && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
+      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{(running || activeRun?.status === 'running' || activeRun?.status === 'waiting') && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full" title="Ferma l'esecuzione del workflow"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
     </header>
     <div className="flex min-h-0 flex-1">
       {libraryCollapsed && (
@@ -956,6 +1013,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
               const outputColumns = (port: Port) => port.type === 'TABLE' ? inferOutputColumns(node.instanceId, port.name) : []
               return <article data-node={node.instanceId} key={node.instanceId} onPointerDown={(event) => nodePointerDown(event, node, false)} className="df-squircle absolute overflow-visible" style={{ ...PILL_STYLE, left: node.x, top: node.y, width: nodeWidth(spec), boxShadow: nodeBoxShadow(node.status, isSelected, style.dot, isActive), opacity: dimmed ? (inTrail ? .8 : .4) : node.status === 'skipped' ? .55 : 1, filter: dimmed && !inTrail ? 'saturate(.3)' : undefined, zIndex: isActive || isWaiting ? 20 : isSelected ? 10 : undefined, transition: 'opacity .35s ease, filter .35s ease, box-shadow .25s ease', ['--df-accent' as string]: isWaiting ? '#f59e0b' : style.dot }}>
                 {(isActive || isWaiting) && <span className="df-halo df-squircle pointer-events-none absolute inset-0" />}
+                {node.status === 'running' && <span className="df-running-glow df-squircle pointer-events-none absolute inset-0" />}
                 {(isActive || isWaiting) && <span className="pointer-events-none absolute -top-8 left-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white" style={{ background: isWaiting ? '#f59e0b' : style.dot }}>{isWaiting ? <><MessageSquareText className="h-3 w-3" /> In attesa di risposta</> : <><Activity className="h-3 w-3" /> In esecuzione</>}</span>}
                 <div>
                   <div onPointerDown={(event) => beginMove(event, node)} className="df-squircle-top flex h-14 cursor-grab items-center gap-3 px-3.5 shadow-[0_1px_0_rgba(120,120,124,0.10)] active:cursor-grabbing"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-black uppercase tracking-wider" style={{ color: style.dot }}>{spec.category}</span></span><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-[filter] hover:brightness-95 disabled:opacity-60" style={{ background: tint(style.dot, 13), color: style.dot }} title="Esegui solo questo nodo" aria-label="Esegui solo questo nodo">{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}</button></div>
@@ -999,16 +1057,18 @@ function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { out
   const values = Object.values(output)
   const tableEntries = Object.entries(output).filter(([, value]) => isTable(value)) as Array<[string, TableValue]>
   const plotEntry = Object.entries(output).find(([, value]) => isPlot(value)) as [string, PlotValue] | undefined
-  const metrics = (output.metrics && typeof output.metrics === 'object' ? output.metrics : values.find((value) => value && typeof value === 'object' && !Array.isArray(value) && !isTable(value) && !isPlot(value))) as Record<string, unknown> | undefined
+  const artifacts = extractArtifacts(output); const showArtifacts = hasArtifacts(artifacts)
+  const metrics = (output.metrics && typeof output.metrics === 'object' ? output.metrics : showArtifacts ? undefined : values.find((value) => value && typeof value === 'object' && !Array.isArray(value) && !isTable(value) && !isPlot(value))) as Record<string, unknown> | undefined
   const openMetrics = metrics ? () => onExplore({ kind: 'metrics', title: `${nodeLabel} · metriche`, metrics }) : undefined
   const [firstTable, ...otherTables] = tableEntries
   // Stop pointer events here: the node captures the pointer for dragging, which would swallow clicks on previews.
   return <div className="overflow-hidden rounded-b-[22px] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-b-[40px]" onPointerDown={(event) => event.stopPropagation()}>
+    {showArtifacts && <ArtifactPreviews artifacts={artifacts} nodeLabel={nodeLabel} />}
     {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || `${nodeLabel} · grafico`, plot: plotEntry[1] })} onOpenMetrics={openMetrics} /></div>}
     {!plotEntry && metrics && <MetricCards metrics={metrics} onOpen={openMetrics} />}
     {firstTable && <MiniTable table={firstTable[1]} label={firstTable[0]} onOpen={() => onOpenTable(firstTable[0], firstTable[1])} />}
     {otherTables.length > 0 && <div className="flex flex-wrap gap-1.5 px-2 pb-2">{otherTables.map(([port, table]) => <button key={port} type="button" onClick={() => onOpenTable(port, table)} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {port} · {table.rowCount ?? table.rows.length} righe</button>)}</div>}
-    {!plotEntry && !metrics && !tableEntries.length && <button type="button" onClick={() => onExplore({ kind: 'raw', title: `${nodeLabel} · output`, value: values.length === 1 ? values[0] : output })} className="group m-2 block max-h-24 w-[calc(100%-1rem)] overflow-hidden rounded-lg bg-slate-950 p-2 text-left text-[9px] leading-4 text-slate-100" title="Apri l’output completo"><span className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-slate-400 group-hover:text-white"><Maximize2 className="h-3 w-3" /> Apri output</span>{formatCompact(values[0])}</button>}
+    {!plotEntry && !metrics && !tableEntries.length && !showArtifacts && <button type="button" onClick={() => onExplore({ kind: 'raw', title: `${nodeLabel} · output`, value: values.length === 1 ? values[0] : output })} className="group m-2 block max-h-24 w-[calc(100%-1rem)] overflow-hidden rounded-lg bg-slate-950 p-2 text-left text-[9px] leading-4 text-slate-100" title="Apri l’output completo"><span className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-slate-400 group-hover:text-white"><Maximize2 className="h-3 w-3" /> Apri output</span>{formatCompact(values[0])}</button>}
   </div>
 }
 
@@ -1157,7 +1217,7 @@ function ParamField({ param, value, suggestedOptions, onChange }: { param: Param
     reader.readAsText(file)
     event.target.value = ''
   }
-  return <label className="block"><span className="mb-1 block text-[10px] font-bold text-slate-500">{param.label}</span>{param.type === 'BOOLEAN' ? <button type="button" onClick={() => onChange(!value)} className={`${cls} text-left font-bold`}>{value ? 'Attivo' : 'Disattivo'}</button> : param.type === 'SELECT' ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}>{param.options?.map((option) => <option key={option}>{option}</option>)}</select> : param.type === 'DATASET' ? <DatasetPicker value={String(value ?? '')} onChange={onChange} /> : param.type === 'COLUMN' && suggestedOptions?.length ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}><option value="">{param.required === false ? 'Nessuna' : 'Seleziona una colonna'}</option>{suggestedOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select> : param.type === 'COLUMNS' && suggestedOptions?.length ? <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2">{suggestedOptions.map((option) => <button key={option} type="button" onClick={() => toggleColumn(option)} className={`rounded-full px-2 py-1 text-[9px] font-bold ${selected.includes(option) ? 'bg-violet-600 text-white' : 'bg-white text-slate-600'}`}>{option}</button>)}</div> : param.type === 'CODE' ? <div className="space-y-1"><textarea value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} rows={5} className={`${cls} h-auto py-2 font-mono`} /><label className="inline-flex cursor-pointer items-center gap-1 text-[9px] font-bold text-violet-600 hover:text-violet-700"><Paperclip className="h-3 w-3" /> Carica file (CSV/JSON/testo)<input type="file" accept=".csv,.json,.txt" onChange={readFile} className="hidden" /></label></div> : <input type={['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? 'number' : 'text'} min={param.min} max={param.max} step={param.step || (param.type === 'INTEGER' ? 1 : 'any')} value={String(value ?? '')} onChange={(event) => onChange(['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? Number(event.target.value) : event.target.value)} className={cls} />}</label>
+  return <label className="block"><span className="mb-1 block text-[10px] font-bold text-slate-500">{param.label}</span>{param.type === 'BOOLEAN' ? <button type="button" onClick={() => onChange(!value)} className={`${cls} text-left font-bold`}>{value ? 'Attivo' : 'Disattivo'}</button> : param.type === 'SELECT' ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}>{param.options?.map((option) => <option key={option} value={option}>{param.optionLabels?.[option] ?? option}</option>)}</select> : param.type === 'DATASET' ? <DatasetPicker value={String(value ?? '')} onChange={onChange} /> : param.type === 'COLUMN' && suggestedOptions?.length ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}><option value="">{param.required === false ? 'Nessuna' : 'Seleziona una colonna'}</option>{suggestedOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select> : param.type === 'COLUMNS' && suggestedOptions?.length ? <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2">{suggestedOptions.map((option) => <button key={option} type="button" onClick={() => toggleColumn(option)} className={`rounded-full px-2 py-1 text-[9px] font-bold ${selected.includes(option) ? 'bg-violet-600 text-white' : 'bg-white text-slate-600'}`}>{option}</button>)}</div> : param.type === 'CODE' ? <div className="space-y-1"><textarea value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} rows={5} className={`${cls} h-auto py-2 font-mono`} /><label className="inline-flex cursor-pointer items-center gap-1 text-[9px] font-bold text-violet-600 hover:text-violet-700"><Paperclip className="h-3 w-3" /> Carica file (CSV/JSON/testo)<input type="file" accept=".csv,.json,.txt" onChange={readFile} className="hidden" /></label></div> : <input type={['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? 'number' : 'text'} min={param.min} max={param.max} step={param.step || (param.type === 'INTEGER' ? 1 : 'any')} value={String(value ?? '')} onChange={(event) => onChange(['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? Number(event.target.value) : event.target.value)} className={cls} />}</label>
 }
 
 function DatasetPicker({ value, onChange }: { value: string; onChange: (value: unknown) => void }) {
@@ -1197,14 +1257,14 @@ function FloatingChatWindow({ chatLog, waitingInfo, chatInput, setChatInput, onS
     </div>
     <div ref={logRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
       {chatLog.length === 0 && <p className="text-xs text-slate-400">In attesa dell'esecuzione del workflow…</p>}
-      {chatLog.map((entry, index) => <div key={index} className={`flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs ${entry.role === 'user' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-800'}`}>{entry.role === 'bot' ? <ReactMarkdown remarkPlugins={[remarkGfm]} className="chat-markdown prose prose-xs max-w-none prose-p:my-1 prose-headings:my-1.5 prose-ul:my-1 prose-ol:my-1" components={markdownCodeComponents()}>{entry.text}</ReactMarkdown> : entry.text}</div></div>)}
+      {chatLog.map((entry, index) => <div key={index} className={`flex ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`${entry.artifacts ? 'w-[80%]' : 'max-w-[80%]'} rounded-2xl px-3 py-2 text-xs ${entry.role === 'user' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-800'}`}>{entry.label && <p className="mb-1 text-[9px] font-black uppercase tracking-wider text-slate-400">{entry.label}</p>}{entry.artifacts && <div className="-m-2"><ArtifactPreviews artifacts={entry.artifacts} nodeLabel={entry.label || 'Risultato'} /></div>}{entry.role === 'bot' ? entry.text && <ReactMarkdown remarkPlugins={[remarkGfm]} className="chat-markdown prose prose-xs max-w-none prose-p:my-1 prose-headings:my-1.5 prose-ul:my-1 prose-ol:my-1" components={markdownCodeComponents()}>{entry.text}</ReactMarkdown> : entry.text}</div></div>)}
     </div>
     {waitingInfo && waitingInfo.kind === 'choice' && waitingInfo.options?.length ? <div className="flex shrink-0 flex-wrap gap-2 border-t border-amber-100 bg-amber-50 p-3">{waitingInfo.options.map((option, index) => <Button key={index} onClick={() => onSend(option)} surface="solid" density="compact" className="rounded-full bg-amber-500 text-white hover:bg-amber-600">{option}</Button>)}</div> : waitingInfo ? <div className="flex shrink-0 gap-2 border-t border-amber-100 bg-amber-50 p-2"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSend() }} placeholder="Scrivi come farebbe uno studente" className="h-9 flex-1 rounded-full border border-amber-200 px-3 text-xs" autoFocus /><Button onClick={() => onSend()} surface="solid" density="compact" className="rounded-full bg-amber-500 text-white hover:bg-amber-600">Invia</Button></div> : null}
     <div onPointerDown={onResizeDown} className="absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize"><svg viewBox="0 0 16 16" className="h-4 w-4 text-slate-300"><path d="M14 14L2 14M14 14L14 2M14 14L7 14M14 14L14 7" stroke="currentColor" strokeWidth="1.5" /></svg></div>
   </div>
 }
 
-type ChatEntry = { role: 'bot' | 'user'; text: string }
+type ChatEntry = { role: 'bot' | 'user'; text: string; artifacts?: NodeArtifacts; label?: string }
 
 function buildChatLog(run: WorkflowRun | null, nodes: CanvasNode[]): ChatEntry[] {
   if (!run) return []
@@ -1230,6 +1290,12 @@ function buildChatLog(run: WorkflowRun | null, nodes: CanvasNode[]): ChatEntry[]
       }
     } else if (node.id === 'chatbot.yes_no' && item.status === 'completed') {
       log.push({ role: 'user', text: output.yes !== undefined && output.yes !== null ? 'Sì' : 'No' })
+    }
+    // Any other node (image generation, documents, AI transforms…) that produced something visible is shown in the chat too.
+    if (item.status === 'completed' && !isChatNode(node.id)) {
+      const artifacts = extractArtifacts(output)
+      const text = node.id === 'ai.transform' && typeof output.text === 'string' && !output.table && !output.slides ? output.text : ''
+      if (hasArtifacts(artifacts) || text) log.push({ role: 'bot', text, label: item.label, artifacts: hasArtifacts(artifacts) ? artifacts : undefined })
     }
   }
   return log

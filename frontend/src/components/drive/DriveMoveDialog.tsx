@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, Folder, HardDrive, Loader2 } from 'lucide-react'
+import { ChevronRight, Folder, HardDrive, Loader2 } from '@/components/icons'
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/design'
 import type { DriveFolderNode } from './driveTypes'
 

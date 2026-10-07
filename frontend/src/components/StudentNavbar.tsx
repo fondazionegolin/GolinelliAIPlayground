@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box, FolderOpen } from 'lucide-react'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box, FolderOpen } from '@/components/icons'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
@@ -18,6 +18,7 @@ import { CreditBalancePill } from './CreditBalancePill'
 import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { StudentNotificationBell } from './StudentNotificationBell'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { openFeedback } from '@/components/FloatingHelper'
 import { ThemeToggleMenuItem } from './ThemeToggleMenuItem'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
@@ -37,6 +38,7 @@ interface StudentNavbarProps {
   joinCode?: string
   chatSidebarOpen?: boolean
   onToggleChatSidebar?: () => void
+  onIncomingClassChat?: () => void
   accent?: StudentAccentId
   onAccentChange?: (accent: StudentAccentId) => void
   enabledModules?: string[]
@@ -54,6 +56,7 @@ export function StudentNavbar({
   joinCode,
   chatSidebarOpen = false,
   onToggleChatSidebar,
+  onIncomingClassChat,
   accent = DEFAULT_STUDENT_ACCENT,
   onAccentChange,
   enabledModules,
@@ -104,6 +107,7 @@ export function StudentNavbar({
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const activeModuleRef = useRef<string | null | undefined>(activeModule)
   const chatSidebarOpenRef = useRef(chatSidebarOpen)
+  const onIncomingClassChatRef = useRef(onIncomingClassChat)
   const profileIdRef = useRef<string | undefined>(undefined)
   const processedRealtimeIdsRef = useRef<Set<string>>(new Set())
 
@@ -114,6 +118,8 @@ export function StudentNavbar({
   useEffect(() => {
     chatSidebarOpenRef.current = chatSidebarOpen
   }, [chatSidebarOpen])
+
+  useEffect(() => { onIncomingClassChatRef.current = onIncomingClassChat }, [onIncomingClassChat])
 
   useEffect(() => {
     if (chatSidebarOpen) setChatBadge(0)
@@ -131,6 +137,7 @@ export function StudentNavbar({
         if (processedRealtimeIdsRef.current.has(detail.id)) return
         processedRealtimeIdsRef.current.add(detail.id)
         setChatBadge((count) => count + 1)
+        onIncomingClassChatRef.current?.()
         return
       }
 
@@ -338,7 +345,8 @@ export function StudentNavbar({
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] !text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
+                  style={{ color: '#000' }}
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA
@@ -420,7 +428,14 @@ export function StudentNavbar({
                     title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                   >
                     <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                    {voiceActive ? (
+                    {chatBadge > 0 ? (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      >
+                        {chatBadge > 9 ? '9+' : chatBadge}
+                      </span>
+                    ) : voiceActive ? (
                       <span
                         className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
                         style={{ backgroundColor: accentTheme.accent }}
@@ -430,13 +445,6 @@ export function StudentNavbar({
                           style={{ backgroundColor: accentTheme.accent }}
                         />
                         <Mic className="relative h-2.5 w-2.5" />
-                      </span>
-                    ) : chatBadge > 0 ? (
-                      <span
-                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
-                        style={{ backgroundColor: accentTheme.accent }}
-                      >
-                        {chatBadge > 9 ? '9+' : chatBadge}
                       </span>
                     ) : null}
                   </button>
@@ -480,12 +488,22 @@ export function StudentNavbar({
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
+                  <div className="absolute right-0 mt-2 ds-popover nav-cluster-unroll z-50 w-64 rounded-[var(--ds-radius-panel)] py-2">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{t('navbar.role_student')}</p>
                     </div>
                     <ThemeToggleMenuItem persist={(ui_theme) => studentApi.updateProfile({ ui_theme })} />
+                    <button
+                      onClick={() => {
+                        openFeedback()
+                        setShowDropdown(false)
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
+                    >
+                      <MessageSquarePlus className="h-4 w-4" />
+                      Feedback
+                    </button>
                     <button
                       onClick={() => {
                         setShowSettings(true)

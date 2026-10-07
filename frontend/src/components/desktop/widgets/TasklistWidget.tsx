@@ -1,5 +1,5 @@
 import { useState, useRef, KeyboardEvent } from 'react'
-import { Plus, CheckSquare2, Square } from 'lucide-react'
+import { Plus, CheckSquare2, Square } from '@/components/icons'
 
 interface TaskItem {
   text: string

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { Loader2, ChevronRight, Check, X, Sparkles } from 'lucide-react'
+import { Loader2, ChevronRight, Check, X, Sparkles } from '@/components/icons'
 import { desktopAgentApi } from '@/lib/api'
 
 export interface AgentAction {

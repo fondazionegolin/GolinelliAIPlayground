@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Plus, Trash2 } from 'lucide-react'
+import { X, Plus, Trash2 } from '@/components/icons'
 import { Button } from './ui/button'
 
 interface QuizQuestion {

@@ -1,5 +1,5 @@
 import { useState, Suspense, lazy } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 
 const NotebookListPage = lazy(() => import('./NotebookListPage'))
 const NotebookPage     = lazy(() => import('./NotebookPage'))

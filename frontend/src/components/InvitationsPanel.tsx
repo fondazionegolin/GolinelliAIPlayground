@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bell, Building2, Check, X, Users, MonitorPlay, Loader2 } from 'lucide-react'
+import { Bell, Building2, Check, X, Users, MonitorPlay, Loader2 } from '@/components/icons'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'

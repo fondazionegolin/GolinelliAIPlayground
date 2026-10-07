@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, Loader2 } from 'lucide-react'
+import { Box, Loader2 } from '@/components/icons'
 import { solidModelerApi } from '@/lib/api'
 import type { SceneObject } from '@/components/solidModeler/types'
 

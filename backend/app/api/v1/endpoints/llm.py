@@ -20,6 +20,7 @@ import math
 from pathlib import Path
 
 from app.core.config import settings
+from app.services import model_roles
 from app.core.database import AsyncSessionLocal, get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.models.user import User
@@ -33,7 +34,8 @@ from app.schemas.llm import (
     LLMProfileResponse, ConversationCreate, ConversationResponse,
     MessageCreate, ConversationMessageResponse, ExplainRequest, ExplainResponse,
 )
-from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service, normalize_llm_model
+from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, default_model_for, llm_service, normalize_llm_model
+from app.services import teacher_memory
 from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
 from app.services.education_level import get_school_grade_instruction
@@ -936,24 +938,38 @@ async def preview_file(
 
 
 @router.get("/available-models")
-async def list_available_models():
+async def list_available_models(db: AsyncSession = Depends(get_db)):
     """Get list of available LLM models"""
     from app.core.config import settings
+    from app.models.ai_model import AIModel
     import httpx
-    
+
     models = []
-    
-    # OpenAI models
-    if settings.OPENAI_API_KEY:
-        models.extend([
-            {"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.6 Luna", "description": "Veloce ed economico", "icon": "openai"},
-        ])
-    
-    # Anthropic models
-    if settings.ANTHROPIC_API_KEY:
-        models.extend([
-            {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"},
-        ])
+    icons = {"openai": "openai", "anthropic": "anthropic", "deepseek": "deepseek"}
+    keys = {"openai": settings.OPENAI_API_KEY, "anthropic": settings.ANTHROPIC_API_KEY, "deepseek": settings.DEEPSEEK_API_KEY}
+
+    # Models offered in the selectors are managed by the admin (Admin → Modelli).
+    try:
+        offered = (await db.execute(select(AIModel).where(AIModel.kind == "text", AIModel.offered.is_(True), AIModel.status != "deprecated")
+                                    .order_by(AIModel.provider, AIModel.input_usd))).scalars().all()
+    except Exception:
+        offered = []
+    for row in offered:
+        if keys.get(row.provider):
+            price = f"${row.input_usd:g} / ${row.output_usd:g} per 1M token" if row.input_usd is not None and row.output_usd is not None else ""
+            models.append({"provider": row.provider, "model": row.model_id, "name": row.display_name, "description": price, "icon": icons.get(row.provider, row.provider)})
+    # The platform default (chat.default) is always selectable and listed first, so a teacher's chat follows the admin's choice.
+    default_pair = (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL)
+    models.sort(key=lambda m: (m["provider"], m["model"]) != default_pair)
+    if keys.get(default_pair[0]) and not any((m["provider"], m["model"]) == default_pair for m in models):
+        row = (await db.execute(select(AIModel).where(AIModel.provider == default_pair[0], AIModel.model_id == default_pair[1]))).scalar_one_or_none()
+        models.insert(0, {"provider": default_pair[0], "model": default_pair[1], "name": row.display_name if row else default_pair[1],
+                          "description": "Modello predefinito della piattaforma", "icon": icons.get(default_pair[0], default_pair[0])})
+    if not offered and not models:  # catalogue not available yet: ship the historical list
+        if settings.OPENAI_API_KEY:
+            models.append({"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.6 Luna", "description": "Veloce ed economico", "icon": "openai"})
+        if settings.ANTHROPIC_API_KEY:
+            models.append({"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"})
 
     # Gemini models
     if settings.GEMINI_API_KEY:
@@ -961,13 +977,6 @@ async def list_available_models():
             {"provider": "gemini", "model": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "description": "Veloce e intelligente - Google", "icon": "google"},
         ])
 
-    # DeepSeek models — hidden from UI (provider available but not shown to users)
-    # if settings.DEEPSEEK_API_KEY:
-    #     models.extend([
-    #         {"provider": "deepseek", "model": "deepseek-chat", ...},
-    #         {"provider": "deepseek", "model": "deepseek-reasoner", ...},
-    #     ])
-    
     # Ollama models - fetch dynamically from Ollama API
     if settings.OLLAMA_BASE_URL:
         try:
@@ -988,7 +997,7 @@ async def list_available_models():
         except Exception:
             pass  # Ollama not available, skip
     
-    return {"models": models, "default_provider": "openai", "default_model": DEFAULT_OPENAI_CHAT_MODEL}
+    return {"models": models, "default_provider": settings.DEFAULT_LLM_PROVIDER, "default_model": settings.DEFAULT_LLM_MODEL}
 
 
 @router.get("/profiles", response_model=list[LLMProfileResponse])
@@ -1558,8 +1567,8 @@ async def send_message(
         # Call teacher agent for intelligent routing even for students
         try:
             from app.services.teacher_agent import run_teacher_agent
-            provider = conversation.llm_provider or "openai"
-            model = normalize_llm_model(provider, conversation.llm_model) or DEFAULT_OPENAI_CHAT_MODEL
+            provider = conversation.llm_provider or settings.DEFAULT_LLM_PROVIDER
+            model = normalize_llm_model(provider, conversation.llm_model) or default_model_for(provider)
             
             assistant_content = await run_teacher_agent(
                 messages=messages,
@@ -1803,8 +1812,8 @@ async def send_message_stream(
         pii_label = moderation_service.pii_label_list(moderation_result.pii_found)
         pii_prefix = f"⚠️ *Nota: il tuo messaggio conteneva dati sensibili ({pii_label}) che sono stati automaticamente rimossi per la tua sicurezza.*\n\n"
 
-    provider = conversation.llm_provider or "openai"
-    model = normalize_llm_model(provider, conversation.llm_model) or DEFAULT_OPENAI_CHAT_MODEL
+    provider = conversation.llm_provider or settings.DEFAULT_LLM_PROVIDER
+    model = normalize_llm_model(provider, conversation.llm_model) or default_model_for(provider)
     profile_key = conversation.profile_key or "tutor"
 
     # chat_mode overrides the profile so the right system prompt is used
@@ -2906,7 +2915,7 @@ async def send_message_with_files(
             if mime_type.startswith("image/") and analyze_visuals and analysis.visual_descriptions:
                 v_cost = 0.005
                 await safe_track_usage(
-                    db, student.tenant_id, "openai", "gpt-4o", v_cost,
+                    db, student.tenant_id, *model_roles.pair_for("vision"), v_cost,
                     {"type": "vision_analysis", "filename": filename},
                     class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
                     context="vision_analysis",
@@ -3329,9 +3338,11 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> tuple[str, di
         "students": []
     }
     
-    # 1. Get all classes
+    # 1. Get all classes the teacher owns or co-teaches
+    from app.models.invitation import ClassTeacher
+    co_class_ids = select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id)
     classes_result = await db.execute(
-        select(Class).where(Class.teacher_id == teacher.id)
+        select(Class).where((Class.teacher_id == teacher.id) | (Class.id.in_(co_class_ids)))
     )
     classes = classes_result.scalars().all()
     
@@ -3464,6 +3475,9 @@ async def teacher_chat(
     try:
         # Load database context (used by analytics mode)
         context, structured_context = await load_teacher_context(db, teacher)
+        memory_block = await teacher_memory.render_memory_block(db, teacher)
+        if memory_block:
+            context = memory_block + "\n\n---\n\n" + context
         ui_language = get_ui_language(http_request)
 
         if uses_agent:
@@ -3474,15 +3488,15 @@ async def teacher_chat(
                 messages=llm_messages,
                 context=context,
                 structured_context=structured_context,
-                provider=provider or "openai",
-                model=model or DEFAULT_OPENAI_CHAT_MODEL,
+                provider=provider or settings.DEFAULT_LLM_PROVIDER,
+                model=model or default_model_for(provider),
                 ui_language=ui_language,
             )
 
             return {
                 "response": llm_response_content,
                 "provider": provider or "openai",
-                "model": model or DEFAULT_OPENAI_CHAT_MODEL,
+                "model": model or default_model_for(provider),
                 "prompt_tokens": 0,  # TODO: track token usage accurately
                 "completion_tokens": 0,
             }
@@ -3568,9 +3582,9 @@ async def teacher_chat_stream(
     """
     content = request.get("content", "")
     history = request.get("history", [])
-    provider = request.get("provider", "openai")
-    model = request.get("model", DEFAULT_OPENAI_CHAT_MODEL)
-    model = normalize_llm_model(provider, model) or DEFAULT_OPENAI_CHAT_MODEL
+    provider = request.get("provider") or settings.DEFAULT_LLM_PROVIDER
+    model = request.get("model") or default_model_for(provider)
+    model = normalize_llm_model(provider, model) or default_model_for(provider)
     agent_mode = request.get("agent_mode", "default")
     max_tokens = min(int(request.get("max_tokens", 4096)), 16000)
     ui_language = get_ui_language(http_request)
@@ -3633,6 +3647,8 @@ async def teacher_chat_stream(
                 teacher_id=teacher.id,
                 context=stream_type,
             )
+            # Learn from this exchange in the background (never delays or breaks the reply).
+            asyncio.create_task(teacher_memory.learn_from_exchange(teacher.id, teacher.tenant_id, content, result_content))
             return json.dumps({
                 "type": "done",
                 "content": result_content,
@@ -3665,6 +3681,11 @@ async def teacher_chat_stream(
                     session_ctx = await load_session_context(db, session_id_str, teacher)
                     if session_ctx:
                         context = session_ctx + "\n\n---\n\n" + context
+
+                # Long-term memory: what the assistant already knows about this teacher and what they are doing
+                memory_block = await teacher_memory.render_memory_block(db, teacher)
+                if memory_block:
+                    context = memory_block + "\n\n---\n\n" + context
 
                 # Build datetime-aware calendar addendum
                 now = datetime.now()
@@ -4314,7 +4335,7 @@ async def edit_html_page(
     }]
 
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model=model_roles.model_for("codegen.tools"),
         max_tokens=8096,
         tools=tools,
         tool_choice={"type": "tool", "name": "edit_page"},
@@ -4459,7 +4480,7 @@ async def edit_brochure(
     }]
 
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model=model_roles.model_for("codegen.tools"),
         max_tokens=4096,
         tools=tools,
         tool_choice={"type": "tool", "name": "edit_brochure"},

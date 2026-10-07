@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from 'react'
-import { X, Layout, FileText, GripVertical, Share2, Check, Loader2, BarChart2 } from 'lucide-react'
+import { X, Layout, FileText, GripVertical, Share2, Check, Loader2, BarChart2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { chatApi } from '@/lib/api'
+import type { ResearchAgent, ResearchRound } from '@/components/teacher/ResearchPanel'
 import { buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
 
 // Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
@@ -11,10 +12,13 @@ const TOOLBAR_PILL_INACTIVE = 'border-transparent text-slate-600 hover:border-[c
 const TOOLBAR_PILL_ACTIVE = 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
 
 export interface GeneratedDoc {
-  type: 'brochure' | 'dispensa' | 'report' | 'html_page'
+  type: 'brochure' | 'dispensa' | 'report' | 'html_page' | 'research'
   content: string
   version: number
   title: string
+  /** Deep research only: sources numbered as cited in the markdown, and the trace of the sub-agents' run. */
+  sources?: { n: number; url: string; title: string }[]
+  run?: { agents: ResearchAgent[]; rounds: ResearchRound[] }
 }
 
 export interface SessionOption {

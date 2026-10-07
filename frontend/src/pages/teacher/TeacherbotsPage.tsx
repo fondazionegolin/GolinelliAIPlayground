@@ -14,7 +14,7 @@ import TeacherbotShareModal from '@/components/teacher/TeacherbotShareModal'
 import {
   Bot, Plus, Settings, Eye, Trash2, FileText, Loader2, Wand2, Link2, Share2,
   LayoutGrid, List, X, Search, Sparkles, Globe, PencilLine, MessagesSquare,
-} from 'lucide-react'
+} from '@/components/icons'
 
 const ChatbotModule = lazy(() => import('@/pages/student/ChatbotModule'))
 

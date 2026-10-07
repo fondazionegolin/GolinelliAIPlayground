@@ -5,7 +5,7 @@ import {
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
   Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
   Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter
-} from 'lucide-react'
+} from '@/components/icons'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
 import { SlideBlock, SlideBlockType, SlideSnapOptions } from './SlideEditor'

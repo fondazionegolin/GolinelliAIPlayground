@@ -1,5 +1,5 @@
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { BarChart3, Braces, Check, Copy, Download, FileSpreadsheet, Gauge, RotateCcw, X } from 'lucide-react'
+import { BarChart3, Braces, Check, Copy, Download, FileSpreadsheet, Gauge, RotateCcw, X } from '@/components/icons'
 import { Button } from '@/design'
 
 export type TableValue = { columns?: string[]; rows: Array<Record<string, unknown>>; rowCount?: number }

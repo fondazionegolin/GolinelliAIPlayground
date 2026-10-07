@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Share2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Share2, X } from '@/components/icons'
 import { driveApi } from '@/lib/api'
 import { CATEGORY_META, categoryOf, editorPathFor, filenameFromDisposition, formatBytes, formatDate, saveBlob, type DriveItem } from './driveTypes'
 import { GlbViewer } from './GlbViewer'

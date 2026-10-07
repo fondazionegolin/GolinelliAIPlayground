@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, RectangleHorizontal, RectangleVertical, Shapes, Ruler } from 'lucide-react'
+import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, RectangleHorizontal, RectangleVertical, Shapes, Ruler } from '@/components/icons'
 import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
 
 export type DocumentEditorMode = 'document' | 'slides' | 'sheet' | 'canvas' | 'web' | 'pdf'

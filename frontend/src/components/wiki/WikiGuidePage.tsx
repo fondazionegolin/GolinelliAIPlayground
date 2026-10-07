@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, CheckCircle2, Layers3, Search, X } from 'lucide-react'
+import type { LucideIcon } from '@/components/icons'
+import { ArrowRight, CheckCircle2, Layers3, Search, X } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 

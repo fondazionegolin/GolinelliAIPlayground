@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { X, Plus, Copy, Trash2, ArrowLeft, Loader2, Link2, Bot, User, QrCode, Download } from 'lucide-react'
+import { X, Plus, Copy, Trash2, ArrowLeft, Loader2, Link2, Bot, User, QrCode, Download } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 

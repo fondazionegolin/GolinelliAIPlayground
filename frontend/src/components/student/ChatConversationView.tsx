@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, memo, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from 'lucide-react'
+import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
@@ -387,7 +387,7 @@ export function ChatConversationView({
             onClick={handleSend}
             disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
             size="sm"
-            className="h-10 w-10 p-0 rounded-xl border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] shadow-md transition-all disabled:opacity-50"
+            className="h-10 w-10 p-0 rounded-xl border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)] shadow-md transition-all disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>

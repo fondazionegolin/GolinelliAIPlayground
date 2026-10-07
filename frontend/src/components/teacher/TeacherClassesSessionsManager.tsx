@@ -27,7 +27,7 @@ import {
   UserPlus,
   Users,
   X,
-} from 'lucide-react'
+} from '@/components/icons'
 import {
   Badge,
   Button,
@@ -93,6 +93,10 @@ export interface TeacherCurrentSession {
   className: string
   joinCode?: string
 }
+
+// Platform palette: each class keeps one stable solid colour, so classes are told apart at a glance.
+const CLASS_COLORS = ['#7b69c9', '#3ea9f4', '#e85c8d', '#0d9488', '#5b5bd6', '#d97706']
+const classColor = (id: string) => CLASS_COLORS[[...id].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 7) % CLASS_COLORS.length]
 
 export default function TeacherClassesSessionsManager({
   entryMode,
@@ -987,7 +991,7 @@ export default function TeacherClassesSessionsManager({
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-5">
             {folders.map(({ cls, visibleSessions, endedSessions, trashed, activeCount, hasCurrent, total, isLoading }) => {
               const expanded = isNarrowing || (expandedClassIds?.has(cls.id) ?? false)
               const isEditing = editingClassId === cls.id
@@ -996,7 +1000,7 @@ export default function TeacherClassesSessionsManager({
               return (
                 <section
                   key={cls.id}
-                  className={`rounded-2xl transition-shadow ${expanded ? 'bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-2)]' : 'bg-[var(--ds-surface-muted)] shadow-[var(--ds-shadow-1)] hover:shadow-[var(--ds-shadow-2)]'}`}
+                  className="rounded-3xl bg-slate-900/[0.045] ring-1 ring-slate-300/70 shadow-[var(--ds-shadow-1)] transition-shadow hover:shadow-[var(--ds-shadow-2)] dark:bg-white/[0.07] dark:ring-white/15"
                 >
                   {/* Folder header */}
                   <div className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -1007,14 +1011,14 @@ export default function TeacherClassesSessionsManager({
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${hasCurrent ? 'bg-amber-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: classColor(cls.id) }}>
                         {expanded ? <FolderOpen className="h-5 w-5" strokeWidth={1.75} /> : <Folder className="h-5 w-5" strokeWidth={1.75} />}
                       </span>
                       <span className="min-w-0">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate text-[15px] font-bold text-slate-950">{cls.name}</span>
                           {hasCurrent && (
-                            <span className="inline-flex shrink-0 items-center rounded-full bg-yellow-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-yellow-900">
+                            <span className="inline-flex shrink-0 items-center rounded-full border border-yellow-500 px-2 py-px text-[10px] font-bold uppercase tracking-wide text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
                               {isEnglish ? 'Current session' : 'Sessione corrente'}
                             </span>
                           )}
@@ -1094,7 +1098,7 @@ export default function TeacherClassesSessionsManager({
 
                   {/* Folder body: the class sessions */}
                   {expanded && (
-                    <div className="mb-4 ml-7 mr-4 mt-1 border-l-2 border-slate-200/80 pl-4 md:ml-[2.6rem] md:pl-5">
+                    <div className="mx-3 mb-4 mt-1 md:ml-[4.25rem] md:mr-4">
                       {isLoading ? (
                         <div className="space-y-2">{[1, 2].map((item) => <div key={item} className="h-12 animate-pulse rounded-xl bg-slate-100" />)}</div>
                       ) : visibleSessions.length === 0 && endedSessions.length === 0 ? (
@@ -1110,16 +1114,17 @@ export default function TeacherClassesSessionsManager({
                         <>
                           {visibleSessions.length > 0 && (
                             <>
-                              <div className="hidden grid-cols-[6.5rem_minmax(0,1fr)_5.5rem_6.5rem_6.5rem_15rem] gap-3 px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:grid">
-                                <span>{isEnglish ? 'Status' : 'Stato'}</span>
-                                <span>{isEnglish ? 'Session' : 'Sessione'}</span>
-                                <span>{isEnglish ? 'Created' : 'Creata'}</span>
-                                <span>{isEnglish ? 'Students' : 'Studenti'}</span>
-                                <span>{isEnglish ? 'Code' : 'Codice'}</span>
-                                <span className="text-right">{isEnglish ? 'Actions' : 'Azioni'}</span>
-                              </div>
-                              <div className="space-y-1.5">
-                                {visibleSessions.map((session) => renderSessionLine(session))}
+                              <div className="overflow-hidden rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25">
+                                <div className="hidden grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] gap-x-4 border-b border-slate-300/70 bg-slate-100/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-white/15 dark:bg-white/[0.06] lg:grid">
+                                  <span>{isEnglish ? 'Status' : 'Stato'}</span>
+                                  <span>{isEnglish ? 'Session' : 'Sessione'}</span>
+                                  <span>{isEnglish ? 'Students · Created' : 'Studenti · Creata'}</span>
+                                  <span>{isEnglish ? 'Code' : 'Codice'}</span>
+                                  <span className="text-right">{isEnglish ? 'Actions' : 'Azioni'}</span>
+                                </div>
+                                <div className="divide-y divide-slate-200/80 dark:divide-white/10">
+                                  {visibleSessions.map((session) => renderSessionLine(session))}
+                                </div>
                               </div>
                             </>
                           )}
@@ -1134,7 +1139,7 @@ export default function TeacherClassesSessionsManager({
                                 <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showEnded ? 'rotate-90' : ''}`} />
                                 {isEnglish ? 'Ended sessions' : 'Sessioni terminate'} ({endedSessions.length})
                               </button>
-                              {showEnded && <div className="mt-1.5 space-y-1.5">{endedSessions.map((session) => renderSessionLine(session))}</div>}
+                              {showEnded && <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25"><div className="divide-y divide-slate-200/80 dark:divide-white/10">{endedSessions.map((session) => renderSessionLine(session))}</div></div>}
                             </div>
                           )}
                         </>
@@ -1406,35 +1411,32 @@ function SessionLine({
       : (isEnglish ? 'Archive session' : 'Archivia sessione'))
     : (isEnglish ? 'Only the teacher who created this session can archive it' : 'Solo il docente che ha creato questa sessione può archiviarla')
   const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
-  // Solid, saturated status badges carry the state; rows stay neutral.
-  const statusStyle = isActive
-    ? 'bg-emerald-500 text-white'
-    : isPaused
-      ? 'bg-orange-500 text-white'
-      : isEnded
-        ? 'bg-rose-500 text-white'
-        : 'bg-slate-500 text-white'
-  // Yellow is reserved for the session selected in the navbar (the one actually in use).
+  // Status is a quiet dot + label (no filled pills), so a list of ten sessions does not shout.
+  const statusDot = isActive ? 'bg-emerald-500' : isPaused ? 'bg-orange-500' : isEnded ? 'bg-slate-400' : 'bg-slate-400'
+  const statusText = isActive ? 'text-emerald-600 dark:text-emerald-400' : isPaused ? 'text-orange-600 dark:text-orange-400' : 'text-slate-500'
+  // The session selected in the navbar gets a yellow outline only: the surface stays neutral so text stays readable in dark mode.
   const rowSurface = isCurrent
-    ? 'bg-yellow-100 shadow-[0_0_0_1px_rgba(234,179,8,0.45),0_6px_16px_rgba(234,179,8,0.16)]'
-    : 'bg-white/70 shadow-[0_0_0_1px_rgba(115,115,115,0.08)] hover:bg-white hover:shadow-[0_0_0_1px_rgba(115,115,115,0.14),var(--ds-shadow-1)]'
+    ? 'outline outline-2 -outline-offset-2 outline-yellow-400'
+    : 'hover:bg-slate-900/[0.03] dark:hover:bg-white/[0.05]'
   const openSession = () => navigate(`/teacher/sessions/${session.id}`)
+  const coTeachers = session.co_teachers ?? []
+  const coLabel = coTeachers.length > 1 ? `${coTeachers[0]} +${coTeachers.length - 1}` : coTeachers[0]
 
   return (
     <div
-      className={`group relative grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 py-2.5 transition-all lg:grid-cols-[6.5rem_minmax(0,1fr)_5.5rem_6.5rem_6.5rem_15rem] ${rowSurface} ${isEnded ? 'opacity-80' : ''}`}
+      className={`group relative grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors lg:grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] ${rowSurface} ${isEnded ? 'opacity-75' : ''}`}
       aria-current={isCurrent ? 'true' : undefined}
       onClick={openSession}
     >
-      <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold ${statusStyle}`}>
-        {isActive && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}
+      <span className={`order-2 inline-flex items-center gap-2 text-xs font-bold lg:order-none ${statusText}`}>
+        <span className={`h-2 w-2 rounded-full ${statusDot} ${isActive ? 'animate-pulse' : ''}`} />
         {meta.label}
       </span>
 
-      <div className="min-w-0" onClick={(e) => { if (editingTitleId === session.id) e.stopPropagation() }}>
+      <div className="order-1 min-w-0 lg:order-none" onClick={(e) => { if (editingTitleId === session.id) e.stopPropagation() }}>
         {editingTitleId === session.id ? (
           <form className="flex min-w-0 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
-            <Input autoFocus value={editingTitleValue} onChange={(e) => setEditingTitleValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }} density="compact" className="min-w-0 flex-1 rounded-xl bg-white text-sm text-slate-800" />
+            <Input autoFocus value={editingTitleValue} onChange={(e) => setEditingTitleValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }} density="compact" className="min-w-0 flex-1 rounded-xl text-sm font-semibold" />
             <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm" className="rounded-full">
               {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
             </IconButton>
@@ -1444,48 +1446,44 @@ function SessionLine({
             <span className="flex min-w-0 items-center gap-2">
               <span className={`truncate text-sm font-bold ${isEnded ? 'text-slate-500' : 'text-slate-950'}`}>{session.title}</span>
               {isCurrent && (
-                <span className="shrink-0 rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-yellow-900">
-                  {isEnglish ? 'Current session' : 'Sessione corrente'}
+                <span className="shrink-0 rounded-full border border-yellow-500 px-2 py-px text-[9px] font-bold uppercase tracking-wide text-yellow-600 dark:border-yellow-400 dark:text-yellow-300">
+                  {isEnglish ? 'Current' : 'Corrente'}
                 </span>
               )}
             </span>
-            {(session.co_teachers?.length ?? 0) > 0 && (
-              <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500" title={session.co_teachers!.join(', ')}>
+            {coLabel && (
+              <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-slate-500" title={coTeachers.join(', ')}>
                 <UserPlus className="h-3 w-3 shrink-0" />
-                <span className="truncate">{isEnglish ? 'with' : 'con'} {session.co_teachers!.join(', ')}</span>
+                <span className="truncate">{coLabel}</span>
               </span>
             )}
           </span>
         )}
       </div>
 
-      <span className="hidden text-xs font-semibold text-slate-500 lg:block">{createdAt}</span>
-      <span className="hidden items-center gap-1.5 text-xs font-semibold text-slate-500 lg:flex">
-        <Users className="h-3.5 w-3.5" />{session.active_students_count ?? 0}
+      <span className="hidden items-center gap-3 text-xs text-slate-500 lg:flex">
+        <span className="flex items-center gap-1.5" title={isEnglish ? 'Active students' : 'Studenti attivi'}><Users className="h-3.5 w-3.5" />{session.active_students_count ?? 0}</span>
+        <span className="text-slate-400">{createdAt}</span>
       </span>
       <span className="hidden lg:block" onClick={(e) => e.stopPropagation()}>
         {session.join_code ? (
           <button type="button" onClick={() => onCopyCode(session.join_code)} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 font-mono text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900" title={isEnglish ? 'Copy code' : 'Copia codice'}>
-            {session.join_code}<Copy className="h-3 w-3" />
+            {session.join_code}<Copy className="h-3 w-3 opacity-60" />
           </button>
         ) : <span className="text-xs text-slate-300">—</span>}
       </span>
 
       <div className="relative flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
         {isActive && (
-          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full bg-white px-3 text-xs font-bold">
+          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
             <Pause className="mr-1 h-3.5 w-3.5" /> {isEnglish ? 'Pause' : 'Pausa'}
           </Button>
         )}
         {(isPaused || isDraft) && (
-          <Button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full bg-white px-3 text-xs font-bold">
+          <Button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 rounded-full px-3 text-xs font-bold">
             <Play className="mr-1 h-3.5 w-3.5" /> {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Start' : 'Avvia')}
           </Button>
         )}
-        <Button onClick={openSession} tone="neutral" surface="ghost" density="compact" className="h-8 rounded-full px-3 text-xs font-bold text-slate-600">
-          {isEnded ? 'Report' : (isEnglish ? 'Open' : 'Apri')}
-          <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
-        </Button>
         <button type="button" onClick={() => setMenuOpen((open) => !open)} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100" aria-label={isEnglish ? 'Session options' : 'Opzioni sessione'} aria-expanded={menuOpen}>
           <MoreVertical className="h-4 w-4" />
         </button>

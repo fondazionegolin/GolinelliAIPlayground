@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,9 +33,22 @@ async def lifespan(app: FastAPI):
     toy_lm_service.start_queue_processor()
     from app.services.background_jobs import mark_interrupted_jobs
     await mark_interrupted_jobs()
+    from app.services import model_catalog
+    await model_catalog.load_runtime_prices()
+    from app.services import model_roles
+    try:
+        await model_roles.load_overrides()
+    except Exception:
+        pass  # table may not exist yet before the first migration
+    scan_task = asyncio.create_task(model_catalog.scan_loop())
+    roles_task = asyncio.create_task(model_roles.refresh_loop())
     yield
+    scan_task.cancel()
+    roles_task.cancel()
     # Shutdown
 
+
+from app.services.ui_language import normalize_response_length, response_length_var
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -43,6 +57,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+class ResponseLengthMiddleware:
+    """Expose the X-Response-Length header (concise | extended | in_depth) to prompt builders via a ContextVar."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        raw = next((value for key, value in scope.get("headers", []) if key == b"x-response-length"), b"").decode("latin-1")
+        token = response_length_var.set(normalize_response_length(raw))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            response_length_var.reset(token)
+
+
+app.add_middleware(ResponseLengthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.all_cors_origins,

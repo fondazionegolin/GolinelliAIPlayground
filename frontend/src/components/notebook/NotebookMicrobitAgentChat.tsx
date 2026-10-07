@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, GitCompare, History, Loader2, Send, X } from 'lucide-react'
+import { Bot, Check, GitCompare, History, Loader2, Send, X } from '@/components/icons'
 import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
 import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'

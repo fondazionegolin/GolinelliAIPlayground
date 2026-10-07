@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Send, X, Users, Bot, Loader2, AtSign } from 'lucide-react'
+import { Send, X, Users, Bot, Loader2, AtSign } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { collaborationApi } from '@/lib/api'

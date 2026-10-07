@@ -32,7 +32,7 @@ class SchoolTenantCreate(BaseModel):
     # Limiti opzionali (usa default da config se omessi)
     max_teachers: Optional[int] = 5
     max_students_per_teacher: Optional[int] = 100
-    max_students_per_class: Optional[int] = 30
+    max_students_per_class: Optional[int] = 300
     monthly_credit_pool: Optional[float] = 10.0
 
 
@@ -57,7 +57,7 @@ class TenantResponse(BaseModel):
     owner_user_id: Optional[UUID] = None
     max_teachers: int = 5
     max_students_per_teacher: int = 100
-    max_students_per_class: int = 30
+    max_students_per_class: int = 300
     monthly_credit_pool: float = 10.0
     teacher_monthly_cap: float = 3.0
 

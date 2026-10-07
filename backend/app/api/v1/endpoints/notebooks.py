@@ -16,6 +16,7 @@ import httpx
 import esprima
 
 from app.core.database import get_db
+from app.services import model_roles
 from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.notebook import Notebook
@@ -244,8 +245,8 @@ async def _autofix_makecode(code: str, error_logs: str) -> str:
     response = await llm_service.generate(
         messages=[{"role": "user", "content": user_msg}],
         system_prompt=system_prompt,
-        provider="anthropic",
-        model="claude-haiku-4-5-20251001",
+        provider=model_roles.provider_for("chat.fast"),
+        model=model_roles.model_for("chat.fast"),
         temperature=0.0,
         max_tokens=1200,
         allow_web_search=False,
@@ -336,8 +337,8 @@ async def _autofix_script(code: str, error_msg: str, project_type: str) -> str:
     response = await llm_service.generate(
         messages=[{"role": "user", "content": user_msg}],
         system_prompt=system_prompt,
-        provider="anthropic",
-        model="claude-haiku-4-5-20251001",
+        provider=model_roles.provider_for("chat.fast"),
+        model=model_roles.model_for("chat.fast"),
         temperature=0.0,
         max_tokens=1600,
         allow_web_search=False,
@@ -688,8 +689,8 @@ Regole:
     response = await llm_service.generate(
         messages=messages,
         system_prompt=system_prompt,
-        provider="anthropic",
-        model="claude-haiku-4-5-20251001",
+        provider=model_roles.provider_for("chat.fast"),
+        model=model_roles.model_for("chat.fast"),
         temperature=0.2,
         max_tokens=3200,
         allow_web_search=False,
@@ -753,7 +754,7 @@ def _notebook_agent_usage_estimate(
         prompt_tokens = _estimated_tokens(active_source, active_source, user_prompt, user_prompt, last_output)
         completion_tokens = max(800, _estimated_tokens(active_source, active_source))
     else:
-        provider, model = "anthropic", "claude-haiku-4-5-20251001"
+        provider, model = model_roles.pair_for("chat.fast")
         prompt_tokens = _estimated_tokens(active_source, user_prompt, last_output)
         completion_tokens = max(500, _estimated_tokens(active_source))
     return provider, model, prompt_tokens, completion_tokens
@@ -1616,8 +1617,7 @@ Il tuo obiettivo:
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": str(message).strip()})
 
-    provider = "anthropic"
-    model = "claude-haiku-4-5-20251001"
+    provider, model = model_roles.pair_for("chat.fast")
 
     try:
         response = await llm_service.generate(

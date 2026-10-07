@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, MessageSquare, Layers } from 'lucide-react'
+import { Users, MessageSquare, Layers } from '@/components/icons'
 
 interface UsageStats {
   total_sessions: number

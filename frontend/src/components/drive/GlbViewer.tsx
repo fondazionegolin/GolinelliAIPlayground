@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 
 /** Orbitable preview for a .glb/.gltf/.stl blob. */
 export function GlbViewer({ blob, format }: { blob: Blob; format: 'glb' | 'stl' }) {

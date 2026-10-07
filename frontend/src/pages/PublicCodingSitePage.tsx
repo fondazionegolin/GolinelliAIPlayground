@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2 } from '@/components/icons'
 import { codingApi } from '@/lib/api'
 import CodingSandpackPreview from '@/components/coding/CodingSandpackPreview'
 

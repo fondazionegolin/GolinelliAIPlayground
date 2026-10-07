@@ -17,14 +17,23 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.6-luna"
+# OpenAI families that take max_completion_tokens and no temperature (the gpt-6 family follows gpt-5).
+REASONING_OPENAI_PREFIXES = ("gpt-5", "gpt-6", "o1", "o3", "o4")
 LEGACY_OPENAI_CHAT_MODELS = {"gpt-5.4-mini", "gpt-5-mini", "gpt-5-nano"}
 GENERATED_IMAGE_MAX_SIDE = 1280
 GENERATED_IMAGE_WEBP_QUALITY = 82
 
 
+def default_model_for(provider: Optional[str] = None) -> str:
+    """Default chat model of ``provider`` (the platform default, set by the admin, when the provider is the default one)."""
+    if provider in (None, "", settings.DEFAULT_LLM_PROVIDER):
+        return settings.DEFAULT_LLM_MODEL
+    return {"openai": DEFAULT_OPENAI_CHAT_MODEL, "anthropic": "claude-haiku-4-5-20251001", "deepseek": "deepseek-v4-flash"}.get(provider, settings.DEFAULT_LLM_MODEL)
+
+
 def normalize_llm_model(provider: Optional[str], model: Optional[str]) -> Optional[str]:
     if (provider in (None, "openai")) and model in LEGACY_OPENAI_CHAT_MODELS:
-        return DEFAULT_OPENAI_CHAT_MODEL
+        return default_model_for("openai")
     return model
 
 
@@ -225,7 +234,7 @@ class LLMService:
                 completion_tokens=getattr(usage, "output_tokens", 0) or 0,
             )
 
-        is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+        is_o_series = model.startswith(REASONING_OPENAI_PREFIXES)
 
         if is_o_series:
             response = await self.openai_client.chat.completions.create(
@@ -500,7 +509,7 @@ class LLMService:
                 raise RuntimeError("OpenAI web search returned no text")
             return
 
-        is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+        is_o_series = model.startswith(REASONING_OPENAI_PREFIXES)
 
         if is_o_series:
             stream = await self.openai_client.chat.completions.create(
@@ -634,11 +643,12 @@ class LLMService:
         size: str = "1024x1024",
         quality: str = "standard",
         style: str = "vivid",
-        provider: str = settings.OPENAI_IMAGE_MODEL,
+        provider: Optional[str] = None,
         image_base64: Optional[str] = None, # For image-to-image
         strength: float = 0.8,
     ) -> str:
         """Generate an image using BFL (Flux), DALL-E 3 or Golinelli API"""
+        provider = provider or settings.OPENAI_IMAGE_MODEL
         
         # BFL Models
         bfl_models = [
@@ -658,7 +668,7 @@ class LLMService:
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
 
-        if provider in ("gpt-image-1", "gpt-image-1.5", "gpt-image-2", settings.OPENAI_IMAGE_MODEL):
+        if provider.startswith("gpt-image") or provider == settings.OPENAI_IMAGE_MODEL:
             return await self._generate_image_gpt_image_1(prompt, size, model=provider)
 
         # Fallback to BFL schnell
@@ -829,9 +839,10 @@ class LLMService:
         self,
         prompt: str,
         size: str = "1024x1024",
-        model: str = settings.OPENAI_IMAGE_MODEL,
+        model: Optional[str] = None,
     ) -> str:
         """Generate an image using GPT-Image-1/2 (OpenAI). Returns b64_json, saved locally."""
+        model = model or settings.OPENAI_IMAGE_MODEL
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured for image generation")
 

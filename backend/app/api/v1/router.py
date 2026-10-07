@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler
+from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
 from app.api.v1.endpoints import drive
+from app.api.v1.endpoints import platform_api
 
 api_router = APIRouter()
 
@@ -12,10 +13,15 @@ api_router.include_router(system_health.router, prefix="/system", tags=["system"
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_backend.router, tags=["admin-backend"])
+api_router.include_router(admin_models.router, prefix="/admin/models", tags=["admin-models"])
+api_router.include_router(admin_activity.router, prefix="/admin/activity", tags=["admin-activity"])
+api_router.include_router(teacher_memory.router, prefix="/teacher-memory", tags=["teacher-memory"])
+api_router.include_router(ml_lab.router, prefix="/ml-lab", tags=["ml-lab"])
 api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])
 api_router.include_router(student.router, prefix="/student", tags=["student"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
+api_router.include_router(deep_research.router, prefix="/llm/teacher/deep-research", tags=["deep-research"])
 api_router.include_router(inquiry.router, prefix="/llm/realtime/inquiry", tags=["inquiry"])
 api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 api_router.include_router(ml.router, prefix="/ml", tags=["ml"])
@@ -46,4 +52,5 @@ api_router.include_router(agentic.router, prefix="/agentic", tags=["agentic-work
 api_router.include_router(solid_modeler.router, prefix="/solid-modeler", tags=["solid-modeler"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["background-jobs"])
 api_router.include_router(drive.router, prefix="/drive", tags=["drive"])
+api_router.include_router(platform_api.router, prefix="/platform-api", tags=["platform-api"])
 api_router.include_router(drive.public_router, prefix="/public/drive", tags=["drive-public"])

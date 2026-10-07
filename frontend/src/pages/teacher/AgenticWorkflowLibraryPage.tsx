@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { agenticApi } from '@/lib/api'
-import { Activity, Clock3, MoreVertical, Network, Play, Plus, Search, Trash2 } from 'lucide-react'
+import { Activity, Clock3, MoreVertical, Network, Play, Plus, Search, Trash2 } from '@/components/icons'
 
 type GraphNode = { id: string; instanceId: string; x?: number; y?: number }
 type GraphEdge = { from: string; to: string }

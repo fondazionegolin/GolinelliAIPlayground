@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, X, Sparkles, Image as ImageIcon } from 'lucide-react'
+import { Loader2, X, Sparkles, Image as ImageIcon } from '@/components/icons'
 import { Button } from './ui/button'
 import { llmApi } from '@/lib/api'
 

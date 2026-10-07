@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Tags, Trash2, X } from 'lucide-react'
+import { Plus, Tags, Trash2, X } from '@/components/icons'
 
 export type BoardLabel = { id: string; name: string; color: string }
 
@@ -74,7 +74,7 @@ export default function BoardLabelsDialog({ labels, pending, onClose, onSave }: 
             type="button"
             disabled={pending}
             onClick={() => onSave(draft.filter((label) => label.name.trim()).map((label) => ({ ...label, name: label.name.trim() })))}
-            className="h-10 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
           >
             {pending ? 'Salvataggio…' : 'Salva etichette'}
           </button>

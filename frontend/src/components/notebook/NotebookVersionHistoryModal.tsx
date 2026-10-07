@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow, type Locale } from 'date-fns'
 import { enUS, it } from 'date-fns/locale'
-import { Clock, Code2, Loader2, RotateCcw, Save, Sparkles, Trash2, History } from 'lucide-react'
+import { Clock, Code2, Loader2, RotateCcw, Save, Sparkles, Trash2, History } from '@/components/icons'
 
 import {
   Dialog,

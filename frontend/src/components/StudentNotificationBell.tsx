@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Bell, Users, AtSign, Check, KanbanSquare, ClipboardList, FileText, MessageSquare, Bot } from 'lucide-react'
+import { Bell, Users, AtSign, Check, KanbanSquare, ClipboardList, FileText, MessageSquare, Bot } from '@/components/icons'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
 
 interface RoomLite {
@@ -140,7 +140,7 @@ export function StudentNotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+        <div className="absolute right-0 z-50 mt-2 w-80 ds-popover nav-cluster-unroll overflow-hidden rounded-[var(--ds-radius-panel)]">
           <div className="flex items-center justify-between border-b border-slate-50 px-4 py-2.5">
             <span className="text-sm font-bold text-slate-800">Notifiche</span>
             {notifs.length > 0 && (

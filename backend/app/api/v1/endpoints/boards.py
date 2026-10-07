@@ -1,5 +1,6 @@
 from typing import Annotated, Optional
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 import json
 import logging
 import re
@@ -21,6 +22,7 @@ from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.user import User
 from app.realtime.gateway import sio
 from app.services import background_jobs
+from app.board_sprints import ensure_weekly_sprints
 from app.services.credit_service import credit_service
 from app.services.document_processor import DocumentProcessor
 from app.services.json_extract import extract_json
@@ -100,6 +102,7 @@ class BoardSprint(BaseModel):
     goal: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    auto_generated: bool = False
 
 
 class Assignee(BaseModel):
@@ -123,6 +126,7 @@ class BoardUpdate(BaseModel):
     columns: Optional[list[BoardColumn]] = None
     labels: Optional[list[BoardLabel]] = None
     sprints: Optional[list[BoardSprint]] = None
+    auto_sprint_weekly: Optional[bool] = None
     visibility: Optional[str] = None
     students_can_edit: Optional[bool] = None
     session_id: Optional[str] = None
@@ -232,7 +236,7 @@ ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _normalize_sprints(sprints: list[dict] | None) -> list[dict]:
     out: list[dict] = []
     seen_ids: set[str] = set()
-    for idx, sprint in enumerate((sprints or [])[:24]):
+    for idx, sprint in enumerate((sprints or [])[:520]):
         name = str(sprint.get("name") or "").strip()[:60] or f"Sprint {idx + 1}"
         sprint_id = str(sprint.get("id") or "").strip()[:48] or f"spr_{uuid.uuid4().hex[:8]}"
         if sprint_id in seen_ids:
@@ -245,6 +249,7 @@ def _normalize_sprints(sprints: list[dict] | None) -> list[dict]:
             "goal": str(sprint.get("goal") or "").strip()[:300],
             "start_date": start if ISO_DATE.match(start) else None,
             "end_date": end if ISO_DATE.match(end) else None,
+            **({"auto_generated": True} if sprint.get("auto_generated") else {}),
         })
     return out
 
@@ -328,6 +333,7 @@ def _serialize_board(
         "columns": _normalize_columns(board.columns_json),
         "labels": _normalize_labels(board.labels_json),
         "sprints": _normalize_sprints(board.sprints_json),
+        "auto_sprint_weekly": bool(board.auto_sprint_weekly),
         "visibility": board.visibility,
         "students_can_edit": bool(board.students_can_edit),
         "created_by_display_name": board.created_by_display_name,
@@ -617,6 +623,14 @@ async def get_board(
     actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
     board, share = await _get_board_for_actor(db, board_id, actor)
+    if board.auto_sprint_weekly:
+        # Lock before checking dates, so simultaneous viewers cannot add duplicate weeks.
+        board = (await db.execute(select(Board).where(Board.id == board.id).with_for_update())).scalar_one()
+        current = _normalize_sprints(board.sprints_json)
+        updated = ensure_weekly_sprints(current, datetime.now(ZoneInfo("Europe/Rome")).date())
+        if updated != current:
+            board.sprints_json = updated
+            await db.commit()
     result = await db.execute(
         select(BoardCard).where(BoardCard.board_id == board.id).order_by(BoardCard.created_at, BoardCard.sort_order)
     )
@@ -678,6 +692,12 @@ async def update_board(
             if card.sprint_id not in valid_sprint_ids:
                 card.sprint_id = None
         board.sprints_json = sprints
+    if body.auto_sprint_weekly is not None:
+        board.auto_sprint_weekly = body.auto_sprint_weekly
+    if board.auto_sprint_weekly:
+        board.sprints_json = ensure_weekly_sprints(
+            _normalize_sprints(board.sprints_json), datetime.now(ZoneInfo("Europe/Rome")).date()
+        )
     if body.session_id is not None and actor.is_teacher:
         new_session_id = await _resolve_create_session(db, actor, body.session_id) if body.session_id else None
         if new_session_id != board.session_id:

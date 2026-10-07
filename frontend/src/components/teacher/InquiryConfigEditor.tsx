@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Loader2, ImageIcon, Sparkles, Crosshair } from 'lucide-react'
+import { Loader2, ImageIcon, Sparkles, Crosshair } from '@/components/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp } from '@/components/icons'
 import { INQUIRY_FLAGS, llmApi, type InquiryClue, type InquiryConfig, type InquiryFlag, type InquirySuspect } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 

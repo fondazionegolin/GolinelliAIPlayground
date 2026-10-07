@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowDownUp, Check, ChevronDown, ChevronRight, Clock, Download, ExternalLink, Eye, FileUp, Folder, FolderInput,
+  ArrowDownUp, Check, ChevronDown, ChevronRight, Clock, Download, Eye, FileUp, Folder, FolderInput,
   FolderPlus, FolderUp, HardDrive, LayoutGrid, List, Loader2, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw,
   Share2, Star, Trash2, Upload, Users, X, Globe, Link2,
-} from 'lucide-react'
+} from '@/components/icons'
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, SearchPill } from '@/design'
 import { driveApi, type DriveView } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -13,6 +13,8 @@ import {
   CATEGORY_META, FILTERS, canEdit, categoryOf, editorPathFor, formatBytes, formatDate, iconFor, sortItems,
   type DriveCategory, type DriveFolderNode, type DriveItem, type DriveListing, type SortKey,
 } from './driveTypes'
+import { DRIVE_ITEM_MIME, filesFromUniversalDrag, hasUniversalFileDrag, setDriveItemsDrag } from '@/lib/dragFiles'
+import { useThumbnail } from './useDriveThumbnail'
 import { DrivePreview, downloadDriveItem } from './DrivePreview'
 import { DriveShareDialog } from './DriveShareDialog'
 import { DriveMoveDialog } from './DriveMoveDialog'
@@ -21,7 +23,6 @@ const DRAG_MIME = 'application/x-golinelli-drive'
 const UPLOAD_BATCH_BYTES = 150 * 1024 * 1024
 const UPLOAD_BATCH_FILES = 40
 const THUMB_MAX_BYTES = 6 * 1024 * 1024
-const thumbCache = new Map<string, string>()
 
 type Mode = 'teacher' | 'student'
 interface UploadJob { id: string; label: string; progress: number; status: 'uploading' | 'done' | 'error'; error?: string }
@@ -61,29 +62,6 @@ async function collectDropped(dataTransfer: DataTransfer): Promise<PickedFile[]>
   }
   for (const entry of entries) await walk(entry, '')
   return out
-}
-
-function useThumbnail(item: DriveItem, enabled: boolean) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [url, setUrl] = useState<string | null>(() => item.thumbnail || thumbCache.get(item.id) || null)
-  useEffect(() => {
-    if (!enabled || url || !ref.current) return
-    const node = ref.current
-    let cancelled = false
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return
-      observer.disconnect()
-      driveApi.content(item.id).then((res) => {
-        if (cancelled) return
-        const objectUrl = URL.createObjectURL(res.data)
-        thumbCache.set(item.id, objectUrl)
-        setUrl(objectUrl)
-      }).catch(() => undefined)
-    }, { rootMargin: '200px' })
-    observer.observe(node)
-    return () => { cancelled = true; observer.disconnect() }
-  }, [enabled, item.id, url])
-  return { ref, url }
 }
 
 export function DriveBrowser({ mode }: { mode: Mode }) {
@@ -185,7 +163,11 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   // ── Actions ──────────────────────────────────────────────────────────────
   const open = (item: DriveItem) => {
     if (inTrash) return
-    if (item.kind === 'folder') go({ folder: item.id })
+    if (item.kind === 'folder') { go({ folder: item.id }); return }
+    // Platform artifacts (documents, presentations, 3D models) open in their native editor; the
+    // preview modal is only for plain uploaded files that have no editor.
+    const editorPath = isTeacher ? editorPathFor(item) : null
+    if (editorPath) navigate(editorPath)
     else setPreview(item)
   }
   const doTrash = async (targets: DriveItem[]) => {
@@ -291,10 +273,12 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
 
   const startDrag = (event: DragEvent, item: DriveItem) => {
     const ids = selected.has(item.id) ? Array.from(selected) : [item.id]
-    const movable = items.filter((entry) => ids.includes(entry.id) && !entry.is_system && canEdit(entry.role)).map((entry) => entry.id)
-    if (!movable.length || inTrash) { event.preventDefault(); return }
-    event.dataTransfer.setData(DRAG_MIME, JSON.stringify(movable))
-    event.dataTransfer.effectAllowed = 'move'
+    if (inTrash) { event.preventDefault(); return }
+    const dragged = items.filter((entry) => ids.includes(entry.id))
+    // Every item can leave the drive as a file (chats, chatbots, other sections); only editable ones can be moved inside it.
+    setDriveItemsDrag(event, dragged.map((entry) => ({ id: entry.id, name: entry.name, kind: entry.kind, mime_type: entry.mime_type })))
+    const movable = dragged.filter((entry) => !entry.is_system && canEdit(entry.role)).map((entry) => entry.id)
+    if (movable.length) event.dataTransfer.setData(DRAG_MIME, JSON.stringify(movable))
   }
 
   const dropOn = async (event: DragEvent, targetFolderId: string | null) => {
@@ -308,6 +292,13 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       if (ids.length && !ids.includes(targetFolderId || '')) await doMove(ids, targetFolderId)
       return
     }
+    if (hasUniversalFileDrag(event.dataTransfer) && !Array.from(event.dataTransfer.types).includes(DRIVE_ITEM_MIME)) {
+      // Attachments / items dragged in from chats, chatbots or other sections land as uploads.
+      if (!isTeacher && !targetFolderId) return
+      const dropped = await filesFromUniversalDrag(event.dataTransfer)
+      await uploadFiles(dropped.map((file) => ({ file, path: file.name })), targetFolderId)
+      return
+    }
     if (isFileDrag(event)) {
       if (!isTeacher && !targetFolderId) return
       const picked = await collectDropped(event.dataTransfer)
@@ -317,7 +308,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
 
   const folderDropProps = (targetId: string | null, allowed = true) => allowed ? {
     onDragOver: (event: DragEvent) => {
-      if (!isInternalDrag(event) && !isFileDrag(event)) return
+      if (!isInternalDrag(event) && !isFileDrag(event) && !hasUniversalFileDrag(event.dataTransfer)) return
       event.preventDefault()
       event.stopPropagation()
       event.dataTransfer.dropEffect = isInternalDrag(event) ? 'move' : 'copy'
@@ -402,8 +393,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       ]
     }
     return [
-      single && { icon: item.kind === 'folder' ? Folder : Eye, label: item.kind === 'folder' ? 'Apri' : 'Anteprima', run: () => open(item) },
-      editorPath && { icon: ExternalLink, label: "Apri nell'editor", run: () => navigate(editorPath) },
+      single && { icon: item.kind === 'folder' ? Folder : Eye, label: item.kind === 'folder' ? 'Apri' : editorPath ? 'Apri' : 'Anteprima', run: () => open(item) },
       { icon: Download, label: targets.length > 1 || item.kind === 'folder' ? 'Scarica come zip' : 'Scarica', run: () => doDownload(targets) },
       single && isDoc && { icon: FileUp, label: 'Esporta in PDF', run: () => doDownload(targets, 'pdf') },
       single && isDoc && { icon: FileUp, label: item.source_type === 'presentation' ? 'Esporta in PowerPoint' : 'Esporta in Word', run: () => doDownload(targets, item.source_type === 'presentation' ? 'pptx' : 'docx') },
@@ -427,7 +417,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   )
 
   const itemProps = (item: DriveItem) => ({
-    draggable: !inTrash && !item.is_system && canEdit(item.role) && !coarsePointer,
+    draggable: !inTrash && !coarsePointer,
     onDragStart: (event: DragEvent) => startDrag(event, item),
     onClick: (event: ReactMouseEvent) => clickItem(event, item),
     onDoubleClick: () => open(item),

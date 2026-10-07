@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion'
-import { MoreVertical, Pencil, Plus, Trash2, Search, MessageSquare, X } from 'lucide-react'
+import { MoreVertical, Pencil, Plus, Trash2, Search, MessageSquare, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import PullToRefresh from '@/components/ui/PullToRefresh'

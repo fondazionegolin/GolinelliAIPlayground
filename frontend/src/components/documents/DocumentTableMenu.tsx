@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/react'
 import {
   ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, Columns3, Combine, PaintBucket,
   Rows3, SplitSquareHorizontal, Table2, Trash2,
-} from 'lucide-react'
+} from '@/components/icons'
 
 const GRID = 8
 

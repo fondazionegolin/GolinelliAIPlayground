@@ -4,7 +4,7 @@ import {
   FileCode2,
   FileText,
   LayoutDashboard,
-} from 'lucide-react'
+} from '@/components/icons'
 import WikiGuidePage, { type WikiSection } from '@/components/wiki/WikiGuidePage'
 import { getStudentAccentTheme, loadStudentAccent } from '@/lib/studentAccent'
 import { useTranslation } from 'react-i18next'

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Bot, Loader2, Lock, AlertTriangle } from 'lucide-react'
+import { Bot, Loader2, Lock, AlertTriangle } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import api, { publicTeacherbotApi } from '@/lib/api'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from app.services import model_roles
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -286,6 +287,12 @@ async def delete_teacherbot(
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
+    # Nullable FKs without ON DELETE: detach instead of failing with an FK violation.
+    from sqlalchemy import update
+    from app.models.shared_chat import SharedChatRoom
+    from app.models.live_interaction import LiveInteraction
+    await db.execute(update(SharedChatRoom).where(SharedChatRoom.teacherbot_id == bot.id).values(teacherbot_id=None))
+    await db.execute(update(LiveInteraction).where(LiveInteraction.teacherbot_id == bot.id).values(teacherbot_id=None))
     await db.delete(bot)
     await db.commit()
     return {"message": "Teacherbot deleted"}
@@ -1986,7 +1993,7 @@ async def send_teacherbot_message_with_files(
             try:
                 base64_image = base64.b64encode(file_data).decode("utf-8")
                 # Use GPT-4 Vision to describe the image
-                vision_model = "gpt-4o"
+                vision_model = model_roles.model_for("vision")
                 
                 # Check credits for vision
                 if not await credit_service.check_availability(

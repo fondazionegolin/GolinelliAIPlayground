@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Copy, GraduationCap, Link2, Loader2, Mail, Shapes, Trash2, Users } from 'lucide-react'
+import { Check, Copy, GraduationCap, Link2, Loader2, Mail, Shapes, Trash2, Users } from '@/components/icons'
 import { Button, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/design'
 import { driveApi, type DriveShareTarget } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'

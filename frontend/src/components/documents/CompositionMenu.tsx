@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Settings2 } from 'lucide-react'
+import { Settings2 } from '@/components/icons'
 import { Switch } from '@/components/ui/switch'
 import { getCompositionPrefs, setCompositionPrefs, subscribeCompositionPrefs, type CompositionPrefs } from '@/lib/documentComposition'
 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Trash2, Pencil, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Pencil, Clock } from '@/components/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { calendarApi } from '@/lib/api'
 

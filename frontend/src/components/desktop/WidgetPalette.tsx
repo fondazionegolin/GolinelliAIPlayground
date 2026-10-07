@@ -1,4 +1,4 @@
-import { X, Clock, Calendar, StickyNote, CheckSquare, FileText, Image, CalendarDays, Sparkles } from 'lucide-react'
+import { X, Clock, Calendar, StickyNote, CheckSquare, FileText, Image, CalendarDays, Sparkles } from '@/components/icons'
 
 interface WidgetPaletteProps {
   onAdd: (widgetType: string, defaultConfig: Record<string, unknown>) => void

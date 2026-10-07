@@ -1,4 +1,5 @@
 import re
+from app.services import model_roles
 import io
 import asyncio
 import time
@@ -84,6 +85,13 @@ DESIGN SYSTEM OBBLIGATORIO (rispetta sempre):
 - DESIGN SYSTEM DEL PROGETTO (priorita` massima): se esiste un file design-system.md nella knowledge
   base, le sue variabili :root e regole sono VINCOLANTI e prevalgono sulle tue scelte. Incolla quel
   blocco :root in styles.css e usa SOLO quelle variabili (--ds-*); non inventare altri colori/font/raggi.
+
+MODELLI ML DELL'UTENTE (Lab ML, priorità alta): se nella knowledge base esiste ml-models.md, l'app deve usare QUEI
+modelli (pose del corpo, gesti delle mani o immagini addestrati dall'utente) tramite window.GolinelliML, esattamente
+come descritto nel file: `const model = await window.GolinelliML.load('<nome>')`, poi `model.start(video, {onResult})`
+oppure `model.on('<classe>', callback)`. L'API è GIÀ presente nella pagina: NON importare MediaPipe/TensorFlow/ml5/PoseNet,
+NON aggiungere <script> o librerie di tracking, NON inventare classi non elencate nel file. Gestisci sempre label === null
+(non sicuro) e detected === false. In p5.js usa createCapture(VIDEO) e passa capture.elt al modello.
 
 Rispondi SOLO con JSON valido, senza markdown, senza backtick, senza testo fuori dal JSON.
 Per restare compatto: niente commenti superflui nel codice e nessun campo extra oltre a quelli richiesti.
@@ -370,6 +378,13 @@ sue variabili :root e le sue regole sono VINCOLANTI e PREVALGONO su ogni tua sce
   (es. `background: var(--ds-btn-bg)`, `color: var(--ds-text)`, `border-radius: var(--ds-radius)`),
   sia in styles.css sia negli stili inline JSX; NON inventare hex/px che bypassano il design system;
 - segui le ricette di bottoni/card/superfici del design-system.md. Coerenza visiva totale col contratto.
+
+MODELLI ML DELL'UTENTE (Lab ML, priorità alta): se nella knowledge base esiste ml-models.md, l'app deve usare QUEI
+modelli (pose del corpo, gesti delle mani o immagini addestrati dall'utente) tramite window.GolinelliML, esattamente
+come descritto nel file: `const model = await window.GolinelliML.load('<nome>')`, poi `model.start(video, {onResult})`
+oppure `model.on('<classe>', callback)`. L'API è GIÀ presente nella pagina: NON importare MediaPipe/TensorFlow/ml5/PoseNet,
+NON aggiungere <script> o librerie di tracking, NON inventare classi non elencate nel file. Gestisci sempre label === null
+(non sicuro) e detected === false. In p5.js usa createCapture(VIDEO) e passa capture.elt al modello.
 
 PERSISTENZA DATI: se l'app gestisce dati creati dall'utente (liste, bot, note, documenti, punteggi...),
 PERSISTILI usando window.GolinelliAI.saveData({key, value}) e window.GolinelliAI.loadData({key}) —
@@ -1271,8 +1286,8 @@ STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-flash"
 
 def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) -> tuple[str, str]:
     key = (model_key or "").strip()
-    if is_student and key not in STUDENT_CODING_MODEL_KEYS:
-        key = STUDENT_DEFAULT_CODING_MODEL_KEY
+    if is_student and (key not in STUDENT_CODING_MODEL_KEYS or key == STUDENT_DEFAULT_CODING_MODEL_KEY):
+        return model_roles.pair_for("coding.student")  # admin-assigned student default (Admin → Modelli)
     return CODING_MODEL_CHOICES.get(key, (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL))
 
 
@@ -1391,8 +1406,8 @@ async def _describe_attachments(data_urls: list[str]) -> str:
                         {"type": "image_url", "image_url": {"url": data_url.strip()}},
                     ],
                 }],
-                provider="openai",
-                model="gpt-4o",
+                provider=model_roles.provider_for("vision"),
+                model=model_roles.model_for("vision"),
                 temperature=0.2,
                 max_tokens=500,
                 allow_web_search=False,
@@ -2580,8 +2595,8 @@ async def coding_ai_vision(
                 {"type": "text", "text": prompt + "\n\nRispondi in italiano, in modo adatto a studenti."},
                 {"type": "image_url", "image_url": {"url": image}},
             ]}],
-            provider="openai",
-            model="gpt-4o",
+            provider=model_roles.provider_for("vision"),
+            model=model_roles.model_for("vision"),
             temperature=0.2,
             max_tokens=900,
             allow_web_search=False,
@@ -2629,8 +2644,8 @@ async def visual_review_project(
                 {"type": "image_url", "image_url": {"url": image}},
             ]}],
             system_prompt=VISUAL_REVIEW_PROMPT,
-            provider="openai",
-            model="gpt-4o",
+            provider=model_roles.provider_for("vision"),
+            model=model_roles.model_for("vision"),
             temperature=0.2,
             max_tokens=900,
             allow_web_search=False,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlignVerticalSpaceAround, Check } from 'lucide-react'
+import { AlignVerticalSpaceAround, Check } from '@/components/icons'
 import type { Editor } from '@tiptap/core'
 import { applyFormatOperations } from '@/lib/documentFormatOps'
 

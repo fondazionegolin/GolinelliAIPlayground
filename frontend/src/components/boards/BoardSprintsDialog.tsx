@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { CalendarRange, Plus, Trash2, X } from 'lucide-react'
+import { CalendarRange, Plus, Trash2, X } from '@/components/icons'
 import type { BoardSprintInput } from '@/lib/api'
 
-export type BoardSprint = { id: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null }
+export type BoardSprint = { id: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null; auto_generated?: boolean }
 
 const addDays = (iso: string, days: number) => {
   const value = new Date(`${iso}T00:00:00`)
@@ -10,7 +10,7 @@ const addDays = (iso: string, days: number) => {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 }
 
-// A new sprint starts the Monday after the previous one ends (or next Monday) and lasts two weeks.
+// Manually added sprints also default to a Monday-through-Sunday week.
 function nextSprintDates(previous?: BoardSprintInput): { start_date: string; end_date: string } {
   let start: string
   if (previous?.end_date) {
@@ -20,17 +20,19 @@ function nextSprintDates(previous?: BoardSprintInput): { start_date: string; end
     const today = new Date()
     start = addDays(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`, ((8 - today.getDay()) % 7) || 7)
   }
-  return { start_date: start, end_date: addDays(start, 11) }
+  return { start_date: start, end_date: addDays(start, 6) }
 }
 
-export default function BoardSprintsDialog({ sprints, cardCounts, pending, onClose, onSave }: {
+export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCounts, pending, onClose, onSave }: {
   sprints: BoardSprint[]
+  autoSprintWeekly: boolean
   cardCounts: Record<string, number>
   pending: boolean
   onClose: () => void
-  onSave: (sprints: BoardSprintInput[]) => void
+  onSave: (sprints: BoardSprintInput[], autoSprintWeekly: boolean) => void
 }) {
   const [draft, setDraft] = useState<BoardSprintInput[]>(sprints.map((sprint) => ({ ...sprint, goal: sprint.goal || '' })))
+  const [automatic, setAutomatic] = useState(autoSprintWeekly)
   const update = (index: number, patch: Partial<BoardSprintInput>) => setDraft((current) => current.map((sprint, i) => i === index ? { ...sprint, ...patch } : sprint))
   const inputClass = 'h-9 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:ring-2 focus:ring-slate-300'
 
@@ -47,6 +49,10 @@ export default function BoardSprintsDialog({ sprints, cardCounts, pending, onClo
           </button>
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5">
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3">
+            <input type="checkbox" checked={automatic} onChange={(event) => setAutomatic(event.target.checked)} className="mt-0.5 h-4 w-4" />
+            <span className="text-sm text-slate-700"><strong className="block">Sprint settimanali automatici</strong><span className="text-xs text-slate-500">Ogni settimana, da lunedì a domenica. I task li inserisci e assegni tu.</span></span>
+          </label>
           {draft.length === 0 && <p className="text-sm text-slate-400">Nessuno sprint.</p>}
           {draft.map((sprint, index) => (
             <div key={sprint.id || `new-${index}`} className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-3">
@@ -85,8 +91,8 @@ export default function BoardSprintsDialog({ sprints, cardCounts, pending, onClo
           <button
             type="button"
             disabled={pending}
-            onClick={() => onSave(draft.map((sprint, index) => ({ ...sprint, name: sprint.name.trim() || `Sprint ${index + 1}` })))}
-            className="h-10 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
+            onClick={() => onSave(draft.map((sprint, index) => ({ ...sprint, name: sprint.name.trim() || `Sprint ${index + 1}` })), automatic)}
+            className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
           >
             {pending ? 'Salvataggio…' : 'Salva sprint'}
           </button>

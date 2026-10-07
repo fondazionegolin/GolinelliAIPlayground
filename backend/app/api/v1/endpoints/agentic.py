@@ -115,7 +115,13 @@ async def _ensure_session_access(db: AsyncSession, session_id: UUID, actor: Stud
 async def _resume_chat_run(db: AsyncSession, run: AgenticWorkflowRun, workflow: AgenticWorkflow,
                            content: str, actor: Any) -> dict[str, Any]:
     if run.status != "waiting":
-        raise HTTPException(status_code=409, detail="La conversazione non attende una risposta")
+        reason = {
+            "failed": f"La conversazione si è interrotta per un errore: {run.error_message or 'sconosciuto'}",
+            "cancelled": "La conversazione è stata fermata",
+            "completed": "La conversazione è già conclusa",
+            "running": "Il flusso sta ancora elaborando il passo precedente: attendi o premi Stop",
+        }.get(run.status, "La conversazione non attende una risposta")
+        raise HTTPException(status_code=409, detail=reason)
     await advance_conversation(db, workflow, run, actor, user_input=content)
     return await _run_payload(db, run)
 

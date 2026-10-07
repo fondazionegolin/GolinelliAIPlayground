@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { CheckCircle2, KeyRound, Loader2, LockKeyhole, PackageOpen, RotateCcw, Terminal } from 'lucide-react'
+import { CheckCircle2, KeyRound, Loader2, LockKeyhole, PackageOpen, RotateCcw, Terminal } from '@/components/icons'
 
 export interface EscapeRoomState {
   enabled: boolean

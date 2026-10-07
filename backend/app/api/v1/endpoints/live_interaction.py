@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_student, get_current_teacher
+from app.services.session_capacity import concurrent_students, full_message
 from app.core.database import get_db
 from app.core.security import create_student_join_token, generate_join_code
 from app.core.permissions import teacher_can_access_session
@@ -637,11 +638,9 @@ async def join_public_live(
 
     tenant = (await db.execute(select(Tenant).where(Tenant.id == session_obj.tenant_id))).scalar_one_or_none()
     max_students = getattr(tenant, "max_students_per_class", 30) if tenant else 30
-    current_students = (await db.scalar(
-        select(func.count()).select_from(SessionStudent).where(SessionStudent.session_id == session_obj.id)
-    )) or 0
-    if current_students >= max_students:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Sessione piena (max {max_students} partecipanti)")
+    connected = await concurrent_students(db, session_obj.id)
+    if connected >= max_students:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, full_message(connected, max_students))
 
     student = SessionStudent(
         tenant_id=session_obj.tenant_id,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi, type BackgroundJob, type BoardCardFields, type BoardSprintInput } from '@/lib/api'
 import { findActiveJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
-import { ArrowLeft, CalendarRange, Check, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarRange, Check, GanttChartSquare, Edit2, FileUp, GripVertical, KanbanSquare, LayoutTemplate, Loader2, Lock, Palette, Plus, Share2, Sparkles, Tags, Trash2, UserRound, Users, X } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, SearchPill } from '@/design'
 import {
@@ -49,6 +49,7 @@ type Board = {
   framework?: 'scrum' | 'kanban' | null
   labels?: BoardLabel[]
   sprints?: BoardSprint[]
+  auto_sprint_weekly?: boolean
   shared_with_me?: boolean
   me?: { kind: 'teacher' | 'student'; id: string } | null
   title: string
@@ -70,6 +71,7 @@ type BoardPatch = {
   columns?: BoardColumn[]
   labels?: { id?: string; name: string; color?: string }[]
   sprints?: BoardSprintInput[]
+  auto_sprint_weekly?: boolean
   visibility?: 'private' | 'session_shared'
   students_can_edit?: boolean
   session_id?: string
@@ -156,6 +158,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [mineOnly, setMineOnly] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
+  const [labelsMenuOpen, setLabelsMenuOpen] = useState(false)
   const [sprintFilter, setSprintFilter] = useState<string | null>(null) // sprint id, 'none', or null = all
   const [sprintsOpen, setSprintsOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'board' | 'timeline'>('board')
@@ -577,7 +580,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 type="button"
                 disabled={(!aiPrompt.trim() && !aiFile) || generateBoard.isPending || Boolean(backlogJob) || (isStudent && !sessionId)}
                 onClick={() => generateBoard.mutate()}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> Genero il backlog…</> : <><Sparkles className="h-4 w-4" /> Genera backlog</>}
               </button>
@@ -598,7 +601,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
                   {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
                 </select>
-                <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
+                <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
                   <Plus className="h-4 w-4" /> Crea
                 </button>
               </div>
@@ -661,10 +664,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           <div className="flex h-full items-center justify-center text-sm text-slate-500">Crea una board per iniziare.</div>
         ) : (
           <>
-            <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 md:flex md:flex-wrap md:justify-between md:gap-3 md:px-4 md:py-3">
+            <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-1.5 md:flex md:flex-wrap md:justify-between md:gap-2 md:px-4 md:py-2">
               <div className="flex min-w-0 items-center gap-2">
                 {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Torna alle board"><ArrowLeft className="h-5 w-5" /></button>}
-                <h2 className="truncate text-xl font-black">{board.title}</h2>
+                <h2 className="truncate text-lg font-bold">{board.title}</h2>
               </div>
               <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
                 <div className="inline-flex h-11 shrink-0 items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:h-9" role="tablist" aria-label="Vista">
@@ -713,10 +716,22 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     <UserRound className="h-4 w-4" /> I miei task
                   </button>
                 )}
-                {board.can_manage && (
-                  <button type="button" onClick={() => setLabelsOpen(true)} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3" title="Gestisci etichette">
-                    <Tags className="h-4 w-4" /><span className="hidden md:inline">Etichette</span>
-                  </button>
+                {(labels.length > 0 || board.can_manage) && (
+                  <div className="group relative">
+                    <button type="button" onClick={() => setLabelsMenuOpen((open) => !open)} aria-expanded={labelsMenuOpen} aria-label="Filtra per etichetta" className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 hover:bg-slate-50 md:h-9 md:w-9 ${labelFilter ? 'border-slate-500 bg-slate-100' : 'border-slate-200'}`} title="Etichette">
+                      <Tags className="h-4 w-4" />
+                    </button>
+                    <div className={`${labelsMenuOpen ? 'block' : 'hidden group-hover:block group-focus-within:block'} absolute right-0 top-full z-30 min-w-44 pt-1`}>
+                      <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" role="group" aria-label="Etichette">
+                        {labels.map((label) => (
+                          <button key={label.id} type="button" aria-pressed={labelFilter === label.id} onClick={() => { setLabelFilter(labelFilter === label.id ? null : label.id); setLabelsMenuOpen(false) }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100 ${labelFilter === label.id ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />{label.name}
+                          </button>
+                        ))}
+                        {board.can_manage && <button type="button" onClick={() => { setLabelsMenuOpen(false); setLabelsOpen(true) }} className="w-full rounded-lg border-t border-slate-100 px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100">Gestisci etichette</button>}
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {board.can_manage && (
                   <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3" title="Condividi">
@@ -760,26 +775,6 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   )}
                 </div>
               )}
-              {labels.length > 0 && (
-                <div className="col-span-2 flex w-full gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filtra per etichetta">
-                  {labels.map((label) => {
-                    const active = labelFilter === label.id
-                    return (
-                      <button
-                        key={label.id}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => setLabelFilter(active ? null : label.id)}
-                        className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-bold transition ${active ? 'text-white shadow-[var(--ds-shadow-1)]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                        style={active ? { backgroundColor: label.color } : undefined}
-                      >
-                        {!active && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />}
-                        {label.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
             </header>
             {viewMode === 'timeline' ? (
               <BoardTimeline
@@ -806,7 +801,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 </button>
               )}
             </nav>}
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] md:p-3 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] md:p-2.5 lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden lg:p-3">
               {columns.filter((column) => !isMobile || column.id === activeMobileColumnId).map((column) => (
                 <section
                   key={column.id}
@@ -856,8 +851,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       setDraggingColumnId(null)
                       setColumnDragOver(null)
                     }}
-                    className={`flex w-full shrink-0 flex-row items-center gap-2 px-3 py-2.5 lg:min-h-[52px] lg:w-auto ${board.can_manage && editingColumnId !== column.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                    style={{ background: `linear-gradient(180deg, ${column.color}40 0%, ${column.color}29 100%)`, boxShadow: `inset 0 -1px 0 ${column.color}33` }}
+                    className={`flex w-full shrink-0 flex-row items-center gap-2 border-b border-slate-200 bg-white px-2.5 py-1.5 lg:min-h-[40px] lg:w-auto ${board.can_manage && editingColumnId !== column.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
                   >
                     {board.can_manage && <GripVertical className="hidden h-4 w-4 shrink-0 text-slate-500/50 lg:block" aria-hidden="true" />}
                     <div className="min-w-0 flex-1">
@@ -891,8 +885,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         </div>
                       ) : (
                         <>
-                          <h3 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-slate-900">{column.label} <span className="rounded-full bg-white/75 px-1.5 text-[10px] font-bold text-slate-600">{(grouped[column.id] || []).length}</span></h3>
-                          {column.hint && <p className="mt-0.5 hidden text-[10px] text-slate-600/80 md:block">{column.hint}</p>}
+                          <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-800"><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: column.color }} />{column.label} <span className="text-[10px] font-medium text-slate-400">{(grouped[column.id] || []).length}</span></h3>
                         </>
                       )}
                     </div>
@@ -935,7 +928,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                       </button>
                     )}
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-col items-stretch gap-2 overflow-x-hidden overflow-y-auto bg-slate-50/40 p-2.5 lg:min-h-0">
+                  <div className="flex min-w-0 flex-1 flex-col items-stretch gap-2 overflow-x-hidden overflow-y-auto bg-slate-50/40 p-2 lg:min-h-0">
                     {inlineColumnId === column.id && (
                       <div className="ui-card w-full shrink-0 p-3">
                         <CardForm
@@ -1089,10 +1082,11 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       {sprintsOpen && board?.can_manage && (
         <BoardSprintsDialog
           sprints={sprints}
+          autoSprintWeekly={Boolean(board.auto_sprint_weekly)}
           cardCounts={Object.fromEntries(Object.entries(sprintStats).map(([id, stats]) => [id, stats.count]))}
           pending={updateBoard.isPending}
           onClose={() => setSprintsOpen(false)}
-          onSave={(next) => updateBoard.mutate({ sprints: next }, {
+          onSave={(next, automatic) => updateBoard.mutate({ sprints: next, auto_sprint_weekly: automatic }, {
             onSuccess: () => setSprintsOpen(false),
             onError: (error: any) => toast({ title: 'Sprint non salvati', description: error?.response?.data?.detail || 'Riprova tra poco.', variant: 'destructive' }),
           })}
@@ -1305,7 +1299,7 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
         <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-bold text-slate-500 hover:bg-slate-100">Annulla</button>
-          <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
+          <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
             <Check className="h-3.5 w-3.5" /> {submitLabel}
           </button>
         </div>
@@ -1458,7 +1452,7 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
             <button type="button" disabled={deletePending} onClick={onDelete} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
               <Trash2 className="h-4 w-4" /> Elimina
             </button>
-            <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)]">
+            <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)]">
               <Edit2 className="h-4 w-4" /> Modifica
             </button>
           </div>

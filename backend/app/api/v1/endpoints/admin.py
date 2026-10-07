@@ -313,7 +313,7 @@ async def create_school_tenant(
         tenant_type=TenantType.SCHOOL.value,
         max_teachers=payload.max_teachers or 5,
         max_students_per_teacher=payload.max_students_per_teacher or 100,
-        max_students_per_class=payload.max_students_per_class or 30,
+        max_students_per_class=payload.max_students_per_class or 300,
         monthly_credit_pool=payload.monthly_credit_pool or 10.0,
     )
     db.add(tenant)

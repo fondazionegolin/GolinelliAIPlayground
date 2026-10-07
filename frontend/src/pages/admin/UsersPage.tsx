@@ -28,7 +28,7 @@ import {
   TrendingUp,
   Users,
   Zap,
-} from 'lucide-react'
+} from '@/components/icons'
 
 type Granularity = 'day' | 'week' | 'month'
 
