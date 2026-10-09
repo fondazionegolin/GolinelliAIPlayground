@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-10-07T14:06:18.756668+00:00",
-  "version_label": "2026.10.07-97dcd4d7",
-  "title": "Aggiornamenti branch feature/iconstyle",
+  "generated_at": "2026-10-09T13:27:13.078123+00:00",
+  "version_label": "2026.10.09-118bc47f",
+  "title": "Aggiornamenti branch staging",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "97dcd4d72b15d52b2c8656a91c9c058e14f2b160",
+  "git_ref": "118bc47f0fe521ee85372ee027582edb778bc6d3",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(coding-lab): cleaner landing, p5.js ML models, tidier toolbar",
-      "description": "Feat(coding-lab): cleaner landing, p5.js ML models, tidier toolbar"
+      "title": "Feat(platform): sync current project state",
+      "description": "Feat(platform): sync current project state"
     }
   ]
 }
