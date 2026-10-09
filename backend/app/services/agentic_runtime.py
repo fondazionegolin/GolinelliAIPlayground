@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import csv
 import logging
+import random
 import time
 from io import StringIO
 from datetime import datetime, timezone
@@ -48,6 +49,9 @@ def _edge_port(edge: dict[str, Any], side: str) -> str:
 
 LOOP_NODE = "control.repeat_until"
 LOOP_PORT = "repeat"
+FOR_EACH_NODE = "loop.for_each"
+COLLECT_NODE = "loop.collect"
+MAX_LOOP_ITERATIONS = 200
 # The LLM appends this marker when it decides a continuous conversation is over; it is stripped before display.
 EXIT_MARKER = "[[FINE_CONVERSAZIONE]]"
 
@@ -68,21 +72,64 @@ def _forward_graph(graph: dict[str, Any]) -> dict[str, Any]:
     return {**graph, "edges": [edge for edge in graph["edges"] if not _is_loop_edge(edge, node_by_id)]}
 
 
+def _reach(edges: list[dict[str, Any]], origin: str, forward: bool) -> set[str]:
+    seen, pending = {origin}, [origin]
+    while pending:
+        current = pending.pop()
+        for edge in edges:
+            src, dst = (edge["from"], edge["to"]) if forward else (edge["to"], edge["from"])
+            if src == current and dst not in seen:
+                seen.add(dst); pending.append(dst)
+    return seen
+
+
 def _loop_body(graph: dict[str, Any], start: str, loop_node: str) -> set[str]:
     """Nodes to run again when «Ripeti» jumps back to ``start``: everything on a forward path start → loop node."""
     edges = _forward_graph(graph)["edges"]
+    return (_reach(edges, start, True) & _reach(edges, loop_node, False)) | {start}
 
-    def reach(origin: str, forward: bool) -> set[str]:
-        seen, pending = {origin}, [origin]
-        while pending:
-            current = pending.pop()
-            for edge in edges:
-                src, dst = (edge["from"], edge["to"]) if forward else (edge["to"], edge["from"])
-                if src == current and dst not in seen:
-                    seen.add(dst); pending.append(dst)
-        return seen
 
-    return (reach(start, True) & reach(loop_node, False)) | {start}
+def _loop_groups(graph: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """«Per ogni riga» → {collect: «Fine ciclo» id, body: nodes run once per row}. Raises on malformed loops."""
+    nodes = [node for node in graph["nodes"] if isinstance(node, dict)]
+    edges = _forward_graph(graph)["edges"]
+    collects = [node["instanceId"] for node in nodes if node.get("id") == COLLECT_NODE]
+    groups: dict[str, dict[str, Any]] = {}
+    claimed: set[str] = set()
+    for node in nodes:
+        if node.get("id") != FOR_EACH_NODE:
+            continue
+        origin = node["instanceId"]
+        forward = _reach(edges, origin, True)
+        mine = [item for item in collects if item in forward]
+        if len(mine) != 1:
+            raise ValueError("«Per ogni riga» deve concludersi con un solo «Fine ciclo» collegato a valle")
+        end = mine[0]
+        if end in claimed:
+            raise ValueError("Un «Fine ciclo» può chiudere un solo «Per ogni riga» (i cicli annidati non sono supportati)")
+        claimed.add(end)
+        groups[origin] = {"collect": end, "body": (forward & _reach(edges, end, False)) - {origin, end}}
+    if any(item not in claimed for item in collects):
+        raise ValueError("«Fine ciclo» deve essere collegato a valle di un «Per ogni riga»")
+    for group in groups.values():
+        if any(other in group["body"] for other in groups):
+            raise ValueError("I cicli annidati non sono supportati")
+    return groups
+
+
+def _loop_members(groups: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Node id → the «Per ogni riga» that runs it (body nodes and the closing «Fine ciclo»)."""
+    return {node_id: origin for origin, group in groups.items() for node_id in (*group["body"], group["collect"])}
+
+
+def _plan_order(graph: dict[str, Any], members: dict[str, str]) -> list[dict[str, Any]]:
+    """Topological order where each loop (header + body + end) is collapsed into its «Per ogni riga» node."""
+    collapsed = {
+        "nodes": [node for node in graph["nodes"] if node["instanceId"] not in members],
+        "edges": [{"from": members.get(edge["from"], edge["from"]), "to": members.get(edge["to"], edge["to"])}
+                  for edge in graph["edges"] if members.get(edge["from"], edge["from"]) != members.get(edge["to"], edge["to"])],
+    }
+    return _execution_order(collapsed)
 
 
 def validate_graph(graph: dict[str, Any]) -> None:
@@ -143,6 +190,7 @@ def validate_graph(graph: dict[str, Any]) -> None:
             raise ValueError(f"La porta '{port_name}' di '{NODE_REGISTRY[source_node['id']]['label']}' può proseguire verso un solo nodo successivo")
     if any(str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot" for node in nodes):
         _entry_node(graph)  # raises when the dialogue has no unambiguous first node
+    _loop_groups(graph)  # raises when a «Per ogni riga» / «Fine ciclo» pair is malformed
     try:
         _execution_order(_forward_graph(graph))
     except ValueError:
@@ -192,21 +240,30 @@ def _execution_order(graph: dict[str, Any]) -> list[dict[str, Any]]:
     return [nodes[node_id] for node_id in ordered]
 
 
-async def _node_inputs(db: AsyncSession, run: AgenticWorkflowRun, graph: dict[str, Any], node_id: str) -> tuple[dict[str, Any], bool]:
+async def _node_inputs(db: AsyncSession, run: AgenticWorkflowRun, graph: dict[str, Any], node_id: str,
+                       local: dict[str, dict[str, Any]] | None = None) -> tuple[dict[str, Any], bool]:
+    """Resolve a node's inputs; ``local`` holds the outputs of the current loop pass, which win over stored runs."""
+    local = local or {}
     incoming = [edge for edge in graph["edges"] if edge["to"] == node_id]
     if not incoming:
         return dict(run.input_json or {}), True
-    result = await db.execute(select(AgenticNodeRun).where(
-        AgenticNodeRun.run_id == run.id,
-        AgenticNodeRun.node_instance_id.in_([edge["from"] for edge in incoming]),
-        AgenticNodeRun.status.in_(["completed", "skipped"]),
-    ))
-    runs = {item.node_instance_id: item for item in result.scalars().all()}
+    stored = [edge["from"] for edge in incoming if edge["from"] not in local]
+    runs: dict[str, AgenticNodeRun] = {}
+    if stored:
+        result = await db.execute(select(AgenticNodeRun).where(
+            AgenticNodeRun.run_id == run.id,
+            AgenticNodeRun.node_instance_id.in_(stored),
+            AgenticNodeRun.status.in_(["completed", "skipped"]),
+        ).order_by(AgenticNodeRun.visit))
+        runs = {item.node_instance_id: item for item in result.scalars().all()}  # latest visit wins
     values: dict[str, Any] = {}
     active = False
     for edge in incoming:
-        source_run = runs.get(edge["from"])
-        output = (source_run.output_json if source_run else {}) or {}
+        if edge["from"] in local:
+            output = local[edge["from"]]
+        else:
+            source_run = runs.get(edge["from"])
+            output = (source_run.output_json if source_run else {}) or {}
         value = output.get(_edge_port(edge, "source"))
         if value is not None or _edge_port(edge, "target") not in values:
             values[_edge_port(edge, "target")] = value
@@ -379,7 +436,7 @@ async def _ai_transform(inputs: dict[str, Any], config: dict[str, Any], provider
     )
     content = (response.content or "").strip()
     output: dict[str, Any] = {"text": content}
-    if task in {"extract_table", "make_slides", "make_quiz"}:
+    if task in {"extract_table", "prompt_table", "make_slides", "make_quiz"}:
         try:
             parsed = _parse_json_payload(content)
         except ValueError:
@@ -387,7 +444,7 @@ async def _ai_transform(inputs: dict[str, Any], config: dict[str, Any], provider
         rows = parsed.get("rows") if isinstance(parsed, dict) and "rows" in parsed else parsed
         if not isinstance(rows, list) or not rows or not all(isinstance(item, dict) for item in rows):
             raise ValueError("Il modello non ha restituito una lista di oggetti")
-        if task == "extract_table":
+        if task in {"extract_table", "prompt_table"}:
             columns = list(dict.fromkeys(str(key) for row in rows for key in row.keys()))
             output["table"] = {"columns": columns, "rows": rows, "rowCount": len(rows)}
         else:
@@ -401,6 +458,12 @@ async def _execute(
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
     if node_type == LOOP_NODE:
         return await _repeat_until(inputs, config, state, instance_id or "default")
+    if node_type == FOR_EACH_NODE:
+        # Single-node preview: shows the first row. The real iteration happens in execute_run.
+        rows = _loop_rows(inputs.get("table"), config)
+        return _iteration_output(rows[0][1], rows[0][0], 1, config), None, None, 0, 0
+    if node_type == COLLECT_NODE:
+        return _collect_output([(1, None, inputs.get("value"))], config), None, None, 0, 0
     if node_type.startswith("platform."):
         if db is None or actor is None:
             raise ValueError("I nodi di piattaforma si eseguono con un account docente")
@@ -480,6 +543,134 @@ async def _execute(
     return output, response.provider, response.model, response.prompt_tokens, response.completion_tokens
 
 
+def _loop_rows(table: Any, config: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    """Rows to iterate as (original 1-based position, row), shuffled and capped as configured."""
+    if isinstance(table, dict) and isinstance(table.get("rows"), list):
+        rows = table["rows"]
+    elif isinstance(table, list):
+        rows = table
+    else:
+        raise ValueError("«Per ogni riga» richiede una tabella in ingresso")
+    rows = [row if isinstance(row, dict) else {"valore": row} for row in rows]
+    if not rows:
+        raise ValueError("La tabella è vuota: non c'è nessuna riga da ripetere")
+    numbered = list(enumerate(rows, start=1))
+    if str(config.get("order") or "sequenziale") == "casuale":
+        random.shuffle(numbered)
+    limit = int(config.get("limit") or 0)
+    return numbered[:min(limit, MAX_LOOP_ITERATIONS) if limit > 0 else MAX_LOOP_ITERATIONS]
+
+
+def _iteration_output(row: dict[str, Any], position: int, cycle: int, config: dict[str, Any]) -> dict[str, Any]:
+    column = str(config.get("column") or "").strip()
+    if column and column not in row:
+        raise ValueError(f"La colonna «{column}» non esiste nella tabella (colonne: {', '.join(map(str, row.keys()))})")
+    value = row[column] if column else next(iter(row.values()), None)
+    return {"value": value, "row": row, "index": cycle, "source_row": position}
+
+
+def _short(value: Any) -> Any:
+    """Compact cell for the results table: images stay in «results» only."""
+    if isinstance(value, str) and value.startswith("data:image/"):
+        return "[immagine]"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)[:300]
+    return value
+
+
+def _collect_output(items: list[tuple[int, Any, Any]], config: dict[str, Any]) -> dict[str, Any]:
+    """items: (cycle, loop input value, value produced by the body)."""
+    rows = [{"ciclo": cycle, "input": _short(source), "risultato": _short(result)} for cycle, source, result in items]
+    return {"results": [result for _, _, result in items],
+            "table": {"columns": ["ciclo", "input", "risultato"], "rows": rows, "rowCount": len(rows)}, "count": len(rows)}
+
+
+async def _run_loop(
+    db: AsyncSession, run: AgenticWorkflowRun, graph: dict[str, Any], node_by_id: dict[str, dict[str, Any]],
+    origin: str, group: dict[str, Any], header_run: AgenticNodeRun, state: dict[str, Any], actor: User, sequence: list[int],
+) -> dict[str, Any]:
+    """Run the body of a «Per ogni riga» once per table row, then publish the «Fine ciclo» results."""
+    header = node_by_id[origin]
+    header_config = header.get("config") if isinstance(header.get("config"), dict) else {}
+    inputs, _ = await _node_inputs(db, run, graph, origin)
+    rows = _loop_rows(inputs.get("table"), header_config)
+    body_ids = group["body"]
+    body = [node for node in _execution_order({
+        "nodes": [node_by_id[item] for item in body_ids],
+        "edges": [edge for edge in graph["edges"] if edge["from"] in body_ids and edge["to"] in body_ids],
+    })]
+    end_id = group["collect"]
+    skip_errors = str(header_config.get("on_error") or "ferma") == "salta"
+    collected: list[tuple[int, Any, Any]] = []
+    errors: list[dict[str, Any]] = []
+    last: dict[str, Any] = {}
+
+    for cycle, (position, row) in enumerate(rows, start=1):
+        if (await db.execute(select(AgenticWorkflowRun.status).where(AgenticWorkflowRun.id == run.id))).scalar_one() == "cancelled":
+            break
+        last = _iteration_output(row, position, cycle, header_config)
+        local: dict[str, dict[str, Any]] = {origin: last}
+        failed: AgenticNodeRun | None = None
+        try:
+            for node in body:
+                node_inputs, active = await _node_inputs(db, run, graph, node["instanceId"], local)
+                node_run = AgenticNodeRun(
+                    run_id=run.id, node_instance_id=node["instanceId"], node_type=node["id"],
+                    label=str(node.get("label") or NODE_REGISTRY[node["id"]]["label"]), sequence=sequence[0], visit=cycle - 1,
+                    input_json=node_inputs, started_at=datetime.now(timezone.utc),
+                )
+                sequence[0] += 1
+                db.add(node_run)
+                if not active:
+                    node_run.status, node_run.output_json = "skipped", {}
+                    node_run.completed_at = datetime.now(timezone.utc)
+                    local[node["instanceId"]] = {}
+                    await db.commit()
+                    continue
+                node_run.status = "running"
+                failed = node_run
+                await db.commit()
+                config = node.get("config") if isinstance(node.get("config"), dict) else {}
+                started = time.perf_counter()
+                output, provider, model, prompt_tokens, completion_tokens = await _execute(
+                    node["id"], node_inputs, config, state, db=db, actor=actor, instance_id=node["instanceId"])
+                node_run.output_json, node_run.provider, node_run.model = output, provider, model
+                node_run.prompt_tokens, node_run.completion_tokens = prompt_tokens, completion_tokens
+                node_run.duration_ms = int((time.perf_counter() - started) * 1000)
+                node_run.status, node_run.completed_at = "completed", datetime.now(timezone.utc)
+                failed = None
+                local[node["instanceId"]] = output
+                await db.commit()
+            end_inputs, _ = await _node_inputs(db, run, graph, end_id, local)
+            if end_inputs.get("value") is not None:
+                collected.append((cycle, last["value"], end_inputs["value"]))
+        except Exception as exc:
+            if failed is not None:
+                failed.status, failed.error_message = "failed", str(exc) or exc.__class__.__name__
+                failed.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+            if not skip_errors:
+                raise ValueError(f"Ciclo {cycle}/{len(rows)}: {exc}") from exc
+            logger.warning("Loop %s: cycle %s skipped after error: %s", origin, cycle, exc)
+            errors.append({"ciclo": cycle, "errore": str(exc)})
+
+    header_run.output_json = {**{key: last.get(key) for key in ("value", "row", "index")}, "cicli_eseguiti": len(collected) + len(errors),
+                              "cicli_totali": len(rows), "errori": errors}
+    header_run.status, header_run.completed_at = "completed", datetime.now(timezone.utc)
+    end_output = _collect_output(collected, header_config)
+    end_output["errors"] = errors
+    end_run = AgenticNodeRun(
+        run_id=run.id, node_instance_id=end_id, node_type=COLLECT_NODE,
+        label=str(node_by_id[end_id].get("label") or NODE_REGISTRY[COLLECT_NODE]["label"]), sequence=sequence[0], visit=0,
+        input_json={"value": f"{len(collected)} risultati"}, output_json=end_output, status="completed",
+        started_at=datetime.now(timezone.utc), completed_at=datetime.now(timezone.utc),
+    )
+    sequence[0] += 1
+    db.add(end_run)
+    await db.commit()
+    return end_output
+
+
 async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: User | None = None) -> dict[str, Any]:
     """Execute one node without persisting a workflow run.
 
@@ -509,14 +700,17 @@ async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db
 async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticWorkflowRun, actor: User) -> AgenticWorkflowRun:
     # Batch runs execute each node once in topological order: loop edges are ignored here.
     graph = _forward_graph(workflow.graph_json)
-    order = _execution_order(graph)
+    node_by_id = {node["instanceId"]: node for node in graph["nodes"]}
+    loops = _loop_groups(graph)
+    order = _plan_order(graph, _loop_members(loops))
+    sequence = [0]
     state = {"variables": dict((run.input_json or {}).get("variables") or {})}
     run.status = "running"
     run.started_at = run.started_at or datetime.now(timezone.utc)
     run.error_message = None
     await db.commit()
     try:
-        for sequence, node in enumerate(order):
+        for node in order:
             if (await db.execute(select(AgenticWorkflowRun.status).where(AgenticWorkflowRun.id == run.id))).scalar_one() == "cancelled":
                 run.status = "cancelled"
                 await db.commit()
@@ -532,8 +726,9 @@ async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticW
             if not node_run:
                 node_run = AgenticNodeRun(
                     run_id=run.id, node_instance_id=node["instanceId"], node_type=node["id"],
-                    label=str(node.get("label") or NODE_REGISTRY[node["id"]]["label"]), sequence=sequence,
+                    label=str(node.get("label") or NODE_REGISTRY[node["id"]]["label"]), sequence=sequence[0],
                 )
+                sequence[0] += 1
                 db.add(node_run)
             node_run.input_json = inputs
             node_run.started_at = datetime.now(timezone.utc)
@@ -546,6 +741,11 @@ async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticW
             config = node.get("config") if isinstance(node.get("config"), dict) else {}
             node_run.status = "running"
             await db.commit()
+            if node["id"] == FOR_EACH_NODE:
+                # The whole loop (body + «Fine ciclo») runs here; a failure marks this header run as failed.
+                run.output_json = await _run_loop(db, run, graph, node_by_id, node["instanceId"], loops[node["instanceId"]], node_run, state, actor, sequence)
+                await db.commit()
+                continue
             started = time.perf_counter()
             output, provider, model, prompt_tokens, completion_tokens = await _execute(node["id"], inputs, config, state, db=db, actor=actor, instance_id=node["instanceId"])
             node_run.output_json = output
@@ -684,7 +884,9 @@ async def _continue_llm_conversation(node: dict[str, Any], node_run: AgenticNode
     """Run one more turn of a continuous ``llm_chatbot``. Returns True when the conversation is over."""
     config = node.get("config") if isinstance(node.get("config"), dict) else {}
     previous = dict(node_run.output_json or {})
-    history = list(previous.get("history") or []) + [{"role": "user", "content": user_input}]
+    history = list(previous.get("history") or [])
+    if not previous.get("pending"):  # the caller already stored the user's turn so the chat shows it while the model thinks
+        history.append({"role": "user", "content": user_input})
     seed = str(previous.get("seed") or "Inizia la conversazione")
     content, ended, response = await _llm_reply(config, node_run.input_json or {}, state, [{"role": "user", "content": seed}, *history], True)
     history.append({"role": "assistant", "content": content})
@@ -748,7 +950,13 @@ async def advance_conversation(
                 raise ValueError("La conversazione non è in attesa di una risposta")
             node = node_by_id[current]
             if node["id"] == "llm_chatbot":
+                # Show the real state while the model answers: the user's turn is stored and the node is «running».
+                before = dict(node_run.output_json or {})
+                node_run.output_json = {**before, "history": [*(before.get("history") or []), {"role": "user", "content": user_input}], "pending": True}
+                node_run.status = "running"
+                await db.commit()
                 if not await _continue_llm_conversation(node, node_run, user_input, state):
+                    node_run.status = "waiting"
                     run.status = "waiting"
                     run.output_json = {"waiting_for": current, "kind": "text"}
                     _persist_position(current)

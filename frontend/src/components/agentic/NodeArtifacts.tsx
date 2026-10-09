@@ -6,6 +6,7 @@ import type { DriveItem } from '@/components/drive/driveTypes'
 import { driveApi } from '@/lib/api'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const MAX_GALLERY = 40
 const isDataImage = (value: unknown): value is string => typeof value === 'string' && value.startsWith('data:image/')
 
 export type NodeArtifacts = {
@@ -24,6 +25,7 @@ export function extractArtifacts(output: Record<string, unknown>): NodeArtifacts
   }
   for (const [port, value] of Object.entries(output)) {
     if (isDataImage(value)) images.push({ port, src: value })
+    else if (Array.isArray(value) && value.some(isDataImage)) value.filter(isDataImage).slice(0, MAX_GALLERY).forEach((src, index) => images.push({ port: `${port} #${index + 1}`, src }))
     else if (port === 'image_data' && typeof value === 'string' && typeof output.image_mime === 'string' && !isDataImage(output.data_uri)) images.push({ port, src: `data:${output.image_mime};base64,${value}` })
     else if (['drive_item_id', 'item_id'].includes(port)) addId(port, value)
     else if (port === 'item' && value && typeof value === 'object') addId(port, (value as { id?: unknown }).id)

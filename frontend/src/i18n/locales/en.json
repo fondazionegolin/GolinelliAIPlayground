@@ -409,9 +409,9 @@
 
   "chatbot": {
     "profile_tutor": "AI Tutor",
-    "profile_tutor_desc": "Explains topics step by step with simple, level-appropriate examples.",
-    "profile_tutor_p1": "Explain this concept to me",
-    "profile_tutor_p2": "Give me a practical example",
+    "profile_tutor_desc": "Guides you to understand with questions and hints, on any subject.",
+    "profile_tutor_p1": "Help me understand this topic",
+    "profile_tutor_p2": "I have an exercise and do not know where to start",
     "profile_quiz": "Quiz Master",
     "profile_quiz_desc": "Builds personalised quizzes and helps you revise actively.",
     "profile_quiz_p1": "I want a guided quiz",

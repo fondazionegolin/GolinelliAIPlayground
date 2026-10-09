@@ -1,3 +1,6 @@
+import { MessageAttachments } from '@/components/chat/MessageAttachments'
+import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
+import { buildMessageAttachments, implicitEditImage, type MessageAttachment } from '@/lib/chatAttachments'
 import { useFileDropHighlight } from '@/hooks/useFileDropHighlight'
 import { DropOverlay } from '@/components/ui/DropOverlay'
 import { getResponseLength, setResponseLength, RESPONSE_LENGTH_OPTIONS, type ResponseLength } from '@/lib/responseLength'
@@ -126,6 +129,7 @@ interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  attachments?: MessageAttachment[]
   timestamp: Date
   provider?: string
   model?: string
@@ -1103,6 +1107,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       }
 
       setAttachedFiles(prev => [...prev, { file, type: 'document' }])
+      llmApi.filePreview(file)
+        .then(res => setAttachedFiles(prev => prev.map(af => af.file === file ? { ...af, preview: res.data.thumbnail_url } : af)))
+        .catch(() => { /* The file can still be sent without a preview. */ })
     })
   }
 
@@ -2055,16 +2062,16 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const userInput = (overrideInput ?? inputText).trim()
 
     const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
-    if ((!userInput && attachedFiles.length === 0 && !canSendAnalysis) || isLoading) return
+    if ((!userInput && attachedFiles.length === 0 && !attachedYoutube && !canSendAnalysis) || isLoading || attachedYoutube?.status === 'loading') return
 
-    const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
-    const youtubeInfo = attachedYoutube ? ` [YouTube: ${attachedYoutube.title || attachedYoutube.videoId}]` : ''
+    const attachments = attachedFiles.length > 0 ? await buildMessageAttachments(attachedFiles.map(f => f.file)) : undefined
+    const youtubeInfo = attachedYoutube ? `\n${attachedYoutube.url}` : ''
     let messageContent = userInput || (
       agentMode === 'analysis'
         ? 'Analizza le risposte degli studenti'
         : agentMode === 'ocr'
           ? 'Trascrivi elaborato con OCR'
-          : 'Analizza questi documenti'
+        : attachedYoutube ? 'Analizza questo video' : 'Analizza questi documenti'
     )
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
@@ -2088,7 +2095,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: messageContent + filesInfo + youtubeInfo,
+      content: messageContent + youtubeInfo,
+      attachments,
       timestamp: new Date()
     }
 
@@ -2103,6 +2111,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     if (overrideInput === undefined) setInputText('')
     const currentFiles = [...attachedFiles]
+    // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
+    if (currentFiles.length === 0 && agentMode === 'default' && !isPresentationCreationRequest(messageContent)) {
+      const previous = await implicitEditImage(messages, userInput)
+      if (previous) currentFiles.push({ file: previous, type: 'image' })
+    }
     setAttachedFiles([])
     const currentYoutube = attachedYoutube
     setAttachedYoutube(null)
@@ -2113,7 +2126,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const { signal } = abortController
 
     // Build LLM content: append transcript if available
-    let llmContent = messageContent
+    let llmContent = messageContent + youtubeInfo
     if (currentYoutube?.status === 'ready' && currentYoutube.transcript) {
       const videoLabel = currentYoutube.title ? `"${currentYoutube.title}"` : currentYoutube.url
       llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
@@ -2614,6 +2627,7 @@ REGOLE IMPORTANTI:
             token_usage_json: {
               prompt_tokens: response.data?.prompt_tokens,
               completion_tokens: response.data?.completion_tokens,
+              ...(response.data?.image_count ? { image_count: response.data.image_count } : {}),
             },
           }
           setMessages(prev => [...prev, assistantMessage])
@@ -3607,12 +3621,16 @@ REGOLE IMPORTANTI:
                                   darkMode={chatBgIsDark}
                                 />
                               ) : (
-                                <ReactMarkdown
-                                  className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-bold"
-                                  components={markdownCodeComponents()}
-                                >
-                                  {convertEmoticons(msg.content)}
-                                </ReactMarkdown>
+                                <>
+                                  <MessageAttachments attachments={msg.attachments} className="mb-2" />
+                                  <MessageLinkPreviews content={msg.content} />
+                                  <ReactMarkdown
+                                    className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-bold"
+                                    components={markdownCodeComponents()}
+                                  >
+                                    {convertEmoticons(messageTextWithoutPreviewLinks(msg.content))}
+                                  </ReactMarkdown>
+                                </>
                               )}
                               {msg.role === 'assistant' && ocrOverlays[msg.id] && (
                                 <OcrImageOverlay overlay={ocrOverlays[msg.id]} />
@@ -3808,6 +3826,7 @@ REGOLE IMPORTANTI:
                         </div>
                       )}
 
+                      <MessageLinkPreviews content={inputText} debounceMs={600} />
                       {attachedYoutube && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           <div className="relative group flex items-stretch gap-0 bg-red-50 border border-red-200 rounded-xl overflow-hidden shadow-sm">
@@ -3849,11 +3868,11 @@ REGOLE IMPORTANTI:
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
                             <div key={i} className="relative group">
-                              {f.type === 'image' && f.preview ? (
-                                <div className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
-                                  <ImageIcon className="h-3 w-3" />
-                                  <span className="max-w-[120px] truncate">{f.file.name}</span>
-                                  <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
+                              {f.preview ? (
+                                <div className="relative w-20 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                  <img src={f.preview} alt={`Anteprima di ${f.file.name}`} className="h-20 w-full object-contain" />
+                                  <span className="block truncate px-1 text-[10px] text-slate-600">{f.file.name}</span>
+                                  <button onClick={() => removeFile(i)} className="absolute right-0 top-0 rounded-bl bg-white/90 p-0.5 text-slate-500 hover:text-red-500"><X className="h-3 w-3" /></button>
                                 </div>
                               ) : f.type === 'data' ? (
                                 <div className={sidebarMode ? 'w-64' : 'w-64 md:w-80'}>
@@ -4138,7 +4157,7 @@ REGOLE IMPORTANTI:
                             size="icon"
                             className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full flex-shrink-0"
                             onClick={() => { setShowLinkModal(v => !v); setLinkInputValue('') }}
-                            title="Aggiungi video YouTube"
+                            title="Aggiungi link"
                           >
                             <Youtube className="h-4 w-4" />
                           </Button>

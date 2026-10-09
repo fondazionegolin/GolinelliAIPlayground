@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-10-07T13:56:25.540994+00:00",
-  "version_label": "2026.10.07-70cd64bc",
+  "generated_at": "2026-10-07T14:06:18.756668+00:00",
+  "version_label": "2026.10.07-97dcd4d7",
   "title": "Aggiornamenti branch feature/iconstyle",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "70cd64bcc883f3c4d4e63cfce1b62598d2140b61",
+  "git_ref": "97dcd4d72b15d52b2c8656a91c9c058e14f2b160",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(platform): ML Lab pose/hand, admin models & sessions, teacher memory",
-      "description": "Feat(platform): ML Lab pose/hand, admin models & sessions, teacher memory"
+      "title": "Feat(coding-lab): cleaner landing, p5.js ML models, tidier toolbar",
+      "description": "Feat(coding-lab): cleaner landing, p5.js ML models, tidier toolbar"
     }
   ]
 }

@@ -17,6 +17,10 @@ interface Props {
   activeLibraries?: string[]  // library IDs to inject
   /** ML Lab models attached to the sketch: exposed as window.GolinelliML. */
   mlModels?: MlRuntimeModel[]
+  /** attached ML models are still being fetched: running now would hit «GolinelliML is not defined». */
+  mlLoading?: boolean
+  /** how many attached models could not be loaded (deleted, or not trained yet) */
+  mlMissing?: number
 }
 
 const P5_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js'
@@ -33,16 +37,15 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: M
     return lib.cdnUrls.map((url) => `    <script src="${url}" crossorigin="anonymous"></script>`)
   }).join('\n')
 
+  // NOTE: no try/{ } wrapper around the sketch. A function declaration inside a block is hoisted to the global scope
+  // only when it is a plain function: `async function setup()` stayed block-scoped, so p5 never found it.
+  // Runtime errors (and syntax errors) are reported by the window.onerror / unhandledrejection handlers below.
   const scriptBlocks = files.map((f) => {
     const escaped = f.source.replace(/<\/script>/gi, '<\\/script>')
     return `
     <script>
       // ── ${f.name} ──
-      try {
-        ${escaped}
-      } catch (error) {
-        notifyParent('runtime-error', error && error.message ? error.message : String(error))
-      }
+${escaped}
     </script>`
   }).join('\n')
 
@@ -80,7 +83,11 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: M
       }
       window.onerror = function(message, source, lineno, colno, error) {
         var stack = error && error.stack ? '\\n' + error.stack : ''
-        notifyParent('runtime-error', String(message) + ' (riga ' + lineno + ':' + colno + ')' + stack)
+        var text = String(message)
+        // The browser hides the details of errors that come from scripts it cannot inspect.
+        if (text === 'Script error.' && !error) text = 'Errore in una libreria esterna: il browser non ne espone i dettagli. Controlla di aver usato le funzioni nel modo giusto (es. variabili non ancora inizializzate in draw()).'
+        var where = lineno ? ' (riga ' + lineno + ':' + colno + ')' : ''
+        notifyParent('runtime-error', text + where + stack)
       }
       // Le Promise rifiutate senza .catch() (comuni con async/await in librerie come
       // MediaPipe/ml5) non passano da window.onerror: senza questo listener sparivano
@@ -90,6 +97,20 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: M
         var message = reason instanceof Error ? (reason.message + (reason.stack ? '\\n' + reason.stack : '')) : String(reason)
         notifyParent('runtime-error', 'Promise non gestita: ' + message)
       })
+      // Camera diagnostics: the browser's own message ("Invalid security origin") says nothing about the cause.
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const nativeGum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+        navigator.mediaDevices.getUserMedia = function(constraints) {
+          return nativeGum(constraints).catch(function(error) {
+            var name = error && error.name ? error.name : 'Error'
+            var hint = name === 'NotAllowedError' || name === 'SecurityError'
+              ? 'Il browser ha negato la webcam: consenti la fotocamera per questo sito (icona del lucchetto nella barra degli indirizzi) e riprova. Se l\u2019anteprima è in un riquadro isolato, la webcam non è disponibile.'
+              : name === 'NotFoundError' ? 'Nessuna webcam trovata.' : name === 'NotReadableError' ? 'La webcam è usata da un\u2019altra applicazione.' : ''
+            notifyParent('runtime-error', 'Webcam non accessibile (' + name + ': ' + (error && error.message ? error.message : '') + '). ' + hint + ' [contesto sicuro: ' + window.isSecureContext + ', origine: ' + window.location.origin + ']')
+            throw error
+          })
+        }
+      }
       const _origError = console.error.bind(console)
       console.error = function(...args) {
         _origError(...args)
@@ -112,7 +133,7 @@ function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: M
         if (e.data.action === 'play' && typeof loop === 'function') loop()
       })
     </script>
-    <script src="${P5_CDN}"></script>
+    <script src="${P5_CDN}" crossorigin="anonymous"></script>
 ${libScriptTags}
     ${mlStub}
     ${isEmpty ? '' : scriptBlocks}
@@ -132,9 +153,12 @@ export default function NotebookP5Preview({
   onIframeLoad,
   activeLibraries = [],
   mlModels = [],
+  mlLoading = false,
+  mlMissing = 0,
 }: Props) {
   // Libraries (and ML Lab models) that need the camera get a relaxed sandbox + the allow attribute
-  const needsCamera = mlModels.length > 0 || activeLibraries.some((id) => {
+  const usesCameraInCode = files.some((file) => /createCapture|getUserMedia|GolinelliML|GolinelliAI\.media|mediaDevices/.test(file.source))
+  const needsCamera = mlModels.length > 0 || usesCameraInCode || activeLibraries.some((id) => {
     const lib = NOTEBOOK_LIBRARIES.find((l) => l.id === id)
     return lib?.requiresCamera ?? false
   })
@@ -158,18 +182,27 @@ export default function NotebookP5Preview({
         </div>
       </div>
       <div className="relative h-[calc(100%-49px)]">
-        <iframe
-          key={previewNonce}
-          title="Anteprima p5.js"
-          srcDoc={buildPreviewDoc(files, activeLibraries, mlModels)}
-          sandbox={needsCamera ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
-          allow={needsCamera ? 'camera; microphone' : undefined}
-          className="h-full w-full border-0 bg-white"
-          onLoad={(e) => {
-            onRuntimeMessage(null)
-            onIframeLoad?.((e.target as HTMLIFrameElement).contentWindow)
-          }}
-        />
+        {mlLoading ? (
+          <div className="flex h-full w-full items-center justify-center bg-white text-sm text-slate-500">Carico i modelli ML…</div>
+        ) : (
+          <iframe
+            key={`${previewNonce}:${mlModels.map((model) => model.id).join(',')}`}
+            title="Anteprima p5.js"
+            srcDoc={buildPreviewDoc(files, activeLibraries, mlModels)}
+            sandbox={needsCamera ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
+            allow={needsCamera ? 'camera; microphone' : undefined}
+            className="h-full w-full border-0 bg-white"
+            onLoad={(e) => {
+              onRuntimeMessage(null)
+              onIframeLoad?.((e.target as HTMLIFrameElement).contentWindow)
+            }}
+          />
+        )}
+        {!mlLoading && mlMissing > 0 && (
+          <div className="absolute inset-x-4 top-3 z-10 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 shadow ring-1 ring-amber-200">
+            {mlMissing === 1 ? 'Un modello collegato non è disponibile' : `${mlMissing} modelli collegati non sono disponibili`}: riaprilo nel Lab ML (potrebbe essere stato eliminato o non ancora addestrato) oppure scollegalo da «Modelli».
+          </div>
+        )}
         {runtimeError && (
           <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-500/30 bg-red-950/85 px-4 py-3 text-sm text-red-100 backdrop-blur">
             <div className="mb-1 flex items-center gap-2 text-red-200">

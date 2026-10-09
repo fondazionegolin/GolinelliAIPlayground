@@ -1,3 +1,6 @@
+import { MessageAttachments } from '@/components/chat/MessageAttachments'
+import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
+import { attachmentsFromContentJson, buildMessageAttachments, implicitEditImage, type MessageAttachment } from '@/lib/chatAttachments'
 import { useFileDropHighlight } from '@/hooks/useFileDropHighlight'
 import { DropOverlay } from '@/components/ui/DropOverlay'
 import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
@@ -14,7 +17,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Link2, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -61,6 +64,7 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  attachments?: MessageAttachment[]
   timestamp: Date
   provider?: string
   model?: string
@@ -561,6 +565,16 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
   const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
+  const [showLinkPopover, setShowLinkPopover] = useState(false)
+  const [linkDraft, setLinkDraft] = useState('')
+  const confirmLink = () => {
+    const url = linkDraft.trim()
+    if (!url) return
+    setInput((prev) => (prev ? `${prev} ${url}` : url))
+    setShowLinkPopover(false)
+    setLinkDraft('')
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
   // Collaboration ("Condividi con") shared chat
   const [sharePickerTarget, setSharePickerTarget] = useState<ShareTarget | null>(null)
   const [activeSharedRoom, setActiveSharedRoom] = useState<SharedRoom | null>(null)
@@ -597,7 +611,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [activeLearningSession, setActiveLearningSession] = useState<LearningSession | null>(null)
   const [learningMode, setLearningMode] = useState(false)
   const [chatbotSearch, setChatbotSearch] = useState('')
-  const [librarySection, setLibrarySection] = useState<'favorites' | 'assistants' | 'teacherbots' | 'studentbots' | 'rag'>('assistants')
+  const [librarySection, setLibrarySection] = useState<'favorites' | 'assistants' | 'teacherbots' | 'studentbots' | 'rag'>('teacherbots')
   const [studentbotEditorTarget, setStudentbotEditorTarget] = useState<'create' | string | null>(null)
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>(() =>
     localStorage.getItem('student_ai_library_view') === 'list' ? 'list' : 'grid'
@@ -1182,6 +1196,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
 
     setAttachedFiles(prev => [...prev, { file, type: 'document' }])
+    try {
+      const res = await llmApi.filePreview(file)
+      setAttachedFiles(prev => prev.map(af => af.file === file ? { ...af, preview: res.data.thumbnail_url } : af))
+    } catch { /* The file can still be sent without a preview. */ }
   }
 
   const handleInputPaste = (e: React.ClipboardEvent) => {
@@ -1711,7 +1729,7 @@ REGOLE IMPORTANTI:
     }
   }, [messages, imageProvider, queryClient])
 
-  const handleSend = useCallback((content?: string, files?: globalThis.File[]) => {
+  const handleSend = useCallback(async (content?: string, files?: globalThis.File[]) => {
     const messageContent = content ?? input
     const messageFiles = files ?? attachedFiles.map(af => af.file)
 
@@ -1797,9 +1815,14 @@ REGOLE IMPORTANTI:
       return
     }
 
-    const filesInfo = messageFiles.length > 0
-      ? ` [Allegati: ${messageFiles.map(f => f.name).join(', ')}]`
-      : ''
+    const attachments = messageFiles.length > 0 ? await buildMessageAttachments(messageFiles) : undefined
+
+    // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
+    const sendFiles = [...messageFiles]
+    if (sendFiles.length === 0 && chatMode === 'normal') {
+      const previous = await implicitEditImage(messages, messageContent)
+      if (previous) sendFiles.push(previous)
+    }
 
     const rawUserContent = messageContent.trim()
     let contentForApi = rawUserContent
@@ -1850,7 +1873,8 @@ REGOLE IMPORTANTI:
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: (rawUserContent || (uiLanguage === 'en' ? 'Analyse these documents' : 'Analizza questi documenti')) + filesInfo,
+      content: rawUserContent || (attachments?.some(a => a.kind === 'image') ? '' : (uiLanguage === 'en' ? 'Analyse these documents' : 'Analizza questi documenti')),
+      attachments,
       timestamp: new Date(),
     }
     setMessages((prev) => [...prev, userMessage])
@@ -1858,7 +1882,7 @@ REGOLE IMPORTANTI:
     setAttachedFiles([])
 
     // Text-only standard profile mode → use streaming endpoint for typewriter + web search feedback
-    if (!selectedTeacherbot && !isTeacherPreview && messageFiles.length === 0 && conversationId) {
+    if (!selectedTeacherbot && !isTeacherPreview && sendFiles.length === 0 && conversationId) {
       runStudentStreamRequest(conversationId, contentForApi)
       return
     }
@@ -1866,7 +1890,7 @@ REGOLE IMPORTANTI:
     // All other cases: teacherbot, files, teacher preview, or no convId yet
     sendMessageMutation.mutate({
       content: contentForApi,
-      files: messageFiles,
+      files: sendFiles,
       existingHistory: !conversationId && messages.length > 0 ? messages : undefined
     })
   }, [
@@ -1947,7 +1971,8 @@ REGOLE IMPORTANTI:
         const loadedMessages: Message[] = res.data.map((m: any) => ({
           id: m.id,
           role: m.role,
-          content: m.content,
+          content: m.content === '[Allegati caricati]' ? '' : m.content,
+          attachments: attachmentsFromContentJson(m.attachments_json),
           timestamp: new Date(m.created_at),
           provider: m.provider,
           model: m.model,
@@ -1979,10 +2004,11 @@ REGOLE IMPORTANTI:
     try {
       const res = await llmApi.getMessages(convId)
       if (loadingConvIdRef.current !== convId) return  // Stale response — a newer load superseded this one
-      const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson }) => ({
+      const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson; content_json?: unknown }) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: m.content === '[Allegati caricati]' ? '' : m.content,
+        attachments: attachmentsFromContentJson(m.content_json),
         timestamp: new Date(m.created_at),
         provider: m.provider,
         model: m.model,
@@ -2422,6 +2448,19 @@ REGOLE IMPORTANTI:
       setActiveRagSessionId(ragSessions[0].id)
     }
   }, [activeRagSessionId, ragSessions])
+
+  // Desktop: opening Chatbot lands straight in the generalist tutor, already operational.
+  const autoOpenedTutorRef = useRef(false)
+  useEffect(() => {
+    if (autoOpenedTutorRef.current) return
+    if (sidebarMode || isMobile || isTeacherPreview || initialTeacherbotId || oggiImparoContext) return
+    if (selectedProfile || selectedTeacherbot || activeSharedRoom || learningMode || mainTab !== 'assistants') return
+    if (!profilesData || !conversationsData) return
+    const entry = profiles.find((p) => p.key === 'tutor') ?? profiles[0]
+    if (!entry) return
+    autoOpenedTutorRef.current = true
+    void handleSelectProfile(entry.key)
+  }, [sidebarMode, isMobile, isTeacherPreview, initialTeacherbotId, oggiImparoContext, selectedProfile, selectedTeacherbot, activeSharedRoom, learningMode, mainTab, profilesData, conversationsData, profiles, handleSelectProfile])
 
   // Mobile: Profile selection screen
   if (isMobile && mobileView === 'profiles') {
@@ -2891,11 +2930,12 @@ REGOLE IMPORTANTI:
 
   const composerContent = (
     <>
+      <MessageLinkPreviews content={input} debounceMs={600} />
       {attachedFiles.length > 0 && (
         <div className="mb-1 flex flex-wrap gap-1 rounded-t-lg border border-b-0 border-slate-200 bg-white p-2 md:mb-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
           {attachedFiles.map((af, idx) => (
             <div key={idx} className="relative group">
-              {af.type === 'image' && af.preview ? (
+              {af.preview ? (
                 <img src={af.preview} alt="Preview" className="w-10 h-10 md:w-16 md:h-16 object-cover rounded-lg border" />
               ) : af.type === 'data' ? (
                 <div className="w-full max-w-xs md:max-w-sm">
@@ -3064,6 +3104,36 @@ REGOLE IMPORTANTI:
           >
             <Paperclip className="h-4 w-4" />
           </Button>}
+
+          {!sidebarMode && (
+            <div className="relative flex-shrink-0">
+              <Button
+                variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+                style={{ color: 'inherit' }}
+                onClick={() => { setShowLinkPopover((v) => !v); setLinkDraft('') }}
+                title={uiLanguage === 'en' ? 'Add a link' : 'Aggiungi link'}
+              >
+                <Link2 className="h-4 w-4" />
+              </Button>
+              {showLinkPopover && (
+                <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                  <p className="mb-2 text-xs font-semibold text-slate-600">{uiLanguage === 'en' ? 'Add a link (web page or YouTube)' : 'Aggiungi un link (pagina web o YouTube)'}</p>
+                  <input
+                    autoFocus
+                    type="url"
+                    value={linkDraft}
+                    onChange={(e) => setLinkDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') confirmLink() }}
+                    placeholder="https://..."
+                    className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
+                  />
+                  <Button size="sm" className="mt-2 h-7 w-full bg-slate-900 text-xs text-white" disabled={!linkDraft.trim()} onClick={confirmLink}>
+                    {uiLanguage === 'en' ? 'Add' : 'Aggiungi'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {activeSharedRoom && !sidebarMode && (
             <Button
@@ -3715,6 +3785,45 @@ REGOLE IMPORTANTI:
         }}
         >
           <DropOverlay active={dropActive} label="Rilascia per allegare" hint="Il file verrà aggiunto al messaggio" />
+          {!sidebarMode && !isMobile && !isTeacherPreview && (() => {
+            const tutorKey = (profiles.find((p) => p.key === 'tutor') ?? profiles[0])?.key
+            const topTab: 'tutor' | 'teacherbots' | 'studentbots' | 'rag' =
+              mainTab === 'rag' || (isDesktopSelection && librarySection === 'rag') ? 'rag'
+                : selectedTeacherbot ? (selectedTeacherbot.is_studentbot ? 'studentbots' : 'teacherbots')
+                  : isDesktopSelection ? (librarySection === 'studentbots' ? 'studentbots' : 'teacherbots')
+                    : 'tutor'
+            const openLibrary = async (section: 'teacherbots' | 'studentbots' | 'rag') => {
+              if (topTab === section && (isDesktopSelection || mainTab === 'rag')) return
+              await handleNewChat()
+              setMainTab('assistants')
+              setStudentbotEditorTarget(null)
+              setLibrarySection(section)
+            }
+            const tabs = [
+              { key: 'tutor' as const, label: 'Tutor AI', icon: GraduationCap, count: null as number | null, onClick: () => { if (tutorKey && topTab !== 'tutor') { setStudentbotEditorTarget(null); void handleSelectProfile(tutorKey) } } },
+              { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, count: availableTeacherbots.length, onClick: () => void openLibrary('teacherbots') },
+              { key: 'studentbots' as const, label: 'Studentbot', icon: Sparkles, count: availableStudentbots.length, onClick: () => void openLibrary('studentbots') },
+              { key: 'rag' as const, label: 'RAG', icon: Database, count: ragSessions.length, onClick: () => void openLibrary('rag') },
+            ]
+            return (
+              <div className="flex shrink-0 items-center gap-2 border-b border-slate-200/70 px-4 py-2.5" role="tablist" aria-label="Spazio AI">
+                {tabs.map(({ key, label, icon: Icon, count, onClick }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={topTab === key}
+                    onClick={onClick}
+                    className={`student-ai-filter flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${topTab === key ? 'ui-segment-active' : 'ds-control text-slate-600'}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{label}</span>
+                    {count !== null && <span className="student-ai-filter-count rounded-full px-1.5 py-0.5 text-[9px]">{count}</span>}
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
           {mainTab === 'rag' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex shrink-0 items-center border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm">
@@ -3781,7 +3890,7 @@ REGOLE IMPORTANTI:
                     <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
                     <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Spazio AI</h2>
                     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                      Assistenti per studio e quiz, teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.
+                      Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.
                     </p>
                     <label className="ui-search mx-auto mt-6 flex max-w-xl items-center gap-2 px-4 py-2.5">
                       <Search className="h-4 w-4 shrink-0 text-slate-400" />
@@ -3809,26 +3918,7 @@ REGOLE IMPORTANTI:
               <div className="student-ai-library-body min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
                 <div className="mx-auto w-full max-w-6xl">
                   <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                      {([
-                        { key: 'favorites' as const, label: 'Preferiti', icon: Sparkles, count: filteredFavoriteChatbotItems.length },
-                        { key: 'assistants' as const, label: 'Chatbot didattici', icon: GraduationCap, count: filteredProfiles.length },
-                        { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, count: filteredTeacherbots.length },
-                        { key: 'studentbots' as const, label: 'Studentbot', icon: Sparkles, count: filteredStudentbots.length },
-                        { key: 'rag' as const, label: 'RAG', icon: Database, count: filteredRagSessions.length },
-                      ]).map(({ key, label, icon: Icon, count }) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setLibrarySection(key)}
-                          className={`student-ai-filter flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold ${librarySection === key ? 'ui-segment-active' : 'ds-control text-slate-600'}`}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{label}</span>
-                          <span className="student-ai-filter-count rounded-full px-1.5 py-0.5 text-[9px]">{count}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <h3 className="text-sm font-black text-slate-700">{librarySection === 'studentbots' ? 'I tuoi Studentbot' : librarySection === 'rag' ? 'Sessioni RAG' : 'Teacherbot del docente'}</h3>
                     <div className="ui-segment flex shrink-0 items-center rounded-xl p-0.5" role="group" aria-label="Vista Spazio AI">
                       <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title="Vista griglia" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="h-4 w-4" /></button>
                       <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title="Vista elenco" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
@@ -4488,7 +4578,11 @@ REGOLE IMPORTANTI:
                         darkMode={false}
                       />
                     ) : (
-                      <p className="whitespace-pre-wrap text-[16px] leading-7">{message.content}</p>
+                      <>
+                        <MessageAttachments attachments={message.attachments} className={message.content ? 'mb-2' : ''} />
+                        <MessageLinkPreviews content={message.content} />
+                        {messageTextWithoutPreviewLinks(message.content) && <p className="whitespace-pre-wrap text-[16px] leading-7">{messageTextWithoutPreviewLinks(message.content)}</p>}
+                      </>
                     )}
                     {message.role === 'assistant' && (
                       <EnvironmentalImpactPill

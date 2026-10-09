@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Brain, Check, Loader2, X } from '@/components/icons'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { MODE_LABEL, modeOfEngine } from '@/lib/mlFeatures'
+import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
 
 export const ML_MODELS_PATH = 'ml-models.md'
@@ -76,6 +77,8 @@ Gestisci sempre il caso \`label === null\` (non sicuro) e \`detected === false\`
 export default function MlModelPicker({ attachedIds, onApply, onClose }: { attachedIds: string[]; onApply: (projects: MLLabProjectSummary[]) => void; onClose: () => void }) {
   const query = useQuery({ queryKey: ['ml-lab', 'projects'], queryFn: async () => (await mlLabApi.list()).data.projects })
   const [selected, setSelected] = useState<Set<string>>(new Set(attachedIds))
+  const [applying, setApplying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const projects = query.data ?? []
   const toggle = (id: string) => setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
 
@@ -97,7 +100,7 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
           {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non hai ancora progetti nel Lab ML. Creane uno, addestralo con qualche esempio e poi torna qui.</p>}
           {projects.map((project) => {
             const mode = modeOfEngine(project.engine)
-            const usable = project.has_model !== false
+            const usable = true // projects without a stored model are prepared when attached
             const checked = selected.has(project.id)
             return (
               <button key={project.id} type="button" disabled={!usable} onClick={() => toggle(project.id)}
@@ -105,7 +108,7 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
                 <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${checked ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300'}`}>{checked && <Check className="h-4 w-4" />}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
-                  <span className="block truncate text-xs text-slate-500">{MODE_LABEL[mode]} · {project.classes.map((c) => c.name).join(', ')}{usable ? '' : ' · nessun modello addestrato'}</span>
+                  <span className="block truncate text-xs text-slate-500">{MODE_LABEL[mode]} · {project.classes.map((c) => c.name).join(', ')}{project.has_model === false ? ' · verrà preparato' : ''}</span>
                 </span>
                 {project.accuracy !== null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10">~{Math.round(project.accuracy * 100)}%</span>}
               </button>
@@ -113,10 +116,17 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
           })}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-slate-100 p-5 dark:border-white/10">
-          <span className="text-xs text-slate-400">{selected.size} selezionati</span>
+          <span className={`text-xs ${error ? 'text-rose-600' : 'text-slate-400'}`}>{error ?? `${selected.size} selezionati`}</span>
           <div className="flex gap-2">
             <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
-            <Button tone="accent" surface="solid" onClick={() => onApply(projects.filter((p) => selected.has(p.id)))}>{selected.size === 0 ? 'Scollega tutti' : 'Collega al progetto'}</Button>
+            <Button tone="accent" surface="solid" disabled={applying} onClick={async () => {
+              const chosen = projects.filter((p) => selected.has(p.id))
+              setApplying(true); setError(null)
+              try { for (const project of chosen.filter((p) => p.has_model === false)) await prepareModel(project.id) }
+              catch (err: any) { setError(err?.message || 'Preparazione del modello non riuscita.'); setApplying(false); return }
+              setApplying(false)
+              onApply(chosen)
+            }}>{applying ? 'Preparo i modelli…' : selected.size === 0 ? 'Scollega tutti' : 'Collega al progetto'}</Button>
           </div>
         </div>
       </div>

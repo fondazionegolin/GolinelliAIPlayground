@@ -1,19 +1,25 @@
+import asyncio
+import json
+import logging
+from types import SimpleNamespace
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_current_admin, get_student_or_teacher
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.session import Session
 from app.models.user import User
+from app.services import agentic_assistant, agentic_assistant_agents
 from app.services.agentic_runtime import NODE_REGISTRY, advance_conversation, configured_models, execute_node_isolated, execute_run, validate_graph
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -25,15 +31,40 @@ class WorkflowWrite(BaseModel):
 class RunCreate(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     session_id: UUID | None = None
+    # The Studio asks for the run to continue on the server and polls it, so the canvas follows the real node.
+    background: bool = False
 
 
 class ChatInput(BaseModel):
     content: str = Field(min_length=1, max_length=12000)
+    background: bool = False
 
 
 class NodeExecute(BaseModel):
     node: dict[str, Any]
     inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantCompile(BaseModel):
+    blueprint: dict[str, Any]
+    allow_destructive: bool = False
+
+
+class AssistantIntake(BaseModel):
+    intent: str = Field(min_length=1, max_length=4000)
+    answers: list[dict[str, str]] = Field(default_factory=list, max_length=6)
+
+
+class AssistantPlan(BaseModel):
+    intent: str = Field(min_length=1, max_length=4000)
+    understanding: str = Field(min_length=1, max_length=1000)
+    assumptions: list[str] = Field(default_factory=list, max_length=8)
+    answers: list[dict[str, str]] = Field(default_factory=list, max_length=6)
+    allow_destructive: bool = False
+
+
+class AssistantLint(BaseModel):
+    graph: dict[str, Any]
 
 
 def _workflow_payload(workflow: AgenticWorkflow) -> dict[str, Any]:
@@ -99,6 +130,37 @@ def _has_chatbot_nodes(workflow: AgenticWorkflow) -> bool:
     return any(str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot" for node in nodes if isinstance(node, dict))
 
 
+_RUN_TASKS: set[asyncio.Task] = set()  # strong references: a bare create_task can be garbage-collected mid-run
+
+
+async def _run_in_background(workflow_id: UUID, run_id: UUID, actor_id: UUID, content: str | None) -> None:
+    """Execute (or resume) a run on its own session. Progress is committed node by node, so a poller sees the real state."""
+    try:
+        async with AsyncSessionLocal() as db:
+            run = await db.get(AgenticWorkflowRun, run_id)
+            workflow = await db.get(AgenticWorkflow, workflow_id)
+            actor = await db.get(User, actor_id)
+            if run is None or workflow is None or actor is None:
+                return
+            if _has_chatbot_nodes(workflow):
+                await advance_conversation(db, workflow, run, actor, user_input=content)
+            else:
+                await execute_run(db, workflow, run, actor)
+    except Exception as exc:
+        logger.exception("Background run %s crashed", run_id)
+        async with AsyncSessionLocal() as db:
+            run = await db.get(AgenticWorkflowRun, run_id)
+            if run is not None and run.status in {"queued", "running"}:
+                run.status, run.error_message = "failed", str(exc) or exc.__class__.__name__
+                await db.commit()
+
+
+def _spawn_run(workflow_id: UUID, run_id: UUID, actor_id: UUID, content: str | None = None) -> None:
+    task = asyncio.create_task(_run_in_background(workflow_id, run_id, actor_id, content))
+    _RUN_TASKS.add(task)
+    task.add_done_callback(_RUN_TASKS.discard)
+
+
 async def _ensure_session_access(db: AsyncSession, session_id: UUID, actor: StudentOrTeacher) -> Session:
     if actor.student and actor.student.session_id != session_id:
         raise HTTPException(status_code=403, detail="La sessione non appartiene allo studente")
@@ -143,6 +205,88 @@ def _dataset_payload(dataset: AgenticDataset) -> dict[str, Any]:
         "row_count": dataset.row_count, "columns": (dataset.table_json or {}).get("columns", []),
         "created_at": dataset.created_at.isoformat(),
     }
+
+
+@router.get("/assistant/catalog")
+async def assistant_catalog(admin: Annotated[User, Depends(get_current_admin)]):
+    del admin
+    return {**agentic_assistant.catalog_for_llm(), "text": agentic_assistant.catalog_text()}
+
+
+@router.post("/assistant/intake")
+async def assistant_intake(
+    request: AssistantIntake,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """«Ho capito bene?»: the assistant restates the intention, lists its assumptions and may ask up to 3 questions."""
+    try:
+        return await agentic_assistant_agents.run_intake(db, admin, request.intent, request.answers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("assistant intake failed")
+        raise HTTPException(status_code=502, detail="L'assistente non riesce a rispondere in questo momento: riprova.") from exc
+
+
+@router.post("/assistant/plan")
+async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(get_current_admin)]):
+    """The architect designs the workflow. SSE: ``status`` / ``ping`` / ``result`` (blueprint, graph, ops, estimate, issues) / ``error``."""
+    actor = SimpleNamespace(id=admin.id, tenant_id=admin.tenant_id)  # the stream outlives the request-scoped session
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    async def report(message: str) -> None:
+        await queue.put({"type": "status", "message": message})
+
+    async def work() -> None:
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await agentic_assistant_agents.run_architect(
+                    session, actor, request.intent, request.understanding, request.assumptions, request.answers,
+                    allow_destructive=request.allow_destructive, on_status=report,
+                )
+            await queue.put({"type": "result", **result})
+        except ValueError as exc:
+            await queue.put({"type": "error", "message": str(exc)})
+        except Exception:
+            logger.exception("assistant plan failed")
+            await queue.put({"type": "error", "message": "L'assistente non è riuscito a progettare il workflow: riprova."})
+        finally:
+            await queue.put(None)
+
+    async def stream():
+        task = asyncio.create_task(work())
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=8)
+                except asyncio.TimeoutError:
+                    yield "data: " + json.dumps({"type": "ping"}) + "\n\n"  # keeps proxies from closing a long model wait
+                    continue
+                if item is None:
+                    break
+                yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/assistant/compile")
+async def assistant_compile(request: AssistantCompile, admin: Annotated[User, Depends(get_current_admin)]):
+    """Blueprint → graph, canvas operations, cost estimate and static review. Pure: nothing is saved or executed."""
+    del admin
+    try:
+        return agentic_assistant.compile_blueprint(request.blueprint, allow_destructive=request.allow_destructive)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/assistant/lint")
+async def assistant_lint(request: AssistantLint, admin: Annotated[User, Depends(get_current_admin)]):
+    del admin
+    return {"issues": agentic_assistant.lint_graph(request.graph), "estimate": agentic_assistant.estimate_cost(request.graph)}
 
 
 @router.get("/datasets")
@@ -318,6 +462,11 @@ async def create_run(
     db.add(run)
     await db.commit()
     await db.refresh(run)
+    if request.background:
+        run.status = "running"
+        await db.commit()
+        _spawn_run(workflow.id, run.id, admin.id)
+        return await _run_payload(db, run)
     if _has_chatbot_nodes(workflow):
         await advance_conversation(db, workflow, run, admin)
     else:
@@ -370,6 +519,13 @@ async def provide_chat_input(
     admin: Annotated[User, Depends(get_current_admin)],
 ):
     run, workflow = await _owned_run(db, run_id, admin)
+    if request.background:
+        if run.status != "waiting":
+            return await _resume_chat_run(db, run, workflow, request.content, admin)  # raises the 409 with the reason
+        run.status = "running"
+        await db.commit()
+        _spawn_run(workflow.id, run.id, admin.id, request.content)
+        return await _run_payload(db, run)
     return await _resume_chat_run(db, run, workflow, request.content, admin)
 
 

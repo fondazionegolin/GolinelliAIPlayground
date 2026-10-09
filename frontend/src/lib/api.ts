@@ -115,6 +115,10 @@ export const agenticApi = {
     api.post('/agentic/validate', data),
   executeNode: (node: Record<string, unknown>, inputs: Record<string, unknown> = {}) =>
     api.post('/agentic/execute-node', { node, inputs }),
+  assistantIntake: (data: { intent: string; answers?: Array<{ question: string; answer: string }> }) =>
+    api.post('/agentic/assistant/intake', data, { timeout: 90000 }),
+  assistantLint: (graph: Record<string, unknown>) => api.post('/agentic/assistant/lint', { graph }),
+  assistantPlanUrl: '/api/v1/agentic/assistant/plan',
   listWorkflows: () => api.get('/agentic/workflows'),
   getWorkflow: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}`),
   createWorkflow: (data: { title: string; graph: Record<string, unknown> }) =>
@@ -122,12 +126,12 @@ export const agenticApi = {
   updateWorkflow: (workflowId: string, data: { title: string; graph: Record<string, unknown> }) =>
     api.put(`/agentic/workflows/${workflowId}`, data),
   deleteWorkflow: (workflowId: string) => api.delete(`/agentic/workflows/${workflowId}`),
-  createRun: (workflowId: string, inputs: Record<string, unknown> = {}, sessionId?: string, signal?: AbortSignal) =>
-    api.post(`/agentic/workflows/${workflowId}/runs`, { inputs, session_id: sessionId || null }, { signal }),
+  createRun: (workflowId: string, inputs: Record<string, unknown> = {}, sessionId?: string, signal?: AbortSignal, background = false) =>
+    api.post(`/agentic/workflows/${workflowId}/runs`, { inputs, session_id: sessionId || null, background }, { signal }),
   listRuns: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}/runs`),
   getRun: (runId: string) => api.get(`/agentic/runs/${runId}`),
-  provideInput: (runId: string, content: string, signal?: AbortSignal) =>
-    api.post(`/agentic/runs/${runId}/input`, { content }, { signal }),
+  provideInput: (runId: string, content: string, signal?: AbortSignal, background = false) =>
+    api.post(`/agentic/runs/${runId}/input`, { content, background }, { signal }),
   stopRun: (runId: string) => api.post(`/agentic/runs/${runId}/stop`),
   listDatasets: () => api.get('/agentic/datasets'),
   createDataset: (data: { title: string; table: Record<string, unknown> }) => api.post('/agentic/datasets', data),
@@ -324,6 +328,8 @@ export const designSystemApi = {
 
 export const adminApi = {
   getActivity: (days = 30) => api.get('/admin/activity', { params: { days } }),
+  getStudentChatbots: () => api.get('/admin/chatbots'),
+  setStudentChatbots: (keys: string[]) => api.put('/admin/chatbots', { keys }),
   getAiModels: () => api.get('/admin/models'),
   getModelRoles: () => api.get('/admin/models/roles'),
   assignModelRole: (role: string, data: { provider: string; model_id: string }) => api.put(`/admin/models/roles/${role}`, data, { timeout: 90000 }),
@@ -331,6 +337,7 @@ export const adminApi = {
   scanAiModels: () => api.post('/admin/models/scan', undefined, { timeout: 120000 }),
   createAiModel: (data: Record<string, unknown>) => api.post('/admin/models', data),
   updateAiModel: (id: string, data: Record<string, unknown>) => api.patch(`/admin/models/${id}`, data),
+  setAiModelsOffered: (ids: string[], offered: boolean) => api.post('/admin/models/offered', { ids, offered }),
   applyAiModelProposal: (id: string) => api.post(`/admin/models/${id}/apply-proposal`),
   dismissAiModelProposal: (id: string) => api.post(`/admin/models/${id}/dismiss-proposal`),
   acknowledgeAiModel: (id: string) => api.post(`/admin/models/${id}/acknowledge`),
@@ -915,6 +922,8 @@ export const llmApi = {
       signal,
     })
   },
+  routeIntent: (text: string, history: { role: string; content: string }[]) =>
+    api.post<{ intent: 'edit_image' | 'new_image' | 'analyze_image' | 'other'; image: 'attached' | 'previous' | 'none' }>('/llm/route-intent', { text, history }),
   generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
@@ -932,6 +941,8 @@ export const llmApi = {
     api.post('/llm/compile-latex', { content, filename }, { responseType: 'arraybuffer' }),
   getYoutubeTranscript: (url: string) =>
     api.post<{ video_id: string; title: string | null; transcript: string; duration_seconds: number }>('/llm/youtube/transcript', { url }),
+  previewLink: (url: string) =>
+    api.post<{ url: string; title: string; description?: string; image_url?: string; kind: 'web' | 'youtube'; error?: string }>('/llm/links/preview', { url }),
   editHtmlPage: (html: string, modification: string, signal?: AbortSignal) =>
     api.post<{ html: string }>('/llm/html-page/edit', { html, modification }, { signal }),
   editBrochure: (payload: object, modification: string, signal?: AbortSignal) =>

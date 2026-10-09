@@ -17,6 +17,7 @@ import FeedbackPage from './FeedbackPage'
 import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import AdminModelsPage from './AdminModelsPage'
+import AdminChatbotsPage from './AdminChatbotsPage'
 import AdminSessionsPage from './AdminSessionsPage'
 import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
@@ -37,6 +38,7 @@ const navItems = [
   { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
   { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
   { path: '/admin/models', label: 'Modelli', icon: Bot, exact: false },
+  { path: '/admin/chatbots', label: 'Chatbot', icon: Bot, exact: false },
   { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
 
@@ -194,6 +196,7 @@ export default function AdminDashboard() {
                 <Route path="feedback-board" element={<FeedbackBoardPage />} />
                 <Route path="sessions" element={<AdminSessionsPage />} />
                 <Route path="models" element={<AdminModelsPage />} />
+                <Route path="chatbots" element={<AdminChatbotsPage />} />
                 <Route path="backend" element={<AdminBackendPage />} />
                 {/* Legacy redirects */}
                 <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />

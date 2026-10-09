@@ -658,6 +658,14 @@ class LLMService:
             "flux-2-pro", "flux-2-dev", "flux-2-klein", "flux-2-max", "flux-2-flex"
         ]
         
+        is_gpt_image = provider.startswith("gpt-image") or provider == settings.OPENAI_IMAGE_MODEL
+
+        # Image-to-image: only gpt-image (images.edit) and FLUX.2 (input_image) really edit a
+        # source picture. dall-e / schnell / sdxl ignore it, so route those to the OpenAI editor.
+        if image_base64 and not is_gpt_image and not provider.startswith("flux-2"):
+            provider = settings.OPENAI_IMAGE_MODEL
+            is_gpt_image = True
+
         if provider in bfl_models or provider.startswith("flux-"):
             return await self._generate_image_bfl(prompt, size, model=provider, image_base64=image_base64, strength=strength)
         
@@ -668,7 +676,9 @@ class LLMService:
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
 
-        if provider.startswith("gpt-image") or provider == settings.OPENAI_IMAGE_MODEL:
+        if is_gpt_image:
+            if image_base64:
+                return await self._edit_image_gpt_image(prompt, image_base64, size, model=provider)
             return await self._generate_image_gpt_image_1(prompt, size, model=provider)
 
         # Fallback to BFL schnell
@@ -723,8 +733,11 @@ class LLMService:
         }
         
         if image_base64:
-            payload["image"] = image_base64
-            payload["strength"] = strength
+            if bfl_model.startswith("flux-2"):
+                payload["input_image"] = image_base64
+            else:
+                payload["image"] = image_base64
+                payload["strength"] = strength
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             # 1. Post request
@@ -871,6 +884,47 @@ class LLMService:
         except Exception as e:
             logger.error(f"Failed to save GPT-Image-1 result: {e}")
             return f"data:image/png;base64,{b64_data}"
+
+    async def _edit_image_gpt_image(
+        self,
+        prompt: str,
+        image_base64: str,
+        size: str = "1024x1024",
+        model: Optional[str] = None,
+    ) -> str:
+        """Edit an uploaded picture with gpt-image (images.edit). Saved locally like generations."""
+        import base64 as _base64
+
+        model = model or settings.OPENAI_IMAGE_MODEL
+        if not self.openai_client:
+            raise RuntimeError("OpenAI client not configured for image editing")
+
+        raw = _base64.b64decode(image_base64)
+        # Normalise to PNG: uploads can be any size/format and EXIF-rotated.
+        def _to_png(data: bytes) -> bytes:
+            with Image.open(io.BytesIO(data)) as im:
+                im = ImageOps.exif_transpose(im)
+                if max(im.size) > 2048:
+                    im.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                out = io.BytesIO()
+                im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB").save(out, format="PNG")
+                return out.getvalue()
+
+        png_bytes = await asyncio.to_thread(_to_png, raw)
+
+        valid_sizes = {"1024x1024", "1536x1024", "1024x1536"}
+        response = await self.openai_client.images.edit(
+            model=model,
+            image=("source.png", png_bytes, "image/png"),
+            prompt=prompt,
+            n=1,
+            size=size if size in valid_sizes else "auto",
+        )
+        b64_data = response.data[0].b64_json
+        if not b64_data:
+            raise RuntimeError(f"{model} returned no edited image")
+        upload_dir = Path("/app/uploads/generated")
+        return await _save_optimized_generated_image(_base64.b64decode(b64_data), upload_dir)
 
     async def _generate_image_flux(
         self,

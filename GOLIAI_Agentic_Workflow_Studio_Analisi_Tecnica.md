@@ -2,6 +2,8 @@
 
 ## Analisi tecnica, architettura e concept di prodotto
 
+> **Nota (8 ottobre 2026).** Questo è un documento di visione e prodotto: molte funzionalità qui descritte non sono implementate. Per lo stato reale del Dataflow Studio (nodi, porte, esecuzione, cicli) e per il progetto dell'assistente che costruisce i workflow vedi [`docs/dataflow-studio-riferimento-tecnico.md`](docs/dataflow-studio-riferimento-tecnico.md).
+
 **Versione:** Concept / Technical Analysis
 **Data:** Settembre 2026
 **Progetto:** GOLIAI

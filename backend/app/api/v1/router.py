@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research
+from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
@@ -14,6 +14,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_backend.router, tags=["admin-backend"])
 api_router.include_router(admin_models.router, prefix="/admin/models", tags=["admin-models"])
+api_router.include_router(admin_chatbots.router, prefix="/admin/chatbots", tags=["admin-chatbots"])
 api_router.include_router(admin_activity.router, prefix="/admin/activity", tags=["admin-activity"])
 api_router.include_router(teacher_memory.router, prefix="/teacher-memory", tags=["teacher-memory"])
 api_router.include_router(ml_lab.router, prefix="/ml-lab", tags=["ml-lab"])

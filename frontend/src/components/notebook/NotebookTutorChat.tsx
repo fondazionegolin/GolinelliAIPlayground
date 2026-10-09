@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { notebooksApi } from '@/lib/api'
+import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
 import type { NotebookCodeProposal, NotebookProjectType, NotebookTutorMessage } from './types'
 
 interface Props {
@@ -262,7 +263,10 @@ export default function NotebookTutorChat({
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <div>
+                      <MessageLinkPreviews content={message.content} />
+                      {messageTextWithoutPreviewLinks(message.content) && <p className="whitespace-pre-wrap">{messageTextWithoutPreviewLinks(message.content)}</p>}
+                    </div>
                   )}
                 </div>
               </div>

@@ -1659,12 +1659,14 @@ Il tuo obiettivo:
 
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": str(message).strip()})
+    from app.services.web_search_service import augment_chat_messages_with_urls
+    llm_messages = await augment_chat_messages_with_urls(messages)
 
     provider, model = model_roles.pair_for("chat.fast")
 
     try:
         response = await llm_service.generate(
-            messages=messages,
+            messages=llm_messages,
             system_prompt=system_prompt,
             provider=provider,
             model=model,

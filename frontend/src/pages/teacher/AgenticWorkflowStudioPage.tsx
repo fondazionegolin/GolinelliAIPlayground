@@ -7,6 +7,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { SpreadsheetEditor, type SheetCellStyles, type SheetChartConfig, type SheetDimensions } from '@/components/SpreadsheetEditor'
+import { AssistantPanel } from '@/components/agentic/AssistantPanel'
+import type { AssistantOp } from '@/lib/agenticAssistant'
 import { ArtifactPreviews, extractArtifacts, hasArtifacts, type NodeArtifacts } from '@/components/agentic/NodeArtifacts'
 import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
@@ -14,7 +16,7 @@ import {
   Activity, BarChart3, Braces, ChevronDown, ChevronRight,
   Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2,
   ArrowLeft, Cloud, CloudOff, Eraser, Network, Play, Save, Search,
-  Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle,
+  Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle, Minimize2, RefreshCw, Sparkles,
 } from '@/components/icons'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
@@ -98,6 +100,7 @@ const CATEGORY_STYLE: Record<string, { dot: string; soft: string; ink: string; i
   'Machine Learning': { dot: '#15803d', soft: 'bg-green-50 border-green-200', ink: 'text-green-700', icon: Network },
   Visualizzazioni: { dot: '#c2410c', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-700', icon: BarChart3 },
   Chatbot: { dot: '#4338ca', soft: 'bg-indigo-50 border-indigo-200', ink: 'text-indigo-700', icon: MessageSquareText },
+  Cicli: { dot: '#0e7490', soft: 'bg-cyan-50 border-cyan-200', ink: 'text-cyan-700', icon: RefreshCw },
   Controllo: { dot: '#a16207', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
   Piattaforma: { dot: '#be123c', soft: 'bg-rose-50 border-rose-200', ink: 'text-rose-700', icon: Cloud },
 }
@@ -119,6 +122,10 @@ const GRID = 24
 const SNAP_STEPS = [0, .5, 1, 5, 10] as const
 const snapValue = (value: number, dots: number) => dots ? Math.round(value / (GRID * dots)) * GRID * dots : value
 const REPLAY_STEP_MS = 650
+const POLL_MS = 600
+const LIVE_STEP_MS = 320
+const RUN_IN_PROGRESS = ['queued', 'running']
+const nodeStatusOf = (status: string): NodeStatus => status === 'completed' ? 'complete' : status === 'failed' ? 'error' : status === 'waiting' ? 'waiting' : status === 'skipped' ? 'skipped' : status === 'running' ? 'running' : 'idle'
 const readStored = (key: string) => { try { return window.localStorage.getItem(key) } catch { return null } }
 const writeStored = (key: string, value: string) => { try { window.localStorage.setItem(key, value) } catch { /* storage unavailable */ } }
 const typesCompatible = (from: string, to: string) => from === to || from === 'ANY' || to === 'ANY'
@@ -224,6 +231,10 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [running, setRunning] = useState(false)
   const [saveState, setSaveState] = useState<'loading' | 'dirty' | 'saving' | 'saved' | 'error'>('loading')
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantBusy, setAssistantBusy] = useState(false)
+  const [fullscreen, setFullscreen] = useState(() => readStored('dataflow-fullscreen') === '1')
+  const toggleFullscreen = () => setFullscreen((current) => { writeStored('dataflow-fullscreen', current ? '0' : '1'); return !current })
   const [error, setError] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [tableModal, setTableModal] = useState<TableModalState | null>(null)
@@ -803,6 +814,56 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (!stoppedRef.current) await new Promise((resolve) => setTimeout(resolve, 450))
     setActiveNodeId(null)
   }
+  // The run continues on the server; its node runs are committed one by one, so polling shows the node that is
+  // really working (a slow LLM answer no longer looks like the previous question still being processed).
+  const liveApply = async (run: WorkflowRun) => {
+    setActiveRun(run)
+    setOutputs((current) => ({ ...current, ...Object.fromEntries(run.nodes.filter((item) => item.output && item.status !== 'running').map((item) => [item.node_instance_id, item.output!])) }))
+    if (replayedRef.current.runId !== run.id) {
+      replayedRef.current = { runId: run.id, seen: new Set() }
+      const touched = new Set(run.nodes.map((item) => item.node_instance_id))
+      setNodes((current) => current.map((node) => touched.has(node.instanceId) || node.status === 'running' ? node : { ...node, status: 'idle' }))
+    }
+    const seen = replayedRef.current.seen
+    for (const item of run.nodes) {
+      const key = `${item.node_instance_id}:${item.visit ?? 0}:${item.status}:${String(item.output?.turns ?? '')}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const status = nodeStatusOf(item.status)
+      if (status === 'idle') continue
+      const visitKey = `ran:${item.node_instance_id}:${item.visit ?? 0}`
+      if (status === 'skipped') { setNodeStatus([item.node_instance_id], status); continue }
+      if (status === 'running') seen.add(visitKey)
+      const fastStep = (status === 'complete' || status === 'error') && !seen.has(visitKey) // finished between two polls: still show it, node after node
+      if (status === 'running' || status === 'waiting' || fastStep) {
+        seen.add(visitKey)
+        setRunTrail((current) => new Set([...current, item.node_instance_id]))
+        setActiveNodeId(item.node_instance_id); focusCamera(item.node_instance_id)
+      }
+      if (fastStep) {
+        setNodeStatus([item.node_instance_id], 'running')
+        await new Promise((resolve) => setTimeout(resolve, LIVE_STEP_MS))
+        if (stoppedRef.current) return
+      }
+      setNodeStatus([item.node_instance_id], status)
+      if (status === 'error' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: String(item.error) }))
+    }
+  }
+  const watchRun = async (runId: string, signal: AbortSignal): Promise<WorkflowRun> => {
+    let failures = 0
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS))
+      if (signal.aborted || stoppedRef.current) throw Object.assign(new Error('Esecuzione interrotta'), { code: 'ERR_CANCELED' })
+      try {
+        const { data } = await agenticApi.getRun(runId)
+        failures = 0
+        await liveApply(data)
+        if (!RUN_IN_PROGRESS.includes(data.status)) return data
+      } catch (reason) {
+        if ((reason as { code?: string })?.code === 'ERR_CANCELED' || ++failures >= 5) throw reason
+      }
+    }
+  }
   const clearFocus = () => { setActiveNodeId(null); setRunTrail(new Set()) }
   const run = async () => {
     setRunning(true); setError(''); stoppedRef.current = false
@@ -812,9 +873,10 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const id = await persist(); if (!id) throw new Error('Il workflow non è stato salvato')
       setRunTrail(new Set()); setNodeErrors({})
       focusPending(chatbotFlow ? dialogueEntryIds(nodes, edges) : nodes.filter((node) => !edges.some((edge) => edge.to === node.instanceId)).map((node) => node.instanceId))
-      const response = await agenticApi.createRun(id, {}, chatbotFlow ? sessionId : undefined, controller.signal)
+      const response = await agenticApi.createRun(id, {}, chatbotFlow ? sessionId : undefined, controller.signal, true)
       if (chatbotFlow) setChatWindow(true)
-      await applyRun(response.data)
+      await liveApply(response.data)
+      await applyRun(await watchRun(response.data.id, controller.signal))
     }
     catch (reason: any) {
       if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || reason?.message || 'Esecuzione non riuscita')
@@ -828,9 +890,10 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     setRunning(true); stoppedRef.current = false
     const controller = new AbortController(); abortRef.current = controller
     const waitingFor = String(activeRun.output?.waiting_for || '')
-    // The answered question is processed first: show that immediately while the server works.
-    if (waitingFor) focusPending([waitingFor])
-    try { const response = await agenticApi.provideInput(activeRun.id, content, controller.signal); setChatInput(''); await applyRun(response.data) }
+    // The answer is taken by the waiting node right away: it is done, the flow moves on to the next node.
+    const answeredNode = nodes.find((node) => node.instanceId === waitingFor)
+    if (waitingFor && answeredNode?.id !== 'llm_chatbot') { setNodeStatus([waitingFor], 'complete'); setActiveNodeId(null) } // a continuous chat node keeps the floor: the server marks it «running»
+    try { await agenticApi.provideInput(activeRun.id, content, controller.signal, true); setChatInput(''); await applyRun(await watchRun(activeRun.id, controller.signal)) }
     catch (reason: any) {
       if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || 'Risposta non inviata')
       if (waitingFor) { setNodeStatus([waitingFor], 'waiting'); setActiveNodeId(waitingFor) }
@@ -852,6 +915,16 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const clearCanvas = () => {
     setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection(); clearFocus()
   }
+  // The assistant builds on the canvas one operation at a time; each node is added with its final config and position.
+  const assistantApply = (op: AssistantOp) => {
+    if (op.type === 'add_node') {
+      setNodes((current) => [...current, op.node as unknown as CanvasNode])
+      setSelectedId(op.node.instanceId); setSelectedIds(new Set([op.node.instanceId]))
+      window.setTimeout(() => focusCamera(op.node.instanceId), 80)
+    } else if (op.type === 'connect') setEdges((current) => [...current, op.edge as unknown as Edge])
+  }
+  const assistantTitle = (value: string) => setTitle((current) => (!current.trim() || ['Esperimento di regressione', 'Workflow senza titolo'].includes(current.trim()) ? value : current))
+
   const updateNodeParam = (nodeId: string, name: string, value: unknown) => {
     const target = nodes.find((item) => item.instanceId === nodeId)
     const base = target && specs.find((item) => item.id === target.id)
@@ -911,12 +984,12 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     setTableModal(null)
   }
 
-  return <div className="flex h-full min-h-0 flex-col bg-neutral-100 text-slate-900">
+  return <div className={`flex min-h-0 flex-col bg-neutral-100 text-slate-900 ${fullscreen ? 'teacher-ui fixed inset-0 z-[200]' : 'h-full'}`}>
     <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
       <button onClick={() => navigate('/teacher/agentic')} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title="Torna ai workflow"><ArrowLeft className="h-4 w-4" /></button>
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white"><Network className="h-5 w-5" /></div>
       <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="text-sm font-black md:text-base">Dataflow Studio</h1><span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-black uppercase text-violet-700">Beta</span></div><label className="mt-1 flex items-center gap-1.5"><span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Nome workflow</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Workflow senza titolo" className="w-56 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /></label></div>
-      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{(running || activeRun?.status === 'running' || activeRun?.status === 'waiting') && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full" title="Ferma l'esecuzione del workflow"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
+      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? 'Salvataggio…' : saveState === 'dirty' ? 'Modifiche non salvate' : saveState === 'loading' ? 'Caricamento…' : saveState === 'error' ? 'Errore salvataggio' : 'Salvato sul server'}</span><Button onClick={() => setAssistantOpen((open) => !open)} tone={assistantOpen ? 'accent' : 'neutral'} surface={assistantOpen ? 'solid' : 'outline'} density="compact" className="rounded-full" title="Descrivi cosa vuoi fare e l’assistente costruisce il workflow"><Sparkles className="h-4 w-4" /><span className="hidden lg:inline">Assistente</span></Button><Button onClick={toggleFullscreen} tone="neutral" surface="outline" density="compact" className="rounded-full" title={fullscreen ? 'Esci da tutta pagina' : 'Apri a tutta pagina'}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}<span className="hidden xl:inline">{fullscreen ? 'Riduci' : 'Tutta pagina'}</span></Button><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> Pulisci</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> Salva</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} Esegui tutto</Button>{(running || activeRun?.status === 'running' || activeRun?.status === 'waiting') && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full" title="Ferma l'esecuzione del workflow"><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
     </header>
     <div className="flex min-h-0 flex-1">
       {libraryCollapsed && (
@@ -1037,6 +1110,13 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
           </div>
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-9rem)] truncate rounded-full px-4 py-2 text-[10px] text-slate-500" style={PILL_STYLE}><MousePointer2 className="mr-1 inline h-3 w-3" /> Trascina lo sfondo per spostarti · Shift+trascina per selezione multipla · rotella per zoom · doppio clic in libreria aggiunge e collega al nodo selezionato · rilascia un collegamento sul corpo di un nodo per scegliere la porta automaticamente</div>
+        {assistantBusy && <div className="absolute inset-0 z-[25] cursor-progress" aria-hidden="true" />}
+        {assistantOpen && <AssistantPanel
+          nodeCount={nodes.length} labelOf={(nodeId) => specOfId(nodeId)?.label || nodeId}
+          snapshot={() => ({ nodes: nodes as never, edges: edges as never })}
+          restore={(snap) => { setNodes(snap.nodes as unknown as CanvasNode[]); setEdges(snap.edges as unknown as Edge[]); setOutputs({}); setNodeErrors({}) }}
+          reset={() => { setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); clearFocus() }}
+          applyOp={assistantApply} setLocked={setAssistantBusy} onTitle={assistantTitle} onClose={() => setAssistantOpen(false)} />}
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
         {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{error}</span><button onClick={() => setError('')} aria-label="Chiudi errore"><X className="h-3.5 w-3.5" /></button></div>}

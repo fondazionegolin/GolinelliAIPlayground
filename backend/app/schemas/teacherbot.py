@@ -261,6 +261,7 @@ class TeacherbotMessageResponse(BaseModel):
     conversation_id: UUID
     role: str
     content: str
+    attachments_json: Optional[list[dict[str, Any]]] = None
     provider: Optional[str]
     model: Optional[str]
     token_usage_json: Optional[dict[str, Any]]

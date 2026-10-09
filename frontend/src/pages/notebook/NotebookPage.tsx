@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
@@ -236,6 +237,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const [modelsOpen, setModelsOpen] = useState(false)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [mlModels, setMlModels] = useState<MlRuntimeModel[]>([])
+  const [mlLoadedKey, setMlLoadedKey] = useState<string | null>(null) // ids whose models have been fetched (successfully or not)
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null)
   const [submitNotice, setSubmitNotice] = useState<string | null>(null)
   const p5IframeWindowRef = useRef<Window | null>(null)
@@ -465,13 +467,16 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const mlIdsKey = (editorSettings.ml_model_ids ?? []).join(',')
   useEffect(() => {
     const ids = mlIdsKey ? mlIdsKey.split(',') : []
-    if (ids.length === 0) { setMlModels([]); return }
+    if (ids.length === 0) { setMlModels([]); setMlLoadedKey(''); return }
     let cancelled = false
     Promise.all(ids.map((id) => mlLabApi.runtimeModel(id).then((response) => response.data as MlRuntimeModel).catch(() => null)))
-      .then((loaded) => { if (!cancelled) setMlModels(loaded.filter((model): model is MlRuntimeModel => Boolean(model))) })
+      .then((loaded) => { if (!cancelled) { setMlModels(loaded.filter((model): model is MlRuntimeModel => Boolean(model))); setMlLoadedKey(mlIdsKey) } })
     return () => { cancelled = true }
   }, [mlIdsKey])
 
+  // True from the first render with attached models until they are fetched: the sketch must not start before that.
+  const mlLoading = mlIdsKey !== '' && mlLoadedKey !== mlIdsKey
+  const mlMissing = mlLoading ? 0 : Math.max(0, (editorSettings.ml_model_ids ?? []).length - mlModels.length)
   const attachMlModel = useCallback((project: MLLabProjectSummary) => {
     const current = editorSettings.ml_model_ids ?? []
     if (!current.includes(project.id)) updateEditorSettings({ ml_model_ids: [...current, project.id] })
@@ -1062,7 +1067,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
       {/* ── Main notebook card ───────────────────────────────────────────── */}
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(23,23,23,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Unified toolbar — riga singola, scorre in orizzontale su finestre strette */}
-        <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:thin]">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:none] [&_svg]:!h-4 [&_svg]:!w-4">
           <IconButton
             type="button"
             size="sm"
@@ -1660,6 +1665,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       onIframeLoad={(win) => { p5IframeWindowRef.current = win }}
                       activeLibraries={editorSettings.libraries ?? []}
                       mlModels={mlModels}
+                      mlLoading={mlLoading}
+                      mlMissing={mlMissing}
                     />
                   </Suspense>
                 </div>
@@ -2278,7 +2285,8 @@ while True:
 }
 
 
-/** Editor look (theme, font, size, weight) in one tidy popover instead of four controls in the toolbar. */
+/** Editor look (theme, font, size, weight) in one popover. Rendered in a portal: the toolbar scrolls, so an absolutely
+ *  positioned child would be clipped (or open on a hidden second row). */
 function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish }: {
   open: boolean
   onToggle: () => void
@@ -2287,16 +2295,34 @@ function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish
   onChange: (patch: Partial<NotebookEditorSettings>) => void
   isEnglish: boolean
 }) {
+  const anchor = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    if (!open || !anchor.current) return
+    const place = () => {
+      const rect = anchor.current!.getBoundingClientRect()
+      setPosition({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open])
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
   const weight = settings.font_weight ?? 400
   return (
-    <div className="relative shrink-0">
+    <div className="shrink-0" ref={anchor}>
       <IconButton type="button" size="sm" tone={open ? 'accent' : 'neutral'} surface={open ? 'soft' : 'ghost'} onClick={onToggle} title={isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'} aria-expanded={open}>
         <Settings />
       </IconButton>
-      {open && (
+      {open && position && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={onClose} />
-          <div className="absolute right-0 top-full z-50 mt-2 w-64 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900">
+          <div className="fixed inset-0 z-[200]" onClick={onClose} />
+          <div className="fixed z-[201] w-64 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900" style={{ top: position.top, right: position.right }}>
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{isEnglish ? 'Editor appearance' : 'Aspetto dell’editor'}</p>
             <label className="block text-xs font-semibold text-slate-600">
               {isEnglish ? 'Theme' : 'Tema'}
@@ -2329,7 +2355,8 @@ function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish
               <input type="range" min={100} max={900} step={100} value={weight} onChange={(e) => onChange({ font_weight: Number(e.target.value) })} className="mt-2 w-full accent-[var(--selection-border-hover)]" />
             </label>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   )

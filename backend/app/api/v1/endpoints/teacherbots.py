@@ -45,6 +45,9 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
+from app.core.config import settings
+from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail
+from app.services.web_search_service import augment_chat_messages_with_urls
 from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
 from app.services.teacherbot_escape_room import answers_match, generate_plan, judge_semantic_answer, public_state
 from app.api.v1.endpoints.stt import transcribe_with_whisper
@@ -340,7 +343,7 @@ async def test_teacherbot(
 
     # Call LLM
     llm_response = await llm_service.generate(
-        messages=messages,
+        messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
         provider=request.llm_provider or bot.llm_provider,
         model=request.llm_model or bot.llm_model,
@@ -1825,7 +1828,7 @@ async def send_teacherbot_message(
 
     # history already includes user_msg because of db.add and flush
     llm_response = await llm_service.generate(
-        messages=messages,
+        messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
@@ -1942,6 +1945,9 @@ async def send_teacherbot_message_with_files(
         file_data = await file.read()
         filename = file.filename or "unknown"
         mime_type = file.content_type or "application/octet-stream"
+        preview_url = None
+        if len(file_data) <= 10 * 1024 * 1024:
+            preview_url = await (save_image_thumbnail(file_data) if mime_type.startswith("image/") else save_document_thumbnail(file_data, filename))
         
         # Extract text content based on file type
         extracted_text = ""
@@ -2030,6 +2036,7 @@ async def send_teacherbot_message_with_files(
         file_contents.append({
             "filename": filename,
             "mime_type": mime_type,
+            "url": preview_url,
             "content": extracted_text[:20000]  # Limit content size
         })
 
@@ -2043,15 +2050,13 @@ async def send_teacherbot_message_with_files(
         full_content = files_context + "\n" + content if content else files_context
 
     # Save user message
-    attachment_names = ", ".join(fc["filename"] for fc in file_contents) if file_contents else ""
     stored_content = content or "[Allegati caricati]"
-    if attachment_names:
-        stored_content = f"{stored_content}\n\n📎 {attachment_names}"
     user_msg = TeacherbotMessage(
         tenant_id=student.tenant_id,
         conversation_id=conversation_id,
         role="user",
         content=stored_content,
+        attachments_json=[{"filename": fc["filename"], "mime_type": fc["mime_type"], "url": fc["url"]} for fc in file_contents],
     )
     db.add(user_msg)
     conv.updated_at = datetime.now(timezone.utc)
@@ -2095,7 +2100,15 @@ async def send_teacherbot_message_with_files(
         r"aggiungi",
         r"modifica",
     ]
-    is_image_request = any(re.search(p, content.lower()) for p in image_request_patterns)
+    has_source_image = any((f.content_type or "").startswith("image/") for f in files)
+    # Attached picture → image-to-image automatically; otherwise keyword-triggered generation
+    routed = await route_image_intent(
+        llm_service, content, messages[:-1],
+        attached_images=sum(1 for f in files if (f.content_type or "").startswith("image/")),
+    )
+    is_image_request = (has_source_image and routed["intent"] == "edit_image") or (
+        not has_source_image and any(re.search(p, content.lower()) for p in image_request_patterns)
+    )
 
     if is_image_request:
         try:
@@ -2123,22 +2136,24 @@ async def send_teacherbot_message_with_files(
             )
             image_prompt = prompt_ext.content.strip()
             
+            # gpt-image really edits the uploaded picture; flux-schnell is text-to-image only
+            img_provider, img_model = ("openai", settings.OPENAI_IMAGE_MODEL) if image_base64 else ("flux", "flux-schnell")
             image_url = await llm_service.generate_image(
                 image_prompt, 
                 size="1024x1024", 
-                provider="flux-schnell",
+                provider=img_model,
                 image_base64=image_base64
             )
             
-            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con FLUX - Prompt: {image_prompt}*"
+            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Prompt: {image_prompt}*"
             image_usage = enrich_usage_with_environmental_impact(
                 {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
-                provider="flux",
-                model="flux-schnell",
+                provider=img_provider,
+                model=img_model,
             )
-            img_cost = credit_service.calculate_cost_for_model("flux", "flux-schnell", 0, 0, image_count=1)
+            img_cost = credit_service.calculate_cost_for_model(img_provider, img_model, 0, 0, image_count=1)
             await credit_service.track_usage(
-                db, student.tenant_id, "flux", "flux-schnell", img_cost,
+                db, student.tenant_id, img_provider, img_model, img_cost,
                 {
                     **image_usage,
                     "type": "teacherbot_image_generation",
@@ -2154,8 +2169,8 @@ async def send_teacherbot_message_with_files(
                 conversation_id=conversation_id,
                 role="assistant",
                 content=assistant_content,
-                provider="flux",
-                model="flux-schnell",
+                provider=img_provider,
+                model=img_model,
                 token_usage_json=image_usage,
             )
             db.add(assistant_msg)
@@ -2178,7 +2193,7 @@ async def send_teacherbot_message_with_files(
 
     # Generate response
     llm_response = await llm_service.generate(
-        messages=messages,
+        messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
@@ -2783,7 +2798,7 @@ async def send_public_teacherbot_message(
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
 
     llm_response = await llm_service.generate(
-        messages=messages,
+        messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
@@ -2963,7 +2978,7 @@ async def send_public_teacherbot_message_with_files(
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
 
     llm_response = await llm_service.generate(
-        messages=messages,
+        messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,

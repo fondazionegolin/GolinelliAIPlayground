@@ -38,6 +38,11 @@ class ModelUpdate(BaseModel):
     offered: bool | None = None
 
 
+class OfferedBulk(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=200)
+    offered: bool
+
+
 class RoleAssign(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -95,6 +100,31 @@ async def scan_models(_: Admin, db: Db) -> dict:
     return await model_catalog.run_scan(db, "manual")
 
 
+def _priced(model: AIModel) -> bool:
+    return model.input_usd is not None and model.output_usd is not None
+
+
+@router.post("/offered")
+async def set_offered(payload: OfferedBulk, _: Admin, db: Db) -> dict:
+    """Show / hide several models in the chat selectors at once (teachers' chat, session default, student chatbot)."""
+    rows = list((await db.execute(select(AIModel).where(AIModel.id.in_(payload.ids)))).scalars().all())
+    changed, skipped = 0, []
+    default = (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL)
+    for model in rows:
+        if model.kind != "text":
+            continue
+        if payload.offered and (model.status != "active" or not _priced(model)):
+            skipped.append(model.display_name)  # unpriced calls would not be charged: activate it with a price first
+            continue
+        if not payload.offered and (model.provider, model.model_id) == default:
+            skipped.append(model.display_name)  # the platform default is always selectable
+            continue
+        if model.offered != payload.offered:
+            model.offered, changed = payload.offered, changed + 1
+    await db.commit()
+    return {"changed": changed, "skipped": skipped}
+
+
 @router.post("", status_code=201)
 async def create_model(payload: ModelCreate, _: Admin, db: Db) -> dict:
     exists = (await db.execute(select(AIModel.id).where(AIModel.provider == payload.provider, AIModel.model_id == payload.model_id))).first()
@@ -113,6 +143,9 @@ async def update_model(model_id: UUID, payload: ModelUpdate, _: Admin, db: Db) -
     model = await _get(db, model_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(model, key, value)
+    if payload.offered and model.kind == "text" and not _priced(model):
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Imposta prima il prezzo del modello: senza listino le chiamate non verrebbero addebitate")
     if {"input_usd", "output_usd"} & payload.model_fields_set:
         model.proposed_input_usd = model.proposed_output_usd = model.proposed_at = None
     model.acknowledged = True

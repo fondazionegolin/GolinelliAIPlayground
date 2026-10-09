@@ -135,6 +135,7 @@ class TeacherbotMessage(Base):
     conversation_id = Column(UUID(as_uuid=True), ForeignKey("teacherbot_conversations.id"), nullable=False, index=True)
     role = Column(String(20), nullable=False)  # 'user' or 'assistant'
     content = Column(Text, nullable=False)
+    attachments_json = Column(JSONB, nullable=True)
     provider = Column(String, nullable=True)
     model = Column(String, nullable=True)
     token_usage_json = Column(JSONB, nullable=True)  # {prompt_tokens, completion_tokens, total_tokens}

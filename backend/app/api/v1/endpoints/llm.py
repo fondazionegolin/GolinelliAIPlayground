@@ -40,6 +40,7 @@ from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
 from app.services.education_level import get_school_grade_instruction
 from app.services.document_processor import document_processor
+from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail
 from app.services.moderation_service import moderation_service
 from app.services.environmental_impact import (
     build_estimated_token_usage,
@@ -321,38 +322,58 @@ async def _build_teacher_url_context(content: str) -> str:
 
 
 async def _augment_teacher_messages_with_url_context(messages: list[dict]) -> list[dict]:
-    """Append URL context from recent teacher messages, preserving stored history."""
-    if not messages:
-        return messages
+    from app.services.web_search_service import augment_chat_messages_with_urls
+    return await augment_chat_messages_with_urls(messages)
 
-    last_user_index = None
-    recent_user_texts: list[str] = []
-    for index in range(len(messages) - 1, -1, -1):
-        if messages[index].get("role") != "user":
-            continue
-        content = messages[index].get("content") or ""
-        if isinstance(content, str):
-            recent_user_texts.append(content)
-        if last_user_index is None:
-            last_user_index = index
-        if len(recent_user_texts) >= 8:
-            break
-    if last_user_index is None:
-        return messages
 
-    source_text = "\n\n".join(reversed(recent_user_texts))
-    url_context = await _build_teacher_url_context(source_text)
-    if not url_context:
-        return messages
+class LinkPreviewRequest(BaseModel):
+    url: str = Field(max_length=2048)
 
-    augmented = [dict(message) for message in messages]
-    content = augmented[last_user_index].get("content") or ""
-    augmented[last_user_index]["content"] = (
-        f"{content}\n\n--- CONTESTO ESTRATTO DAI LINK INCOLLATI ---\n"
-        f"{url_context}\n"
-        f"--- FINE CONTESTO LINK ---"
-    )
-    return augmented
+
+@router.post("/links/preview")
+async def preview_chat_link(
+    request: LinkPreviewRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Metadata for a link card. The same guarded fetcher supplies LLM page context."""
+    from app.services.web_search_service import web_search_service
+
+    url = request.url.strip()
+    if web_search_service.extract_urls(url, max_urls=1) != [url]:
+        raise HTTPException(status_code=400, detail="URL non valido")
+    youtube_match = re.search(r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+    if youtube_match:
+        video_id = youtube_match.group(1)
+        title = "Video YouTube"
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(
+                    "https://www.youtube.com/oembed",
+                    params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
+                )
+                if response.is_success:
+                    title = str(response.json().get("title") or title)[:200]
+        except Exception:
+            pass
+        return {
+            "url": url, "title": title, "description": "YouTube",
+            "image_url": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+            "kind": "youtube",
+        }
+    result = await web_search_service.fetch_user_url(url, max_chars=100)
+    image_url = result.image_url
+    if not image_url and result.title:
+        from urllib.parse import urlparse
+        hostname = urlparse(result.final_url).hostname or "Pagina web"
+        image_url = await save_document_thumbnail(
+            f"{result.title}\n\n{result.description or result.content}".encode("utf-8"),
+            f"{hostname}.txt",
+        )
+    return {
+        "url": result.final_url, "title": result.title or url,
+        "description": result.description or "", "image_url": image_url,
+        "kind": "web", "error": result.error,
+    }
 
 
 async def safe_track_usage(
@@ -387,9 +408,12 @@ async def safe_track_usage(
 
 
 @router.get("/chatbot-profiles")
-async def list_chatbot_profiles():
-    """Get all available chatbot profiles with their configurations"""
-    return get_all_profiles()
+async def list_chatbot_profiles(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Built-in chatbot profiles students see in Spazio AI (admin-selected subset)"""
+    from app.services.student_chatbots import get_enabled_keys
+
+    enabled = set(await get_enabled_keys(db))
+    return {key: profile for key, profile in get_all_profiles().items() if key in enabled}
 
 
 # Voices supported by gpt-realtime; marin/cedar are the most natural/expressive.
@@ -823,6 +847,8 @@ async def preview_file(
     fn_lower = filename.lower()
 
     base = {"filename": filename, "mime_type": mime_type, "size_bytes": len(file_bytes)}
+    if not mime_type.startswith("image/"):
+        base["thumbnail_url"] = await save_document_thumbnail(file_bytes, filename)
 
     # ── Data file: XLSX / XLS ────────────────────────────────────────────────
     if fn_lower.endswith((".xlsx", ".xls")) or "spreadsheet" in mime_type or "excel" in mime_type:
@@ -950,7 +976,7 @@ async def list_available_models(db: AsyncSession = Depends(get_db)):
 
     # Models offered in the selectors are managed by the admin (Admin → Modelli).
     try:
-        offered = (await db.execute(select(AIModel).where(AIModel.kind == "text", AIModel.offered.is_(True), AIModel.status != "deprecated")
+        offered = (await db.execute(select(AIModel).where(AIModel.kind == "text", AIModel.offered.is_(True), AIModel.status == "active", AIModel.input_usd.isnot(None), AIModel.output_usd.isnot(None))
                                     .order_by(AIModel.provider, AIModel.input_usd))).scalars().all()
     except Exception:
         offered = []
@@ -1455,6 +1481,7 @@ async def send_message(
     
     # history already includes user_message because of db.add and flush
     # So we don't need to append request.content again if it's already in history
+    messages = await _augment_teacher_messages_with_url_context(messages)
     
     # Check if user is requesting image generation
     import re
@@ -1806,6 +1833,7 @@ async def send_message_stream(
         for m in hist_result.scalars().all()
         if m.model != STREAM_ERROR_MODEL
     ]
+    messages = await _augment_teacher_messages_with_url_context(messages)
 
     pii_prefix = ""
     if moderation_result.pii_found:
@@ -2009,6 +2037,7 @@ async def student_chat(
             "content": msg.get("content", ""),
         })
     messages.append({"role": "user", "content": content})
+    messages = await _augment_teacher_messages_with_url_context(messages)
 
     try:
         # Use teacher agent logic even for students for consistent widgets/intent handling
@@ -2751,6 +2780,20 @@ async def document_context_assist(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
 
 
+class RouteIntentRequest(BaseModel):
+    text: str
+    history: list[dict] = []
+
+
+@router.post("/route-intent")
+async def route_intent(
+    request: RouteIntentRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Classify a text-only follow-up (edit the previous image? new image? plain chat?)."""
+    return await route_image_intent(llm_service, request.text, request.history[-8:], attached_images=0)
+
+
 @router.post("/generate-image")
 async def generate_image(
     request: dict,
@@ -2881,11 +2924,24 @@ async def send_message_with_files(
     file_infos: list[dict] = []
     MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 
+    source_image_base64: Optional[str] = None
+
     for file in files:
         file_data = await file.read()
         filename = file.filename or "unknown"
         mime_type = file.content_type or "application/octet-stream"
-        file_infos.append({"filename": filename, "mime_type": mime_type})
+        file_info = {"filename": filename, "mime_type": mime_type}
+        if mime_type.startswith("image/") and len(file_data) <= MAX_FILE_BYTES:
+            thumb_url = await save_image_thumbnail(file_data)
+            if thumb_url:
+                file_info["url"] = thumb_url
+            if source_image_base64 is None:
+                source_image_base64 = base64.b64encode(file_data).decode("utf-8")
+        elif len(file_data) <= MAX_FILE_BYTES:
+            thumb_url = await save_document_thumbnail(file_data, filename)
+            if thumb_url:
+                file_info["url"] = thumb_url
+        file_infos.append(file_info)
 
         if len(file_data) > MAX_FILE_BYTES:
             file_extracts.append(f"\n[File troppo grande: {filename}]\n")
@@ -2966,49 +3022,28 @@ async def send_message_with_files(
     # We need to replace the last message in history with the one containing full_content
     if messages:
         messages[-1]["content"] = full_content
+    messages = await _augment_teacher_messages_with_url_context(messages)
     
-    # Check for image generation request in content
-    import re
-    image_request_patterns = [
-        r"genera(?:mi)?\s+(?:una?\s+)?immagine",
-        r"crea(?:mi)?\s+(?:una?\s+)?immagine",
-        r"disegna(?:mi)?",
-        r"generate\s+(?:an?\s+)?image",
-        r"create\s+(?:an?\s+)?image",
-        r"draw\s+(?:me\s+)?",
-        r"rifallo",
-        r"cambial[oa]",
-        r"miglioral[oa]",
-        r"aggiungi",
-        r"modifica",
-    ]
-    is_image_request = any(re.search(p, content.lower()) for p in image_request_patterns)
-    
+    # An attached picture is edited (img2img) automatically, unless the text only asks about it
+    routed = await route_image_intent(
+        llm_service, content, messages[:-1],
+        attached_images=sum(1 for f in file_infos if f["mime_type"].startswith("image/")),
+    )
+    is_image_request = source_image_base64 is not None and routed["intent"] == "edit_image"
+
     provider = "none"
     model = "none"
     token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     if is_image_request:
         try:
-            # Look for image in attached files
-            image_base64 = None
-            # Find the first image in file_contents (we already have it in memory)
-            # But file_contents has extracted_text, not raw base64. 
-            # We need to get it again or pass it. 
-            # Let's assume we use the first image file if available.
-            for file in files:
-                if file.content_type and file.content_type.startswith("image/"):
-                    # Rewind file to read from start again if needed
-                    await file.seek(0)
-                    img_data = await file.read()
-                    image_base64 = base64.b64encode(img_data).decode("utf-8")
-                    break
+            image_base64 = source_image_base64
 
             # Prompt extraction using history
             extraction_messages = messages[:-1]
             extraction_messages.append({
                 "role": "user",
-                "content": f"Basandoti sulla conversazione precedente e su questa nuova richiesta, estrai una descrizione dettagliata in inglese per generare un'immagine. Se l'utente chiede modifiche a un'immagine precedente o fornisce un'immagine di riferimento, incorpora questi dettagli nella nuova descrizione. Rispondi SOLO con la descrizione in inglese, senza altro testo. Richiesta: {content}"
+                "content": f"L'utente ha allegato una foto e chiede di modificarla. Scrivi in inglese SOLO l'istruzione di editing da applicare alla foto (cosa cambiare, cosa mantenere invariato), senza altro testo. Richiesta: {content}"
             })
             
             prompt_ext = await llm_service.generate(
@@ -3021,7 +3056,7 @@ async def send_message_with_files(
             
             # Use default flux-schnell if not specified (request dict is not available in Form method directly as object)
             # We'd need to add these as Form fields if we want them here.
-            image_provider = "flux-schnell" 
+            image_provider = settings.OPENAI_IMAGE_MODEL  # gpt-image edits the uploaded picture
             image_size = "1024x1024"
             
             image_url = await llm_service.generate_image(
@@ -3031,9 +3066,9 @@ async def send_message_with_files(
                 image_base64=image_base64
             )
             
-            provider_label = "FLUX"
-            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
-            provider = "flux"
+            provider_label = "GPT Image"
+            assistant_content = f"🎨 Ecco l'immagine modificata:\n\n![Immagine modificata]({image_url})\n\n*Modificata con {provider_label} - Prompt: {image_prompt}*"
+            provider = "openai"
             model = image_provider
             token_usage = enrich_usage_with_environmental_impact(
                 {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
@@ -3077,43 +3112,43 @@ async def send_message_with_files(
         model = "none"
         token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
-    # Call LLM
-    try:
-        llm_response = await llm_service.generate(
-            messages=messages,
-            system_prompt=system_prompt,
-            provider=conversation.llm_provider,
-            model=conversation.llm_model,
-            temperature=temperature,
-            max_tokens=1200,
-        )
-        assistant_content = llm_response.content
-        provider = llm_response.provider
-        model = llm_response.model
-        token_usage = enrich_usage_with_environmental_impact(
-            {
-                "prompt_tokens": llm_response.prompt_tokens,
-                "completion_tokens": llm_response.completion_tokens,
-            },
-            provider=provider,
-            model=model,
-        )
+        # Call LLM
+        try:
+            llm_response = await llm_service.generate(
+                messages=messages,
+                system_prompt=system_prompt,
+                provider=conversation.llm_provider,
+                model=conversation.llm_model,
+                temperature=temperature,
+                max_tokens=1200,
+            )
+            assistant_content = llm_response.content
+            provider = llm_response.provider
+            model = llm_response.model
+            token_usage = enrich_usage_with_environmental_impact(
+                {
+                    "prompt_tokens": llm_response.prompt_tokens,
+                    "completion_tokens": llm_response.completion_tokens,
+                },
+                provider=provider,
+                model=model,
+            )
 
-        # Track Usage
-        cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
-        await safe_track_usage(
-            db, student.tenant_id, provider, model, cost,
-            token_usage,
-            class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
-            context="message_with_files"
-        )
+            # Track Usage
+            cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
+            await safe_track_usage(
+                db, student.tenant_id, provider, model, cost,
+                token_usage,
+                class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+                context="message_with_files"
+            )
 
-    except Exception as e:
-        logger.error(f"LLM service error: {e}")
-        assistant_content = "Mi dispiace, si è verificato un errore. Per favore riprova."
-        provider = "fallback"
-        model = "none"
-        token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        except Exception as e:
+            logger.error(f"LLM service error: {e}")
+            assistant_content = "Mi dispiace, si è verificato un errore. Per favore riprova."
+            provider = "fallback"
+            model = "none"
+            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     # Save assistant message
     assistant_message = ConversationMessage(
@@ -3908,6 +3943,7 @@ async def teacher_chat_with_files(
     provider: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     files: list[UploadFile] = File([]),
+    image_size: Optional[str] = Form(None),
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     teacher: User = Depends(get_current_teacher),
@@ -3923,10 +3959,19 @@ async def teacher_chat_with_files(
 
     # Process uploaded files with the advanced document processor
     file_extracts: list[str] = []
+    n_images = sum(1 for f in files if (f.content_type or "").startswith("image/"))
+    routed = await route_image_intent(llm_service, content, parsed_history, attached_images=n_images)
+    edit_intent = n_images > 0 and routed["intent"] == "edit_image"
+    source_image_base64: Optional[str] = None
     for file in files:
         file_data = await file.read()
         file_name = file.filename or "document"
         file_type = file.content_type or "application/octet-stream"
+        if file_type.startswith("image/") and len(file_data) <= MAX_FILE_BYTES:
+            if source_image_base64 is None:
+                source_image_base64 = base64.b64encode(file_data).decode("utf-8")
+        if edit_intent and file_type.startswith("image/"):
+            continue  # edited below, no need to pay for vision analysis
 
         if len(file_data) > MAX_FILE_BYTES:
             file_extracts.append(f"\n[File troppo grande: {file_name}]\n")
@@ -3959,6 +4004,53 @@ async def teacher_chat_with_files(
         except Exception as e:
             logger.error(f"Document processing error for {file_name}: {e}")
             file_extracts.append(f"\n[Errore elaborazione {file_name}: {e}]\n")
+
+    # Attached picture → image-to-image automatically (unless the text only asks about it)
+    if edit_intent and source_image_base64:
+        try:
+            prompt_ext = await llm_service.generate(
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "L'utente ha allegato una foto e chiede di modificarla. Scrivi in inglese SOLO "
+                        "l'istruzione di editing da applicare alla foto (cosa cambiare, cosa mantenere "
+                        f"invariato), senza altro testo. Richiesta: {content}"
+                    ),
+                }],
+                system_prompt="You write concise image-editing instructions. Respond only with the English instruction.",
+                temperature=0.3,
+                max_tokens=300,
+            )
+            image_prompt = prompt_ext.content.strip() or content
+            image_provider = settings.OPENAI_IMAGE_MODEL
+            image_url = await llm_service.generate_image(
+                image_prompt,
+                size=image_size or "1024x1024",
+                provider=image_provider,
+                image_base64=source_image_base64,
+            )
+            img_usage = enrich_usage_with_environmental_impact(
+                {"type": "img2img", "image_prompt": image_prompt, "image_count": 1},
+                provider="openai",
+                model=image_provider,
+            )
+            img_cost = credit_service.calculate_cost_for_model("openai", image_provider, 0, 0, image_count=1)
+            await safe_track_usage(
+                db, teacher.tenant_id, "openai", image_provider, img_cost, img_usage,
+                teacher_id=teacher.id,
+                context="teacher_chat_image_edit",
+            )
+            return {
+                "response": f"🎨 Ecco l'immagine modificata:\n\n![Immagine modificata]({image_url})\n\n*Prompt: {image_prompt}*",
+                "provider": "openai",
+                "model": image_provider,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "image_count": 1,
+            }
+        except Exception as e:
+            logger.error(f"Teacher image edit error: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Modifica immagine non riuscita: {e}")
 
     # Combine user message with processed file extracts
     full_content = content

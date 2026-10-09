@@ -77,6 +77,16 @@ export default function AdminModelsPage() {
     onError: fail('Operazione non riuscita'),
   })
 
+  const offer = useMutation({
+    mutationFn: ({ ids, offered }: { ids: string[]; offered: boolean }) => adminApi.setAiModelsOffered(ids, offered),
+    onSuccess: (response) => {
+      void refresh()
+      const skipped = (response.data?.skipped ?? []) as string[]
+      if (skipped.length) toast({ title: 'Alcuni modelli non sono stati modificati', description: `${skipped.join(', ')}: servono attivo e con prezzo (per nasconderlo: non è il modello predefinito).` })
+    },
+    onError: fail('Operazione non riuscita'),
+  })
+
   const data = query.data
   const models = useMemo(() => {
     const list = (data?.models ?? []).filter((m) => (provider === 'all' || m.provider === provider) && (kind === 'voice' ? ['realtime', 'transcribe'].includes(m.kind) : m.kind === kind) && (showDeprecated || m.status !== 'deprecated'))
@@ -117,6 +127,56 @@ export default function AdminModelsPage() {
       </div>
 
       <ModelRolesPanel />
+
+      {(() => {
+        const selectable = (data?.models ?? []).filter((m) => m.kind === 'text' && m.status === 'active' && m.input_usd !== null && m.output_usd !== null)
+        const shown = selectable.filter((m) => m.offered)
+        const setMany = (list: AiModel[], offered: boolean) => offer.mutate({ ids: list.filter((m) => m.offered !== offered).map((m) => m.id), offered })
+        return (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-2xl">
+                <h2 className="text-sm font-black text-slate-700">Modelli scelti nei selettori di chat</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Spunta i modelli che docenti e studenti possono scegliere: nel selettore della chat docente, nel «Modello AI predefinito» della sessione e nel chatbot degli studenti.
+                  Sono elencati solo i modelli attivi e con un prezzo (senza listino le chiamate non verrebbero addebitate). Il modello predefinito della piattaforma è sempre disponibile
+                  e Gemini compare quando la sua chiave è configurata.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-slate-500">{shown.length} di {selectable.length} nei selettori</span>
+                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === selectable.length} onClick={() => setMany(selectable, true)}>Tutti</Button>
+                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === 0} onClick={() => setMany(selectable, false)}>Nessuno</Button>
+              </div>
+            </div>
+            {(Object.keys(PROVIDERS) as Provider[]).map((p) => {
+              const list = selectable.filter((m) => m.provider === p)
+              if (!list.length) return null
+              return (
+                <div key={p} className="mt-3">
+                  <div className="mb-1.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                    <span className="h-2 w-2 rounded-full" style={{ background: PROVIDERS[p].color }} /> {PROVIDERS[p].label}
+                    <button type="button" onClick={() => setMany(list, true)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">tutti</button>
+                    <button type="button" onClick={() => setMany(list, false)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">nessuno</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {list.map((m) => (
+                      <button key={m.id} type="button" aria-pressed={m.offered} disabled={offer.isPending}
+                        onClick={() => offer.mutate({ ids: [m.id], offered: !m.offered })}
+                        title={`${m.model_id} · ${usd(m.input_usd)} / ${usd(m.output_usd)} per 1M token`}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${m.offered ? 'border-[#e85c8d] bg-pink-50 text-[#b83b69]' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}`}>
+                        {m.offered ? <Check className="h-3 w-3" /> : <span className="h-3 w-3 rounded-full border border-slate-300" />}
+                        {m.display_name}
+                        <span className="font-normal text-slate-400">{usd(m.input_usd)}/{usd(m.output_usd)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </section>
+        )
+      })()}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Ultimo controllo" value={dateLabel(data?.last_scan?.ran_at)} hint={data?.last_scan ? (data.last_scan.trigger === 'scheduled' ? 'automatico' : 'manuale') : 'mai eseguito'} />

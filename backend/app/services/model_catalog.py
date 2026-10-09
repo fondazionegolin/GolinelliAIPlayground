@@ -224,9 +224,20 @@ def parse_anthropic(raw: str) -> dict[str, tuple[float, float]]:
     prices: dict[str, tuple[float, float]] = {}
     start = text.find("Base input tokens")
     # Column order in the page: name | input | output | 5m cache write | 1h cache write | cache hit.
-    # Rows may carry a tagline between the name and the first price.
-    for match in re.finditer(r"(Claude [A-Z][A-Za-z]+ [\d.]+)[^$]{0,140}?\$([\d.]+)[| /]*MTok[^$]{0,12}\$([\d.]+)[| /]*MTok", text[max(start, 0):]):
-        prices.setdefault(_slug(match.group(1)), (float(match.group(2)), float(match.group(3))))
+    # Rows may carry a tagline between the name and the first price, and a tier note after a price
+    # («$0.10 / MTok for prompts up to 100,000 tokens $0.50 / MTok»). Budgets are never underestimated, so when a row
+    # has a long-prompt tier («… for prompts over 100,000 tokens $0.50 / MTok … $2.50 / MTok») the higher prices win.
+    body = text[max(start, 0):]
+    for match in re.finditer(r"(Claude [A-Z][A-Za-z]+ [\d.]+)[^$]{0,140}?\$([\d.]+)[| /]*MTok[^$]{0,60}\$([\d.]+)[| /]*MTok", body):
+        slug = _slug(match.group(1))
+        if slug in prices:
+            continue
+        price_in, price_out = float(match.group(2)), float(match.group(3))
+        row_tail = body[match.end():match.end() + 420].split("Claude ")[0]  # never read into the next model's row
+        tier = re.search(r"\$([\d.]+)[| /]*MTok[| ]*for prompts over[^$]{0,40}\$([\d.]+)[| /]*MTok", row_tail)
+        if tier:
+            price_in, price_out = max(price_in, float(tier.group(1))), max(price_out, float(tier.group(2)))
+        prices[slug] = (price_in, price_out)
     return prices
 
 

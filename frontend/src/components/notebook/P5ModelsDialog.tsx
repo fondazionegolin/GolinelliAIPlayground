@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Brain, Camera, Check, Hand, Image as ImageIcon, Loader2, Plus, Trash2, User, X } from '@/components/icons'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { CONFIDENCE_THRESHOLD, embedImage, headFromJSON, loadEmbedder, predict, smooth, INPUT_SIZE, type Head, type HeadJSON } from '@/lib/imageClassifier'
 import { MODE_LABEL, drawOverlay, extractFeatures, loadLandmarkEngine, modeOfEngine, type Mode } from '@/lib/mlFeatures'
+import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
 
 const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand } as const
@@ -184,12 +185,24 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
   onClose: () => void
 }) {
   const query = useQuery({ queryKey: ['ml-lab', 'projects'], queryFn: async () => (await mlLabApi.list()).data.projects })
-  const projects = useMemo(() => (query.data ?? []).filter((p) => p.has_model !== false), [query.data])
+  const queryClient = useQueryClient()
+  const projects = useMemo(() => query.data ?? [], [query.data])
+  const [preparing, setPreparing] = useState(false)
+  const [prepError, setPrepError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(attachedIds[0] ?? null)
-  useEffect(() => { if (!selectedId && projects.length) setSelectedId(projects.find((p) => modeOfEngine(p.engine) === 'hand')?.id ?? projects[0].id) }, [projects, selectedId])
+  useEffect(() => { if (!selectedId && projects.length) setSelectedId((projects.find((p) => p.has_model !== false && modeOfEngine(p.engine) === 'hand') ?? projects.find((p) => p.has_model !== false) ?? projects[0]).id) }, [projects, selectedId])
+  useEffect(() => { setPrepError(null) }, [selectedId])
   const selected = projects.find((p) => p.id === selectedId) ?? null
   const attached = selected ? attachedIds.includes(selected.id) : false
   const mode = selected ? modeOfEngine(selected.engine) : 'hand'
+  const needsPreparing = selected ? selected.has_model === false : false
+  const runPrepare = async () => {
+    if (!selected) return
+    setPreparing(true); setPrepError(null)
+    try { await prepareModel(selected.id); await queryClient.invalidateQueries({ queryKey: ['ml-lab', 'projects'] }) }
+    catch (error: any) { setPrepError(error?.message || 'Non sono riuscito a preparare il modello.') }
+    finally { setPreparing(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onMouseDown={onClose}>
@@ -209,7 +222,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
           {/* list */}
           <div className="space-y-1.5 border-b border-slate-100 p-4 md:border-b-0 md:border-r dark:border-white/10">
             {query.isLoading && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}
-            {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs leading-5 text-slate-500 dark:bg-white/5">Nessun modello addestrato. Apri il Lab ML, crea un progetto «Gesti delle mani», registra qualche esempio e torna qui.</p>}
+            {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs leading-5 text-slate-500 dark:bg-white/5">Nessun progetto nel Lab ML. Creane uno (immagini, pose o gesti delle mani), registra qualche esempio e torna qui.</p>}
             {projects.map((project) => {
               const kind = modeOfEngine(project.engine)
               const Icon = MODE_ICON[kind]
@@ -221,6 +234,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
                     <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
                     <span className="block truncate text-[11px] text-slate-500">{MODE_LABEL[kind]} · {project.classes.length} classi</span>
                   </span>
+                  {project.has_model === false && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">Da preparare</span>}
                   {attachedIds.includes(project.id) && <Check className="h-4 w-4 shrink-0 text-emerald-500" />}
                 </button>
               )
@@ -229,7 +243,17 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
 
           {/* detail */}
           <div className="p-5">
-            {!selected ? <p className="py-16 text-center text-sm text-slate-400">Scegli un modello per vedere come funziona.</p> : (
+            {!selected ? <p className="py-16 text-center text-sm text-slate-400">Scegli un modello per vedere come funziona.</p> : needsPreparing ? (
+              <div className="mx-auto max-w-md space-y-4 py-10 text-center">
+                <span className="ds-squircle mx-auto flex h-14 w-14 items-center justify-center text-white" style={{ background: MODE_COLOR[mode] }}><Brain className="h-7 w-7" /></span>
+                <h3 className="text-base font-bold text-slate-900">«{selected.name}» va preparato</h3>
+                <p className="text-sm leading-6 text-slate-500">Questo progetto ha i suoi esempi ma non ha ancora un modello pronto per gli sketch. Lo preparo adesso dagli esempi salvati: ci vuole un attimo e non cambia il progetto.</p>
+                {prepError && <p className="rounded-xl bg-rose-50 p-3 text-xs leading-5 text-rose-700">{prepError}</p>}
+                <Button tone="accent" surface="solid" onClick={() => void runPrepare()} disabled={preparing}>
+                  {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />} {preparing ? 'Preparo il modello…' : 'Prepara il modello'}
+                </Button>
+              </div>
+            ) : (
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
                   <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Anteprima di funzionamento</h3>
