@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-ita \
+    ffmpeg \
     libreoffice-writer \
     libreoffice-impress \
     libreoffice-calc \
@@ -34,6 +35,10 @@ RUN fc-cache -f
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --default-timeout=300 --retries=10 -r requirements.txt
+
+# Italian NER model used by the local attachment anonymizer (services/pii_anonymizer.py)
+RUN pip install --no-cache-dir --default-timeout=300 --retries=10 \
+    https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl
 
 COPY . .
 RUN chmod +x /app/entrypoint.sh

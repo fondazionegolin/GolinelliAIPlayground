@@ -6,7 +6,7 @@ from sqlalchemy import select
 import uuid
 
 from app.core.database import get_db
-from app.core.legal_documents import LEGAL_DOCUMENTS
+from app.core.legal_documents import required_legal_documents
 from app.core.security import decode_token
 from app.models.user import LegalDocumentAcceptance, User
 from app.models.session import SessionStudent, Session
@@ -89,19 +89,28 @@ async def get_current_teacher(
             detail="Teacher account not verified",
         )
     if current_user.role == UserRole.TEACHER:
+        from app.models.tenant import Tenant
+        from app.models.enums import TenantType
+        tenant_type = (await db.execute(
+            select(Tenant.tenant_type).where(Tenant.id == current_user.tenant_id)
+        )).scalar_one_or_none()
+        required_docs = required_legal_documents(
+            is_school_owner=bool(current_user.is_school_owner),
+            in_school_tenant=str(getattr(tenant_type, "value", tenant_type)) == TenantType.SCHOOL.value,
+        )
         result = await db.execute(
             select(LegalDocumentAcceptance).where(
                 LegalDocumentAcceptance.user_id == current_user.id,
-                LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+                LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in required_docs]),
             )
         )
         rows = result.scalars().all()
         accepted_current = {
             row.document_key
             for row in rows
-            if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in LEGAL_DOCUMENTS)
+            if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in required_docs)
         }
-        if len(accepted_current) < len(LEGAL_DOCUMENTS):
+        if len(accepted_current) < len(required_docs):
             raise HTTPException(
                 status_code=status.HTTP_428_PRECONDITION_REQUIRED,
                 detail="Legal consents required",

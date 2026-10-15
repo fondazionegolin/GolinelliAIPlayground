@@ -80,3 +80,4 @@ esprima==4.0.1
 
 # HTML sanitization (slide/document rich-text content)
 nh3==0.2.18
+spacy==3.7.5

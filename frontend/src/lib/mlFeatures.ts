@@ -10,12 +10,14 @@ import * as tf from '@tensorflow/tfjs'
 import type { PoseDetector } from '@tensorflow-models/pose-detection'
 import { assetUrl } from './mlAssets'
 
-export type Mode = 'image' | 'pose' | 'hand'
-export const MODE_LABEL: Record<Mode, string> = { image: 'Immagini', pose: 'Pose del corpo', hand: 'Gesti delle mani' }
-export const ENGINE_BY_MODE: Record<Mode, string> = { image: 'mobilenet-v1-050-160/1', pose: 'movenet-lightning/1', hand: 'mediapipe-hand/1' }
-export const modeOfEngine = (engine?: string | null): Mode => (engine?.startsWith('movenet') ? 'pose' : engine?.startsWith('mediapipe-hand') ? 'hand' : 'image')
+export type Mode = 'image' | 'pose' | 'hand' | 'face'
+export const MODE_LABEL: Record<Mode, string> = { image: 'Immagini', pose: 'Pose del corpo', hand: 'Gesti delle mani', face: 'Espressioni del viso' }
+export const ENGINE_BY_MODE: Record<Mode, string> = { image: 'mobilenet-v1-050-160/1', pose: 'movenet-lightning/1', hand: 'mediapipe-hand/1', face: 'mediapipe-face/1' }
+export const modeOfEngine = (engine?: string | null): Mode => (
+  engine?.startsWith('movenet') ? 'pose' : engine?.startsWith('mediapipe-hand') ? 'hand' : engine?.startsWith('mediapipe-face') ? 'face' : 'image'
+)
 
-export interface Overlay { kind: 'pose' | 'hand'; points: Array<{ x: number; y: number; score?: number }>; width: number; height: number }
+export interface Overlay { kind: 'pose' | 'hand' | 'face'; points: Array<{ x: number; y: number; score?: number }>; width: number; height: number }
 export interface Extracted { vector: Float32Array; overlay: Overlay }
 
 // ── connections used to draw the skeletons ───────────────────────────────────
@@ -132,14 +134,94 @@ export async function detectHand(source: Source): Promise<Extracted | null> {
   }
 }
 
+
+// ── facial expressions ───────────────────────────────────────────────────────
+
+let faceLandmarker: Promise<import('@mediapipe/tasks-vision').FaceLandmarker> | null = null
+
+export function loadFaceLandmarker() {
+  if (!faceLandmarker) {
+    faceLandmarker = (async () => {
+      const { FilesetResolver, FaceLandmarker } = await import('@mediapipe/tasks-vision')
+      const fileset = await FilesetResolver.forVisionTasks(assetUrl('/vendor/mediapipe/wasm'))
+      const create = (delegate: 'GPU' | 'CPU') => FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: assetUrl('/models/face_landmarker/face_landmarker.task'), delegate },
+        runningMode: 'IMAGE',
+        numFaces: 1,
+        outputFaceBlendshapes: true,
+      })
+      try { return await create('GPU') } catch { return create('CPU') }
+    })().catch((error) => { faceLandmarker = null; throw error })
+  }
+  return faceLandmarker
+}
+
+/** Face Mesh landmarks that carry the expression: lips (outer + inner), eyes, brows, nose and the face contour. */
+const FACE_LOOPS: Record<string, number[]> = {
+  lipsOuter: [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185],
+  lipsInner: [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191],
+  leftEye: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+  rightEye: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+  leftBrow: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46],
+  rightBrow: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
+  oval: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+}
+const FACE_NOSE = [1, 2, 98, 327, 168, 6, 197, 195, 5, 4]
+const FACE_KEY_POINTS = [...new Set([...Object.values(FACE_LOOPS).flat(), ...FACE_NOSE])]
+const BLENDSHAPES = 52
+
+/**
+ * Expression features: the key landmarks aligned on the eyes (centred between the outer eye corners, scaled by the
+ * inter-ocular distance, rotated so the eye line is horizontal) so head tilt, distance and position do not matter, plus
+ * MediaPipe's 52 blendshape scores (smile, jaw open, brow raise, eye squint…), which describe the expression directly.
+ */
+export function faceFeatures(landmarks: Array<{ x: number; y: number }>, width: number, height: number, blendshapes: number[]): Float32Array | null {
+  const px = (i: number) => ({ x: landmarks[i].x * width, y: landmarks[i].y * height })
+  const a = px(33)
+  const b = px(263)
+  const scale = Math.hypot(b.x - a.x, b.y - a.y)
+  if (scale < 8) return null
+  const cx = (a.x + b.x) / 2
+  const cy = (a.y + b.y) / 2
+  const roll = Math.atan2(b.y - a.y, b.x - a.x)
+  const cos = Math.cos(-roll)
+  const sin = Math.sin(-roll)
+  const out = new Float32Array(FACE_KEY_POINTS.length * 2 + BLENDSHAPES)
+  FACE_KEY_POINTS.forEach((index, i) => {
+    const p = px(index)
+    const dx = (p.x - cx) / scale
+    const dy = (p.y - cy) / scale
+    out[i * 2] = dx * cos - dy * sin
+    out[i * 2 + 1] = dx * sin + dy * cos
+  })
+  const base = FACE_KEY_POINTS.length * 2
+  for (let i = 0; i < BLENDSHAPES; i++) out[base + i] = blendshapes[i] ?? 0
+  return out
+}
+
+export async function detectFace(source: Source): Promise<Extracted | null> {
+  const landmarker = await loadFaceLandmarker()
+  const { width, height } = dims(source)
+  if (!width || !height) return null
+  const result = landmarker.detect(source as HTMLCanvasElement)
+  const landmarks = result.faceLandmarks?.[0]
+  if (!landmarks || landmarks.length < 468) return null
+  const categories = result.faceBlendshapes?.[0]?.categories ?? []
+  const blend = new Array<number>(BLENDSHAPES).fill(0)
+  categories.forEach((category) => { if (category.index < BLENDSHAPES) blend[category.index] = category.score })
+  const vector = faceFeatures(landmarks, width, height, blend)
+  if (!vector) return null
+  return { vector, overlay: { kind: 'face', points: landmarks.map((p) => ({ x: p.x * width, y: p.y * height })), width, height } }
+}
+
 // ── dispatch + augmentation + drawing ────────────────────────────────────────
 
 export async function extractFeatures(mode: Exclude<Mode, 'image'>, source: Source, fresh = false): Promise<Extracted | null> {
-  return mode === 'pose' ? detectPose(source, fresh) : detectHand(source)
+  return mode === 'pose' ? detectPose(source, fresh) : mode === 'face' ? detectFace(source) : detectHand(source)
 }
 
 export function loadLandmarkEngine(mode: Exclude<Mode, 'image'>) {
-  return mode === 'pose' ? loadPoseDetector() : loadHandLandmarker()
+  return mode === 'pose' ? loadPoseDetector() : mode === 'face' ? loadFaceLandmarker() : loadHandLandmarker()
 }
 
 function gaussian(): number {
@@ -151,6 +233,7 @@ function gaussian(): number {
  * pose / gesture stays the same when the person tilts, moves nearer or shakes a little.
  */
 export function augmentLandmarks(vector: Float32Array, mode: Exclude<Mode, 'image'>, copies = 6): Float32Array[] {
+  if (mode === 'face') return augmentFace(vector, copies)
   const stride = mode === 'pose' ? 2 : 3
   const points = vector.length / stride
   return Array.from({ length: copies }, () => {
@@ -172,6 +255,26 @@ export function augmentLandmarks(vector: Float32Array, mode: Exclude<Mode, 'imag
   })
 }
 
+/** Face variants: the geometry gets a small rotation / scale / jitter, the blendshape scores a little noise. */
+function augmentFace(vector: Float32Array, copies: number): Float32Array[] {
+  const geometry = FACE_KEY_POINTS.length * 2
+  return Array.from({ length: copies }, () => {
+    const angle = (gaussian() * 3 * Math.PI) / 180
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    const scale = 1 + gaussian() * 0.03
+    const out = new Float32Array(vector.length)
+    for (let p = 0; p < geometry; p += 2) {
+      const x = vector[p]
+      const y = vector[p + 1]
+      out[p] = (x * cos - y * sin) * scale + gaussian() * 0.008
+      out[p + 1] = (x * sin + y * cos) * scale + gaussian() * 0.008
+    }
+    for (let i = geometry; i < vector.length; i++) out[i] = Math.min(1, Math.max(0, vector[i] * (1 + gaussian() * 0.08) + gaussian() * 0.01))
+    return out
+  })
+}
+
 /** Draws a skeleton over a canvas that covers the (unmirrored) source frame. */
 export function drawOverlay(canvas: HTMLCanvasElement, overlay: Overlay | null, color = '#ffffff') {
   const ctx = canvas.getContext('2d')
@@ -179,9 +282,29 @@ export function drawOverlay(canvas: HTMLCanvasElement, overlay: Overlay | null, 
   if (!overlay) { ctx.clearRect(0, 0, canvas.width, canvas.height); return }
   if (canvas.width !== overlay.width || canvas.height !== overlay.height) { canvas.width = overlay.width; canvas.height = overlay.height }
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+  const unit = Math.max(2, overlay.width / 160)
+  if (overlay.kind === 'face') {
+    ctx.lineWidth = Math.max(1.5, unit * 0.7)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = color
+    ctx.globalAlpha = 0.9
+    for (const loop of Object.values(FACE_LOOPS)) {
+      ctx.beginPath()
+      loop.forEach((index, i) => {
+        const point = overlay.points[index]
+        if (!point) return
+        if (i === 0) ctx.moveTo(point.x, point.y)
+        else ctx.lineTo(point.x, point.y)
+      })
+      ctx.closePath()
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+    return
+  }
   const edges = overlay.kind === 'pose' ? POSE_EDGES : HAND_EDGES
   const visible = (i: number) => overlay.kind === 'hand' || (overlay.points[i]?.score ?? 0) >= MIN_JOINT_SCORE
-  const unit = Math.max(2, overlay.width / 160)
   ctx.lineWidth = unit
   ctx.lineCap = 'round'
   ctx.strokeStyle = color

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { agenticApi } from '@/lib/api'
@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { SpreadsheetEditor, type SheetCellStyles, type SheetChartConfig, type SheetDimensions } from '@/components/SpreadsheetEditor'
 import { AssistantPanel } from '@/components/agentic/AssistantPanel'
+import { AssistantLauncher, useFloatingDrag, type FloatingPoint } from '@/components/agentic/AssistantLauncher'
 import type { AssistantOp } from '@/lib/agenticAssistant'
 import { ArtifactPreviews, extractArtifacts, hasArtifacts, type NodeArtifacts } from '@/components/agentic/NodeArtifacts'
 import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
@@ -100,6 +101,7 @@ const CATEGORY_STYLE: Record<string, { dot: string; soft: string; ink: string; i
   'Machine Learning': { dot: '#15803d', soft: 'bg-green-50 border-green-200', ink: 'text-green-700', icon: Network },
   Visualizzazioni: { dot: '#c2410c', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-700', icon: BarChart3 },
   Chatbot: { dot: '#4338ca', soft: 'bg-indigo-50 border-indigo-200', ink: 'text-indigo-700', icon: MessageSquareText },
+  Database: { dot: '#1d4ed8', soft: 'bg-blue-50 border-blue-200', ink: 'text-blue-700', icon: Database },
   Cicli: { dot: '#0e7490', soft: 'bg-cyan-50 border-cyan-200', ink: 'text-cyan-700', icon: RefreshCw },
   Controllo: { dot: '#a16207', soft: 'bg-yellow-50 border-yellow-200', ink: 'text-yellow-700', icon: GitBranch },
   Piattaforma: { dot: '#be123c', soft: 'bg-rose-50 border-rose-200', ink: 'text-rose-700', icon: Cloud },
@@ -233,6 +235,12 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantBusy, setAssistantBusy] = useState(false)
+  const [assistantWorking, setAssistantWorking] = useState(false)
+  const [assistantPos, setAssistantPos] = useState<FloatingPoint>(() => {
+    try { const stored = JSON.parse(readStored('dataflow-assistant-pos') || 'null'); if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return { x: stored.x, y: stored.y } } catch { /* default */ }
+    return { x: 24, y: 96 }
+  })
+  const mainRef = useRef<HTMLElement>(null)
   const [fullscreen, setFullscreen] = useState(() => readStored('dataflow-fullscreen') === '1')
   const toggleFullscreen = () => setFullscreen((current) => { writeStored('dataflow-fullscreen', current ? '0' : '1'); return !current })
   const [error, setError] = useState('')
@@ -756,7 +764,9 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       setNodes((current) => current.map((item) => item.instanceId === currentNode.instanceId ? { ...item, status: 'running' } : item))
       setNodeErrors((current) => ({ ...current, [currentNode.instanceId]: '' }))
       try {
-        const response = await agenticApi.executeNode({ id: currentNode.id, instanceId: currentNode.instanceId, config: currentNode.config }, inputValues)
+        // Named tables (db.*) live in the saved workflow, so it must exist before a single node can run.
+        const ownerId = currentNode.id.startsWith('db.') ? await persist() : null
+        const response = await agenticApi.executeNode({ id: currentNode.id, instanceId: currentNode.instanceId, config: currentNode.config }, inputValues, ownerId)
         const result = response.data.output || {}
         resolved[currentNode.instanceId] = result
         setOutputs((current) => ({ ...current, [currentNode.instanceId]: result }))
@@ -922,6 +932,43 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       setSelectedId(op.node.instanceId); setSelectedIds(new Set([op.node.instanceId]))
       window.setTimeout(() => focusCamera(op.node.instanceId), 80)
     } else if (op.type === 'connect') setEdges((current) => [...current, op.edge as unknown as Edge])
+    else if (op.type === 'replace_node') {
+      setNodes((current) => current.map((item) => item.instanceId === op.node.instanceId ? { ...item, id: op.node.id, status: 'idle', config: op.node.config } : item))
+      setOutputs((current) => { const next = { ...current }; delete next[op.node.instanceId]; return next })
+      setNodeErrors((current) => ({ ...current, [op.node.instanceId]: '' }))
+    } else if (op.type === 'remove_edge') setEdges((current) => current.filter((edge) => edge.id !== op.edgeId))
+    else if (op.type === 'remove_node') {
+      setNodes((current) => current.filter((item) => item.instanceId !== op.instanceId))
+      setEdges((current) => current.filter((edge) => edge.from !== op.instanceId && edge.to !== op.instanceId))
+      setSelectedId((current) => current === op.instanceId ? '' : current)
+      setOutputs((current) => { const next = { ...current }; delete next[op.instanceId]; return next })
+    } else if (op.type === 'set_config') {
+      setNodes((current) => current.map((item) => item.instanceId === op.instanceId
+        ? { ...item, status: 'idle', config: op.config } : item))
+      setOutputs((current) => { const next = { ...current }; delete next[op.instanceId]; return next })
+      setNodeErrors((current) => ({ ...current, [op.instanceId]: '' }))
+    }
+  }
+  // Floating assistant: free drag, then it lands on the same dot grid the nodes snap to (aligned with the visible dots).
+  const snapAssistant = useCallback((point: FloatingPoint): FloatingPoint => snapDots
+    ? { x: pan.x + snapValue((point.x - pan.x) / zoom, snapDots) * zoom, y: pan.y + snapValue((point.y - pan.y) / zoom, snapDots) * zoom }
+    : point, [snapDots, pan.x, pan.y, zoom])
+  const persistAssistantPos = useCallback((point: FloatingPoint) => writeStored('dataflow-assistant-pos', JSON.stringify(point)), [])
+  const assistantDrag = useFloatingDrag(assistantPos, setAssistantPos, mainRef, snapAssistant, persistAssistantPos)
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'j') { event.preventDefault(); setAssistantOpen((open) => !open) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  // The icon turns into the panel: the chat opens where the icon was and stays inside the canvas.
+  const assistantPanelStyle = (): CSSProperties => {
+    const rect = mainRef.current?.getBoundingClientRect()
+    const width = Math.min(400, (rect?.width || 1000) - 24), height = rect?.height || 700
+    const left = Math.min(Math.max(8, assistantPos.x), Math.max(8, (rect?.width || 1000) - width - 8))
+    const top = Math.min(Math.max(8, assistantPos.y), Math.max(8, height - 360))
+    return { left, top, height: Math.min(600, Math.max(320, height - top - 12)) }
   }
   const assistantTitle = (value: string) => setTitle((current) => (!current.trim() || ['Esperimento di regressione', 'Workflow senza titolo'].includes(current.trim()) ? value : current))
 
@@ -1018,7 +1065,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         <div className="min-h-0 flex-1 overflow-y-auto p-2">{grouped.map(({ category, items }) => { const style = CATEGORY_STYLE[category]; const Icon = style.icon; const shut = collapsed.has(category); return <section key={category}><button onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next })} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"><span className="h-2 w-2 rounded-full" style={{ background: style.dot }} /><span className="flex-1 text-left">{category}</span><span>{items.length}</span>{shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>{!shut && <div className="space-y-1 pb-2">{items.map((item) => <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-dataflow-node', item.id)} onDoubleClick={() => addNode(item.id, undefined, undefined, true)} title="Trascina sul canvas, oppure doppio clic per aggiungerlo e collegarlo al nodo selezionato" className="group flex w-full items-start gap-2.5 rounded-xl border border-transparent px-2 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-700">{item.label}</span><span className="block line-clamp-2 text-[10px] leading-4 text-slate-400">{item.description}</span><span className="mt-1 block truncate text-[8px] font-bold text-slate-400">{item.inputs.map((port) => port.type).join(' + ') || 'SOURCE'} → {item.outputs.map((port) => port.type).join(' + ')}</span></span><GripVertical className="mt-1 h-3.5 w-3.5 text-slate-200" /></button>)}</div>}</section> })}</div>
       </aside>
 
-      <main className="relative min-w-0 flex-1 overflow-hidden bg-[var(--ds-canvas)]">
+      <main ref={mainRef} className="relative min-w-0 flex-1 overflow-hidden bg-[var(--ds-canvas)]">
         <style>{DATAFLOW_CSS}</style>
         <div className="absolute left-3 top-3 z-30 flex flex-wrap items-center gap-2">
           <div className="flex rounded-full p-1 text-slate-600" style={PILL_STYLE}><button onClick={() => zoomBy(1 / 1.2)} className="p-2" title="Riduci"><ZoomOut className="h-4 w-4" /></button><span className="w-11 py-2 text-center text-[10px] font-black">{Math.round(zoom * 100)}%</span><button onClick={() => zoomBy(1.2)} className="p-2" title="Ingrandisci"><ZoomIn className="h-4 w-4" /></button><button onClick={() => { setZoom(.75); setPan({ x: 60, y: 60 }) }} className="p-2" title="Vista iniziale"><Maximize2 className="h-4 w-4" /></button></div>
@@ -1111,12 +1158,14 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         </div>
         <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-9rem)] truncate rounded-full px-4 py-2 text-[10px] text-slate-500" style={PILL_STYLE}><MousePointer2 className="mr-1 inline h-3 w-3" /> Trascina lo sfondo per spostarti · Shift+trascina per selezione multipla · rotella per zoom · doppio clic in libreria aggiunge e collega al nodo selezionato · rilascia un collegamento sul corpo di un nodo per scegliere la porta automaticamente</div>
         {assistantBusy && <div className="absolute inset-0 z-[25] cursor-progress" aria-hidden="true" />}
-        {assistantOpen && <AssistantPanel
-          nodeCount={nodes.length} labelOf={(nodeId) => specOfId(nodeId)?.label || nodeId}
+        <AssistantPanel
+          open={assistantOpen} workflowId={workflowId} style={assistantPanelStyle()} onHeaderPointerDown={(event) => assistantDrag.begin(event)} onWorking={setAssistantWorking}
+          nodeCount={nodes.length} selectedId={selectedId || null} labelOf={(nodeId) => specOfId(nodeId)?.label || nodeId}
           snapshot={() => ({ nodes: nodes as never, edges: edges as never })}
           restore={(snap) => { setNodes(snap.nodes as unknown as CanvasNode[]); setEdges(snap.edges as unknown as Edge[]); setOutputs({}); setNodeErrors({}) }}
           reset={() => { setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); clearFocus() }}
-          applyOp={assistantApply} setLocked={setAssistantBusy} onTitle={assistantTitle} onClose={() => setAssistantOpen(false)} />}
+          applyOp={assistantApply} setLocked={setAssistantBusy} onTitle={assistantTitle} onClose={() => setAssistantOpen(false)} />
+        {!assistantOpen && <AssistantLauncher pos={assistantDrag.clamp(assistantPos)} open={assistantOpen} working={assistantWorking} dragging={assistantDrag.dragging} onPointerDown={(event) => assistantDrag.begin(event, () => setAssistantOpen((open) => !open))} onToggle={() => setAssistantOpen((open) => !open)} />}
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
         {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{error}</span><button onClick={() => setError('')} aria-label="Chiudi errore"><X className="h-3.5 w-3.5" /></button></div>}

@@ -1114,15 +1114,15 @@ export default function TeacherClassesSessionsManager({
                         <>
                           {visibleSessions.length > 0 && (
                             <>
-                              <div className="overflow-hidden rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25">
-                                <div className="hidden grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] gap-x-4 border-b border-slate-300/70 bg-slate-100/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-white/15 dark:bg-white/[0.06] lg:grid">
+                              <div className="rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25">
+                                <div className="hidden rounded-t-2xl grid-cols-[6rem_minmax(0,1fr)_9.5rem_5.5rem_9.5rem] gap-x-4 border-b border-slate-300/70 bg-slate-100/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-white/15 dark:bg-white/[0.06] lg:grid">
                                   <span>{isEnglish ? 'Status' : 'Stato'}</span>
                                   <span>{isEnglish ? 'Session' : 'Sessione'}</span>
                                   <span>{isEnglish ? 'Students · Created' : 'Studenti · Creata'}</span>
                                   <span>{isEnglish ? 'Code' : 'Codice'}</span>
                                   <span className="text-right">{isEnglish ? 'Actions' : 'Azioni'}</span>
                                 </div>
-                                <div className="divide-y divide-slate-200/80 dark:divide-white/10">
+                                <div className="divide-y divide-slate-200/80 dark:divide-white/10 [&>*:first-child]:rounded-t-2xl [&>*:last-child]:rounded-b-2xl">
                                   {visibleSessions.map((session) => renderSessionLine(session))}
                                 </div>
                               </div>
@@ -1139,7 +1139,7 @@ export default function TeacherClassesSessionsManager({
                                 <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showEnded ? 'rotate-90' : ''}`} />
                                 {isEnglish ? 'Ended sessions' : 'Sessioni terminate'} ({endedSessions.length})
                               </button>
-                              {showEnded && <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25"><div className="divide-y divide-slate-200/80 dark:divide-white/10">{endedSessions.map((session) => renderSessionLine(session))}</div></div>}
+                              {showEnded && <div className="mt-1.5 overflow-hidden rounded-2xl border border-slate-300/70 bg-white dark:border-white/15 dark:bg-black/25"><div className="divide-y divide-slate-200/80 dark:divide-white/10 [&>*:first-child]:rounded-t-2xl [&>*:last-child]:rounded-b-2xl">{endedSessions.map((session) => renderSessionLine(session))}</div></div>}
                             </div>
                           )}
                         </>
@@ -1416,7 +1416,7 @@ function SessionLine({
   const statusText = isActive ? 'text-emerald-600 dark:text-emerald-400' : isPaused ? 'text-orange-600 dark:text-orange-400' : 'text-slate-500'
   // The session selected in the navbar gets a yellow outline only: the surface stays neutral so text stays readable in dark mode.
   const rowSurface = isCurrent
-    ? 'outline outline-2 -outline-offset-2 outline-yellow-400'
+    ? 'rounded-2xl outline outline-2 -outline-offset-2 outline-yellow-400'
     : 'hover:bg-slate-900/[0.03] dark:hover:bg-white/[0.05]'
   const openSession = () => navigate(`/teacher/sessions/${session.id}`)
   const coTeachers = session.co_teachers ?? []

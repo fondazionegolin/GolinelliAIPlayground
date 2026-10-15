@@ -26,25 +26,35 @@ export interface RagSession {
 }
 
 const STORAGE_KEY = 'student_rag_sessions'
+const TEACHER_STORAGE_KEY = 'teacher_rag_sessions'
 
-export function getRagSessions(): RagSession[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-  } catch { return [] }
+export function makeRagSessionStore(storageKey: string) {
+  const get = (): RagSession[] => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || '[]')
+    } catch { return [] }
+  }
+  return {
+    get,
+    save(session: RagSession): void {
+      const sessions = get()
+      const idx = sessions.findIndex((s) => s.id === session.id)
+      if (idx >= 0) sessions[idx] = session
+      else sessions.unshift(session)
+      try { localStorage.setItem(storageKey, JSON.stringify(sessions.slice(0, 50))) } catch { /* quota */ }
+    },
+    remove(id: string): void {
+      try { localStorage.setItem(storageKey, JSON.stringify(get().filter((s) => s.id !== id))) } catch { /* noop */ }
+    },
+  }
 }
 
-export function saveRagSession(session: RagSession): void {
-  const sessions = getRagSessions()
-  const idx = sessions.findIndex((s) => s.id === session.id)
-  if (idx >= 0) sessions[idx] = session
-  else sessions.unshift(session)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, 50)))
-}
+const studentStore = makeRagSessionStore(STORAGE_KEY)
+export const teacherRagSessionStore = makeRagSessionStore(TEACHER_STORAGE_KEY)
 
-export function deleteRagSession(id: string): void {
-  const sessions = getRagSessions().filter((s) => s.id !== id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-}
+export const getRagSessions = studentStore.get
+export const saveRagSession = studentStore.save
+export const deleteRagSession = studentStore.remove
 
 export function createRagSession(): RagSession {
   return {

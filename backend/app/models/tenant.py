@@ -28,6 +28,11 @@ class Tenant(Base):
     # ── Owner (solo per SCHOOL): persona fisica che gestisce gli inviti ─────
     owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
+    # ── Registro MIM ────────────────────────────────────────────────────────
+    # Codice meccanografico certificato dal registro pubblico del MIM.
+    mechanographic_code = Column(String(16), nullable=True, unique=True, index=True)
+    registry_verified = Column(Boolean, nullable=False, default=False, server_default="false")
+
     # ── Limiti strutturali (configurabili dall'admin) ────────────────────────
     max_teachers = Column(Integer, nullable=False, default=5, server_default="5")
     max_students_per_teacher = Column(Integer, nullable=False, default=100, server_default="100")

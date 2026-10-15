@@ -145,7 +145,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
   const [mode, setMode] = useState<Mode>(newMode ?? 'image')
   const [id, setId] = useState<string | null>(projectId)
   const [name, setName] = useState('Nuovo progetto')
-  const [classes, setClasses] = useState<ClassState[]>(() => [emptyClass(0, 'Classe 1'), emptyClass(1, 'Classe 2')])
+  const [classes, setClasses] = useState<ClassState[]>(() => (newMode === 'face' ? [emptyClass(0, 'Neutro'), emptyClass(1, 'Felice')] : [emptyClass(0, 'Classe 1'), emptyClass(1, 'Classe 2')]))
   const [loading, setLoading] = useState(Boolean(projectId))
   const [engineReady, setEngineReady] = useState(false)
   const [engineError, setEngineError] = useState(false)
@@ -283,7 +283,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       setClasses((prev) => prev.map((c) => ({ ...c, samples: merged(c) })))
       done.forEach((_value, id) => rawFrames.current.delete(id))
       rejected.forEach((id) => rawFrames.current.delete(id))
-      if (rejected.size) toast({ title: `${rejected.size} ${rejected.size === 1 ? 'esempio scartato' : 'esempi scartati'}`, description: currentMode === 'pose' ? 'In quei fotogrammi non si vedevano le spalle.' : currentMode === 'hand' ? 'In quei fotogrammi non si vedeva la mano.' : 'Immagini non leggibili.' })
+      if (rejected.size) toast({ title: `${rejected.size} ${rejected.size === 1 ? 'esempio scartato' : 'esempi scartati'}`, description: currentMode === 'pose' ? 'In quei fotogrammi non si vedevano le spalle.' : currentMode === 'hand' ? 'In quei fotogrammi non si vedeva la mano.' : currentMode === 'face' ? 'In quei fotogrammi non si vedeva il viso.' : 'Immagini non leggibili.' })
 
       // 3. train the classifier head
       setProgress({ phase: 'Addestro il modello…', done: 0, total: 0 })
@@ -466,7 +466,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       } else {
         const canvas = wholeFrame(bitmap)
         const found = await extractFeatures(mode as Landmark, canvas, true)
-        if (!found) { toast({ title: mode === 'pose' ? 'Non trovo una persona nella foto' : 'Non trovo una mano nella foto' }); return }
+        if (!found) { toast({ title: mode === 'pose' ? 'Non trovo una persona nella foto' : mode === 'face' ? 'Non trovo un viso nella foto' : 'Non trovo una mano nella foto' }); return }
         setTestResult({ thumb: skeletonThumbnail(canvas, found.overlay), probs: predict(head.head, found.vector), classIds: head.classIds })
       }
     } finally { bitmap.close() }
@@ -507,9 +507,10 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
   const totalSamples = classes.reduce((sum, c) => sum + c.samples.length, 0)
   const smallest = classes.reduce((min, c) => Math.min(min, c.samples.length), Infinity)
   const recordDisabled = camera !== 'on' || training
-  const noun = mode === 'pose' ? 'persona' : mode === 'hand' ? 'mano' : 'oggetto'
+  const noun = mode === 'pose' ? 'persona' : mode === 'hand' ? 'mano' : mode === 'face' ? 'espressione' : 'oggetto'
   const tip = mode === 'pose' ? 'Mettiti a una distanza in cui si vedano spalle e braccia. Cambia posizione tra uno scatto e l’altro.'
     : mode === 'hand' ? 'Mostra una mano alla volta e cambia leggermente posizione e distanza.'
+    : mode === 'face' ? 'Inquadra il viso ben illuminato e fai l’espressione in modo chiaro (anche un po’ esagerata). Muovi leggermente la testa tra uno scatto e l’altro e prova anche con altre persone.'
     : 'Usa angolazioni, sfondi e luci diversi.'
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>

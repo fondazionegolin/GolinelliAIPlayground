@@ -13,7 +13,7 @@
  *   compact       – smaller mic icon (for chat sidebar)
  */
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Mic,
   Square,
@@ -26,6 +26,7 @@ import {
 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from 'react-i18next'
+import { getApiAuthHeaders } from '@/lib/api'
 
 interface VoiceRecorderProps {
   onInsertText: (text: string) => void
@@ -35,9 +36,11 @@ interface VoiceRecorderProps {
   transcribeUrl?: string
   /** Hide the translate-to-language control (the /stt/translate endpoint also requires auth). */
   allowTranslate?: boolean
+  /** Reports idle / recording / processing / review so a host can keep the recorder mounted while it works. */
+  onStateChange?: (state: RecorderState) => void
 }
 
-type RecorderState = 'idle' | 'recording' | 'processing' | 'review'
+export type RecorderState = 'idle' | 'recording' | 'processing' | 'review'
 
 const LANGUAGES = [
   { code: 'it', label: 'Italiano', flag: '🇮🇹' },
@@ -54,9 +57,10 @@ const LANGUAGES = [
 
 const NUM_BARS = 12
 
-export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '/api/v1/stt/transcribe', allowTranslate = true }: VoiceRecorderProps) {
+export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '/api/v1/stt/transcribe', allowTranslate = true, onStateChange }: VoiceRecorderProps) {
   const { t } = useTranslation()
   const [recorderState, setRecorderState] = useState<RecorderState>('idle')
+  useEffect(() => { onStateChange?.(recorderState) }, [recorderState, onStateChange])
   const [transcription, setTranscription] = useState('')
   const [detectedLanguage, setDetectedLanguage] = useState('')
   const [translateTarget, setTranslateTarget] = useState('en')
@@ -76,8 +80,11 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
-  const getToken = () =>
-    localStorage.getItem('student_token') || localStorage.getItem('teacher_token') || ''
+  // Same auth the rest of the app uses (cookie session or student token); a legacy bearer token is added when present.
+  const authHeaders = (): Record<string, string> => {
+    const legacy = localStorage.getItem('student_token') || localStorage.getItem('teacher_token') || ''
+    return { ...(legacy ? { Authorization: `Bearer ${legacy}` } : {}), ...getApiAuthHeaders() }
+  }
 
   // ─── recording ──────────────────────────────────────────────────────────────
 
@@ -166,7 +173,8 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
 
       const resp = await fetch(transcribeUrl, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
+        headers: authHeaders(),
+        credentials: 'include',
         body: fd,
       })
 
@@ -193,10 +201,8 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
     try {
       const resp = await fetch('/api/v1/stt/translate', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           text: transcription,
           source_language: detectedLanguage,
@@ -359,7 +365,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   // Recording: inline waveform
   if (recorderState === 'recording') {
     return (
-      <div className="flex items-center gap-2 px-1 py-0.5">
+      <div className="flex items-center gap-2 px-1 py-0.5" data-voice-recorder="">
         {/* Live waveform */}
         <div className="flex items-end gap-[2px] h-5" aria-hidden="true">
           {barHeights.map((h, i) => (
@@ -411,7 +417,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
 
   // Idle
   return (
-    <div className="relative flex-shrink-0">
+    <div className="relative flex-shrink-0" data-voice-recorder="">
       <button
         onClick={startRecording}
         className={`${

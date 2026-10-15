@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { formatInternalCredits, toCredits, fromCredits } from '@/lib/credits'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, creditsApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,7 +10,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   Check, X, Clock, Key, UserPlus, Mail, Trash2,
   GraduationCap, Search, ChevronDown, ChevronUp, ChevronsUpDown,
-  Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
+  Users, BookOpen, Zap, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
   Building2,
 } from '@/components/icons'
@@ -70,7 +71,7 @@ interface CsvRow {
 }
 
 /* ─── helpers ─────────────────────────────────────────── */
-const formatCurrency = (v: number) => `€ ${Number(v || 0).toFixed(2)}`
+const formatCurrency = (v: number) => formatInternalCredits(v)
 const formatDate = (raw?: string | null) => {
   if (!raw) return '—'
   const d = new Date(raw)
@@ -278,7 +279,7 @@ export default function TeachersPage() {
 
   const setCreditLimitMutation = useMutation({
     mutationFn: ({ teacherId, cap }: { teacherId: string; cap: number }) =>
-      adminApi.setTeacherCreditLimit(teacherId, cap),
+      adminApi.setTeacherCreditLimit(teacherId, fromCredits(cap)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       setEditingCapId(null)
@@ -305,7 +306,7 @@ export default function TeachersPage() {
 
   const bulkCapMutation = useMutation({
     mutationFn: (cap: number) =>
-      adminApi.setTeacherCreditLimitsBulk(Array.from(selectedTeacherIds), cap),
+      adminApi.setTeacherCreditLimitsBulk(Array.from(selectedTeacherIds), fromCredits(cap)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       setBulkCap('')
@@ -438,7 +439,7 @@ export default function TeachersPage() {
     const header = [
       'nome', 'cognome', 'email', 'ruolo', 'verificato', 'scuola',
       'ultimo_accesso', 'data_registrazione', 'sessioni', 'studenti',
-      'limite_mensile_eur', 'utilizzo_mensile_eur', 'spesa_periodo_eur', 'chiamate_periodo',
+      'limite_mensile_crediti', 'utilizzo_mensile_crediti', 'consumo_periodo_crediti', 'chiamate_periodo',
     ]
     const body = teachers.map((t) => [
       t.first_name || '',
@@ -451,9 +452,9 @@ export default function TeachersPage() {
       t.created_at || '',
       t.session_count,
       t.total_student_count,
-      t.monthly_cap.toFixed(2),
-      t.monthly_usage.toFixed(2),
-      t.period_cost.toFixed(2),
+      toCredits(t.monthly_cap).toFixed(0),
+      toCredits(t.monthly_usage).toFixed(1),
+      toCredits(t.period_cost).toFixed(1),
       t.period_calls,
     ].map(escapeCsv).join(','))
     const blob = new Blob(['﻿' + [header.join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8;' })
@@ -999,11 +1000,11 @@ export default function TeachersPage() {
               </Button>
               <div className="h-6 w-px bg-indigo-200 hidden lg:block" />
               <div className="flex items-center gap-1">
-                <span className="text-xs text-slate-500">€</span>
+                <span className="text-xs text-slate-500">cr.</span>
                 <Input
                   type="number"
                   min="0"
-                  step="0.5"
+                  step="10"
                   value={bulkCap}
                   onChange={(e) => setBulkCap(e.target.value)}
                   placeholder="Limite/mese"
@@ -1088,7 +1089,7 @@ export default function TeachersPage() {
                       </th>
                       <th className="px-3 py-3 text-left font-medium">
                         <span className="flex items-center gap-1">
-                          <Euro className="h-3.5 w-3.5" />
+                          <Zap className="h-3.5 w-3.5" />
                           Crediti mensili
                         </span>
                       </th>
@@ -1189,11 +1190,11 @@ export default function TeachersPage() {
                         <td className="px-3 py-3 min-w-[140px]">
                           {editingCapId === teacher.id ? (
                             <div className="flex items-center gap-1">
-                              <span className="text-xs text-slate-400">€</span>
+                              <span className="text-xs text-slate-400">cr.</span>
                               <input
                                 type="number"
                                 min="0"
-                                step="0.5"
+                                step="10"
                                 className="w-16 h-6 border border-slate-300 rounded px-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
                                 value={editingCapValue}
                                 onChange={(e) => setEditingCapValue(e.target.value)}
@@ -1234,7 +1235,7 @@ export default function TeachersPage() {
                                   className="ml-0.5 text-slate-300 hover:text-slate-600 transition-colors"
                                   onClick={() => {
                                     setEditingCapId(teacher.id)
-                                    setEditingCapValue(String(teacher.monthly_cap))
+                                    setEditingCapValue(String(toCredits(teacher.monthly_cap)))
                                   }}
                                   title="Modifica limite"
                                 >

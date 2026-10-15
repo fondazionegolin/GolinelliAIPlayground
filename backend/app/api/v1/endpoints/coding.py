@@ -332,7 +332,11 @@ react-router-dom, recharts, framer-motion, clsx, date-fns, dayjs, zustand, immer
 react-hot-toast, canvas-confetti, uuid, nanoid, lodash, fuse.js, three, @react-three/fiber, @react-three/drei,
 cannon-es, p5, d3, chart.js, react-chartjs-2, tone, howler, matter-js, gsap, animejs, phaser, pixi.js,
 simplex-noise, seedrandom, mathjs, katex, marked, react-markdown, leaflet, react-leaflet, papaparse,
-qrcode.react, @tensorflow/tfjs. react e react-dom sono già forniti: NON elencarli. Usa solo ciò che serve.
+qrcode.react, @tensorflow/tfjs, @tensorflow/tfjs-core, @tensorflow/tfjs-converter, @tensorflow/tfjs-backend-webgl,
+@tensorflow/tfjs-backend-cpu, @mediapipe/tasks-vision, @tensorflow-models/face-landmarks-detection,
+@tensorflow-models/hand-pose-detection, @tensorflow-models/pose-detection, @tensorflow-models/coco-ssd,
+@tensorflow-models/mobilenet, @tensorflow-models/knn-classifier, @vladmandic/face-api, ml5, onnxruntime-web,
+@xenova/transformers, react-webcam. react e react-dom sono già forniti: NON elencarli. Usa solo ciò che serve.
 
 CAPACITÀ DELLA PIATTAFORMA (window.GolinelliAI, sempre disponibile, nessuna chiave necessaria):
 - chat({content, history}) -> {response}; chatStream({content, history, onToken}) -> {response}: come chat ma
@@ -348,10 +352,42 @@ CAPACITÀ DELLA PIATTAFORMA (window.GolinelliAI, sempre disponibile, nessuna chi
   media.microphone() / media.cameraAndMicrophone() -> MediaStream, e media.attach(videoElement, stream) per
   mostrarla (imposta playsInline/muted/autoplay e avvia la riproduzione). Gestiscono vincoli di riserva e
   messaggi chiari; la piattaforma mostra all'utente come concedere il permesso se il browser lo blocca.
+  REGOLA CRITICA DEL <video>: l'elemento <video ref={videoRef} playsInline muted autoPlay /> deve essere SEMPRE
+  presente nel JSX, MAI dentro {stato === 'attivo' && <video/>} né in un ternario: altrimenti videoRef.current è
+  null quando colleghi lo stream e la webcam non appare mai. Nascondilo con CSS (className/stile) finché non è
+  attivo. Sequenza giusta: stream = await media.camera(...); await media.attach(videoRef.current, stream); poi
+  setStato('attiva'). Non condizionare mai il setStato('attiva') all'esistenza del ref.
   Regole: chiedi l'accesso SOLO dopo un clic su un pulsante esplicito ("Attiva webcam"), mai all'avvio;
   mostra gli stati (in attesa del permesso, attiva, negata) e un pulsante "Riprova"; in caso di errore mostra
   error.message (gia in italiano); ferma le tracce (stream.getTracks().forEach(t => t.stop())) quando
   il componente si smonta o l'utente disattiva. MAI navigator.permissions.query per decidere se chiedere.
+- VISIONE E MACHINE LEARNING NEL BROWSER (volto, tratti del viso, mani, corpo): per riconoscere volto/mani/posa
+  usa SEMPRE il motore della piattaforma, già ospitato, veloce e senza configurazione:
+    const tracker = await window.GolinelliAI.ml.face()   // oppure .hand() / .pose() ; opzione {maxResults: 2}
+    const r = await tracker.detect(videoElement)          // una analisi; oppure
+    const stop = tracker.start(videoElement, { onResult: (r) => {...}, maxFps: 30 })  // continuo, stop() per fermarlo
+  Risultato r = { detected, width, height, faces | hands | poses }, coordinate NORMALIZZATE 0..1 (x destra, y giù):
+  moltiplica per larghezza/altezza del canvas (o del <video> mostrato). Se mostri il video specchiato (CSS scaleX(-1))
+  specchia anche l'overlay: x -> 1 - x.
+  - face: faces[i].landmarks (478 punti), faces[i].blendshapes ({jawOpen, mouthSmileLeft, eyeBlinkLeft, browInnerUp, ...}),
+    faces[i].features = { leftEye, rightEye, nose, mouthLeft, mouthRight, mouthTop, mouthBottom, chin, forehead (punti {x,y,z}),
+    eyeDistance, faceWidth, faceHeight, roll (rad), yaw (-0.5..0.5), mouthOpen 0..1, smile 0..1, eyesClosed 0..1,
+    leftEyeClosed, rightEyeClosed, browUp }. Per maschere/filtri/occhiali ancora gli oggetti a leftEye/rightEye/nose
+    e scala con eyeDistance/faceWidth, ruota con roll.
+  - hand: hands[i] = { handedness, landmarks (21), fingers:{thumb,index,middle,ring,pinky}, fingerCount,
+    gesture: 'fist'|'open'|'point'|'victory'|'thumbs_up'|'unknown', pinch 0..1, pinching }.
+  - pose: poses[i] = { landmarks (33), named: { nose, leftShoulder, rightShoulder, leftElbow, leftWrist, leftHip, ... } }.
+  ERRORI: in ogni catch di camera/tracker/modelli ML scrivi SEMPRE console.error('contesto:', err) con l'errore
+  reale e mostra all'utente anche err.message (in piccolo, sotto il messaggio amichevole). NON filtrare né
+  sostituire il messaggio con regex tipo /\\.js|undefined|CORS/: nascondere la causa rende il guasto non diagnosticabile.
+  Sequenza: ottieni lo stream con media.camera() e collegalo al <video> (sempre montato), crea il tracker UNA volta
+  (useRef/useEffect) e avvialo con tracker.start(videoRef.current, ...) quando il video ha frame; chiama stop() nel cleanup.
+  Gestisci loading ("Carico il modello…" la prima volta, qualche secondo) ed errori con messaggi chiari, e mostra sempre
+  uno stato anche quando detected === false ("Inquadra il volto"). NON caricare script legacy da CDN
+  (@mediapipe/face_mesh, hands, pose, camera_utils, face-api da <script>): sono fragili nel sandbox e non servono.
+  Altre librerie di ML/visione (face-api, tfjs models, ml5, onnxruntime-web, transformers.js, coco-ssd, mobilenet...) sono
+  consentite via package.json (elenco delle librerie sopra) per compiti che il motore della piattaforma non copre (oggetti, classificazione
+  immagini, testo): dichiara la dipendenza e importala; i pesi del modello si scaricano dal CDN ufficiale della libreria.
 - shared.get(key) / shared.set(key, value) / shared.append(key, item) / shared.subscribe(key, callback):
   stato CONDIVISO tra tutti quelli che usano la stessa app nella sessione (sondaggi, bacheche, classifiche,
   giochi a turni). Per raccogliere contributi di piu persone usa SEMPRE append (non si sovrascrivono a vicenda;
@@ -473,6 +509,27 @@ elencati sopra (compilazione, runtime o console). Obiettivo: far funzionare l'ap
 - Ragionamento BREVISSIMO (massimo 4 righe) + elenco "File:".
 """
 
+def _fix_escalation(attempt: int) -> str:
+    """Extra instructions for repeated automatic fix turns: the earlier patches did not clear the errors."""
+    if attempt < 2:
+        return ""
+    text = (
+        f"\nATTENZIONE: questo è il tentativo {attempt}. Le correzioni precedenti NON hanno risolto gli errori.\n"
+        "- Il file indicato dall'errore può essere corrotto o il vero guasto può stare altrove: controlla l'INTERO "
+        "file segnalato (righe stranamente duplicate, testo estraneo, righe '=== FILE' / '=== END', parentesi non chiuse) "
+        "e i file che lo importano.\n"
+        "- NON usare PATCH: riscrivi INTERI, con === FILE: path ===, i file coinvolti dagli errori.\n"
+        "- Un errore non risolto è peggio di una funzione in meno: semplifica o rimuovi la parte che causa l'errore "
+        "invece di insistere con lo stesso approccio.\n"
+    )
+    if attempt >= 4:
+        text += (
+            "- Se non sei certo della causa, riscrivi il componente problematico in versione minimale e robusta, "
+            "senza librerie esterne, mantenendo l'API (props/export) che gli altri file importano.\n"
+        )
+    return text
+
+
 # Polish turn driven by the visual review (screenshot + vision model).
 VISUAL_TURN_INSTRUCTIONS = """
 QUESTO È UN TURNO DI RIFINITURA VISIVA. Un revisore ha guardato uno screenshot dell'app in esecuzione e ha
@@ -519,6 +576,14 @@ ALLOWED_NPM_PACKAGES: dict[str, str] = {
     "mathjs": "^13.0.3", "katex": "^0.16.11", "marked": "^13.0.2", "react-markdown": "^9.0.1",
     "leaflet": "^1.9.4", "react-leaflet": "^4.2.1", "papaparse": "^5.4.1", "qrcode.react": "^3.1.0",
     "@tensorflow/tfjs": "^4.20.0",
+    # Machine learning / computer vision (run in the browser; model files are fetched from the library's CDN).
+    "@mediapipe/tasks-vision": "^0.10.14", "@tensorflow/tfjs-core": "^4.20.0", "@tensorflow/tfjs-converter": "^4.20.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.20.0", "@tensorflow/tfjs-backend-cpu": "^4.20.0",
+    "@tensorflow-models/face-landmarks-detection": "^1.0.5", "@tensorflow-models/hand-pose-detection": "^2.0.1",
+    "@tensorflow-models/pose-detection": "^2.1.3", "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow-models/mobilenet": "^2.1.1", "@tensorflow-models/knn-classifier": "^1.2.6",
+    "@vladmandic/face-api": "^1.7.13", "ml5": "^1.0.1", "onnxruntime-web": "^1.18.0",
+    "@xenova/transformers": "^2.17.2", "react-webcam": "^7.2.0",
 }
 _NPM_RANGE = re.compile(r"^[~^]?\d+(\.\d+){0,2}([-.][\w.]+)?$")
 
@@ -697,10 +762,65 @@ def _is_react_files(files: list[dict]) -> bool:
     return False
 
 
+_LEAKED_MARKER_RE = re.compile(r"^\s*={3,}\s*(FILE|PATCH|DELETE|END)\b.*$", re.IGNORECASE)
+_LEAKED_FILE_RE = re.compile(r"^\s*={3,}\s*FILE:\s*(.+?)\s*(?:={3,})?\s*$", re.IGNORECASE)
+
+
+def _has_leaked_markers(files: list[dict]) -> bool:
+    return any(
+        _LEAKED_MARKER_RE.match(line)
+        for f in files
+        for line in str(f.get("content") or "").split("\n")
+    )
+
+
+def _heal_leaked_markers(files: list[dict]) -> list[dict]:
+    """Repair files polluted by the generation wire format.
+
+    When the model writes a file marker the stream parser does not recognise (for example
+    ``=== FILE: x.tsx`` without the closing ``===``), the next file's text ends up inside the previous
+    file and the preview dies with a baffling compile error pointing at the wrong file. Cut every file at
+    the first stray marker and recover the files that leaked after it (when they do not exist yet).
+    """
+    healed: list[dict] = []
+    known = {str(f.get("path") or "").strip().lstrip("/") for f in files}
+    recovered: dict[str, list[str]] = {}
+    for f in files:
+        content = str(f.get("content") or "")
+        lines = content.split("\n")
+        idx = next((i for i, line in enumerate(lines) if _LEAKED_MARKER_RE.match(line)), None)
+        head = "\n".join(lines[:idx]).rstrip() + "\n" if idx is not None else ""
+        if idx is None or not head.strip():
+            healed.append(f)
+            continue
+        healed.append({**f, "content": head})
+        current: str | None = None
+        for line in lines[idx:]:
+            m = _LEAKED_FILE_RE.match(line)
+            if m:
+                path = m.group(1).strip().lstrip("/")
+                ok = path and ".." not in path.split("/") and not path.lower().endswith((".md", ".html", ".htm"))
+                current = path if ok and path not in known else None
+                if current:
+                    recovered.setdefault(current, [])
+                continue
+            if _LEAKED_MARKER_RE.match(line):
+                current = None
+                continue
+            if current:
+                recovered[current].append(line)
+    for path, body in recovered.items():
+        text = "\n".join(body).strip("\n")
+        if text.strip():
+            healed.append({"path": path, "content": text + "\n", "language": _lang_for_path(path)})
+    return healed
+
+
 def _normalize_generated_files(payload: dict) -> list[dict]:
     files = payload.get("files")
     if not isinstance(files, list):
         raise ValueError("Missing files array")
+    files = _heal_leaked_markers([f for f in files if isinstance(f, dict)])
 
     # Detect React up front (on the raw set) so we only strip the platform-owned HTML shell / entry
     # for React projects — legacy static projects legitimately ship their own index.html.
@@ -1268,7 +1388,9 @@ async def _coding_generate(messages: list[dict], system_prompt: str, *, temperat
 # client can never inject an arbitrary provider/model string. Unknown/empty -> configured default.
 CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
     "sonnet": ("anthropic", "claude-sonnet-4-6"),
+    "sonnet-5": ("anthropic", "claude-sonnet-5-5"),
     "haiku": ("anthropic", "claude-haiku-4-5-20251001"),
+    "haiku-5": ("anthropic", "claude-haiku-5-5"),
     "luna": ("openai", "gpt-5.6-luna"),
     # Compatibility for projects saved with the previous frontend key.
     "gpt-mini": ("openai", "gpt-5.6-luna"),
@@ -1278,9 +1400,9 @@ CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
 }
 
 
-# Claude models are temporarily disabled for students in the Coding Lab: students may only use
+# Students may only use DeepSeek and Claude Haiku 5.5 in the Coding Lab (other Claude models are off).
 # DeepSeek. Any other choice (incl. the platform default) is coerced to the DeepSeek default.
-STUDENT_CODING_MODEL_KEYS = {"deepseek-flash", "deepseek-pro"}
+STUDENT_CODING_MODEL_KEYS = {"deepseek-flash", "deepseek-pro", "haiku-5"}
 STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-flash"
 
 
@@ -1496,8 +1618,8 @@ async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
 
 def _parse_delimited_files(text: str) -> list[dict]:
     """Parse the '=== FILE: path ===\\n<content>' ... '=== END ===' format into file dicts."""
-    file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*===\s*$")
-    end_marker = re.compile(r"^===\s*END\s*===\s*$")
+    file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*(?:===)?\s*$")
+    end_marker = re.compile(r"^===\s*END\s*(?:===)?\s*$")
     out: list[dict] = []
     current_path: str | None = None
     current_lines: list[str] = []
@@ -3576,6 +3698,10 @@ async def generate_project_code_stream(
     request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
     base_context = f"Titolo progetto: {project_title}\n\n{request_label}:\n{user_prompt}{kb_context}"
     gen_provider, gen_model = _resolve_coding_model(body.model_key, is_student=actor.is_student)
+    fix_attempt = int(body.attempt or 1) if is_fix and not is_visual else 1
+    if fix_attempt >= 3:
+        # Repeated failures: the cheap model is not converging, switch to the strongest allowed one.
+        gen_provider, gen_model = CODING_MODEL_CHOICES["deepseek-pro" if actor.is_student else "sonnet"]
 
     def _sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
@@ -3597,7 +3723,7 @@ async def generate_project_code_stream(
             "  riusa gli STESSI nomi di componenti/funzioni/tipi gia presenti;\n"
             "- se aggiungi una libreria npm, aggiorna package.json (campo dependencies);\n"
             "- non scrivere index.html ne il file di entry (createRoot): sono della piattaforma.\n"
-            f"{(VISUAL_TURN_INSTRUCTIONS if is_visual else FIX_TURN_INSTRUCTIONS) if is_fix else ''}"
+            f"{(VISUAL_TURN_INSTRUCTIONS if is_visual else FIX_TURN_INSTRUCTIONS + _fix_escalation(fix_attempt)) if is_fix else ''}"
             f"{EDIT_FORMAT_INSTRUCTIONS}\n"
             f"Progetto attuale:\n{current_dump}"
         )
@@ -3643,10 +3769,10 @@ async def generate_project_code_stream(
             patches: dict[str, list[str]] = {}
             deleted: set[str] = set()
             current_kind = "file"  # "file" = whole content, "patch" = SEARCH/REPLACE blocks
-            file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*===\s*$")
-            patch_marker = re.compile(r"^===\s*PATCH:\s*(.+?)\s*===\s*$")
-            delete_marker = re.compile(r"^===\s*DELETE:\s*(.+?)\s*===\s*$")
-            end_marker = re.compile(r"^===\s*END\s*===\s*$")
+            file_marker = re.compile(r"^===\s*FILE:\s*(.+?)\s*(?:===)?\s*$")
+            patch_marker = re.compile(r"^===\s*PATCH:\s*(.+?)\s*(?:===)?\s*$")
+            delete_marker = re.compile(r"^===\s*DELETE:\s*(.+?)\s*(?:===)?\s*$")
+            end_marker = re.compile(r"^===\s*END\s*(?:===)?\s*$")
             # "- path: why" lines of the reasoning's closing "File:" list become the live checklist.
             plan_line = re.compile(r"^\s*[-*]\s*`?([\w@./-]+\.[A-Za-z0-9]+)`?\s*[:\u2014\u2013-]\s*(.+?)\s*$")
 
@@ -3794,7 +3920,7 @@ async def generate_project_code_stream(
             usage_prompt += est["prompt_tokens"]
             usage_completion += est["completion_tokens"]
 
-            if not generated and not patches and not deleted:
+            if not generated and not patches and not deleted and not _has_leaked_markers(prev_code_files):
                 yield _sse({"type": "error", "message": "La generazione non ha prodotto file validi. Riprova o cambia modello."})
                 return
 

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_current_admin, get_student_or_teacher
 from app.core.database import AsyncSessionLocal, get_db
-from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
+from app.models.agentic import AgenticAssistantConversation, AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.session import Session
 from app.models.user import User
 from app.services import agentic_assistant, agentic_assistant_agents
@@ -43,6 +43,7 @@ class ChatInput(BaseModel):
 class NodeExecute(BaseModel):
     node: dict[str, Any]
     inputs: dict[str, Any] = Field(default_factory=dict)
+    workflow_id: str | None = None  # needed by db.* nodes: named tables belong to a saved workflow
 
 
 class AssistantCompile(BaseModel):
@@ -61,10 +62,32 @@ class AssistantPlan(BaseModel):
     assumptions: list[str] = Field(default_factory=list, max_length=8)
     answers: list[dict[str, str]] = Field(default_factory=list, max_length=6)
     allow_destructive: bool = False
+    previous_blueprint: dict[str, Any] | None = None  # revise this plan instead of designing from scratch
+    feedback: str = Field(default="", max_length=2000)
+
+
+class AssistantEdit(BaseModel):
+    graph: dict[str, Any]
+    instruction: str = Field(min_length=1, max_length=2000)
+    selected: str | None = None
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=24)
+    allow_destructive: bool = False
 
 
 class AssistantLint(BaseModel):
     graph: dict[str, Any]
+
+
+class ConversationCreate(BaseModel):
+    workflow_id: UUID | None = None
+    title: str = Field(default="Nuova conversazione", max_length=180)
+    messages: list[dict[str, Any]] = Field(default_factory=list, max_length=400)
+
+
+class ConversationUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=180)
+    workflow_id: UUID | None = None
+    messages: list[dict[str, Any]] | None = Field(default=None, max_length=400)
 
 
 def _workflow_payload(workflow: AgenticWorkflow) -> dict[str, Any]:
@@ -207,6 +230,92 @@ def _dataset_payload(dataset: AgenticDataset) -> dict[str, Any]:
     }
 
 
+def _conversation_payload(item: AgenticAssistantConversation, with_messages: bool = True) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": str(item.id), "title": item.title,
+        "workflow_id": str(item.workflow_id) if item.workflow_id else None,
+        "message_count": len(item.messages or []),
+        "created_at": item.created_at.isoformat(), "updated_at": item.updated_at.isoformat(),
+    }
+    if with_messages:
+        payload["messages"] = item.messages or []
+    return payload
+
+
+async def _owned_conversation(db: AsyncSession, conversation_id: UUID, admin: User) -> AgenticAssistantConversation:
+    result = await db.execute(select(AgenticAssistantConversation).where(
+        AgenticAssistantConversation.id == conversation_id,
+        AgenticAssistantConversation.created_by_user_id == admin.id,
+    ))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Conversazione non trovata")
+    return item
+
+
+@router.get("/assistant/conversations")
+async def list_assistant_conversations(
+    admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    workflow_id: UUID | None = None,
+):
+    """Saved assistant chats of the user, newest first; `workflow_id` narrows them to one workflow."""
+    query = select(AgenticAssistantConversation).where(AgenticAssistantConversation.created_by_user_id == admin.id)
+    if workflow_id:
+        query = query.where(AgenticAssistantConversation.workflow_id == workflow_id)
+    result = await db.execute(query.order_by(AgenticAssistantConversation.updated_at.desc()).limit(50))
+    return {"conversations": [_conversation_payload(item, with_messages=False) for item in result.scalars()]}
+
+
+@router.post("/assistant/conversations", status_code=status.HTTP_201_CREATED)
+async def create_assistant_conversation(
+    request: ConversationCreate, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if request.workflow_id:
+        await _owned_workflow(db, request.workflow_id, admin)
+    item = AgenticAssistantConversation(
+        created_by_user_id=admin.id, workflow_id=request.workflow_id,
+        title=request.title.strip() or "Nuova conversazione", messages=request.messages,
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return _conversation_payload(item)
+
+
+@router.get("/assistant/conversations/{conversation_id}")
+async def get_assistant_conversation(
+    conversation_id: UUID, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return _conversation_payload(await _owned_conversation(db, conversation_id, admin))
+
+
+@router.put("/assistant/conversations/{conversation_id}")
+async def update_assistant_conversation(
+    conversation_id: UUID, request: ConversationUpdate,
+    admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+):
+    item = await _owned_conversation(db, conversation_id, admin)
+    if request.title is not None:
+        item.title = request.title.strip() or item.title
+    if request.workflow_id is not None:
+        await _owned_workflow(db, request.workflow_id, admin)
+        item.workflow_id = request.workflow_id
+    if request.messages is not None:
+        item.messages = request.messages
+    await db.commit()
+    await db.refresh(item)
+    return _conversation_payload(item)
+
+
+@router.delete("/assistant/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_assistant_conversation(
+    conversation_id: UUID, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+):
+    item = await _owned_conversation(db, conversation_id, admin)
+    await db.delete(item)
+    await db.commit()
+
+
 @router.get("/assistant/catalog")
 async def assistant_catalog(admin: Annotated[User, Depends(get_current_admin)]):
     del admin
@@ -229,10 +338,12 @@ async def assistant_intake(
         raise HTTPException(status_code=502, detail="L'assistente non riesce a rispondere in questo momento: riprova.") from exc
 
 
-@router.post("/assistant/plan")
-async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(get_current_admin)]):
-    """The architect designs the workflow. SSE: ``status`` / ``ping`` / ``result`` (blueprint, graph, ops, estimate, issues) / ``error``."""
-    actor = SimpleNamespace(id=admin.id, tenant_id=admin.tenant_id)  # the stream outlives the request-scoped session
+def _assistant_stream(admin: User, run: Any, failure: str) -> StreamingResponse:
+    """SSE wrapper for the long model calls: ``status`` / ``ping`` while it works, then one ``result`` or ``error``.
+
+    ``run(session, actor, report)`` returns the result dict; it gets its own session because the stream outlives the request's.
+    """
+    actor = SimpleNamespace(id=admin.id, tenant_id=admin.tenant_id)
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     async def report(message: str) -> None:
@@ -241,16 +352,13 @@ async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(
     async def work() -> None:
         try:
             async with AsyncSessionLocal() as session:
-                result = await agentic_assistant_agents.run_architect(
-                    session, actor, request.intent, request.understanding, request.assumptions, request.answers,
-                    allow_destructive=request.allow_destructive, on_status=report,
-                )
+                result = await run(session, actor, report)
             await queue.put({"type": "result", **result})
         except ValueError as exc:
             await queue.put({"type": "error", "message": str(exc)})
         except Exception:
-            logger.exception("assistant plan failed")
-            await queue.put({"type": "error", "message": "L'assistente non è riuscito a progettare il workflow: riprova."})
+            logger.exception("assistant stream failed")
+            await queue.put({"type": "error", "message": failure})
         finally:
             await queue.put(None)
 
@@ -271,6 +379,34 @@ async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(
                 task.cancel()
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/assistant/plan")
+async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(get_current_admin)]):
+    """The architect designs (or, with ``previous_blueprint`` + ``feedback``, revises) the workflow. SSE: status / ping / result / error."""
+    async def run(session: AsyncSession, actor: Any, report: Any) -> dict[str, Any]:
+        return await agentic_assistant_agents.run_architect(
+            session, actor, request.intent, request.understanding, request.assumptions, request.answers,
+            allow_destructive=request.allow_destructive, on_status=report,
+            previous_blueprint=request.previous_blueprint, feedback=request.feedback,
+        )
+    return _assistant_stream(admin, run, "L'assistente non è riuscito a progettare il workflow: riprova.")
+
+
+@router.post("/assistant/edit")
+async def assistant_edit(request: AssistantEdit, admin: Annotated[User, Depends(get_current_admin)]):
+    """Edit the workflow already on the canvas. SSE result: ``graph``, canvas ``ops`` (diff), human ``summary``, ``issues``, ``explanation``."""
+    try:
+        validate_graph(request.graph)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Il Canvas non è valido: {exc}") from exc
+
+    async def run(session: AsyncSession, actor: Any, report: Any) -> dict[str, Any]:
+        return await agentic_assistant_agents.run_editor(
+            session, actor, request.graph, request.instruction, request.selected, request.history,
+            allow_destructive=request.allow_destructive, on_status=report,
+        )
+    return _assistant_stream(admin, run, "L'assistente non è riuscito a preparare la modifica: riprova.")
 
 
 @router.post("/assistant/compile")
@@ -360,7 +496,7 @@ async def execute_single_node(
     admin: Annotated[User, Depends(get_current_admin)],
 ):
     try:
-        return await execute_node_isolated(request.node, request.inputs, db=db, actor=admin)
+        return await execute_node_isolated(request.node, request.inputs, db=db, actor=admin, workflow_id=request.workflow_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

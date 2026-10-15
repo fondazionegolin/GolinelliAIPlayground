@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createFontIcon } from '@/components/icons/createFontIcon'
 import { Brain, Camera, Copy, Download, Hand, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Sparkles, Trash2, Upload, User, X, Zap } from '@/components/icons'
 import { MODE_LABEL, modeOfEngine, type Mode } from '@/lib/mlFeatures'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
@@ -15,10 +16,13 @@ const relative = (iso: string) => {
   return new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+const Smile = createFontIcon('Smile', 'smile')
+
 const MODE_META: Record<Mode, { icon: typeof Camera; color: string; blurb: string }> = {
   image: { icon: ImageIcon, color: '#3ea9f4', blurb: 'Riconosce oggetti, disegni, scritte: tutto ciò che si può inquadrare.' },
   pose: { icon: User, color: '#7b69c9', blurb: 'Riconosce la posizione del corpo: braccia alzate, seduto, in piedi, un passo di danza…' },
   hand: { icon: Hand, color: '#e85c8d', blurb: 'Riconosce i gesti delle mani: pollice in su, pugno, mano aperta, numeri con le dita…' },
+  face: { icon: Smile, color: '#f59e0b', blurb: 'Riconosce le espressioni del viso: felice, triste, sorpreso, arrabbiato… usando i landmark del volto.' },
 }
 
 function ModeChooser({ onPick, onClose }: { onPick: (mode: Mode) => void; onClose: () => void }) {
@@ -32,7 +36,7 @@ function ModeChooser({ onPick, onClose }: { onPick: (mode: Mode) => void; onClos
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(MODE_META) as Mode[]).map((mode) => {
             const meta = MODE_META[mode]
             return (

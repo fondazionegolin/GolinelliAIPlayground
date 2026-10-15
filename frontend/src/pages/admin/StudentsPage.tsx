@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatInternalCredits } from '@/lib/credits'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { adminApi } from '@/lib/api'
@@ -8,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/design'
 import {
-  Search, ChevronDown, ChevronUp, Loader2, ShieldCheck, ShieldAlert, Users, Activity, Euro, Clock, Eye,
+  Search, ChevronDown, ChevronUp, Loader2, ShieldCheck, ShieldAlert, Users, Activity, Zap, Clock, Eye,
 } from '@/components/icons'
 
 interface ConsentStatus {
@@ -60,7 +61,7 @@ const formatDateTime = (raw?: string | null) => {
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('it-IT', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
-const formatCurrency = (v: number) => `€ ${Number(v || 0).toFixed(3)}`
+const formatCurrency = (v: number) => formatInternalCredits(v, 2)
 
 export default function StudentsPage() {
   const [search, setSearch] = useState('')
@@ -252,7 +253,7 @@ function StudentActivityLog({ studentId }: { studentId: string }) {
                 <td className="px-3 py-2 text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{formatDateTime(item.timestamp)}</td>
                 <td className="px-3 py-2 text-slate-600">{item.transaction_type || '—'}</td>
                 <td className="px-3 py-2 text-slate-600">{item.provider || '—'} {item.model ? `· ${item.model}` : ''}</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-700"><Euro className="mr-1 inline h-3 w-3" />{formatCurrency(item.cost)}</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-700"><Zap className="mr-1 inline h-3 w-3" />{formatCurrency(item.cost)}</td>
               </tr>
             ))}
           </tbody>

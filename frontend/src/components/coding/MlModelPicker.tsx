@@ -12,7 +12,7 @@ export const ML_MODELS_PATH = 'ml-models.md'
 export function buildMlModelsMarkdown(projects: MLLabProjectSummary[]): string {
   const list = projects.map((p) => {
     const mode = modeOfEngine(p.engine)
-    const noun = mode === 'hand' ? 'mano' : mode === 'pose' ? 'corpo' : 'immagine'
+    const noun = mode === 'hand' ? 'mano' : mode === 'pose' ? 'corpo' : mode === 'face' ? 'espressione del viso' : 'immagine'
     return `- **${p.name}** · tipo: ${MODE_LABEL[mode]} (riconosce ${noun}) · id: ${p.id} · classi: ${p.classes.map((c) => `«${c.name}»`).join(', ')}`
   }).join('\n')
   const first = projects[0]
@@ -36,7 +36,7 @@ const model = await window.GolinelliML.load('${sampleName}')   // per nome oppur
 const stop = model.start(videoElement, {
   onResult: (r) => { /* r.label = classe riconosciuta oppure null se non è sicuro; r.best = classe più probabile;
                         r.confidence 0..1; r.probs = { 'Nome classe': probabilità }; r.detected = false se non vede mano/persona;
-                        r.hand = 21 punti {x,y} in pixel (modelli mani); r.pose = 17 punti {x,y,score} in pixel (modelli pose);
+                        r.hand = 21 punti {x,y} in pixel (modelli mani); r.pose = 17 punti {x,y,score} in pixel (modelli pose); r.face = 478 punti {x,y} in pixel (modelli espressioni: label = «felice», «triste»…);
                         r.width / r.height = dimensioni del frame analizzato: scala i punti con p.x / r.width * width */ },
 })
 

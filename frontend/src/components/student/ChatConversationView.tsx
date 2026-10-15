@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, memo, type ReactNode } from 'react'
+import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -129,10 +130,13 @@ export function ChatConversationView({
   }, [input, attachedFiles, isLoading, onSend])
 
   // Handle file selection
-  const handleFileSelect = useCallback((files: FileList | null) => {
-    if (!files) return
+  const handleFileSelect = useCallback((fileList: FileList | null) => {
+    if (!fileList) return
+    void confirmAttachments(Array.from(fileList)).then((files) => attachNow(files))
+  }, [])
 
-    Array.from(files).forEach(file => {
+  const attachNow = useCallback((files: File[]) => {
+    files.forEach(file => {
       const isImage = file.type.startsWith('image/')
       const attached: AttachedFile = {
         file,

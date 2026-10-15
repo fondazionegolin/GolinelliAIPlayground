@@ -22,7 +22,7 @@ export type SandpackRuntimeError = {
   kind: 'compile' | 'runtime' | 'console'
 }
 
-import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+import { buildMlStub, ML_RUNTIME_VERSION, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 
 type Props = {
   /** React/Vite projects: a file tree bundled by Sandpack's react-ts template. Ignored when
@@ -60,7 +60,7 @@ const EMPTY_MODELS: MlRuntimeModel[] = []
 
 // The platform bridge, plus (when ML Lab models are attached) the window.GolinelliML stub.
 function buildBridgeSource(enableInspector: boolean, mlModels: MlRuntimeModel[] = []): string {
-  const base = buildBaseBridgeSource(enableInspector)
+  const base = buildBaseBridgeSource(enableInspector, window.location.origin)
   return mlModels.length ? `${base}\n${buildMlStub(mlModels, window.location.origin)}\n` : base
 }
 
@@ -80,8 +80,10 @@ const buildHtmlDocument = (forceVerticalScroll: boolean) => `<!doctype html>
 // The bridge runs inside the Sandpack preview iframe. It speaks the same postMessage protocol the
 // legacy srcDoc preview used (golinelli-coding-preview -> golinelli-coding-host), so the existing
 // parent handler in StudentCodingLabModule picks it up unchanged.
-function buildBaseBridgeSource(enableInspector: boolean): string {
+function buildBaseBridgeSource(enableInspector: boolean, platformOrigin: string): string {
   return `// AUTO-GENERATED platform bridge. Do not edit.
+const PLATFORM_ORIGIN: string = ${JSON.stringify(platformOrigin)}
+const ML_RUNTIME_VERSION: string = ${JSON.stringify(ML_RUNTIME_VERSION)}
 const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; onDelta?: (text: string) => void }>()
 window.addEventListener('message', (event: MessageEvent) => {
   const data: any = event.data || {}
@@ -150,6 +152,90 @@ function mediaError(name: string, message: string) {
   error.isMediaPermission = true
   return error
 }
+// The platform vision runtime (MediaPipe + models) is a script served by the platform origin; loaded on first use.
+// Served with a long cache lifetime, so the URL carries a version and a runtime that predates the tracker API
+// (an older cached copy) is transparently re-fetched with a cache-busting query.
+let visionRuntime: Promise<any> | null = null
+function injectVisionRuntime(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = url
+    script.onload = () => {
+      const runtime = (window as any).GolinelliMLRuntime
+      if (!runtime) { reject(new Error('Motore di visione non disponibile.')); return }
+      resolve(runtime)
+    }
+    script.onerror = () => reject(new Error('Impossibile caricare il motore di visione della piattaforma: controlla la connessione e riprova.'))
+    document.head.appendChild(script)
+  })
+}
+function loadVisionRuntime(): Promise<any> {
+  const existing = (window as any).GolinelliMLRuntime
+  if (existing && existing.tracker) { existing.setAssetBase(PLATFORM_ORIGIN); return Promise.resolve(existing) }
+  if (!visionRuntime) {
+    const base = PLATFORM_ORIGIN + '/lib/goliai-ml.js'
+    visionRuntime = injectVisionRuntime(base + '?v=' + ML_RUNTIME_VERSION)
+      .then((runtime: any) => {
+        if (runtime.tracker) return runtime
+        delete (window as any).GolinelliMLRuntime
+        return injectVisionRuntime(base + '?v=' + ML_RUNTIME_VERSION + '&t=' + Date.now())
+      })
+      .then((runtime: any) => {
+        if (!runtime.tracker) throw new Error('Motore di visione non aggiornato: ricarica la pagina.')
+        runtime.setAssetBase(PLATFORM_ORIGIN)
+        return runtime
+      })
+      .catch((error: any) => { visionRuntime = null; throw error })
+  }
+  return visionRuntime
+}
+// Live streams handed to the app. Generated apps often get the stream before their <video> exists (it is
+// mounted later, on a "camera active" state) or keep it in state without ever attaching it: the picture stays
+// black. The platform therefore attaches the live camera stream to any <video> that has no source by itself,
+// as soon as one appears, and keeps it playing.
+let liveStreams: MediaStream[] = []
+function pruneStreams() {
+  liveStreams = liveStreams.filter((stream) => stream.getVideoTracks().some((track) => track.readyState === 'live'))
+}
+function videoWantsStream(video: HTMLVideoElement): boolean {
+  if (video.srcObject || video.getAttribute('src') || video.currentSrc) return false
+  if (video.querySelector('source')) return false
+  return video.autoplay || video.hasAttribute('autoplay') || video.playsInline || video.hasAttribute('playsinline') || video.muted
+}
+function pumpVideos() {
+  pruneStreams()
+  const stream = liveStreams.length ? liveStreams[liveStreams.length - 1] : null
+  if (!stream) return
+  document.querySelectorAll('video').forEach((video) => {
+    if (videoWantsStream(video)) {
+      try {
+        video.muted = true
+        video.playsInline = true
+        video.setAttribute('playsinline', '')
+        video.srcObject = stream
+      } catch (e) { /* ignore */ }
+    }
+    if (video.srcObject && liveStreams.indexOf(video.srcObject as MediaStream) >= 0 && video.paused) {
+      video.muted = true
+      const started = video.play()
+      if (started && started.catch) started.catch(() => undefined)
+    }
+  })
+}
+function trackStream(stream: MediaStream) {
+  if (!stream || !stream.getVideoTracks || !stream.getVideoTracks().length) return
+  if (liveStreams.indexOf(stream) < 0) liveStreams.push(stream)
+  pumpVideos()
+}
+if (typeof MutationObserver !== 'undefined') {
+  let scheduled = false
+  new MutationObserver(() => {
+    if (scheduled || !liveStreams.length) return
+    scheduled = true
+    requestAnimationFrame(() => { scheduled = false; pumpVideos() })
+  }).observe(document.documentElement, { childList: true, subtree: true })
+}
+window.setInterval(() => { if (liveStreams.length) pumpVideos() }, 700)
 async function requestMedia(constraints: any): Promise<MediaStream> {
   const kind = mediaKind(constraints)
   if (!nativeGetUserMedia) {
@@ -160,6 +246,7 @@ async function requestMedia(constraints: any): Promise<MediaStream> {
   try {
     const stream = await nativeGetUserMedia(constraints)
     notifyMedia(kind, 'granted')
+    trackStream(stream)
     return stream
   } catch (first: any) {
     let error: any = first
@@ -167,6 +254,7 @@ async function requestMedia(constraints: any): Promise<MediaStream> {
       try {
         const stream = await nativeGetUserMedia({ video: !!constraints.video, audio: !!constraints.audio })
         notifyMedia(kind, 'granted')
+        trackStream(stream)
         return stream
       } catch (retry: any) { error = retry }
     }
@@ -179,6 +267,13 @@ if (nativeGetUserMedia) {
   try { (navigator.mediaDevices as any).getUserMedia = (constraints: any) => requestMedia(constraints || { video: true }) } catch (e) { /* read-only in some browsers */ }
 }
 ;(window as any).GolinelliAI = {
+  // Ready-made vision (face + facial features, hands, body pose), self-hosted by the platform and run locally.
+  ml: {
+    tracker: (kind: string, options: any = {}) => loadVisionRuntime().then((runtime: any) => runtime.tracker(kind, options)),
+    face: (options: any = {}) => loadVisionRuntime().then((runtime: any) => runtime.tracker('face', options)),
+    hand: (options: any = {}) => loadVisionRuntime().then((runtime: any) => runtime.tracker('hand', options)),
+    pose: (options: any = {}) => loadVisionRuntime().then((runtime: any) => runtime.tracker('pose', options)),
+  },
   media: {
     camera: (options: any = {}) => requestMedia({
       video: { facingMode: options.facingMode || 'user', width: { ideal: options.width || 1280 }, height: { ideal: options.height || 720 } },
@@ -186,7 +281,9 @@ if (nativeGetUserMedia) {
     }),
     microphone: () => requestMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false }),
     cameraAndMicrophone: (options: any = {}) => requestMedia({ video: { facingMode: options.facingMode || 'user' }, audio: true }),
-    attach: (video: HTMLVideoElement, stream: MediaStream) => {
+    attach: (video: HTMLVideoElement | null, stream: MediaStream) => {
+      // The element may not be mounted yet: the stream is tracked, so it is attached the moment a <video> appears.
+      if (!video) { if (stream) trackStream(stream); return Promise.resolve(undefined) }
       video.playsInline = true
       video.muted = true
       video.autoplay = true

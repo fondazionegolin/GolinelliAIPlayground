@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
     MESHY_API_KEY: Optional[str] = None
+    # Video Studio (admin testing): Runware API, https://runware.ai/docs
+    RUNWARE_API_KEY: Optional[str] = None
+    RUNWARE_IMAGE_MODEL: str = "google:nano-banana@2.1"
+    VIDEO_STUDIO_IMAGE_QUALITY: str = "medium"  # gpt-image quality: low | medium | high
+    RUNWARE_VIDEO_MODEL: str = "xai:grok-imagine@video-1.5-lite"
     OPENAI_IMAGE_MODEL: str = "gpt-image-2-2026-04-21"
 
     # OpenAI Realtime (voice interrogation chatbot — "interrogazione" profile)

@@ -48,8 +48,9 @@ class CreditTransactionResponse(BaseModel):
 
 # --- Requests ---
 class CreditRequestCreate(BaseModel):
-    amount_requested: float
+    credits: float  # bundle richiesto, in crediti
     reason: Optional[str] = None
+    limit_id: Optional[UUID] = None  # se omesso: limite più stringente del richiedente
 
 class CreditRequestReview(BaseModel):
     status: CreditRequestStatus # APPROVED, REJECTED
@@ -82,11 +83,12 @@ class CreditBalanceResponse(BaseModel):
     credits_remaining: Optional[int] = None
     credits_used: int
     credits_cap: Optional[int] = None
-    eur_remaining: Optional[float] = None
-    eur_used: float
-    eur_cap: Optional[float] = None
     limit_level: Optional[str] = None
+    limit_id: Optional[str] = None
     period_end: Optional[datetime] = None
+    bonus_credits: int = 0
+    low_balance: bool = False
+    exhausted: bool = False
 
 
 class CreditUsageHistoryItem(BaseModel):
@@ -95,7 +97,6 @@ class CreditUsageHistoryItem(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     service: str = "Servizi AI"
-    cost_eur: float
     cost_credits: float
     usage_details: Optional[Dict[str, Any]] = None
 

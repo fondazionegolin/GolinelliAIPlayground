@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.user import User
 from app.services import platform_actions
+from app.services.dataflow_tables import DB_NODES, run_db_node
 from app.services.dataflow_nodes import AI_TRANSFORM_TASKS, DEFAULT_EXIT_PHRASES, NODE_REGISTRY, execute_data_node, interpolate_variables, value_to_text
 
 platform_actions.register_nodes(NODE_REGISTRY)
@@ -207,10 +208,12 @@ def _entry_node(graph: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Un flusso chatbot può avere un solo nodo 'Inizio conversazione'")
     node_by_id = {node["instanceId"]: node for node in nodes}
     forward = _forward_graph(graph)["edges"]
+    # A dialogue node is an entry only if no flow node leads to it, directly or through data nodes (db.*, data.*, text.*)
+    # placed in the chain: «Domanda → Salva in tabella → Messaggio» has one entry, not two.
     candidates = [
         node for node in nodes
         if (str(node.get("id") or "").startswith("chatbot.") or node.get("id") == "llm_chatbot")
-        and not any(edge["to"] == node["instanceId"] and _is_flow_type(str(node_by_id[edge["from"]].get("id") or "")) for edge in forward)
+        and not any(_is_flow_type(str(node_by_id[ancestor].get("id") or "")) for ancestor in _reach(forward, node["instanceId"], False) - {node["instanceId"]})
     ]
     if len(candidates) == 1:
         return candidates[0]
@@ -468,6 +471,8 @@ async def _execute(
         if db is None or actor is None:
             raise ValueError("I nodi di piattaforma si eseguono con un account docente")
         return await platform_actions.run_platform_node(node_type, inputs, config, db, actor), None, None, 0, 0
+    if node_type in DB_NODES:
+        return await run_db_node(node_type, inputs, config, state, db), None, None, 0, 0
     if node_type == "data.saved_dataset":
         if db is None:
             raise ValueError("Il dataset salvato è disponibile solo eseguendo il workflow")
@@ -671,7 +676,7 @@ async def _run_loop(
     return end_output
 
 
-async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: User | None = None) -> dict[str, Any]:
+async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: User | None = None, workflow_id: Any = None) -> dict[str, Any]:
     """Execute one node without persisting a workflow run.
 
     The caller supplies resolved values keyed by input-port name.  This is used by
@@ -686,7 +691,7 @@ async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db
     if missing:
         raise ValueError(f"Input mancanti: {', '.join(missing)}")
     started = time.perf_counter()
-    output, provider, model, prompt_tokens, completion_tokens = await _execute(node_type, inputs, config, {}, db=db, actor=actor)
+    output, provider, model, prompt_tokens, completion_tokens = await _execute(node_type, inputs, config, {"workflow_id": workflow_id}, db=db, actor=actor)
     return {
         "output": output,
         "duration_ms": int((time.perf_counter() - started) * 1000),
@@ -704,7 +709,7 @@ async def execute_run(db: AsyncSession, workflow: AgenticWorkflow, run: AgenticW
     loops = _loop_groups(graph)
     order = _plan_order(graph, _loop_members(loops))
     sequence = [0]
-    state = {"variables": dict((run.input_json or {}).get("variables") or {})}
+    state = {"variables": dict((run.input_json or {}).get("variables") or {}), "workflow_id": workflow.id}
     run.status = "running"
     run.started_at = run.started_at or datetime.now(timezone.utc)
     run.error_message = None
@@ -926,7 +931,7 @@ async def advance_conversation(
     saved = run.input_json or {}
     # visits: how many times each node was re-entered by a loop; loop_counts: attempts per «Ripeti finché».
     state: dict[str, Any] = {"variables": dict(saved.get("variables") or {}), "visits": dict(saved.get("visits") or {}),
-                             "loop_counts": dict(saved.get("loop_counts") or {})}
+                             "loop_counts": dict(saved.get("loop_counts") or {}), "workflow_id": workflow.id}
     current = saved.get("current_node_id")
 
     max_sequence = await db.execute(select(func.coalesce(func.max(AgenticNodeRun.sequence), -1)).where(AgenticNodeRun.run_id == run.id))

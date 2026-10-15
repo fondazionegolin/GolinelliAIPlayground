@@ -1776,7 +1776,6 @@ async def download_usage_transactions_csv(
         "prompt_tokens",
         "completion_tokens",
         "total_tokens",
-        "costo_eur",
         "crediti",
     ])
     for tx, teacher, student, class_name, session_title in rows:
@@ -1796,7 +1795,6 @@ async def download_usage_transactions_csv(
             item["prompt_tokens"],
             item["completion_tokens"],
             item["total_tokens"],
-            f'{item["cost"]:.6f}',
             item["cost_credits"],
         ])
 
@@ -2209,11 +2207,11 @@ async def download_teacher_usage_report_csv(
         "studenti_gestiti_totale",
         "studenti_gestiti_per_nickname",
         "chiamate_docente",
-        "costo_docente_eur",
+        "crediti_docente",
         "token_docente",
         "tipi_chiamate_docente",
         "chiamate_studenti",
-        "costo_studenti_eur",
+        "crediti_studenti",
         "token_studenti",
         "tipi_chiamate_studenti",
     ])
@@ -2245,11 +2243,11 @@ async def download_teacher_usage_report_csv(
             student_counts.get(teacher_key, 0),
             nick_detail,
             int(teacher_metrics["calls"]),
-            format_money(teacher_metrics["cost"]),
+            format_money(teacher_metrics["cost"] * 100),
             int(teacher_metrics["tokens"]),
             format_counts(teacher_call_types.get(teacher_key)),
             int(student_metrics["calls"]),
-            format_money(student_metrics["cost"]),
+            format_money(student_metrics["cost"] * 100),
             int(student_metrics["tokens"]),
             format_counts(student_call_types.get(teacher_key)),
         ])

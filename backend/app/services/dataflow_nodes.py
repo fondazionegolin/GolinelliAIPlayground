@@ -150,7 +150,7 @@ NODE_SPECS = [
     spec("plot.histogram", "Istogramma", "Visualizzazioni", [port("table", "TABLE")], [port("plot", "ANY")], [param("column", "COLUMN", "Colonna", "x"), param("bins", "INTEGER", "Intervalli", 20)], "Mostra la distribuzione di una colonna."),
     spec("chatbot.start", "Inizio conversazione", "Chatbot", [], [port("next", "ANY", "Avvio")],
          [param("welcome_message", "STRING", "Messaggio di benvenuto (opzionale)", "")], "Punto di ingresso del flusso: ogni chatbot deve iniziare da qui.", "never"),
-    spec("chatbot.say", "Messaggio", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("next", "ANY", "Continua")], [param("message", "STRING", "Messaggio", "Ciao!")], "Invia un messaggio; richiama una variabile salvata con $nome.", "never"),
+    spec("chatbot.say", "Messaggio", "Chatbot", [port("trigger", "ANY", "In", required=False), port("value", "ANY", "Valore da mostrare ({valore})", required=False)], [port("next", "ANY", "Continua")], [param("message", "STRING", "Messaggio", "Ciao!")], "Invia un messaggio; richiama una variabile salvata con $nome.", "never"),
     spec("chatbot.ask", "Domanda", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("response", "ANY", "Risposta")], [param("question", "STRING", "Domanda", "Come posso aiutarti?"), param("test_response", "STRING", "Risposta test (solo anteprima)", "")], "Pone una domanda e sospende il flusso in attesa della risposta reale. Può essere il primo nodo di un dialogo.", "never"),
     spec("chatbot.if_contains", "Contiene parole", "Chatbot", [port("text", "ANY", "Testo")], [port("yes", "ANY", "Sì"), port("no", "ANY", "No")], [param("keywords", "STRING", "Parole (CSV)", "urgente"), param("case_sensitive", "BOOLEAN", "Maiuscole", False)], "Dirama il dialogo in base alle parole trovate.", "never"),
     spec("chatbot.yes_no", "Sì / No", "Chatbot", [port("text", "ANY", "Testo")], [port("yes", "ANY", "Sì"), port("no", "ANY", "No")], [], "Interpreta una risposta binaria.", "never"),
@@ -191,12 +191,315 @@ NODE_SPECS = [
     spec("chatbot.end", "Fine conversazione", "Chatbot", [port("trigger", "ANY", "In", required=False)], [port("result", "ANY", "Esito")], [param("message", "STRING", "Messaggio finale", "Conversazione conclusa.")], "Chiude il ramo conversazionale: ogni percorso del flusso deve terminare qui.", "never"),
 ]
 
+NODE_SPECS += [
+    spec("random.values", "Valori casuali", "Sorgenti", [], [port("table", "TABLE")], [
+        param("columns", "CODE", "Colonne: nome:tipo:parametri (una per riga). Tipi: int 1-100 · float 0-1 · choice a|b|c · bool · date 2024-01-01..2024-12-31 · id",
+              "id:id\nvoto:int:1-10\ncolore:choice:rosso|blu|verde"),
+        param("rows", "INTEGER", "Numero righe", 10, min=1, max=1000),
+        param("seed", "INTEGER", "Seed (0 = ogni volta diversi)", 0, min=0)],
+         "Genera una tabella di valori casuali (numeri, scelte da una lista, date, sì/no, id) secondo le colonne descritte."),
+    spec("data.join", "Unisci per chiave (join)", "Trasformazioni", [port("left", "TABLE", "Tabella sinistra"), port("right", "TABLE", "Tabella destra")], [port("table", "TABLE")], [
+        param("on", "STRING", "Colonna chiave (uguale in entrambe)", ""),
+        param("left_on", "STRING", "Chiave sinistra (se diversa)", "", required=False), param("right_on", "STRING", "Chiave destra (se diversa)", "", required=False),
+        param("how", "SELECT", "Tipo", "inner", options=["inner", "left", "right", "outer"])],
+         "Come un JOIN SQL: abbina le righe di due tabelle con la stessa chiave."),
+    spec("data.distinct", "Valori distinti", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")],
+         [param("columns", "COLUMNS", "Colonne su cui decidere i duplicati (vuoto = tutte)", "")], "Elimina le righe duplicate (DISTINCT)."),
+]
+
+# Named persistent tables (executors in dataflow_tables.py). «after» only orders execution: connect the previous db node's table to it.
+DB_AFTER = port("after", "ANY", "Dopo (ordine di esecuzione)", required=False)
+DB_NAME = param("table_name", "STRING", "Nome della tabella", "tabella")
+DB_WHERE = param("where", "CODE", "Condizione (es. punti > 5 and classe == '3A'; vuoto = tutte)", "", required=False)
+NODE_SPECS += [
+    spec("db.create_table", "Crea tabella", "Database", [port("table", "TABLE", "Righe iniziali", required=False), DB_AFTER], [port("table", "TABLE")], [
+        DB_NAME, param("columns", "STRING", "Colonne (separate da virgola)", "nome,punti"),
+        param("if_exists", "SELECT", "Se esiste già", "keep", options=["keep", "replace"])],
+         "Crea una tabella con nome che resta salvata nel workflow (anche tra un'esecuzione e l'altra). «replace» la svuota e la ricrea.", "never"),
+    spec("db.insert", "Inserisci righe", "Database", [port("row", "ANY", "Riga da inserire", required=False), port("table", "TABLE", "Righe da inserire", required=False), DB_AFTER],
+         [port("table", "TABLE", "Tabella aggiornata"), port("count", "ANY", "Righe inserite")], [
+        DB_NAME, param("values", "CODE", "Valori: colonna=valore; colonna2=valore (usa $variabile per le risposte della chat)", "")],
+         "Aggiunge una o più righe alla tabella con nome (la crea se non esiste). I valori possono venire dai campi, da una riga o da una tabella collegata.", "never"),
+    spec("db.read", "Leggi tabella", "Database", [DB_AFTER], [port("table", "TABLE")], [DB_NAME], "Legge tutta la tabella con nome.", "never"),
+    spec("db.query", "Interroga tabella", "Database", [DB_AFTER], [port("table", "TABLE")], [
+        DB_NAME, DB_WHERE, param("columns", "COLUMNS", "Colonne da mostrare (vuoto = tutte)", "", required=False),
+        param("order_by", "COLUMN", "Ordina per", "", required=False), param("order", "SELECT", "Ordine", "ascending", options=["ascending", "descending"]),
+        param("limit", "INTEGER", "Massimo righe (0 = tutte)", 0, min=0)],
+         "SELECT sulla tabella con nome: condizione, colonne, ordinamento e limite.", "never"),
+    spec("db.random_pick", "Pesca a caso", "Database", [DB_AFTER], [port("table", "TABLE", "Righe estratte"), port("row", "ANY", "Prima riga estratta")], [
+        DB_NAME, DB_WHERE, param("count", "INTEGER", "Quante righe", 1, min=1, max=1000),
+        param("remove", "BOOLEAN", "Rimuovi dalla tabella dopo l'estrazione", False),
+        param("seed", "INTEGER", "Seed (0 = ogni volta diversa)", 0, min=0),
+        param("on_empty", "SELECT", "Se non c'è nulla da estrarre", "errore", options=["errore", "ignora"])],
+         "Estrae righe a caso dalla tabella con nome (opzionalmente solo quelle che rispettano la condizione, e togliendole dopo).", "never"),
+    spec("db.update", "Aggiorna righe", "Database", [DB_AFTER], [port("table", "TABLE", "Tabella aggiornata"), port("count", "ANY", "Righe modificate")], [
+        DB_NAME, DB_WHERE, param("set", "CODE", "Imposta: colonna=valore; colonna2=valore", "")],
+         "UPDATE: cambia i valori delle righe che rispettano la condizione.", "never"),
+    spec("db.delete_rows", "Elimina righe", "Database", [DB_AFTER], [port("table", "TABLE", "Tabella aggiornata"), port("count", "ANY", "Righe eliminate")], [
+        DB_NAME, DB_WHERE, param("delete_all", "BOOLEAN", "Elimina tutte le righe (ignora la condizione)", False)],
+         "DELETE: elimina le righe che rispettano la condizione.", "never"),
+    spec("db.count", "Conta righe", "Database", [DB_AFTER], [port("count", "ANY", "Numero di righe")], [DB_NAME, DB_WHERE],
+         "COUNT: quante righe ha la tabella (o quante rispettano la condizione).", "never"),
+]
+
+
+NODE_SPECS += [
+    spec("chatbot.check_answer", "Verifica risposta", "Chatbot", [port("text", "ANY", "Risposta da verificare")], [port("yes", "ANY", "Corretta"), port("no", "ANY", "Sbagliata")], [
+        param("expected", "STRING", "Risposte accettate (separate da virgola)", ""),
+        param("mode", "SELECT", "Confronto", "uguale", options=["uguale", "contiene", "numero", "regex"]),
+        param("tolerance", "NUMBER", "Tolleranza (solo «numero»)", 0, min=0)],
+         "Verifica DETERMINISTICA di una risposta (niente AI): uguale (ignora maiuscole/accenti/spazi), contiene, numero (con tolleranza) o espressione regolare. Esce da «Corretta» o «Sbagliata»; accetta più risposte valide.", "never"),
+    spec("data.parse_text", "Testo → tabella", "Trasformazioni", [port("text", "ANY", "Testo (CSV, TSV, JSON, righe)")], [port("table", "TABLE")], [
+        param("format", "SELECT", "Formato", "auto", options=["auto", "csv", "tsv", "json", "righe"]),
+        param("delimiter", "STRING", "Separatore (vuoto = automatico)", "", required=False),
+        param("has_header", "BOOLEAN", "La prima riga è l'intestazione", True)],
+         "Trasforma il testo di un file (es. letto da Files) in una tabella, SENZA AI: CSV/TSV con separatore automatico, JSON (lista di oggetti) o una riga per record.", "never"),
+    spec("data.validate", "Verifica dati", "Trasformazioni", [port("table", "TABLE")],
+         [port("valid", "TABLE", "Righe valide"), port("invalid", "TABLE", "Righe scartate (con motivo)"), port("report", "METRICS", "Esito"), port("ok", "ANY", "Tutto valido")], [
+        param("rules", "CODE", "Regole, una per riga: colonna:regola. Regole: not_empty · number · number:0-100 · integer · in:a|b|c · regex:^[A-Z]+$ · unique · min_len:3 · max_len:20",
+              "nome:not_empty\npunti:number:0-100"),
+        param("on_invalid", "SELECT", "Se ci sono righe non valide", "separa", options=["separa", "errore"])],
+         "Controlli algoritmici sulle righe: ogni riga che viola una regola finisce in «scartate» con il motivo. «ok» è vero solo se tutte le righe sono valide (utile per un IF). Con «errore» il nodo si ferma.", "never"),
+    spec("text.extract", "Estrai con regex", "Testo", [port("text", "ANY")], [port("table", "TABLE"), port("first", "ANY", "Prima corrispondenza")], [
+        param("pattern", "STRING", "Espressione regolare (i gruppi () diventano colonne)", r"\d+"),
+        param("ignore_case", "BOOLEAN", "Ignora maiuscole", True)],
+         "Trova nel testo tutte le corrispondenze di un'espressione regolare e le mette in tabella: estrazione esatta, senza AI.", "never"),
+]
+
 # Start/end nodes are no longer offered: a dialogue starts at its first node and ends where the path ends.
 # Saved workflows that still contain them keep running, so they stay registered but hidden from the palette.
 for _legacy in ("chatbot.start", "chatbot.end"):
     next(item for item in NODE_SPECS if item["id"] == _legacy)["hidden"] = True
 
 NODE_REGISTRY = {item["id"]: item for item in NODE_SPECS}
+
+
+def random_table(config: dict[str, Any]) -> dict[str, Any]:
+    """Table of random values from lines ``nome:tipo:parametri`` (int 1-10, float 0-1, choice a|b|c, bool, date A..B, id)."""
+    import datetime as _dt
+    import random as _random
+
+    seed = int(config.get("seed") or 0)
+    rng = _random.Random(seed) if seed else _random.Random()
+    count = min(1000, max(1, int(config.get("rows") or 10)))
+    makers: list[tuple[str, Callable[[], Any]]] = []
+    for line in re.split(r"[\n;]", str(config.get("columns") or "")):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [piece.strip() for piece in line.split(":", 2)]
+        name, kind, arg = parts[0], (parts[1].lower() if len(parts) > 1 else "int"), (parts[2] if len(parts) > 2 else "")
+        if not name:
+            raise ValueError(f"Colonna senza nome in «{line}»")
+        try:
+            if kind in {"int", "float"}:
+                match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*(?:\.\.|-|,)\s*(-?\d+(?:\.\d+)?)\s*", arg or ("1-100" if kind == "int" else "0-1"))
+                if not match:
+                    raise ValueError("intervallo atteso, es. 1-10")
+                low_text, high_text = match.group(1), match.group(2)
+                low, high = float(low_text), float(high_text)
+                if low > high:
+                    low, high = high, low
+                makers.append((name, (lambda lo=int(low), hi=int(high): rng.randint(lo, hi)) if kind == "int" else (lambda lo=low, hi=high: round(rng.uniform(lo, hi), 3))))
+            elif kind == "choice":
+                options = [item.strip() for item in re.split(r"[|,]", arg) if item.strip()]
+                if not options:
+                    raise ValueError
+                makers.append((name, lambda options=options: rng.choice(options)))
+            elif kind == "bool":
+                makers.append((name, lambda: rng.random() < 0.5))
+            elif kind == "date":
+                start_text, _, end_text = (arg or "2024-01-01..2024-12-31").partition("..")
+                start, end = _dt.date.fromisoformat(start_text.strip()), _dt.date.fromisoformat(end_text.strip())
+                span = max(0, (end - start).days)
+                makers.append((name, lambda start=start, span=span: (start + _dt.timedelta(days=rng.randint(0, span))).isoformat()))
+            elif kind == "id":
+                makers.append((name, lambda: "%08x" % rng.getrandbits(32)))
+            else:
+                raise ValueError(f"tipo «{kind}» sconosciuto (int, float, choice, bool, date, id)")
+        except ValueError as exc:
+            raise ValueError(f"Colonna «{line}» non valida" + (f": {exc}" if str(exc) else " (controlla i parametri)")) from exc
+    if not makers:
+        raise ValueError("Descrivi almeno una colonna, ad esempio voto:int:1-10")
+    rows = [{name: make() for name, make in makers} for _ in range(count)]
+    return {"columns": [name for name, _ in makers], "rows": rows, "rowCount": count}
+
+
+def _norm(value: Any) -> str:
+    """Case-, accent- and whitespace-insensitive form used to compare answers."""
+    import unicodedata
+    text = unicodedata.normalize("NFKD", value_to_text(value)).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", text).strip().lower().strip(" .!?;:,")
+
+
+def check_answer(raw: Any, config: dict[str, Any]) -> dict[str, Any]:
+    answer = value_to_text(raw)
+    accepted = [item.strip() for item in str(config.get("expected") or "").split(",") if item.strip()]
+    if not accepted:
+        raise ValueError("Scrivi almeno una risposta accettata")
+    mode = str(config.get("mode") or "uguale")
+    if mode == "numero":
+        tolerance = float(config.get("tolerance") or 0)
+        try:
+            found = re.search(r"-?\d+(?:[.,]\d+)?", answer)
+            if not found:
+                raise ValueError("nessun numero")
+            number = float(found.group(0).replace(",", "."))
+            good = any(abs(number - float(item.replace(",", "."))) <= tolerance + 1e-12 for item in accepted)
+        except ValueError:
+            good = False
+    elif mode == "regex":
+        try:
+            good = any(re.search(item, answer, re.IGNORECASE) for item in accepted)
+        except re.error as exc:
+            raise ValueError(f"Espressione regolare non valida: {exc}") from exc
+    elif mode == "contiene":
+        good = any(_norm(item) in _norm(answer) for item in accepted)
+    else:
+        good = _norm(answer) in {_norm(item) for item in accepted}
+    return {"yes": answer or "true" if good else None, "no": answer or "false" if not good else None}
+
+
+def parse_text_table(raw: Any, config: dict[str, Any]) -> dict[str, Any]:
+    import csv as _csv
+    from io import StringIO
+    text = value_to_text(raw).lstrip("\ufeff").strip()
+    if not text:
+        raise ValueError("Il testo è vuoto: non c'è nulla da trasformare in tabella")
+    fmt = str(config.get("format") or "auto")
+    header = bool(config.get("has_header", True))
+    if fmt == "auto":
+        fmt = "json" if text[:1] in "[{" else "csv"
+    if fmt == "json":
+        try:
+            data = json.loads(text)
+        except ValueError as exc:
+            raise ValueError(f"JSON non valido: {exc}") from exc
+        if isinstance(data, dict):
+            data = data.get("rows") if isinstance(data.get("rows"), list) else [data]
+        if not isinstance(data, list) or not all(isinstance(row, dict) for row in data):
+            raise ValueError("Il JSON deve essere una lista di oggetti")
+        return json_value(pd.DataFrame(data))
+    if fmt == "righe":
+        lines = [line for line in text.splitlines() if line.strip()]
+        return json_value(pd.DataFrame({"riga": lines}))
+    delimiter = str(config.get("delimiter") or "")
+    if fmt == "tsv":
+        delimiter = delimiter or "\t"
+    if not delimiter:
+        try:
+            delimiter = _csv.Sniffer().sniff("\n".join(text.splitlines()[:20]), delimiters=",;\t|").delimiter
+        except _csv.Error:
+            delimiter = ","
+    rows = list(_csv.reader(StringIO(text), delimiter=delimiter))
+    rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if not rows:
+        raise ValueError("Nessuna riga leggibile nel testo")
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    names = [cell.strip() or f"colonna_{i + 1}" for i, cell in enumerate(rows[0])] if header else [f"colonna_{i + 1}" for i in range(width)]
+    body = rows[1:] if header else rows
+    frame = pd.DataFrame(body, columns=names)
+    for name in frame.columns:  # numeric-looking columns become numbers, the rest stays text
+        converted = pd.to_numeric(frame[name].str.replace(",", ".", regex=False), errors="coerce")
+        if len(frame) and converted.notna().all():
+            frame[name] = converted
+    return json_value(frame)
+
+
+def validate_table(table: Any, config: dict[str, Any]) -> dict[str, Any]:
+    df = table_frame(table).reset_index(drop=True)
+    rules: list[tuple[str, str, str]] = []
+    for line in str(config.get("rules") or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        column, _, rest = line.partition(":")
+        rule, _, arg = rest.partition(":")
+        column, rule = column.strip(), rule.strip().lower()
+        if not column or not rule:
+            raise ValueError(f"Regola non valida «{line}»: usa colonna:regola")
+        if column not in df.columns:
+            raise ValueError(f"La regola «{line}» usa la colonna «{column}», che non esiste. Colonne: {', '.join(available_columns(df))}")
+        if rule not in {"not_empty", "number", "integer", "in", "regex", "unique", "min_len", "max_len"}:
+            raise ValueError(f"Regola «{rule}» sconosciuta (not_empty, number, integer, in, regex, unique, min_len, max_len)")
+        rules.append((column, rule, arg.strip()))
+    if not rules:
+        raise ValueError("Scrivi almeno una regola, ad esempio punti:number:0-100")
+    reasons: dict[int, list[str]] = {}
+
+    def fail(index: int, column: str, text: str) -> None:
+        reasons.setdefault(index, []).append(f"{column}: {text}")
+
+    for column, rule, arg in rules:
+        series = df[column]
+        if rule == "unique":
+            for index in series[series.duplicated(keep=False) & series.notna()].index:
+                fail(int(index), column, "valore duplicato")
+            continue
+        for index, value in series.items():
+            index = int(index)
+            empty = value is None or (isinstance(value, float) and math.isnan(value)) or str(value).strip() == ""
+            if rule == "not_empty":
+                if empty:
+                    fail(index, column, "vuoto")
+                continue
+            if empty:
+                fail(index, column, "vuoto")
+                continue
+            text = str(value).strip()
+            if rule in {"number", "integer"}:
+                try:
+                    number = float(text.replace(",", "."))
+                except ValueError:
+                    fail(index, column, "non è un numero")
+                    continue
+                if rule == "integer" and not number.is_integer():
+                    fail(index, column, "non è un intero")
+                m = re.fullmatch(r"\s*(-?[\d.]+)?\s*-\s*(-?[\d.]+)?\s*", arg) if arg else None
+                if m and ((m.group(1) and number < float(m.group(1))) or (m.group(2) and number > float(m.group(2)))):
+                    fail(index, column, f"fuori da {arg}")
+            elif rule == "in":
+                if _norm(text) not in {_norm(item) for item in arg.split("|")}:
+                    fail(index, column, f"non è tra {arg}")
+            elif rule == "regex":
+                try:
+                    if not re.search(arg, text):
+                        fail(index, column, f"non rispetta {arg}")
+                except re.error as exc:
+                    raise ValueError(f"Regola regex non valida «{arg}»: {exc}") from exc
+            elif rule == "min_len" and len(text) < int(arg or 0):
+                fail(index, column, f"più corto di {arg}")
+            elif rule == "max_len" and len(text) > int(arg or 10**9):
+                fail(index, column, f"più lungo di {arg}")
+    bad = sorted(reasons)
+    valid = df.drop(index=bad).reset_index(drop=True)
+    invalid = df.loc[bad].copy()
+    invalid["motivo"] = ["; ".join(reasons[int(i)]) for i in invalid.index]
+    if bad and config.get("on_invalid") == "errore":
+        first = reasons[bad[0]][0]
+        raise ValueError(f"{len(bad)} righe non valide su {len(df)} (es. riga {bad[0] + 1} — {first})")
+    return {"valid": json_value(valid), "invalid": json_value(invalid.reset_index(drop=True)),
+            "report": {"totale": len(df), "valide": len(valid), "scartate": len(bad)},
+            "ok": True if not bad else None}
+
+
+def extract_matches(raw: Any, config: dict[str, Any]) -> dict[str, Any]:
+    text = value_to_text(raw)
+    pattern = str(config.get("pattern") or "").strip()
+    if not pattern:
+        raise ValueError("Scrivi l'espressione regolare da cercare")
+    try:
+        regex = re.compile(pattern, re.IGNORECASE if config.get("ignore_case", True) else 0)
+    except re.error as exc:
+        raise ValueError(f"Espressione regolare non valida: {exc}") from exc
+    rows = []
+    for match in regex.finditer(text):
+        row: dict[str, Any] = {"corrispondenza": match.group(0)}
+        row.update({f"gruppo_{i}": group for i, group in enumerate(match.groups(), start=1)})
+        rows.append(row)
+    columns = ["corrispondenza", *[f"gruppo_{i}" for i in range(1, regex.groups + 1)]]
+    return {"table": {"columns": columns, "rows": rows, "rowCount": len(rows)}, "first": rows[0]["corrispondenza"] if rows else None}
 
 
 def table_frame(value: Any) -> pd.DataFrame:
@@ -357,6 +660,25 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
                 data = pd.read_csv(StringIO(raw))
         else: data = raw
         return {"table": json_value(data if isinstance(data, pd.DataFrame) else pd.DataFrame(data))}
+    if node_type == "data.parse_text":
+        return {"table": parse_text_table(inputs.get("text"), config)}
+    if node_type == "data.validate":
+        return validate_table(inputs.get("table"), config)
+    if node_type == "text.extract":
+        return extract_matches(inputs.get("text"), config)
+    if node_type == "random.values":
+        return {"table": random_table(config)}
+    if node_type == "data.join":
+        left, right = table_frame(inputs.get("left")), table_frame(inputs.get("right"))
+        key = str(config.get("on") or "").strip()
+        left_on, right_on = str(config.get("left_on") or key).strip(), str(config.get("right_on") or key).strip()
+        if not left_on or not right_on:
+            raise ValueError("Indica la colonna chiave del join")
+        for column, frame, side in ((left_on, left, "sinistra"), (right_on, right, "destra")):
+            if column not in frame.columns:
+                raise ValueError(f"La colonna chiave «{column}» non esiste nella tabella {side}. Colonne: {', '.join(available_columns(frame))}")
+        merged = left.merge(right, how=str(config.get("how") or "inner"), left_on=left_on, right_on=right_on, suffixes=("", "_2"))
+        return {"table": json_value(merged.reset_index(drop=True))}
     if node_type == "csv.synthetic":
         kind, n, features, seed = config.get("kind", "regression"), int(config.get("samples", 100)), int(config.get("features", 3)), int(config.get("seed", 42))
         if kind == "regression": x, y = make_regression(n_samples=n, n_features=features, noise=8, random_state=seed)
@@ -409,6 +731,9 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
                 df[name] = df.eval(expression)
             except Exception as exc:
                 raise ValueError(f"Formula non valida ({exc}). Colonne disponibili: {', '.join(available_columns(df))}") from exc
+        elif node_type == "data.distinct":
+            subset = [name for name in columns(config.get("columns")) if name in df.columns]
+            df = df.drop_duplicates(subset=subset or None)
         elif node_type == "data.dropna": df = df.dropna(how=str(config.get("how", "any")))
         elif node_type == "data.slice": df = df.iloc[int(config.get("start", 0)):int(config.get("end", len(df))):max(1, int(config.get("step", 1)))]
         elif node_type == "data.merge_columns":
@@ -550,7 +875,14 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         variables = state.setdefault("variables", {})
         interpolate = lambda text: interpolate_variables(text, variables)
         if node_type == "chatbot.start": return {"next": True, "message": interpolate(config.get("welcome_message", ""))}
-        if node_type == "chatbot.say": return {"next": interpolate(config.get("message", "")), "message": interpolate(config.get("message", ""))}
+        if node_type == "chatbot.say":
+            text = interpolate(config.get("message", ""))
+            if inputs.get("value") is not None:  # a table / number / text computed by another node, shown inside the message
+                shown = value_to_text(inputs["value"])
+                text = text.replace("{valore}", shown) if "{valore}" in text else f"{text}\n\n{shown}".strip()
+            return {"next": text, "message": text}
+        if node_type == "chatbot.check_answer":
+            return check_answer(inputs.get("text"), config)
         if node_type == "chatbot.ask": return {"response": config.get("test_response") or state.get("user_response") or "", "question": interpolate(config.get("question", ""))}
         if node_type == "chatbot.if_contains":
             text = str(inputs.get("text", "")); keys = columns(config.get("keywords")); text_cmp = text if config.get("case_sensitive") else text.lower(); found = any((k if config.get("case_sensitive") else k.lower()) in text_cmp for k in keys); return {"yes": text if found else None, "no": text if not found else None}

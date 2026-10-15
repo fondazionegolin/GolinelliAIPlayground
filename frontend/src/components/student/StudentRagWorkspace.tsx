@@ -1,14 +1,15 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpen, Upload, Trash2, FileText, Database, Search, Send, Loader2,
-  CheckCircle2, Eye, ChevronDown, ChevronUp,
+  CheckCircle2, Eye, ChevronDown, ChevronUp, ChevronLeft,
   Sparkles, PanelLeftClose, PanelLeftOpen, AlertCircle, Plus, Clock,
-  Link2, ImageIcon,
+  Link2, ImageIcon, X, Highlighter,
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { studentRagApi } from '@/lib/api'
+import { studentRagApi, type RagWorkspaceApi } from '@/lib/api'
 import type { AccentTheme } from '@/design/themes/roleThemes'
 import { type RagSession, saveRagSession, getRagSessions } from '@/lib/ragSessions'
 
@@ -23,6 +24,13 @@ interface RagDoc {
   created_at: string
 }
 
+interface RagHighlight {
+  start: number
+  end: number
+  score: number
+  kind: 'semantic' | 'keyword' | string
+}
+
 interface RagChunk {
   id: string
   chunk_index: number
@@ -33,6 +41,12 @@ interface RagChunk {
   score?: number
   terms?: string[]
   embedded?: boolean
+  highlights?: RagHighlight[]
+}
+
+interface RagSessionStore {
+  get: () => RagSession[]
+  save: (s: RagSession) => void
 }
 
 interface RagMessage {
@@ -85,32 +99,55 @@ function docIcon(docType: string) {
   return DOC_ICON[docType] ?? <FileText className="h-4 w-4 text-slate-400" />
 }
 
-function cleanChunkText(value: string) {
-  return (value || '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/\u200b/g, '')
-    .replace(/https?:\/\/\S+/g, '[link]')
-    .replace(/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, ' ')
-    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
-    .replace(/[`*_]{2,}/g, '')
-    .replace(/\s*\|\s*/g, ' · ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
 function normalizeChunk(c: Record<string, unknown>): RagChunk {
+  // Text is already cleaned server-side; highlight offsets refer to this exact string.
+  const highlights = Array.isArray(c.highlights)
+    ? (c.highlights as RagHighlight[]).filter((h) => Number.isFinite(h?.start) && Number.isFinite(h?.end) && h.end > h.start)
+    : undefined
   return {
     id: (c.id || c.chunk_id) as string,
     chunk_index: c.chunk_index as number,
-    text: cleanChunkText(c.text as string),
+    text: (c.text as string) || '',
     page: c.page as number | undefined,
     document_id: c.document_id as string,
     document_title: (c.document_title || '') as string,
     score: c.score as number | undefined,
     terms: Array.isArray(c.terms) ? c.terms.map(String) : undefined,
     embedded: typeof c.embedded === 'boolean' ? c.embedded : undefined,
+    highlights,
   }
+}
+
+/** Render text with the semantically matching sentences marked like a highlighter pen. */
+function HighlightedText({ text, highlights }: { text: string; highlights?: RagHighlight[] }) {
+  if (!highlights || highlights.length === 0) return <>{text}</>
+  const spans = [...highlights].sort((a, b) => a.start - b.start)
+  const out: React.ReactNode[] = []
+  let pos = 0
+  spans.forEach((h, i) => {
+    const start = Math.max(h.start, pos)
+    if (start > pos) out.push(<span key={`t${i}`}>{text.slice(pos, start)}</span>)
+    if (h.end > start) {
+      out.push(
+        <mark
+          key={`h${i}`}
+          data-rag-highlight
+          title={`Corrispondenza ${h.kind === 'semantic' ? 'semantica' : 'testuale'} · ${Math.round(h.score * 100)}%`}
+          className="rounded-[3px] px-0.5 text-slate-900"
+          style={{
+            background: 'linear-gradient(transparent 12%, rgba(250,204,21,0.62) 12%, rgba(250,204,21,0.62) 92%, transparent 92%)',
+            boxDecorationBreak: 'clone',
+            WebkitBoxDecorationBreak: 'clone',
+          }}
+        >
+          {text.slice(start, h.end)}
+        </mark>,
+      )
+    }
+    pos = Math.max(pos, h.end)
+  })
+  if (pos < text.length) out.push(<span key="tail">{text.slice(pos)}</span>)
+  return <>{out}</>
 }
 
 function parseCitations(text: string) {
@@ -135,273 +172,173 @@ function getLatestSessionSourceChunks(messages: RagMessage[]): RagChunk[] | null
   return null
 }
 
-// ─── Embedding Explainer ──────────────────────────────────────────────────────
+// ─── Explainer (popover content) ──────────────────────────────────────────────
 
-function EmbeddingExplainer({ theme }: { theme: AccentTheme }) {
-  const [open, setOpen] = useState(false)
+function RagExplainer({ theme, teacher }: { theme: AccentTheme; teacher?: boolean }) {
+  const steps = [
+    { n: 1, title: 'Lettura completa', desc: 'Il documento viene segmentato in parti leggibili, mantenendo pagine e struttura.' },
+    { n: 2, title: 'Ricerca intelligente', desc: 'La domanda viene confrontata sia per significato sia per parole esatte.' },
+    { n: 3, title: 'Selezione delle prove', desc: 'I passaggi più utili compaiono nella colonna Fonti con le frasi pertinenti evidenziate.' },
+    { n: 4, title: 'Risposta vincolata', desc: 'Il chatbot resta dentro i contenuti caricati e cita i riferimenti [[n]].' },
+  ]
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left">
-        <Sparkles className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
-        <span className="text-[11px] font-semibold text-slate-600 flex-1">Come usa le fonti?</span>
-        {open ? <ChevronUp className="h-3 w-3 text-slate-400" /> : <ChevronDown className="h-3 w-3 text-slate-400" />}
-      </button>
-      {open && (
-        <div className="px-3 pb-3 text-[11px] text-slate-600 space-y-2">
-          {[
-            { n: 1, title: 'Lettura completa', desc: 'Il documento viene segmentato in parti leggibili, mantenendo pagine e struttura.' },
-            { n: 2, title: 'Ricerca intelligente', desc: 'La domanda viene confrontata sia per significato sia per parole esatte.' },
-            { n: 3, title: 'Selezione delle prove', desc: 'I passaggi più utili vengono mostrati nella colonna Fonti prima e dopo la risposta.' },
-            { n: 4, title: 'Risposta vincolata', desc: "Il chatbot deve restare dentro i contenuti caricati e citare i riferimenti [[n]]." },
-          ].map(({ n, title, desc }) => (
-            <div key={n} className="flex items-start gap-2">
-              <div className="h-5 w-5 rounded-full flex items-center justify-center font-bold shrink-0 mt-0.5 bg-slate-100 text-[10px]"
-                style={{ color: theme.text }}>
-                {n}
-              </div>
-              <p><strong>{title}:</strong> {desc}</p>
-            </div>
-          ))}
+    <div className="space-y-2 text-[11px] text-slate-600">
+      {steps.map(({ n, title, desc }) => (
+        <div key={n} className="flex items-start gap-2">
+          <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold"
+            style={{ color: theme.text }}>{n}</div>
+          <p><strong>{title}:</strong> {desc}</p>
+        </div>
+      ))}
+      {teacher && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] leading-relaxed text-amber-900">
+          <p><strong>RAG ≠ context learning.</strong> Con il <em>context learning</em> incolli i documenti nel prompt: il modello
+            li legge tutti ma entrano solo se sono corti. Con il <em>RAG</em> i documenti vengono indicizzati e, a ogni richiesta,
+            viene recuperato solo il frammento pertinente: scala a molti file, costa meno e permette citazioni verificabili.
+            Per creare quiz, infografiche o documenti da materiali lunghi il RAG è lo strumento migliore:
+            allega un notebook nella chat del docente.</p>
         </div>
       )}
     </div>
   )
 }
 
-// ─── Document Panel ───────────────────────────────────────────────────────────
+// ─── Document list (left) ─────────────────────────────────────────────────────
 
 function DocumentPanel({
-  docs, selectedDocIds, onToggleDoc, onDelete, onUpload,
-  onYoutube, isUploading, isAddingSource,
-  uploadStep, uploadResult, activeDocForChunks, onViewChunks, theme,
+  docs, selectedDocIds, onToggleDoc, onDelete, onPreview, previewDocId,
+  isUploading, uploadStep, uploadResult, onDismissResult, noun, theme,
 }: {
   docs: RagDoc[]
   selectedDocIds: string[]
   onToggleDoc: (id: string) => void
   onDelete: (id: string) => void
-  onUpload: (files: FileList) => void
-  onYoutube: (url: string) => void
+  onPreview: (id: string) => void
+  previewDocId: string | null
   isUploading: boolean
-  isAddingSource: boolean
   uploadStep: number
   uploadResult: { chunk_count: number; key_concepts: string[]; summary: string } | null
-  activeDocForChunks: string | null
-  onViewChunks: (id: string | null) => void
+  onDismissResult: () => void
+  noun: string
   theme: AccentTheme
 }) {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [youtubeUrl, setYoutubeUrl] = useState('')
-  const busy = isUploading || isAddingSource
-
+  const [showDetails, setShowDetails] = useState(false)
   return (
-    <div className="flex flex-col h-full min-h-0 gap-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4" style={{ color: theme.text }} />
-          <span className="text-sm font-semibold text-slate-800">Documenti</span>
-          {docs.length > 0 && (
-            <span className="text-[10px] font-bold rounded-full bg-slate-100 px-1.5 py-0.5"
-              style={{ color: theme.text }}>
-              {docs.length}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <input ref={fileRef} type="file" className="hidden" multiple
-        accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md,.png,.jpg,.jpeg,.webp,.gif"
-        onChange={(e) => {
-          if (e.target.files) onUpload(e.target.files)
-          e.target.value = ''
-        }} />
-
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        onDragOver={(event) => {
-          event.preventDefault()
-          if (!busy) setDragOver(true)
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragOver(false)
-          if (!busy && event.dataTransfer.files.length) onUpload(event.dataTransfer.files)
-        }}
-        className={`rounded-xl border border-dashed px-3 py-4 text-left transition-all disabled:opacity-60 ${
-          dragOver
-            ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-bg)] shadow-sm'
-            : 'border-[color:var(--border-subtle)] bg-[var(--surface-base)] hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--button-chrome-bg)]'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)]">
-            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <BookOpen className="h-4 w-4" style={{ color: theme.text }} />
+        <span className="text-sm font-semibold text-slate-800">Documenti</span>
+        {docs.length > 0 && (
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: theme.text }}>
+            {docs.length}
           </span>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--text-primary)]">Aggiungi file alla knowledge base</p>
-            <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--text-muted)]">
-              Trascina qui documenti, fogli dati o immagini. Verranno indicizzati solo per questo progetto.
-            </p>
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-              PDF · Word · TXT · CSV · Excel · immagini
-            </p>
-          </div>
-        </div>
-      </button>
-
-      <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[var(--surface-base)] p-3">
-        <div className="mb-2 flex items-center gap-2">
-          <Link2 className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-          <p className="text-xs font-bold text-[var(--text-primary)]">YouTube in knowledge base</p>
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={youtubeUrl}
-            onChange={(event) => setYoutubeUrl(event.target.value)}
-            placeholder="https://youtu.be/..."
-            disabled={busy}
-            className="min-w-0 flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-white px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-slate-300"
-          />
+        )}
+        {docs.length > 1 && (
           <button
             type="button"
-            disabled={busy || !youtubeUrl.trim()}
             onClick={() => {
-              onYoutube(youtubeUrl.trim())
-              setYoutubeUrl('')
+              const allSelected = docs.every((d) => selectedDocIds.includes(d.id))
+              docs.forEach((d) => { if (allSelected === selectedDocIds.includes(d.id)) onToggleDoc(d.id) })
             }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)] disabled:bg-none disabled:bg-slate-100 disabled:text-slate-300"
-            title="Trascrivi e indicizza"
+            className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-slate-700"
           >
-            {isAddingSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {docs.every((d) => selectedDocIds.includes(d.id)) ? 'Deseleziona' : 'Seleziona tutti'}
           </button>
-        </div>
+        )}
       </div>
 
-      {/* Upload progress */}
       {isUploading && (
-        <div className="rounded-xl border bg-white p-3 space-y-2"
-          style={{ borderColor: hex2rgba(theme.accent, 0.25) }}>
+        <div className="rounded-lg border bg-white px-2.5 py-2" style={{ borderColor: hex2rgba(theme.accent, 0.25) }}>
           <div className="flex items-center gap-2">
-            <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: theme.text }} />
-            <p className="text-xs font-semibold" style={{ color: theme.text }}>Elaborazione in corso…</p>
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" style={{ color: theme.text }} />
+            <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700">
+              {UPLOAD_STEPS[Math.min(uploadStep, UPLOAD_STEPS.length - 1)].label}
+            </p>
           </div>
-          <div className="space-y-1.5">
-            {UPLOAD_STEPS.slice(0, -1).map((step, i) => (
-              <div key={step.key} className="flex items-center gap-2">
-                {i < uploadStep
-                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                  : i === uploadStep
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: theme.text }} />
-                    : <div className="h-3.5 w-3.5 rounded-full border border-slate-300 shrink-0" />}
-                <span className={`text-[11px] ${i <= uploadStep ? 'text-slate-700' : 'text-slate-400'}`}>{step.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-200">
             <div className="h-full rounded-full bg-slate-500 transition-all duration-500"
               style={{ width: `${(uploadStep / (UPLOAD_STEPS.length - 1)) * 100}%` }} />
           </div>
         </div>
       )}
 
-      {/* Upload result */}
       {uploadResult && !isUploading && (
-        <div className="max-h-56 overflow-y-auto rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <CheckCircle2 className="h-4 w-4" />
-            <span className="text-xs font-semibold">Documento pronto per le domande</span>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 text-emerald-700">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+              Pronto · {uploadResult.chunk_count} passaggi indicizzati
+            </span>
+            {(uploadResult.summary || uploadResult.key_concepts.length > 0) && (
+              <button type="button" onClick={() => setShowDetails((v) => !v)} className="text-emerald-600 hover:text-emerald-800">
+                {showDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            )}
+            <button type="button" onClick={onDismissResult} className="text-emerald-500 hover:text-emerald-800" aria-label="Chiudi">
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="bg-white rounded-xl p-2 border border-emerald-100 text-center">
-              <p className="font-bold text-lg" style={{ color: theme.text }}>{uploadResult.chunk_count}</p>
-              <p className="text-slate-500">passaggi indicizzati</p>
+          {showDetails && (
+            <div className="mt-1.5 max-h-28 space-y-1.5 overflow-y-auto text-[11px] text-slate-600">
+              {uploadResult.key_concepts.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {uploadResult.key_concepts.slice(0, 8).map((c) => (
+                    <span key={c} className="rounded-full bg-white px-2 py-0.5 text-[10px]" style={{ color: theme.text }}>{c}</span>
+                  ))}
+                </div>
+              )}
+              {uploadResult.summary && <p className="italic">{uploadResult.summary}</p>}
             </div>
-            <div className="bg-white rounded-xl p-2 border border-emerald-100 text-center">
-              <p className="font-bold text-lg" style={{ color: theme.text }}>{uploadResult.chunk_count}</p>
-              <p className="text-slate-500">segmenti pronti</p>
-            </div>
-          </div>
-          {uploadResult.key_concepts.length > 0 && (
-            <div>
-              <p className="text-[10px] font-semibold text-emerald-700 mb-1">Concetti chiave:</p>
-              <div className="flex flex-wrap gap-1">
-                {uploadResult.key_concepts.slice(0, 8).map((c) => (
-	                  <span key={c} className="text-[10px] rounded-full bg-white px-2 py-0.5"
-	                    style={{ color: theme.text }}>
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {uploadResult.summary && (
-            <p className="text-[11px] text-slate-600 bg-white rounded-xl p-2 border border-emerald-100 italic">{uploadResult.summary}</p>
           )}
         </div>
       )}
 
-      {/* Doc list */}
-      <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
         {docs.length === 0 && !isUploading && (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs text-center py-8">
-            <BookOpen className="h-8 w-8 mb-2 opacity-30" />
-            <p className="font-medium">Nessun documento caricato</p>
-            <p className="mt-1 text-[11px]">Carica PDF, Word o fogli dati per iniziare</p>
+          <div className="flex h-full flex-col items-center justify-center py-8 text-center text-xs text-slate-400">
+            <BookOpen className="mb-2 h-8 w-8 opacity-30" />
+            <p className="font-medium">Nessun documento</p>
+            <p className="mt-1 text-[11px]">Usa <strong>Aggiungi file</strong> o trascina qui PDF, Word, fogli dati, immagini</p>
           </div>
         )}
         {docs.map((doc) => {
           const isSelected = selectedDocIds.includes(doc.id)
-          const isActive = activeDocForChunks === doc.id
+          const ready = doc.status === 'ready' || doc.status === 'READY'
+          const processing = doc.status === 'processing' || doc.status === 'PROCESSING' || doc.status === 'queued' || doc.status === 'QUEUED'
           return (
             <div key={doc.id} onClick={() => onToggleDoc(doc.id)}
-              className="rounded-xl border p-2.5 transition-all cursor-pointer"
+              className="cursor-pointer rounded-lg border px-2 py-1.5 transition-all"
               style={{
                 borderColor: isSelected ? hex2rgba(theme.accent, 0.4) : 'rgba(203,213,225,0.6)',
                 backgroundColor: isSelected ? '#fafafa' : 'white',
               }}>
-              <div className="flex items-start gap-2">
-	                  <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
-	                    style={isSelected
-	                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)' }
-	                    : { borderColor: '#d4d4d4' }}>
+              <div className="flex items-center gap-2">
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-all"
+                  style={isSelected
+                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)' }
+                    : { borderColor: '#d4d4d4' }}>
                   {isSelected && <CheckCircle2 className="h-3 w-3" />}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {docIcon(doc.doc_type)}
-                    <span className="text-xs font-medium text-slate-700 truncate">{doc.title}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      doc.status === 'ready' || doc.status === 'READY' ? 'bg-emerald-100 text-emerald-700' :
-                      doc.status === 'processing' || doc.status === 'PROCESSING' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-600'
-                    }`}>
-                      {doc.status === 'ready' || doc.status === 'READY' ? 'Pronto' :
-                       doc.status === 'processing' || doc.status === 'PROCESSING' ? 'Elaborazione…' : 'Errore'}
-                    </span>
-                    {doc.chunk_count > 0 && (
-                      <span className="text-[10px] text-slate-400">{doc.chunk_count} blocchi</span>
-                    )}
-                  </div>
+                {docIcon(doc.doc_type)}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-slate-700" title={doc.title}>{doc.title}</p>
+                  <p className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-emerald-500' : processing ? 'bg-amber-500' : 'bg-red-500'}`} />
+                    {ready ? (doc.chunk_count > 0 ? `${doc.chunk_count} blocchi` : 'Pronto') : processing ? 'Elaborazione…' : 'Errore'}
+                  </p>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  {(doc.status === 'ready' || doc.status === 'READY') && (
-                    <button onClick={(e) => { e.stopPropagation(); onViewChunks(isActive ? null : doc.id) }}
+                <div className="flex shrink-0 gap-0.5">
+                  {ready && (
+                    <button onClick={(e) => { e.stopPropagation(); onPreview(doc.id) }}
                       title="Anteprima documento"
-	                      className="p-1 rounded-lg transition-colors"
-	                      style={isActive
-	                        ? { color: theme.text, backgroundColor: 'rgb(var(--c-neutral-100))' }
-	                        : { color: '#a3a3a3' }}>
+                      className="rounded-lg p-1 transition-colors hover:bg-slate-100"
+                      style={previewDocId === doc.id ? { color: theme.text } : { color: '#a3a3a3' }}>
                       <Eye className="h-3.5 w-3.5" />
                     </button>
                   )}
                   <button onClick={(e) => { e.stopPropagation(); onDelete(doc.id) }}
-                    className="p-1 rounded-lg text-slate-300 hover:text-red-400 transition-colors">
+                    title={`Rimuovi dal ${noun}`}
+                    className="rounded-lg p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -410,8 +347,83 @@ function DocumentPanel({
           )
         })}
       </div>
+    </div>
+  )
+}
 
-      <EmbeddingExplainer theme={theme} />
+// ─── Document preview modal ───────────────────────────────────────────────────
+
+function DocumentPreviewModal({
+  doc, chunks, loading, highlightsByChunk, focusChunkId, onClose, theme,
+}: {
+  doc: RagDoc
+  chunks: RagChunk[]
+  loading: boolean
+  highlightsByChunk: Map<string, RagHighlight[]>
+  focusChunkId: string | null
+  onClose: () => void
+  theme: AccentTheme
+}) {
+  const focusRef = useRef<HTMLDivElement>(null)
+  const firstMarkRef = useRef<HTMLDivElement>(null)
+  const totalHighlights = chunks.reduce((n, c) => n + (highlightsByChunk.get(c.id)?.length || 0), 0)
+
+  useEffect(() => {
+    const el = focusRef.current ?? firstMarkRef.current
+    if (el) el.scrollIntoView({ block: 'center' })
+  }, [chunks, focusChunkId])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  let markAssigned = false
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Anteprima ${doc.title}`}>
+        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-4 py-3">
+          {docIcon(doc.doc_type)}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
+            <p className="text-[11px] text-slate-400">
+              {chunks.length} blocchi
+              {totalHighlights > 0 && <> · <span className="inline-flex items-center gap-1"><Highlighter className="h-3 w-3" />{totalHighlights} passaggi evidenziati dall’ultima ricerca</span></>}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400" style={{ color: theme.text }}>
+              <Loader2 className="h-4 w-4 animate-spin" /> Caricamento…
+            </div>
+          )}
+          {!loading && chunks.length === 0 && <p className="py-12 text-center text-sm text-slate-400">Nessun contenuto da mostrare.</p>}
+          {chunks.map((c, i) => {
+            const hl = highlightsByChunk.get(c.id)
+            const isFocus = focusChunkId === c.id
+            const attachMark = !markAssigned && !focusChunkId && !!hl?.length
+            if (attachMark) markAssigned = true
+            const prevPage = i > 0 ? chunks[i - 1].page : undefined
+            return (
+              <div key={c.id}>
+                {c.page && c.page !== prevPage && (
+                  <p className="mb-1 mt-2 border-b border-slate-100 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pagina {c.page}</p>
+                )}
+                <div ref={isFocus ? focusRef : attachMark ? firstMarkRef : undefined}
+                  className={`whitespace-pre-wrap rounded-lg px-2 py-1 text-[13px] leading-relaxed text-slate-700 ${isFocus ? 'ring-2 ring-amber-300' : ''}`}>
+                  <HighlightedText text={c.text} highlights={hl} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
@@ -467,8 +479,9 @@ function CitedContent({
 
 function ChatPanel({
   messages, ragPhase, onSend,
-  selectedDocIds, onCitationClick, activeCitationIndex, error, theme,
+  selectedDocIds, onCitationClick, activeCitationIndex, error, theme, noun,
 }: {
+  noun: string
   messages: RagMessage[]
   ragPhase: RagPhase
   onSend: (msg: string) => void
@@ -584,7 +597,7 @@ function ChatPanel({
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder={isLoading ? 'Elaborazione in corso…' :
-              selectedDocIds.length > 0 ? 'Domanda sui documenti selezionati…' : 'Domanda sulla knowledge base…'}
+              selectedDocIds.length > 0 ? 'Domanda sui documenti selezionati…' : `Domanda sul ${noun}…`}
             rows={2} disabled={isLoading}
             className="flex-1 resize-none bg-transparent px-2 py-2 text-[16px] leading-7 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] disabled:cursor-not-allowed" />
           <button onClick={handleSend} disabled={!input.trim() || isLoading}
@@ -603,8 +616,9 @@ function ChatPanel({
 // ─── Source Panel ─────────────────────────────────────────────────────────────
 
 function SourcePanel({
-  activeDoc, chunks, isLoadingChunks, highlightedChunk, sourceChunks, pendingChunks, ragPhase, theme,
+  activeDoc, chunks, isLoadingChunks, highlightedChunk, sourceChunks, pendingChunks, ragPhase, theme, onOpenInDocument,
 }: {
+  onOpenInDocument: (chunk: RagChunk) => void
   activeDoc: RagDoc | null
   chunks: RagChunk[]
   isLoadingChunks: boolean
@@ -694,9 +708,20 @@ function SourcePanel({
                   </div>
                 )}
               </div>
-              <p className={`text-[12px] leading-relaxed ${isHighlighted ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                {chunk.text}
+              <p className={`whitespace-pre-wrap text-[12px] leading-relaxed ${isHighlighted ? 'text-slate-800' : 'text-slate-600'}`}>
+                <HighlightedText text={chunk.text} highlights={chunk.highlights} />
               </p>
+              <div className="mt-2 flex items-center gap-2">
+                {chunk.highlights && chunk.highlights.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+                    <Highlighter className="h-3 w-3" />{chunk.highlights.length} {chunk.highlights.length === 1 ? 'passaggio pertinente' : 'passaggi pertinenti'}
+                  </span>
+                )}
+                <button type="button" onClick={() => onOpenInDocument(chunk)}
+                  className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-slate-700">
+                  Apri nel documento
+                </button>
+              </div>
             </div>
           )
         })}
@@ -707,8 +732,11 @@ function SourcePanel({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+const ACCEPT = '.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md,.png,.jpg,.jpeg,.webp,.gif'
+
 export default function StudentRagWorkspace({
   theme, session, onSessionUpdate, onNewSession, onSwitchSession, onDeleteSession,
+  api = studentRagApi, store, variant = 'student', onBack, backLabel = 'Spazio AI',
 }: {
   theme: AccentTheme
   session: RagSession
@@ -716,23 +744,42 @@ export default function StudentRagWorkspace({
   onNewSession: () => void
   onSwitchSession: (id: string) => void
   onDeleteSession: (id: string) => void
+  api?: RagWorkspaceApi
+  store?: RagSessionStore
+  variant?: 'student' | 'teacher'
+  onBack?: () => void
+  backLabel?: string
 }) {
   const queryClient = useQueryClient()
+  const sessionStore: RagSessionStore = store ?? { get: getRagSessions, save: saveRagSession }
+  const isTeacher = variant === 'teacher'
+  const noun = isTeacher ? 'notebook' : 'knowledge base'
+  const qk = isTeacher ? 'teacher-rag' : 'student-rag'
 
-  const [kbCollapsed, setKbCollapsed] = useState(false)
+  const [docsCollapsed, setDocsCollapsed] = useState(false)
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>(session.selectedDocIds)
   const [messages, setMessages] = useState<RagMessage[]>(session.messages)
   const [isUploading, setIsUploading] = useState(false)
   const [isAddingSource, setIsAddingSource] = useState(false)
   const [uploadStep, setUploadStep] = useState(0)
   const [uploadResult, setUploadResult] = useState<{ chunk_count: number; key_concepts: string[]; summary: string } | null>(null)
-  const [activeDocForChunks, setActiveDocForChunks] = useState<string | null>(null)
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null)
+  const [previewFocusChunkId, setPreviewFocusChunkId] = useState<string | null>(null)
   const [highlightedChunk, setHighlightedChunk] = useState<RagChunk | null>(null)
   const [activeCitationIndex, setActiveCitationIndex] = useState<number | null>(null)
   const [sourceChunks, setSourceChunks] = useState<RagChunk[] | null>(getLatestSessionSourceChunks(session.messages))
   const [pendingChunks, setPendingChunks] = useState<RagChunk[] | null>(null)
   const [ragPhase, setRagPhase] = useState<RagPhase>('idle')
   const [chatError, setChatError] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [youtubeOpen, setYoutubeOpen] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const sessionMenuRef = useRef<HTMLDivElement>(null)
+  const youtubeRef = useRef<HTMLDivElement>(null)
+  const infoRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setSelectedDocIds(session.selectedDocIds)
@@ -741,14 +788,22 @@ export default function StudentRagWorkspace({
     setPendingChunks(null)
     setHighlightedChunk(null)
     setActiveCitationIndex(null)
-    setActiveDocForChunks(null)
+    setPreviewDocId(null)
     setChatError(null)
   }, [session])
 
-  const persistSession = useCallback((
-    msgs: RagMessage[],
-    docIds: string[],
-  ) => {
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      const t = e.target as Node
+      if (sessionMenuRef.current && !sessionMenuRef.current.contains(t)) setSessionMenuOpen(false)
+      if (youtubeRef.current && !youtubeRef.current.contains(t)) setYoutubeOpen(false)
+      if (infoRef.current && !infoRef.current.contains(t)) setInfoOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const persistSession = useCallback((msgs: RagMessage[], docIds: string[]) => {
     const name = msgs.find((m) => m.role === 'user')?.content.slice(0, 50) || session.name
     const updated: RagSession = {
       ...session,
@@ -758,84 +813,103 @@ export default function StudentRagWorkspace({
       searchMode: 'hybrid',
       updatedAt: new Date().toISOString(),
     }
-    saveRagSession(updated)
+    sessionStore.save(updated)
     onSessionUpdate(updated)
-  }, [session, onSessionUpdate])
+  }, [session, onSessionUpdate, sessionStore])
 
+  const docsKey = [`${qk}-docs`, session.id]
   const { data: docs = [] } = useQuery<RagDoc[]>({
-    queryKey: ['student-rag-docs', session.id],
-    queryFn: async () => {
-      const res = await studentRagApi.listDocuments(session.id)
-      return res.data || []
-    },
+    queryKey: docsKey,
+    queryFn: async () => (await api.listDocuments(session.id)).data || [],
   })
 
-  const { data: docChunks = [], isFetching: chunksLoading } = useQuery<RagChunk[]>({
-    queryKey: ['student-rag-chunks', activeDocForChunks],
-    queryFn: async () => {
-      const res = await studentRagApi.getChunks(activeDocForChunks!)
-      return (res.data || []).map(normalizeChunk)
-    },
-    enabled: !!activeDocForChunks,
+  const { data: previewChunks = [], isFetching: previewLoading } = useQuery<RagChunk[]>({
+    queryKey: [`${qk}-chunks`, previewDocId],
+    queryFn: async () => ((await api.getChunks(previewDocId!)).data || []).map(normalizeChunk),
+    enabled: !!previewDocId,
   })
+
+  // Highlights produced by the latest semantic search, keyed by chunk id (reused in the preview modal).
+  const highlightsByChunk = useMemo(() => {
+    const map = new Map<string, RagHighlight[]>()
+    for (const list of [pendingChunks, sourceChunks]) {
+      list?.forEach((c) => { if (c.highlights?.length && !map.has(c.id)) map.set(c.id, c.highlights) })
+    }
+    return map
+  }, [pendingChunks, sourceChunks])
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      await studentRagApi.deleteDocument(id)
-      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
+      await api.deleteDocument(id)
+      queryClient.invalidateQueries({ queryKey: docsKey })
       setSelectedDocIds((prev) => {
         const next = prev.filter((d) => d !== id)
         persistSession(messages, next)
         return next
       })
+      if (previewDocId === id) setPreviewDocId(null)
     } catch { /* noop */ }
-  }, [messages, persistSession, queryClient, session.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, messages, persistSession, queryClient, session.id, previewDocId])
 
-  const handleUpload = useCallback(async (files: FileList) => {
+  const errorDetail = (err: unknown, fallback: string) =>
+    (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || fallback
+
+  const handleUpload = useCallback(async (files: File[]) => {
+    if (!files.length) return
     setIsUploading(true)
     setUploadStep(0)
     setUploadResult(null)
-    const timings = [400, 900, 1500, 2200]
-    timings.forEach((delay, i) => setTimeout(() => setUploadStep(i + 1), delay))
+    setChatError(null)
+    const timers = [400, 900, 1500, 2200].map((delay, i) => setTimeout(() => setUploadStep(i + 1), delay))
+    const errors: string[] = []
     try {
-      for (const file of Array.from(files)) {
-        const res = await studentRagApi.uploadDocument(file, session.id)
-        const data = res.data
-        setUploadResult({
-          chunk_count: data.chunk_count,
-          key_concepts: data.key_concepts || [],
-          summary: data.summary || '',
-        })
+      for (const file of files) {
+        try {
+          const res = await api.uploadDocument(file, session.id)
+          setUploadResult({
+            chunk_count: res.data.chunk_count,
+            key_concepts: res.data.key_concepts || [],
+            summary: res.data.summary || '',
+          })
+        } catch (err) {
+          errors.push(`${file.name}: ${errorDetail(err, 'caricamento non riuscito')}`)
+        }
       }
       setUploadStep(4)
-      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
-    } catch {
-      setChatError('Errore durante il caricamento del documento.')
+      queryClient.invalidateQueries({ queryKey: docsKey })
+      if (errors.length) setChatError(errors.join(' · '))
     } finally {
+      timers.forEach(clearTimeout)
       setIsUploading(false)
     }
-  }, [queryClient, session.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, queryClient, session.id])
+
+  // Privacy alert + anonymized copy before a document enters the RAG.
+  const askThenUpload = useCallback((files: File[]) => {
+    void confirmAttachments(files).then((kept) => { if (kept.length) void handleUpload(kept) })
+  }, [handleUpload])
 
   const handleYoutube = useCallback(async (url: string) => {
     setIsAddingSource(true)
     setUploadResult(null)
     setChatError(null)
     try {
-      const res = await studentRagApi.ingestYoutube(url, session.id)
-      const data = res.data
+      const res = await api.ingestYoutube(url, session.id)
       setUploadResult({
-        chunk_count: data.chunk_count,
-        key_concepts: data.key_concepts || [],
-        summary: data.summary || '',
+        chunk_count: res.data.chunk_count,
+        key_concepts: res.data.key_concepts || [],
+        summary: res.data.summary || '',
       })
-      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
+      queryClient.invalidateQueries({ queryKey: docsKey })
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setChatError(detail || 'Impossibile trascrivere e indicizzare il video YouTube.')
+      setChatError(errorDetail(err, 'Impossibile trascrivere e indicizzare il video YouTube.'))
     } finally {
       setIsAddingSource(false)
     }
-  }, [queryClient, session.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, queryClient, session.id])
 
   const toggleDocSelection = useCallback((id: string) => {
     setSelectedDocIds((prev) => {
@@ -857,14 +931,13 @@ export default function StudentRagWorkspace({
 
     setRagPhase('searching')
     try {
-      const searchRes = await studentRagApi.search(message, docFilter, 10, session.id)
-      const chunks = (searchRes.data || []).map(normalizeChunk)
-      setPendingChunks(chunks)
+      const searchRes = await api.search(message, docFilter, 10, session.id)
+      setPendingChunks((searchRes.data || []).map((c: Record<string, unknown>) => normalizeChunk(c)))
     } catch { /* non-fatal */ }
 
     setRagPhase('generating')
     try {
-      const chatRes = await studentRagApi.chat(message, history, docFilter, 10, session.id)
+      const chatRes = await api.chat(message, history, docFilter, 10, session.id)
       const data = chatRes.data as { response: string; source_chunks: unknown[] }
       const responseChunks = (data.source_chunks || []).map((c) => normalizeChunk(c as Record<string, unknown>))
       const newAssistant: RagMessage = {
@@ -880,111 +953,109 @@ export default function StudentRagWorkspace({
       })
       setSourceChunks(responseChunks)
       setPendingChunks(null)
-      setActiveDocForChunks(null)
     } catch (err: unknown) {
-      setChatError(err instanceof Error ? err.message : 'Errore nella risposta. Riprova.')
+      setChatError(errorDetail(err, err instanceof Error ? err.message : 'Errore nella risposta. Riprova.'))
       setPendingChunks(null)
     } finally {
       setRagPhase('idle')
     }
-  }, [messages, selectedDocIds, persistSession, session.id])
+  }, [api, messages, selectedDocIds, persistSession, session.id])
 
   const handleCitationClick = useCallback((chunk: RagChunk, index: number, citationChunks: RagChunk[]) => {
     setSourceChunks(citationChunks)
     setHighlightedChunk(chunk)
     setActiveCitationIndex(index)
-    setActiveDocForChunks(null)
     setPendingChunks(null)
   }, [])
 
-  const handleViewChunks = (docId: string | null) => {
-    setActiveDocForChunks(docId)
-    setSourceChunks(null)
-    setPendingChunks(null)
-    setHighlightedChunk(null)
-    setActiveCitationIndex(null)
+  const openPreview = (docId: string, focusChunkId: string | null = null) => {
+    setPreviewDocId(docId)
+    setPreviewFocusChunkId(focusChunkId)
   }
 
-  const activeDoc = docs.find((d) => d.id === activeDocForChunks) ?? null
-  const displayChunks = activeDocForChunks ? docChunks : []
+  const previewDoc = docs.find((d) => d.id === previewDocId) ?? null
+  const allSessions = sessionStore.get()
 
-  const allSessions = getRagSessions()
-  const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
-  const sessionMenuRef = useRef<HTMLDivElement>(null)
-
-  // Close menu on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (sessionMenuRef.current && !sessionMenuRef.current.contains(e.target as Node)) {
-        setSessionMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  const toolbarBtn =
+    'inline-flex h-9 items-center gap-1.5 rounded-xl border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] px-3 text-xs font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:border-[color:var(--button-chrome-border-hover)] disabled:opacity-50'
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-slate-100 md:bg-transparent">
-      {/* Session bar */}
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5 shrink-0">
+    <div
+      className="relative flex h-full min-h-0 flex-col bg-slate-100 md:bg-transparent"
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true) } }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false) }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        setDragOver(false)
+        if (!isUploading) askThenUpload(Array.from(e.dataTransfer.files))
+      }}
+    >
+      <input ref={fileRef} type="file" className="hidden" multiple accept={ACCEPT}
+        onChange={(e) => {
+          if (e.target.files) askThenUpload(Array.from(e.target.files))
+          e.target.value = ''
+        }} />
+
+      {/* Single toolbar: navigation · session · sources · help */}
+      <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white/95 px-3 py-2 shadow-sm">
+        {onBack && (
+          <button type="button" onClick={onBack} className="inline-flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-bold text-slate-700 hover:bg-slate-100" title={`Torna a ${backLabel}`}>
+            <ChevronLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">{backLabel}</span>
+          </button>
+        )}
+
         {/* Session selector */}
-        <div className="relative flex-1 min-w-0" ref={sessionMenuRef}>
+        <div className="relative min-w-0 flex-1 sm:max-w-xs" ref={sessionMenuRef}>
           <button
             onClick={() => setSessionMenuOpen((o) => !o)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition-all text-left w-full max-w-sm shadow-sm"
+            className="flex h-9 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left transition-all hover:border-slate-300"
+            title="Cronologia e fonti della sessione"
           >
             <Database className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-700 truncate">{session.name}</p>
-              <p className="text-[10px] text-slate-400">Cronologia e fonti della sessione</p>
-            </div>
-            <ChevronDown className={`h-3 w-3 text-slate-400 shrink-0 transition-transform ${sessionMenuOpen ? 'rotate-180' : ''}`} />
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{session.name}</span>
+            <ChevronDown className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${sessionMenuOpen ? 'rotate-180' : ''}`} />
           </button>
-
           {sessionMenuOpen && (
-            <div className="absolute top-full left-0 mt-1 w-72 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
-              <div className="p-2 border-b border-slate-100">
+            <div className="absolute left-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="border-b border-slate-100 p-2">
                 <button
                   onClick={() => { setSessionMenuOpen(false); onNewSession() }}
-                  className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-left transition-colors hover:bg-slate-50"
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors hover:bg-slate-50"
                 >
-	                  <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100">
                     <Plus className="h-3.5 w-3.5" style={{ color: theme.text }} />
                   </div>
                   <span className="text-xs font-semibold" style={{ color: theme.text }}>Nuova sessione</span>
                 </button>
               </div>
-              <div className="max-h-56 overflow-y-auto p-2 space-y-0.5">
+              <div className="max-h-56 space-y-0.5 overflow-y-auto p-2">
                 {allSessions.length === 0 && (
-                  <p className="text-[11px] text-slate-400 text-center py-3">Nessuna sessione salvata</p>
+                  <p className="py-3 text-center text-[11px] text-slate-400">Nessuna sessione salvata</p>
                 )}
                 {allSessions.map((s) => {
                   const isCurrent = s.id === session.id
                   const lastMsg = s.messages.filter((m) => m.role === 'user').pop()
                   return (
                     <div key={s.id}
-                      className="flex items-start gap-2 w-full px-3 py-2 rounded-xl text-left transition-colors hover:bg-slate-50"
-	                      style={isCurrent ? { backgroundColor: 'rgb(var(--c-neutral-50))' } : {}}>
-                      <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400" />
-                      <button
-                        onClick={() => { setSessionMenuOpen(false); onSwitchSession(s.id) }}
-                        className="min-w-0 flex-1 text-left"
-                      >
+                      className="flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                      style={isCurrent ? { backgroundColor: 'rgb(var(--c-neutral-50))' } : {}}>
+                      <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <button onClick={() => { setSessionMenuOpen(false); onSwitchSession(s.id) }} className="min-w-0 flex-1 text-left">
                         <div className="flex items-center gap-1">
-                          <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
+                          <span className="truncate text-xs font-semibold text-slate-700">{s.name}</span>
                           {isCurrent && (
-	                            <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-bold"
-	                              style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>
-                              attiva
-                            </span>
+                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                              style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>attiva</span>
                           )}
                         </div>
-                        {lastMsg && <p className="text-[10px] text-slate-400 truncate">{lastMsg.content.slice(0, 50)}</p>}
+                        {lastMsg && <p className="truncate text-[10px] text-slate-400">{lastMsg.content.slice(0, 50)}</p>}
                         <p className="text-[10px] text-slate-300">{new Date(s.updatedAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
                       </button>
                       <button
                         onClick={() => { onDeleteSession(s.id); setSessionMenuOpen(false) }}
-                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                        className="shrink-0 rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
                         title="Rimuovi sessione"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -997,90 +1068,129 @@ export default function StudentRagWorkspace({
           )}
         </div>
 
-        {/* New session shortcut */}
-        <button
-          onClick={onNewSession}
-          title="Nuova sessione"
-	          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-xs font-semibold text-[var(--text-primary)] shadow-sm shrink-0 transition-colors hover:border-[color:var(--button-chrome-border-hover)]"
-        >
+        <button onClick={onNewSession} title="Nuova sessione" className={toolbarBtn}>
           <Plus className="h-3.5 w-3.5" />
-          Nuova
+          <span className="hidden md:inline">Nuova</span>
         </button>
+
+        <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
+
+        {/* Sources */}
+        <button onClick={() => fileRef.current?.click()} disabled={isUploading} className={toolbarBtn}
+          title="PDF, Word, TXT, CSV, Excel, immagini — puoi anche trascinarli nella finestra">
+          {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          <span className="hidden md:inline">Aggiungi file</span>
+        </button>
+
+        <div className="relative" ref={youtubeRef}>
+          <button onClick={() => setYoutubeOpen((o) => !o)} disabled={isAddingSource} className={toolbarBtn} title="Aggiungi trascrizione YouTube">
+            {isAddingSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+            <span className="hidden md:inline">YouTube</span>
+          </button>
+          {youtubeOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl">
+              <p className="mb-1.5 text-[11px] font-bold text-slate-700">Trascrizione YouTube nel {noun}</p>
+              <form className="flex gap-2" onSubmit={(e) => {
+                e.preventDefault()
+                if (!youtubeUrl.trim()) return
+                void handleYoutube(youtubeUrl.trim())
+                setYoutubeUrl('')
+                setYoutubeOpen(false)
+              }}>
+                <input autoFocus value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://youtu.be/…"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs outline-none placeholder:text-slate-400 focus:border-slate-300" />
+                <button type="submit" disabled={!youtubeUrl.trim()}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] disabled:bg-none disabled:bg-slate-100 disabled:text-slate-300"
+                  title="Trascrivi e indicizza">
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
+        <div className="relative ml-auto flex items-center gap-1" ref={infoRef}>
+          <button onClick={() => setInfoOpen((o) => !o)} className={toolbarBtn} title="Come usa le fonti?">
+            <Sparkles className="h-3.5 w-3.5" style={{ color: theme.text }} />
+            <span className="hidden lg:inline">Come funziona</span>
+          </button>
+          {infoOpen && (
+            <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+              <RagExplainer theme={theme} teacher={isTeacher} />
+            </div>
+          )}
+          <button onClick={() => setDocsCollapsed((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+            title={docsCollapsed ? 'Mostra documenti' : 'Nascondi documenti'}>
+            {docsCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
+
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-xl border-2 border-dashed bg-white/80 backdrop-blur-[1px]"
+          style={{ borderColor: theme.accent }}>
+          <div className="text-center">
+            <Upload className="mx-auto mb-2 h-8 w-8" style={{ color: theme.text }} />
+            <p className="text-sm font-bold text-slate-700">Rilascia per aggiungere al {noun}</p>
+          </div>
+        </div>
+      )}
 
       {/* Three panels */}
-      <div className="flex flex-1 min-h-0">
-      {/* Left: Knowledge Base */}
-      <div className={`shrink-0 flex flex-col transition-all duration-300 ${kbCollapsed ? 'w-12' : 'w-72'}`}>
-        {kbCollapsed ? (
-          <div className="flex flex-col items-center gap-3 p-2 pt-4 h-full bg-white border-r border-slate-200">
-            <button onClick={() => setKbCollapsed(false)} title="Espandi Knowledge Base"
-              className="p-2 rounded-xl hover:bg-slate-50 transition-colors" style={{ color: theme.text }}>
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-            <div className="w-px flex-1 bg-slate-200 mx-auto" />
-            {docs.map((doc) => (
-              <div key={doc.id} title={doc.title}
-	                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors"
-	                style={selectedDocIds.includes(doc.id)
-	                  ? { backgroundImage: 'var(--selection-bg)', color: 'var(--selection-text)', border: '1px solid var(--selection-border)' }
-	                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
-                onClick={() => toggleDocSelection(doc.id)}>
-                {doc.title.slice(0, 1).toUpperCase()}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col h-full bg-white border-r border-slate-200">
-            <div className="flex items-center justify-end px-3 pt-3 shrink-0">
-              <button onClick={() => setKbCollapsed(true)} title="Comprimi"
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
-                style={{ color: '#a3a3a3' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = theme.text)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#a3a3a3')}>
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden p-4 pt-1">
-              <DocumentPanel
-                docs={docs} selectedDocIds={selectedDocIds}
-                onToggleDoc={toggleDocSelection}
-                onDelete={handleDelete} onUpload={handleUpload}
-                onYoutube={handleYoutube}
-                isUploading={isUploading} isAddingSource={isAddingSource}
-                uploadStep={uploadStep} uploadResult={uploadResult}
-                activeDocForChunks={activeDocForChunks} onViewChunks={handleViewChunks}
-                theme={theme}
-              />
-            </div>
+      <div className="flex min-h-0 flex-1">
+        {/* Left: documents */}
+        {!docsCollapsed && (
+          <div className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white p-3 sm:w-64">
+            <DocumentPanel
+              docs={docs} selectedDocIds={selectedDocIds}
+              onToggleDoc={toggleDocSelection}
+              onDelete={handleDelete}
+              onPreview={(id) => openPreview(id)}
+              previewDocId={previewDocId}
+              isUploading={isUploading} uploadStep={uploadStep} uploadResult={uploadResult}
+              onDismissResult={() => setUploadResult(null)}
+              noun={noun} theme={theme}
+            />
           </div>
         )}
-      </div>
 
-      {/* Center: Chat */}
-	      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-white mx-2 my-3 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
-          <ChatPanel
-            messages={messages} ragPhase={ragPhase}
-            onSend={handleSend} selectedDocIds={selectedDocIds}
-            onCitationClick={handleCitationClick} activeCitationIndex={activeCitationIndex}
-            error={chatError} theme={theme}
-          />
+        {/* Center: chat */}
+        <div className="mx-2 my-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+            <ChatPanel
+              messages={messages} ragPhase={ragPhase}
+              onSend={handleSend} selectedDocIds={selectedDocIds}
+              onCitationClick={handleCitationClick} activeCitationIndex={activeCitationIndex}
+              error={chatError} theme={theme} noun={noun}
+            />
+          </div>
+        </div>
+
+        {/* Right: sources */}
+        <div className="my-3 mr-2 flex w-64 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm xl:w-80">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+            <SourcePanel
+              activeDoc={null} chunks={[]}
+              isLoadingChunks={false} highlightedChunk={highlightedChunk}
+              sourceChunks={sourceChunks} pendingChunks={pendingChunks}
+              ragPhase={ragPhase} theme={theme}
+              onOpenInDocument={(chunk) => openPreview(chunk.document_id, chunk.id)}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Right: Sources */}
-	      <div className="w-72 shrink-0 flex flex-col bg-white mr-2 my-3 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
-          <SourcePanel
-            activeDoc={activeDoc} chunks={displayChunks}
-            isLoadingChunks={chunksLoading} highlightedChunk={highlightedChunk}
-            sourceChunks={sourceChunks} pendingChunks={pendingChunks}
-            ragPhase={ragPhase} theme={theme}
-          />
-        </div>
-      </div>
-      </div>
+      {previewDoc && (
+        <DocumentPreviewModal
+          doc={previewDoc}
+          chunks={previewChunks}
+          loading={previewLoading}
+          highlightsByChunk={highlightsByChunk}
+          focusChunkId={previewFocusChunkId}
+          onClose={() => { setPreviewDocId(null); setPreviewFocusChunkId(null) }}
+          theme={theme}
+        />
+      )}
     </div>
   )
 }

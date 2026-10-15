@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_, and_
 from typing import Annotated, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import csv
 import io
@@ -18,14 +18,16 @@ from app.models.user import User, ActivationToken
 from app.models.tenant import Tenant
 from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.invitation import PlatformInvitation
-from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
+from app.models.credits import CreditLimit, CreditTransaction, CreditRequest, CreditAlert
 from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole, TenantType
-from app.services.credit_service import credit_service
+from app.services.credit_service import credit_service, effective_cap, from_credits, reset_if_due, to_credits, LOW_BALANCE_RATIO
+from app.realtime.gateway import sio
+from pydantic import BaseModel, Field
 import re
 from app.schemas.credits import (
     CreditLimitResponse, CreditLimitUpdate, CreditLimitBase,
     CreditTransactionResponse, ConsumptionStats,
-    CreditRequestResponse, CreditRequestReview,
+    CreditRequestResponse, CreditRequestReview, CreditRequestCreate,
     CreditBalanceResponse, CreditUsageHistoryItem,
     PlatformInvitationCreate, PlatformInvitationResponse, BulkInvitationCreate
 )
@@ -100,7 +102,7 @@ async def get_my_credit_balance(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ):
-    """Return the current user's visible credit balance. Admin accounting stays in EUR."""
+    """Return the current user's visible credit balance, in credits."""
     return await credit_service.get_balance(
         db,
         user.tenant_id,
@@ -115,20 +117,33 @@ async def get_my_student_pool_balance(
 ):
     """Return the current teacher's monthly pool for student usage."""
     _teacher_limit, pool_limit = await credit_service.ensure_default_teacher_credit_setup(db, user.tenant_id, user.id)
-    remaining = max(float(pool_limit.amount_cap or 0.0) - float(pool_limit.current_usage or 0.0), 0.0)
-    used = max(float(pool_limit.current_usage or 0.0), 0.0)
-    cap = max(float(pool_limit.amount_cap or 0.0), 0.0)
+    reset_if_due(pool_limit, datetime.now(timezone.utc))
     await db.commit()
-    return {
-        "credits_remaining": int(round(remaining * 100)),
-        "credits_used": int(round(used * 100)),
-        "credits_cap": int(round(cap * 100)),
-        "eur_remaining": round(remaining, 4),
-        "eur_used": round(used, 4),
-        "eur_cap": round(cap, 4),
-        "limit_level": LimitLevel.STUDENT_POOL.value,
-        "period_end": pool_limit.period_end,
-    }
+    payload = credit_service.limit_balance_payload(pool_limit)
+    payload["limit_level"] = LimitLevel.STUDENT_POOL.value
+
+    # Limiti per classe del docente: visibili subito accanto al pool.
+    class_limits = (await db.execute(
+        select(CreditLimit, TeacherClass.name)
+        .join(TeacherClass, TeacherClass.id == CreditLimit.class_id)
+        .where(
+            CreditLimit.level == LimitLevel.CLASS,
+            CreditLimit.tenant_id == user.tenant_id,
+            TeacherClass.teacher_id == user.id,
+            CreditLimit.amount_cap > 0,
+        )
+        .order_by(TeacherClass.name)
+    )).all()
+    payload["classes"] = [
+        {
+            "class_id": str(lim.class_id),
+            "class_name": name,
+            **{k: v for k, v in credit_service.limit_balance_payload(lim).items()
+               if k in ("credits_remaining", "credits_used", "credits_cap", "low_balance", "exhausted", "period_end")},
+        }
+        for lim, name in class_limits
+    ]
+    return payload
 
 
 @router.get("/history", response_model=List[CreditUsageHistoryItem])
@@ -157,7 +172,6 @@ async def get_my_credit_history(
             provider=tx.provider,
             model=tx.model,
             service=credit_service.classify_service(tx.provider, tx.model, tx.usage_details),
-            cost_eur=float(tx.cost or 0.0),
             cost_credits=round(float(tx.cost or 0.0) * 100, 6),
             usage_details=tx.usage_details,
         )
@@ -204,7 +218,6 @@ async def get_my_student_pool_history(
             "provider": tx.provider,
             "model": tx.model,
             "service": credit_service.classify_service(tx.provider, tx.model, tx.usage_details),
-            "cost_eur": float(tx.cost or 0.0),
             "cost_credits": round(float(tx.cost or 0.0) * 100, 6),
             "usage_details": tx.usage_details or {},
         }
@@ -324,85 +337,460 @@ async def create_global_limit(
 
 # ==================== REQUESTS ====================
 
-@router.get("/requests", response_model=List[CreditRequestResponse])
+def _level_value(limit: CreditLimit) -> str:
+    return limit.level.value if hasattr(limit.level, "value") else str(limit.level)
+
+
+def _limit_row(limit: CreditLimit, *, title: str, subtitle: str = "", class_name: str | None = None,
+               teacher_name: str | None = None, school_name: str | None = None) -> dict:
+    cap = float(limit.amount_cap or 0.0)
+    bonus = float(limit.bonus_credits or 0.0)
+    used = float(limit.current_usage or 0.0)
+    eff = cap + bonus
+    remaining = max(eff - used, 0.0)
+    if cap <= 0:
+        state = "unlimited"
+    elif remaining <= 0:
+        state = "exhausted"
+    elif remaining / eff <= LOW_BALANCE_RATIO:
+        state = "low"
+    else:
+        state = "ok"
+    return {
+        "limit_id": str(limit.id) if limit.id else None,
+        "level": _level_value(limit),
+        "tenant_id": str(limit.tenant_id) if limit.tenant_id else None,
+        "teacher_id": str(limit.teacher_id) if limit.teacher_id else None,
+        "class_id": str(limit.class_id) if limit.class_id else None,
+        "title": title,
+        "subtitle": subtitle,
+        "teacher_name": teacher_name,
+        "school_name": school_name,
+        "cap_credits": to_credits(cap),
+        "bonus_credits": to_credits(bonus),
+        "used_credits": to_credits(used),
+        "remaining_credits": to_credits(remaining) if cap > 0 else None,
+        "effective_cap_credits": to_credits(eff) if cap > 0 else None,
+        "used_pct": round(used / eff * 100, 1) if eff > 0 else 0.0,
+        "state": state,
+        "period_end": limit.period_end,
+    }
+
+
+class LimitTarget(BaseModel):
+    """Identifica un limite per ambito; viene creato al volo se non esiste."""
+    limit_id: Optional[uuid.UUID] = None
+    level: Optional[LimitLevel] = None
+    tenant_id: Optional[uuid.UUID] = None
+    teacher_id: Optional[uuid.UUID] = None
+    class_id: Optional[uuid.UUID] = None
+
+
+class LimitSetBody(LimitTarget):
+    cap_credits: float = Field(..., ge=0)
+
+
+class BundleBody(LimitTarget):
+    credits: float = Field(..., gt=0)
+    note: Optional[str] = None
+
+
+async def _resolve_limit(db: AsyncSession, target: LimitTarget, *, create_cap: float | None = None) -> CreditLimit:
+    """Trova (o crea) il limite indicato dall'admin."""
+    if target.limit_id:
+        limit = (await db.execute(select(CreditLimit).where(CreditLimit.id == target.limit_id))).scalar_one_or_none()
+        if not limit:
+            raise HTTPException(status_code=404, detail="Limite non trovato")
+        return limit
+    if not target.level:
+        raise HTTPException(status_code=422, detail="Specifica limit_id oppure level")
+
+    level = target.level
+    tenant_id = target.tenant_id
+    if level == LimitLevel.CLASS:
+        if not target.class_id:
+            raise HTTPException(status_code=422, detail="class_id obbligatorio per i limiti di classe")
+        cls = (await db.execute(select(TeacherClass).where(TeacherClass.id == target.class_id))).scalar_one_or_none()
+        if not cls:
+            raise HTTPException(status_code=404, detail="Classe non trovata")
+        tenant_id = cls.tenant_id
+        stmt = select(CreditLimit).where(CreditLimit.level == LimitLevel.CLASS, CreditLimit.class_id == cls.id)
+        extra = {"class_id": cls.id, "teacher_id": cls.teacher_id}
+    elif level == LimitLevel.TEACHER:
+        if not target.teacher_id:
+            raise HTTPException(status_code=422, detail="teacher_id obbligatorio")
+        teacher = (await db.execute(select(User).where(User.id == target.teacher_id))).scalar_one_or_none()
+        if not teacher or not teacher.tenant_id:
+            raise HTTPException(status_code=404, detail="Docente non trovato o privo di tenant")
+        tenant_id = teacher.tenant_id
+        stmt = select(CreditLimit).where(
+            CreditLimit.level == LimitLevel.TEACHER, CreditLimit.teacher_id == teacher.id,
+            CreditLimit.tenant_id == tenant_id,
+        )
+        extra = {"teacher_id": teacher.id}
+    elif level in (LimitLevel.GLOBAL, LimitLevel.STUDENT_POOL):
+        if not tenant_id:
+            raise HTTPException(status_code=422, detail="tenant_id obbligatorio")
+        stmt = select(CreditLimit).where(CreditLimit.level == level, CreditLimit.tenant_id == tenant_id)
+        if level == LimitLevel.STUDENT_POOL:
+            if target.teacher_id:
+                stmt = stmt.where(CreditLimit.teacher_id == target.teacher_id)
+            else:
+                stmt = stmt.where(CreditLimit.teacher_id.is_(None))
+        extra = {"teacher_id": target.teacher_id} if level == LimitLevel.STUDENT_POOL else {}
+    else:
+        raise HTTPException(status_code=422, detail="Livello non gestibile da qui")
+
+    limit = (await db.execute(stmt.order_by(CreditLimit.last_updated.desc()).limit(1))).scalar_one_or_none()
+    if limit:
+        return limit
+    limit = credit_service._make_monthly_limit(tenant_id, level, create_cap or 0.0, **extra)
+    db.add(limit)
+    await db.flush()
+    return limit
+
+
+async def _sync_tenant_defaults(db: AsyncSession, limit: CreditLimit, cap: float) -> None:
+    """Allinea i default di tenant quando si cambia il pool di un istituto/individuale."""
+    level = limit.level
+    if level in (LimitLevel.GLOBAL, LimitLevel.STUDENT_POOL) and limit.tenant_id and limit.teacher_id is None:
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == limit.tenant_id))).scalar_one_or_none()
+        if tenant:
+            tenant.monthly_credit_pool = cap
+
+
+@router.post("/requests", status_code=201)
+async def create_credit_request(
+    body: CreditRequestCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """Il docente chiede un nuovo bundle: arriva all'admin che può autorizzarlo."""
+    limit: CreditLimit | None = None
+    if body.limit_id:
+        limit = (await db.execute(select(CreditLimit).where(
+            CreditLimit.id == body.limit_id, CreditLimit.tenant_id == user.tenant_id,
+        ))).scalar_one_or_none()
+        if not limit:
+            raise HTTPException(status_code=404, detail="Limite non trovato")
+    else:
+        limits = await credit_service.get_applicable_limits(db, user.tenant_id, teacher_id=user.id)
+        constrained = [l for l in limits if float(l.amount_cap or 0) > 0]
+        if constrained:
+            limit = min(constrained, key=lambda l: effective_cap(l) - float(l.current_usage or 0.0))
+
+    duplicate = (await db.execute(
+        select(CreditRequest.id).where(
+            CreditRequest.requester_id == user.id,
+            CreditRequest.status == CreditRequestStatus.PENDING,
+            CreditRequest.limit_id == (limit.id if limit else None),
+        )
+    )).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Hai già una richiesta di crediti in attesa")
+
+    req = CreditRequest(
+        tenant_id=user.tenant_id,
+        requester_id=user.id,
+        amount_requested=from_credits(body.credits),
+        reason=(body.reason or "").strip() or None,
+        limit_id=limit.id if limit else None,
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return {"id": str(req.id), "status": req.status.value, "credits": body.credits}
+
+
+@router.get("/requests")
 async def list_credit_requests(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
     status: Optional[CreditRequestStatus] = None,
 ):
-    """List credit requests"""
-    stmt = select(CreditRequest).where(CreditRequest.tenant_id == admin.tenant_id)
+    """Richieste di bundle (cross-tenant) con scope leggibile."""
+    stmt = select(CreditRequest, User, CreditLimit).join(User, User.id == CreditRequest.requester_id) \
+        .outerjoin(CreditLimit, CreditLimit.id == CreditRequest.limit_id)
     if status:
         stmt = stmt.where(CreditRequest.status == status)
-    stmt = stmt.order_by(desc(CreditRequest.created_at))
-    
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    stmt = stmt.order_by(desc(CreditRequest.created_at)).limit(300)
+    rows = (await db.execute(stmt)).all()
+    items = []
+    for req, requester, limit in rows:
+        scope = await credit_service.describe_limit(db, limit) if limit else {"title": "Cap docente", "subtitle": ""}
+        items.append({
+            "id": str(req.id),
+            "status": req.status.value,
+            "requester_id": str(req.requester_id),
+            "requester_name": f"{requester.first_name or ''} {requester.last_name or ''}".strip() or requester.email,
+            "requester_email": requester.email,
+            "credits": to_credits(req.amount_requested),
+            "reason": req.reason,
+            "limit_id": str(req.limit_id) if req.limit_id else None,
+            "level": _level_value(limit) if limit else "TEACHER",
+            "scope_title": scope["title"],
+            "scope_subtitle": scope["subtitle"],
+            "remaining_credits": to_credits(max(effective_cap(limit) - float(limit.current_usage or 0), 0)) if limit and float(limit.amount_cap or 0) > 0 else None,
+            "created_at": req.created_at,
+            "reviewed_at": req.reviewed_at,
+            "admin_notes": req.admin_notes,
+        })
+    return items
 
-@router.post("/requests/{request_id}/review", response_model=CreditRequestResponse)
+
+class RequestReviewBody(BaseModel):
+    status: CreditRequestStatus
+    admin_notes: Optional[str] = None
+    credits: Optional[float] = Field(None, gt=0)  # se diverso dal richiesto
+
+
+@router.post("/requests/{request_id}/review")
 async def review_credit_request(
     request_id: uuid.UUID,
-    review: CreditRequestReview,
+    review: RequestReviewBody,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    """Approve or reject a credit request"""
-    stmt = select(CreditRequest).where(CreditRequest.id == request_id, CreditRequest.tenant_id == admin.tenant_id)
-    req = (await db.execute(stmt)).scalar_one_or_none()
-    
+    """Approva (accredita il bundle subito) o rifiuta una richiesta."""
+    req = (await db.execute(select(CreditRequest).where(CreditRequest.id == request_id))).scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    
     if req.status != CreditRequestStatus.PENDING:
         raise HTTPException(status_code=400, detail="Request already reviewed")
-    
+    if review.status == CreditRequestStatus.PENDING:
+        raise HTTPException(status_code=422, detail="Stato non valido")
+
     req.status = review.status
     req.admin_notes = review.admin_notes
     req.reviewed_by_id = admin.id
-    req.reviewed_at = datetime.utcnow()
-    
-    if review.status == CreditRequestStatus.APPROVED:
-        # If approved, we should ideally increase the teacher's limit or allocate credits
-        # For now, we assume this is a manual process or we automate it here
-        # Let's find the teacher's limit
-        stmt = select(CreditLimit).where(
-            CreditLimit.teacher_id == req.requester_id, 
-            CreditLimit.level == LimitLevel.TEACHER
-        )
-        limit = (await db.execute(stmt)).scalar_one_or_none()
-        if limit:
-            limit.amount_cap += req.amount_requested
-            # Also reset usage if they were blocked? Or just increasing cap is enough.
-        else:
-            # Create limit if missing
-             limit = CreditLimit(
-                tenant_id=req.tenant_id,
-                level=LimitLevel.TEACHER,
-                teacher_id=req.requester_id,
-                amount_cap=req.amount_requested, # Start with requested amount? Or base + requested
-                reset_frequency="MONTHLY",
-                period_start=datetime.utcnow()
-            )
-             db.add(limit)
-        
-        # Log allocation transaction
-        tx = CreditTransaction(
-            tenant_id=req.tenant_id,
-            transaction_type=CreditTransactionType.ALLOCATION,
-            cost=-req.amount_requested, # Negative cost = credit? Or just log amount. Cost usually positive for expense.
-            # If cost is expense, then allocation is... weird. 
-            # Let's say cost is strictly expense. 
-            # We don't store "balance", we store "usage" vs "cap".
-            # So Request is just to increase Cap.
-            # We don't need a transaction for increasing cap, but audit is good.
-            usage_details={"request_id": str(req.id), "notes": "Credit Request Approved"},
-            teacher_id=req.requester_id
-        )
-        db.add(tx)
+    req.reviewed_at = datetime.now(timezone.utc)
 
+    granted = None
+    if review.status == CreditRequestStatus.APPROVED:
+        granted = review.credits if review.credits else to_credits(req.amount_requested)
+        if req.limit_id:
+            limit = (await db.execute(select(CreditLimit).where(CreditLimit.id == req.limit_id))).scalar_one_or_none()
+        else:
+            limit = None
+        if not limit:
+            limit = await _resolve_limit(db, LimitTarget(level=LimitLevel.TEACHER, teacher_id=req.requester_id))
+        await credit_service.add_bundle(
+            db, limit, granted, admin_id=admin.id, note=review.admin_notes, request_id=req.id,
+        )
     await db.commit()
     await db.refresh(req)
-    return req
+
+    try:
+        await sio.emit(
+            "teacher_notification",
+            {
+                "type": "credit_request_reviewed",
+                "message": (
+                    f"Richiesta crediti approvata: +{round(granted)} crediti"
+                    if granted else "Richiesta crediti non approvata"
+                ),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            room=f"user:{req.requester_id}",
+        )
+    except Exception:
+        pass
+    return {"id": str(req.id), "status": req.status.value, "credits_granted": granted}
+
+
+# ==================== ADMIN HUB: set / bundle / alerts ====================
+
+@router.get("/admin/overview")
+async def admin_credit_overview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Tutti i budget della piattaforma in crediti: istituti, docenti, classi."""
+    now = datetime.now(timezone.utc)
+    limits = (await db.execute(select(CreditLimit))).scalars().all()
+    changed = False
+    for lim in limits:
+        if reset_if_due(lim, now):
+            db.add(lim)
+            changed = True
+    if changed:
+        await db.commit()
+
+    tenants = {t.id: t for t in (await db.execute(select(Tenant))).scalars().all()}
+    teachers = {u.id: u for u in (await db.execute(
+        select(User).where(User.role.in_([UserRole.TEACHER, UserRole.ADMIN]), User.is_active == True)  # noqa: E712
+    )).scalars().all()}
+    classes = (await db.execute(
+        select(TeacherClass).where(TeacherClass.is_system == False, TeacherClass.archived_at.is_(None))  # noqa: E712
+    )).scalars().all()
+
+    def tname(u: User | None) -> str | None:
+        if not u:
+            return None
+        return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
+
+    schools, pools, teacher_rows = [], [], []
+    class_limit_by_id: dict = {}
+    teacher_limit_ids: set = set()
+    for lim in limits:
+        lvl = lim.level
+        tenant = tenants.get(lim.tenant_id)
+        t_name = tenant.name if tenant else None
+        if lvl == LimitLevel.GLOBAL:
+            schools.append(_limit_row(lim, title=t_name or "Istituto", subtitle="Pool crediti istituto", school_name=t_name))
+        elif lvl == LimitLevel.STUDENT_POOL:
+            owner = teachers.get(lim.teacher_id) if lim.teacher_id else None
+            pools.append(_limit_row(
+                lim, title=f"Pool studenti · {tname(owner)}" if owner else f"Pool studenti · {t_name or '—'}",
+                subtitle=t_name or "", teacher_name=tname(owner), school_name=t_name,
+            ))
+        elif lvl == LimitLevel.TEACHER:
+            owner = teachers.get(lim.teacher_id)
+            teacher_limit_ids.add(lim.teacher_id)
+            teacher_rows.append(_limit_row(
+                lim, title=tname(owner) or "Docente", subtitle=(owner.email if owner else "") or "",
+                teacher_name=tname(owner), school_name=t_name,
+            ))
+        elif lvl == LimitLevel.CLASS:
+            class_limit_by_id[lim.class_id] = lim
+
+    # Docenti senza limite creato: li mostriamo comunque, con il default del tenant.
+    for tid, owner in teachers.items():
+        if tid in teacher_limit_ids or owner.role != UserRole.TEACHER or not owner.tenant_id:
+            continue
+        owner_tenant = tenants.get(owner.tenant_id)
+        stub = CreditLimit(
+            tenant_id=owner.tenant_id, level=LimitLevel.TEACHER, teacher_id=tid,
+            # Default che verrà creato al primo utilizzo (cap del tenant)
+            amount_cap=float(getattr(owner_tenant, "teacher_monthly_cap", 3.0) or 3.0),
+            current_usage=0.0, bonus_credits=0.0, period_end=None,
+        )
+        row = _limit_row(stub, title=tname(owner) or "Docente", subtitle=owner.email or "",
+                         teacher_name=tname(owner), school_name=tenants.get(owner.tenant_id).name if tenants.get(owner.tenant_id) else None)
+        row["limit_id"] = None
+        teacher_rows.append(row)
+
+    class_rows = []
+    for cls in classes:
+        owner = teachers.get(cls.teacher_id)
+        school = tenants.get(cls.school_tenant_id) or tenants.get(cls.tenant_id)
+        lim = class_limit_by_id.get(cls.id)
+        if lim is None:
+            lim = CreditLimit(
+                tenant_id=cls.tenant_id, level=LimitLevel.CLASS, class_id=cls.id, teacher_id=cls.teacher_id,
+                amount_cap=0.0, current_usage=0.0, bonus_credits=0.0,
+            )
+            row = _limit_row(lim, title=cls.name, subtitle=tname(owner) or "", class_name=cls.name,
+                             teacher_name=tname(owner), school_name=school.name if school else None)
+            row["limit_id"] = None
+        else:
+            row = _limit_row(lim, title=cls.name, subtitle=tname(owner) or "", class_name=cls.name,
+                             teacher_name=tname(owner), school_name=school.name if school else None)
+        row["class_id"] = str(cls.id)
+        class_rows.append(row)
+
+    all_rows = schools + pools + teacher_rows + class_rows
+    counts = {
+        "exhausted": sum(1 for r in all_rows if r["state"] == "exhausted"),
+        "low": sum(1 for r in all_rows if r["state"] == "low"),
+    }
+    return {
+        "schools": schools,
+        "student_pools": pools,
+        "teachers": teacher_rows,
+        "classes": class_rows,
+        "counts": counts,
+    }
+
+
+@router.put("/admin/limits")
+async def admin_set_limit(
+    body: LimitSetBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Imposta il cap mensile (in crediti) di un istituto, docente o classe. 0 = nessun limite."""
+    cap = from_credits(body.cap_credits)
+    limit = await _resolve_limit(db, body, create_cap=cap)
+    limit.amount_cap = cap
+    limit.last_updated = datetime.now(timezone.utc)
+    db.add(limit)
+    await _sync_tenant_defaults(db, limit, cap)
+    await credit_service.sync_alert(db, limit)
+    await db.commit()
+    await db.refresh(limit)
+    return {"limit_id": str(limit.id), "cap_credits": to_credits(limit.amount_cap)}
+
+
+@router.post("/admin/bundle")
+async def admin_force_bundle(
+    body: BundleBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Forza l'aggiunta di un bundle di crediti, valido da subito anche a metà mese."""
+    limit = await _resolve_limit(db, body)
+    if float(limit.amount_cap or 0.0) <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Questo ambito non ha un limite impostato: imposta prima un cap mensile.",
+        )
+    await credit_service.add_bundle(db, limit, body.credits, admin_id=admin.id, note=body.note)
+    await db.commit()
+    await db.refresh(limit)
+    return _limit_row(limit, title="")
+
+
+@router.get("/admin/alerts")
+async def admin_list_alerts(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    include_resolved: bool = False,
+):
+    stmt = select(CreditAlert, CreditLimit).join(CreditLimit, CreditLimit.id == CreditAlert.limit_id)
+    if not include_resolved:
+        stmt = stmt.where(CreditAlert.status == "OPEN")
+    rows = (await db.execute(stmt.order_by(desc(CreditAlert.created_at)).limit(200))).all()
+    items = []
+    for alert, limit in rows:
+        scope = await credit_service.describe_limit(db, limit)
+        items.append({
+            "id": str(alert.id),
+            "severity": alert.severity,
+            "status": alert.status,
+            "message": alert.message,
+            "limit_id": str(limit.id),
+            "level": _level_value(limit),
+            "tenant_id": str(limit.tenant_id) if limit.tenant_id else None,
+            "teacher_id": str(limit.teacher_id) if limit.teacher_id else None,
+            "class_id": str(limit.class_id) if limit.class_id else None,
+            "scope_title": scope["title"],
+            "scope_subtitle": scope["subtitle"],
+            "cap_credits": to_credits(alert.cap_snapshot),
+            "used_credits": to_credits(alert.usage_snapshot),
+            "created_at": alert.created_at,
+            "resolved_at": alert.resolved_at,
+        })
+    return items
+
+
+@router.get("/admin/badge")
+async def admin_credit_badge(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Contatori per il badge della sidebar admin."""
+    alerts = (await db.execute(
+        select(func.count()).select_from(CreditAlert).where(CreditAlert.status == "OPEN")
+    )).scalar() or 0
+    exhausted = (await db.execute(
+        select(func.count()).select_from(CreditAlert).where(CreditAlert.status == "OPEN", CreditAlert.severity == "EXHAUSTED")
+    )).scalar() or 0
+    pending = (await db.execute(
+        select(func.count()).select_from(CreditRequest).where(CreditRequest.status == CreditRequestStatus.PENDING)
+    )).scalar() or 0
+    return {"open_alerts": alerts, "exhausted": exhausted, "pending_requests": pending, "total": alerts + pending}
+
 
 # ==================== INVITATIONS ====================
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { createFontIcon } from '@/components/icons/createFontIcon'
 import { Brain, Camera, Check, Hand, Image as ImageIcon, Loader2, Plus, Trash2, User, X } from '@/components/icons'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { CONFIDENCE_THRESHOLD, embedImage, headFromJSON, loadEmbedder, predict, smooth, INPUT_SIZE, type Head, type HeadJSON } from '@/lib/imageClassifier'
@@ -7,8 +8,8 @@ import { MODE_LABEL, drawOverlay, extractFeatures, loadLandmarkEngine, modeOfEng
 import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
 
-const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand } as const
-const MODE_COLOR: Record<Mode, string> = { image: '#3ea9f4', pose: '#7b69c9', hand: '#e85c8d' }
+const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand, face: createFontIcon('Smile', 'smile') } as const
+const MODE_COLOR: Record<Mode, string> = { image: '#3ea9f4', pose: '#7b69c9', hand: '#e85c8d', face: '#f59e0b' }
 
 interface RuntimeModel { id: string; name: string; mode: Mode; classes: Array<{ id: string; name: string; color?: string }>; head: HeadJSON }
 
@@ -18,7 +19,7 @@ const esc = (text: string) => text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 export function buildFullSketch(project: MLLabProjectSummary): string {
   const mode = modeOfEngine(project.engine)
   const first = esc(project.classes[0]?.name ?? 'Classe 1')
-  const noun = mode === 'hand' ? 'gesto' : mode === 'pose' ? 'posa' : 'oggetto'
+  const noun = mode === 'hand' ? 'gesto' : mode === 'pose' ? 'posa' : mode === 'face' ? 'espressione' : 'oggetto'
   return `// Modello ML «${project.name}» (${MODE_LABEL[mode]}) — classi: ${project.classes.map((c) => `«${c.name}»`).join(', ')}
 // Regole: window.GolinelliML è già disponibile (non serve importare nulla). La webcam resta nel tuo browser.
 //  - model.start(video, { onResult }) analizza il video di continuo
@@ -47,7 +48,7 @@ function draw() {
   translate(width, 0)
   scale(-1, 1)
   image(capture, 0, 0, width, height)
-  const points = result.hand || result.pose
+  const points = result.hand || result.pose || result.face
   if (points) {
     noStroke()
     fill(255)
@@ -258,7 +259,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
                 <div>
                   <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Anteprima di funzionamento</h3>
                   <ModelLivePreview key={selected.id} projectId={selected.id} />
-                  <p className="mt-2 text-[11px] leading-4 text-slate-400">Prova i tuoi {mode === 'hand' ? 'gesti' : mode === 'pose' ? 'movimenti' : 'oggetti'}: è esattamente ciò che vedrà lo sketch.</p>
+                  <p className="mt-2 text-[11px] leading-4 text-slate-400">Prova le tue {mode === 'hand' ? 'gesti' : mode === 'pose' ? 'movimenti' : mode === 'face' ? 'espressioni' : 'oggetti'}: è esattamente ciò che vedrà lo sketch.</p>
                 </div>
                 <div className="space-y-4">
                   <div>
@@ -271,7 +272,7 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
                       <li>• Non serve importare nulla: <code className="rounded bg-slate-100 px-1 dark:bg-white/10">GolinelliML</code> è già nella pagina.</li>
                       <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.label</code> è la classe riconosciuta, oppure <b>null</b> se il modello non è sicuro.</li>
                       <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">model.on('Classe', fn)</code> esegue <code>fn</code> quando la classe resta attiva per ~0,25 s.</li>
-                      {mode !== 'image' && <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.{mode === 'hand' ? 'hand' : 'pose'}</code> contiene i punti {mode === 'hand' ? 'della mano (21)' : 'del corpo (17)'} per disegnarli.</li>}
+                      {mode !== 'image' && <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.{mode === 'hand' ? 'hand' : mode === 'face' ? 'face' : 'pose'}</code> contiene i punti {mode === 'hand' ? 'della mano (21)' : mode === 'face' ? 'del viso (478)' : 'del corpo (17)'} per disegnarli.</li>}
                       <li>• La webcam resta nel tuo browser: nulla viene inviato.</li>
                     </ul>
                   </div>

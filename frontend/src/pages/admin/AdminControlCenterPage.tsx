@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import { formatInternalCredits, toCredits } from '@/lib/credits'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
@@ -50,7 +51,7 @@ type RealtimeStatus = {
   generated_at: string
 }
 
-const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
+const formatCurrency = (value: number) => formatInternalCredits(value)
 export default function AdminOverviewPage() {
   const [days, setDays] = useState(30)
 
@@ -67,7 +68,7 @@ export default function AdminOverviewPage() {
   })
 
   const summary = overview?.summary
-  const dailyHistory = overview?.daily_history || []
+  const dailyHistory = (overview?.daily_history || []).map((d) => ({ ...d, cost: toCredits(d.cost) }))
 
   return (
     <div className="space-y-6">
@@ -155,7 +156,7 @@ export default function AdminOverviewPage() {
                   stroke="#737373"
                   strokeWidth={2}
                   dot={false}
-                  name="Costo €"
+                  name="Crediti consumati"
                 />
               </LineChart>
             </ResponsiveContainer>

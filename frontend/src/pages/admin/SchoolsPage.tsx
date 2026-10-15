@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toCredits, fromCredits, formatCreditAmount } from '@/lib/credits'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -9,6 +10,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { SchoolInviteManager, RegistrySearch } from '@/components/admin/SchoolInviteManager'
+import { schoolOnboardingAdminApi } from '@/lib/api'
 
 interface Tenant {
   id: string
@@ -23,6 +26,8 @@ interface Tenant {
   max_students_per_class: number
   monthly_credit_pool: number
   teacher_monthly_cap: number
+  mechanographic_code?: string | null
+  registry_verified?: boolean
 }
 
 interface EditLimitsState {
@@ -41,6 +46,39 @@ function LimitsBadge({ label, value }: { label: string; value: number | string }
   )
 }
 
+function RegistryLink({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => void }) {
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const link = useMutation({
+    mutationFn: (code: string) => schoolOnboardingAdminApi.linkTenant(tenant.id, code),
+    onSuccess: () => { toast({ title: 'Meccanografico associato' }); setOpen(false); onRefresh() },
+    onError: (e: unknown) => toast({
+      title: (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Associazione non riuscita',
+      variant: 'destructive',
+    }),
+  })
+  const unlink = useMutation({
+    mutationFn: () => schoolOnboardingAdminApi.unlinkTenant(tenant.id),
+    onSuccess: () => { toast({ title: 'Associazione rimossa' }); onRefresh() },
+  })
+  return (
+    <div className="mb-4 pb-4 border-b border-slate-200">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-slate-700">Registro MIM</span>
+        {tenant.mechanographic_code
+          ? <button onClick={() => unlink.mutate()} className="text-xs text-slate-500 hover:underline">Scollega</button>
+          : <button onClick={() => setOpen(o => !o)} className="text-xs text-indigo-600 hover:underline">{open ? 'Annulla' : 'Associa codice meccanografico'}</button>}
+      </div>
+      {tenant.mechanographic_code
+        ? <p className="text-sm text-slate-600 mt-1">Codice <span className="font-mono font-semibold">{tenant.mechanographic_code}</span> certificato sul registro delle scuole.</p>
+        : <p className="text-xs text-slate-500 mt-1">Questo istituto non è ancora mappato a un codice meccanografico.</p>}
+      {open && !tenant.mechanographic_code && (
+        <div className="mt-3"><RegistrySearch placeholder={`Cerca «${tenant.name}» nel registro…`} onPick={(s) => link.mutate(s.code)} /></div>
+      )}
+    </div>
+  )
+}
+
 function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -48,8 +86,8 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
     max_teachers: String(tenant.max_teachers),
     max_students_per_teacher: String(tenant.max_students_per_teacher),
     max_students_per_class: String(tenant.max_students_per_class),
-    monthly_credit_pool: String(tenant.monthly_credit_pool),
-    teacher_monthly_cap: String(tenant.teacher_monthly_cap),
+    monthly_credit_pool: String(toCredits(tenant.monthly_credit_pool)),
+    teacher_monthly_cap: String(toCredits(tenant.teacher_monthly_cap)),
   })
   const { toast } = useToast()
   const isSchool = tenant.tenant_type === 'SCHOOL'
@@ -59,8 +97,8 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
       max_teachers: parseInt(limits.max_teachers) || undefined,
       max_students_per_teacher: parseInt(limits.max_students_per_teacher) || undefined,
       max_students_per_class: parseInt(limits.max_students_per_class) || undefined,
-      monthly_credit_pool: parseFloat(limits.monthly_credit_pool) || undefined,
-      teacher_monthly_cap: parseFloat(limits.teacher_monthly_cap) || undefined,
+      monthly_credit_pool: Number.isFinite(parseFloat(limits.monthly_credit_pool)) ? fromCredits(parseFloat(limits.monthly_credit_pool)) : undefined,
+      teacher_monthly_cap: Number.isFinite(parseFloat(limits.teacher_monthly_cap)) ? fromCredits(parseFloat(limits.teacher_monthly_cap)) : undefined,
     }),
     onSuccess: () => {
       toast({ title: 'Limiti aggiornati' })
@@ -89,13 +127,20 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isSchool ? 'bg-pink-100 text-pink-600' : 'bg-indigo-100 text-indigo-600'}`}>
               {isSchool ? 'SCUOLA' : 'INDIVIDUALE'}
             </span>
+            {isSchool && (
+              tenant.mechanographic_code
+                ? <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700" title="Codice meccanografico verificato sul registro MIM">
+                    {tenant.mechanographic_code}
+                  </span>
+                : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">senza meccanografico</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {isSchool && <LimitsBadge label="docenti" value={tenant.max_teachers} />}
             <LimitsBadge label="stud/classe" value={tenant.max_students_per_class} />
             <LimitsBadge label="stud/docente" value={tenant.max_students_per_teacher} />
-            <LimitsBadge label={isSchool ? '€ pool/mese' : '€ studenti/mese'} value={`€${tenant.monthly_credit_pool}`} />
-            {!isSchool && <LimitsBadge label="€ docente/mese" value={`€${tenant.teacher_monthly_cap}`} />}
+            <LimitsBadge label={isSchool ? 'crediti pool/mese' : 'crediti studenti/mese'} value={formatCreditAmount(toCredits(tenant.monthly_credit_pool))} />
+            {!isSchool && <LimitsBadge label="crediti docente/mese" value={formatCreditAmount(toCredits(tenant.teacher_monthly_cap))} />}
           </div>
         </div>
         <span className="text-slate-400 text-xs flex-shrink-0">
@@ -107,6 +152,7 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
       {/* Expanded: limit editor */}
       {expanded && (
         <div className="border-t border-slate-100 px-4 py-4 bg-slate-50">
+          {isSchool && <RegistryLink tenant={tenant} onRefresh={onRefresh} />}
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-slate-700">Modifica limiti</span>
             {!editing
@@ -144,17 +190,17 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
                 : <span className="text-sm font-semibold text-slate-800">{tenant.max_students_per_teacher}</span>}
             </div>
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">{isSchool ? 'Pool crediti scuola €/mese' : 'Pool crediti studenti €/mese'}</Label>
+              <Label className="text-xs text-slate-500 mb-1 block">{isSchool ? 'Pool crediti scuola (crediti/mese)' : 'Pool crediti studenti (crediti/mese)'}</Label>
               {editing
-                ? <Input type="number" min={0} step={0.5} value={limits.monthly_credit_pool} onChange={e => setLimits(l => ({ ...l, monthly_credit_pool: e.target.value }))} className="h-8 text-sm" />
-                : <span className="text-sm font-semibold text-slate-800">€{tenant.monthly_credit_pool}</span>}
+                ? <Input type="number" min={0} step={10} value={limits.monthly_credit_pool} onChange={e => setLimits(l => ({ ...l, monthly_credit_pool: e.target.value }))} className="h-8 text-sm" />
+                : <span className="text-sm font-semibold text-slate-800">{formatCreditAmount(toCredits(tenant.monthly_credit_pool))} crediti</span>}
             </div>
             {!isSchool && (
               <div>
-                <Label className="text-xs text-slate-500 mb-1 block">Cap docente €/mese</Label>
+                <Label className="text-xs text-slate-500 mb-1 block">Cap docente (crediti/mese)</Label>
                 {editing
-                  ? <Input type="number" min={0} step={0.5} value={limits.teacher_monthly_cap} onChange={e => setLimits(l => ({ ...l, teacher_monthly_cap: e.target.value }))} className="h-8 text-sm" />
-                  : <span className="text-sm font-semibold text-slate-800">€{tenant.teacher_monthly_cap}</span>}
+                  ? <Input type="number" min={0} step={10} value={limits.teacher_monthly_cap} onChange={e => setLimits(l => ({ ...l, teacher_monthly_cap: e.target.value }))} className="h-8 text-sm" />
+                  : <span className="text-sm font-semibold text-slate-800">{formatCreditAmount(toCredits(tenant.teacher_monthly_cap))} crediti</span>}
               </div>
             )}
           </div>
@@ -168,7 +214,7 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
   const [form, setForm] = useState({
     school_name: '', slug: '',
     owner_first_name: '', owner_last_name: '', owner_email: '',
-    max_teachers: '5', monthly_credit_pool: '10',
+    max_teachers: '5', monthly_credit_pool: '1000',
   })
   const { toast } = useToast()
 
@@ -180,11 +226,11 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
       owner_last_name: form.owner_last_name,
       owner_email: form.owner_email,
       max_teachers: parseInt(form.max_teachers) || 5,
-      monthly_credit_pool: parseFloat(form.monthly_credit_pool) || 10,
+      monthly_credit_pool: fromCredits(parseFloat(form.monthly_credit_pool) || 1000),
     }),
     onSuccess: () => {
       toast({ title: 'Scuola creata! Email di attivazione inviata all\'owner.' })
-      setForm({ school_name: '', slug: '', owner_first_name: '', owner_last_name: '', owner_email: '', max_teachers: '5', monthly_credit_pool: '10' })
+      setForm({ school_name: '', slug: '', owner_first_name: '', owner_last_name: '', owner_email: '', max_teachers: '5', monthly_credit_pool: '1000' })
       onSuccess()
     },
     onError: (e: unknown) => {
@@ -229,7 +275,7 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
             <Input type="number" min={1} value={form.max_teachers} onChange={e => setForm(f => ({ ...f, max_teachers: e.target.value }))} className="text-sm" />
           </div>
           <div>
-            <Label className="text-xs text-slate-500 mb-1 block">Pool crediti €/mese</Label>
+            <Label className="text-xs text-slate-500 mb-1 block">Pool crediti (crediti/mese)</Label>
             <Input type="number" min={0} step={1} value={form.monthly_credit_pool} onChange={e => setForm(f => ({ ...f, monthly_credit_pool: e.target.value }))} className="text-sm" />
           </div>
         </div>
@@ -291,6 +337,8 @@ export default function SchoolsPage() {
           <CreateSchoolForm onSuccess={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ['admin-tenants'] }) }} />
         </div>
       )}
+
+      <SchoolInviteManager />
 
       {/* Filter tabs */}
       <div className="flex gap-2 mb-5 p-1 bg-slate-100 rounded-xl w-fit">

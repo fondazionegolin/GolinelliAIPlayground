@@ -12,7 +12,7 @@ import unicodedata
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
-from app.core.legal_documents import LEGAL_DOCUMENTS
+from app.core.legal_documents import LEGAL_DOCUMENTS, required_legal_documents
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_user
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
@@ -61,30 +61,40 @@ class LegalConsentAcceptRequest(BaseModel):
     document_key: str
 
 
-def _required_legal_documents() -> list[LegalDocumentResponse]:
-    return [LegalDocumentResponse(**doc) for doc in LEGAL_DOCUMENTS]
+async def _docs_for_user(db: AsyncSession, user: User) -> list[dict]:
+    """Documenti richiesti all'utente: base + accordo dirigente / dichiarazione docente nei tenant SCUOLA."""
+    from app.models.tenant import Tenant
+    tenant_type = None
+    if user.tenant_id:
+        tenant_type = (await db.execute(
+            select(Tenant.tenant_type).where(Tenant.id == user.tenant_id)
+        )).scalar_one_or_none()
+    return required_legal_documents(
+        is_school_owner=bool(user.is_school_owner),
+        in_school_tenant=str(getattr(tenant_type, "value", tenant_type)) == "SCHOOL",
+    )
 
 
-def _legal_document_by_key(document_key: str) -> dict | None:
-    return next((doc for doc in LEGAL_DOCUMENTS if doc["key"] == document_key), None)
+def _legal_document_by_key(document_key: str, docs: list[dict]) -> dict | None:
+    return next((doc for doc in docs if doc["key"] == document_key), None)
 
 
-async def _current_legal_acceptances(db: AsyncSession, user: User) -> list[LegalDocumentAcceptance]:
+async def _current_legal_acceptances(db: AsyncSession, user: User, docs: list[dict]) -> list[LegalDocumentAcceptance]:
     result = await db.execute(
         select(LegalDocumentAcceptance)
         .where(
             LegalDocumentAcceptance.user_id == user.id,
-            LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+            LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in docs]),
         )
         .order_by(LegalDocumentAcceptance.accepted_at.asc())
     )
     return result.scalars().all()
 
 
-def _legal_status_for(user: User, rows: list[LegalDocumentAcceptance]) -> LegalConsentStatusResponse:
+def _legal_status_for(user: User, rows: list[LegalDocumentAcceptance], docs: list[dict]) -> LegalConsentStatusResponse:
     accepted_current: list[LegalAcceptanceResponse] = []
     current_keys = set()
-    for doc in LEGAL_DOCUMENTS:
+    for doc in docs:
         match = next(
             (
                 row for row in rows
@@ -105,8 +115,8 @@ def _legal_status_for(user: User, rows: list[LegalDocumentAcceptance]) -> LegalC
     required = user.role == UserRole.TEACHER
     return LegalConsentStatusResponse(
         required=required,
-        complete=not required or len(current_keys) == len(LEGAL_DOCUMENTS),
-        required_documents=_required_legal_documents(),
+        complete=not required or len(current_keys) == len(docs),
+        required_documents=[LegalDocumentResponse(**doc) for doc in docs],
         accepted=accepted_current,
     )
 
@@ -195,8 +205,9 @@ async def get_my_legal_consents(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    rows = await _current_legal_acceptances(db, current_user)
-    return _legal_status_for(current_user, rows)
+    docs = await _docs_for_user(db, current_user)
+    rows = await _current_legal_acceptances(db, current_user, docs)
+    return _legal_status_for(current_user, rows, docs)
 
 
 @router.post("/legal-consents/accept", response_model=LegalConsentStatusResponse)
@@ -206,21 +217,22 @@ async def accept_legal_consent(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    docs = await _docs_for_user(db, current_user)
     if current_user.role != UserRole.TEACHER:
-        rows = await _current_legal_acceptances(db, current_user)
-        return _legal_status_for(current_user, rows)
+        rows = await _current_legal_acceptances(db, current_user, docs)
+        return _legal_status_for(current_user, rows, docs)
 
-    document = _legal_document_by_key(body.document_key)
+    document = _legal_document_by_key(body.document_key, docs)
     if not document:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Documento non valido")
 
-    rows = await _current_legal_acceptances(db, current_user)
+    rows = await _current_legal_acceptances(db, current_user, docs)
     accepted_current_keys = {
         row.document_key
         for row in rows
-        if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in LEGAL_DOCUMENTS)
+        if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in docs)
     }
-    next_required = next((doc for doc in LEGAL_DOCUMENTS if doc["key"] not in accepted_current_keys), None)
+    next_required = next((doc for doc in docs if doc["key"] not in accepted_current_keys), None)
     if next_required and next_required["key"] != document["key"]:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Completa i documenti nell'ordine richiesto")
 
@@ -244,9 +256,9 @@ async def accept_legal_consent(
             await db.commit()
         except IntegrityError:
             await db.rollback()
-        rows = await _current_legal_acceptances(db, current_user)
+        rows = await _current_legal_acceptances(db, current_user, docs)
 
-    return _legal_status_for(current_user, rows)
+    return _legal_status_for(current_user, rows, docs)
 
 
 @router.get("/public-settings")

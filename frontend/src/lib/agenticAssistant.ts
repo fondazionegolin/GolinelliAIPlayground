@@ -11,6 +11,10 @@ export type AssistantEdge = { id: string; from: string; to: string; sourcePort: 
 export type AssistantOp =
   | { type: 'add_node'; node: AssistantNode }
   | { type: 'connect'; edge: AssistantEdge }
+  | { type: 'replace_node'; node: AssistantNode }
+  | { type: 'remove_edge'; edgeId: string }
+  | { type: 'remove_node'; instanceId: string }
+  | { type: 'set_config'; instanceId: string; config: Record<string, unknown>; label?: string | null }
   | { type: 'done'; graph: { nodes: AssistantNode[]; edges: AssistantEdge[] } }
 export type AssistantIssue = { severity: 'error' | 'warning'; node: string | null; message: string }
 export type AssistantEstimate = {
@@ -30,18 +34,25 @@ export type AssistantPlanResult = {
   attempts: number
 }
 
+export type AssistantEditResult = {
+  graph: { nodes: AssistantNode[]; edges: AssistantEdge[] }
+  ops: AssistantOp[]
+  summary: string[]
+  explanation: string
+  warnings: string[]
+  issues: AssistantIssue[]
+  estimate: AssistantEstimate
+}
+export type AssistantHistoryTurn = { role: 'user' | 'assistant'; content: string }
+
 export const apiDetail = (reason: any, fallback: string): string => {
   const detail = reason?.response?.data?.detail
   return typeof detail === 'string' ? detail : reason?.message || fallback
 }
 
-/** The architect streams `status`/`ping` while the model works and one final `result` (or `error`). */
-export async function streamAssistantPlan(
-  body: { intent: string; understanding: string; assumptions: string[]; answers: AssistantAnswer[] },
-  onStatus: (message: string) => void,
-  signal?: AbortSignal,
-): Promise<AssistantPlanResult> {
-  const response = await fetch(agenticApi.assistantPlanUrl, {
+/** The long model calls stream `status`/`ping` while the model works and one final `result` (or `error`). */
+async function streamAssistant<T>(url: string, body: unknown, onStatus: (message: string) => void, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, {
     method: 'POST', credentials: 'include', signal,
     headers: { 'Content-Type': 'application/json', ...getApiAuthHeaders() },
     body: JSON.stringify(body),
@@ -51,16 +62,26 @@ export async function streamAssistantPlan(
     try { detail = (await response.json())?.detail } catch { /* not JSON */ }
     throw new Error(typeof detail === 'string' && detail ? detail : `Richiesta non riuscita (${response.status})`)
   }
-  let result: AssistantPlanResult | null = null
+  let result: T | null = null
   let failure = ''
   await readEventStream(response, 'sse', (event) => {
     if (event.type === 'status') onStatus(String(event.message || ''))
-    else if (event.type === 'result') { result = event as AssistantPlanResult; return true }
+    else if (event.type === 'result') { result = event as unknown as T; return true }
     else if (event.type === 'error') { failure = String(event.message || 'Errore dell’assistente'); return true }
   })
   if (failure) throw new Error(failure)
   if (!result) throw new Error('La connessione si è interrotta prima della fine: riprova.')
   return result
 }
+
+export const streamAssistantPlan = (
+  body: { intent: string; understanding: string; assumptions: string[]; answers: AssistantAnswer[]; previous_blueprint?: AssistantPlanResult['blueprint']; feedback?: string },
+  onStatus: (message: string) => void, signal?: AbortSignal,
+) => streamAssistant<AssistantPlanResult>(agenticApi.assistantPlanUrl, body, onStatus, signal)
+
+export const streamAssistantEdit = (
+  body: { graph: { nodes: unknown[]; edges: unknown[] }; instruction: string; selected?: string | null; history?: AssistantHistoryTurn[] },
+  onStatus: (message: string) => void, signal?: AbortSignal,
+) => streamAssistant<AssistantEditResult>(agenticApi.assistantEditUrl, body, onStatus, signal)
 
 export const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))

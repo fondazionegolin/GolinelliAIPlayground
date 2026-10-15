@@ -163,7 +163,7 @@ type UpstreamStatus = {
 type PreviewApiRequest = {
   source?: 'golinelli-coding-preview'
   id?: string
-  action?: 'chat' | 'chatStream' | 'json' | 'vision' | 'me' | 'sharedGet' | 'sharedSet' | 'sharedAppend' | 'captureResult' | 'mediaStatus' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink' | 'reportError'
+  action?: 'chat' | 'chatStream' | 'json' | 'vision' | 'me' | 'sharedGet' | 'sharedSet' | 'sharedAppend' | 'captureResult' | 'mediaStatus' | 'mlStatus' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink' | 'reportError'
   payload?: Record<string, unknown>
 }
 
@@ -175,13 +175,14 @@ type ModelOption = { key: string; label: string; hint: string; provider: ModelPr
 const MODEL_OPTIONS: ModelOption[] = [
   { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità', provider: 'anthropic' },
   { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce', provider: 'anthropic' },
+  { key: 'haiku-5', label: 'Haiku 5.5', hint: 'Veloce e preciso', provider: 'anthropic' },
   { key: 'luna', label: 'GPT-5.6 Luna', hint: 'Veloce ed economico', provider: 'openai' },
   { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico', provider: 'deepseek' },
   { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata', provider: 'deepseek' },
 ]
-// Claude models are temporarily disabled for students: they may only generate with DeepSeek.
+// Students may only generate with DeepSeek and Claude Haiku 5.5 (the other Claude models are off).
 // (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
-const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro'])
+const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro', 'haiku-5'])
 const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
 const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-flash'
 const STUDENT_FLASH_DEFAULT_MIGRATION_KEY = 'coding_student_flash_default_v1'
@@ -448,7 +449,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [verifyState, setVerifyState] = useState<'idle' | 'observing' | 'clean' | 'failed'>('idle')
   const [verifyErrors, setVerifyErrors] = useState<SandpackRuntimeError[]>([])
   const autoFixAttempts = useRef(0)
-  const MAX_AUTO_FIX = 3
+  // Blocking errors must always get resolved: generous budget, escalating strategy server-side (full rewrites, stronger model).
+  const MAX_AUTO_FIX = 8
+  const lastFixErrorsRef = useRef<SandpackRuntimeError[]>([])
+  const pitfallTriesRef = useRef<Map<string, number>>(new Map())
+  const budgetProjectRef = useRef<string | null>(null)
   const observeRef = useRef<{ errors: Map<string, SandpackRuntimeError>; timer: number | null } | null>(null)
   const generationAbortRef = useRef<AbortController | null>(null)
   const lastGenerationModeRef = useRef<'build' | 'fix' | 'visual'>('build')
@@ -461,9 +466,50 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // address bar, far from the preview, so the page explains it (and how to undo a refusal).
   const [mediaStatus, setMediaStatus] = useState<{ kind: string; state: string; error: string } | null>(null)
   const [mediaReloadNonce, setMediaReloadNonce] = useState(0)
+  const [hostMediaBlocked, setHostMediaBlocked] = useState(false)
+  const [visionError, setVisionError] = useState<{ context: string; error: string } | null>(null)
+  // The browser's camera/mic prompt is far more reliable when raised by the top-level page than from inside
+  // the cross-origin preview iframe (mobile Safari/Chrome often refuse or silently drop the iframe's one).
+  // Granting it here also covers the iframe, which inherits the permission through `allow="camera; microphone"`.
+  const requestHostMedia = async () => {
+    const kind = mediaStatus?.kind || 'camera'
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: kind !== 'microphone', audio: kind !== 'camera' })
+      stream.getTracks().forEach((track) => track.stop())
+      setHostMediaBlocked(false)
+      setMediaStatus(null)
+      setMediaReloadNonce((value) => value + 1)
+      setFullscreenNonce((value) => value + 1)
+    } catch (err: any) {
+      if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') setHostMediaBlocked(true)
+      else setMediaStatus((prev) => prev ? { ...prev, state: 'error', error: String(err?.name || 'Error') } : prev)
+    }
+  }
   const activeWorkbenchRef = useRef<string>('preview')
   const [generationMode, setGenerationMode] = useState<'build' | 'fix'>('build')
   const [diffView, setDiffView] = useState<{ path: string; oldContent: string; newContent: string } | null>(null)
+  const openPreviewFullscreen = () => {
+    fullscreenLoads.current = 0
+    fullscreenResets.current = 0
+    setFullscreenNonce((value) => value + 1)
+    setPreviewFullscreen(true)
+    // Real browser fullscreen where it exists (Android/desktop); iOS Safari has none, the overlay covers the page.
+    if (isMobile) {
+      try { void document.documentElement.requestFullscreen?.({ navigationUI: 'hide' } as FullscreenOptions)?.catch?.(() => {}) } catch { /* unsupported */ }
+    }
+  }
+  const closePreviewFullscreen = () => {
+    setPreviewFullscreen(false)
+    try { if (document.fullscreenElement) void document.exitFullscreen() } catch { /* already out */ }
+  }
+  useEffect(() => {
+    if (!previewFullscreen) return
+    // System back gesture / ESC leaves browser fullscreen: close the overlay too.
+    const onChange = () => { if (!document.fullscreenElement) setPreviewFullscreen(false) }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewFullscreen])
   const modelOptions = modelOptionsFor(isTeacher)
   const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
   const [consents, setConsents] = useState<Array<{ key: string; title: string; version: string; source_url: string; accept_label: string; accepted: boolean }>>([])
@@ -676,6 +722,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   const loadProjectDetail = async (projectId: string) => {
     const seq = ++detailLoadSeq.current
+    if (budgetProjectRef.current !== projectId) {
+      // Opening a different project: it gets its own fix budget and observation.
+      budgetProjectRef.current = projectId
+      autoFixAttempts.current = 0
+      pitfallTriesRef.current.clear()
+      cancelObservation()
+    }
     setError(null)
     setProjectDetail(null)
     setFiles([])
@@ -692,13 +745,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       ])
       if (seq !== detailLoadSeq.current) return
       const detail = response.data as CodingProjectDetail
-      const savedModelKey = savedModelResponse?.data?.value?.model_key
-      if (
-        typeof savedModelKey === 'string'
-        && modelOptions.some((option) => option.key === savedModelKey)
-      ) {
-        setModelKey(savedModelKey)
-      }
+      // The model picker always keeps the user's last explicit choice (persisted in localStorage): a project's
+      // stored model is only a record and must not override it when the project is opened.
+      void savedModelResponse
       setProjectDetail(detail)
       const latestFiles = [...(detail.versions || [])]
         .sort((a, b) => b.version_number - a.version_number)
@@ -933,6 +982,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       if (data.action === 'mediaStatus') {
         const payload = (data.payload || {}) as { kind?: string; state?: string; error?: string }
         setMediaStatus(payload.state === 'granted' ? null : { kind: String(payload.kind || 'camera'), state: String(payload.state || 'error'), error: String(payload.error || '') })
+        return
+      }
+
+      if (data.action === 'mlStatus') {
+        // The vision engine reports its real failure: the generated app often hides it behind a friendly message.
+        const payload = (data.payload || {}) as { context?: string; error?: string }
+        setVisionError({ context: String(payload.context || ''), error: String(payload.error || '') })
         return
       }
 
@@ -1284,7 +1340,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return generatedFiles
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual' }) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }) => {
     const controller = new AbortController()
     generationAbortRef.current = controller
     setGenerating(true)
@@ -1316,7 +1372,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         credentials: 'include',
         signal: controller.signal,
         body: JSON.stringify(fix
-          ? { mode: fix.mode || 'fix', errors: fix.errors, files: baseFiles.length ? baseFiles : undefined, model_key: modelKey }
+          ? { mode: fix.mode || 'fix', errors: fix.errors, attempt: fix.attempt, files: baseFiles.length ? baseFiles : undefined, model_key: modelKey }
           : {
               prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
               files: baseFiles.length ? baseFiles : undefined,
@@ -1338,7 +1394,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       await loadProjectDetail(projectId)
     } catch (err: any) {
       if (err?.name === 'AbortError') setError('Generazione interrotta: il progetto è rimasto alla versione precedente.')
-      else setError(err?.message || 'Generazione codice non riuscita.')
+      else {
+        const failure = err?.message || 'Generazione codice non riuscita.'
+        setError(failure)
+        // A fix turn that itself fails (network, empty model output…) must not end the loop: try again.
+        if (fix && fix.mode !== 'visual' && autoFixAttempts.current < MAX_AUTO_FIX && !/credit|limite|quota|consenso|accesso|non autorizzat/i.test(failure)) {
+          window.setTimeout(() => { void runAutoFixRef.current(lastFixErrorsRef.current) }, 3000)
+        }
+      }
     } finally {
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null
@@ -1358,9 +1421,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     const projectId = selectedProjectIdRef.current
     if (!projectId || generationAbortRef.current) return
     autoFixAttempts.current += 1
+    lastFixErrorsRef.current = errs
     setAutoFixing(true)
     try {
-      await generateCode(projectId, undefined, undefined, { errors: errs.slice(0, 8).map(describeRuntimeError) })
+      await generateCode(projectId, undefined, undefined, { errors: errs.slice(0, 8).map(describeRuntimeError), attempt: autoFixAttempts.current })
     } finally {
       setAutoFixing(false)
     }
@@ -1380,6 +1444,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     const errs = [...state.errors.values()]
     setVerifyErrors(errs)
     if (!errs.length) {
+      const pitfalls = detectMediaPitfalls(filesRef.current)
+      const signature = pitfalls.map((item) => item.path).join('|')
+      if (pitfalls.length && autoFixAttempts.current < MAX_AUTO_FIX && (pitfallTriesRef.current.get(signature) || 0) < 2) {
+        pitfallTriesRef.current.set(signature, (pitfallTriesRef.current.get(signature) || 0) + 1)
+        setVerifyErrors(pitfalls)
+        setVerifyState('idle')
+        void runAutoFixRef.current(pitfalls)
+        return
+      }
       setVerifyState('clean')
       window.setTimeout(() => setVerifyState((value) => value === 'clean' ? 'idle' : value), 4000)
       // A fresh build that runs clean gets one automatic look; polish turns don't loop on themselves.
@@ -1407,6 +1480,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const handlePreviewErrors = (errs: SandpackRuntimeError[]) => {
+    if (!observeRef.current) {
+      // A project that is already broken when it is opened/shown (nothing was generated this session):
+      // start the same observe -> fix loop instead of leaving the student with a dead canvas.
+      const blocking = errs.filter(isActionableRuntimeError)
+      if (
+        !blocking.length
+        || generationAbortRef.current
+        || !selectedProjectIdRef.current
+        || activeWorkbenchRef.current !== 'preview'
+        || autoFixAttempts.current >= MAX_AUTO_FIX
+        || !isReactProject(filesRef.current)
+      ) return
+      startObservation()
+    }
     const state = observeRef.current
     if (!state) return
     for (const item of errs.filter(isActionableRuntimeError)) state.errors.set(`${item.kind}:${item.path || ''}:${item.message}`, item)
@@ -1526,7 +1613,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const retryAutoFix = () => {
-    autoFixAttempts.current = Math.max(0, MAX_AUTO_FIX - 1)
+    autoFixAttempts.current = 0
     setVerifyState('idle')
     void runAutoFix(verifyErrors)
   }
@@ -1534,6 +1621,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const handlePreviewReady = () => {
     // Mounted without compile errors: keep watching briefly for runtime errors after first render.
     if (observeRef.current) scheduleVerdict(3000)
+    else if (
+      !generationAbortRef.current
+      && selectedProjectIdRef.current
+      && activeWorkbenchRef.current === 'preview'
+      && isReactProject(filesRef.current)
+      && autoFixAttempts.current < MAX_AUTO_FIX
+      && detectMediaPitfalls(filesRef.current).length
+    ) {
+      // A project saved with the webcam bug: fix it through the same loop as any other blocking error.
+      startObservation()
+    }
     setPreviewLoading(false)
   }
 
@@ -2293,12 +2391,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   <CodingToolbarIconButton
                     icon={<Maximize2 className="h-4 w-4" />}
                     label="Schermo"
-                    onClick={() => {
-                      fullscreenLoads.current = 0
-                      fullscreenResets.current = 0
-                      setFullscreenNonce((value) => value + 1)
-                      setPreviewFullscreen(true)
-                    }}
+                    onClick={openPreviewFullscreen}
                     title="Pagina intera"
                   />
                 </div>
@@ -2384,9 +2477,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
               </div>
             </div>
-            <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
+            <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' && !isMobile ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
             {isReactPreview && files.length > 0 ? (
-              <div ref={previewFrameRef} className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
+              <div ref={previewFrameRef} className={`relative flex min-h-0 ${previewDevice === 'mobile' && !isMobile ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
                   key={`${previewIdentityKey}:${mediaReloadNonce}`}
                   files={files}
@@ -2409,8 +2502,32 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   <MediaPermissionBanner
                     status={mediaStatus}
                     onReload={() => { setMediaStatus(null); setMediaReloadNonce((value) => value + 1) }}
+                    onAllow={() => { void requestHostMedia() }}
+                    hostBlocked={hostMediaBlocked}
                     onClose={() => setMediaStatus(null)}
                   />
+                )}
+{visionError && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-14 z-20 flex justify-center p-2">
+                    <div className="pointer-events-auto flex w-full max-w-lg items-start gap-2 rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-amber-200 backdrop-blur" role="alert">
+                      <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-900">Riconoscimento visivo: {visionError.context || 'errore'}</p>
+                        <p className="mt-1 break-words font-mono leading-5">{visionError.error}</p>
+                      </div>
+                      <button type="button" onClick={() => setVisionError(null)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
+                )}
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={openPreviewFullscreen}
+                    className="absolute bottom-3 right-3 z-10 inline-flex h-11 items-center gap-1.5 rounded-full bg-slate-900/85 px-4 text-xs font-bold text-white shadow-lg backdrop-blur active:scale-95"
+                    aria-label="Apri l’app a schermo intero"
+                  >
+                    <Maximize2 className="h-4 w-4" /> Schermo intero
+                  </button>
                 )}
                 {verifyState === 'idle' && !generating && visualReview && (
                   <VisualReviewCard review={visualReview} onApply={applyVisualFixes} onClose={() => setVisualReview(null)} />
@@ -2419,7 +2536,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : previewHtml ? (
-              <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
+              <div className={`relative flex min-h-0 ${previewDevice === 'mobile' && !isMobile ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
                   key={`${previewKey}:${previewNonce}`}
                   staticHtml={previewHtml}
@@ -2450,31 +2567,64 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         </div>
       </main>
       {previewFullscreen && hasPreview && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Eye className="h-4 w-4" />
-              Anteprima
+        <div className="fixed inset-0 z-50 flex flex-col bg-white" style={{ height: '100dvh' }}>
+          {isMobile ? (
+            // Standalone-app look: the generated app owns the whole screen; only two small floating controls remain.
+            <div className="pointer-events-none absolute right-2 z-30 flex gap-2" style={{ top: 'max(env(safe-area-inset-top), 8px)' }}>
+              <button
+                type="button"
+                onClick={() => { setMediaStatus(null); setMediaReloadNonce((value) => value + 1); setFullscreenNonce((value) => value + 1) }}
+                className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/70 text-white shadow-lg backdrop-blur active:scale-95"
+                aria-label="Ricarica app"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={closePreviewFullscreen}
+                className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/70 text-white shadow-lg backdrop-blur active:scale-95"
+                aria-label="Esci dalla schermata intera"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setPreviewFullscreen(false)}
-              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-              title="Chiudi anteprima"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          {isReactPreview ? (
-            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} mlModels={mlModels} enableInspector={false} forceVerticalScroll={isMobile} className="min-h-0 flex-1" />
           ) : (
-            <CodingSandpackPreview
-              key={`fullscreen:${previewKey}:${fullscreenNonce}`}
-              staticHtml={fullscreenPreviewHtml}
-              forceVerticalScroll={isMobile}
-              className="min-h-0 flex-1"
-            />
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Eye className="h-4 w-4" />
+                Anteprima
+              </div>
+              <button
+                type="button"
+                onClick={closePreviewFullscreen}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                title="Chiudi anteprima"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           )}
+          <div className="relative flex min-h-0 flex-1 flex-col" style={isMobile ? { paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}>
+            {isReactPreview ? (
+              <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}:${mediaReloadNonce}:${fullscreenNonce}`} files={files} mlModels={mlModels} enableInspector={false} forceVerticalScroll={isMobile} className="min-h-0 flex-1" />
+            ) : (
+              <CodingSandpackPreview
+                key={`fullscreen:${previewKey}:${fullscreenNonce}:${mediaReloadNonce}`}
+                staticHtml={fullscreenPreviewHtml}
+                forceVerticalScroll={isMobile}
+                className="min-h-0 flex-1"
+              />
+            )}
+            {mediaStatus && (
+              <MediaPermissionBanner
+                status={mediaStatus}
+                onReload={() => { setMediaStatus(null); setMediaReloadNonce((value) => value + 1); setFullscreenNonce((value) => value + 1) }}
+                onAllow={() => { void requestHostMedia() }}
+                hostBlocked={hostMediaBlocked}
+                onClose={() => setMediaStatus(null)}
+              />
+            )}
+          </div>
         </div>
       )}
       {mlPickerOpen && (
@@ -3266,6 +3416,8 @@ const RUNTIME_NOISE = [/NotAllowedError|Permission denied|Permesso negato|getUse
 function isActionableRuntimeError(error: SandpackRuntimeError) {
   if (!error.message?.trim()) return false
   // A refused camera/mic permission is the user's or the browser's choice, never a code bug to "fix".
+  // (Compile errors are never permission refusals: they always block the app and must always be fixed.)
+  if (error.kind === 'compile') return true
   if (/NotAllowedError|Permission denied|Permesso negato|non permette l.accesso a fotocamera/i.test(error.message)) return false
   return !(error.kind === 'console' && RUNTIME_NOISE.some((pattern) => pattern.test(error.message)))
 }
@@ -3277,7 +3429,7 @@ function browserPermissionHint(): string {
   return 'Chrome/Edge: clicca l’icona a sinistra dell’indirizzo (lucchetto o impostazioni sito), imposta Fotocamera e Microfono su Consenti, poi ricarica l’anteprima.'
 }
 
-function MediaPermissionBanner({ status, onReload, onClose }: { status: { kind: string; state: string; error: string }; onReload: () => void; onClose: () => void }) {
+function MediaPermissionBanner({ status, onReload, onAllow, hostBlocked, onClose }: { status: { kind: string; state: string; error: string }; onReload: () => void; onAllow: () => void; hostBlocked: boolean; onClose: () => void }) {
   const device = status.kind === 'microphone' ? 'il microfono' : status.kind === 'camera' ? 'la webcam' : 'webcam e microfono'
   if (status.state === 'prompt') {
     return (
@@ -3293,7 +3445,10 @@ function MediaPermissionBanner({ status, onReload, onClose }: { status: { kind: 
       : status.error === 'NotFoundError' ? 'Nessun dispositivo trovato'
         : status.error === 'NotReadableError' ? 'Dispositivo già in uso'
           : `Non riesco ad accedere a ${device}`
-  const hint = status.state === 'denied' ? browserPermissionHint()
+  // Until the top-level page has itself been refused, the fix is one tap: ask the browser from here.
+  const canAskFromHost = status.state === 'denied' && !hostBlocked
+  const hint = canAskFromHost ? 'Tocca “Consenti” e rispondi alla richiesta del browser: poi l’app riparte da sola.'
+    : status.state === 'denied' ? browserPermissionHint()
     : status.error === 'NotFoundError' ? 'Collega una webcam o un microfono, poi ricarica l’anteprima.'
       : status.error === 'NotReadableError' ? 'Chiudi le altre app o schede che usano la webcam (videochiamate, altre anteprime) e ricarica.'
         : 'Usa un browser aggiornato (Chrome, Edge, Firefox o Safari) e ricarica l’anteprima.'
@@ -3305,9 +3460,16 @@ function MediaPermissionBanner({ status, onReload, onClose }: { status: { kind: 
           <div className="min-w-0 flex-1">
             <p className="font-bold text-slate-900">{title}</p>
             <p className="mt-1 leading-5">{hint}</p>
-            <button type="button" onClick={onReload} className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-bold text-white hover:bg-slate-700">
-              <RefreshCw className="h-3.5 w-3.5" /> Ricarica anteprima
-            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {canAskFromHost && (
+                <button type="button" onClick={onAllow} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-4 font-bold text-white hover:bg-emerald-500">
+                  Consenti {device}
+                </button>
+              )}
+              <button type="button" onClick={onReload} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-bold text-white hover:bg-slate-700">
+                <RefreshCw className="h-3.5 w-3.5" /> Ricarica anteprima
+              </button>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
         </div>
@@ -3515,6 +3677,47 @@ function stripExternalRefs(content: string, kind: 'html' | 'css'): string {
 
 // New projects are real React/Vite apps (rendered by Sandpack); legacy projects are static
 // index.html/styles.css/script.js (rendered by the srcDoc preview). Detect by file shape.
+// Static check for the classic webcam bug of generated apps: the <video> is mounted only once the camera is
+// "active", but the state becomes active only after the stream is attached to videoRef.current — which is still
+// null — so the app spins on "Attivazione webcam…" forever and no error is ever raised for the fix loop to see.
+function detectMediaPitfalls(files: GeneratedFile[]): SandpackRuntimeError[] {
+  const found: SandpackRuntimeError[] = []
+  for (const file of files) {
+    if (!/\.(tsx|jsx)$/.test(file.path)) continue
+    const code = file.content || ''
+    if (/@mediapipe\/(face_mesh|hands|pose|camera_utils|holistic)|face-api\.js\/dist|cdn\.jsdelivr\.net\/npm\/@mediapipe/.test(code)) {
+      found.push({
+        kind: 'runtime',
+        path: `/${file.path}`,
+        message: 'Il riconoscimento di volto/mani/corpo carica uno script legacy da CDN (MediaPipe face_mesh/hands/pose), fragile nel sandbox. '
+          + 'Sostituiscilo con il motore della piattaforma: const tracker = await window.GolinelliAI.ml.face() (oppure .hand() / .pose()); '
+          + 'poi tracker.start(videoElement, { onResult }) o await tracker.detect(videoElement). Risultato: { detected, faces[i].landmarks (478 punti normalizzati 0..1), '
+          + 'faces[i].features: leftEye, rightEye, nose, mouthTop, mouthBottom, eyeDistance, roll, mouthOpen, smile, eyesClosed }. '
+          + 'Rimuovi loadScript/CDN e l\'uso di window.FaceMesh.',
+      })
+      continue
+    }
+    if (!/media\.(camera|cameraAndMicrophone)|getUserMedia|srcObject/.test(code)) continue
+    const videoTag = /<video\b/g
+    let match: RegExpExecArray | null
+    while ((match = videoTag.exec(code))) {
+      const before = code.slice(Math.max(0, match.index - 200), match.index)
+      if (/(&&|\?)\s*\(?\s*(<[A-Za-z][^<>]*>\s*){0,2}$/.test(before)) {
+        found.push({
+          kind: 'runtime',
+          path: `/${file.path}`,
+          message: 'La webcam non mostra mai il video: <video> è montato solo in modo condizionale (es. status === \'active\' && <video …>), '
+            + 'quindi videoRef.current è null quando si chiama media.attach() e lo stato non diventa mai "attivo" (la schermata resta su "Attivazione webcam…"). '
+            + 'Correzione: il <video ref={videoRef} playsInline muted autoPlay> deve essere SEMPRE nel JSX (nascondilo con className/stile finché non è attivo), '
+            + 'poi dopo aver ottenuto lo stream chiama media.attach(videoRef.current, stream) e SOLO DOPO imposta lo stato su "attivo".',
+        })
+        break
+      }
+    }
+  }
+  return found
+}
+
 function isReactProject(files: GeneratedFile[]): boolean {
   if (files.some((f) => /\.(tsx|jsx)$/i.test(f.path))) return true
   const pkg = files.find((f) => f.path.replace(/^\.?\//, '') === 'package.json')

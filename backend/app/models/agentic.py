@@ -84,3 +84,32 @@ class AgenticNodeRun(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "node_instance_id", "visit", name="uq_agentic_node_runs_run_node_visit"),
     )
+
+
+class AgenticWorkflowTable(Base):
+    """Named table owned by a workflow: it survives across runs and chat turns (db.* nodes read and write it)."""
+
+    __tablename__ = "agentic_workflow_tables"
+    __table_args__ = (UniqueConstraint("workflow_id", "name", name="uq_agentic_workflow_table_name"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey("agentic_workflows.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    columns = Column(JSONB, nullable=False, default=list, server_default="[]")
+    rows = Column(JSONB, nullable=False, default=list, server_default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AgenticAssistantConversation(Base):
+    """One chat thread with the workflow assistant: the whole history is kept so it can be reopened later."""
+
+    __tablename__ = "agentic_assistant_conversations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey("agentic_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(180), nullable=False, default="Nuova conversazione", server_default="Nuova conversazione")
+    messages = Column(JSONB, nullable=False, default=list, server_default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

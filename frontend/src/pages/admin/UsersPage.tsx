@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { formatInternalCredits, formatCreditAmount, toCredits } from '@/lib/credits'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -163,7 +164,7 @@ type AdminClassesResponse = {
 const numberFormatter = new Intl.NumberFormat('it-IT')
 const compactFormatter = new Intl.NumberFormat('it-IT', { notation: 'compact', maximumFractionDigits: 1 })
 
-const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
+const formatCurrency = (value: number) => formatInternalCredits(value)
 const formatNumber = (value: number) => numberFormatter.format(Math.round(Number(value || 0)))
 const formatCompact = (value: number) => compactFormatter.format(Number(value || 0))
 const formatCreditValue = (value: number) => Number(value || 0).toLocaleString('it-IT', { maximumFractionDigits: 2 })
@@ -709,14 +710,14 @@ export default function CostsPage() {
               <div className="flex h-full items-center justify-center text-sm text-slate-400">Caricamento...</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rows}>
+                <LineChart data={rows.map((r) => ({ ...r, teacher_cost: toCredits(r.teacher_cost), student_cost: toCredits(r.student_cost) }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value: number) => formatCurrency(Number(value || 0))} />
+                  <Tooltip formatter={(value: number) => `${formatCreditAmount(Number(value || 0))} cr.`} />
                   <Legend />
-                  <Line type="monotone" dataKey="teacher_cost" stroke="#404040" strokeWidth={2} dot={false} name="Docenti €" />
-                  <Line type="monotone" dataKey="student_cost" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti €" />
+                  <Line type="monotone" dataKey="teacher_cost" stroke="#404040" strokeWidth={2} dot={false} name="Docenti (crediti)" />
+                  <Line type="monotone" dataKey="student_cost" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti (crediti)" />
                 </LineChart>
               </ResponsiveContainer>
             )}

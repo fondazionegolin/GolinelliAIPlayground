@@ -1,13 +1,50 @@
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
-from app.models.credits import CreditLimit, CreditTransaction
+from app.models.credits import CreditLimit, CreditTransaction, CreditAlert
 from app.models.tenant import Tenant
 from app.models.enums import CreditTransactionType, LimitLevel, TenantType
 from app.core.pricing import calculate_cost
+
+
+logger = logging.getLogger(__name__)
+
+# 1 credito = 0,01 unità interna (l'unità interna è l'importo di spesa originario).
+# Il pannello e le API utente parlano solo in crediti.
+CREDITS_PER_UNIT = 100
+LOW_BALANCE_RATIO = 0.2  # sotto il 20% residuo scatta l'avviso "crediti in esaurimento"
+
+
+def to_credits(value: float | None) -> float:
+    return round(float(value or 0.0) * CREDITS_PER_UNIT, 2)
+
+
+def from_credits(value: float | None) -> float:
+    return float(value or 0.0) / CREDITS_PER_UNIT
+
+
+def effective_cap(limit: CreditLimit) -> float:
+    """Cap mensile + bundle. 0 (cap ordinario) = nessun limite."""
+    return float(limit.amount_cap or 0.0) + max(float(limit.bonus_credits or 0.0), 0.0)
+
+
+def reset_if_due(limit: CreditLimit, now: datetime) -> bool:
+    """Reset mensile pigro. I bundle non scadono: si consuma prima il cap ordinario,
+    solo l'eccedenza intacca il bundle, il residuo viene riportato."""
+    if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:
+        overflow = max(float(limit.current_usage or 0.0) - float(limit.amount_cap or 0.0), 0.0)
+        limit.bonus_credits = max(float(limit.bonus_credits or 0.0) - overflow, 0.0)
+        limit.current_usage = 0.0
+        limit.period_start = now
+        limit.period_end = _next_month_start(now)
+        limit.last_updated = now
+        return True
+    return False
 
 
 def _next_month_start(now: datetime) -> datetime:
@@ -275,14 +312,14 @@ class CreditService:
             if limit.amount_cap <= 0:
                 continue  # 0 = nessun limite configurato → passa
 
-            # Lazy reset
-            if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:
-                limit.current_usage = 0.0
-                limit.period_start = now
-                limit.period_end = _next_month_start(now)
+            if reset_if_due(limit, now):
                 db.add(limit)
+                await self.sync_alert(db, limit)
 
-            if limit.current_usage + estimated_cost > limit.amount_cap:
+            if limit.current_usage + estimated_cost > effective_cap(limit):
+                # Blocca e avvisa l'admin: il docente/scuola deve poter chiedere un bundle.
+                await self.sync_alert(db, limit, force_exhausted=True)
+                await db.commit()
                 return False
 
         return True
@@ -303,12 +340,9 @@ class CreditService:
         constrained_limits: list[CreditLimit] = []
 
         for limit in limits:
-            if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:
-                limit.current_usage = 0.0
-                limit.period_start = now
-                limit.period_end = _next_month_start(now)
-                limit.last_updated = now
+            if reset_if_due(limit, now):
                 db.add(limit)
+                await self.sync_alert(db, limit)
 
             if limit.amount_cap > 0:
                 constrained_limits.append(limit)
@@ -319,32 +353,35 @@ class CreditService:
                 "credits_remaining": None,
                 "credits_used": 0,
                 "credits_cap": None,
-                "eur_remaining": None,
-                "eur_used": 0.0,
-                "eur_cap": None,
                 "limit_level": None,
                 "period_end": None,
+                "low_balance": False,
+                "exhausted": False,
             }
 
         limiting = min(
             constrained_limits,
-            key=lambda item: max(float(item.amount_cap or 0.0) - float(item.current_usage or 0.0), 0.0),
+            key=lambda item: max(effective_cap(item) - float(item.current_usage or 0.0), 0.0),
         )
-        remaining = max(float(limiting.amount_cap or 0.0) - float(limiting.current_usage or 0.0), 0.0)
-        used = max(float(limiting.current_usage or 0.0), 0.0)
-        cap = max(float(limiting.amount_cap or 0.0), 0.0)
-
         await db.flush()
         await db.commit()
+        return self.limit_balance_payload(limiting)
+
+    @staticmethod
+    def limit_balance_payload(limit: CreditLimit) -> dict:
+        cap = max(effective_cap(limit), 0.0)
+        used = max(float(limit.current_usage or 0.0), 0.0)
+        remaining = max(cap - used, 0.0)
         return {
-            "credits_remaining": int(round(remaining * 100)),
-            "credits_used": int(round(used * 100)),
-            "credits_cap": int(round(cap * 100)),
-            "eur_remaining": round(remaining, 4),
-            "eur_used": round(used, 4),
-            "eur_cap": round(cap, 4),
-            "limit_level": limiting.level.value if hasattr(limiting.level, "value") else str(limiting.level),
-            "period_end": limiting.period_end,
+            "credits_remaining": int(round(to_credits(remaining))),
+            "credits_used": int(round(to_credits(used))),
+            "credits_cap": int(round(to_credits(cap))),
+            "limit_level": limit.level.value if hasattr(limit.level, "value") else str(limit.level),
+            "limit_id": str(limit.id) if limit.id else None,
+            "period_end": limit.period_end,
+            "bonus_credits": int(round(to_credits(limit.bonus_credits))),
+            "low_balance": cap > 0 and remaining / cap <= LOW_BALANCE_RATIO,
+            "exhausted": cap > 0 and remaining <= 0,
         }
 
     async def track_usage(
@@ -382,17 +419,164 @@ class CreditService:
         )
         now = datetime.now(timezone.utc)
         for limit in limits:
-            if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:
-                limit.current_usage = 0.0
-                limit.period_start = now
-                limit.period_end = _next_month_start(now)
+            reset_if_due(limit, now)
             limit.current_usage += cost
             limit.last_updated = now
             db.add(limit)
+            await self.sync_alert(db, limit)
 
         await db.commit()
         await db.refresh(tx)
         return tx
+
+    # ── Alerts ──────────────────────────────────────────────────────────────
+
+    async def sync_alert(self, db: AsyncSession, limit: CreditLimit, *, force_exhausted: bool = False) -> None:
+        """Apre/aggiorna/chiude l'avviso del limite in base al residuo corrente."""
+        if limit.id is None:
+            return
+        cap = effective_cap(limit) if float(limit.amount_cap or 0.0) > 0 else 0.0
+        remaining = cap - float(limit.current_usage or 0.0)
+        desired: Optional[str] = None
+        if cap > 0:
+            if force_exhausted or remaining <= 0:
+                desired = "EXHAUSTED"
+            elif remaining / cap <= LOW_BALANCE_RATIO:
+                desired = "LOW"
+
+        open_alerts = (await db.execute(
+            select(CreditAlert).where(CreditAlert.limit_id == limit.id, CreditAlert.status == "OPEN")
+        )).scalars().all()
+        now = datetime.now(timezone.utc)
+        already = False
+        for alert in open_alerts:
+            if desired and alert.severity == desired:
+                already = True
+                continue
+            alert.status = "RESOLVED"
+            alert.resolved_at = now
+            db.add(alert)
+        if not desired or already:
+            return
+
+        level = limit.level.value if hasattr(limit.level, "value") else str(limit.level)
+        alert = CreditAlert(
+            tenant_id=limit.tenant_id,
+            limit_id=limit.id,
+            severity=desired,
+            status="OPEN",
+            cap_snapshot=cap,
+            usage_snapshot=float(limit.current_usage or 0.0),
+            message=(
+                f"Crediti esauriti ({level})" if desired == "EXHAUSTED"
+                else f"Crediti in esaurimento ({level}): restano {max(round(to_credits(remaining)), 0)} su {round(to_credits(cap))}"
+            ),
+        )
+        db.add(alert)
+        await db.flush()
+        try:
+            asyncio.get_running_loop().create_task(self._email_admins(alert.id))
+        except RuntimeError:
+            pass
+
+    async def _email_admins(self, alert_id) -> None:
+        """Mail best-effort agli admin; il campo email_sent evita doppi invii."""
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.user import User
+            from app.models.enums import UserRole
+            from app.services.email_service import email_service
+
+            await asyncio.sleep(1.0)  # lascia committare la transazione chiamante
+            async with AsyncSessionLocal() as db:
+                alert = (await db.execute(select(CreditAlert).where(CreditAlert.id == alert_id))).scalar_one_or_none()
+                if not alert or alert.email_sent or alert.status != "OPEN":
+                    return
+                limit = (await db.execute(select(CreditLimit).where(CreditLimit.id == alert.limit_id))).scalar_one_or_none()
+                if not limit:
+                    return
+                label = await self.describe_limit(db, limit)
+                admins = (await db.execute(
+                    select(User).where(User.role == UserRole.ADMIN, User.is_active == True)  # noqa: E712
+                )).scalars().all()
+                subject = (
+                    f"[Golinelli.ai] Crediti esauriti: {label['title']}"
+                    if alert.severity == "EXHAUSTED"
+                    else f"[Golinelli.ai] Crediti in esaurimento: {label['title']}"
+                )
+                body = (
+                    f"<p>{alert.message}</p><p><b>{label['title']}</b>"
+                    f"{' — ' + label['subtitle'] if label['subtitle'] else ''}</p>"
+                    "<p>Apri Admin → Crediti per autorizzare o forzare un nuovo bundle.</p>"
+                )
+                sent_any = False
+                for admin in admins:
+                    if admin.email and await email_service.send_email(admin.email, subject, body, alert.message):
+                        sent_any = True
+                alert.email_sent = sent_any
+                db.add(alert)
+                await db.commit()
+        except Exception as exc:  # mai far fallire una chiamata AI per una mail
+            logger.warning("credit alert email failed: %s", exc)
+
+    async def describe_limit(self, db: AsyncSession, limit: CreditLimit) -> dict:
+        """Etichette leggibili (scuola / docente / classe) di un limite."""
+        from app.models.user import User
+        from app.models.session import Class as TeacherClass
+
+        level = limit.level.value if hasattr(limit.level, "value") else str(limit.level)
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == limit.tenant_id))).scalar_one_or_none() if limit.tenant_id else None
+        teacher = (await db.execute(select(User).where(User.id == limit.teacher_id))).scalar_one_or_none() if limit.teacher_id else None
+        teacher_name = (f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email) if teacher else None
+        tenant_name = tenant.name if tenant else None
+        if level == "CLASS" and limit.class_id:
+            cls = (await db.execute(select(TeacherClass).where(TeacherClass.id == limit.class_id))).scalar_one_or_none()
+            return {"title": f"Classe {cls.name if cls else '—'}", "subtitle": " · ".join(filter(None, [teacher_name, tenant_name]))}
+        if level == "TEACHER":
+            return {"title": f"Docente {teacher_name or '—'}", "subtitle": tenant_name or ""}
+        if level == "STUDENT_POOL":
+            return {"title": f"Pool studenti{' di ' + teacher_name if teacher_name else ''}", "subtitle": tenant_name or ""}
+        if level == "GLOBAL":
+            return {"title": f"Pool istituto {tenant_name or '—'}", "subtitle": ""}
+        return {"title": level, "subtitle": tenant_name or ""}
+
+    # ── Admin: set / bundle ─────────────────────────────────────────────────
+
+    async def add_bundle(
+        self,
+        db: AsyncSession,
+        limit: CreditLimit,
+        credits: float,
+        *,
+        admin_id=None,
+        note: Optional[str] = None,
+        request_id=None,
+    ) -> CreditLimit:
+        """Aggiunge un bundle (in crediti) al limite, valido subito anche a metà mese."""
+        if credits <= 0:
+            raise ValueError("Il bundle deve essere positivo")
+        limit.bonus_credits = float(limit.bonus_credits or 0.0) + from_credits(credits)
+        limit.last_updated = datetime.now(timezone.utc)
+        db.add(limit)
+        db.add(CreditTransaction(
+            tenant_id=limit.tenant_id,
+            transaction_type=CreditTransactionType.ALLOCATION,
+            cost=0.0,
+            teacher_id=limit.teacher_id,
+            class_id=limit.class_id,
+            usage_details={
+                "service": "Bundle crediti",
+                "credits_added": credits,
+                "limit_id": str(limit.id),
+                "limit_level": limit.level.value if hasattr(limit.level, "value") else str(limit.level),
+                "admin_id": str(admin_id) if admin_id else None,
+                "request_id": str(request_id) if request_id else None,
+                "note": note,
+            },
+        ))
+        await db.flush()
+        await self.sync_alert(db, limit)
+        return limit
 
     def calculate_cost_for_model(
         self,

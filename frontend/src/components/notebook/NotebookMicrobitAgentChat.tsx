@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Check, GitCompare, History, Loader2, Send, X } from '@/components/icons'
+import { Textarea } from '@/design/primitives/Textarea'
+import { IconButton } from '@/design/primitives/IconButton'
 import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
 import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
@@ -19,6 +21,53 @@ interface Props {
 }
 
 const CREDIT_EXHAUSTED_MESSAGE = 'Crediti AI esauriti. Attendi il rinnovo del plafond o contatta il docente/amministratore.'
+
+// Agent pipeline stages, in the order the backend runs them.
+const PIPELINE_STEPS = ['Prompt Analyst', 'Architetto', 'File Writer', 'Reviewer', 'Coding Builder'] as const
+
+interface ActiveStage { agent: string; label: string }
+
+function formatElapsed(seconds: number) {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`
+}
+
+/** Live progress of the agent pipeline: which agent has the baton, which ones are done, how long it has been. */
+function PipelineProgress({ done, active, elapsed }: { done: string[]; active: ActiveStage | null; elapsed: number }) {
+  return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-sky-700">
+        <span>Agenti al lavoro</span>
+        <span className="font-mono normal-case tabular-nums">{formatElapsed(elapsed)}</span>
+      </div>
+      <ol className="space-y-1">
+        {PIPELINE_STEPS.map((step) => {
+          const isDone = done.includes(step)
+          const isActive = !isDone && active?.agent === step
+          return (
+            <li key={step} className={`flex items-start gap-2 text-xs ${isDone ? 'text-slate-500' : isActive ? 'font-semibold text-sky-800' : 'text-slate-400'}`}>
+              <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                {isDone
+                  ? <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  : isActive
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600" />
+                    : <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />}
+              </span>
+              <span className="min-w-0">
+                {step}
+                {isActive && active?.label && <span className="block font-normal leading-snug text-sky-700">{active.label}</span>}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      <p className="mt-2 text-[10px] leading-snug text-sky-700/80">
+        Con sketch lunghi o modelli ML può richiedere uno o due minuti: puoi cambiare pagina, il lavoro continua in background.
+      </p>
+    </div>
+  )
+}
 
 function getRangeText(source: string, lineStart: number, lineEnd: number) {
   return source.split('\n').slice(Math.max(0, lineStart - 1), lineEnd).join('\n')
@@ -77,7 +126,41 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
   )
 }
 
+function HunkDiff({ proposal }: { proposal: NotebookCodeProposal }) {
+  const hunks = proposal.hunks ?? []
+  const added = hunks.reduce((n, h) => n + h.rows.filter((r) => r.op === 'add').length, 0)
+  const removed = hunks.reduce((n, h) => n + h.rows.filter((r) => r.op === 'del').length, 0)
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+        <span>{hunks.length} {hunks.length === 1 ? 'blocco modificato' : 'blocchi modificati'}</span>
+        <span className="text-emerald-600">+{added}</span>
+        <span className="text-red-500">−{removed}</span>
+      </div>
+      {hunks.map((hunk, index) => (
+        <div key={index} className="overflow-hidden rounded-lg border border-slate-700 bg-slate-950 font-mono text-[11px]">
+          <div className="border-b border-slate-800 px-3 py-1 text-slate-500">
+            riga {hunk.old_start}{hunk.old_end > hunk.old_start ? `–${hunk.old_end}` : ''}
+          </div>
+          {hunk.rows.map((row, rowIndex) => (
+            <div
+              key={rowIndex}
+              className={`flex gap-2 px-3 py-0.5 ${row.op === 'add' ? 'bg-emerald-950/40 text-emerald-200' : row.op === 'del' ? 'bg-red-950/40 text-red-200' : 'text-slate-500'}`}
+            >
+              <span className={row.op === 'add' ? 'text-emerald-500' : row.op === 'del' ? 'text-red-500' : 'text-transparent'}>
+                {row.op === 'add' ? '+' : row.op === 'del' ? '-' : ' '}
+              </span>
+              <span className="whitespace-pre-wrap break-all">{row.text || ' '}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DiffBlock({ source, proposal }: { source: string; proposal: NotebookCodeProposal }) {
+  if (proposal.hunks && proposal.hunks.length > 0) return <HunkDiff proposal={proposal} />
   const before = getRangeText(source, proposal.line_start, proposal.line_end)
   return (
     <div className="overflow-hidden rounded-lg border border-slate-700 bg-slate-950 font-mono text-[11px]">
@@ -263,6 +346,9 @@ export default function NotebookMicrobitAgentChat({
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [doneAgents, setDoneAgents] = useState<string[]>([])
+  const [activeStage, setActiveStage] = useState<ActiveStage | null>(null)
+  const [elapsed, setElapsed] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const contextualSuggestions = getContextualSuggestions({
@@ -281,6 +367,23 @@ export default function NotebookMicrobitAgentChat({
   useEffect(() => {
     setMessages(initialMessages)
   }, [initialMessages, notebookId])
+
+  // Elapsed-time counter while a request runs; resets the stage tracker when it starts or ends.
+  useEffect(() => {
+    if (!loading) { setActiveStage(null); return }
+    setElapsed(0)
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [loading])
+
+  // The composer grows with the request (up to a cap), then scrolls.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`
+  }, [input])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -325,7 +428,12 @@ export default function NotebookMicrobitAgentChat({
     await readEventStream(response, 'sse', (event) => {
       if (event.type === 'stage' && event.message) {
         // Ogni bolla d'agente compare appena lo stadio finisce.
-        setMessages((prev) => [...prev, event.message as NotebookTutorMessage])
+        const stageMessage = event.message as NotebookTutorMessage
+        setMessages((prev) => [...prev, stageMessage])
+        if (stageMessage.agent_name) setDoneAgents((prev) => (prev.includes(stageMessage.agent_name!) ? prev : [...prev, stageMessage.agent_name!]))
+      } else if (event.type === 'active') {
+        // The agent that has just taken over, and what it is doing right now.
+        setActiveStage({ agent: String(event.agent_name || ''), label: String(event.label || '') })
       } else if (event.type === 'done') {
         const summary = event.summary || 'Modifica pronta.'
         const proposals = (event.proposals || []) as NotebookCodeProposal[]
@@ -367,6 +475,8 @@ export default function NotebookMicrobitAgentChat({
     if (!text || loading) return
 
     setInput('')
+    setDoneAgents([])
+    setActiveStage({ agent: 'Prompt Analyst', label: 'Leggo la richiesta e il codice attuale…' })
     setLoading(true)
 
     const nextMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: text }]
@@ -439,10 +549,14 @@ export default function NotebookMicrobitAgentChat({
           ))}
 
           {loading && (
-            <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-700">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Prompt Analyst → Architetto → File Writer → Reviewer → Coding Builder…
-            </div>
+            useStreaming
+              ? <PipelineProgress done={doneAgents} active={activeStage} elapsed={elapsed} />
+              : (
+                <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-700">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Il tutor sta preparando la proposta… {formatElapsed(elapsed)}
+                </div>
+              )
           )}
 
           {pendingProposals.length > 0 && (
@@ -509,8 +623,8 @@ export default function NotebookMicrobitAgentChat({
       </div>
 
       <div className="shrink-0 border-t border-slate-200 p-3">
-        <div className="flex gap-2 rounded-xl border border-slate-200 bg-white p-2">
-          <textarea
+        <div className="flex items-end gap-2">
+          <Textarea
             ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
@@ -520,18 +634,25 @@ export default function NotebookMicrobitAgentChat({
                 void send()
               }
             }}
-            rows={2}
+            rows={1}
+            resize="none"
+            density="compact"
+            surface="glass"
             placeholder={copy.placeholder}
-            className="min-w-0 flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-700 outline-none placeholder:text-slate-400"
+            className="min-h-[40px] max-h-[220px] min-w-0 flex-1 overflow-y-auto"
           />
-          <button
+          <IconButton
+            type="button"
+            size="default"
+            tone="accent"
+            surface="solid"
             onClick={() => void send()}
             disabled={!input.trim() || loading}
-            className="self-end flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-40"
-            title="Invia al tutor"
+            className="shrink-0"
+            title="Invia al tutor (Invio) · Maiusc+Invio per andare a capo"
           >
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          </button>
+            {loading ? <Loader2 className="animate-spin" /> : <Send />}
+          </IconButton>
         </div>
       </div>
     </div>

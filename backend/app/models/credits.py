@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, ForeignKey, func, Float, Text
+from sqlalchemy import Column, String, Enum, DateTime, ForeignKey, func, Float, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -23,6 +23,9 @@ class CreditLimit(Base):
     
     amount_cap = Column(Float, nullable=False, default=0.0)
     current_usage = Column(Float, nullable=False, default=0.0)
+    # Bundle acquistati/forzati dall'admin: si sommano al cap mensile, non scadono
+    # al reset ma vengono consumati solo dopo l'esaurimento del cap ordinario.
+    bonus_credits = Column(Float, nullable=False, default=0.0, server_default="0")
     
     period_start = Column(DateTime(timezone=True), nullable=False)
     period_end = Column(DateTime(timezone=True), nullable=True) # If null, no reset? Or ongoing
@@ -80,6 +83,9 @@ class CreditRequest(Base):
     
     status = Column(Enum(CreditRequestStatus, native_enum=False), default=CreditRequestStatus.PENDING, nullable=False)
     
+    # Limite su cui accreditare il bundle se la richiesta viene approvata
+    limit_id = Column(UUID(as_uuid=True), ForeignKey("credit_limits.id", ondelete="SET NULL"), nullable=True)
+    
     reviewed_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     admin_notes = Column(Text, nullable=True)
@@ -89,3 +95,25 @@ class CreditRequest(Base):
     # Relationships
     requester = relationship("User", foreign_keys=[requester_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+
+
+class CreditAlert(Base):
+    """Avviso automatico: un limite sta per finire (LOW) o è finito (EXHAUSTED)."""
+    __tablename__ = "credit_alerts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    limit_id = Column(UUID(as_uuid=True), ForeignKey("credit_limits.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    severity = Column(String, nullable=False)  # LOW | EXHAUSTED
+    status = Column(String, nullable=False, default="OPEN", index=True)  # OPEN | RESOLVED
+    message = Column(Text, nullable=True)
+    # Foto del limite al momento dell'avviso (unità interne, vedi CreditLimit)
+    cap_snapshot = Column(Float, nullable=False, default=0.0)
+    usage_snapshot = Column(Float, nullable=False, default=0.0)
+    email_sent = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    limit = relationship("CreditLimit", foreign_keys=[limit_id])

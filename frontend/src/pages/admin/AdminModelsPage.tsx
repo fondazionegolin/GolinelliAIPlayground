@@ -117,8 +117,7 @@ export default function AdminModelsPage() {
         <div>
           <h1 className="text-2xl font-black text-[#1a1a2e]">Modelli</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Catalogo dei modelli LLM di Anthropic, OpenAI e DeepSeek con listino prezzi ufficiale. I prezzi qui sotto sono quelli usati per calcolare i crediti
-            (1 USD = {data?.usd_to_eur ?? '—'} EUR). Il controllo automatico gira ogni 24 ore: le nuove uscite e le variazioni di prezzo restano <b>proposte</b> finché non le approvi.
+            Catalogo dei modelli LLM di Anthropic, OpenAI e DeepSeek con listino prezzi ufficiale. I prezzi del listino (USD per 1M token) sono quelli usati per calcolare il consumo in crediti. Il controllo automatico gira ogni 24 ore: le nuove uscite e le variazioni di prezzo restano <b>proposte</b> finché non le approvi.
           </p>
         </div>
         <Button onClick={() => scan.mutate()} disabled={scan.isPending} className="gap-2 bg-[#e85c8d] text-white hover:bg-[#d34d7d]">

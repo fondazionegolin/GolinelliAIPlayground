@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ProgressRing } from '@/components/ui/ProgressGlyph'
 import { creditsApi, studentApi } from '@/lib/api'
+import { useToast } from '@/components/ui/use-toast'
 
 type CreditBalance = {
   credits_remaining: number | null
   credits_used: number
   credits_cap: number | null
   limit_level?: string | null
+  limit_id?: string | null
+  bonus_credits?: number
+  low_balance?: boolean
+  exhausted?: boolean
+  classes?: Array<{
+    class_id: string
+    class_name: string
+    credits_remaining: number | null
+    credits_used: number
+    credits_cap: number | null
+    low_balance?: boolean
+    exhausted?: boolean
+  }>
 }
 
 type CreditHistoryItem = {
@@ -18,7 +32,6 @@ type CreditHistoryItem = {
   service?: string | null
   provider?: string | null
   model?: string | null
-  cost_eur: number
   usage_details?: Record<string, unknown> | null
   cost_credits: number
 }
@@ -56,6 +69,29 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
   const [open, setOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const { toast } = useToast()
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestCredits, setRequestCredits] = useState('500')
+  const [requestReason, setRequestReason] = useState('')
+  const [requestSending, setRequestSending] = useState(false)
+  const [requestSent, setRequestSent] = useState(false)
+
+  const sendRequest = async () => {
+    const credits = Number(requestCredits.replace(',', '.'))
+    if (!(credits > 0)) return
+    setRequestSending(true)
+    try {
+      await creditsApi.createRequest({ credits, reason: requestReason.trim() || undefined, limit_id: balance?.limit_id ?? undefined })
+      setRequestSent(true)
+      setRequestOpen(false)
+      toast({ title: 'Richiesta inviata', description: "L'amministratore riceverà la tua richiesta di crediti." })
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      toast({ variant: 'destructive', title: 'Richiesta non inviata', description: typeof detail === 'string' ? detail : 'Riprova tra poco.' })
+    } finally {
+      setRequestSending(false)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -142,7 +178,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
     <div className="relative" ref={panelRef}>
       <button
         type="button"
-        className="navbar-inline-control flex h-8 w-9 items-center justify-center rounded-lg p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
+        className="navbar-inline-control relative flex h-8 w-9 items-center justify-center rounded-lg p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
         style={{
           color: ringColor,
           '--btn-tone': accentColor,
@@ -154,6 +190,12 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
         onClick={() => setOpen((value) => !value)}
       >
         <CreditRing value={remainingRatio} color={ringColor} />
+        {(balance?.low_balance || balance?.exhausted) && (
+          <span
+            className={`absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border border-white ${balance?.exhausted ? 'bg-red-500' : 'bg-amber-500'}`}
+            aria-hidden="true"
+          />
+        )}
       </button>
 
       {open && (
@@ -179,6 +221,74 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
               ))}
             </div>
           </div>
+          {(balance?.low_balance || balance?.exhausted) && (
+            <div className={`border-b px-4 py-3 ${balance?.exhausted ? 'border-red-100 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
+              <p className={`text-sm font-black ${balance?.exhausted ? 'text-red-700' : 'text-amber-800'}`}>
+                {balance?.exhausted ? 'Crediti esauriti' : 'Crediti in esaurimento'}
+              </p>
+              <p className={`mt-0.5 text-xs ${balance?.exhausted ? 'text-red-700' : 'text-amber-700'}`}>
+                {audience === 'student'
+                  ? 'Avvisa il tuo docente: potrà chiedere un nuovo bundle di crediti.'
+                  : 'Chiedi un nuovo bundle: l\'amministratore riceve un avviso e può autorizzarlo subito.'}
+              </p>
+              {audience !== 'student' && (
+                requestSent ? (
+                  <p className="mt-2 text-xs font-bold text-slate-700">Richiesta inviata — in attesa dell'amministratore.</p>
+                ) : requestOpen ? (
+                  <div className="mt-2 flex flex-wrap items-end gap-2">
+                    <label className="text-[11px] font-bold text-slate-600">
+                      Crediti
+                      <input
+                        value={requestCredits}
+                        onChange={(event) => setRequestCredits(event.target.value)}
+                        inputMode="decimal"
+                        className="mt-0.5 block h-8 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm"
+                      />
+                    </label>
+                    <label className="min-w-40 flex-1 text-[11px] font-bold text-slate-600">
+                      Motivazione (facoltativa)
+                      <input
+                        value={requestReason}
+                        onChange={(event) => setRequestReason(event.target.value)}
+                        className="mt-0.5 block h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={sendRequest}
+                      disabled={requestSending}
+                      className="h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      {requestSending ? 'Invio…' : 'Invia richiesta'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setRequestOpen(true)}
+                    className="mt-2 h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white"
+                  >
+                    Richiedi nuovi crediti
+                  </button>
+                )
+              )}
+            </div>
+          )}
+          {isPool && (balance?.classes?.length ?? 0) > 0 && (
+            <div className="border-b border-slate-100 px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Budget per classe</p>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {balance!.classes!.map((cls) => (
+                  <div key={cls.class_id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs">
+                    <span className="truncate font-bold text-slate-700">{cls.class_name}</span>
+                    <span className={`ml-2 shrink-0 font-black tabular-nums ${cls.exhausted ? 'text-red-600' : cls.low_balance ? 'text-amber-600' : 'text-slate-900'}`}>
+                      {formatCreditValue(cls.credits_remaining ?? 0)} / {formatCreditValue(cls.credits_cap ?? 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="border-b border-slate-100 px-4 py-2.5">
             <p className="text-xs font-black uppercase tracking-wide text-slate-600">Storico consumi</p>
           </div>

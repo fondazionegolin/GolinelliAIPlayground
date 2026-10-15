@@ -34,8 +34,9 @@ from app.models.live_interaction import LiveEscapeParticipant, LiveInteraction, 
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.coding import CodingAgentRun, CodingBrief, CodingBuild, CodingDesignSystem, CodingFile, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingReview, CodingVersion
 from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage, TuringPersona, TuringTeacherSettings
-from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun
+from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun, AgenticWorkflowTable, AgenticAssistantConversation
 from app.models.solid_model import SolidModel
+from app.models.video_project import VideoProject
 from app.models.drive import DriveItem, DriveShare
 
 __all__ = [
@@ -139,7 +140,9 @@ __all__ = [
     "AgenticWorkflowRun",
     "AgenticNodeRun",
     "SolidModel",
+    "VideoProject",
     "DriveItem",
     "DriveShare",
 ]
 from app.models.platform_setting import PlatformSetting
+from app.models.school_onboarding import ItalianSchool, SchoolOnboardingInvite  # noqa: F401

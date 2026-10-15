@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket } from '@/components/icons'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
-import { teacherApi, feedbackApi } from '@/lib/api'
+import { teacherApi, feedbackApi, schoolOwnerApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
@@ -364,8 +364,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     staleTime: 5 * 60 * 1000,
   })
 
+  // «Istituto»: pannello del dirigente (inviti docenti + informativa famiglie)
+  const { data: ownerStatus } = useQuery({
+    queryKey: ['school-owner-status'],
+    queryFn: async () => (await schoolOwnerApi.status()).data,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  })
+
   const betaItems = [
     ...(isAdmin ? [{ path: '/teacher/agentic', label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch }] : []),
+    ...(isAdmin ? [{ path: '/teacher/video-studio', label: 'Video Studio', description: 'Video didattici da un testo, shot da 5 secondi', icon: Film }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   const navClusters: NavCluster[] = [
@@ -376,6 +385,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       { path: '/teacher/classes', label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount },
       { path: '/teacher/live-interaction', label: 'Live', description: t('navbar.desc_live'), icon: Zap },
       { path: '/teacher/boards', label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare },
+      ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: 'Istituto', description: 'Docenti e informativa famiglie', icon: Building2 }] : []),
     ] },
     { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
       { path: '/teacher/documents', label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText },

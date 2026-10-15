@@ -126,7 +126,7 @@ while True:
 
 # Riferimento API p5.js (2D + WEBGL) e libreria librerie extra caricabili dal pannello
 # "Librerie" del notebook. Il codice gira in un iframe con p5.js 1.9.3 già caricato via CDN.
-P5JS_LIBRARY_IDS = {"ml5", "matterjs", "tonejs", "p5sound", "mediapipe-hands"}
+P5JS_LIBRARY_IDS = {"ml5", "matterjs", "tonejs", "p5sound", "mediapipe-hands", "mediapipe-face"}
 P5JS_REFERENCE = """Riferimento p5.js (ambiente: iframe browser con p5.js 1.9.3 in instance globale, no bundler/npm).
 Struttura base: function setup() { createCanvas(w, h); } e function draw() { ... } eseguiti in loop.
 Altre funzioni richiamate automaticamente se definite: preload(), mousePressed(), mouseMoved(), mouseDragged(),
@@ -167,6 +167,14 @@ ID validi e globali che espongono una volta attivate:
   ml5 per il tracciamento mani: new Hands({locateFile}), hands.setOptions(...), hands.onResults(cb),
   new Camera(videoEl, {onFrame, width, height}).start(); i landmark sono normalizzati 0..1, vanno scalati
   per width/height per disegnarli con le funzioni p5)
+- "mediapipe-face" -> variabili globali FaceMesh e Camera (landmark facciali AI: new FaceMesh({locateFile}),
+  faceMesh.setOptions({maxNumFaces, refineLandmarks:true, minDetectionConfidence, minTrackingConfidence}),
+  faceMesh.onResults(res => res.multiFaceLandmarks = array di visi, ognuno 468 punti {x,y,z} normalizzati 0..1
+  (+10 sull'iride con refineLandmarks); new Camera(videoEl, {onFrame: async () => faceMesh.send({image: videoEl}),
+  width, height}).start(). Costanti globali di connessioni: FACEMESH_FACE_OVAL, FACEMESH_LIPS, FACEMESH_LEFT_EYE,
+  FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYEBROW, FACEMESH_RIGHT_EYEBROW, FACEMESH_TESSELATION. Indici utili: 1 naso,
+  13/14 labbro sup./inf., 61/291 angoli bocca, 33/263 angoli esterni occhi, 159/145 e 386/374 palpebre, 10 fronte,
+  152 mento. Per sovrapporre filtri/deformazioni usa questa libreria; la webcam è speculare: x_px = width - p.x*width)
 Se il codice richiesto usa una di queste librerie, includi SEMPRE il suo id nel campo required_libraries della
 proposta: verrà attivata automaticamente per lo studente insieme al codice. Non inventare altre librerie o CDN:
 se lo studente chiede una libreria non in questo elenco, spiegalo nella risposta invece di inventare un id.
@@ -496,6 +504,212 @@ async def _notebook_review_file(
         return content, []
 
 
+def _norm_ws_line(line: str) -> str:
+    return re.sub(r"\s+", " ", line).strip()
+
+
+def _apply_edits(source: str, edits: list[dict]) -> tuple[str, list[int]]:
+    """Applica in sequenza blocchi {search, replace}. `search` deve comparire UNA sola volta nel file
+    (match esatto, poi match per righe ignorando indentazione/spazi). Ritorna (nuovo_sorgente, indici
+    degli edit non applicabili): un edit non applicato non blocca gli altri."""
+    failed: list[int] = []
+    current = source
+    for index, edit in enumerate(edits):
+        search = str(edit.get("search", ""))
+        replace = str(edit.get("replace", ""))
+        if not search.strip():
+            failed.append(index)
+            continue
+        if current.count(search) == 1:
+            current = current.replace(search, replace, 1)
+            continue
+        if current.count(search) > 1:
+            failed.append(index)
+            continue
+        # Fallback: stessa sequenza di righe, ignorando differenze di indentazione e spazi.
+        wanted = [_norm_ws_line(l) for l in search.strip("\n").split("\n")]
+        lines = current.split("\n")
+        normalized = [_norm_ws_line(l) for l in lines]
+        hits = [
+            i for i in range(0, len(lines) - len(wanted) + 1)
+            if normalized[i:i + len(wanted)] == wanted
+        ]
+        if len(hits) != 1:
+            failed.append(index)
+            continue
+        start = hits[0]
+        indent = re.match(r"\s*", lines[start]).group(0)
+        new_lines = replace.strip("\n").split("\n") if replace.strip() else []
+        # Mantiene l'indentazione originale della prima riga se il replace non ne ha.
+        if new_lines and not re.match(r"\s", new_lines[0]) and indent:
+            new_lines = [indent + l if l.strip() else l for l in new_lines]
+        lines[start:start + len(wanted)] = new_lines
+        current = "\n".join(lines)
+    return current, failed
+
+
+def _build_hunks(old: str, new: str, context: int = 2, max_hunks: int = 40) -> list[dict]:
+    """Diff a livello di riga tra prima e dopo: solo i blocchi realmente cambiati, con qualche riga di
+    contesto. È ciò che l'UI mostra al posto dell'intera riscrittura."""
+    import difflib
+    old_lines = old.split("\n")
+    new_lines = new.split("\n")
+    matcher = difflib.SequenceMatcher(a=old_lines, b=new_lines, autojunk=False)
+    hunks: list[dict] = []
+    for group in matcher.get_grouped_opcodes(context):
+        first, last = group[0], group[-1]
+        old_start, old_end = first[1], last[2]
+        new_start, new_end = first[3], last[4]
+        rows: list[dict] = []
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                rows.extend({"op": "ctx", "text": t} for t in old_lines[i1:i2])
+            else:
+                rows.extend({"op": "del", "text": t} for t in old_lines[i1:i2])
+                rows.extend({"op": "add", "text": t} for t in new_lines[j1:j2])
+        hunks.append({
+            "old_start": old_start + 1, "old_end": old_end,
+            "new_start": new_start + 1, "new_end": new_end,
+            "rows": rows[:400],
+        })
+        if len(hunks) >= max_hunks:
+            break
+    return hunks
+
+
+async def _notebook_codegen_edits(
+    project_type: str, active_source: str, last_output: str, user_prompt: str,
+    provider: str, model: str, previous_failures: str = "",
+) -> tuple[str, str, list[dict], list, Optional[str]]:
+    """Generazione a MODIFICHE PUNTUALI: invece di riemettere il file intero (lento: migliaia di token
+    in output) il modello restituisce solo blocchi {search, replace}. Ritorna
+    (reasoning, summary, edits, required_libraries, full_content_or_None). `full_content` è valorizzato
+    solo se il file è vuoto o il modello ha dichiarato una riscrittura completa."""
+    lang_label = "p5.js (JavaScript, gira in un browser)" if project_type == "p5js" else "Python"
+    code_fence = "javascript" if project_type == "p5js" else "python"
+    system_prompt = f"""Sei un assistente di coding agentico per un singolo file {lang_label} in un notebook didattico.
+Lavori per MODIFICHE PUNTUALI (come un diff): NON riscrivere il file, restituisci solo i blocchi che cambiano.
+Se ci sono errori console riportati, la tua priorità assoluta è risolverli.
+Restituisci SOLO l'oggetto JSON, NIENTE testo prima o dopo: il PRIMO carattere è {{ e l'ULTIMO è }}.
+
+Formato JSON richiesto:
+{{
+  "reasoning": "2-4 frasi in italiano: cosa cambi e perché (il piano), niente codice",
+  "summary": "breve sintesi in italiano di cosa hai cambiato (o perché non serve cambiare nulla)",
+  "edits": [
+    {{"search": "frammento ESATTO del file corrente da sostituire", "replace": "nuovo frammento"}}
+  ],
+  "required_libraries": ["ml5"]
+}}
+
+Regole sugli edit:
+- "search" va copiato LETTERALMENTE dal file corrente (stessi spazi, stessa indentazione) e deve comparire UNA SOLA
+  volta: includi 1-3 righe di contesto attorno se il frammento è ambiguo. Mantienilo il più corto possibile.
+- Per INSERIRE codice: usa come search una riga/blocco di ancoraggio esistente e rimettila nel replace insieme al nuovo codice.
+- Per CANCELLARE: replace vuoto. Gli edit vengono applicati nell'ordine e NON devono sovrapporsi.
+- Più modifiche indipendenti = più edit piccoli, non uno grande.
+- Se il file corrente è vuoto, oppure serve davvero riscriverlo da zero, usa invece il campo "content" con il file
+  COMPLETO e lascia "edits" vuoto.
+- Se il file soddisfa già la richiesta: "edits" vuoto e spiegalo in reasoning/summary.
+- required_libraries è opzionale (solo p5js): SOLO id di librerie realmente necessarie al codice
+- Rispondi in italiano""" + (
+        "\n\n" + P5JS_REFERENCE if project_type == "p5js" else ""
+    )
+    failure_note = (
+        f"\n\nATTENZIONE: nel tentativo precedente questi 'search' NON hanno trovato una corrispondenza unica nel file "
+        f"({previous_failures}). Copia i frammenti esattamente dal file qui sotto, con più righe di contesto.\n"
+        if previous_failures else ""
+    )
+    messages = [{
+        "role": "user",
+        "content": (
+            f"Richiesta dello studente: {user_prompt}\n\n"
+            f"Errori o output console riportati:\n{last_output[:1200] or '(nessuno)'}\n{failure_note}\n"
+            f"File corrente:\n```{code_fence}\n{active_source[:40000]}\n```"
+        ),
+    }]
+    last_error: Exception | None = None
+    for attempt in range(2):
+        raw = await _generate_text_accumulated(
+            messages, system_prompt, provider, model, temperature=0.2, max_tokens=8000,
+        )
+        try:
+            parsed = _extract_json_object(raw)
+            reasoning = str(parsed.get("reasoning", "")).strip()[:1500]
+            summary = str(parsed.get("summary", "")).strip()[:500]
+            raw_edits = parsed.get("edits") or []
+            edits = [
+                {"search": str(e.get("search", "")), "replace": str(e.get("replace", ""))}
+                for e in raw_edits if isinstance(e, dict)
+            ][:30]
+            content_raw = parsed.get("content")
+            full_content = _strip_code_fences(str(content_raw)) if isinstance(content_raw, str) and content_raw.strip() else None
+            raw_libs = parsed.get("required_libraries", [])
+            required_libraries = (
+                [lib for lib in raw_libs if isinstance(lib, str) and lib in P5JS_LIBRARY_IDS][:3]
+                if project_type == "p5js" and isinstance(raw_libs, list) else []
+            )
+            return reasoning, summary, edits, required_libraries, full_content
+        except Exception as exc:
+            last_error = exc
+            logger.warning("Notebook edit-codegen attempt %d returned invalid JSON (%s)", attempt + 1, exc)
+    raise RuntimeError(f"Codegen non ha restituito JSON valido dopo 2 tentativi: {last_error}")
+
+
+REVIEW_FOCUS = {
+    "bugs": (
+        "ERRORI: cerca solo bug che farebbero fallire il codice a runtime o in sintassi: variabili/funzioni non "
+        "definite, API di libreria usate male (async/await, callback, webcam, window.GolinelliML, FaceMesh, ml5), "
+        "setup/draw incoerenti, errori già visibili nell'output console."
+    ),
+    "requirements": (
+        "RICHIESTA: verifica che il codice soddisfi DAVVERO la richiesta dello studente, punto per punto: parti "
+        "mancanti, comportamenti a metà, effetti non collegati agli eventi giusti."
+    ),
+}
+
+
+async def _notebook_review_edits(
+    project_type: str, content: str, user_prompt: str, last_output: str, focus: str,
+    provider: str, model: str, syntax_error: str = "",
+) -> tuple[list[dict], list[str]]:
+    """Revisore specializzato: legge il file DOPO la modifica e, se trova un problema concreto, risponde con
+    soli edit puntuali (non riemette il file). Più revisori con focus diversi girano IN PARALLELO.
+    Non solleva mai eccezioni."""
+    lang_label = "p5.js (JavaScript)" if project_type == "p5js" else "Python"
+    system_prompt = (
+        f"Sei un revisore di codice {lang_label}. Ricevi un file dopo una modifica e la richiesta dello studente.\n"
+        f"Il tuo UNICO focus: {REVIEW_FOCUS.get(focus, REVIEW_FOCUS['bugs'])}\n"
+        "Se trovi un problema concreto, correggilo con edit puntuali; altrimenti non modificare nulla. "
+        "Ignora stile e rifiniture.\n"
+        "Rispondi SOLO con JSON valido, senza markdown:\n"
+        '{"edits": [{"search": "frammento ESATTO e unico del file", "replace": "frammento corretto"}], '
+        '"issues_found": ["problema risolto, in una frase", ...]}\n'
+        "edits e issues_found vuoti se non c'è nulla da correggere. Gli edit non devono sovrapporsi."
+    )
+    user_msg = (
+        f"Richiesta dello studente: {user_prompt}\n\n"
+        f"Errori console riportati PRIMA della modifica:\n{last_output[:800] or '(nessuno)'}\n\n"
+        + (f"Errore di sintassi rilevato dal parser nel file attuale:\n{syntax_error}\n\n" if syntax_error else "")
+        + f"File da rivedere:\n```\n{content[:40000]}\n```"
+    )
+    try:
+        raw = await _generate_text_accumulated(
+            [{"role": "user", "content": user_msg}], system_prompt, provider, model,
+            temperature=0.1, max_tokens=4000,
+        )
+        parsed = _extract_json_object(raw)
+        edits = [
+            {"search": str(e.get("search", "")), "replace": str(e.get("replace", ""))}
+            for e in (parsed.get("edits") or []) if isinstance(e, dict)
+        ][:10]
+        issues = [str(i).strip() for i in (parsed.get("issues_found") or []) if str(i).strip()][:4]
+        return edits, issues
+    except Exception as exc:
+        logger.warning("Notebook %s review skipped (%s)", focus, exc)
+        return [], []
+
+
 PROMPT_ANALYST_PROGRESS_MESSAGE = "Leggo la richiesta, controllo il codice e preparo una versione aggiornata della cella."
 
 
@@ -520,9 +734,42 @@ async def _run_agent_pipeline_stream(
         "metadata": {"kind": "agent_progress"},
     })
 
-    reasoning, summary, new_source, required_libraries = await _notebook_codegen(
-        project_type, active_source, last_output, user_prompt, provider, model
-    )
+    yield ("active", {
+        "agent_name": "Architetto",
+        "label": "Studio la richiesta e preparo solo le modifiche puntuali…",
+    })
+    new_source = active_source
+    reasoning = summary = ""
+    required_libraries: list = []
+    edit_failures: list[str] = []
+    applied_edits = 0
+    for attempt in range(2):
+        reasoning, summary, edits, required_libraries, full_content = await _notebook_codegen_edits(
+            project_type, active_source, last_output, user_prompt, provider, model,
+            previous_failures="; ".join(edit_failures)[:600],
+        )
+        if full_content is not None and (not active_source.strip() or not edits):
+            new_source = full_content
+            applied_edits = 0
+            edit_failures = []
+            break
+        if not edits:
+            new_source = active_source
+            edit_failures = []
+            break
+        candidate, failed = _apply_edits(active_source, edits)
+        if not failed:
+            new_source, applied_edits, edit_failures = candidate, len(edits), []
+            break
+        edit_failures = [f"«{edits[i]['search'][:60].strip()}»" for i in failed[:4]]
+        if attempt == 0:
+            yield ("active", {
+                "agent_name": "Architetto",
+                "label": f"{len(failed)} modifiche non combaciano col file: le rigenero con più contesto…",
+            })
+        elif len(failed) < len(edits):
+            # Applica quelle riuscite: meglio una modifica parziale e onesta che una riscrittura lenta.
+            new_source, applied_edits = candidate, len(edits) - len(failed)
     if reasoning:
         yield ("stage", {
             "role": "assistant", "agent_name": "Architetto",
@@ -532,6 +779,8 @@ async def _run_agent_pipeline_stream(
 
     if new_source.strip() == active_source.strip():
         final_summary = summary or "Il codice soddisfa già la richiesta."
+        if edit_failures:
+            final_summary = "Non sono riuscito ad applicare la modifica in modo puntuale. Riprova indicando più nel dettaglio dove intervenire."
         yield ("stage", {
             "role": "assistant", "agent_name": "Coding Builder",
             "content": final_summary,
@@ -540,37 +789,60 @@ async def _run_agent_pipeline_stream(
         yield ("final", ([], final_summary))
         return
 
+    hunks_after_edit = _build_hunks(active_source, new_source)
+    yield ("stage", {
+        "role": "assistant", "agent_name": "File Writer",
+        "content": (summary or "Cella aggiornata.").strip(),
+        "metadata": {"kind": "file_write_summary", "files": [
+            {"path": f"cella corrente · {len(hunks_after_edit)} blocchi modificati", "lines": len(new_source.splitlines()) or 1, "status": "modificato"},
+        ]},
+    })
+
+    # Revisori in PARALLELO (errori | requisiti): ognuno risponde con soli edit puntuali, quindi sono
+    # chiamate brevi; il tempo totale è quello del più lento, non la somma.
     ok, err = _check_syntax(new_source, project_type)
+    yield ("active", {
+        "agent_name": "Reviewer",
+        "label": "Due revisori in parallelo: uno cerca errori, l'altro verifica che la richiesta sia soddisfatta…",
+    })
+    review_results = await asyncio.gather(
+        _notebook_review_edits(project_type, new_source, user_prompt, last_output, "bugs", provider, model, "" if ok else err),
+        _notebook_review_edits(project_type, new_source, user_prompt, last_output, "requirements", provider, model, "" if ok else err),
+    )
+    issues: list[str] = []
+    for review_edits, review_issues in review_results:
+        issues.extend(review_issues)
+        if not review_edits:
+            continue
+        candidate, _failed = _apply_edits(new_source, review_edits)
+        if candidate.strip() == new_source.strip():
+            continue
+        candidate_ok, _ = _check_syntax(candidate, project_type)
+        # Un edit del revisore non deve mai peggiorare la sintassi.
+        if candidate_ok or not ok:
+            new_source = candidate
+            ok = candidate_ok or ok
+
     if not ok:
+        yield ("active", {
+            "agent_name": "File Writer",
+            "label": "Errore di sintassi residuo: lo correggo automaticamente…",
+        })
+        _ok, err = _check_syntax(new_source, project_type)
         for _ in range(2):
             corrected = await _autofix_script(new_source, err, project_type)
             if not corrected.strip():
                 break
             ok2, err2 = _check_syntax(corrected, project_type)
+            # Il fixer veloce ha budget limitato: scarta un risultato troncato (molto più corto).
+            if len(corrected) < len(new_source) * 0.8:
+                break
             new_source = corrected
             if ok2:
                 ok = True
                 break
             err = err2
 
-    active_line_count = len(active_source.splitlines()) or 1
-    new_line_count = len(new_source.splitlines()) or 1
-    yield ("stage", {
-        "role": "assistant", "agent_name": "File Writer",
-        "content": (summary or "Cella aggiornata.").strip(),
-        "metadata": {"kind": "file_write_summary", "files": [
-            {"path": "cella corrente", "lines": new_line_count, "status": "modificato"},
-        ]},
-    })
-
-    reviewed_source, issues = await _notebook_review_file(
-        project_type, new_source, user_prompt, last_output, provider, model
-    )
-    if reviewed_source.strip() != new_source.strip():
-        ok_after, _ = _check_syntax(reviewed_source, project_type)
-        if ok_after:
-            new_source = reviewed_source
-            ok = True
     if issues:
         yield ("stage", {
             "role": "assistant", "agent_name": "Reviewer",
@@ -587,6 +859,8 @@ async def _run_agent_pipeline_stream(
         "metadata": {"kind": "codegen_result"},
     })
 
+    active_line_count = len(active_source.splitlines()) or 1
+    hunks = _build_hunks(active_source, new_source)
     proposal = {
         "id": "p-0",
         "line_start": 1,
@@ -597,6 +871,8 @@ async def _run_agent_pipeline_stream(
         "explanation": (summary or "").strip()[:700],
         "teacher_note": "",
         "required_libraries": required_libraries,
+        # Diff puntuale (blocchi cambiati + contesto): l'UI mostra questo, non l'intero file.
+        "hunks": hunks,
     }
     yield ("final", ([proposal], final_summary))
 
@@ -614,7 +890,7 @@ async def _run_agent_pipeline(
     ):
         if kind == "stage":
             staged.append(payload)
-        else:
+        elif kind == "final":
             proposals, summary = payload
     return proposals, summary, staged
 
@@ -984,7 +1260,7 @@ async def _ml_models_context(db: AsyncSession, nb: "Notebook") -> str:
         return ""
     if not rows:
         return ""
-    kinds = {"movenet": "pose del corpo", "mediapipe-hand": "gesti delle mani"}
+    kinds = {"movenet": "pose del corpo", "mediapipe-hand": "gesti delle mani", "mediapipe-face": "espressioni del viso"}
     lines = []
     for row in rows:
         kind = next((label for key, label in kinds.items() if (row.engine or "").startswith(key)), "immagini")
@@ -994,7 +1270,7 @@ async def _ml_models_context(db: AsyncSession, nb: "Notebook") -> str:
         "MODELLI ML COLLEGATI AL PROGETTO (Lab ML, vincolanti): usa QUESTI modelli tramite window.GolinelliML, già presente nella pagina. "
         "NON importare MediaPipe/TensorFlow/ml5/PoseNet né aggiungere script. API: "
         "`const model = await GolinelliML.load('<nome>')`; `model.start(video, {onResult: r => ...})` (r.label = classe riconosciuta o null se non sicuro, "
-        "r.confidence 0..1, r.detected, r.hand = 21 punti {x,y} pixel, r.pose = 17 punti {x,y,score}); `model.on('<classe>', callback, {minConfidence, holdMs})`. "
+        "r.confidence 0..1, r.detected, r.hand = 21 punti {x,y} pixel, r.pose = 17 punti {x,y,score}, r.face = 478 punti {x,y} pixel per i modelli di espressioni del viso); `model.on('<classe>', callback, {minConfidence, holdMs})`. "
         "Con p5: `capture = createCapture(VIDEO); capture.hide()` e passa `capture.elt`. Gestisci sempre label === null e detected === false.\n"
         "Modelli disponibili:\n" + "\n".join(lines) + "\n"
     )
@@ -1778,6 +2054,289 @@ async def notebook_assist(
         raise HTTPException(status_code=500, detail="Errore dell'assistente AI")
 
 
+def _p5_top_level_info(code: str) -> dict:
+    """Mappa strutturale (AST) di uno sketch: nomi dichiarati a livello globale e posizione di setup()/draw()."""
+    tree = esprima.parseScript(code, {"range": True})
+    names: set[str] = set()
+    funcs: dict[str, dict] = {}
+
+    def pattern_names(node) -> None:
+        if node is None:
+            return
+        kind = getattr(node, "type", "")
+        if kind == "Identifier":
+            names.add(node.name)
+        elif kind == "ObjectPattern":
+            for prop in node.properties:
+                pattern_names(getattr(prop, "value", None) or getattr(prop, "argument", None))
+        elif kind == "ArrayPattern":
+            for element in node.elements:
+                pattern_names(element)
+        elif kind in {"AssignmentPattern"}:
+            pattern_names(node.left)
+        elif kind == "RestElement":
+            pattern_names(node.argument)
+
+    for node in tree.body:
+        if node.type == "FunctionDeclaration" and node.id:
+            names.add(node.id.name)
+            funcs[node.id.name] = {
+                "start": node.range[0],
+                "body_end": node.body.range[1] - 1,  # indice della graffa di chiusura
+                "async": bool(getattr(node, "isAsync", False) or getattr(node, "async", False)),
+            }
+        elif node.type == "VariableDeclaration":
+            for decl in node.declarations:
+                pattern_names(decl.id)
+        elif node.type == "ClassDeclaration" and node.id:
+            names.add(node.id.name)
+    return {"names": names, "funcs": funcs}
+
+
+def _indent_block(code: str, indent: str) -> str:
+    return "\n".join((indent + line) if line.strip() else line for line in code.strip("\n").splitlines())
+
+
+def _inject_template_plan(source: str, plan: dict) -> str:
+    """Innesta in modo DETERMINISTICO il piano del template nello sketch: il codice esistente non viene mai
+    riscritto, solo accresciuto in tre punti (globali in fondo, fine di setup(), fine di draw())."""
+    info = _p5_top_level_info(source)
+    funcs = info["funcs"]
+    global_code = str(plan.get("global_code", "") or "").strip("\n")
+    setup_code = str(plan.get("setup_code", "") or "").strip("\n")
+    draw_code = str(plan.get("draw_code", "") or "").strip("\n")
+    needs_async = bool(plan.get("needs_async_setup"))
+
+    inserts: list[tuple[int, str]] = []  # (posizione, testo); applicati dal fondo
+    if setup_code:
+        if "setup" in funcs:
+            end = funcs["setup"]["body_end"]
+            inserts.append((end, "\n" + _indent_block(setup_code, "  ") + "\n"))
+            if needs_async and not funcs["setup"]["async"]:
+                inserts.append((funcs["setup"]["start"], "async "))
+        else:
+            global_code += f"\n\n{'async ' if needs_async else ''}function setup() {{\n{_indent_block(setup_code, '  ')}\n}}"
+    if draw_code:
+        if "draw" in funcs:
+            inserts.append((funcs["draw"]["body_end"], "\n" + _indent_block(draw_code, "  ") + "\n"))
+        else:
+            global_code += f"\n\nfunction draw() {{\n{_indent_block(draw_code, '  ')}\n}}"
+
+    result = source
+    for position, text in sorted(inserts, key=lambda item: item[0], reverse=True):
+        result = result[:position] + text + result[position:]
+    if global_code.strip():
+        result = result.rstrip() + "\n\n" + global_code.strip("\n") + "\n"
+    return result
+
+
+def _parse_template_plan(raw: str) -> dict:
+    """Formato a sezioni delimitate (non JSON: il codice dentro stringhe JSON si tronca/escapa male)."""
+    text = (raw or "").strip()
+    text = re.sub(r"^```[a-z]*\s*|\s*```$", "", text)
+    sections: dict[str, str] = {}
+    current: Optional[str] = None
+    buf: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^\s*={3,}\s*(SUMMARY|ASYNC_SETUP|GLOBAL|SETUP|DRAW|END)\s*={3,}\s*$", line, re.IGNORECASE)
+        if match:
+            if current:
+                sections[current] = "\n".join(buf).strip("\n")
+            current = match.group(1).upper()
+            buf = []
+        elif current:
+            buf.append(line)
+    if current and current != "END":
+        sections[current] = "\n".join(buf).strip("\n")
+    if not sections:
+        raise ValueError("risposta senza sezioni")
+    strip = lambda code: "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("```"))
+    return {
+        "summary": sections.get("SUMMARY", "").strip(),
+        "needs_async_setup": sections.get("ASYNC_SETUP", "").strip().lower().startswith(("s", "y", "true")),
+        "global_code": strip(sections.get("GLOBAL", "")),
+        "setup_code": strip(sections.get("SETUP", "")),
+        "draw_code": strip(sections.get("DRAW", "")),
+    }
+
+
+async def _plan_template_merge(
+    active_source: str, template_code: str, template_name: str, library_id: str,
+    provider: str, model: str, feedback: str = "",
+) -> dict:
+    info = _p5_top_level_info(active_source) if active_source.strip() else {"names": set(), "funcs": {}}
+    taken = ", ".join(sorted(info["names"])) or "(nessuno)"
+    has_setup = "setup" in info["funcs"]
+    has_draw = "draw" in info["funcs"]
+    system_prompt = f"""Sei un integratore di codice p5.js. Devi AGGIUNGERE a uno sketch esistente le parti di un template
+(libreria {library_id or 'n/d'}), senza modificare il codice esistente: lo sketch deve continuare a fare ESATTAMENTE
+quello che faceva, in più acquisisce la funzione del template.
+Non riscrivi il file: produci SOLO un piano a sezioni che il sistema innesterà. Formato ESATTO (righe delimitatrici
+comprese, niente markdown, niente altro testo):
+===SUMMARY===
+1-2 frasi in italiano: cosa aggiungi e come si lega allo sketch
+===ASYNC_SETUP===
+si oppure no (si se in SETUP usi await)
+===GLOBAL===
+dichiarazioni globali del template: variabili, funzioni di supporto, callback (es. onResults)
+===SETUP===
+istruzioni da AGGIUNGERE IN FONDO a setup() (init libreria/webcam/modello, avvio)
+===DRAW===
+istruzioni da AGGIUNGERE IN FONDO a draw() (overlay/feature del template, disegnati sopra)
+===END===
+Regole:
+- Nomi già usati a livello globale nello sketch (NON ridichiararli: rinomina quelli del template con un
+  prefisso/suffisso sensato, oppure riusali se è lo stesso concetto, es. la variabile del video): {taken}
+- Lo sketch {'HA' if has_setup else 'NON ha'} setup() e {'HA' if has_draw else 'NON ha'} draw().
+  Se NON ha setup(), la sezione SETUP deve includere anche createCanvas(...). Se lo ha, NON chiamare createCanvas.
+- Non ripetere codice già presente nello sketch (es. se c'è già createCapture, riusa la sua variabile).
+- Niente "function setup" / "function draw" nelle sezioni: solo il corpo da aggiungere.
+- In DRAW non usare background() né clear() (cancellerebbe il disegno dello sketch); usa push()/pop() attorno a translate/scale.
+- Niente optional chaining (?.) né ??. Pochi commenti in italiano sulle parti nuove. Sezione vuota = lascia la riga vuota."""
+    user_msg = (
+        f"SKETCH ESISTENTE:\n```javascript\n{active_source[:30000] or '(vuoto)'}\n```\n\n"
+        f"TEMPLATE «{template_name}» DA INTEGRARE:\n```javascript\n{template_code}\n```\n"
+        + (f"\nPROBLEMA DEL TENTATIVO PRECEDENTE (correggilo):\n{feedback}\n" if feedback else "")
+    )
+    raw = await _generate_text_accumulated(
+        [{"role": "user", "content": user_msg}], system_prompt, provider, model,
+        temperature=0.1, max_tokens=6000,
+    )
+    return _parse_template_plan(raw)
+
+
+@router.post("/notebooks/{notebook_id}/merge-template")
+async def notebook_merge_template(
+    notebook_id: UUID,
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Integra un template di libreria nello sketch ESISTENTE in modo additivo: il codice dello studente
+    non viene riscritto, il template viene adattato e INNESTATO in modo deterministico (globali, fine di
+    setup(), fine di draw()). Gira come job in background (SSE): compare nel widget dei processi della
+    navbar e sopravvive al cambio pagina. Eventi: active | done {summary, proposals} | error {message}."""
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    template_code = str(request.get("template_code", "") or "")[:20000]
+    template_name = str(request.get("template_name", "") or "template")[:120]
+    library_id = str(request.get("library_id", "") or "")
+    active_source = str(request.get("current_cell_source", "") or "")
+    project_type = nb.project_type or "p5js"
+    if not template_code.strip():
+        raise HTTPException(status_code=400, detail="Template vuoto")
+    libs = [library_id] if library_id in P5JS_LIBRARY_IDS else []
+
+    def _proposal(new_source: str, message: str) -> dict:
+        return {
+            "id": "p-0", "line_start": 1, "line_end": len(active_source.splitlines()) or 1,
+            "severity": "info", "message": message[:200], "replacement": new_source[:60000],
+            "explanation": message[:700], "teacher_note": "", "required_libraries": libs,
+            "hunks": _build_hunks(active_source, new_source),
+        }
+
+    # Sonnet 5.5 per i docenti (più rapido); per gli studenti il modello consentito dal Coding Lab.
+    provider, model = CODING_MODEL_CHOICES["haiku-5" if actor.is_student else "sonnet-5"]
+    _p, _m, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
+        project_type, active_source, "", template_code
+    )
+    completion_tokens = min(completion_tokens, 1500)  # il piano è breve: non riemette il file
+    credit_scope = await _notebook_credit_scope(db, actor)
+    await _require_notebook_agent_credits(db, credit_scope, provider, model, prompt_tokens, completion_tokens)
+
+    def _sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        if not active_source.strip():
+            yield _sse({"type": "done", "summary": f"Inserito il template «{template_name}».", "proposals": [
+                _proposal(template_code, f"Template «{template_name}» inserito così com'è (la cella era vuota).")
+            ]})
+            return
+        try:
+            original_names = _p5_top_level_info(active_source)["names"]
+        except Exception:
+            yield _sse({"type": "error", "message": "Lo sketch attuale contiene un errore di sintassi: correggilo prima di integrare un template."})
+            return
+
+        yield _sse({"type": "active", "agent_name": "Integratore", "label": f"Adatto «{template_name}» al tuo sketch…"})
+        new_source: Optional[str] = None
+        summary = ""
+        feedback = ""
+        task: Optional[asyncio.Task] = None
+        for attempt in range(3):
+            task = asyncio.create_task(_plan_template_merge(
+                active_source, template_code, template_name, library_id, provider, model, feedback,
+            ))
+            # heartbeat: tiene viva la connessione mentre il modello lavora
+            while not task.done():
+                await asyncio.wait({task}, timeout=10)
+                if not task.done():
+                    yield _sse({"type": "ping"})
+            try:
+                plan = task.result()
+            except Exception as exc:
+                logger.warning("merge-template plan attempt %d failed (%s)", attempt + 1, exc)
+                feedback = "Rispetta ESATTAMENTE il formato a sezioni ===SUMMARY=== … ===END===."
+                continue
+            summary = str(plan.get("summary", "") or "").strip()[:500]
+            problems: list[str] = []
+            try:
+                if str(plan.get("global_code", "")).strip():
+                    clash = _p5_top_level_info(str(plan["global_code"]))["names"] & original_names
+                    if clash:
+                        problems.append(f"Dichiari di nuovo nomi già esistenti nello sketch: {', '.join(sorted(clash))}. Rinominali o riusali.")
+            except Exception as exc:
+                problems.append(f"La sezione GLOBAL non è JavaScript valido: {str(exc)[:160]}")
+            if not problems:
+                try:
+                    candidate = _inject_template_plan(active_source, plan)
+                    ok, err = _check_syntax(candidate, project_type)
+                    if ok:
+                        new_source = candidate
+                        break
+                    problems.append(f"Dopo l'innesto lo sketch non è valido: {err[:200]}")
+                except Exception as exc:
+                    problems.append(f"Innesto non riuscito: {str(exc)[:200]}")
+            feedback = " ".join(problems)
+            yield _sse({"type": "active", "agent_name": "Integratore", "label": "Correggo l'integrazione e riprovo…"})
+
+        if new_source is None:
+            # Mai toccare lo sketch: nessuna proposta, il codice resta com'è.
+            yield _sse({"type": "error", "message": "Non sono riuscito a integrare il template senza rischiare di rompere il tuo sketch: il codice è rimasto invariato. Riprova, oppure chiedi al tutor di aggiungere la funzione."})
+            return
+        try:
+            await _track_notebook_agent_usage(
+                db, credit_scope, provider, model, prompt_tokens, completion_tokens, project_type,
+            )
+        except Exception as exc:
+            logger.exception("Notebook merge-template credit tracking failed: %s", exc)
+        summary = summary or f"Template «{template_name}» integrato nello sketch esistente."
+        yield _sse({"type": "done", "summary": summary, "proposals": [_proposal(new_source, summary)]})
+
+    def track_progress(event: dict, state: background_jobs.ProgressState) -> None:
+        if event.get("type") == "active":
+            state.progress = max(state.progress or 0.0, 0.3)
+            state.label = f"{event.get('agent_name') or 'Integratore'}: {str(event.get('label') or '')[:140]}"
+        elif event.get("type") == "done":
+            state.label = str(event.get("summary") or "Template integrato")[:200]
+        elif event.get("type") == "error":
+            state.label = str(event.get("message") or "Integrazione non riuscita")[:200]
+
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(actor),
+        kind="notebook_merge_template",
+        title=f"Template «{template_name}» · {nb.title or 'Notebook'}"[:200],
+        description=f"Integrazione del template «{template_name}» nello sketch",
+        route="module:notebook" if actor.is_student else f"/teacher/notebooks/notebook/{nb.id}",
+        resource_id=str(nb.id),
+        stream=event_stream(),
+        event_format="sse",
+        progress_fn=track_progress,
+        expected_seconds=25.0,
+    )
+    return background_jobs.stream_response(job_id, "text/event-stream")
+
+
 @router.post("/notebooks/{notebook_id}/assist-stream")
 async def notebook_assist_stream(
     notebook_id: UUID,
@@ -1822,6 +2381,8 @@ async def notebook_assist_stream(
                     if kind == "stage":
                         staged.append(payload)
                         await queue.put({"type": "stage", "message": payload})
+                    elif kind == "active":
+                        await queue.put({"type": "active", **payload})
                     else:
                         result["proposals"], result["summary"] = payload
             except Exception as exc:
@@ -1893,6 +2454,8 @@ async def notebook_assist_stream(
             state.progress = min(0.9, 0.3 * state.data["stages"])
             agent = str(message.get("agent_name") or "Agente")
             state.label = f"{agent}: {str(message.get('content') or '').strip()[:140]}"
+        elif event.get("type") == "active":
+            state.label = f"{event.get('agent_name') or 'Agente'}: {str(event.get('label') or '')[:140]}"
         elif event.get("type") == "done":
             state.label = str(event.get("summary") or "Analisi completata")[:200]
 

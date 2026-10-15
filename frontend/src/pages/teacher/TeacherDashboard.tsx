@@ -7,6 +7,9 @@ import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
+const VideoStudioLibraryPage = lazy(() => import('./VideoStudioLibraryPage'))
+const VideoStudioEditorPage = lazy(() => import('./VideoStudioEditorPage'))
+const SchoolOwnerPanelPage = lazy(() => import('./SchoolOwnerPanelPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
@@ -166,7 +169,7 @@ export default function TeacherDashboard() {
   const isTeacherHomeRoute = location.pathname === '/teacher' || location.pathname === '/teacher/'
   const isTeacherAssistantRoute = isTeacherHomeRoute || location.pathname === '/teacher/assistant'
   // Routes that own their internal scroll panes (editor/IDE layouts) — the page frame must not scroll them.
-  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic')
+  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') || location.pathname.includes('/teacher/video-studio')
   const showMobileHome = isMobile && isTeacherHomeRoute
 
   const dockTeacherChat = () => {
@@ -448,6 +451,7 @@ export default function TeacherDashboard() {
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
               <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} view="modeler" />} />
               <Route path="ai-3d" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} view="generate" />} />
+              <Route path="school" element={<SchoolOwnerPanelPage />} />
               <Route path="classes" element={<ClassesPage currentSession={currentSession} />} />
               <Route path="sessions" element={<SessionsPage currentSession={currentSession} />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />
@@ -461,6 +465,8 @@ export default function TeacherDashboard() {
               <Route path="toy-lm" element={<ToyLMPage />} />
               <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
+              <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />

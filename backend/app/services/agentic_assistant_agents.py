@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.user import User
 from app.services import model_roles
-from app.services.agentic_assistant import BlueprintError, catalog_text, compile_blueprint, parse_blueprint
+from app.services.agentic_assistant import BlueprintError, apply_patch, catalog_text, compile_blueprint, describe_graph, parse_blueprint, parse_patch, wants_rebuild
 from app.services.agentic_runtime import _parse_json_payload
 from app.services.credit_service import credit_service
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
@@ -70,6 +70,17 @@ Regole:
 - Workflow semplici: 3-10 passi. Non aggiungere nodi decorativi. Ogni uscita utile deve arrivare a un nodo che la mostra o la salva (grafico, tabella, documento, loop.collect).
 - Per l'iterazione sulle righe di una tabella usa loop.for_each + loop.collect (mai ripetizioni manuali).
 - Se l'utente fornisce una tabella di esempio o dati, usa data.custom_input con i dati veri; altrimenti, per dati finti, csv.synthetic o ai.generate_dataset.
+- TABELLE COME DATABASE: se il lavoro riguarda raccogliere, conservare, estrarre o interrogare dati, usa i nodi «db.*» (tabelle con nome che restano salvate): db.create_table, db.insert, db.read, db.query (WHERE/ORDER BY/LIMIT), db.random_pick (estrazione casuale, anche con "remove"), db.update, db.delete_rows, db.count; più random.values (valori casuali), data.join, data.distinct, data.group_by. Tutti i nodi db.* hanno lo stesso "table_name". L'ordine tra nodi db.* senza altro legame si impone collegando la tabella del precedente alla porta "after" del successivo.
+- Condizioni ("where") e "set": sintassi pandas, es. punti > 5 and classe == '3A'; per inserire dati dalla conversazione usa $variabile nei "values" (es. "nome=$nome; voto=$voto").
+- NON precompilare le risposte: in un chatbot le domande sono dell'utente, i nodi di input/attesa restano vuoti e raccolgono i valori a runtime. Non inventare dati di esempio dentro i nodi a meno che l'utente li dia o chieda dati finti (allora random.values / csv.synthetic).
+- Usa TUTTE le funzioni utili dei nodi (filtri, ordinamenti, aggregazioni, join, estrazioni casuali) invece di far fare all'AI ciò che un nodo dati fa in modo esatto.
+- PRINCIPIO DI ESATTEZZA: i nodi algoritmici sono esatti, gratuiti e verificabili; l'AI (ai.transform, llm_chatbot, ai.generate_dataset) si usa SOLO per ciò che è davvero linguaggio naturale (riassumere, spiegare, tradurre, scrivere testi o domande, classificare testo libero). MAI per verificare una risposta, confrontare, contare, filtrare, ordinare, validare o convertire formati: per quello esistono i nodi dati e di controllo. Un LLM può affiancare un controllo (ad esempio spiegare l'errore) ma non sostituirlo.
+- FILE E TABELLE: leggi con platform.files (list / read_text) o platform.documents (read → table); da testo a tabella usa data.parse_text (CSV/TSV/JSON/righe) o text.extract (regex), MAI ai.transform «extract_table» su un file; controlla le righe con data.validate (regole per colonna → valide / scartate con motivo / ok), data.filter, data.dropna, data.distinct, data.convert_to_number, data.compute_column, data.group_by, data.join, data.sort; scrivi con platform.documents.create_sheet / platform.files.write (testo da text.from_table).
+- DIALOGHI ALGORITMICI (chatbot.* e control.*, senza AI): il flusso è una catena in cui da ogni nodo parte UN solo collegamento attivo; i rami nascono SOLO dai nodi con uscite alternative: chatbot.check_answer / chatbot.if_contains / chatbot.yes_no / control.compare_numbers / control.if_else (yes|no), chatbot.multi_choice (choice_1..4), control.repeat_until (ok | repeat | exhausted). Un solo nodo iniziale (il primo nodo chatbot.* senza ingressi). Collega ogni uscita di un ramo: un ramo scollegato chiude la conversazione.
+  · Verifica di una risposta: chatbot.ask → chatbot.check_answer (mode uguale | contiene | numero con tolleranza | regex; più risposte accettate separate da virgola) → chatbot.say sui rami yes / no.
+  · Riprovare: l'unico arco all'indietro è la porta "repeat" di control.repeat_until (mode uguale / contiene / vero_falso, mai verifica_ai se una regola basta) verso il nodo che ripone la domanda.
+  · Stato: chatbot.save_variable (nome) e poi $nome nei messaggi e nei "values" dei nodi db.*; contatori con control.counter; dati persistenti con i nodi db.*, che si possono mettere IN MEZZO al dialogo (collega l'uscita del nodo precedente alla porta "after" e l'uscita del db al nodo dopo). Per mostrare una tabella o un numero in chat collegalo alla porta "value" di chatbot.say (testo con {valore}).
+  · Nel dialogo i nodi dati (db.*, data.*, text.*) vengono eseguiti quando il flusso ci passa: mettili in catena, non lasciarli appesi.
 
 ESEMPIO 1 — «genera 20 immagini fantasy, un prompt diverso per ognuna»
 {"title":"Galleria fantasy","mode":"data","steps":[
@@ -87,6 +98,41 @@ ESEMPIO 2 — «classifica dati sintetici e mostra il risultato»
  {"key":"pred","node":"ml.predict","inputs":{"model":"train.model","data":"split.test"}},
  {"key":"plot","node":"plot.2d","config":{"x":"feature_1","y":"feature_2","color":"prediction"},"inputs":{"table":"pred.predictions"}}],
  "warnings":["Le metriche del nodo di training sono sul training set; la valutazione onesta è sul test."]}
+
+
+ESEMPIO 3 — «quiz: estrai una domanda a caso dalla tabella, registra i punteggi e mostra la classifica»
+{"title":"Quiz con classifica","mode":"data","steps":[
+ {"key":"mk","node":"db.create_table","config":{"table_name":"domande","columns":"domanda,risposta","if_exists":"keep"}},
+ {"key":"pick","node":"db.random_pick","config":{"table_name":"domande","count":1},"inputs":{"after":"mk.table"}},
+ {"key":"log","node":"db.insert","config":{"table_name":"punteggi","values":"studente=$nome; punti=$punti"},"inputs":{"after":"pick.table"}},
+ {"key":"top","node":"db.query","config":{"table_name":"punteggi","order_by":"punti","order":"descending","limit":5},"inputs":{"after":"log.table"}}],
+ "warnings":["Le tabelle restano salvate nel workflow: ogni esecuzione aggiunge righe."]}
+
+ESEMPIO 4 — «chiedi il nome, salvalo in una tabella e mostra tutti i partecipanti» (dialogo algoritmico con tabella in mezzo)
+{"title":"Registro partecipanti","mode":"chatbot","steps":[
+ {"key":"chi","node":"chatbot.ask","config":{"question":"Come ti chiami?"}},
+ {"key":"sv","node":"chatbot.save_variable","config":{"variable_name":"nome"},"inputs":{"value":"chi.response"}},
+ {"key":"ins","node":"db.insert","config":{"table_name":"partecipanti","values":"nome=$nome"},"inputs":{"after":"sv.next"}},
+ {"key":"lst","node":"db.read","config":{"table_name":"partecipanti"},"inputs":{"after":"ins.table"}},
+ {"key":"fine","node":"chatbot.say","config":{"message":"Grazie $nome! Partecipanti finora:\\n{valore}"},"inputs":{"value":"lst.table"}}],
+ "warnings":[]}
+
+ESEMPIO 5 — «quiz: chiedi 7 x 8, verifica la risposta e commenta» (verifica esatta, senza AI)
+{"title":"Quiz tabelline","mode":"chatbot","steps":[
+ {"key":"q","node":"chatbot.ask","config":{"question":"Quanto fa 7 x 8?"}},
+ {"key":"chk","node":"chatbot.check_answer","config":{"expected":"56","mode":"numero"},"inputs":{"text":"q.response"}},
+ {"key":"ok","node":"chatbot.say","config":{"message":"Esatto, 56!"},"inputs":{"trigger":"chk.yes"}},
+ {"key":"ko","node":"chatbot.say","config":{"message":"Non è corretto: 7 x 8 fa 56."},"inputs":{"trigger":"chk.no"}}],
+ "warnings":[]}
+
+ESEMPIO 6 — «leggi il CSV dal drive, scarta le righe non valide e salva le valide ordinate in un foglio» (file, senza AI)
+{"title":"Pulizia CSV","mode":"data","steps":[
+ {"key":"file","node":"platform.files","config":{"function":"read_text"}},
+ {"key":"tab","node":"data.parse_text","config":{"format":"auto"},"inputs":{"text":"file.text"}},
+ {"key":"chk","node":"data.validate","config":{"rules":"nome:not_empty\\npunti:number:0-100"},"inputs":{"table":"tab.table"}},
+ {"key":"srt","node":"data.sort","config":{"column":"punti","order":"descending"},"inputs":{"table":"chk.valid"}},
+ {"key":"out","node":"platform.documents","config":{"function":"create_sheet","title":"Righe valide"},"inputs":{"table":"srt.table"}}],
+ "warnings":["Il file da leggere va scelto nel nodo «File» (parametro item_id) prima di eseguire."]}
 
 """
 
@@ -170,6 +216,7 @@ async def run_intake(db: AsyncSession, actor: User, intent: str, answers: list[d
 async def run_architect(
     db: AsyncSession, actor: User, intent: str, understanding: str, assumptions: list[str], answers: list[dict[str, str]] | None = None,
     allow_destructive: bool = False, on_status: Any = None,
+    previous_blueprint: dict[str, Any] | None = None, feedback: str = "",
 ) -> dict[str, Any]:
     """Blueprint + compile result. Retries with the compiler's error when the blueprint is rejected."""
     brief = f"Intenzione dell'utente:\n{intent.strip()[:MAX_INTENT_CHARS]}\n\nInterpretazione confermata dall'utente:\n{understanding}"
@@ -177,6 +224,10 @@ async def run_architect(
         brief += "\n\nScelte da adottare:\n" + "\n".join(f"- {item}" for item in assumptions)
     if answers:
         brief += "\n\nRisposte dell'utente:\n" + "\n".join(f"- {a.get('question', '')} → {a.get('answer', '')}" for a in answers[:6])
+    if previous_blueprint and feedback.strip():
+        brief += ("\n\nBLUEPRINT PRECEDENTE (da rivedere, non da rifare da zero):\n" + json.dumps(previous_blueprint, ensure_ascii=False)
+                  + f"\n\nMODIFICA RICHIESTA DALL'UTENTE:\n{feedback.strip()[:MAX_INTENT_CHARS]}\n"
+                  "Restituisci il blueprint COMPLETO aggiornato: mantieni invariato tutto ciò che la modifica non tocca.")
     system = ARCHITECT_SYSTEM + "CATALOGO\n" + catalog_text()
     messages: list[dict[str, str]] = [{"role": "user", "content": brief}]
     last_error = ""
@@ -199,3 +250,87 @@ async def run_architect(
         result["attempts"] = attempt + 1
         return result
     raise BlueprintError(f"Non sono riuscito a progettare un workflow valido dopo {MAX_REPAIRS + 1} tentativi. Ultimo errore: {last_error}")
+
+
+EDITOR_SYSTEM = """Sei l'assistente di modifica del Dataflow Studio. L'utente ha GIÀ un workflow sul Canvas e ti chiede un cambiamento.
+Ricevi la descrizione del Canvas (nodi con instanceId, parametri diversi dal default, colonne note, collegamenti) e la richiesta.
+È una MODIFICA IN PLACE, come un edit di codice: il workflow dell'utente è la base e la sua struttura NON si sconvolge.
+Rispondi con il diff minimo: i nodi e i collegamenti che la richiesta non tocca restano esattamente come sono (stessi nodi, stessi parametri, stesse posizioni).
+Mai rimuovere e riaggiungere un nodo per cambiarlo: parametri → set_config; altro tipo di nodo → replace_node (mantiene posizione e collegamenti compatibili); un passo nuovo in mezzo a un collegamento → insert_between; un passo in coda o in parallelo → add_node + connect.
+Rimuovi un nodo solo se l'utente lo chiede o se la richiesta lo rende inutile, e ricollega a monte/a valle ciò che resta.
+
+Rispondi SOLO con un oggetto JSON (nessun testo fuori, nessun markdown):
+{
+  "explanation": "1-3 frasi in italiano per un docente: cosa cambi e perché (o la risposta, se è solo una domanda)",
+  "ops": [
+    {"op": "add_node", "key": "chiave_nuova", "node": "id.del.nodo", "config": {"parametro": valore}, "label": "nome opzionale"},
+    {"op": "set_config", "node": "<instanceId o chiave>", "config": {"parametro": nuovo_valore}},
+    {"op": "remove_node", "node": "<instanceId o chiave>"},
+    {"op": "connect", "source": "<nodo>.porta_uscita", "target": "<nodo>.porta_ingresso"},
+    {"op": "disconnect", "target": "<nodo>.porta_ingresso"},
+    {"op": "replace_node", "node": "<instanceId>", "with_node": "id.nuovo.nodo", "config": {"parametro": valore}},
+    {"op": "insert_between", "source": "<nodo>.porta_uscita", "target": "<nodo>.porta_ingresso", "key": "chiave_nuova", "with_node": "id.del.nodo", "config": {}}
+  ]
+}
+Regole:
+- "node" di set_config/remove_node/connect/disconnect è l'instanceId mostrato nel Canvas, oppure la "key" di un nodo aggiunto prima nella stessa lista.
+- add_node: "node" è un id del catalogo; non inventare porte o parametri. Una porta di ingresso dati accetta un solo collegamento (connect la sostituisce).
+- Per inserire un nodo IN MEZZO a una catena: add_node, poi connect (a monte → nuovo), connect (nuovo → a valle): il collegamento a valle sostituisce quello vecchio.
+- set_config cambia solo i parametri indicati. Se l'utente dice «questo nodo», è quello (SELEZIONATO).
+- Una richiesta di aggiungere un controllo (verifica, filtro, validazione, conteggio, estrazione) si risolve con nodi algoritmici, NON aggiungendo o riconfigurando un LLM.
+- Se la richiesta è solo una domanda o è già soddisfatta, "ops" è [] e rispondi in "explanation".
+- Se l'utente nomina un nodo per etichetta, trovalo nella lista. Se è ambiguo, scegli il più plausibile e dillo nella spiegazione.
+- Non precompilare risposte nei nodi chatbot: restano vuoti, raccolgono i valori a runtime.
+- Per dati/tabelle usa i nodi «db.*» (tabelle con nome persistenti: stesso "table_name" per leggere/scrivere la stessa tabella; ordine imposto con la porta "after"), random.values, data.join, data.distinct, data.group_by. Condizioni e formule: sintassi pandas.
+- Nessun nodo che cancella dati o avvia sessioni live, salvo richiesta esplicita. Scrivi testi nella lingua dell'utente.
+- PRINCIPIO DI ESATTEZZA: i nodi algoritmici sono esatti, gratuiti e verificabili; l'AI (ai.transform, llm_chatbot, ai.generate_dataset) si usa SOLO per ciò che è davvero linguaggio naturale (riassumere, spiegare, tradurre, scrivere testi o domande, classificare testo libero). MAI per verificare una risposta, confrontare, contare, filtrare, ordinare, validare o convertire formati: per quello esistono i nodi dati e di controllo. Un LLM può affiancare un controllo (ad esempio spiegare l'errore) ma non sostituirlo.
+- FILE E TABELLE: leggi con platform.files (list / read_text) o platform.documents (read → table); da testo a tabella usa data.parse_text (CSV/TSV/JSON/righe) o text.extract (regex), MAI ai.transform «extract_table» su un file; controlla le righe con data.validate (regole per colonna → valide / scartate con motivo / ok), data.filter, data.dropna, data.distinct, data.convert_to_number, data.compute_column, data.group_by, data.join, data.sort; scrivi con platform.documents.create_sheet / platform.files.write (testo da text.from_table).
+- DIALOGHI ALGORITMICI (chatbot.* e control.*, senza AI): il flusso è una catena in cui da ogni nodo parte UN solo collegamento attivo; i rami nascono SOLO dai nodi con uscite alternative: chatbot.check_answer / chatbot.if_contains / chatbot.yes_no / control.compare_numbers / control.if_else (yes|no), chatbot.multi_choice (choice_1..4), control.repeat_until (ok | repeat | exhausted). Un solo nodo iniziale (il primo nodo chatbot.* senza ingressi). Collega ogni uscita di un ramo: un ramo scollegato chiude la conversazione.
+  · Verifica di una risposta: chatbot.ask → chatbot.check_answer (mode uguale | contiene | numero con tolleranza | regex; più risposte accettate separate da virgola) → chatbot.say sui rami yes / no.
+  · Riprovare: l'unico arco all'indietro è la porta "repeat" di control.repeat_until (mode uguale / contiene / vero_falso, mai verifica_ai se una regola basta) verso il nodo che ripone la domanda.
+  · Stato: chatbot.save_variable (nome) e poi $nome nei messaggi e nei "values" dei nodi db.*; contatori con control.counter; dati persistenti con i nodi db.*, che si possono mettere IN MEZZO al dialogo (collega l'uscita del nodo precedente alla porta "after" e l'uscita del db al nodo dopo). Per mostrare una tabella o un numero in chat collegalo alla porta "value" di chatbot.say (testo con {valore}).
+  · Nel dialogo i nodi dati (db.*, data.*, text.*) vengono eseguiti quando il flusso ci passa: mettili in catena, non lasciarli appesi.
+
+"""
+
+
+async def run_editor(
+    db: AsyncSession, actor: User, graph: dict[str, Any], instruction: str, selected: str | None = None,
+    history: list[dict[str, str]] | None = None, allow_destructive: bool = False, on_status: Any = None,
+) -> dict[str, Any]:
+    """Patch for an existing canvas, applied (deterministically) to a copy; retries with the error when it is rejected."""
+    instruction = instruction.strip()[:MAX_INTENT_CHARS]
+    if not instruction:
+        raise BlueprintError("Scrivi che cosa vuoi cambiare")
+    if not graph.get("nodes"):
+        raise BlueprintError("Il Canvas è vuoto: descrivi il workflow da costruire")
+    brief = describe_graph(graph, selected) + f"\n\nRICHIESTA DELL'UTENTE:\n{instruction}"
+    system = EDITOR_SYSTEM + "CATALOGO\n" + catalog_text()
+    messages: list[dict[str, str]] = [{"role": m.get("role", "user") if m.get("role") in {"user", "assistant"} else "user",
+                                       "content": str(m.get("content", ""))[:1500]} for m in (history or [])[-12:] if m.get("content")]
+    # The conversation must alternate and end on the user turn that carries the current canvas.
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    messages = [m for i, m in enumerate(messages) if i == 0 or m["role"] != messages[i - 1]["role"]]
+    if messages and messages[-1]["role"] == "user":
+        messages.pop()
+    messages.append({"role": "user", "content": brief})
+    last_error = ""
+    for attempt in range(MAX_REPAIRS + 1):
+        if on_status:
+            await on_status("Preparo le modifiche…" if attempt == 0 else f"Correggo la modifica (tentativo {attempt + 1})…")
+        response = await _generate("agentic.architect", system, messages, max_tokens=4000, temperature=0.2)
+        await _record_cost(db, actor, response, "agentic_assistant_editor")
+        content = response.content or ""
+        try:
+            result = apply_patch(graph, parse_patch(_json_object(content)), allow_destructive=allow_destructive,
+                                 allow_rebuild=wants_rebuild(instruction))
+        except BlueprintError as exc:
+            last_error = str(exc)
+            logger.info("editor attempt %s rejected: %s", attempt + 1, last_error)
+            messages += [{"role": "assistant", "content": content or "{}"},
+                         {"role": "user", "content": f"La modifica è stata rifiutata:\n{last_error}\n\nRispondi solo con il JSON corretto."}]
+            continue
+        result["attempts"] = attempt + 1
+        return result
+    raise BlueprintError(f"Non sono riuscito a preparare una modifica valida dopo {MAX_REPAIRS + 1} tentativi. Ultimo errore: {last_error}")

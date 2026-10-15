@@ -47,6 +47,7 @@ class DocumentAnalysis:
     structured_extract: str       # Ready-to-inject context block
     has_visual_content: bool
     processing_steps: list
+    anonymization: dict = field(default_factory=dict)  # {"nome": 3, "email": 1} when anonymize=True
 
 
 class DocumentProcessor:
@@ -107,13 +108,28 @@ class DocumentProcessor:
         mime_type: str,
         llm_service=None,
         analyze_visuals: bool = True,
+        anonymize: bool = False,
     ) -> DocumentAnalysis:
         steps: list[str] = []
+        anon_counts: dict[str, int] = {}
 
         # Step 1: Extract text
         raw_text, page_count, visual_page_indices, rag_segments = await self._extract_content(
             file_bytes, filename, mime_type, steps
         )
+
+        # Step 1b: mask personal data locally *before* any text reaches an LLM
+        if anonymize:
+            from app.services.pii_anonymizer import anonymize_text_async
+            raw_result = await anonymize_text_async(raw_text)
+            raw_text = raw_result.text
+            for k, v in raw_result.counts.items():
+                anon_counts[k] = anon_counts.get(k, 0) + v
+            for segment in rag_segments:
+                seg_result = await anonymize_text_async(segment.text)
+                segment.text = seg_result.text
+            if raw_result.changed:
+                steps.append("Dati personali anonimizzati")
 
         # Step 2: Analyze visual pages
         visual_segments: list[DocumentSegment] = []
@@ -129,6 +145,13 @@ class DocumentProcessor:
                 visual_segments = await self._analyze_image_file(
                     file_bytes, filename, mime_type, llm_service, steps
                 )
+        if anonymize and visual_segments:
+            from app.services.pii_anonymizer import anonymize_text_async
+            for segment in visual_segments:
+                vis_result = await anonymize_text_async(segment.text)
+                segment.text = vis_result.text
+                for k, v in vis_result.counts.items():
+                    anon_counts[k] = anon_counts.get(k, 0) + v
         visual_descriptions = [segment.text for segment in visual_segments]
         rag_segments.extend(visual_segments)
 
@@ -155,6 +178,7 @@ class DocumentProcessor:
             structured_extract=structured_extract,
             has_visual_content=has_visual,
             processing_steps=steps,
+            anonymization=anon_counts,
         )
 
     # -------------------------------------------------------------------------

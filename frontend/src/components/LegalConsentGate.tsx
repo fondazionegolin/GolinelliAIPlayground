@@ -93,7 +93,7 @@ export function LegalConsentGate() {
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Accettazione obbligatoria</p>
                 <h2 className="text-lg font-bold text-slate-950">Documenti di licenza e privacy</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Completa i tre passaggi per accedere all'area docente.
+                  Completa i {data.required_documents.length} passaggi per accedere all'area docente.
                 </p>
               </div>
             </div>

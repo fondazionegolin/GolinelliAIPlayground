@@ -113,12 +113,21 @@ export const agenticApi = {
   getRegistry: () => api.get('/agentic/registry'),
   validateWorkflow: (data: { title: string; graph: Record<string, unknown> }) =>
     api.post('/agentic/validate', data),
-  executeNode: (node: Record<string, unknown>, inputs: Record<string, unknown> = {}) =>
-    api.post('/agentic/execute-node', { node, inputs }),
+  executeNode: (node: Record<string, unknown>, inputs: Record<string, unknown> = {}, workflowId?: string | null) =>
+    api.post('/agentic/execute-node', { node, inputs, workflow_id: workflowId || undefined }),
   assistantIntake: (data: { intent: string; answers?: Array<{ question: string; answer: string }> }) =>
     api.post('/agentic/assistant/intake', data, { timeout: 90000 }),
   assistantLint: (graph: Record<string, unknown>) => api.post('/agentic/assistant/lint', { graph }),
   assistantPlanUrl: '/api/v1/agentic/assistant/plan',
+  assistantEditUrl: '/api/v1/agentic/assistant/edit',
+  listAssistantConversations: (workflowId?: string | null) =>
+    api.get('/agentic/assistant/conversations', { params: workflowId ? { workflow_id: workflowId } : undefined }),
+  getAssistantConversation: (id: string) => api.get(`/agentic/assistant/conversations/${id}`),
+  createAssistantConversation: (data: { workflow_id?: string | null; title: string; messages: unknown[] }) =>
+    api.post('/agentic/assistant/conversations', data),
+  updateAssistantConversation: (id: string, data: { title?: string; workflow_id?: string | null; messages?: unknown[] }) =>
+    api.put(`/agentic/assistant/conversations/${id}`, data),
+  deleteAssistantConversation: (id: string) => api.delete(`/agentic/assistant/conversations/${id}`),
   listWorkflows: () => api.get('/agentic/workflows'),
   getWorkflow: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}`),
   createWorkflow: (data: { title: string; graph: Record<string, unknown> }) =>
@@ -327,6 +336,25 @@ export const designSystemApi = {
 }
 
 export const adminApi = {
+  videoStudio: {
+    config: () => api.get('/admin/video-studio/config'),
+    list: () => api.get('/admin/video-studio/projects'),
+    create: (data: Record<string, unknown>) => api.post('/admin/video-studio/projects', data),
+    get: (id: string) => api.get(`/admin/video-studio/projects/${id}`),
+    update: (id: string, data: Record<string, unknown>) => api.patch(`/admin/video-studio/projects/${id}`, data),
+    remove: (id: string) => api.delete(`/admin/video-studio/projects/${id}`),
+    extractText: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post('/admin/video-studio/extract-text', form, { timeout: 120000 })
+    },
+    generateScript: (id: string) => api.post(`/admin/video-studio/projects/${id}/script`, undefined, { timeout: 180000 }),
+    saveScript: (id: string, script: unknown) => api.put(`/admin/video-studio/projects/${id}/script`, { script }),
+    storyboard: (id: string, shots?: number[]) => api.post(`/admin/video-studio/projects/${id}/storyboard`, { shots: shots ?? null }),
+    render: (id: string, shots?: number[]) => api.post(`/admin/video-studio/projects/${id}/render`, { shots: shots ?? null }),
+    assemble: (id: string) => api.post(`/admin/video-studio/projects/${id}/assemble`),
+    file: (id: string, name: string) => api.get(`/admin/video-studio/projects/${id}/files/${name}`, { responseType: 'blob' }),
+  },
   getActivity: (days = 30) => api.get('/admin/activity', { params: { days } }),
   getStudentChatbots: () => api.get('/admin/chatbots'),
   setStudentChatbots: (keys: string[]) => api.put('/admin/chatbots', { keys }),
@@ -505,6 +533,139 @@ export const adminApi = {
     max_teachers?: number; max_students_per_teacher?: number; max_students_per_class?: number
     monthly_credit_pool?: number; teacher_monthly_cap?: number
   }) => api.patch(`/admin/tenants/${tenantId}/limits`, data),
+}
+
+// ── Onboarding istituti (admin) ───────────────────────────────────────────
+export interface RegistrySchool {
+  code: string
+  name: string
+  kind: 'STATALE' | 'PARITARIA'
+  typology: string | null
+  region: string | null
+  province: string | null
+  comune: string | null
+  address: string | null
+  cap: string | null
+  email?: string | null
+  pec?: string | null
+  website?: string | null
+  plessi: string[]
+  tenant?: { tenant_id: string; tenant_name: string } | null
+  available?: boolean
+}
+
+export interface SchoolInvite {
+  id: string
+  mode: 'EMAIL' | 'SINGLE_USE_LINK'
+  status: 'PENDING' | 'COMPLETED' | 'REVOKED' | 'EXPIRED'
+  tenant_id: string | null
+  tenant_name: string | null
+  mechanographic_code: string | null
+  email: string | null
+  first_name: string | null
+  last_name: string | null
+  label: string | null
+  link: string | null
+  created_at: string | null
+  expires_at: string
+  opened_at: string | null
+  completed_at: string | null
+  email_sent_at: string | null
+  email_sent?: boolean
+}
+
+export const schoolOnboardingAdminApi = {
+  searchRegistry: (q: string, params?: { province?: string; kind?: string }) =>
+    api.get<RegistrySchool[]>('/admin/school-onboarding/registry/search', { params: { q, ...params } }),
+  registryStatus: () =>
+    api.get<{ total: number; by_kind: Record<string, number>; school_year: string | null }>('/admin/school-onboarding/registry/status'),
+  syncRegistry: () => api.post('/admin/school-onboarding/registry/sync'),
+  linkTenant: (tenantId: string, mechanographicCode: string) =>
+    api.put(`/admin/school-onboarding/tenants/${tenantId}/registry`, { mechanographic_code: mechanographicCode }),
+  unlinkTenant: (tenantId: string) => api.delete(`/admin/school-onboarding/tenants/${tenantId}/registry`),
+  listInvites: (tenantId?: string) =>
+    api.get<SchoolInvite[]>('/admin/school-onboarding/invites', { params: tenantId ? { tenant_id: tenantId } : {} }),
+  createInvite: (data: {
+    mode: 'EMAIL' | 'SINGLE_USE_LINK'
+    mechanographic_code?: string
+    email?: string
+    first_name?: string
+    last_name?: string
+    custom_message?: string
+    label?: string
+    expires_in_days?: number
+    send_email?: boolean
+  }) => api.post<SchoolInvite>('/admin/school-onboarding/invites', data),
+  revokeInvite: (id: string) => api.post(`/admin/school-onboarding/invites/${id}/revoke`),
+  resendInvite: (id: string) => api.post<{ email_sent: boolean }>(`/admin/school-onboarding/invites/${id}/resend`),
+}
+
+// ── Pagina d'invito del dirigente (pubblica) ─────────────────────────────
+export interface LegalDocInfo {
+  key: string
+  title: string
+  version: string
+  source_url: string
+  accept_label: string
+}
+
+export const schoolInviteApi = {
+  get: (token: string) =>
+    api.get<{
+      mode: 'EMAIL' | 'SINGLE_USE_LINK'
+      school: RegistrySchool | null
+      email: string | null
+      first_name: string | null
+      last_name: string | null
+      custom_message: string | null
+      platform_summary: string
+      max_teachers: number
+      documents: LegalDocInfo[]
+      expires_at: string
+    }>(`/school-onboarding/invites/${token}`),
+  searchRegistry: (token: string, q: string) =>
+    api.get<RegistrySchool[]>(`/school-onboarding/invites/${token}/registry-search`, { params: { q } }),
+  complete: (token: string, data: {
+    first_name: string; last_name: string; email: string; password: string
+    mechanographic_code?: string; accepted_documents: string[]
+  }) => api.post<{ access_token: string; user_id: string; role: 'TEACHER'; tenant_id: string; redirect: string }>(
+    `/school-onboarding/invites/${token}/complete`, data),
+  document: (key: string, params?: { school_name?: string; code?: string }) =>
+    api.get<{ key: string; title: string; html: string }>(`/school-onboarding/documents/${key}`, { params }),
+}
+
+// ── Pannello dirigente ────────────────────────────────────────────────────
+export interface OwnerTeacher {
+  id: string
+  email: string
+  first_name: string | null
+  last_name: string | null
+  state: 'INVITED' | 'TERMS_PENDING' | 'ACTIVE' | 'DEACTIVATED'
+  invited_at: string | null
+  last_login_at: string | null
+}
+
+export interface OwnerPanel {
+  school: {
+    name: string
+    mechanographic_code: string | null
+    registry_verified: boolean
+    registry: RegistrySchool | null
+  }
+  principal: { first_name: string | null; last_name: string | null; email: string }
+  max_teachers: number
+  used_slots: number
+  teachers: OwnerTeacher[]
+}
+
+export const schoolOwnerApi = {
+  status: () => api.get<{ is_school_owner: boolean }>('/school-owner/status'),
+  panel: () => api.get<OwnerPanel>('/school-owner/panel'),
+  inviteTeacher: (data: { email: string; first_name: string; last_name: string }) =>
+    api.post<{ teacher_id: string; email_sent: boolean; link: string | null }>('/school-owner/teachers', data),
+  resend: (teacherId: string) => api.post<{ email_sent: boolean }>(`/school-owner/teachers/${teacherId}/resend`),
+  remove: (teacherId: string) => api.delete(`/school-owner/teachers/${teacherId}`),
+  familyNotice: () => api.get<{ title: string; html: string }>('/school-owner/family-notice'),
 }
 
 export const platformApi = {
@@ -983,6 +1144,27 @@ export const studentRagApi = {
     api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK, project_id: projectId }),
 }
 
+export const teacherRagApi = {
+  uploadDocument: (file: File, projectId?: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (projectId) form.append('project_id', projectId)
+    return api.post('/rag/teacher/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  ingestYoutube: (url: string, projectId?: string) =>
+    api.post('/rag/teacher/youtube', { url, project_id: projectId }),
+  listDocuments: (projectId?: string) => api.get('/rag/teacher/documents', { params: { project_id: projectId } }),
+  listProjects: () => api.get<{ project_id: string; document_count: number; updated_at: string | null }[]>('/rag/teacher/projects'),
+  deleteDocument: (docId: string) => api.delete(`/rag/teacher/documents/${docId}`),
+  getChunks: (docId: string) => api.get(`/rag/teacher/documents/${docId}/chunks`),
+  search: (query: string, docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/teacher/search', { query, doc_ids: docIds, top_k: topK, project_id: projectId }),
+  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/teacher/chat', { message, history, doc_ids: docIds, top_k: topK, project_id: projectId }),
+}
+
+export type RagWorkspaceApi = typeof studentRagApi | typeof teacherRagApi
+
 export const mlApi = {
   createDataset: (data: { scope: string; session_id?: string; source_type: string; file_id?: string }) =>
     api.post('/ml/datasets', data),
@@ -1351,8 +1533,33 @@ export const creditsApi = {
     api.post('/credits/limits', null, { params: { amount_cap } }),
   getRequests: (status?: string) =>
     api.get('/credits/requests', { params: { status } }),
-  reviewRequest: (id: string, status: string, notes?: string) =>
-    api.post(`/credits/requests/${id}/review`, { status, admin_notes: notes }),
+  reviewRequest: (id: string, status: string, notes?: string, credits?: number) =>
+    api.post(`/credits/requests/${id}/review`, { status, admin_notes: notes, credits }),
+  /** Docente: chiede un nuovo bundle di crediti all'admin. */
+  createRequest: (data: { credits: number; reason?: string; limit_id?: string | null }) =>
+    api.post('/credits/requests', data),
+  // Hub admin: tutto in crediti
+  adminOverview: () => api.get('/credits/admin/overview'),
+  adminAlerts: (includeResolved = false) =>
+    api.get('/credits/admin/alerts', { params: { include_resolved: includeResolved } }),
+  adminBadge: () => api.get('/credits/admin/badge'),
+  adminSetLimit: (data: {
+    cap_credits: number
+    limit_id?: string | null
+    level?: string
+    tenant_id?: string | null
+    teacher_id?: string | null
+    class_id?: string | null
+  }) => api.put('/credits/admin/limits', data),
+  adminForceBundle: (data: {
+    credits: number
+    note?: string
+    limit_id?: string | null
+    level?: string
+    tenant_id?: string | null
+    teacher_id?: string | null
+    class_id?: string | null
+  }) => api.post('/credits/admin/bundle', data),
   inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string, groupTag?: string, customMessage?: string) =>
     api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school, group_tag: groupTag, custom_message: customMessage }),
   bulkInvite: (file: File) => {
@@ -1519,6 +1726,7 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
   }) => api.post(`/notebooks/${id}/assist`, data),
+  mergeTemplateUrl: (id: string) => `/api/v1/notebooks/${id}/merge-template`,
   assistStreamUrl: (id: string) => `/api/v1/notebooks/${id}/assist-stream`,
   listVersions: (id: string) => api.get<NotebookVersionSummary[]>(`/notebooks/${id}/versions`),
   createVersion: (id: string, data: { label?: string; source?: NotebookVersionSource }) =>
@@ -1859,4 +2067,28 @@ export const mlLabApi = {
   duplicate: (id: string) => api.post<MLLabProjectSummary>(`/ml-lab/projects/${id}/duplicate`),
   runtimeModel: (id: string) => api.get(`/ml-lab/models/${id}`),
   remove: (id: string) => api.delete(`/ml-lab/projects/${id}`),
+}
+
+// ── Anonimizzazione allegati (anteprima copia anonimizzata) ──────────────
+export interface AnonymizePreview {
+  filename: string
+  kind: 'image' | 'document'
+  supported: boolean
+  had_pii: boolean
+  counts: Record<string, number>
+  labels: Record<string, string>
+  text: string
+  truncated: boolean
+  ner_available?: boolean
+  note: string | null
+}
+
+export const privacyApi = {
+  anonymizePreview: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<AnonymizePreview>('/privacy/anonymize-preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

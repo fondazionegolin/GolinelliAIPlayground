@@ -45,6 +45,7 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
+from app.services.pii_anonymizer import anonymize_text_async
 from app.core.config import settings
 from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail
 from app.services.web_search_service import augment_chat_messages_with_urls
@@ -2033,6 +2034,8 @@ async def send_teacherbot_message_with_files(
             except Exception as e:
                 extracted_text = f"[Immagine: {filename} - impossibile analizzare: {str(e)}]"
         
+        if extracted_text:
+            extracted_text = (await anonymize_text_async(extracted_text)).text
         file_contents.append({
             "filename": filename,
             "mime_type": mime_type,
@@ -2942,6 +2945,7 @@ async def send_public_teacherbot_message_with_files(
         filename = file.filename or "unknown"
         mime_type = file.content_type or "application/octet-stream"
         extracted = _extract_public_attachment_text(filename, mime_type, file_data)
+        extracted = (await anonymize_text_async(extracted[:60000])).text
         file_contents.append({"filename": filename, "mime_type": mime_type, "content": extracted[:20000]})
 
     full_content = content

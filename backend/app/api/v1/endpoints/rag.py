@@ -87,11 +87,12 @@ def _student_query_terms(query: str) -> list[str]:
 
 async def _student_vector_search(
     db: AsyncSession,
-    student: SessionStudent,
+    student,
     query: str,
     doc_ids: Optional[list[str]],
     project_id: Optional[str],
     top_k: int,
+    owner_kind: str = "student",
 ) -> list[dict]:
     from sqlalchemy import text as sql_text
 
@@ -111,6 +112,8 @@ async def _student_vector_search(
         extra_filters.append("AND d.project_id = :project_id")
         params["project_id"] = project_id
     extra_filter = "\n        ".join(extra_filters)
+    owner_col = "owner_teacher_id" if owner_kind == "teacher" else "owner_student_id"
+    kind_filter = "AND d.scope::text = 'USER' AND d.project_id IS NOT NULL" if owner_kind == "teacher" else ""
 
     sql = sql_text(f"""
         SELECT
@@ -120,9 +123,10 @@ async def _student_vector_search(
         FROM rag_chunks c
         JOIN rag_embeddings e ON e.chunk_id = c.id
         JOIN rag_documents d ON d.id = c.document_id
-        WHERE d.owner_student_id = :student_id
+        WHERE d.{owner_col} = :student_id
         AND d.status::text = 'READY'
         AND d.teacherbot_id IS NULL
+        {kind_filter}
         {extra_filter}
         ORDER BY e.embedding <=> CAST(:embedding AS vector)
         LIMIT :top_k
@@ -145,11 +149,12 @@ async def _student_vector_search(
 
 async def _student_keyword_search(
     db: AsyncSession,
-    student: SessionStudent,
+    student,
     query: str,
     doc_ids: Optional[list[str]],
     project_id: Optional[str],
     top_k: int,
+    owner_kind: str = "student",
 ) -> list[dict]:
     terms = _student_query_terms(query)
     if not terms and not (query or "").strip():
@@ -170,10 +175,17 @@ async def _student_keyword_search(
             score_expr.label("keyword_score"),
         )
         .join(RAGDocument, RAGDocument.id == RAGChunk.document_id)
-        .where(RAGDocument.owner_student_id == student.id)
         .where(RAGDocument.status == DocumentStatus.READY)
         .where(RAGDocument.teacherbot_id == None)  # noqa: E711
     )
+    if owner_kind == "teacher":
+        query_stmt = (
+            query_stmt.where(RAGDocument.owner_teacher_id == student.id)
+            .where(RAGDocument.scope == Scope.USER)
+            .where(RAGDocument.project_id != None)  # noqa: E711
+        )
+    else:
+        query_stmt = query_stmt.where(RAGDocument.owner_student_id == student.id)
     if doc_ids:
         query_stmt = query_stmt.where(RAGChunk.document_id.in_([UUID(d) for d in doc_ids]))
     if project_id:
@@ -201,17 +213,107 @@ async def _student_keyword_search(
     ]
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;:])\s+|\n+")
+
+
+def _split_sentences(text: str) -> list[tuple[int, int]]:
+    """Return (start, end) offsets of sentence-like spans of ``text``."""
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    for match in _SENTENCE_SPLIT_RE.finditer(text):
+        if match.start() > pos:
+            spans.append((pos, match.start()))
+        pos = match.end()
+    if pos < len(text):
+        spans.append((pos, len(text)))
+    # Merge very short fragments into the following span so highlights stay meaningful.
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and (merged[-1][1] - merged[-1][0]) < 30:
+            merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def _attach_highlights(query: str, chunks: list[dict], max_per_chunk: int = 3) -> list[dict]:
+    """Add ``highlights`` (character spans of the best-matching sentences) to every chunk.
+
+    Sentences are scored semantically (embedding cosine vs. the query); if embeddings are
+    unavailable we fall back to query-term overlap, so highlighting never blocks the answer.
+    """
+    if not chunks or not (query or "").strip():
+        return chunks
+
+    candidates: list[tuple[int, int, int]] = []  # (chunk_idx, start, end)
+    for ci, chunk in enumerate(chunks):
+        text = chunk.get("text") or ""
+        for start, end in _split_sentences(text):
+            if end - start >= 20:
+                candidates.append((ci, start, end))
+    candidates = candidates[:120]
+    for chunk in chunks:
+        chunk["highlights"] = []
+    if not candidates:
+        return chunks
+
+    terms = _student_query_terms(query)
+    scores: list[float] = []
+    kinds: list[str] = []
+    try:
+        vectors = await llm_service.compute_embeddings(
+            [query] + [chunks[ci]["text"][s:e] for ci, s, e in candidates]
+        )
+        qv = vectors[0]
+        scores = [_cosine(qv, v) for v in vectors[1:]]
+        kinds = ["semantic"] * len(scores)
+    except Exception:
+        for ci, s, e in candidates:
+            low = chunks[ci]["text"][s:e].lower()
+            hits = sum(1 for t in terms if t in low)
+            scores.append(hits / max(len(terms), 1))
+            kinds.append("keyword")
+
+    by_chunk: dict[int, list[tuple[float, int, int, str]]] = {}
+    for (ci, s, e), score, kind in zip(candidates, scores, kinds):
+        by_chunk.setdefault(ci, []).append((score, s, e, kind))
+
+    floor = 0.28 if kinds and kinds[0] == "semantic" else 0.34
+    for ci, items in by_chunk.items():
+        best = max(i[0] for i in items)
+        if best < floor:
+            continue
+        keep = [i for i in items if i[0] >= max(floor, best * 0.88)]
+        keep.sort(key=lambda i: i[0], reverse=True)
+        picked = sorted(keep[:max_per_chunk], key=lambda i: i[1])
+        chunks[ci]["highlights"] = [
+            {"start": s, "end": e, "score": round(float(score), 3), "kind": kind}
+            for score, s, e, kind in picked
+        ]
+    for chunk in chunks:
+        chunk["terms"] = terms
+    return chunks
+
+
 async def _student_hybrid_search(
     db: AsyncSession,
-    student: SessionStudent,
+    student,
     query: str,
     doc_ids: Optional[list[str]],
     project_id: Optional[str],
     top_k: int,
+    owner_kind: str = "student",
 ) -> list[dict]:
     fetch_k = max(top_k * 3, 12)
-    vector_rows = await _student_vector_search(db, student, query, doc_ids, project_id, fetch_k)
-    keyword_rows = await _student_keyword_search(db, student, query, doc_ids, project_id, fetch_k)
+    vector_rows = await _student_vector_search(db, student, query, doc_ids, project_id, fetch_k, owner_kind)
+    keyword_rows = await _student_keyword_search(db, student, query, doc_ids, project_id, fetch_k, owner_kind)
 
     merged: dict[str, dict] = {}
     for rank, row in enumerate(vector_rows, 1):
@@ -543,6 +645,7 @@ async def student_upload_document(
         mime_type=mime_type,
         llm_service=None if is_data else llm_service,
         analyze_visuals=not is_data,
+        anonymize=True,
     )
 
     if not analysis.rag_segments:
@@ -576,18 +679,12 @@ async def student_upload_document(
     }
 
 
-@router.post("/student/youtube")
-async def student_ingest_youtube(
-    request: dict,
-    db: AsyncSession = Depends(get_db),
-    student: SessionStudent = Depends(get_current_student),
-):
-    """Fetch a YouTube transcript and ingest it into the current student KB project."""
+async def _fetch_youtube_kb_text(url: str) -> tuple[str, str, str]:
+    """Return (title, video_id, kb_text) for a YouTube URL, or raise HTTPException."""
     import asyncio
     import httpx
 
-    url = (request.get("url") or "").strip()
-    project_id = _normalize_student_project_id(request.get("project_id"))
+    url = (url or "").strip()
     match = re.search(
         r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})",
         url,
@@ -633,12 +730,26 @@ async def student_ingest_youtube(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Impossibile ottenere il trascritto: {str(exc)}")
 
+    final_title = title or f"YouTube {video_id}"
+    return final_title, video_id, f"Trascrizione YouTube: {final_title}\nURL: {url}\n\n{transcript}"
+
+
+@router.post("/student/youtube")
+async def student_ingest_youtube(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    """Fetch a YouTube transcript and ingest it into the current student KB project."""
+    url = (request.get("url") or "").strip()
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    title, video_id, text = await _fetch_youtube_kb_text(url)
     return await _ingest_student_kb_text(
         db=db,
         student=student,
-        title=title or f"YouTube {video_id}",
+        title=title,
         doc_type="youtube",
-        content=f"Trascrizione YouTube: {title or video_id}\nURL: {url}\n\n{transcript}",
+        content=text,
         project_id=project_id,
         meta={"source": "youtube", "video_id": video_id, "url": url},
     )
@@ -914,7 +1025,7 @@ async def student_search(
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
 
-    return await _student_hybrid_search(
+    results = await _student_hybrid_search(
         db=db,
         student=student,
         query=query,
@@ -922,40 +1033,12 @@ async def student_search(
         project_id=project_id,
         top_k=top_k,
     )
+    return await _attach_highlights(query, results)
 
 
-@router.post("/student/chat")
-async def student_rag_chat(
-    request: dict,
-    db: AsyncSession = Depends(get_db),
-    student: SessionStudent = Depends(get_current_student),
-):
-    """RAG chat: retrieve relevant chunks, generate a response with [[n]] citations."""
-    query = request.get("message", "")
-    history = request.get("history", [])
-    doc_ids = request.get("doc_ids")
-    project_id = _normalize_student_project_id(request.get("project_id"))
-    top_k = min(max(int(request.get("top_k", 8)), 4), 12)
-
-    if not query:
-        raise HTTPException(status_code=400, detail="Message required")
-
-    source_chunks = await _student_hybrid_search(
-        db=db,
-        student=student,
-        query=query,
-        doc_ids=doc_ids,
-        project_id=project_id,
-        top_k=top_k,
-    )
-
-    if not source_chunks:
-        return {
-            "response": STUDENT_RAG_NO_ANSWER,
-            "source_chunks": [],
-        }
-
-    # 2. Build context block with numbered references
+async def _grounded_rag_answer(query: str, history: list, source_chunks: list[dict]) -> str:
+    """Generate a citation-grounded answer ([[n]]) strictly from ``source_chunks``."""
+    # Build context block with numbered references
     context_parts = []
     for i, chunk in enumerate(source_chunks, 1):
         page_info = f" (pagina {chunk['page']})" if chunk.get("page") else ""
@@ -1003,7 +1086,316 @@ async def student_rag_chat(
     if not is_valid_student_rag_response(response_text, len(source_chunks)):
         response_text = STUDENT_RAG_NO_ANSWER
 
+    return response_text
+
+
+@router.post("/student/chat")
+async def student_rag_chat(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    """RAG chat: retrieve relevant chunks, generate a response with [[n]] citations."""
+    query = request.get("message", "")
+    history = request.get("history", [])
+    doc_ids = request.get("doc_ids")
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    top_k = min(max(int(request.get("top_k", 8)), 4), 12)
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Message required")
+
+    source_chunks = await _student_hybrid_search(
+        db=db,
+        student=student,
+        query=query,
+        doc_ids=doc_ids,
+        project_id=project_id,
+        top_k=top_k,
+    )
+
+    if not source_chunks:
+        return {
+            "response": STUDENT_RAG_NO_ANSWER,
+            "source_chunks": [],
+        }
+    await _attach_highlights(query, source_chunks)
+
+    response_text = await _grounded_rag_answer(query, history, source_chunks)
+
     return {
         "response": response_text,
         "source_chunks": source_chunks,
     }
+
+
+# ─── Teacher Personal RAG (notebooks / knowledge bases) ─────────────────────
+# A teacher "notebook" is a project_id grouping RAGDocument rows owned by the teacher
+# (scope USER, no session, no teacherbot). It can be explored in the RAG workspace
+# and attached to the generalist teacher chat as retrieval context.
+
+
+def _teacher_project_or_400(project_id: Optional[str]) -> str:
+    normalized = _normalize_student_project_id(project_id)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="project_id obbligatorio")
+    return normalized
+
+
+async def _ingest_teacher_kb_text(
+    *,
+    db: AsyncSession,
+    teacher: User,
+    title: str,
+    doc_type: str,
+    segments,
+    project_id: str,
+) -> RAGDocument:
+    doc = RAGDocument(
+        tenant_id=teacher.tenant_id,
+        scope=Scope.USER,
+        project_id=project_id,
+        owner_teacher_id=teacher.id,
+        title=title[:255],
+        doc_type=doc_type[:32],
+        status=DocumentStatus.QUEUED,
+    )
+    db.add(doc)
+    await db.flush()
+    chunk_count = await rag_service.ingest_document(db, doc, segments)
+    doc._chunk_count = chunk_count  # type: ignore[attr-defined]
+    return doc
+
+
+def _teacher_doc_query(teacher: User, project_id: Optional[str]):
+    query = (
+        select(RAGDocument)
+        .where(RAGDocument.owner_teacher_id == teacher.id)
+        .where(RAGDocument.scope == Scope.USER)
+        .where(RAGDocument.teacherbot_id == None)  # noqa: E711
+        .where(RAGDocument.project_id != None)  # noqa: E711
+        .order_by(RAGDocument.created_at.desc())
+    )
+    if project_id:
+        query = query.where(RAGDocument.project_id == project_id)
+    return query
+
+
+@router.post("/teacher/upload")
+async def teacher_upload_document(
+    file: UploadFile = File(...),
+    project_id: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    pid = _teacher_project_or_400(project_id)
+    file_bytes = await file.read()
+    if len(file_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 25 MB)")
+
+    filename = file.filename or "document"
+    mime_type = file.content_type or "application/octet-stream"
+    is_data = filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=filename,
+        mime_type=mime_type,
+        llm_service=None if is_data else llm_service,
+        analyze_visuals=not is_data,
+        anonymize=True,
+    )
+    if not analysis.rag_segments:
+        raise HTTPException(status_code=400, detail="Impossibile estrarre contenuto dal documento.")
+
+    doc = await _ingest_teacher_kb_text(
+        db=db, teacher=teacher, title=filename,
+        doc_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "doc",
+        segments=analysis.rag_segments or analysis.raw_text, project_id=pid,
+    )
+    return {
+        "id": str(doc.id),
+        "title": doc.title,
+        "doc_type": doc.doc_type,
+        "status": doc.status,
+        "chunk_count": doc._chunk_count,  # type: ignore[attr-defined]
+        "key_concepts": analysis.key_concepts or [],
+        "summary": analysis.summary or "",
+    }
+
+
+@router.post("/teacher/youtube")
+async def teacher_ingest_youtube(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    pid = _teacher_project_or_400(request.get("project_id"))
+    url = (request.get("url") or "").strip()
+    title, video_id, text = await _fetch_youtube_kb_text(url)
+    cleaned = _clean_rag_text(text)
+    doc = await _ingest_teacher_kb_text(
+        db=db, teacher=teacher, title=title, doc_type="youtube",
+        segments=[{"text": cleaned, "kind": "youtube", "meta": {"source": "youtube", "video_id": video_id, "url": url}}],
+        project_id=pid,
+    )
+    return {
+        "id": str(doc.id), "title": doc.title, "doc_type": doc.doc_type, "status": doc.status,
+        "chunk_count": doc._chunk_count,  # type: ignore[attr-defined]
+        "key_concepts": [], "summary": cleaned[:500],
+    }
+
+
+@router.get("/teacher/documents")
+async def teacher_list_documents(
+    project_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    docs = (await db.execute(_teacher_doc_query(teacher, _normalize_student_project_id(project_id)))).scalars().all()
+    counts: dict = {}
+    if docs:
+        rows = (await db.execute(
+            select(RAGChunk.document_id, sql_func.count())
+            .where(RAGChunk.document_id.in_([d.id for d in docs]))
+            .group_by(RAGChunk.document_id)
+        )).all()
+        counts = {r[0]: r[1] for r in rows}
+    return [
+        {
+            "id": str(d.id), "title": d.title, "doc_type": d.doc_type, "status": d.status,
+            "chunk_count": counts.get(d.id, 0), "created_at": d.created_at.isoformat(),
+            "project_id": d.project_id,
+        }
+        for d in docs
+    ]
+
+
+@router.get("/teacher/projects")
+async def teacher_list_projects(
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Notebook RAG (knowledge bases) of the teacher with document counts."""
+    rows = (await db.execute(
+        select(RAGDocument.project_id, sql_func.count(RAGDocument.id), sql_func.max(RAGDocument.created_at))
+        .where(RAGDocument.owner_teacher_id == teacher.id)
+        .where(RAGDocument.scope == Scope.USER)
+        .where(RAGDocument.teacherbot_id == None)  # noqa: E711
+        .where(RAGDocument.project_id != None)  # noqa: E711
+        .where(RAGDocument.status == DocumentStatus.READY)
+        .group_by(RAGDocument.project_id)
+    )).all()
+    return [
+        {"project_id": r[0], "document_count": r[1], "updated_at": r[2].isoformat() if r[2] else None}
+        for r in rows
+    ]
+
+
+@router.delete("/teacher/documents/{doc_id}", status_code=204)
+async def teacher_delete_document(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    doc = (await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.id == doc_id)
+        .where(RAGDocument.owner_teacher_id == teacher.id)
+        .where(RAGDocument.scope == Scope.USER)
+        .where(RAGDocument.teacherbot_id == None)  # noqa: E711
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await db.delete(doc)
+    await db.commit()
+
+
+@router.get("/teacher/documents/{doc_id}/chunks")
+async def teacher_get_chunks(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    doc = (await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.id == doc_id)
+        .where(RAGDocument.owner_teacher_id == teacher.id)
+        .where(RAGDocument.scope == Scope.USER)
+        .where(RAGDocument.teacherbot_id == None)  # noqa: E711
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    chunks = (await db.execute(
+        select(RAGChunk).where(RAGChunk.document_id == doc_id).order_by(RAGChunk.chunk_index.asc())
+    )).scalars().all()
+    return [
+        {
+            "id": str(c.id), "chunk_index": c.chunk_index, "text": _clean_rag_text(c.text),
+            "page": c.page, "document_id": str(doc.id), "document_title": doc.title,
+            "kind": (c.meta_json or {}).get("kind", "text"),
+        }
+        for c in chunks
+    ]
+
+
+@router.post("/teacher/search")
+async def teacher_search(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    query = request.get("query", "")
+    if not query:
+        raise HTTPException(status_code=400, detail="Query required")
+    top_k = min(max(int(request.get("top_k", 8)), 4), 16)
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    results = await _student_hybrid_search(
+        db, teacher, query, request.get("doc_ids"), project_id, top_k, owner_kind="teacher",
+    )
+    return await _attach_highlights(query, results)
+
+
+@router.post("/teacher/chat")
+async def teacher_rag_chat(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Grounded RAG chat over a teacher notebook, answers carry [[n]] citations."""
+    query = request.get("message", "")
+    if not query:
+        raise HTTPException(status_code=400, detail="Message required")
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    top_k = min(max(int(request.get("top_k", 8)), 4), 16)
+    source_chunks = await _student_hybrid_search(
+        db, teacher, query, request.get("doc_ids"), project_id, top_k, owner_kind="teacher",
+    )
+    if not source_chunks:
+        return {"response": STUDENT_RAG_NO_ANSWER.replace("che hai caricato", "di questo notebook"), "source_chunks": []}
+    await _attach_highlights(query, source_chunks)
+    response_text = await _grounded_rag_answer(query, request.get("history", []), source_chunks)
+    return {"response": response_text, "source_chunks": source_chunks}
+
+
+async def retrieve_teacher_kb_context(
+    db: AsyncSession,
+    teacher: User,
+    project_ids: list[str],
+    query: str,
+    top_k: int = 12,
+) -> list[dict]:
+    """Hybrid retrieval over one or more teacher notebooks (used by the generalist chat)."""
+    pids = [p for p in (_normalize_student_project_id(x) for x in project_ids) if p][:5]
+    if not pids or not (query or "").strip():
+        return []
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for pid in pids:
+        rows = await _student_hybrid_search(db, teacher, query, None, pid, top_k, owner_kind="teacher")
+        for row in rows:
+            if row["chunk_id"] not in seen:
+                seen.add(row["chunk_id"])
+                merged.append(row)
+    merged.sort(key=lambda r: r.get("score", 0.0), reverse=True)
+    merged = merged[:top_k]
+    return await _attach_highlights(query, merged)

@@ -35,6 +35,16 @@ export interface NotebookCodeProposal {
   explanation: string
   teacher_note: string
   required_libraries?: string[]
+  /** point-wise diff (changed blocks + context) computed by the agent pipeline; absent for legacy proposals */
+  hunks?: NotebookDiffHunk[]
+}
+
+export interface NotebookDiffHunk {
+  old_start: number
+  old_end: number
+  new_start: number
+  new_end: number
+  rows: Array<{ op: 'ctx' | 'add' | 'del'; text: string }>
 }
 
 export interface NotebookAgentMessageFile {

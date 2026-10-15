@@ -2964,6 +2964,7 @@ async def send_message_with_files(
                 mime_type=mime_type,
                 llm_service=llm_service,
                 analyze_visuals=analyze_visuals,
+                anonymize=True,
             )
             file_extracts.append(analysis.structured_extract)
 
@@ -3658,6 +3659,39 @@ async def teacher_chat_stream(
             yield f"data: {json.dumps({'type': 'status', 'message': '🔗 Lettura dei link in corso...'})}\n\n"
         llm_messages = await _augment_teacher_messages_with_url_context(messages)
 
+        # Attached notebooks (RAG knowledge bases): retrieve the most relevant fragments and
+        # hand them to the model as grounded material, whatever the mode (chat, quiz, ...).
+        kb_project_ids = [str(x) for x in (request.get("kb_project_ids") or []) if x][:5]
+        if kb_project_ids:
+            try:
+                from app.api.v1.endpoints.rag import retrieve_teacher_kb_context
+                yield f"data: {json.dumps({'type': 'status', 'message': '📚 Ricerca nei notebook RAG allegati...'})}\n\n"
+                kb_chunks = await retrieve_teacher_kb_context(db, teacher, kb_project_ids, content, top_k=14)
+                if kb_chunks:
+                    fragments = "\n\n".join(
+                        f"[[{i}]] Da \"{c['document_title']}\""
+                        + (f" (pagina {c['page']})" if c.get("page") else "")
+                        + f":\n{c['text']}"
+                        for i, c in enumerate(kb_chunks, 1)
+                    )
+                    kb_block = (
+                        "\n\n--- BASE DI CONOSCENZA (RAG) ---\n"
+                        "Frammenti recuperati per somiglianza semantica dai notebook allegati dal docente. "
+                        "Usali come fonte primaria e citali con [[n]] quando riporti dati o affermazioni; "
+                        "se non bastano, dillo chiaramente prima di integrare con conoscenza generale.\n\n"
+                        f"{fragments}\n--- FINE BASE DI CONOSCENZA ---"
+                    )
+                    llm_messages = [dict(m) for m in llm_messages]
+                    llm_messages[-1] = {
+                        **llm_messages[-1],
+                        "content": str(llm_messages[-1].get("content") or "") + kb_block,
+                    }
+                    yield f"data: {json.dumps({'type': 'rag_sources', 'chunks': kb_chunks})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'status', 'message': 'Nessun frammento pertinente nei notebook allegati.'})}\n\n"
+            except Exception as kb_exc:
+                logger.warning(f"Teacher KB retrieval failed: {kb_exc}")
+
         async def build_done_event(result_content: str, stream_type: str) -> str:
             if not result_content or not result_content.strip():
                 raise RuntimeError("Il modello non ha restituito alcun contenuto")
@@ -3994,6 +4028,7 @@ async def teacher_chat_with_files(
                 # call makes the request too slow / too large.
                 llm_service=None if is_spreadsheet else llm_service,
                 analyze_visuals=not is_spreadsheet,
+                anonymize=True,
             )
             file_extracts.append(analysis.structured_extract)
             logger.info(
@@ -4164,6 +4199,7 @@ async def analyze_document(
             mime_type=mime_type,
             llm_service=llm_service,
             analyze_visuals=True,
+            anonymize=True,
         )
     except Exception as e:
         logger.error(f"Document analysis error: {e}")
@@ -4180,6 +4216,7 @@ async def analyze_document(
         "visual_descriptions": analysis.visual_descriptions,
         "structured_extract": analysis.structured_extract,
         "processing_steps": analysis.processing_steps,
+        "anonymization": analysis.anonymization,
         "rag_ingested": False,
         "rag_chunk_count": 0,
     }

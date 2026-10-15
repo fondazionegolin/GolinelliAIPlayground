@@ -48,6 +48,7 @@ const ShareWithModal = lazy(() => import('@/components/student/ShareWithModal'))
 import type { SharedRoom } from '@/components/student/SharedChatPanel'
 import type { ShareTarget } from '@/components/student/ShareWithModal'
 import { collaborationApi } from '@/lib/api'
+import { guardAttachment } from '@/components/privacy/AttachmentPrivacyGuard'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
@@ -1164,7 +1165,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     })
   }, [FALLBACK_PROFILES, profilesData])
 
-  const addFileWithPreview = async (file: globalThis.File) => {
+  // Every user-driven attachment goes through the privacy alert + anonymized-copy dialog.
+  const addFileWithPreview = (file: globalThis.File) => guardAttachment(file, attachFileNow)
+
+  const attachFileNow = async (file: globalThis.File) => {
     const isImage = file.type.startsWith('image/')
     const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
       file.type.includes('spreadsheet') || file.type.includes('excel') ||
@@ -2661,21 +2665,13 @@ REGOLE IMPORTANTI:
           {/* Mobile: RAG workspace */}
           {mainTab === 'rag' && (
             <div className="-mx-3 -mb-4 flex h-[calc(100vh-120px)] flex-col">
-              <div className="flex shrink-0 items-center border-b border-slate-200 bg-white px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => setMainTab('assistants')}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Spazio AI
-                </button>
-              </div>
               <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
                 {activeRagSession && (
                   <StudentRagWorkspace
                     key={activeRagSession.id}
                     theme={accentTheme}
+                    onBack={() => setMainTab('assistants')}
+                    backLabel="Spazio AI"
                     session={activeRagSession}
                     onSessionUpdate={() => setRagSessions(getRagSessions())}
                     onNewSession={() => {
@@ -3826,21 +3822,13 @@ REGOLE IMPORTANTI:
           })()}
           {mainTab === 'rag' ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex shrink-0 items-center border-b border-slate-200 bg-white/95 px-4 py-2 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setMainTab('assistants')}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Torna allo Spazio AI
-                </button>
-              </div>
               <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
                 {activeRagSession && (
                   <StudentRagWorkspace
                     key={activeRagSession.id}
                     theme={accentTheme}
+                    onBack={() => setMainTab('assistants')}
+                    backLabel="Spazio AI"
                     session={activeRagSession}
                     onSessionUpdate={() => setRagSessions(getRagSessions())}
                     onNewSession={() => {

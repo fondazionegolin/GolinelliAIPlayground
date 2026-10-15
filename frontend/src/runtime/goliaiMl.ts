@@ -14,6 +14,7 @@
 import { CONFIDENCE_THRESHOLD, INPUT_SIZE, embedImage, headFromJSON, loadEmbedder, predict, smooth, type Head, type HeadJSON } from '../lib/imageClassifier'
 import { setAssetBase } from '../lib/mlAssets'
 import { extractFeatures, loadLandmarkEngine, type Mode } from '../lib/mlFeatures'
+import { createTracker } from '../lib/mlTrackers'
 
 interface RuntimeModel {
   id: string
@@ -40,6 +41,8 @@ export interface MlResult {
   pose?: Array<{ x: number; y: number; score?: number }>
   /** hand models: 21 landmarks in source pixels */
   hand?: Array<{ x: number; y: number }>
+  /** face (expression) models: 478 face-mesh landmarks in source pixels */
+  face?: Array<{ x: number; y: number }>
   /** size in pixels of the analysed frame: scale landmarks with p.x / r.width * canvasWidth */
   width?: number
   height?: number
@@ -119,7 +122,7 @@ class MlModel {
     }
     const found = await extractFeatures(this.mode, source)
     if (!found) return { probs: null, extras: {} }
-    const key = this.mode === 'pose' ? 'pose' : 'hand'
+    const key = this.mode === 'pose' ? 'pose' : this.mode === 'face' ? 'face' : 'hand'
     return { probs: predict(this.head, found.vector), extras: { [key]: found.overlay.points, width: found.overlay.width, height: found.overlay.height } as Partial<MlResult> }
   }
 
@@ -215,6 +218,7 @@ async function load(key?: string): Promise<MlModel> {
 const runtime = {
   setAssetBase,
   load,
+  tracker: createTracker,
   models: () => models().map((m) => ({ id: m.id, name: m.name, mode: m.mode, labels: m.classes.map((c) => c.name) })),
 }
 

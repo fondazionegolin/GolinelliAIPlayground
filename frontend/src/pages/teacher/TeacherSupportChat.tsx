@@ -17,6 +17,7 @@ import {
 import TeacherMemoryModal from '@/components/teacher/TeacherMemoryModal'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import api, { llmApi, teacherApi } from '@/lib/api'
+import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { notifyJobsChanged, cancelJob } from '@/lib/backgroundJobs'
 import ResearchPanel, { EMPTY_RESEARCH_RUN, applyResearchEvent, type ResearchRun } from '@/components/teacher/ResearchPanel'
 import ResearchPlanCard, { type ResearchPlan } from '@/components/teacher/ResearchPlanCard'
@@ -36,6 +37,9 @@ import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import TeacherNotebookPicker, { loadAttachedNotebooks, saveAttachedNotebooks, type AttachedNotebook } from '@/components/teacher/TeacherNotebookPicker'
+import TeacherRagWorkspaceView from '@/components/teacher/TeacherRagWorkspaceView'
+import { teacherRagApi } from '@/lib/api'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import {
@@ -520,6 +524,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [ocrOverlays, setOcrOverlays] = useState<Record<string, OcrOverlayData>>({})
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
+  const [attachedNotebooks, setAttachedNotebooks] = useState<AttachedNotebook[]>(() => loadAttachedNotebooks())
+  const [ragViewOpen, setRagViewOpen] = useState(false)
+  const updateAttachedNotebooks = (next: AttachedNotebook[]) => {
+    setAttachedNotebooks(next)
+    saveAttachedNotebooks(next)
+  }
   const { active: dropActive, dropHighlightProps } = useFileDropHighlight()
   const [responseLength, setResponseLengthState] = useState<ResponseLength>(() => getResponseLength())
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-2-2026-04-21'>('gpt-image-2-2026-04-21')
@@ -1082,7 +1092,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     localStorage.setItem('teacher_support_conversations', JSON.stringify(conversations))
   }, [conversations])
 
+  // Privacy alert + anonymized-copy preview before anything is attached.
   const addFiles = (files: globalThis.File[]) => {
+    void confirmAttachments(files).then(kept => { if (kept.length) addFilesNow(kept) })
+  }
+
+  const addFilesNow = (files: globalThis.File[]) => {
     files.forEach(file => {
       const isImage = file.type.startsWith('image/')
       const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
@@ -1374,6 +1389,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           session_id: opts?.sessionId ?? null,
           conversation_id: opts?.conversationId ?? null,
           user_message: opts?.userMessage,
+          kb_project_ids: attachedNotebooks.map((n) => n.id),
         })
       })
       notifyJobsChanged()
@@ -1389,10 +1405,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       let finalProvider: string | undefined
       let finalModel: string | undefined
       let finalTokenUsage: TokenUsageJson | null = null
+      let ragSources: Array<{ document_title?: string; page?: number; text?: string }> = []
 
       if (reader) {
         await consumeSseStream(reader, (data) => {
-          if (data.type === 'chunk') {
+          if (data.type === 'rag_sources') {
+            ragSources = Array.isArray(data.chunks) ? data.chunks : []
+          } else if (data.type === 'chunk') {
             finalContent += data.content
             opts?.onChunk?.(data.content)
           } else if (data.type === 'done') {
@@ -1412,6 +1431,15 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
       if (!finalContent.trim()) {
         throw new Error('Il modello non ha restituito alcun contenuto')
+      }
+
+      // Footer listing the notebook fragments the answer was grounded on ([[n]] references).
+      if (ragSources.length > 0 && /\[\[\d+\]\]/.test(finalContent)) {
+        const lines = ragSources.map((c, i) => {
+          const snippet = (c.text || '').replace(/\s+/g, ' ').trim().slice(0, 110)
+          return `- **[[${i + 1}]]** ${c.document_title || 'Documento'}${c.page ? ` · p.${c.page}` : ''}${snippet ? ` — “${snippet}…”` : ''}`
+        })
+        finalContent += `\n\n---\n**Fonti dai notebook RAG**\n${lines.join('\n')}`
       }
 
       return {
@@ -2130,6 +2158,29 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     if (currentYoutube?.status === 'ready' && currentYoutube.transcript) {
       const videoLabel = currentYoutube.title ? `"${currentYoutube.title}"` : currentYoutube.url
       llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
+    }
+
+    // Notebook RAG for generation paths that bypass the streaming chat endpoint (documents, slides).
+    // Streaming modes (chat, quiz, exercise, dataset, report) are grounded server-side via kb_project_ids.
+    const usesClientSideGeneration =
+      agentMode === 'html_page' || agentMode === 'brochure' || agentMode === 'dispensa'
+      || (agentMode === 'default' && isPresentationCreationRequest(messageContent))
+    if (attachedNotebooks.length > 0 && usesClientSideGeneration) {
+      try {
+        setStreamingStatus('📚 Ricerca nei notebook RAG allegati…')
+        const results = await Promise.all(attachedNotebooks.map((nb) =>
+          teacherRagApi.search(userInput || messageContent, undefined, 12, nb.id).then((r) => (r.data || []) as Array<{ document_title: string; page?: number; text: string; score?: number }>)))
+        const fragments = results.flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 14)
+        if (fragments.length > 0) {
+          llmContent += '\n\n--- BASE DI CONOSCENZA (RAG) ---\nUsa questi frammenti dai notebook del docente come fonte primaria:\n\n'
+            + fragments.map((f, i) => `[${i + 1}] ${f.document_title}${f.page ? ` (p.${f.page})` : ''}:\n${f.text}`).join('\n\n')
+            + '\n--- FINE BASE DI CONOSCENZA ---'
+        }
+      } catch (kbError) {
+        console.warn('Notebook RAG retrieval failed', kbError)
+      } finally {
+        setStreamingStatus(null)
+      }
     }
 
     try {
@@ -3129,6 +3180,14 @@ REGOLE IMPORTANTI:
                        ? { backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(185, 215, 255, 0.16), transparent 42%), linear-gradient(150deg, rgba(255,255,255,0.98), rgba(246,250,255,0.94))' }
                        : undefined}
                  >
+                  {ragViewOpen && (
+                    <div className="absolute inset-0 z-40 flex flex-col bg-slate-50">
+                      <TeacherRagWorkspaceView
+                        theme={accentTheme}
+                        onBack={() => setRagViewOpen(false)}
+                      />
+                    </div>
+                  )}
 
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
@@ -3827,6 +3886,21 @@ REGOLE IMPORTANTI:
                       )}
 
                       <MessageLinkPreviews content={inputText} debounceMs={600} />
+                      {attachedNotebooks.length > 0 && (
+                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                          {attachedNotebooks.map((nb) => (
+                            <span key={nb.id} className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 py-1 pl-2 pr-1 text-[11px] font-semibold text-emerald-800"
+                              title="Notebook RAG: la chat recupera i frammenti pertinenti da questa knowledge base">
+                              <Database className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{nb.name}</span>
+                              <button type="button" onClick={() => updateAttachedNotebooks(attachedNotebooks.filter((n) => n.id !== nb.id))}
+                                className="rounded-full p-0.5 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-800" aria-label={`Scollega ${nb.name}`}>
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {attachedYoutube && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           <div className="relative group flex items-stretch gap-0 bg-red-50 border border-red-200 rounded-xl overflow-hidden shadow-sm">
@@ -3991,6 +4065,14 @@ REGOLE IMPORTANTI:
                                 >
                                   <Paperclip className="h-3.5 w-3.5" />
                                   Allegati
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setShowActionMenu(false); setRagViewOpen(true) }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Database className="h-3.5 w-3.5" />
+                                  Notebook RAG{attachedNotebooks.length > 0 ? ` (${attachedNotebooks.length} allegati)` : ''}
                                 </button>
                                 <button
                                   type="button"
@@ -4225,6 +4307,13 @@ REGOLE IMPORTANTI:
                         >
                           <Paperclip className="h-4 w-4" />
                         </Button>}
+                        {!sidebarMode && !isMobile && (
+                          <TeacherNotebookPicker
+                            attached={attachedNotebooks}
+                            onChange={updateAttachedNotebooks}
+                            onOpenWorkspace={() => setRagViewOpen(true)}
+                          />
+                        )}
 
                         <textarea
                           value={inputText}

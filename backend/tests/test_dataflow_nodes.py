@@ -80,6 +80,14 @@ async def test_every_local_node_executor_smoke():
     covered = {"ai.generate_dataset", "ai.transform", "llm_chatbot", "data.saved_dataset"}  # handled by the async workflow runtime
     covered |= {"loop.for_each", "loop.collect", "control.repeat_until"}  # runtime-level nodes
     covered |= {node_id for node_id in NODE_REGISTRY if node_id.startswith("platform.")}  # platform action dispatcher
+    # Persistent database nodes and the following local nodes have dedicated
+    # execution/validation tests in test_dataflow_tables.py.
+    covered |= {
+        "db.create_table", "db.insert", "db.read", "db.query",
+        "db.random_pick", "db.update", "db.delete_rows", "db.count",
+        "random.values", "data.join", "data.distinct", "data.parse_text",
+        "data.validate", "chatbot.check_answer", "text.extract",
+    }
     rows = [{"x": i, "y": i * 2 + 1, "target": i % 2, "text": "great lesson" if i % 2 else "bad lesson"} for i in range(30)]
     table = {"columns": ["x", "y", "target", "text"], "rows": rows}
     table_z = {"columns": ["z"], "rows": [{"z": i * 3} for i in range(30)]}

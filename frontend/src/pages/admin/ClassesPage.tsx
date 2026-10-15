@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { formatInternalCredits } from '@/lib/credits'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   ChevronRight, GraduationCap, Users, BookOpen,
-  Search, Euro, Clock, Wifi, Building2,
+  Search, Zap, Clock, Wifi, Building2,
 } from '@/components/icons'
 
 /* ─── types ─────────────────────────────────────────── */
@@ -40,7 +41,7 @@ interface ClassInfo {
 }
 
 /* ─── helpers ───────────────────────────────────────── */
-const formatCurrency = (v: number) => `€ ${Number(v || 0).toFixed(3)}`
+const formatCurrency = (v: number) => formatInternalCredits(v, 2)
 const formatDate = (raw?: string | null) => {
   if (!raw) return '—'
   const d = new Date(raw)
@@ -158,7 +159,7 @@ export default function ClassesPage() {
           </div>
         </div>
         <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
-          <Euro className="h-5 w-5 text-slate-500 flex-shrink-0" />
+          <Zap className="h-5 w-5 text-slate-500 flex-shrink-0" />
           <div>
             <p className="text-[11px] text-slate-500">Costo totale</p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(totalCost)}</p>
@@ -223,7 +224,7 @@ export default function ClassesPage() {
                       {cls.sessions.reduce((a, s) => a + s.student_count, 0)}
                     </span>
                     <span className="flex items-center gap-1 font-medium text-slate-700">
-                      <Euro className="h-3.5 w-3.5" />
+                      <Zap className="h-3.5 w-3.5" />
                       {formatCurrency(cls.sessions.reduce((a, s) => a + s.period_cost, 0))}
                     </span>
                   </div>

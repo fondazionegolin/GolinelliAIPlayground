@@ -352,7 +352,6 @@ async def get_student_credit_history(
             provider=tx.provider,
             model=tx.model,
             service=credit_service.classify_service(tx.provider, tx.model, tx.usage_details),
-            cost_eur=float(tx.cost or 0.0),
             cost_credits=round(float(tx.cost or 0.0) * 100, 6),
             usage_details=tx.usage_details,
         )

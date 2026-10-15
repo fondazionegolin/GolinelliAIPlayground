@@ -60,6 +60,8 @@ class TenantResponse(BaseModel):
     max_students_per_class: int = 300
     monthly_credit_pool: float = 10.0
     teacher_monthly_cap: float = 3.0
+    mechanographic_code: Optional[str] = None
+    registry_verified: bool = False
 
     class Config:
         from_attributes = True

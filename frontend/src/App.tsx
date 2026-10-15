@@ -11,12 +11,15 @@ import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
 import TeacherRequestPage from '@/pages/TeacherRequestPage'
 import ActivatePage from '@/pages/ActivatePage'
+import SchoolInvitePage from '@/pages/SchoolInvitePage'
+import LegalDocPage from '@/pages/LegalDocPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import PrivacyPage from '@/pages/PrivacyPage'
 import TermsPage from '@/pages/TermsPage'
 
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'))
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'))
+import { GlobalDictation } from '@/components/GlobalDictation'
 const StudentDashboard = lazy(() => import('@/pages/student/StudentDashboard'))
 const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
 const PublicTeacherbotChatPage = lazy(() => import('@/pages/PublicTeacherbotChatPage'))
@@ -65,6 +68,8 @@ function App() {
           <Route path="/3d/:token" element={<PublicSolidModelPage />} />
           <Route path="/teacher-request" element={<TeacherRequestPage />} />
           <Route path="/activate/:token" element={<ActivatePage />} />
+          <Route path="/school-invite/:token" element={<SchoolInvitePage />} />
+          <Route path="/legal/:key" element={<LegalDocPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
           
           <Route
@@ -103,6 +108,7 @@ function App() {
       <LegalConsentGate />
       <Toaster />
       <CookieBanner />
+      <GlobalDictation />
     </>
   )
 }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research
+from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research, school_onboarding, privacy, video_studio
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
@@ -16,6 +16,7 @@ api_router.include_router(admin_backend.router, tags=["admin-backend"])
 api_router.include_router(admin_models.router, prefix="/admin/models", tags=["admin-models"])
 api_router.include_router(admin_chatbots.router, prefix="/admin/chatbots", tags=["admin-chatbots"])
 api_router.include_router(admin_activity.router, prefix="/admin/activity", tags=["admin-activity"])
+api_router.include_router(video_studio.router, prefix="/admin/video-studio", tags=["admin-video-studio"])
 api_router.include_router(teacher_memory.router, prefix="/teacher-memory", tags=["teacher-memory"])
 api_router.include_router(ml_lab.router, prefix="/ml-lab", tags=["ml-lab"])
 api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])
@@ -55,3 +56,7 @@ api_router.include_router(jobs.router, prefix="/jobs", tags=["background-jobs"])
 api_router.include_router(drive.router, prefix="/drive", tags=["drive"])
 api_router.include_router(platform_api.router, prefix="/platform-api", tags=["platform-api"])
 api_router.include_router(drive.public_router, prefix="/public/drive", tags=["drive-public"])
+api_router.include_router(school_onboarding.admin_router, prefix="/admin/school-onboarding", tags=["school-onboarding-admin"])
+api_router.include_router(school_onboarding.public_router, prefix="/school-onboarding", tags=["school-onboarding"])
+api_router.include_router(school_onboarding.owner_router, prefix="/school-owner", tags=["school-owner"])
+api_router.include_router(privacy.router, prefix="/privacy", tags=["privacy"])

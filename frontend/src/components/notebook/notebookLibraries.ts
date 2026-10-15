@@ -796,6 +796,171 @@ function draw() {
     ],
   },
 
+  // ─── MediaPipe Face Mesh (landmark facciali) ───────────────────────────────────
+  {
+    id: 'mediapipe-face',
+    name: 'Face Landmarks',
+    description: 'Landmark facciali con AI (MediaPipe Face Mesh): 468 punti su occhi, sopracciglia, labbra, ovale del viso e 10 sull’iride',
+    icon: '🙂',
+    category: 'ml',
+    cdnUrls: [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js',
+    ],
+    requiresCamera: true,
+    templates: [
+      {
+        id: 'mediapipe-face-mesh',
+        name: 'Landmark del viso — contorni e punti',
+        description: 'Ovale del viso, occhi e labbra disegnati in tempo reale (window.FaceMesh + Camera)',
+        code: `// MediaPipe Face Mesh — landmark facciali (window.FaceMesh, window.Camera)
+// Richiede: webcam attiva. 468 punti normalizzati 0..1 (+10 sull'iride con refineLandmarks)
+// Indici utili: 1 punta del naso, 13/14 labbro sup./inf., 61/291 angoli bocca, 33/263 angoli esterni occhi,
+// 159/145 palpebra sup./inf. occhio sx, 386/374 palpebra sup./inf. occhio dx, 10 fronte, 152 mento
+
+let video, faceMesh, camera;
+let faces = []; // lista di visi: ogni viso è un array di punti {x, y, z}
+
+function setup() {
+  createCanvas(640, 480);
+  textFont('monospace');
+
+  video = createCapture(VIDEO);
+  video.size(640, 480);
+  video.hide();
+
+  faceMesh = new FaceMesh({
+    locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file,
+  });
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true, // più precisione su occhi, labbra e iride
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+  faceMesh.onResults((res) => { faces = res.multiFaceLandmarks || []; });
+
+  camera = new Camera(video.elt, {
+    onFrame: async () => { await faceMesh.send({ image: video.elt }); },
+    width: 640,
+    height: 480,
+  });
+  camera.start();
+}
+
+// Converte un landmark normalizzato in pixel, specchiando in orizzontale come la webcam
+function toPx(p) {
+  return { x: width - p.x * width, y: p.y * height };
+}
+
+// Disegna un contorno dato dalle connessioni esportate da MediaPipe (coppie di indici)
+function drawConnections(pts, connections, col) {
+  stroke(col); strokeWeight(2); noFill();
+  for (const c of connections) {
+    const a = toPx(pts[c[0]]), b = toPx(pts[c[1]]);
+    line(a.x, a.y, b.x, b.y);
+  }
+}
+
+function draw() {
+  push();
+  translate(width, 0);
+  scale(-1, 1);
+  image(video, 0, 0, width, height);
+  pop();
+
+  if (faces.length === 0) {
+    fill(0, 190); noStroke(); rect(0, 0, width, 52);
+    fill(255); textSize(14); textAlign(CENTER);
+    text('Cerco un viso... (caricamento modello)', width / 2, 30);
+    textAlign(LEFT);
+    return;
+  }
+
+  for (const pts of faces) {
+    if (typeof FACEMESH_FACE_OVAL !== 'undefined') drawConnections(pts, FACEMESH_FACE_OVAL, color(255, 255, 255));
+    if (typeof FACEMESH_LIPS !== 'undefined') drawConnections(pts, FACEMESH_LIPS, color(255, 70, 110));
+    if (typeof FACEMESH_LEFT_EYE !== 'undefined') drawConnections(pts, FACEMESH_LEFT_EYE, color(0, 230, 120));
+    if (typeof FACEMESH_RIGHT_EYE !== 'undefined') drawConnections(pts, FACEMESH_RIGHT_EYE, color(0, 230, 120));
+
+    // Piccolo esempio di "feature": apertura della bocca (distanza labbra / larghezza bocca)
+    const mouthOpen = dist(pts[13].x, pts[13].y, pts[14].x, pts[14].y) / dist(pts[61].x, pts[61].y, pts[291].x, pts[291].y);
+    const nose = toPx(pts[1]);
+    noStroke(); fill(255, 220, 0); circle(nose.x, nose.y, 10);
+
+    fill(0, 180); rect(8, 8, 230, 22, 4);
+    fill(255); textSize(11);
+    text('Bocca aperta: ' + (mouthOpen > 0.35 ? 'sì' : 'no') + ' (' + nf(mouthOpen, 1, 2) + ')', 14, 23);
+  }
+}`,
+      },
+      {
+        id: 'mediapipe-face-filter',
+        name: 'Filtro sul viso (occhiali e naso)',
+        description: 'Applica un filtro che segue il viso: occhiali sugli occhi e naso da clown, scalati sulla distanza degli occhi',
+        code: `// Filtro sul viso con MediaPipe Face Mesh
+let video, faceMesh, camera;
+let face = null;
+
+function setup() {
+  createCanvas(640, 480);
+  video = createCapture(VIDEO);
+  video.size(640, 480);
+  video.hide();
+
+  faceMesh = new FaceMesh({
+    locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file,
+  });
+  faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  faceMesh.onResults((res) => {
+    face = res.multiFaceLandmarks && res.multiFaceLandmarks.length ? res.multiFaceLandmarks[0] : null;
+  });
+
+  camera = new Camera(video.elt, {
+    onFrame: async () => { await faceMesh.send({ image: video.elt }); },
+    width: 640,
+    height: 480,
+  });
+  camera.start();
+}
+
+// landmark normalizzato -> pixel (immagine specchiata)
+function px(p) { return createVector(width - p.x * width, p.y * height); }
+
+function draw() {
+  push();
+  translate(width, 0);
+  scale(-1, 1);
+  image(video, 0, 0, width, height);
+  pop();
+
+  if (!face) return;
+
+  const leftEye = px(face[33]);   // angolo esterno occhio
+  const rightEye = px(face[263]);
+  const nose = px(face[1]);
+  const eyeDist = p5.Vector.dist(leftEye, rightEye);
+  const angle = atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+
+  // Occhiali: due cerchi uniti da un ponte, ruotati con la testa
+  push();
+  translate((leftEye.x + rightEye.x) / 2, (leftEye.y + rightEye.y) / 2);
+  rotate(angle);
+  noFill(); stroke(20); strokeWeight(5);
+  const r = eyeDist * 0.32;
+  circle(-eyeDist / 2, 0, r * 2);
+  circle(eyeDist / 2, 0, r * 2);
+  line(-eyeDist / 2 + r, 0, eyeDist / 2 - r, 0);
+  pop();
+
+  // Naso da clown
+  noStroke(); fill(230, 30, 50);
+  circle(nose.x, nose.y, eyeDist * 0.28);
+}`,
+      },
+    ],
+  },
+
   // ─── p5.sound ──────────────────────────────────────────────────────────────
   {
     id: 'p5sound',

@@ -1,9 +1,12 @@
 import type { HeadJSON } from './imageClassifier'
 
+/** Bump whenever public/lib/goliai-ml.js changes: it is cached for a long time, the version busts stale copies. */
+export const ML_RUNTIME_VERSION = '2026-10-14-face1'
+
 export interface MlRuntimeModel {
   id: string
   name: string
-  mode: 'image' | 'pose' | 'hand'
+  mode: 'image' | 'pose' | 'hand' | 'face'
   threshold?: number
   classes: Array<{ id: string; name: string; color?: string }>
   head: HeadJSON
@@ -31,7 +34,7 @@ export function buildMlStub(models: MlRuntimeModel[], origin: string): string {
     if (loading) return loading;
     loading = new Promise(function(resolve, reject){
       var script = document.createElement('script');
-      script.src = base + '/lib/goliai-ml.js';
+      script.src = base + '/lib/goliai-ml.js?v=${ML_RUNTIME_VERSION}';
       script.onload = function(){ window.GolinelliMLRuntime.setAssetBase(base); resolve(window.GolinelliMLRuntime); };
       script.onerror = function(){ loading = null; reject(new Error('Runtime dei modelli ML non raggiungibile.')); };
       document.head.appendChild(script);

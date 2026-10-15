@@ -7,7 +7,7 @@ interface Props {
   onClose: () => void
   selectedLibraries: string[]
   onToggleLibrary: (id: string) => void
-  onInsertTemplate: (code: string) => void
+  onInsertTemplate: (code: string, meta: { name: string; libraryId: string }) => void
 }
 
 const CATEGORY_ORDER: NotebookLibrary['category'][] = ['ml', 'physics', 'audio', 'graphics']
@@ -23,7 +23,7 @@ function TemplateCard({ template, onInsert }: { template: LibraryTemplate; onIns
         <button
           onClick={onInsert}
           className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors"
-          title="Inserisci nella cella attiva"
+          title="Aggiunge il template al tuo sketch: il codice già presente viene mantenuto e il template adattato"
         >
           <Code2 className="h-3 w-3" />
           Inserisci
@@ -42,7 +42,7 @@ function LibraryCard({
   library: NotebookLibrary
   selected: boolean
   onToggle: () => void
-  onInsertTemplate: (code: string) => void
+  onInsertTemplate: (code: string, meta: { name: string; libraryId: string }) => void
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -93,7 +93,7 @@ function LibraryCard({
                   <TemplateCard
                     key={t.id}
                     template={t}
-                    onInsert={() => onInsertTemplate(t.code)}
+                    onInsert={() => onInsertTemplate(t.code, { name: t.name, libraryId: library.id })}
                   />
                 ))}
               </div>

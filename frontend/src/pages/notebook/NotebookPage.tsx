@@ -9,7 +9,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { v4 as uuidv4 } from 'uuid'
-import { mlLabApi, notebooksApi, type MLLabProjectSummary } from '@/lib/api'
+import { getApiAuthHeaders, mlLabApi, notebooksApi, type MLLabProjectSummary } from '@/lib/api'
 import { type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import P5ModelsDialog from '@/components/notebook/P5ModelsDialog'
 import { usePyodide } from '@/hooks/usePyodide'
@@ -43,6 +43,7 @@ import NotebookLibraryManager from '@/components/notebook/NotebookLibraryManager
 import NotebookVersionHistoryModal from '@/components/notebook/NotebookVersionHistoryModal'
 import { Button } from '@/design/primitives/Button'
 import { IconButton } from '@/design/primitives/IconButton'
+import { notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import { Select } from '@/design/primitives/Select'
 import {
   Dialog,
@@ -327,6 +328,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
       libraries: notebookData.editor_settings?.libraries ?? [],
       microbit_language: notebookData.editor_settings?.microbit_language ?? 'python',
       device_language: notebookData.editor_settings?.device_language ?? notebookData.editor_settings?.microbit_language ?? 'python',
+      // ML Lab models attached to the sketch: must survive a reload, or window.GolinelliML is never defined.
+      ml_model_ids: Array.isArray(notebookData.editor_settings?.ml_model_ids) ? notebookData.editor_settings.ml_model_ids : [],
     }
     setTitle(notebookData.title)
     setProjectType(nextProjectType)
@@ -1067,7 +1070,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
       {/* ── Main notebook card ───────────────────────────────────────────── */}
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(23,23,23,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Unified toolbar — riga singola, scorre in orizzontale su finestre strette */}
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:none] [&_svg]:!h-4 [&_svg]:!w-4">
+        <div className="flex flex-nowrap items-center gap-3 overflow-x-auto border-b border-slate-200/70 bg-white/70 px-3 py-1.5 backdrop-blur-sm [scrollbar-width:none] [&_.app-icon]:!h-4 [&_.app-icon]:!w-4 [&_svg]:!h-4 [&_svg]:!w-4 [&_button]:!text-xs">
           <IconButton
             type="button"
             size="sm"
@@ -1151,7 +1154,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
 
           <div className="ml-auto shrink-0" />
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2">
             {projectType === 'strudel' && (
               <>
                 <div className="relative">
@@ -1229,7 +1232,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                     </span>
                   )}
                 </Button>
-                <span className="mx-1 h-5 w-px bg-slate-200" />
+                <span className="mx-1.5 h-5 w-px bg-slate-200" />
                 <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleP5Play} title={isEnglish ? 'Run sketch' : 'Esegui sketch'}>
                   <Play />
                   Play
@@ -1940,12 +1943,57 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
         updateEditorSettings({ libraries: next })
         setPreviewNonce((n) => n + 1)
       }}
-      onInsertTemplate={(code) => {
-        if (activeCellId) {
-          updateCell(activeCellId, { source: code })
-          setPreviewNonce((n) => n + 1)
-        }
+      onInsertTemplate={(code, meta) => {
         setLibraryManagerOpen(false)
+        if (!activeCell) return
+        const cellId = activeCell.id
+        // Empty cell: just insert. Otherwise the template is merged additively into the existing code by the agent
+        // and shown as a diff to approve (never a silent overwrite).
+        if (!activeCell.source.trim() || !notebookId) {
+          updateCell(cellId, { source: code })
+          setPreviewNonce((n) => n + 1)
+          return
+        }
+        setSubmitNotice(isEnglish ? 'Merging the template into your sketch…' : 'Integro il template nel tuo sketch…')
+        void (async () => {
+          try {
+            const response = await fetch(notebooksApi.mergeTemplateUrl(notebookId), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getApiAuthHeaders() },
+              credentials: 'include',
+              body: JSON.stringify({
+                template_code: code,
+                template_name: meta.name,
+                library_id: meta.libraryId,
+                current_cell_source: activeCell.source,
+              }),
+            })
+            if (response.status === 402) throw new Error(isEnglish ? 'AI credits exhausted.' : 'Crediti AI esauriti.')
+            if (!response.ok || !response.body) throw new Error(isEnglish ? 'Could not start the merge.' : 'Integrazione non avviata.')
+            notifyJobsChanged() // the job shows up in the navbar progress widget
+            let finished = false
+            await readEventStream(response, 'sse', (event) => {
+              if (event.type === 'active' && event.label) {
+                setSubmitNotice(String(event.label))
+              } else if (event.type === 'done') {
+                setAssistantSummary(String(event.summary || ''))
+                setAssistantProposals((prev) => ({ ...prev, [cellId]: (event.proposals || []) as NotebookCodeProposal[] }))
+                setSubmitNotice(isEnglish ? 'Template merged: review the diff in the tutor panel and apply.' : 'Template integrato: controlla il diff nel pannello del tutor e premi Applica.')
+                finished = true
+                return true
+              } else if (event.type === 'error') {
+                throw new Error(String(event.message || 'Integrazione non riuscita.'))
+              }
+            })
+            if (!finished) throw new Error(isEnglish ? 'Merge interrupted.' : 'Integrazione interrotta.')
+          } catch (error) {
+            // Never touch the sketch on failure: show why and leave the code as it was.
+            setSubmitNotice(error instanceof Error && error.message ? error.message : (isEnglish ? 'Could not merge the template: your sketch was left unchanged.' : 'Integrazione non riuscita: lo sketch è rimasto invariato.'))
+          } finally {
+            notifyJobsChanged()
+            window.setTimeout(() => setSubmitNotice(null), 6000)
+          }
+        })()
       }}
     />
     <Dialog open={microbitManualOpen} onOpenChange={setMicrobitManualOpen}>
