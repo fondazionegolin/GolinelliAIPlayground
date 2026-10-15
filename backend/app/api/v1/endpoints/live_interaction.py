@@ -57,6 +57,16 @@ class LiveInteractionCreate(BaseModel):
 class LiveInteractionUpdate(BaseModel):
     title: str | None = None
     slides_json: list[dict] | None = None
+    # Escape rooms only
+    narrative_intro: str | None = None
+    mission: str | None = None
+    challenges: list[dict] | None = None
+
+
+class EscapeRegenerate(BaseModel):
+    num_steps: int | None = None
+    instructions: str | None = None
+    avoid_current: bool = True
 
 
 class LiveInteractionDuplicate(BaseModel):
@@ -72,6 +82,9 @@ class LiveEscapeCreate(BaseModel):
     narrative_intro: str | None = None
     mission: str | None = None
     challenges: list[dict] | None = None
+    num_steps: int | None = None
+    instructions: str | None = None
+    avoid_statements: list[str] | None = None
 
 
 class EscapeAnswerSubmit(BaseModel):
@@ -102,6 +115,7 @@ class StructureAssistRequest(BaseModel):
     topic: str
     num_slides: int = 5
     reference_text: str | None = None
+    previous_slides: list[dict] | None = None
 
 
 # ── Helper ──
@@ -393,7 +407,10 @@ async def create_live_escape_room(
         if not allowed:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Credit limit exceeded for this session/class.")
         try:
-            plan, llm_response = await generate_plan(bot.system_prompt, bot.llm_provider, bot.llm_model)
+            plan, llm_response = await generate_plan(
+                bot.system_prompt, bot.llm_provider, bot.llm_model,
+                count=body.num_steps, avoid_statements=body.avoid_statements, extra_instructions=body.instructions,
+            )
         except Exception as exc:
             logger.exception("Live escape-room generation failed for teacherbot %s", bot.id)
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Non è stato possibile preparare l'escape room.") from exc
@@ -484,10 +501,85 @@ async def update_live_interaction(
         raise HTTPException(400, "Cannot edit an active live interaction")
     if body.title is not None:
         li.title = body.title
-    if body.slides_json is not None:
+    if li.interaction_type == "escape_room":
+        if body.challenges is not None or body.narrative_intro is not None or body.mission is not None:
+            if li.status != "DRAFT":
+                raise HTTPException(400, "L'escape room si può modificare solo prima dell'avvio")
+            config = dict(li.escape_config_json or {})
+            challenges = body.challenges if body.challenges is not None else (li.slides_json or [])
+            if not challenges:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Aggiungi almeno un indizio.")
+            try:
+                plan = validate_plan({
+                    "title": li.title,
+                    "narrative_intro": body.narrative_intro if body.narrative_intro is not None else config.get("narrative_intro"),
+                    "mission": body.mission if body.mission is not None else config.get("mission"),
+                    "challenges": challenges,
+                }, len(challenges))
+            except ValueError as exc:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+            li.slides_json = plan["challenges"]
+            li.escape_config_json = {
+                **config,
+                "version": plan.get("version", 3),
+                "narrative_intro": plan.get("narrative_intro"),
+                "mission": plan.get("mission"),
+            }
+    elif body.slides_json is not None:
         li.slides_json = body.slides_json
     await db.commit()
     return {"id": str(li.id), "title": li.title, "status": li.status}
+
+
+@teacher_router.post("/live-interactions/{interaction_id}/regenerate-escape")
+async def regenerate_escape_room(
+    interaction_id: UUID,
+    body: EscapeRegenerate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Propose a fresh set of clues for a draft escape room. Nothing is saved: the teacher reviews and saves."""
+    li = (await db.execute(select(LiveInteraction).where(LiveInteraction.id == interaction_id))).scalar_one_or_none()
+    if not li or li.interaction_type != "escape_room" or not await teacher_can_access_session(db, teacher, li.session_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Escape room not found")
+    if li.status != "DRAFT":
+        raise HTTPException(400, "L'escape room si può rigenerare solo prima dell'avvio")
+    if not li.teacherbot_id:
+        raise HTTPException(400, "Questa escape room non è collegata a un Teacherbot")
+    bot = (await db.execute(select(Teacherbot).where(Teacherbot.id == li.teacherbot_id))).scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Teacherbot non trovato")
+    session_obj = (await db.execute(select(Session).where(Session.id == li.session_id))).scalar_one()
+    allowed = await credit_service.check_availability(
+        db, teacher.tenant_id, estimated_cost=0.0005,
+        teacher_id=teacher.id, class_id=session_obj.class_id, session_id=session_obj.id,
+    )
+    if not allowed:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Credit limit exceeded for this session/class.")
+    avoid = [str(c.get("false_statement", "")) for c in (li.slides_json or [])] if body.avoid_current else None
+    try:
+        plan, llm_response = await generate_plan(
+            bot.system_prompt, bot.llm_provider, bot.llm_model,
+            count=body.num_steps, avoid_statements=avoid, extra_instructions=body.instructions,
+        )
+    except Exception as exc:
+        logger.exception("Live escape-room regeneration failed for %s", li.id)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Non è stato possibile rigenerare l'escape room.") from exc
+    cost = credit_service.calculate_cost_for_model(
+        llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens,
+    )
+    await credit_service.track_usage(
+        db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+        {
+            "type": "live_escape_room_generation",
+            "bot_id": str(bot.id),
+            "prompt_tokens": llm_response.prompt_tokens,
+            "completion_tokens": llm_response.completion_tokens,
+        },
+        teacher_id=teacher.id, class_id=session_obj.class_id, session_id=session_obj.id,
+    )
+    await db.commit()
+    return {"preview": True, **plan}
 
 
 @teacher_router.post("/live-interactions/{interaction_id}/duplicate", status_code=201)
@@ -929,6 +1021,16 @@ async def assist_slide(
             f"{body.reference_text.strip()[:REFERENCE_MAX_CHARS]}"
         )
 
+    previous_context = ""
+    if body.previous_slides:
+        previous = [str(s.get("question") or s.get("prompt") or "").strip() for s in body.previous_slides if isinstance(s, dict)]
+        previous = [q for q in previous if q]
+        if previous:
+            previous_context = (
+                "\n\nQuesta è una nuova versione del quiz: NON riproporre né parafrasare queste domande già presenti:\n"
+                + "\n".join(f"- {q[:200]}" for q in previous[:30])
+            )
+
     system_prompt = f"""Sei un assistente per docenti che costruiscono quiz interattivi per lezioni in classe (piattaforma "Live Interaction").
 Il docente sta componendo una slide di tipo "{body.slide_type}". Tipi disponibili e relativo schema JSON:
 {SLIDE_TYPE_DESCRIPTIONS}
@@ -978,7 +1080,7 @@ async def assist_structure(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
     if not body.topic.strip():
         raise HTTPException(422, "topic required")
-    num_slides = max(3, min(8, body.num_slides))
+    num_slides = max(1, min(15, body.num_slides))
 
     allowed = await credit_service.check_availability(db, teacher.tenant_id, 0.0006, teacher_id=teacher.id)
     if not allowed:
@@ -1017,7 +1119,7 @@ Tipi di slide disponibili e relativo schema JSON:
 {SLIDE_TYPE_DESCRIPTIONS}
 
 Il docente vuole una sessione live sull'argomento: "{body.topic}".
-{past_context}
+{past_context}{previous_context}
 {reference_context}
 
 Proponi una sequenza di {num_slides} slide, variando i tipi (non usare solo mcq), coerente con l'argomento e, se presente, in continuità col lavoro già svolto senza ripetere le stesse domande.
@@ -1029,7 +1131,7 @@ Nessun testo fuori dal JSON."""
         messages=[{"role": "user", "content": body.topic}],
         system_prompt=system_prompt,
         temperature=0.7,
-        max_tokens=2000,
+        max_tokens=min(6000, 800 + 300 * num_slides),
     )
 
     try:

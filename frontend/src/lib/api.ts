@@ -1846,12 +1846,17 @@ export const liveInteractionApi = {
     narrative_intro?: string
     mission?: string
     challenges?: object[]
+    num_steps?: number
+    instructions?: string
+    avoid_statements?: string[]
   }) =>
     api.post('/teacher/live-interactions/from-teacherbot', data),
   get: (id: string) =>
     api.get(`/teacher/live-interactions/${id}`),
-  update: (id: string, data: { title?: string; slides_json?: object[] }) =>
+  update: (id: string, data: { title?: string; slides_json?: object[]; narrative_intro?: string; mission?: string; challenges?: object[] }) =>
     api.put(`/teacher/live-interactions/${id}`, data),
+  regenerateEscape: (id: string, data: { num_steps?: number; instructions?: string; avoid_current?: boolean }) =>
+    api.post(`/teacher/live-interactions/${id}/regenerate-escape`, data),
   duplicate: (id: string, data: { target_session_id: string; title?: string }) =>
     api.post(`/teacher/live-interactions/${id}/duplicate`, data),
   delete: (id: string) =>
@@ -1870,7 +1875,7 @@ export const liveInteractionApi = {
     api.delete(`/teacher/live-interactions/${id}/public-link`),
   assistSlide: (data: { slide_type: string; draft_text: string; session_id: string; other_slides?: object[]; reference_text?: string }) =>
     api.post('/teacher/live-interactions/assist-slide', data),
-  assistStructure: (data: { session_id: string; topic: string; num_slides?: number; reference_text?: string }) =>
+  assistStructure: (data: { session_id: string; topic: string; num_slides?: number; reference_text?: string; previous_slides?: object[] }) =>
     api.post('/teacher/live-interactions/assist-structure', data),
   extractReference: (sessionId: string, file: File) => {
     const fd = new FormData()

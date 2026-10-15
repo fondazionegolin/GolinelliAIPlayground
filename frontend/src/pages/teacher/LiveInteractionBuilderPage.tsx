@@ -950,6 +950,7 @@ function InteractionEditor({
   const [showTypeMenu, setShowTypeMenu] = useState(false)
   const [assistingKey, setAssistingKey] = useState<string | null>(null)
   const [reference, setReference] = useState<ReferenceDoc | null>(null)
+  const [showRegen, setShowRegen] = useState(false)
 
   const { data: existing, isLoading } = useQuery({
     queryKey: ['live-interaction', interactionId],
@@ -1024,6 +1025,26 @@ function InteractionEditor({
 
       <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
 
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-violet-50/60 px-4 py-3">
+        <p className="text-sm text-slate-600"><strong>{slides.length}</strong> {slides.length === 1 ? 'slide' : 'slide'} · puoi modificarle, aggiungerne o far rifare il set all’AI.</p>
+        <Button tone="accent" surface="outline" density="compact" onClick={() => setShowRegen(true)}><Sparkles className="h-4 w-4" /> {slides.length ? 'Rigenera con AI' : 'Genera con AI'}</Button>
+      </div>
+      {showRegen && (
+        <StructureAssistModal
+          sessionId={sessionId}
+          initialTopic={title}
+          previousSlides={slides.length ? slides.map(item => item.slide) : undefined}
+          onClose={() => setShowRegen(false)}
+          onGenerated={(result, mode) => {
+            const generated = (result.slides || []).map(editableSlide)
+            setSlides(prev => mode === 'append' ? [...prev, ...generated] : generated)
+            if (!title.trim() && result.title) setTitle(result.title)
+            setExpandedIdx(null)
+            setShowRegen(false)
+          }}
+        />
+      )}
+
       <Reorder.Group axis="y" values={slides} onReorder={setSlides} className="space-y-2">
         {slides.map((item, i) => (
           <SlideCard
@@ -1085,13 +1106,17 @@ function InteractionEditor({
 // ── AI structure suggestion modal ──
 
 function StructureAssistModal({
-  sessionId, onClose, onGenerated,
+  sessionId, onClose, onGenerated, initialTopic = '', previousSlides,
 }: {
-  sessionId: string; onClose: () => void; onGenerated: (result: { title: string; slides: Slide[] }) => void
+  sessionId: string; onClose: () => void
+  onGenerated: (result: { title: string; slides: Slide[] }, mode: 'replace' | 'append') => void
+  initialTopic?: string
+  previousSlides?: Slide[]
 }) {
   const { toast } = useToast()
-  const [topic, setTopic] = useState('')
-  const [numSlides, setNumSlides] = useState(5)
+  const [topic, setTopic] = useState(initialTopic)
+  const [numSlides, setNumSlides] = useState(previousSlides?.length || 5)
+  const [mode, setMode] = useState<'replace' | 'append'>('replace')
   const [loading, setLoading] = useState(false)
   const [reference, setReference] = useState<ReferenceDoc | null>(null)
 
@@ -1104,8 +1129,9 @@ function StructureAssistModal({
         topic: topic.trim(),
         num_slides: numSlides,
         reference_text: reference?.text,
+        previous_slides: previousSlides?.length ? previousSlides : undefined,
       })
-      onGenerated(res.data)
+      onGenerated(res.data, mode)
     } catch {
       toast({ title: 'Errore durante la generazione', variant: 'destructive' })
     } finally {
@@ -1141,12 +1167,18 @@ function StructureAssistModal({
           <div>
             <label className="text-xs font-medium text-slate-600 mb-1 block">Numero di slide</label>
             <Input
-              type="number" min={3} max={8}
+              type="number" min={1} max={15}
               value={numSlides}
-              onChange={e => setNumSlides(Math.min(8, Math.max(3, parseInt(e.target.value) || 5)))}
+              onChange={e => setNumSlides(Math.min(15, Math.max(1, parseInt(e.target.value) || 5)))}
               className="w-24 h-8 text-sm"
             />
           </div>
+          {previousSlides && previousSlides.length > 0 && (
+            <div className="flex gap-2 text-sm">
+              <button type="button" onClick={() => setMode('replace')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'replace' ? 'ui-segment-active' : 'ds-control'}`}>Sostituisci le slide attuali</button>
+              <button type="button" onClick={() => setMode('append')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'append' ? 'ui-segment-active' : 'ds-control'}`}>Aggiungi in fondo</button>
+            </div>
+          )}
           <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
           <p className="text-xs text-slate-400">
             L'AI proporrà titolo e sequenza di slide (tipi variati) tenendo conto delle altre sessioni live già svolte in questa classe{reference ? ' e del documento caricato' : ''}. Potrai modificare tutto prima di salvare.
@@ -1303,14 +1335,19 @@ function DuplicateForAudienceModal({
 }
 
 function EscapeRoomDraftEditor({
-  draft, onChange, onBack, onPublish, publishing,
+  draft, onChange, onBack, onPublish, publishing, publishLabel, onRegenerate, regenerating,
 }: {
   draft: EscapeRoomDraft
   onChange: (draft: EscapeRoomDraft) => void
-  onBack: () => void
+  onBack?: () => void
   onPublish: () => void
   publishing: boolean
+  publishLabel?: string
+  onRegenerate?: (options: { count: number; instructions: string }) => void
+  regenerating?: boolean
 }) {
+  const [regenCount, setRegenCount] = useState(Math.min(10, Math.max(1, draft.challenges.length || 5)))
+  const [regenInstructions, setRegenInstructions] = useState('')
   const updateChallenge = (index: number, patch: Partial<EscapeChallengeDraft>) => {
     onChange({ ...draft, challenges: draft.challenges.map((challenge, current) => current === index ? { ...challenge, ...patch } : challenge) })
   }
@@ -1337,9 +1374,32 @@ function EscapeRoomDraftEditor({
           </div>
         </div>
 
+        {onRegenerate && (
+          <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+            <p className="text-sm font-bold text-violet-900">Rifai gli indizi con l’AI</p>
+            <p className="mt-0.5 text-xs text-slate-500">Genera un nuovo set (diverso dall’attuale) con il numero di indizi che preferisci. Potrai ancora modificarlo.</p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Numero di indizi</label>
+                <Input type="number" min={1} max={10} value={regenCount} onChange={event => setRegenCount(Math.min(10, Math.max(1, parseInt(event.target.value) || 5)))} className="h-9 w-24" />
+              </div>
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-1 block text-xs font-medium text-slate-600">Indicazioni (facoltative)</label>
+                <Input value={regenInstructions} onChange={event => setRegenInstructions(event.target.value)} placeholder="Es. più difficili, focus sul Rinascimento…" className="h-9" />
+              </div>
+              <Button tone="accent" surface="solid" disabled={regenerating} onClick={() => {
+                if (!draft.challenges.length || confirm('Gli indizi attuali verranno sostituiti da un nuovo set. Continuare?')) onRegenerate({ count: regenCount, instructions: regenInstructions })
+              }}>
+                {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {regenerating ? 'Genero…' : 'Rigenera set'}
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-slate-900">Indizi e ricompense</h3>
+            <h3 className="font-bold text-slate-900">Indizi e ricompense · {draft.challenges.length}</h3>
             <p className="text-xs text-slate-500">Puoi cambiare testi, soluzioni accettate e oggetti conquistati.</p>
           </div>
           <Button tone="neutral" surface="outline" density="compact" onClick={() => onChange({ ...draft, challenges: [...draft.challenges, emptyEscapeChallenge()] })}>
@@ -1386,13 +1446,103 @@ function EscapeRoomDraftEditor({
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 p-6">
-        <Button tone="neutral" surface="ghost" onClick={onBack}>← Cambia Teacherbot</Button>
+        {onBack ? <Button tone="neutral" surface="ghost" onClick={onBack}>← Cambia Teacherbot</Button> : <span />}
         <Button tone="accent" surface="solid" disabled={!valid || publishing} onClick={onPublish}>
           {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
-          {publishing ? 'Pubblicazione…' : `Pubblica Escape room · ${draft.challenges.length} indizi`}
+          {publishing ? (publishLabel ? 'Salvataggio…' : 'Pubblicazione…') : `${publishLabel || 'Pubblica Escape room'} · ${draft.challenges.length} indizi`}
         </Button>
       </div>
     </>
+  )
+}
+
+export function EscapeRoomEditDialog({ interactionId, onClose, onSaved }: {
+  interactionId: string
+  onClose: () => void
+  onSaved?: () => void
+}) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [draft, setDraft] = useState<EscapeRoomDraft | null>(null)
+
+  const { data } = useQuery({
+    queryKey: ['live-interaction', interactionId, 'escape-edit'],
+    queryFn: () => liveInteractionApi.get(interactionId).then(r => r.data),
+    staleTime: 0,
+    gcTime: 0,
+  })
+  useEffect(() => {
+    if (!data || draft) return
+    const config = (data.escape_config || {}) as Record<string, unknown>
+    setDraft(normalizeEscapeDraft({
+      title: data.title,
+      narrative_intro: config.narrative_intro,
+      mission: config.mission,
+      challenges: data.slides_json,
+    }))
+  }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const errorToast = (fallback: string) => (error: unknown) => {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    toast({ title: detail || fallback, variant: 'destructive' })
+  }
+
+  const regenerate = useMutation({
+    mutationFn: (options: { count: number; instructions: string }) => liveInteractionApi.regenerateEscape(interactionId, {
+      num_steps: options.count,
+      instructions: options.instructions.trim() || undefined,
+      avoid_current: true,
+    }),
+    onSuccess: response => setDraft(prev => {
+      const next = normalizeEscapeDraft(response.data)
+      return prev ? { ...next, title: prev.title, narrative_intro: prev.narrative_intro || next.narrative_intro, mission: prev.mission || next.mission } : next
+    }),
+    onError: errorToast('Impossibile rigenerare gli indizi'),
+  })
+
+  const save = useMutation({
+    mutationFn: () => liveInteractionApi.update(interactionId, {
+      title: draft!.title,
+      narrative_intro: draft!.narrative_intro,
+      mission: draft!.mission,
+      challenges: draft!.challenges.map(({ key: _key, ...challenge }) => challenge),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live-interactions'] })
+      queryClient.invalidateQueries({ queryKey: ['live-interaction', interactionId] })
+      toast({ title: 'Escape Room aggiornata' })
+      onSaved?.()
+      onClose()
+    },
+    onError: errorToast('Impossibile salvare le modifiche'),
+  })
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div className="ds-popover flex max-h-[92vh] w-full max-w-3xl flex-col rounded-[var(--ds-radius-panel)]" onMouseDown={event => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="px-6 pt-6">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Modifica escape room</h2>
+            <p className="mt-1 text-sm text-slate-500">Fino all’avvio puoi cambiare testi, numero di indizi e rigenerare il set.</p>
+          </div>
+          <button onClick={onClose} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+        </div>
+        {!draft ? (
+          <div className="flex items-center justify-center gap-2 p-16 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /> Caricamento…</div>
+        ) : (
+          <EscapeRoomDraftEditor
+            draft={draft}
+            onChange={setDraft}
+            onPublish={() => save.mutate()}
+            publishing={save.isPending}
+            publishLabel="Salva modifiche"
+            onRegenerate={options => regenerate.mutate(options)}
+            regenerating={regenerate.isPending}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -1416,6 +1566,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   const [showEscapeModal, setShowEscapeModal] = useState(false)
   const [selectedEscapeBot, setSelectedEscapeBot] = useState('')
   const [escapeDraft, setEscapeDraft] = useState<EscapeRoomDraft | null>(null)
+  const [escapeStepCount, setEscapeStepCount] = useState(5)
+  const [editingEscapeId, setEditingEscapeId] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<LiveInteractionItem | null>(null)
   const [duplicateTarget, setDuplicateTarget] = useState<LiveInteractionItem | null>(null)
   const [prefill, setPrefill] = useState<{ title: string; slides: Slide[] } | null>(null)
@@ -1434,8 +1586,18 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   const escapeBots = teacherbots.filter(bot => bot.enable_escape_room)
 
   const previewEscapeMutation = useMutation({
-    mutationFn: () => liveInteractionApi.createFromTeacherbot({ session_id: activeSessionId!, teacherbot_id: selectedEscapeBot, preview_only: true }),
-    onSuccess: response => setEscapeDraft(normalizeEscapeDraft(response.data)),
+    mutationFn: (options?: { count?: number; instructions?: string; avoid?: string[] }) => liveInteractionApi.createFromTeacherbot({
+      session_id: activeSessionId!,
+      teacherbot_id: selectedEscapeBot,
+      preview_only: true,
+      num_steps: options?.count ?? escapeStepCount,
+      instructions: options?.instructions?.trim() || undefined,
+      avoid_statements: options?.avoid?.length ? options.avoid : undefined,
+    }),
+    onSuccess: response => setEscapeDraft(prev => {
+      const next = normalizeEscapeDraft(response.data)
+      return prev ? { ...next, title: prev.title || next.title } : next
+    }),
     onError: (error: unknown) => {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast({ title: detail || 'Impossibile preparare l’escape room', variant: 'destructive' })
@@ -1566,7 +1728,11 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                   {escapeBots.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono Teacherbot con modalità Escape Room attiva.</p>}
                 </div>
                 <div className="p-6">
-                  <Button className="w-full" tone="accent" surface="solid" disabled={!selectedEscapeBot || previewEscapeMutation.isPending} onClick={() => previewEscapeMutation.mutate()}>
+                  <div className="mb-4 flex items-center gap-3">
+                    <label className="text-sm font-medium text-slate-700" htmlFor="escape-steps">Numero di indizi</label>
+                    <Input id="escape-steps" type="number" min={1} max={10} value={escapeStepCount} onChange={event => setEscapeStepCount(Math.min(10, Math.max(1, parseInt(event.target.value) || 5)))} className="h-9 w-24" />
+                  </div>
+                  <Button className="w-full" tone="accent" surface="solid" disabled={!selectedEscapeBot || previewEscapeMutation.isPending} onClick={() => previewEscapeMutation.mutate(undefined)}>
                     {previewEscapeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {previewEscapeMutation.isPending ? 'Genero la bozza…' : 'Genera quiz modificabile'}
                   </Button>
@@ -1579,6 +1745,12 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                 onBack={() => setEscapeDraft(null)}
                 onPublish={() => publishEscapeMutation.mutate()}
                 publishing={publishEscapeMutation.isPending}
+                onRegenerate={options => previewEscapeMutation.mutate({
+                  count: options.count,
+                  instructions: options.instructions,
+                  avoid: escapeDraft.challenges.map(challenge => challenge.false_statement).filter(Boolean),
+                })}
+                regenerating={previewEscapeMutation.isPending}
               />
             )}
           </div>
@@ -1625,11 +1797,12 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
           items={interactions || []}
           onOpen={item => navigate(`/teacher/live-interaction/${item.id}/control`)}
           onShare={item => setShareTarget(item as LiveInteractionItem)}
-          onEdit={item => setEditingId(item.id)}
+          onEdit={item => item.interaction_type === 'escape_room' ? setEditingEscapeId(item.id) : setEditingId(item.id)}
           onDuplicate={item => setDuplicateTarget(item as LiveInteractionItem)}
           onDelete={item => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }}
         />
       )}
+      {editingEscapeId && <EscapeRoomEditDialog interactionId={editingEscapeId} onClose={() => setEditingEscapeId(null)} />}
       {shareTarget && <LiveInteractionPublicShareModal interactionId={shareTarget.id} title={shareTarget.title} onClose={() => setShareTarget(null)} />}
       {duplicateTarget && activeSessionId && (
         <DuplicateForAudienceModal

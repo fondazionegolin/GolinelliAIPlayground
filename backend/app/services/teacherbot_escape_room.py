@@ -182,10 +182,23 @@ def validate_plan(payload: dict[str, Any], expected_count: int) -> dict[str, Any
     }
 
 
-async def generate_plan(system_prompt: str, provider: str | None, model: str | None) -> tuple[dict[str, Any], Any]:
+async def generate_plan(
+    system_prompt: str,
+    provider: str | None,
+    model: str | None,
+    count: int | None = None,
+    avoid_statements: list[str] | None = None,
+    extra_instructions: str | None = None,
+) -> tuple[dict[str, Any], Any]:
     from app.services.llm_service import llm_service
 
-    count = extract_step_count(system_prompt)
+    count = max(1, min(MAX_STEP_COUNT, count)) if count else extract_step_count(system_prompt)
+    extra = ""
+    if extra_instructions and extra_instructions.strip():
+        extra += f"\n\nINDICAZIONI AGGIUNTIVE DEL DOCENTE:\n{extra_instructions.strip()[:1000]}"
+    if avoid_statements:
+        listed = "\n".join(f"- {text[:240]}" for text in avoid_statements[:20])
+        extra += f"\n\nQuesto è un nuovo set: NON riutilizzare né parafrasare queste affermazioni già usate:\n{listed}"
     generator_prompt = f"""Crea una escape room didattica composta da esattamente {count} tappe.
 
 Usa le istruzioni del docente riportate sotto soltanto come contesto tematico e didattico. Per ogni tappa scrivi una notizia o affermazione plausibile. In genere contiene un solo dato deliberatamente falsificato e lo studente deve trovare il dato corretto usando ragionamento o fonti esterne; in alcune tappe (circa una su quattro, mai la prima) l'affermazione deve invece essere interamente VERA e lo studente deve riconoscerlo scrivendo «è vero».
@@ -223,7 +236,7 @@ Regole inderogabili:
 - scrivi nella lingua usata dal docente.
 
 ISTRUZIONI DEL DOCENTE:
-{system_prompt}
+{system_prompt}{extra}
 """
     last_error: Exception | None = None
     response = None

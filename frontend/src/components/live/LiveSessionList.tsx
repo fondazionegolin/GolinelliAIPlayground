@@ -112,7 +112,7 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
   }, [open])
   const entries: Array<{ label: string; icon: IconType; run: () => void; danger?: boolean; hidden?: boolean }> = [
     { label: 'Link pubblico', icon: Share2, run: () => actions.onShare(item), hidden: item.status === 'CLOSED' },
-    { label: 'Modifica', icon: Pencil, run: () => actions.onEdit(item), hidden: !(item.status === 'DRAFT' && item.interaction_type !== 'escape_room') },
+    { label: 'Modifica', icon: Pencil, run: () => actions.onEdit(item), hidden: item.status !== 'DRAFT' },
     { label: 'Report', icon: FileBarChart2, run: () => actions.onOpen(item), hidden: item.status === 'DRAFT' || item.status === 'CLOSED' },
     { label: 'Duplica', icon: Copy, run: () => actions.onDuplicate(item) },
     { label: 'Elimina', icon: Trash2, run: () => actions.onDelete(item), danger: true, hidden: item.status === 'ACTIVE' },
@@ -155,7 +155,9 @@ function Card({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
               {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? 'In corso' : 'Bozza'}
             </span>
           </div>
-          <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900" title={item.title}>{item.title}</h3>
+          {item.status === 'DRAFT'
+            ? <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900"><button type="button" onClick={() => actions.onEdit(item)} title="Modifica prima di avviare" className="text-left underline-offset-2 hover:text-[var(--app-accent,#7c3aed)] hover:underline">{item.title}</button></h3>
+            : <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900" title={item.title}>{item.title}</h3>}
           <p className="mt-0.5 text-xs text-slate-500">{unit(item)} <span className="px-1 text-slate-300">·</span> {date(item.created_at)}</p>
         </div>
       </div>

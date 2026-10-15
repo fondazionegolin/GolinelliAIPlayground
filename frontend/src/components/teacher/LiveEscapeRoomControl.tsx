@@ -6,6 +6,7 @@ import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import AchievementIcon from '@/components/live/AchievementIcon'
 import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
+import { EscapeRoomEditDialog } from '@/pages/teacher/LiveInteractionBuilderPage'
 
 interface Interaction {
   id: string
@@ -55,6 +56,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   const [publicUrl, setPublicUrl] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [showShare, setShowShare] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
 
   useEffect(() => {
     if (interaction.status !== 'DRAFT') return
@@ -136,9 +138,11 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
                   {participants.length === 0 && <span className="text-sm text-white/60">In attesa che gli studenti scansionino il QR…</span>}
                 </div>
               </div>
-              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} Via! Avvia l'escape room</button>
+              <button onClick={() => setShowEdit(true)} className="mt-5 block text-sm font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline md:text-left">Modifica indizi o rigenera il set ({interaction.slides_json.length})</button>
+              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} Via! Avvia l'escape room</button>
             </div>
           </div>
+          {showEdit && <EscapeRoomEditDialog interactionId={interaction.id} onClose={() => setShowEdit(false)} />}
           {showShare && <LiveInteractionPublicShareModal interactionId={interaction.id} title={interaction.title} onClose={() => setShowShare(false)} />}
         </section>
       ) : (
