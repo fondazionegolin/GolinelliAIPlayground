@@ -260,7 +260,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
   useEffect(() => {
     liveInteractionApi.currentStudent(interactionId).then(r => {
       const data = r.data
-      if (data.active) {
+      if (data.active || (data.interaction_type === 'escape_room' && data.status === 'DRAFT')) {
         setLiveState(data)
         if (data.live_interaction_id && data.current_slide_index !== undefined) {
           lastSlideRef.current = { interactionId: data.live_interaction_id, index: data.current_slide_index }

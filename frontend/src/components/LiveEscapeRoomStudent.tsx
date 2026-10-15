@@ -5,7 +5,7 @@ import { liveInteractionApi } from '@/lib/api'
 
 export interface LiveEscapeState {
   active: boolean
-  status: 'ACTIVE' | 'CLOSED'
+  status: 'DRAFT' | 'ACTIVE' | 'CLOSED'
   interaction_type: 'escape_room'
   live_interaction_id: string
   title: string
@@ -65,6 +65,20 @@ export default function LiveEscapeRoomStudent({ state, onUpdate }: { state: Live
   }
 
   const completed = Boolean(state.completed_at)
+  if (state.status === 'DRAFT') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
+        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-indigo-700 to-slate-900 p-7 text-center text-white shadow-2xl">
+          <LockKeyhole className="mx-auto h-12 w-12 text-violet-200" />
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-violet-200">Live Escape Room</p>
+          <h2 className="mt-2 text-2xl font-black">{state.title}</h2>
+          {state.narrative_intro && <p className="mt-3 text-sm leading-6 text-white/80">{state.narrative_intro}</p>}
+          {state.mission && <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-violet-100">{state.mission}</p>}
+          <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" /> Sei dentro! Attendi che il docente avvii la stanza…</p>
+        </motion.div>
+      </div>
+    )
+  }
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6">
       <AnimatePresence>

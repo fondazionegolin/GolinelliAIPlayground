@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
+import QRCode from 'qrcode'
+import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, Maximize2, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 
 interface Interaction {
   id: string
@@ -43,8 +45,35 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   const { data: results, refetch } = useQuery({
     queryKey: ['live-interaction-results', interaction.id, 'escape'],
     queryFn: () => liveInteractionApi.results(interaction.id).then(response => response.data),
-    refetchInterval: interaction.status === 'ACTIVE' ? 2000 : false,
+    refetchInterval: interaction.status === 'CLOSED' ? false : 2000,
   })
+
+  // Lobby: open the public link as soon as the teacher lands on a draft room,
+  // so the QR is visible and students can join before the start.
+  const [publicCode, setPublicCode] = useState('')
+  const [publicUrl, setPublicUrl] = useState('')
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [showShare, setShowShare] = useState(false)
+
+  useEffect(() => {
+    if (interaction.status !== 'DRAFT') return
+    let cancelled = false
+    liveInteractionApi.enablePublicLink(interaction.id)
+      .then(response => {
+        if (cancelled) return
+        setPublicCode(response.data.access_code)
+        setPublicUrl(`${window.location.origin}/live/${response.data.token}`)
+      })
+      .catch(() => toast({ title: 'Impossibile creare il link pubblico', variant: 'destructive' }))
+    return () => { cancelled = true }
+  }, [interaction.id, interaction.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!publicUrl) return
+    QRCode.toDataURL(publicUrl, { width: 480, margin: 2, errorCorrectionLevel: 'H', color: { dark: '#111827', light: '#ffffff' } })
+      .then(setQrDataUrl)
+      .catch(() => {})
+  }, [publicUrl])
 
   useEffect(() => {
     if (interaction.status !== 'ACTIVE') return
@@ -83,9 +112,33 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
       </div>
 
       {interaction.status === 'DRAFT' ? (
-        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-indigo-700 to-slate-900 p-10 text-center text-white shadow-xl">
-          <LockKeyhole className="mx-auto h-14 w-14 text-violet-200" /><h2 className="mt-4 text-3xl font-black">La stanza è pronta</h2><p className="mx-auto mt-2 max-w-xl text-white/70">{interaction.escape_config?.mission || `${interaction.slides_json.length} indizi con inventario e classifica finale.`}</p>
-          <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} Avvia Escape Room live</button>
+        <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-indigo-700 to-slate-900 p-6 text-white shadow-xl sm:p-10">
+          <div className="grid items-center gap-8 md:grid-cols-[minmax(220px,300px)_1fr]">
+            <div className="mx-auto w-full max-w-[300px]">
+              <div className="overflow-hidden rounded-3xl bg-white p-3 shadow-2xl">
+                {qrDataUrl
+                  ? <img src={qrDataUrl} alt="QR code per entrare nell'escape room" className="aspect-square w-full" />
+                  : <div className="flex aspect-square w-full items-center justify-center text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>}
+              </div>
+              <button onClick={() => setShowShare(true)} disabled={!publicUrl} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 disabled:opacity-50"><Maximize2 className="h-4 w-4" /> Proietta QR a schermo intero</button>
+            </div>
+            <div className="text-center md:text-left">
+              <LockKeyhole className="mx-auto h-10 w-10 text-violet-200 md:mx-0" />
+              <h2 className="mt-3 text-3xl font-black">La stanza è pronta</h2>
+              <p className="mt-2 max-w-xl text-white/70">{interaction.escape_config?.mission || `${interaction.slides_json.length} indizi con inventario e classifica finale.`}</p>
+              {publicCode && <p className="mt-4 text-xs font-bold uppercase tracking-widest text-white/50">Codice Live <span className="ml-2 text-2xl font-black tracking-[0.18em] text-amber-300">{publicCode}</span></p>}
+              {publicUrl && <p className="mt-1 break-all font-mono text-sm text-violet-200">{publicUrl}</p>}
+              <div className="mt-5 rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
+                <p className="flex items-center justify-center gap-2 text-sm font-bold md:justify-start"><Users className="h-4 w-4" /> {participants.length} {participants.length === 1 ? 'studente pronto' : 'studenti pronti'}</p>
+                <div className="mt-3 flex max-h-40 flex-wrap justify-center gap-2 overflow-y-auto md:justify-start">
+                  {participants.map(item => <span key={item.student_id} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">{item.student_nickname}</span>)}
+                  {participants.length === 0 && <span className="text-sm text-white/60">In attesa che gli studenti scansionino il QR…</span>}
+                </div>
+              </div>
+              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} Via! Avvia l'escape room</button>
+            </div>
+          </div>
+          {showShare && <LiveInteractionPublicShareModal interactionId={interaction.id} title={interaction.title} onClose={() => setShowShare(false)} />}
         </section>
       ) : (
         <>

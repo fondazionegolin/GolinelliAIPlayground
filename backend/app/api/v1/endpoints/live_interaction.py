@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_student, get_current_teacher
@@ -683,11 +683,20 @@ async def start_live_interaction(
     if not li.slides_json:
         raise HTTPException(400, "No slides or escape-room clues defined")
 
+    now = datetime.now(timezone.utc)
     li.status = "ACTIVE"
     li.current_slide_index = 0
-    li.current_slide_started_at = datetime.now(timezone.utc)
-    li.started_at = datetime.now(timezone.utc)
+    li.current_slide_started_at = now
+    li.started_at = now
     li.ended_at = None
+    if li.interaction_type == "escape_room":
+        # Students waiting in the lobby already have a participant row: the
+        # race clock starts for everyone at the teacher's "Via", not at join.
+        await db.execute(
+            update(LiveEscapeParticipant)
+            .where(LiveEscapeParticipant.live_interaction_id == li.id)
+            .values(started_at=now)
+        )
     await db.commit()
 
     rc = await _count_responses(db, li.id, 0)
@@ -1055,14 +1064,26 @@ async def get_current_live_interaction(
     student: Annotated[SessionStudent, Depends(get_current_student)],
     interaction_id: UUID | None = Query(default=None),
 ):
+    # An escape room in DRAFT with its public link open is a lobby: students
+    # join and wait there until the teacher presses start.
+    lobby = and_(
+        LiveInteraction.status == "DRAFT",
+        LiveInteraction.interaction_type == "escape_room",
+        LiveInteraction.public_enabled.is_(True),
+    )
     query = (
         select(LiveInteraction)
         .where(LiveInteraction.session_id == student.session_id)
-        .where(LiveInteraction.status == "ACTIVE")
+        .where(or_(LiveInteraction.status == "ACTIVE", lobby))
     )
     if interaction_id is not None:
         query = query.where(LiveInteraction.id == interaction_id)
-    li = (await db.execute(query.order_by(LiveInteraction.created_at.desc()).limit(1))).scalar_one_or_none()
+    li = (await db.execute(
+        query.order_by(
+            case((LiveInteraction.status == "ACTIVE", 0), else_=1),
+            LiveInteraction.created_at.desc(),
+        ).limit(1)
+    )).scalar_one_or_none()
 
     if not li:
         return {"active": False}
