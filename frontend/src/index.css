@@ -1054,3 +1054,15 @@ html:not(#x) :is(input:not([type='checkbox']):not([type='radio']):not([type='ran
 @supports (corner-shape: squircle) {
   .ds-squircle { border-radius: 52%; corner-shape: squircle; }
 }
+
+
+/* iOS Safari zooms the whole page when a focused field has a font size below 16px and never zooms
+   back out. Keep every text field at 16px on touch devices (unlayered, so it wins over text-sm). */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
