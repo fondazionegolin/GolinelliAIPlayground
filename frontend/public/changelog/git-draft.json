@@ -1,14 +1,29 @@
 {
-  "generated_at": "2026-10-09T13:27:13.078123+00:00",
-  "version_label": "2026.10.09-118bc47f",
-  "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "118bc47f0fe521ee85372ee027582edb778bc6d3",
+  "generated_at": "2026-10-15T15:39:16.904929+00:00",
+  "version_label": "2026.10.15-eadd665a",
+  "title": "Dataflow, scuole, crediti e Video Studio",
+  "summary": "Nuove funzionalità per docenti e amministratori, strumenti privacy e miglioramenti dei laboratori.",
+  "git_ref": "eadd665a1c81dfab07e486799ed7452ffc9581c1",
   "items": [
     {
+      "category": "new",
+      "title": "Dataflow Studio",
+      "description": "Tabelle persistenti, cronologia e strumenti di modifica per assistente e workflow."
+    },
+    {
+      "category": "new",
+      "title": "Gestione scuole e crediti",
+      "description": "Inviti e onboarding scuole, pacchetti di crediti e avvisi di saldo."
+    },
+    {
+      "category": "new",
+      "title": "Video Studio e privacy",
+      "description": "Creazione di video e anonimizzazione locale degli allegati."
+    },
+    {
       "category": "improved",
-      "title": "Feat(platform): sync current project state",
-      "description": "Feat(platform): sync current project state"
+      "title": "Laboratori e spazi didattici",
+      "description": "Aggiornamenti a notebook, Coding Lab, modelli ML, RAG e dettatura."
     }
   ]
 }
