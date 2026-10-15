@@ -6,13 +6,23 @@ from typing import Any
 DEFAULT_STEP_COUNT = 5
 MAX_STEP_COUNT = 10
 
-_DEFAULT_ACHIEVEMENTS = (
-    ("Chiave antica", "🗝️", "Apre il passaggio verso il prossimo indizio."),
-    ("Torcia", "🔦", "Illumina i dettagli che erano rimasti nascosti."),
-    ("Mappa cifrata", "🗺️", "Rivela un nuovo tratto del percorso."),
-    ("Sigillo", "🔮", "Conferma che la correzione è autentica."),
-    ("Frammento finale", "💎", "Completa il congegno di uscita."),
+# Flat icon keys rendered by the frontend `AchievementIcon` component.
+ACHIEVEMENT_ICONS = (
+    "key", "flashlight", "map", "shield", "gem", "book",
+    "compass", "lock", "bulb", "star", "flask", "puzzle",
 )
+
+_DEFAULT_ACHIEVEMENTS = (
+    ("Chiave antica", "key", "Apre il passaggio verso il prossimo indizio."),
+    ("Torcia", "flashlight", "Illumina i dettagli che erano rimasti nascosti."),
+    ("Mappa cifrata", "map", "Rivela un nuovo tratto del percorso."),
+    ("Sigillo", "shield", "Conferma che la correzione è autentica."),
+    ("Frammento finale", "gem", "Completa il congegno di uscita."),
+)
+
+# Answers accepted when the statement is entirely true.
+TRUE_ANSWERS = ["è vero", "vero", "corretto", "giusto", "esatto", "true", "è corretto", "è giusto", "è tutto vero", "e vero", "è vera", "e vera", "vera", "e tutto vero"]
+ESCAPE_PROMPT = "Se l’affermazione contiene un dato falso, scrivi la correzione. Se è tutta vera, scrivi «è vero»."
 
 _ITALIAN_NUMBERS = {
     "uno": 1, "primo": 1, "prima": 1, "due": 2, "secondo": 2, "seconda": 2,
@@ -128,10 +138,13 @@ def validate_plan(payload: dict[str, Any], expected_count: int) -> dict[str, Any
     for index, raw in enumerate(raw_challenges[:expected_count]):
         if not isinstance(raw, dict):
             raise ValueError("Invalid escape-room challenge")
+        is_true = raw.get("is_true") is True
         answers = raw.get("accepted_answers") or raw.get("answers") or []
         if isinstance(answers, str):
             answers = [answers]
         answers = [str(answer).strip() for answer in answers if str(answer).strip()]
+        if is_true:
+            answers = list(TRUE_ANSWERS)
         false_statement = str(raw.get("false_statement") or "").strip()
         if not false_statement or not answers:
             raise ValueError("Challenge statement or answer missing")
@@ -140,12 +153,17 @@ def validate_plan(payload: dict[str, Any], expected_count: int) -> dict[str, Any
         challenges.append({
             "number": index + 1,
             "false_statement": false_statement,
-            "prompt": "Individua l’unica informazione falsa e inserisci la correzione.",
+            "prompt": ESCAPE_PROMPT,
+            "is_true": is_true,
             "accepted_answers": answers,
             "explanation": str(raw.get("explanation") or "Correzione acquisita.").strip(),
             "achievement": {
                 "name": str(raw_achievement.get("name") or fallback_name).strip()[:80],
-                "icon": str(raw_achievement.get("icon") or fallback_icon).strip()[:12],
+                "icon": (
+                    str(raw_achievement.get("icon")).strip()
+                    if str(raw_achievement.get("icon") or "").strip() in ACHIEVEMENT_ICONS
+                    else fallback_icon
+                ),
                 "description": str(raw_achievement.get("description") or fallback_description).strip()[:240],
             },
         })
@@ -170,7 +188,7 @@ async def generate_plan(system_prompt: str, provider: str | None, model: str | N
     count = extract_step_count(system_prompt)
     generator_prompt = f"""Crea una escape room didattica composta da esattamente {count} tappe.
 
-Usa le istruzioni del docente riportate sotto soltanto come contesto tematico e didattico. Per ogni tappa scrivi una notizia o affermazione plausibile che contenga un solo dato deliberatamente falsificato. Lo studente dovrà trovare il dato corretto usando ragionamento o fonti esterne.
+Usa le istruzioni del docente riportate sotto soltanto come contesto tematico e didattico. Per ogni tappa scrivi una notizia o affermazione plausibile. In genere contiene un solo dato deliberatamente falsificato e lo studente deve trovare il dato corretto usando ragionamento o fonti esterne; in alcune tappe (circa una su quattro, mai la prima) l'affermazione deve invece essere interamente VERA e lo studente deve riconoscerlo scrivendo «è vero».
 
 Restituisci esclusivamente JSON valido con questa struttura:
 {{
@@ -179,12 +197,13 @@ Restituisci esclusivamente JSON valido con questa struttura:
   "mission": "obiettivo della missione, con il numero di indizi da risolvere",
   "challenges": [
     {{
-      "false_statement": "affermazione con un solo dato falso",
+      "false_statement": "affermazione con un solo dato falso (oppure interamente vera se is_true è true)",
+      "is_true": false,
       "accepted_answers": ["risposta esatta", "eventuale variante equivalente"],
       "explanation": "spiegazione breve del fatto corretto",
       "achievement": {{
         "name": "nome di un oggetto coerente con l'ambientazione",
-        "icon": "una singola emoji che rappresenta l'oggetto",
+        "icon": "una sola chiave tra: key, flashlight, map, shield, gem, book, compass, lock, bulb, star, flask, puzzle",
         "description": "frase narrativa completa che spiega concretamente cosa permette di fare l'oggetto e come conduce al prossimo indizio"
       }}
     }}
@@ -192,6 +211,7 @@ Restituisci esclusivamente JSON valido con questa struttura:
 }}
 
 Regole inderogabili:
+- se is_true è true, l'affermazione non deve contenere alcun dato falso e accepted_answers va lasciato vuoto; l'aspetto dell'affermazione vera deve essere indistinguibile da quelle false;
 - non indicare quale parte o quale tipo di dato sia falso: niente suggerimenti come data, nome, luogo o codice;
 - non mostrare mai la soluzione dentro false_statement;
 - narrative_intro deve essere un vero incipit in seconda persona, coerente con il contesto del docente;
@@ -275,7 +295,7 @@ def public_state(
         challenge = {
             "number": current_step + 1,
             "false_statement": raw["false_statement"],
-            "prompt": raw["prompt"],
+            "prompt": ESCAPE_PROMPT,
         }
     return {
         "enabled": True,

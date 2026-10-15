@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, Maximize2, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import AchievementIcon from '@/components/live/AchievementIcon'
 import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 
 interface Interaction {
@@ -157,7 +158,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
               {participants.map((item, index) => (
                 <div key={item.student_id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-4">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-bold text-slate-600">{item.completed ? item.rank || index + 1 : '—'}</span>
-                  <div className="min-w-0"><div className="flex items-center gap-2"><span className="truncate font-semibold text-slate-800">{item.student_nickname}</span>{item.completed && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}</div><div className="mt-1 flex items-center gap-3 text-xs text-slate-500"><span>{item.current_step}/{item.total_steps} indizi</span><span>{item.attempts} tentativi</span><span className="truncate">{item.inventory.map(object => object.icon).join(' ')}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{ width: `${item.total_steps ? item.current_step / item.total_steps * 100 : 0}%` }} /></div></div>
+                  <div className="min-w-0"><div className="flex items-center gap-2"><span className="truncate font-semibold text-slate-800">{item.student_nickname}</span>{item.completed && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}</div><div className="mt-1 flex items-center gap-3 text-xs text-slate-500"><span>{item.current_step}/{item.total_steps} indizi</span><span>{item.attempts} tentativi</span><span className="flex gap-1">{item.inventory.map((object, i) => <AchievementIcon key={i} icon={object.icon} index={i} size={18} title={object.name} />)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{ width: `${item.total_steps ? item.current_step / item.total_steps * 100 : 0}%` }} /></div></div>
                   <span className="font-mono text-sm font-bold text-slate-700">{formatTime(item.duration_seconds)}</span>
                   {interaction.status === 'CLOSED' && (
                     <details className="group col-span-3 mt-1 rounded-xl border border-slate-200 bg-slate-50/70">

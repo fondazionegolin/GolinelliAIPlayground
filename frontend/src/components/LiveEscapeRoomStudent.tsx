@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Clock3, KeyRound, Loader2, LockKeyhole, PackageOpen, Sparkles, Trophy } from '@/components/icons'
+import { Clock3, KeyRound, Loader2, LockKeyhole, Sparkles, Trophy } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
+import AchievementIcon from '@/components/live/AchievementIcon'
 
 export interface LiveEscapeState {
   active: boolean
@@ -88,7 +89,7 @@ export default function LiveEscapeRoomStudent({ state, onUpdate }: { state: Live
               {Array.from({ length: 16 }, (_, index) => (
                 <motion.span key={index} initial={{ opacity: 1, x: 0, y: 0, rotate: 0 }} animate={{ opacity: 0, x: Math.cos(index * Math.PI / 8) * 170, y: Math.sin(index * Math.PI / 8) * 170, rotate: 240 }} transition={{ duration: 1.4, delay: 0.12 }} className={`absolute left-1/2 top-1/2 ${index % 2 ? 'text-amber-400' : 'text-violet-400'}`}>{index % 3 ? '✦' : '●'}</motion.span>
               ))}
-              <motion.div animate={{ y: [0, -8, 0], rotate: [0, -4, 4, 0] }} transition={{ duration: 1.2, repeat: Infinity, repeatDelay: 0.5 }} className="text-6xl">{state.achievement.icon}</motion.div>
+              <motion.div animate={{ y: [0, -8, 0], rotate: [0, -4, 4, 0] }} transition={{ duration: 1.2, repeat: Infinity, repeatDelay: 0.5 }} className="mx-auto w-fit"><AchievementIcon icon={state.achievement.icon} index={state.current_step - 1} size={72} /></motion.div>
               <p className="mt-3 text-xs font-black uppercase tracking-[0.2em] text-amber-600">Oggetto sbloccato</p>
               <h3 className="mt-1 text-2xl font-black text-slate-900">{state.achievement.name}</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">{state.achievement.description}</p>
@@ -104,21 +105,17 @@ export default function LiveEscapeRoomStudent({ state, onUpdate }: { state: Live
             <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 font-mono text-sm"><Clock3 className="h-4 w-4" /> {formatTime(elapsed)}</span>
           </div>
           <h2 className="mt-4 text-2xl font-black">{state.title}</h2>
-          {state.narrative_intro && <p className="mt-2 text-sm leading-6 text-white/80">{state.narrative_intro}</p>}
-          {state.mission && <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-violet-100">{state.mission}</p>}
-          {state.inventory.length > 0 && <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Sviluppi della missione</p><div className="mt-2 space-y-2">{state.inventory.slice(-3).map((item, index, visible) => <motion.div key={`${item.name}-${state.inventory.indexOf(item)}`} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} className={`flex items-start gap-2 text-sm leading-5 ${index === visible.length - 1 ? 'text-white' : 'text-white/60'}`}><span className="text-lg">{item.icon}</span><p>{item.description}</p></motion.div>)}</div></div>}
-          <div className="mt-5 flex gap-1.5">{Array.from({ length: state.total_steps }, (_, index) => <motion.span key={index} animate={index < state.current_step ? { scaleY: [1, 2, 1] } : { scaleY: 1 }} className={`h-1.5 flex-1 rounded-full transition-colors ${index < state.current_step ? 'bg-emerald-400' : index === state.current_step && !completed ? 'bg-white' : 'bg-white/20'}`} />)}</div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Array.from({ length: state.total_steps }, (_, index) => {
+              const item = state.inventory[index]
+              return item
+                ? <motion.span key={index} initial={{ scale: 0.4, rotate: -12 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 320, damping: 18 }} className="rounded-[10px] bg-white p-0.5 shadow-sm"><AchievementIcon icon={item.icon} index={index} size={36} title={item.name} /></motion.span>
+                : <span key={index} className="rounded-[10px] bg-white/10 p-0.5"><AchievementIcon index={index} size={36} locked /></span>
+            })}
+          </div>
         </header>
 
         <main className="space-y-4 p-4 sm:p-6">
-          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="mb-3 flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><PackageOpen className="h-4 w-4" /> Inventario</span><span className="text-xs text-slate-400">{state.inventory.length}/{state.total_steps}</span></div>
-            <div className="flex min-h-14 gap-2 overflow-x-auto pb-1">
-              {state.inventory.map((item, index) => <motion.div key={`${item.name}-${index}`} initial={{ opacity: 0, scale: 0.5, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 20, delay: index === state.inventory.length - 1 ? 0.15 : 0 }} title={item.description} className="flex min-w-24 flex-col items-center rounded-xl border border-violet-100 bg-white px-3 py-2 text-center shadow-sm"><span className="text-2xl">{item.icon}</span><span className="mt-1 text-[11px] font-semibold text-slate-700">{item.name}</span></motion.div>)}
-              {state.inventory.length === 0 && <p className="self-center text-sm text-slate-400">Gli oggetti conquistati appariranno qui.</p>}
-            </div>
-          </section>
-
           {completed ? (
             <motion.section initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 220, damping: 18 }} className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-amber-50 to-white p-6 text-center"><motion.div animate={{ rotate: [0, -8, 8, 0], y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.8 }}><Trophy className="mx-auto h-12 w-12 text-amber-500" /></motion.div><h3 className="mt-3 text-xl font-black text-emerald-900">Missione completata!</h3><p className="mt-1 text-sm text-emerald-700">Tempo finale: <strong>{formatTime(elapsed)}</strong> · {state.attempts} tentativi</p><p className="mt-3 text-sm text-slate-600">Tutti gli oggetti sono al sicuro. Attendi la classifica finale.</p></motion.section>
           ) : state.current_challenge && (
@@ -130,7 +127,7 @@ export default function LiveEscapeRoomStudent({ state, onUpdate }: { state: Live
               </form>
             </>
           )}
-          {state.message && <motion.p key={`${state.current_step}-${state.message}`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={state.correct === false ? { opacity: 1, y: 0, scale: 1, x: [0, -6, 6, -3, 3, 0] } : { opacity: 1, y: 0, scale: 1 }} className={`rounded-xl px-3 py-2 text-sm font-medium ${state.correct === false ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{state.achievement ? `${state.achievement.icon} ${state.achievement.name}: ` : ''}{state.message}</motion.p>}
+          {state.message && <motion.p key={`${state.current_step}-${state.message}`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={state.correct === false ? { opacity: 1, y: 0, scale: 1, x: [0, -6, 6, -3, 3, 0] } : { opacity: 1, y: 0, scale: 1 }} className={`rounded-xl px-3 py-2 text-sm font-medium ${state.correct === false ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{state.achievement ? `${state.achievement.name}: ` : ''}{state.message}</motion.p>}
         </main>
       </motion.div>
     </div>

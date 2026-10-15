@@ -1,3 +1,4 @@
+import AchievementIcon, { ACHIEVEMENT_ICON_KEYS } from '@/components/live/AchievementIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -65,6 +66,7 @@ interface EscapeTeacherbotItem {
 interface EscapeChallengeDraft {
   key: string
   false_statement: string
+  is_true: boolean
   accepted_answers: string[]
   explanation: string
   achievement: { name: string; icon: string; description: string }
@@ -80,9 +82,10 @@ interface EscapeRoomDraft {
 const emptyEscapeChallenge = (): EscapeChallengeDraft => ({
   key: makeKey(),
   false_statement: '',
+  is_true: false,
   accepted_answers: [''],
   explanation: '',
-  achievement: { name: 'Nuovo oggetto', icon: '🗝️', description: '' },
+  achievement: { name: 'Nuovo oggetto', icon: 'key', description: '' },
 })
 
 function normalizeEscapeDraft(raw: Record<string, unknown>): EscapeRoomDraft {
@@ -97,11 +100,12 @@ function normalizeEscapeDraft(raw: Record<string, unknown>): EscapeRoomDraft {
       return {
         key: makeKey(),
         false_statement: String(challenge.false_statement || ''),
+        is_true: challenge.is_true === true,
         accepted_answers: Array.isArray(challenge.accepted_answers) ? challenge.accepted_answers.map(String) : [''],
         explanation: String(challenge.explanation || ''),
         achievement: {
           name: String(achievement.name || 'Oggetto misterioso'),
-          icon: String(achievement.icon || '🗝️'),
+          icon: String(achievement.icon || 'key'),
           description: String(achievement.description || ''),
         },
       }
@@ -1312,7 +1316,7 @@ function EscapeRoomDraftEditor({
   }
   const valid = Boolean(
     draft.title.trim() && draft.challenges.length &&
-    draft.challenges.every(challenge => challenge.false_statement.trim() && challenge.accepted_answers.some(answer => answer.trim()))
+    draft.challenges.every(challenge => challenge.false_statement.trim() && (challenge.is_true || challenge.accepted_answers.some(answer => answer.trim())))
   )
 
   return (
@@ -1352,10 +1356,11 @@ function EscapeRoomDraftEditor({
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Affermazione con l’informazione alterata</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Affermazione (con un dato alterato, oppure vera)</label>
                   <Textarea rows={3} value={challenge.false_statement} onChange={event => updateChallenge(index, { false_statement: event.target.value })} />
                 </div>
-                <div>
+                <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={challenge.is_true} onChange={event => updateChallenge(index, { is_true: event.target.checked })} className="h-4 w-4 rounded border-slate-300" /> L’affermazione è interamente vera <span className="text-xs text-slate-400">(lo studente deve scrivere «è vero»)</span></label>
+                {!challenge.is_true && <div>
                   <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">Soluzioni accettate</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-bold text-violet-600 hover:text-violet-800">+ Variante</button></div>
                   <div className="space-y-2">
                     {challenge.accepted_answers.map((answer, answerIndex) => (
@@ -1365,13 +1370,13 @@ function EscapeRoomDraftEditor({
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Spiegazione dopo la risposta</label>
                   <Textarea rows={2} value={challenge.explanation} onChange={event => updateChallenge(index, { explanation: event.target.value })} />
                 </div>
-                <div className="grid grid-cols-[72px_1fr] gap-3 sm:grid-cols-[72px_1fr_1.5fr]">
-                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Icona</label><Input value={challenge.achievement.icon} maxLength={12} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, icon: event.target.value } })} /></div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_1.5fr]">
+                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Icona</label><div className="flex flex-wrap gap-1">{ACHIEVEMENT_ICON_KEYS.map(key => <button key={key} type="button" onClick={() => updateChallenge(index, { achievement: { ...challenge.achievement, icon: key } })} className={`rounded-xl p-0.5 ${challenge.achievement.icon === key ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-100'}`}><AchievementIcon icon={key} size={26} /></button>)}</div></div>
                   <div><label className="mb-1 block text-xs font-medium text-slate-600">Ricompensa</label><Input value={challenge.achievement.name} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, name: event.target.value } })} /></div>
                   <div className="col-span-2 sm:col-span-1"><label className="mb-1 block text-xs font-medium text-slate-600">Effetto narrativo</label><Input value={challenge.achievement.description} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, description: event.target.value } })} /></div>
                 </div>

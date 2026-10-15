@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import AchievementIcon from '@/components/live/AchievementIcon'
 import { CheckCircle2, KeyRound, Loader2, LockKeyhole, PackageOpen, RotateCcw, Terminal } from '@/components/icons'
 
 export interface EscapeRoomState {
@@ -74,7 +75,7 @@ export default function EscapeRoomTerminal({ state, loading, error, onStart, onS
             <h3 className="mt-2 text-xl font-bold text-slate-900">{state.title || 'La stanza dei fatti alterati'}</h3>
             {state.narrative_intro && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{state.narrative_intro}</p>}
             {state.mission && <p className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-sm font-medium leading-5 text-violet-900 ring-1 ring-violet-100">{state.mission}</p>}
-            {state.inventory?.length > 0 && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">Sviluppi della missione</p><div className="mt-2 space-y-2">{state.inventory.slice(-3).map((item, index, visible) => <motion.div key={`${item.name}-${state.inventory.indexOf(item)}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className={`flex items-start gap-2 text-sm leading-5 ${index === visible.length - 1 ? 'text-slate-800' : 'text-slate-500'}`}><span className="text-lg">{item.icon}</span><p>{item.description}</p></motion.div>)}</div></div>}
+            {state.inventory?.length > 0 && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">Sviluppi della missione</p><div className="mt-2 space-y-2">{state.inventory.slice(-3).map((item, index, visible) => <motion.div key={`${item.name}-${state.inventory.indexOf(item)}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className={`flex items-start gap-2 text-sm leading-5 ${index === visible.length - 1 ? 'text-slate-800' : 'text-slate-500'}`}><AchievementIcon icon={item.icon} index={state.inventory.indexOf(item)} size={24} /><p>{item.description}</p></motion.div>)}</div></div>}
           </div>
         </div>
         {state.total_steps > 0 && (
@@ -88,7 +89,7 @@ export default function EscapeRoomTerminal({ state, loading, error, onStart, onS
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><PackageOpen className="h-4 w-4" /> Inventario</span><span className="text-xs text-slate-400">{state.inventory?.length || 0}/{state.total_steps}</span></div>
           <div className="flex min-h-14 gap-2 overflow-x-auto pb-1">
-            {(state.inventory || []).map((item, index) => <div key={`${item.name}-${index}`} title={item.description} className="flex min-w-24 flex-col items-center rounded-xl border border-violet-100 bg-white px-3 py-2 text-center shadow-sm"><span className="text-2xl">{item.icon}</span><span className="mt-1 text-[11px] font-semibold text-slate-700">{item.name}</span></div>)}
+            {(state.inventory || []).map((item, index) => <div key={`${item.name}-${index}`} title={item.description} className="flex min-w-24 flex-col items-center rounded-xl border border-violet-100 bg-white px-3 py-2 text-center shadow-sm"><AchievementIcon icon={item.icon} index={index} size={36} /><span className="mt-1 text-[11px] font-semibold text-slate-700">{item.name}</span></div>)}
             {!state.inventory?.length && <p className="self-center text-sm text-slate-400">Gli oggetti conquistati appariranno qui.</p>}
           </div>
         </div>
@@ -127,7 +128,7 @@ export default function EscapeRoomTerminal({ state, loading, error, onStart, onS
           </>
         ) : null}
 
-        {(error || state.message) && <div className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs ${error || state.correct === false ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{error && <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" />}<span>{state.achievement ? `${state.achievement.icon} ${state.achievement.name}: ` : ''}{error || state.message}</span></div>}
+        {(error || state.message) && <div className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs ${error || state.correct === false ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{error && <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" />}<span>{state.achievement ? `${state.achievement.name}: ` : ''}{error || state.message}</span></div>}
       </div>
     </section>
   )

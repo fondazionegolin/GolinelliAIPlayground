@@ -1651,7 +1651,7 @@ async def submit_escape_room_answer(
     is_correct = answers_match(submitted, accepted)
     judge_response = None
     validation_context = None
-    if not is_correct:
+    if not is_correct and not challenge.get("is_true"):
         session_result = await db.execute(
             select(Session, Class)
             .join(Class, Session.class_id == Class.id)

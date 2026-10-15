@@ -26,7 +26,7 @@ from app.services.credit_service import credit_service
 from app.services.document_processor import document_processor
 from app.services.json_extract import extract_json
 from app.services.llm_service import llm_service
-from app.services.teacherbot_escape_room import answers_match, generate_plan, judge_semantic_answer, validate_plan
+from app.services.teacherbot_escape_room import ESCAPE_PROMPT, answers_match, generate_plan, judge_semantic_answer, validate_plan
 
 teacher_router = APIRouter()
 student_router = APIRouter()
@@ -280,7 +280,7 @@ def _public_escape_state(li: LiveInteraction, participant: LiveEscapeParticipant
         challenge = {
             "number": step + 1,
             "false_statement": raw.get("false_statement", ""),
-            "prompt": raw.get("prompt", "Individua l’informazione falsa e inserisci la correzione."),
+            "prompt": ESCAPE_PROMPT,
         }
     return {
         "active": li.status == "ACTIVE",
@@ -1226,7 +1226,7 @@ async def submit_escape_answer(
     is_correct = answers_match(submitted, [str(value) for value in challenge.get("accepted_answers") or []])
     judge_response = None
     session_obj = None
-    if not is_correct and li.teacherbot_id:
+    if not is_correct and li.teacherbot_id and not challenge.get("is_true"):
         bot = (await db.execute(select(Teacherbot).where(Teacherbot.id == li.teacherbot_id))).scalar_one_or_none()
         session_obj = (await db.execute(select(Session).where(Session.id == li.session_id))).scalar_one()
         if bot:
