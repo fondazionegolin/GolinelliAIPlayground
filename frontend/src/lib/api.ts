@@ -1888,6 +1888,8 @@ export const liveInteractionApi = {
     api.get('/student/live-interaction/current', { params: interactionId ? { interaction_id: interactionId } : undefined }),
   submitAnswer: (data: { live_interaction_id: string; slide_index: number; response: object }) =>
     api.post('/student/live-interaction/answer', data),
+  escapeSummary: (interactionId: string) =>
+    api.get('/student/live-interaction/escape-summary', { params: { interaction_id: interactionId } }),
   submitEscapeAnswer: (data: { live_interaction_id: string; value: string }) =>
     api.post('/student/live-interaction/escape-answer', data),
   getPublicInfo: (token: string) =>

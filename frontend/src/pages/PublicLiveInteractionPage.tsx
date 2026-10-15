@@ -101,7 +101,7 @@ export default function PublicLiveInteractionPage() {
           )}
         </motion.main>
       </div>
-      {joined && guestSession && <LiveInteractionStudentOverlay key={guestSession.student_id} sessionId={guestSession.session_id} interactionId={info.live_interaction_id} studentToken={guestSession.join_token} />}
+      {joined && guestSession && <LiveInteractionStudentOverlay key={guestSession.student_id} sessionId={guestSession.session_id} interactionId={info.live_interaction_id} studentToken={guestSession.join_token} onFinished={() => setInfo(prev => prev ? { ...prev, status: 'CLOSED' } : prev)} />}
     </div>
   )
 }

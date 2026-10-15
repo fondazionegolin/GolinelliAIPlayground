@@ -852,7 +852,11 @@ async def end_live_interaction(
     _disable_public_access(li)
     await db.commit()
     await _save_report(db, li)
-    await sio.emit("live_interaction_state", {"live_interaction_id": str(li.id), "status": "CLOSED"}, room=f"session:{li.session_id}")
+    await sio.emit(
+        "live_interaction_state",
+        {"live_interaction_id": str(li.id), "interaction_type": li.interaction_type, "status": "CLOSED"},
+        room=f"session:{li.session_id}",
+    )
     return {"status": "CLOSED"}
 
 
@@ -1173,10 +1177,17 @@ async def get_current_live_interaction(
         LiveInteraction.interaction_type == "escape_room",
         LiveInteraction.public_enabled.is_(True),
     )
+    visible = or_(LiveInteraction.status == "ACTIVE", lobby)
+    if interaction_id is not None:
+        # A finished escape room stays reachable (by id) so a reload still shows the recap.
+        visible = or_(
+            visible,
+            and_(LiveInteraction.status == "CLOSED", LiveInteraction.interaction_type == "escape_room"),
+        )
     query = (
         select(LiveInteraction)
         .where(LiveInteraction.session_id == student.session_id)
-        .where(or_(LiveInteraction.status == "ACTIVE", lobby))
+        .where(visible)
     )
     if interaction_id is not None:
         query = query.where(LiveInteraction.id == interaction_id)
@@ -1196,6 +1207,8 @@ async def get_current_live_interaction(
             .where(LiveEscapeParticipant.live_interaction_id == li.id)
             .where(LiveEscapeParticipant.student_id == student.id)
         )).scalar_one_or_none()
+        if not participant and li.status == "CLOSED":
+            return {"active": False, "status": "CLOSED", "interaction_type": "escape_room", "live_interaction_id": str(li.id)}
         if not participant:
             participant = LiveEscapeParticipant(
                 live_interaction_id=li.id,
@@ -1237,6 +1250,102 @@ async def get_current_live_interaction(
         "already_answered": already_answered,
         "response_count": rc,
         "total_students": sc,
+    }
+
+
+@student_router.get("/live-interaction/escape-summary")
+async def get_escape_summary(
+    interaction_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Final recap for a student: rank, time and each clue with the right answer and their attempts."""
+    li = (await db.execute(
+        select(LiveInteraction)
+        .where(LiveInteraction.id == interaction_id)
+        .where(LiveInteraction.session_id == student.session_id)
+        .where(LiveInteraction.interaction_type == "escape_room")
+    )).scalar_one_or_none()
+    if not li:
+        raise HTTPException(404, "Escape room not found")
+    if li.status != "CLOSED":
+        raise HTTPException(409, "La sessione non è ancora terminata")
+
+    rows = (await db.execute(
+        select(LiveEscapeParticipant, SessionStudent.nickname)
+        .join(SessionStudent, LiveEscapeParticipant.student_id == SessionStudent.id)
+        .where(LiveEscapeParticipant.live_interaction_id == li.id)
+    )).all()
+    challenges = li.slides_json or []
+    end_fallback = li.ended_at or datetime.now(timezone.utc)
+
+    entries = []
+    for participant, nickname in rows:
+        finished = participant.completed_at is not None
+        duration = max(0, int(((participant.completed_at or end_fallback) - participant.started_at).total_seconds()))
+        entries.append({
+            "student_id": participant.student_id,
+            "nickname": nickname,
+            "completed": finished,
+            "duration_seconds": duration,
+            "current_step": participant.current_step,
+            "attempts": participant.attempts,
+            "participant": participant,
+        })
+    entries.sort(key=lambda e: (not e["completed"], e["duration_seconds"] if e["completed"] else 0, -e["current_step"], e["attempts"]))
+    rank = 0
+    for entry in entries:
+        if entry["completed"]:
+            rank += 1
+            entry["rank"] = rank
+        else:
+            entry["rank"] = None
+
+    me = next((e for e in entries if e["student_id"] == student.id), None)
+    my_answers = (me["participant"].answers_json or []) if me else []
+    questions = []
+    for index, challenge in enumerate(challenges):
+        is_true = bool(challenge.get("is_true"))
+        accepted = [str(a) for a in challenge.get("accepted_answers") or []]
+        tries = [a for a in my_answers if a.get("step_index") == index]
+        questions.append({
+            "number": index + 1,
+            "statement": challenge.get("false_statement", ""),
+            "is_true": is_true,
+            "correct_answer": "È vero" if is_true else (accepted[0] if accepted else ""),
+            "explanation": challenge.get("explanation") or "",
+            "solved": bool(me) and index < me["current_step"],
+            "attempts": [
+                {"value": a.get("value", ""), "correct": bool(a.get("correct"))}
+                for a in tries
+            ],
+        })
+
+    return {
+        "title": li.title,
+        "total_participants": len(entries),
+        "completed_count": sum(1 for e in entries if e["completed"]),
+        "total_steps": len(challenges),
+        "me": {
+            "nickname": student.nickname,
+            "rank": me["rank"] if me else None,
+            "completed": me["completed"] if me else False,
+            "duration_seconds": me["duration_seconds"] if me else 0,
+            "current_step": me["current_step"] if me else 0,
+            "attempts": me["attempts"] if me else 0,
+        },
+        "leaderboard": [
+            {
+                "rank": e["rank"],
+                "nickname": e["nickname"],
+                "duration_seconds": e["duration_seconds"],
+                "completed": e["completed"],
+                "current_step": e["current_step"],
+                "is_me": e["student_id"] == student.id,
+            }
+            for e in entries[:5]
+        ],
+        "questions": questions,
     }
 
 
@@ -1388,11 +1497,8 @@ async def submit_escape_answer(
     )) or 0
     if participant.completed_at:
         completed_count = max(completed_count, 1)
+    # The session stays open until the teacher ends it: finished students wait for the final recap.
     all_completed = total_students > 0 and completed_count >= total_students
-    if all_completed:
-        li.status = "CLOSED"
-        li.ended_at = datetime.now(timezone.utc)
-        _disable_public_access(li)
     await db.commit()
     await db.refresh(participant)
 
@@ -1410,14 +1516,6 @@ async def submit_escape_answer(
         },
         room=f"session:{li.session_id}",
     )
-    if all_completed:
-        await _save_report(db, li)
-        await sio.emit(
-            "live_interaction_state",
-            {"live_interaction_id": str(li.id), "interaction_type": "escape_room", "status": "CLOSED"},
-            room=f"session:{li.session_id}",
-        )
-
     response = _public_escape_state(li, participant)
     response.update({
         "correct": is_correct,

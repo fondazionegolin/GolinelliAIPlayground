@@ -45,6 +45,7 @@ interface Props {
   sessionId: string
   interactionId?: string
   studentToken?: string
+  onFinished?: () => void
 }
 
 // ── Visual constants ──
@@ -226,7 +227,7 @@ function FeedbackInput({ selected, onSelect, disabled }: {
 
 // ── Main overlay ──
 
-export default function LiveInteractionStudentOverlay({ sessionId, interactionId, studentToken }: Props) {
+export default function LiveInteractionStudentOverlay({ sessionId, interactionId, studentToken, onFinished }: Props) {
   const { toast } = useToast()
   const socketRef = useRef<Socket | null>(null)
   const lastSlideRef = useRef<{ interactionId: string; index: number } | null>(null)
@@ -260,7 +261,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
   useEffect(() => {
     liveInteractionApi.currentStudent(interactionId).then(r => {
       const data = r.data
-      if (data.active || (data.interaction_type === 'escape_room' && data.status === 'DRAFT')) {
+      if (data.active || (data.interaction_type === 'escape_room' && (data.status === 'DRAFT' || data.status === 'CLOSED'))) {
         setLiveState(data)
         if (data.live_interaction_id && data.current_slide_index !== undefined) {
           lastSlideRef.current = { interactionId: data.live_interaction_id, index: data.current_slide_index }
@@ -293,7 +294,11 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
     }) => {
       if (interactionId && data.live_interaction_id !== interactionId) return
       if (data.status === 'CLOSED') {
-        setLiveState(prev => prev ? { ...prev, status: 'CLOSED', active: false } as LiveState : null)
+        setLiveState(prev => prev
+          ? { ...prev, status: 'CLOSED', active: false } as LiveState
+          : data.interaction_type === 'escape_room'
+            ? { active: false, status: 'CLOSED', interaction_type: 'escape_room', live_interaction_id: data.live_interaction_id } as unknown as LiveState
+            : null)
         if (data.interaction_type !== 'escape_room') setTimeout(() => setLiveState(null), 2500)
         return
       }
@@ -390,7 +395,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
     : 100
 
   if (liveState?.interaction_type === 'escape_room') {
-    return <LiveEscapeRoomStudent state={liveState as unknown as LiveEscapeState} onUpdate={next => setLiveState(next as unknown as LiveState)} />
+    return <LiveEscapeRoomStudent state={liveState as unknown as LiveEscapeState} onUpdate={next => setLiveState(next as unknown as LiveState)} onExit={() => { setLiveState(null); onFinished?.() }} />
   }
 
   return (
