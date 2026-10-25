@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / "docs" / "changelog-git-state.json"
 DRAFT_PATH = ROOT / "frontend" / "public" / "changelog" / "git-draft.json"
+RELEASE_METADATA_PATHS = {"docs/changelog-git-state.json", "frontend/public/changelog/git-draft.json"}
 
 
 def run_git(*args: str) -> str:
@@ -75,17 +76,15 @@ def main() -> None:
             sha, subject = line.split("\x1f", 1)
             if sha == last_ref:
                 continue
+            paths = set(run_git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).splitlines())
+            if paths and paths.issubset(RELEASE_METADATA_PATHS):
+                continue
             commits.append({"sha": sha, "subject": subject})
 
     if not commits:
-        payload = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "version_label": f"git-{short_head}",
-            "title": "Nessuna novità da pubblicare",
-            "summary": "Nessun commit nuovo rispetto all'ultimo draft generato.",
-            "git_ref": head,
-            "items": [],
-        }
+        # A repeated push or a commit publishing the draft must preserve the
+        # reviewed release instead of replacing it with an empty/metadata draft.
+        return
     else:
         payload = {
             "generated_at": datetime.now(timezone.utc).isoformat(),

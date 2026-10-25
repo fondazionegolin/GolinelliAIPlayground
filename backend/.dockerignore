@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+uploads/
+toy_lm_checkpoints/
+data/
+.env
+.env.*
