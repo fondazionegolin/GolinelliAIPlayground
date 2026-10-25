@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -492,6 +494,9 @@ function ChatPanel({
   theme: AccentTheme
 }) {
   const [input, setInput] = useState('')
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(composerRef, input)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('rag_workspace_prompt_history', input, setInput)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -500,6 +505,7 @@ function ChatPanel({
 
   const handleSend = () => {
     if (!input.trim() || ragPhase !== 'idle') return
+    rememberPrompt(input)
     onSend(input.trim())
     setInput('')
   }
@@ -594,8 +600,8 @@ function ChatPanel({
           style={{ borderColor: isLoading ? '#e5e5e5' : '#d4d4d4' }}
           onFocus={(e) => { if (!isLoading) (e.currentTarget as HTMLDivElement).style.borderColor = theme.accent }}
           onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d4d4d4' }}>
-          <textarea value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+          <textarea ref={composerRef} value={input} onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (onHistoryKey(e)) return; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend() } }}
             placeholder={isLoading ? 'Elaborazione in corso…' :
               selectedDocIds.length > 0 ? 'Domanda sui documenti selezionati…' : `Domanda sul ${noun}…`}
             rows={2} disabled={isLoading}

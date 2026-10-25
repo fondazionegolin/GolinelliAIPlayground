@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Send, Bot, Loader2, RefreshCw } from '@/components/icons'
@@ -30,6 +32,9 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
   const queryClient = useQueryClient()
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(composerRef, inputText)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('teacherbot_test_prompt_history', inputText, setInputText)
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -93,6 +98,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
     }
 
     setMessages(prev => [...prev, userMsg])
+    rememberPrompt(inputText)
     setInputText('')
     setIsLoading(true)
 
@@ -224,16 +230,13 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
         <div className="p-4 border-t border-slate-100">
           <div className="flex gap-2">
             <textarea
+              ref={composerRef}
               rows={1}
               value={inputText}
-              onChange={(e) => {
-                setInputText(e.target.value)
-                const el = e.currentTarget
-                el.style.height = 'auto'
-                el.style.height = `${Math.min(el.scrollHeight, 140)}px`
-              }}
+              onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (onHistoryKey(e)) return
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   handleSend()
                 }

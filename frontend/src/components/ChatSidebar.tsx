@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { useTranslation } from 'react-i18next'
 import { chatApi, toyLmApi } from '@/lib/api'
 import FileViewerModal from '@/components/ui/FileViewerModal'
@@ -109,6 +111,9 @@ export default function ChatSidebar({
   }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(composerRef, inputText)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('class_chat_prompt_history', inputText, setInputText)
   const [dragActive, setDragActive] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [chatWidth, setChatWidth] = useState(initialWidth)
@@ -354,6 +359,7 @@ export default function ChatSidebar({
     if (!inputText.trim() && attachedFiles.length === 0) return
 
     const messageText = inputText.trim()
+    rememberPrompt(inputText)
     setInputText('')
 
     // Upload files first if any
@@ -1433,18 +1439,17 @@ export default function ChatSidebar({
               onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
             />
             <textarea
+              ref={composerRef}
               rows={1}
               value={inputText}
-              onChange={(e) => {
-                setInputText(e.target.value)
-                const el = e.currentTarget
-                el.style.height = 'auto'
-                el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (onHistoryKey(e)) return
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
               }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               onPaste={handleInputPaste}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
-              className="border-none bg-transparent focus-visible:ring-0 focus:outline-none resize-none text-sm px-2 py-2 leading-6 flex-1 shadow-none max-h-[120px]"
+              className="border-none bg-transparent focus-visible:ring-0 focus:outline-none resize-none text-sm px-2 py-2 leading-6 flex-1 shadow-none"
             />
             <Button
               size="icon"

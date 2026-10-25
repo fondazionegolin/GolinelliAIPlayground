@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal, History } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -53,6 +55,8 @@ export default function NotebookTutorChat({
   const rootRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(inputRef, input)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('notebook_tutor_prompt_history', input, setInput)
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (!isFloating) return
@@ -95,6 +99,7 @@ export default function NotebookTutorChat({
   const send = async () => {
     const msg = input.trim()
     if (!msg || loading) return
+    rememberPrompt(msg)
     setInput('')
     const newMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: msg }]
     setMessages(newMessages)
@@ -116,7 +121,8 @@ export default function NotebookTutorChat({
   }
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (onHistoryKey(e)) return
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       send()
     }

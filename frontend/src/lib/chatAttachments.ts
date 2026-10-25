@@ -75,16 +75,19 @@ const GENERATED_IMAGE_RE = /!\[[^\]]*\]\(([^)\s]+)\)/
 export async function implicitEditImage(
   messages: { role: string; content: string }[],
   text: string,
+  force = false, // caller already knows the message targets the previous picture (Decisions router)
 ): Promise<File | null> {
-  const recent = messages.slice(-6)
+  const recent = messages.slice(force ? -20 : -6)
   let url: string | undefined
   for (let i = recent.length - 1; i >= 0 && !url; i--) {
     if (recent[i].role === 'assistant') url = GENERATED_IMAGE_RE.exec(recent[i].content)?.[1]
   }
   if (!url || !text.trim()) return null
   try {
-    const { data } = await llmApi.routeIntent(text, recent.map(m => ({ role: m.role, content: m.content })))
-    if (data?.intent !== 'edit_image' || data?.image !== 'previous') return null
+    if (!force) {
+      const { data } = await llmApi.routeIntent(text, recent.map(m => ({ role: m.role, content: m.content })))
+      if (data?.intent !== 'edit_image' || data?.image !== 'previous') return null
+    }
     const res = await fetch(url)
     if (!res.ok) return null
     const blob = await res.blob()

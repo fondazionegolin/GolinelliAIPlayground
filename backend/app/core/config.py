@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     VIDEO_STUDIO_IMAGE_QUALITY: str = "medium"  # gpt-image quality: low | medium | high
     RUNWARE_VIDEO_MODEL: str = "xai:grok-imagine@video-1.5-lite"
     OPENAI_IMAGE_MODEL: str = "gpt-image-2-2026-04-21"
+    # Decisions API model for chat tool routing (image / slides / brochure / page)
+    OPENAI_DECISIONS_MODEL: str = "gpt-6-luna"
 
     # OpenAI Realtime (voice interrogation chatbot — "interrogazione" profile)
     OPENAI_REALTIME_MODEL: str = "gpt-realtime-2.1-mini"

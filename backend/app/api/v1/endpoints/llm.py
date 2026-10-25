@@ -42,6 +42,7 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.document_processor import document_processor
 from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail
 from app.services.moderation_service import moderation_service
+from app.services.tool_router import decide_tool
 from app.services.environmental_impact import (
     build_estimated_token_usage,
     enrich_usage_with_environmental_impact,
@@ -2811,6 +2812,22 @@ async def route_intent(
     return await route_image_intent(llm_service, request.text, request.history[-8:], attached_images=0)
 
 
+class DecideToolRequest(BaseModel):
+    text: str
+    allowed: Optional[List[str]] = None
+    artifacts: List[dict] = Field(default_factory=list)  # [{"type": "html_page", "detail": "v2 · Sistema solare"}] oldest→newest
+    recent: List[dict] = Field(default_factory=list)  # [{"role", "content"}]
+
+
+@router.post("/decide-tool")
+async def decide_chat_tool(
+    request: DecideToolRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Pick the creation tool (image, presentation, brochure, ...) a chat message is asking for."""
+    return await decide_tool(request.text, request.allowed, request.artifacts[-8:], request.recent[-4:])
+
+
 @router.post("/generate-image")
 async def generate_image(
     request: dict,
@@ -4480,68 +4497,81 @@ async def edit_html_page(
         }
     }]
 
-    response = await client.messages.create(
-        model=model_roles.model_for("codegen.tools"),
-        max_tokens=8096,
-        tools=tools,
-        tool_choice={"type": "tool", "name": "edit_page"},
-        system=(
-            "Sei un editor HTML esperto. Modifica la pagina applicando solo i cambiamenti necessari. "
-            "Usa il tool edit_page specificando solo le sezioni che cambiano. "
-            "Ogni sezione deve essere il contenuto COMPLETO aggiornato di quel blocco."
-        ),
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Pagina HTML corrente:\n\n{request.html}\n\n"
-                f"Modifica richiesta: {request.modification}"
-            )
-        }]
-    )
+    def _apply(params: dict) -> str:
+        result_html = request.html
 
-    tool_block = next(
-        (b for b in response.content if getattr(b, "type", None) == "tool_use" and b.name == "edit_page"),
-        None
-    )
-    if not tool_block:
-        raise HTTPException(status_code=422, detail="Nessuna modifica generata dal modello")
+        css = params.get("css")
+        if css:
+            if re.search(r"<style[^>]*>", result_html, re.IGNORECASE):
+                result_html = re.sub(
+                    r"<style[^>]*>[\s\S]*?</style>",
+                    lambda _m: f"<style>\n{css}\n</style>",
+                    result_html,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                result_html = result_html.replace("</head>", f"<style>\n{css}\n</style>\n</head>")
 
-    params = tool_block.input
-    result_html = request.html
+        js = params.get("js")
+        if js:
+            script_matches = list(re.finditer(r"<script(?:\s[^>]*)?>[\s\S]*?</script>", result_html, re.IGNORECASE))
+            if script_matches:
+                last = script_matches[-1]
+                result_html = result_html[:last.start()] + f"<script>\n{js}\n</script>" + result_html[last.end():]
+            else:
+                result_html = result_html.replace("</body>", f"<script>\n{js}\n</script>\n</body>")
 
-    css = params.get("css")
-    if css:
-        if re.search(r"<style[^>]*>", result_html, re.IGNORECASE):
+        html_body = params.get("html_body")
+        if html_body:
             result_html = re.sub(
-                r"<style[^>]*>[\s\S]*?</style>",
-                f"<style>\n{css}\n</style>",
+                r"(<body[^>]*>)([\s\S]*?)(<script|\s*</body>)",
+                lambda m: f"{m.group(1)}\n{html_body}\n{m.group(3)}",
                 result_html,
+                count=1,
                 flags=re.IGNORECASE,
             )
-        else:
-            result_html = result_html.replace("</head>", f"<style>\n{css}\n</style>\n</head>")
+        return result_html
 
-    js = params.get("js")
-    if js:
-        script_matches = list(re.finditer(r"<script(?:\s[^>]*)?>[\s\S]*?</script>", result_html, re.IGNORECASE))
-        if script_matches:
-            last = script_matches[-1]
-            result_html = result_html[:last.start()] + f"<script>\n{js}\n</script>" + result_html[last.end():]
-        else:
-            result_html = result_html.replace("</body>", f"<script>\n{js}\n</script>\n</body>")
-
-    html_body = params.get("html_body")
-    if html_body:
-        def _replace_body(m: re.Match) -> str:
-            return f"{m.group(1)}\n{html_body}\n{m.group(3)}"
-        result_html = re.sub(
-            r"(<body[^>]*>)([\s\S]*?)(<script|\s*</body>)",
-            _replace_body,
-            result_html,
-            flags=re.IGNORECASE,
+    base_system = (
+        "Sei un editor HTML esperto. Modifica la pagina applicando solo i cambiamenti necessari. "
+        "Usa il tool edit_page specificando solo le sezioni che cambiano. "
+        "Ogni sezione deve essere il contenuto COMPLETO aggiornato di quel blocco. "
+        "Devi SEMPRE applicare la modifica richiesta: compila almeno uno dei campi css, html_body, js con cambiamenti reali e visibili."
+    )
+    result_html = request.html
+    for attempt in range(2):
+        user_text = f"Pagina HTML corrente:\n\n{request.html}\n\nModifica richiesta: {request.modification}"
+        if attempt:
+            user_text += (
+                "\n\nATTENZIONE: il tentativo precedente non ha prodotto alcuna modifica visibile. "
+                "Applica ora la modifica richiesta con cambiamenti concreti in css, html_body e/o js."
+            )
+        response = await client.messages.create(
+            model=model_roles.model_for("codegen.tools"),
+            max_tokens=16000,
+            tools=tools,
+            tool_choice={"type": "tool", "name": "edit_page"},
+            system=base_system,
+            messages=[{"role": "user", "content": user_text}],
         )
+        tool_block = next(
+            (b for b in response.content if getattr(b, "type", None) == "tool_use" and b.name == "edit_page"),
+            None,
+        )
+        params = dict(tool_block.input) if tool_block and isinstance(tool_block.input, dict) else {}
+        result_html = _apply(params)
+        logger.info(
+            "html-page/edit attempt=%s stop_reason=%s fields=%s changed=%s",
+            attempt, response.stop_reason, sorted(k for k, v in params.items() if v), result_html != request.html,
+        )
+        if response.stop_reason != "max_tokens" and result_html != request.html:
+            return {"html": result_html}
 
-    return {"html": result_html}
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Il modello non è riuscito ad applicare la modifica alla pagina. Riprova descrivendo il cambiamento in modo più specifico.",
+    )
 
 
 class BrochureEditRequest(BaseModel):

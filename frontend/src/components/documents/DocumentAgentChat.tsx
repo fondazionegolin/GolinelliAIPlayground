@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { Bot, Check, Loader2, MousePointer2, Send, Sparkles, X } from '@/components/icons'
 import { llmApi } from '@/lib/api'
 import { useServerHealth } from '@/components/ServerHealthIndicator'
@@ -95,6 +97,9 @@ const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeou
 
 export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onClose }: Props) {
   const [input, setInput] = useState('')
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(composerRef, input)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('document_agent_prompt_history', input, setInput)
   const [loading, setLoading] = useState(false)
   const [retryNotice, setRetryNotice] = useState('')
   const [scope, setScope] = useState<'current' | 'selection' | 'presentation'>('current')
@@ -325,6 +330,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       pushAssistant(isDocument ? 'Il documento non è ancora disponibile.' : 'Prima seleziona un testo nel documento oppure una slide o un oggetto nella presentazione.')
       return
     }
+    if (override === undefined) rememberPrompt(prompt)
     setInput('')
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: prompt }])
     if (isDocument && (activeContext.kind === 'document' || activeContext.kind === 'selected_text')) await interpret(prompt, activeContext)
@@ -495,9 +501,13 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         )}
         <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:border-violet-300">
           <textarea
+            ref={composerRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }}
+            onKeyDown={(event) => {
+              if (onHistoryKey(event)) return
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() }
+            }}
             rows={2}
             placeholder={activeContext ? (isDocument ? (selectionContext ? 'Es. «Espandi con un esempio concreto»' : 'Es. «Continua» o «Scrivi una conclusione»') : 'Chiedi una modifica…') : 'Seleziona prima un contenuto…'}
             className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400"

@@ -5,6 +5,9 @@ import { useFileDropHighlight } from '@/hooks/useFileDropHighlight'
 import { DropOverlay } from '@/components/ui/DropOverlay'
 import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, type CSSProperties, Suspense } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
+import { ToolRoutingChip, type ToolRouting } from '@/components/chat/ToolRoutingChip'
 import { type RagSession, getRagSessions, saveRagSession, createRagSession, deleteRagSession } from '@/lib/ragSessions'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,7 +20,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Link2, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Youtube, Globe, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -70,6 +73,7 @@ interface Message {
   provider?: string
   model?: string
   token_usage_json?: TokenUsageJson | null
+  routing?: ToolRouting
   // Collaboration: present on messages coming from a shared room
   senderStudentId?: string | null
   senderNickname?: string | null
@@ -567,6 +571,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
   const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
   const [showLinkPopover, setShowLinkPopover] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [linkKind, setLinkKind] = useState<'youtube' | 'web'>('youtube')
   const [linkDraft, setLinkDraft] = useState('')
   const confirmLink = () => {
     const url = linkDraft.trim()
@@ -635,6 +641,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const activeGenerationAbortRef = useRef<AbortController | null>(null)
   const lastEscapeKeyAtRef = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(inputRef, input)
+  const pendingRoutingRef = useRef<ToolRouting | undefined>(undefined) // Decisions result for the message being sent
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('student_chat_prompt_history', input, setInput)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(accentProp || DEFAULT_STUDENT_ACCENT)
@@ -1393,15 +1402,6 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
   }, [messages.length])
 
-  // Keep the auto-growing composer in sync when `input` changes programmatically
-  // (cleared after send, suggestion clicks, voice transcription, …).
-  useEffect(() => {
-    const el = inputRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-  }, [input])
-
   // Collaboration: load ongoing shared rooms + listen for invitations.
   useEffect(() => {
     if (!collaborationEnabled || isTeacherPreview) return
@@ -1666,7 +1666,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       role: 'user',
       content: messageContent,
       timestamp: new Date(),
+      routing: pendingRoutingRef.current,
     }
+    pendingRoutingRef.current = undefined
     setMessages(prev => [...prev, userMessage])
     setInput('')
 
@@ -1733,7 +1735,8 @@ REGOLE IMPORTANTI:
     }
   }, [messages, imageProvider, queryClient])
 
-  const handleSend = useCallback(async (content?: string, files?: globalThis.File[]) => {
+  const runSend = useCallback(async (content: string | undefined, files: globalThis.File[] | undefined, routedMode: 'normal' | 'image' | 'quiz' | 'dataset') => {
+    const chatMode = routedMode // shadows the selected mode: the Decisions router may pick a tool per message
     const messageContent = content ?? input
     const messageFiles = files ?? attachedFiles.map(af => af.file)
 
@@ -1823,8 +1826,11 @@ REGOLE IMPORTANTI:
 
     // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
     const sendFiles = [...messageFiles]
-    if (sendFiles.length === 0 && chatMode === 'normal') {
-      const previous = await implicitEditImage(messages, messageContent)
+    const routedNow = pendingRoutingRef.current
+    const targetsPreviousImage = !!routedNow?.routed && routedNow.tool === 'image' && routedNow.action !== 'create'
+    // When the Decisions router ran, only re-attach the picture if the message really targets it.
+    if (sendFiles.length === 0 && chatMode === 'normal' && (!routedNow?.routed || targetsPreviousImage)) {
+      const previous = await implicitEditImage(messages, messageContent, targetsPreviousImage)
       if (previous) sendFiles.push(previous)
     }
 
@@ -1880,7 +1886,9 @@ REGOLE IMPORTANTI:
       content: rawUserContent || (attachments?.some(a => a.kind === 'image') ? '' : (uiLanguage === 'en' ? 'Analyse these documents' : 'Analizza questi documenti')),
       attachments,
       timestamp: new Date(),
+      routing: pendingRoutingRef.current,
     }
+    pendingRoutingRef.current = undefined
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setAttachedFiles([])
@@ -1915,6 +1923,45 @@ REGOLE IMPORTANTI:
     handleImageGeneration,
     activeSharedRoom,
   ])
+
+  // Transparent tool routing: in plain Chat mode, OpenAI Decisions picks image / quiz / dataset for the student.
+  const handleSend = useCallback(async (content?: string, files?: globalThis.File[]) => {
+    const text = (content ?? input).trim()
+    if (content === undefined && text) rememberPrompt(text)
+    const canRoute = content === undefined && chatMode === 'normal' && !files?.length && attachedFiles.length === 0
+      && !activeSharedRoom && !profileInterview.active && !selectedTeacherbot && !isGeneratingResponse
+      && text.length >= 8 && !text.startsWith(LEARNING_IMAGE_PREFIX)
+    if (canRoute) {
+      try {
+        const artifacts: { type: string; detail?: string }[] = []
+        messages.forEach((m, idx) => {
+          if (m.role !== 'assistant') return
+          const type = /!\[[^\]]*\]\(/.test(m.content) ? 'image' : m.content.includes('```quiz') ? 'quiz' : null
+          if (!type) return
+          const at = artifacts.findIndex(a => a.type === type)
+          if (at >= 0) artifacts.splice(at, 1)
+          artifacts.push({ type, detail: `${messages.length - idx} messaggi fa` })
+        })
+        const { data } = await llmApi.decideTool(
+          text, ['image', 'quiz', 'dataset'], artifacts,
+          messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+        )
+        const routing: ToolRouting = {
+          tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
+          alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
+        }
+        pendingRoutingRef.current = routing
+        // Creating an image/quiz/dataset switches tool; editing or asking about the previous picture stays in chat
+        // (the previous image is re-attached for img2img / vision). Editing a quiz or dataset is plain chat with history.
+        if (data.action === 'create' && (data.tool === 'image' || data.tool === 'quiz' || data.tool === 'dataset')) {
+          return await runSend(content, files, data.tool)
+        }
+      } catch (err) {
+        console.warn('Tool routing failed, using plain chat', err)
+      }
+    }
+    return runSend(content, files, chatMode)
+  }, [input, chatMode, attachedFiles, activeSharedRoom, profileInterview.active, selectedTeacherbot, isGeneratingResponse, rememberPrompt, runSend])
 
   const handleNewChat = useCallback(async () => {
     triggerHaptic('light')
@@ -3084,73 +3131,12 @@ REGOLE IMPORTANTI:
             </div>
           )}
 
-          {!sidebarMode && (
-            <VoiceRecorder
-              onInsertText={(text) => {
-                setInput(text)
-                setTimeout(() => inputRef.current?.focus(), 50)
-              }}
-            />
-          )}
-
-          {!sidebarMode && <Button
-            variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
-            style={{ color: 'inherit' }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>}
-
-          {!sidebarMode && (
-            <div className="relative flex-shrink-0">
-              <Button
-                variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
-                style={{ color: 'inherit' }}
-                onClick={() => { setShowLinkPopover((v) => !v); setLinkDraft('') }}
-                title={uiLanguage === 'en' ? 'Add a link' : 'Aggiungi link'}
-              >
-                <Link2 className="h-4 w-4" />
-              </Button>
-              {showLinkPopover && (
-                <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-                  <p className="mb-2 text-xs font-semibold text-slate-600">{uiLanguage === 'en' ? 'Add a link (web page or YouTube)' : 'Aggiungi un link (pagina web o YouTube)'}</p>
-                  <input
-                    autoFocus
-                    type="url"
-                    value={linkDraft}
-                    onChange={(e) => setLinkDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') confirmLink() }}
-                    placeholder="https://..."
-                    className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
-                  />
-                  <Button size="sm" className="mt-2 h-7 w-full bg-slate-900 text-xs text-white" disabled={!linkDraft.trim()} onClick={confirmLink}>
-                    {uiLanguage === 'en' ? 'Add' : 'Aggiungi'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeSharedRoom && !sidebarMode && (
-            <Button
-              variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
-              style={{ color: 'inherit' }}
-              onClick={() => {
-                setInput((prev) => (prev === '' || prev.endsWith(' ') ? prev + '@' : prev + ' @'))
-                setTimeout(() => inputRef.current?.focus(), 0)
-              }}
-              title={uiLanguage === 'en' ? 'Mention a classmate (private)' : 'Menziona un compagno (privato)'}
-            >
-              <AtSign className="h-4 w-4" />
-            </Button>
-          )}
-
           <div className={`relative hidden md:block flex-shrink-0 ${sidebarMode ? 'md:hidden' : ''}`}>
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 pl-1 pr-3 text-xs font-semibold text-slate-900 shadow-sm transition-all hover:bg-slate-100"
-              title="Cambia modalità"
+              className="inline-flex h-9 items-center gap-1 rounded-full bg-transparent pl-0.5 pr-1.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-100"
+              title="Modalità attiva: cambia"
             >
               <span
                 className={`rounded-full px-3 py-1.5 text-xs font-bold ${
@@ -3198,17 +3184,81 @@ REGOLE IMPORTANTI:
             )}
           </div>
 
+          {!sidebarMode && (
+            <div className="relative flex-shrink-0">
+              <Button
+                variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+                style={{ color: 'inherit' }}
+                onClick={() => { setShowAttachMenu((v) => !v); setShowLinkPopover(false); setLinkDraft('') }}
+                title={uiLanguage === 'en' ? 'Attach' : 'Allega'}
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              {showAttachMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => { setShowAttachMenu(false); setShowLinkPopover(false) }} />
+                  {!showLinkPopover ? (
+                    <div className="absolute bottom-full left-0 z-50 mb-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                      <button type="button" onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click() }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100">
+                        <Paperclip className="h-3.5 w-3.5" /> {uiLanguage === 'en' ? 'File' : 'File'}
+                      </button>
+                      <button type="button" onClick={() => { setLinkKind('youtube'); setShowLinkPopover(true); setLinkDraft('') }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100">
+                        <Youtube className="h-3.5 w-3.5 text-red-500" /> {uiLanguage === 'en' ? 'YouTube link' : 'Link YouTube'}
+                      </button>
+                      <button type="button" onClick={() => { setLinkKind('web'); setShowLinkPopover(true); setLinkDraft('') }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100">
+                        <Globe className="h-3.5 w-3.5" /> {uiLanguage === 'en' ? 'Website link' : 'Link al sito web'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                      <p className="mb-2 text-xs font-semibold text-slate-600">
+                        {linkKind === 'youtube' ? (uiLanguage === 'en' ? 'YouTube link' : 'Link YouTube') : (uiLanguage === 'en' ? 'Website link' : 'Link al sito web')}
+                      </p>
+                      <input
+                        autoFocus
+                        type="url"
+                        value={linkDraft}
+                        onChange={(e) => setLinkDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { confirmLink(); setShowAttachMenu(false) } }}
+                        placeholder={linkKind === 'youtube' ? 'https://youtube.com/watch?v=…' : 'https://…'}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
+                      />
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" variant="ghost" className="h-7 flex-1 text-xs" onClick={() => setShowLinkPopover(false)}>{uiLanguage === 'en' ? 'Back' : 'Indietro'}</Button>
+                        <Button size="sm" className="h-7 flex-1 bg-slate-900 text-xs text-white" disabled={!linkDraft.trim()} onClick={() => { confirmLink(); setShowAttachMenu(false) }}>
+                          {uiLanguage === 'en' ? 'Add' : 'Aggiungi'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeSharedRoom && !sidebarMode && (
+            <Button
+              variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+              style={{ color: 'inherit' }}
+              onClick={() => {
+                setInput((prev) => (prev === '' || prev.endsWith(' ') ? prev + '@' : prev + ' @'))
+                setTimeout(() => inputRef.current?.focus(), 0)
+              }}
+              title={uiLanguage === 'en' ? 'Mention a classmate (private)' : 'Menziona un compagno (privato)'}
+            >
+              <AtSign className="h-4 w-4" />
+            </Button>
+          )}
+
           <div className="flex-1 relative min-w-0">
             <textarea
               ref={inputRef}
               rows={1}
               value={input}
-              onChange={(e) => {
-                setInput(e.target.value)
-                const el = e.currentTarget
-                el.style.height = 'auto'
-                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-              }}
+              onChange={(e) => setInput(e.target.value)}
               onFocus={() => {
                 setIsInputFocused(true)
                 onInputFocusChange?.(true)
@@ -3219,7 +3269,8 @@ REGOLE IMPORTANTI:
                 onInputFocusChange?.(false)
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (onHistoryKey(e)) return
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   handleSend()
                 }
@@ -3230,6 +3281,15 @@ REGOLE IMPORTANTI:
               className="w-full resize-none bg-transparent px-1 py-2 text-[16px] leading-7 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
           </div>
+
+          {!sidebarMode && (
+            <VoiceRecorder
+              onInsertText={(text) => {
+                setInput(text)
+                setTimeout(() => inputRef.current?.focus(), 50)
+              }}
+            />
+          )}
 
           {isGeneratingResponse ? (
             <Button
@@ -4582,6 +4642,7 @@ REGOLE IMPORTANTI:
                       />
                     )}
                   </div>
+                  {message.role === 'user' && message.routing && <div className="mt-1"><ToolRoutingChip routing={message.routing} /></div>}
                   <span className="mx-1 mt-1 text-[10px] font-medium text-slate-400">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { Send, X, Users, Bot, Loader2, AtSign } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -60,6 +62,8 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
   const [mentionOpen, setMentionOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(inputRef, input)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('shared_chat_prompt_history', input, setInput)
   const roomIdRef = useRef(initialRoom.id)
   roomIdRef.current = initialRoom.id
 
@@ -116,6 +120,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
     const willCallBot = !content.startsWith('@')
     try {
       await collaborationApi.sendMessage(room.id, content)
+      rememberPrompt(input)
       setInput('')
       if (inputRef.current) inputRef.current.style.height = 'auto'
       if (willCallBot) setBotThinking(true)
@@ -270,12 +275,12 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
             value={input}
             onChange={(e) => {
               setInput(e.target.value)
-              const el = e.currentTarget
-              el.style.height = 'auto'
-              el.style.height = `${Math.min(el.scrollHeight, 140)}px`
               setMentionOpen(/(^|\s)@[^\s]*$/.test(e.target.value))
             }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
+            onKeyDown={(e) => {
+              if (onHistoryKey(e)) return
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() }
+            }}
             placeholder={isEnglish ? 'Message the group…' : 'Scrivi al gruppo…'}
             disabled={sending}
             className="flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-slate-300"

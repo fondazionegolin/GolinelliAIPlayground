@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback, memo, type ReactNode } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from '@/components/icons'
@@ -71,6 +73,8 @@ export function ChatConversationView({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(inputRef, input)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('student_conversation_prompt_history', input, setInput)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [viewport, setViewport] = useState(() => ({
@@ -124,6 +128,7 @@ export function ChatConversationView({
 
     triggerHaptic('light')
     onSend(input.trim(), attachedFiles.map(f => f.file))
+    rememberPrompt(input)
     setInput('')
     setAttachedFiles([])
     if (inputRef.current) inputRef.current.style.height = '44px'
@@ -370,20 +375,16 @@ export function ChatConversationView({
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onInput={(e) => {
-              const element = e.currentTarget
-              element.style.height = '44px'
-              element.style.height = `${Math.min(element.scrollHeight, 112)}px`
-            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (onHistoryKey(e)) return
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 handleSend()
               }
             }}
             placeholder={attachedFiles.length > 0 ? "Aggiungi una descrizione..." : "Scrivi un messaggio..."}
             disabled={isLoading}
-            className="h-11 max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
           />
 
           {/* Send button */}

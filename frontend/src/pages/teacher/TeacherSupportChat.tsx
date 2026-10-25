@@ -6,13 +6,17 @@ import { DropOverlay } from '@/components/ui/DropOverlay'
 import { getResponseLength, setResponseLength, RESPONSE_LENGTH_OPTIONS, type ResponseLength } from '@/lib/responseLength'
 import { DRIVE_ITEM_MIME, filesFromUniversalDrag } from '@/lib/dragFiles'
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
+import { usePromptHistory } from '@/hooks/usePromptHistory'
+import { useAutoGrow } from '@/hooks/useAutoGrow'
+import { ToolRoutingChip, type ToolRouting } from '@/components/chat/ToolRoutingChip'
+import { GenerationProgressCard, type GenerationProgress } from '@/components/chat/GenerationProgressCard'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Video, ScanText, Youtube, PanelRightClose, Square, History, Brain
+  Video, ScanText, Youtube, PanelRightClose, Square, History, Brain, Globe
 } from '@/components/icons'
 import TeacherMemoryModal from '@/components/teacher/TeacherMemoryModal'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
@@ -138,6 +142,7 @@ interface Message {
   provider?: string
   model?: string
   token_usage_json?: TokenUsageJson | null
+  routing?: ToolRouting
 }
 
 interface Conversation {
@@ -524,6 +529,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [ocrOverlays, setOcrOverlays] = useState<Record<string, OcrOverlayData>>({})
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  useAutoGrow(composerRef, inputText)
+  const { remember: rememberPrompt, onHistoryKey } = usePromptHistory('teacher_chat_prompt_history', inputText, setInputText)
   const [attachedNotebooks, setAttachedNotebooks] = useState<AttachedNotebook[]>(() => loadAttachedNotebooks())
   const [ragViewOpen, setRagViewOpen] = useState(false)
   const updateAttachedNotebooks = (next: AttachedNotebook[]) => {
@@ -560,6 +568,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [attachedYoutube, setAttachedYoutube] = useState<AttachedYouTube | null>(null)
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [linkInputValue, setLinkInputValue] = useState('')
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [linkKind, setLinkKind] = useState<'youtube' | 'web'>('youtube')
 
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
@@ -650,6 +660,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       }
       if (linkModalRef.current && !linkModalRef.current.contains(event.target as Node)) {
         setShowLinkModal(false)
+        setShowAttachMenu(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -685,6 +696,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
 
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
+  const [genProgress, setGenProgress] = useState<GenerationProgress | null>(null)
+  const stickToBottomRef = useRef(true)
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const [promptEditorValue, setPromptEditorValue] = useState('')
   const [promptEditorDefault, setPromptEditorDefault] = useState('')
@@ -873,10 +886,27 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     staleTime: 30_000,
   })
 
-  // Auto-scroll
+  // Keep the chat pinned to the bottom while content grows (streaming, status cards, images loading).
+  // Instant jumps instead of smooth scrolling: overlapping smooth animations were what made the view bounce.
+  // Pinning is suspended while the user has scrolled up to read.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const el = chatScrollRef.current
+    if (!el) return
+    let frame = 0
+    const pin = () => {
+      if (!stickToBottomRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+    }
+    const observer = new MutationObserver(pin)
+    observer.observe(el, { childList: true, subtree: true, characterData: true })
+    pin()
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [currentConversationId])
+
+  useEffect(() => {
+    if (stickToBottomRef.current) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight })
+  }, [messages, genProgress, streamingStatus])
 
   // Load conversations from server
   useEffect(() => {
@@ -1476,7 +1506,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     isEdit: boolean,
     currentDoc?: GeneratedDoc | null,
     approvedPlan?: DispensaPlan | null,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (info: { text: string; attempt: number; maxAttempts: number }) => void,
   ): Promise<string> => {
     const historyContext = chatHistory
       .filter(m => m.role !== 'system')
@@ -1654,7 +1685,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     }
 
     // Helper: stream a prompt and return the full content
-    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6', maxTokens = 4096): Promise<string> => {
+    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6', maxTokens = 4096, attempt = 0, maxAttempts = 1): Promise<string> => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
@@ -1674,7 +1705,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       let out = ''
       if (reader) {
         await consumeSseStream(reader, (data) => {
-          if (data.type === 'chunk') out += data.content || ''
+          if (data.type === 'chunk') { out += data.content || ''; onProgress?.({ text: out, attempt, maxAttempts }) }
           else if (data.type === 'done' && data.content) out = data.content
         })
       }
@@ -1701,7 +1732,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
               'Se stai per terminare i token, chiudi comunque correttamente il JSON e il blocco markdown.',
               lastOutput ? `OUTPUT PRECEDENTE NON VALIDO:\n${lastOutput.slice(-6000)}` : '',
             ].filter(Boolean).join('\n')
-        lastOutput = (await streamPrompt(effectivePrompt, model, maxTokens)).trim()
+        onProgress?.({ text: '', attempt, maxAttempts })
+        lastOutput = (await streamPrompt(effectivePrompt, model, maxTokens, attempt, maxAttempts)).trim()
         const parsed = parse(lastOutput)
         if (parsed) return parsed
       }
@@ -2086,7 +2118,83 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     teacherApi.saveConversationDocument(currentConversationId, edited).catch((e) => console.warn('Failed to save research document:', e))
   }
 
+  const TOOL_TO_MODE: Record<string, AgentMode> = {
+    image: 'image', brochure: 'brochure', dispensa: 'dispensa', html_page: 'html_page',
+    quiz: 'quiz', exercise: 'exercise', dataset: 'dataset',
+  }
+  const DOC_TYPES: AgentMode[] = ['html_page', 'brochure', 'dispensa']
+
+  /** The conversation's artifacts, oldest → newest, so the router can resolve "modificala" / "la pagina". */
+  const collectRoutingArtifacts = (): { type: string; detail?: string }[] => {
+    const found: { type: string; detail?: string }[] = []
+    const push = (type: string, detail?: string) => {
+      const i = found.findIndex(f => f.type === type)
+      if (i >= 0) found.splice(i, 1) // keep only the latest of each kind, at its latest position
+      found.push({ type, detail })
+    }
+    const cachedDoc = currentConversationId ? docCacheRef.current[currentConversationId] : null
+    const doc = activeDoc ?? cachedDoc
+    if (doc && DOC_TYPES.includes(doc.type as AgentMode)) push(doc.type, `v${doc.version ?? 1} · ${doc.title}`) // oldest guess, refined by messages below
+    messages.forEach((m, idx) => {
+      if (m.role !== 'assistant') return
+      const ago = messages.length - idx
+      const when = `${ago} messaggi fa`
+      if (/!\[[^\]]*\]\(/.test(m.content) || m.content.includes('[IMMAGINE')) push('image', `generata ${when}`)
+      if (m.content.includes('```presentation_document')) push('presentation', `creata ${when}`)
+      if (/\*\*Pagina Interattiva (generata|aggiornata)/.test(m.content)) push('html_page', `${doc?.type === 'html_page' ? `v${doc.version} · ${doc.title} · ` : ''}${when}`)
+      if (/\*\*Brochure (generata|aggiornata)/.test(m.content)) push('brochure', `${doc?.type === 'brochure' ? `${doc.title} · ` : ''}${when}`)
+      if (/\*\*Dispensa (generata|aggiornata)/.test(m.content)) push('dispensa', `${doc?.type === 'dispensa' ? `${doc.title} · ` : ''}${when}`)
+      if (m.content.includes('```quiz')) push('quiz', when)
+    })
+    return found
+  }
+
+  // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
+  // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
+    const text = (overrideInput ?? inputText).trim()
+    if (overrideInput === undefined && text) rememberPrompt(text)
+    const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
+      && attachedFiles.length === 0 && !attachedYoutube && text.length >= 8
+    if (canRoute) {
+      try {
+        setStreamingStatus('Analizzo la richiesta…')
+        const { data } = await llmApi.decideTool(
+          text,
+          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'exercise', 'dataset'],
+          collectRoutingArtifacts(),
+          messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+        )
+        const routing: ToolRouting = {
+          tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
+          alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
+        }
+        const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
+        if (data.tool === 'chat' || !intent) return await runSend(overrideInput, agentMode, false, routing)
+        if (data.tool === 'presentation') {
+          // creating/editing slides runs through the presentation agent; asking about them is plain chat
+          return await runSend(overrideInput, 'default', intent !== 'ask_about', routing, intent, data.tool)
+        }
+        if (data.tool === 'image' && intent !== 'create') {
+          // editing/asking about a picture: stay in chat so the previous image is re-attached (img2img / vision)
+          return await runSend(overrideInput, 'default', false, routing, intent, data.tool)
+        }
+        if (intent === 'ask_about') return await runSend(overrideInput, 'default', false, routing, intent, data.tool)
+        const routed = TOOL_TO_MODE[data.tool]
+        if (routed) return await runSend(overrideInput, routed, false, routing, intent, data.tool)
+        return await runSend(overrideInput, agentMode, false, routing)
+      } catch (err) {
+        console.warn('Intent routing failed, using plain chat', err)
+      } finally {
+        setStreamingStatus(null)
+      }
+    }
+    return runSend(overrideInput, agentMode, false)
+  }
+
+  const runSend = async (overrideInput: string | undefined, routedMode: AgentMode, routedPresentation: boolean, routing?: ToolRouting, intent?: 'create' | 'edit' | 'ask_about', artifact?: string) => {
+    stickToBottomRef.current = true // sending always brings the view back to the live bottom
+    const agentMode = routedMode // shadows the selected mode: the Decisions router may pick a tool per message
     const userInput = (overrideInput ?? inputText).trim()
 
     const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
@@ -2117,6 +2225,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       }
     }
 
+    // When the Decisions router ran, its verdict replaces the keyword heuristics ("crea ... slide").
+    const presentationRequested = routing?.routed ? routedPresentation : (routedPresentation || isPresentationCreationRequest(messageContent))
+    const targetsPreviousImage = !!routing?.routed && artifact === 'image' && (intent === 'edit' || intent === 'ask_about')
+
     const convId = await ensureConversation(messageContent)
     if (!convId) return // Should not happen but safety first
 
@@ -2125,7 +2237,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       role: 'user',
       content: messageContent + youtubeInfo,
       attachments,
-      timestamp: new Date()
+      timestamp: new Date(),
+      routing,
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -2140,8 +2253,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     if (overrideInput === undefined) setInputText('')
     const currentFiles = [...attachedFiles]
     // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
-    if (currentFiles.length === 0 && agentMode === 'default' && !isPresentationCreationRequest(messageContent)) {
-      const previous = await implicitEditImage(messages, userInput)
+    // When routing already ran, only re-attach the picture if the message really targets it.
+    if (currentFiles.length === 0 && agentMode === 'default' && !presentationRequested && (!routing?.routed || targetsPreviousImage)) {
+      const previous = await implicitEditImage(messages, userInput, targetsPreviousImage)
       if (previous) currentFiles.push({ file: previous, type: 'image' })
     }
     setAttachedFiles([])
@@ -2160,11 +2274,17 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
     }
 
+    // Questions about an existing page/brochure/handout: the chat model must actually see it.
+    if (intent === 'ask_about' && artifact && DOC_TYPES.includes(artifact as AgentMode)) {
+      const askedDoc = activeDoc?.type === artifact ? activeDoc : (docCacheRef.current[convId]?.type === artifact ? docCacheRef.current[convId] : null)
+      if (askedDoc) llmContent += `\n\n--- ${artifact.toUpperCase()} ATTUALE (v${askedDoc.version ?? 1}) ---\n${askedDoc.content.substring(0, 12000)}\n--- FINE ---`
+    }
+
     // Notebook RAG for generation paths that bypass the streaming chat endpoint (documents, slides).
     // Streaming modes (chat, quiz, exercise, dataset, report) are grounded server-side via kb_project_ids.
     const usesClientSideGeneration =
       agentMode === 'html_page' || agentMode === 'brochure' || agentMode === 'dispensa'
-      || (agentMode === 'default' && isPresentationCreationRequest(messageContent))
+      || (agentMode === 'default' && presentationRequested)
     if (attachedNotebooks.length > 0 && usesClientSideGeneration) {
       try {
         setStreamingStatus('📚 Ricerca nei notebook RAG allegati…')
@@ -2184,22 +2304,35 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     }
 
     try {
-      if (agentMode === 'default' && isPresentationCreationRequest(messageContent)) {
+      if (agentMode === 'default' && presentationRequested) {
         const assistantId = `presentation-${Date.now()}`
         setMessages(prev => [...prev, {
           id: assistantId,
           role: 'assistant' as const,
-          content: 'Sto creando una presentazione editabile e la salverò nei Documenti…',
+          content: intent === 'edit' ? 'Sto aggiornando la presentazione…' : 'Sto creando una presentazione editabile e la salverò nei Documenti…',
           timestamp: new Date(),
         }])
-        setStreamingStatus('Creo una presentazione editabile…')
+        setStreamingStatus(intent === 'edit' ? 'Aggiorno la presentazione esistente…' : 'Creo una presentazione editabile…')
+
+        // Edit: load the deck created earlier in this chat so the agent changes it instead of starting over.
+        let editingDraftId = ''
+        let currentPresentation: Record<string, unknown> | undefined
+        if (intent === 'edit') {
+          const refs = [...messages].reverse().map(m => /```presentation_document\s*([\s\S]*?)```/.exec(m.content)?.[1]).filter(Boolean) as string[]
+          try { editingDraftId = String(JSON.parse(refs[0] || '{}').draft_id || '') } catch { /* no reference */ }
+          const drafts = editingDraftId ? ((await teacherApi.listDocumentDrafts()).data || []) as Array<{ id: string; content_json?: string }> : []
+          const draft = drafts.find(d => String(d.id) === editingDraftId)
+          try { currentPresentation = draft?.content_json ? JSON.parse(draft.content_json) : undefined } catch { /* unreadable */ }
+          if (!currentPresentation) throw new Error('Non trovo la presentazione da modificare: aprila dai Documenti oppure chiedimi di crearne una nuova.')
+        }
 
         const attachmentContext = currentFiles.length > 0
           ? `\n\nMateriali allegati dal docente: ${currentFiles.map(item => item.file.name).join(', ')}.`
           : ''
         const response = await llmApi.presentationAgent({
           prompt: `${llmContent}${attachmentContext}`,
-          mode: 'create',
+          mode: editingDraftId ? 'edit' : 'create',
+          current_presentation: currentPresentation,
           format: '16:9',
           dims: { width: 960, height: 540 },
         }, signal)
@@ -2213,7 +2346,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         }
 
         const title = presentation.title?.trim() || 'Nuova presentazione'
-        const draftResponse = await teacherApi.createDocumentDraft({
+        const presentationDraft = {
           title,
           doc_type: 'presentation',
           content_json: JSON.stringify({
@@ -2222,8 +2355,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
             title,
             slides: presentation.slides,
           }),
-        })
-        const draftId = String(draftResponse.data?.id || '')
+        }
+        const draftResponse = editingDraftId
+          ? await teacherApi.updateDocumentDraft(editingDraftId, presentationDraft)
+          : await teacherApi.createDocumentDraft(presentationDraft)
+        const draftId = String(draftResponse.data?.id || editingDraftId || '')
         if (!draftId) throw new Error('La presentazione è stata generata, ma non è stato possibile salvarla nei Documenti.')
 
         const presentationReference: PresentationDocumentData = {
@@ -2232,7 +2368,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           slide_count: presentation.slides.length,
         }
         const assistantContent = [
-          'Presentazione editabile pronta nella sezione Documenti.',
+          editingDraftId ? 'Presentazione aggiornata nella sezione Documenti.' : 'Presentazione editabile pronta nella sezione Documenti.',
           '',
           '```presentation_document',
           JSON.stringify(presentationReference),
@@ -2418,18 +2554,21 @@ REGOLE IMPORTANTI:
         // HTML INTERACTIVE PAGE GENERATION
         setIsGeneratingDoc(true)
         const filesContext = currentFiles.map(f => f.file.name).join(', ')
-        const isEdit = showCanvas && activeDoc?.type === 'html_page'
+        const cachedDoc = docCacheRef.current[convId]
+        const baseDoc = activeDoc?.type === 'html_page' ? activeDoc : (cachedDoc?.type === 'html_page' ? cachedDoc : null)
+        // Router verdict wins: "edit" modifies the existing page even with the canvas closed; "create" never overwrites it.
+        const isEdit = intent === 'edit' ? !!baseDoc : intent === 'create' ? false : (showCanvas && activeDoc?.type === 'html_page')
 
-        const progressSteps = isEdit
-          ? ['✏️ Analizzando la pagina corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il codice...', 'Quasi pronto...']
-          : ['🎨 Progettando layout e animazioni...', '⚙️ Generando HTML struttura e CSS...', '🔧 Aggiungendo JavaScript interattivo...', 'Finalizzando la pagina...']
-        const progressId = `progress-${Date.now()}`
-        setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
-        let stepIdx = 0
-        const progressTimer = setInterval(() => {
-          stepIdx = Math.min(stepIdx + 1, progressSteps.length - 1)
-          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: progressSteps[stepIdx] } : m))
-        }, 5000)
+        const phases = isEdit
+          ? ['Analizzo la pagina attuale', 'Applico le modifiche richieste', 'Riscrivo l\'interattività (JavaScript)', 'Controllo e salvo']
+          : ['Progetto layout e contenuti', 'Scrivo struttura e stile (HTML/CSS)', 'Aggiungo l\'interattività (JavaScript)', 'Controllo e salvo']
+        const startedAt = Date.now()
+        const progressId = `progress-${startedAt}`
+        const title = isEdit ? 'Aggiorno la tua pagina interattiva' : 'Genero la tua pagina interattiva'
+        setGenProgress(isEdit
+          // Edits are not streamed: the model returns the changed CSS/HTML/JS sections in one go.
+          ? { title, phases, activeIndex: 1, note: 'Il modello sta riscrivendo gli stili e il codice interessati: può richiedere fino a un minuto…', startedAt }
+          : { title, phases, activeIndex: 0, note: 'Invio la richiesta al modello e attendo i primi token…', startedAt })
 
         try {
           const htmlContent = await generateDocument(
@@ -2438,17 +2577,34 @@ REGOLE IMPORTANTI:
             messages,
             filesContext,
             isEdit,
-            activeDoc,
+            baseDoc,
             null,
-            signal
+            signal,
+            ({ text, attempt, maxAttempts }) => {
+              const activeIndex = !text ? 0
+                : /<\/html>/i.test(text) ? 3
+                : /<script/i.test(text) ? 2
+                : /<style|<body/i.test(text) ? 1
+                : 0
+              const note = !text
+                ? (attempt > 0 ? `Tentativo ${attempt + 1}/${maxAttempts}: l'output era incompleto, rigenero da capo…` : 'Il modello sta ragionando sul progetto…')
+                : activeIndex === 1 ? 'Sto scrivendo struttura e stile della pagina…'
+                : activeIndex === 2 ? 'Sto scrivendo la logica interattiva: è la parte più lunga…'
+                : activeIndex === 3 ? 'Codice completato, verifico che la pagina sia valida…'
+                : 'Sto definendo la struttura dei contenuti…'
+              setGenProgress({ title, phases, activeIndex, note: attempt > 0 && text ? `Tentativo ${attempt + 1}/${maxAttempts} · ${note}` : note, chars: text.length, startedAt })
+            }
           )
-          clearInterval(progressTimer)
+          if (isEdit && baseDoc && htmlContent.trim() === baseDoc.content.trim()) {
+            throw new Error('Il modello non ha applicato nessuna modifica alla pagina. Riprova descrivendo il cambiamento in modo più specifico.')
+          }
+          setGenProgress({ title, phases, activeIndex: 3, note: 'Salvo la pagina nei tuoi documenti…', startedAt })
 
           const newDoc: GeneratedDoc = {
             type: 'html_page',
             content: htmlContent,
-            version: isEdit ? (activeDoc?.version ?? 0) + 1 : 1,
-            title: messageContent.substring(0, 60),
+            version: isEdit ? (baseDoc?.version ?? 0) + 1 : 1,
+            title: isEdit && baseDoc ? baseDoc.title : messageContent.substring(0, 60),
           }
           setActiveDoc(newDoc)
           setShowCanvas(true)
@@ -2462,14 +2618,12 @@ REGOLE IMPORTANTI:
           const finalContent = isEdit
             ? `**Pagina Interattiva aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
             : `**Pagina Interattiva generata** (v${newDoc.version}) — il codice è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
-          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
           const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
+          setGenProgress(null)
+          setMessages(prev => [...prev, assistantMessage])
           await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
-        } catch (e) {
-          clearInterval(progressTimer)
-          setMessages(prev => prev.filter(m => m.id !== progressId))
-          throw e
         } finally {
+          setGenProgress(null)
           setIsGeneratingDoc(false)
         }
       } else if (agentMode === 'deep_research') {
@@ -2482,7 +2636,9 @@ REGOLE IMPORTANTI:
         // DOCUMENT GENERATION/EDITING FLOW
         setIsGeneratingDoc(true)
         const filesContext = currentFiles.map(f => f.file.name).join(', ')
-        const isEdit = showCanvas && activeDoc?.type === agentMode
+        const cachedDoc = docCacheRef.current[convId]
+        const baseDoc = activeDoc?.type === agentMode ? activeDoc : (cachedDoc?.type === agentMode ? cachedDoc : null)
+        const isEdit = intent === 'edit' ? !!baseDoc : intent === 'create' ? false : (showCanvas && activeDoc?.type === agentMode)
         const docLabel = agentMode === 'brochure' ? 'Brochure' : 'Dispensa'
 
         const shouldPlanDispensa = agentMode === 'dispensa'
@@ -2545,7 +2701,7 @@ REGOLE IMPORTANTI:
             messages,
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaFilesContext : filesContext,
             isEdit,
-            activeDoc,
+            baseDoc,
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null,
             signal
           )
@@ -2559,8 +2715,8 @@ REGOLE IMPORTANTI:
           const newDoc: GeneratedDoc = {
             type: agentMode,
             content: parsedDocPayload ? JSON.stringify(parsedDocPayload, null, 2) : docContent,
-            version: isEdit ? (activeDoc?.version ?? 0) + 1 : 1,
-            title: agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60),
+            version: isEdit ? (baseDoc?.version ?? 0) + 1 : 1,
+            title: isEdit && baseDoc ? baseDoc.title : agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60),
           }
           setActiveDoc(newDoc)
           setShowCanvas(true)
@@ -3579,8 +3735,10 @@ REGOLE IMPORTANTI:
                   <div
                     ref={chatScrollRef}
                     className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
-                    style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+                    style={{ WebkitOverflowScrolling: 'touch', overflowAnchor: 'none' }}
                     onScroll={(e) => {
+                      const target = e.currentTarget
+                      stickToBottomRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 120
                       if (e.currentTarget.scrollTop < 80 && hasMoreMessages && !isLoadingOlder) {
                         loadOlderMessages()
                       }
@@ -3717,12 +3875,13 @@ REGOLE IMPORTANTI:
                                 />
                               )}
                             </div>
+                            {msg.role === 'user' && msg.routing && <ToolRoutingChip routing={msg.routing} dark={chatBgIsDark} />}
                             <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         </div>
                       ))
                     )}
-                    {isLoading && isGeneratingDoc && !imageGenerationProgress && !streamingStatus && (
+                    {isLoading && isGeneratingDoc && !genProgress && !imageGenerationProgress && !streamingStatus && (
                       <div className="flex gap-3 items-start">
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={selectedSolidStyle ?? { backgroundColor: '#7c3aed' }}>
                           <Layout className="h-4 w-4 text-white" />
@@ -3735,7 +3894,7 @@ REGOLE IMPORTANTI:
                         </div>
                       </div>
                     )}
-                    {isLoading && !isGeneratingDoc && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
+                    {isLoading && !isGeneratingDoc && !genProgress && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <AcademicAiIcon className="h-4 w-4 text-red-500" />
@@ -3745,7 +3904,15 @@ REGOLE IMPORTANTI:
                         </div>
                       </div>
                     )}
-                    {streamingStatus && (
+                    {genProgress && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
+                          <Layout className="h-4 w-4 text-violet-600" />
+                        </div>
+                        <GenerationProgressCard progress={genProgress} dark={chatBgIsDark} />
+                      </div>
+                    )}
+                    {streamingStatus && !genProgress && (
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
                           <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
@@ -4158,11 +4325,10 @@ REGOLE IMPORTANTI:
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="ds-control h-8 rounded-full px-3 text-slate-900 gap-1.5"
+                              className="h-8 rounded-full bg-transparent px-1.5 text-slate-500 hover:bg-slate-100 gap-1"
                               onClick={() => setShowModeMenu(v => !v)}
-                              title="Cambia modalità"
+                              title="Modalità attiva: cambia"
                             >
-                              <span className="text-[11px] font-semibold">Modalita</span>
                               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 selectedModeMeta.id === 'default'
                                   ? 'bg-slate-900 text-white'
@@ -4228,36 +4394,58 @@ REGOLE IMPORTANTI:
                           </div>
                         )}
 
-                        {!sidebarMode && !isMobile && <VoiceRecorder
-                          onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
-                        />}
-
-                        {/* Link button + popover */}
+                        {/* One attach control: file, YouTube link or website link behind a small menu. */}
                         {!sidebarMode && !isMobile && <div className="relative flex-shrink-0" ref={linkModalRef}>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full flex-shrink-0"
-                            onClick={() => { setShowLinkModal(v => !v); setLinkInputValue('') }}
-                            title="Aggiungi link"
+                            className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
+                            onClick={() => { setShowAttachMenu(v => !v); setShowLinkModal(false); setLinkInputValue('') }}
+                            title="Allega"
                           >
-                            <Youtube className="h-4 w-4" />
+                            <Paperclip className="h-4 w-4" />
                           </Button>
 
-                          {showLinkModal && (
+                          {showAttachMenu && !showLinkModal && (
+                            <div className="absolute bottom-full left-0 z-50 mb-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-150">
+                              <button
+                                type="button"
+                                onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click() }}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              >
+                                <Paperclip className="h-3.5 w-3.5" /> File
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setLinkKind('youtube'); setShowLinkModal(true) }}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              >
+                                <Youtube className="h-3.5 w-3.5 text-red-500" /> Link YouTube
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setLinkKind('web'); setShowLinkModal(true) }}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              >
+                                <Globe className="h-3.5 w-3.5" /> Link al sito web
+                              </button>
+                            </div>
+                          )}
+
+                          {showAttachMenu && showLinkModal && (
                             <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in duration-150">
-                              <p className="text-xs font-semibold text-slate-600 mb-2">Aggiungi link</p>
+                              <p className="text-xs font-semibold text-slate-600 mb-2">{linkKind === 'youtube' ? 'Link YouTube' : 'Link al sito web'}</p>
                               <input
                                 type="url"
                                 value={linkInputValue}
                                 onChange={e => setLinkInputValue(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter' && linkInputValue.trim()) handleConfirmLink(linkInputValue.trim()) }}
-                                placeholder="Incolla un link..."
+                                onKeyDown={e => { if (e.key === 'Enter' && linkInputValue.trim() && (linkKind === 'web' || extractYouTubeId(linkInputValue))) { handleConfirmLink(linkInputValue.trim()); setShowAttachMenu(false) } }}
+                                placeholder={linkKind === 'youtube' ? 'https://youtube.com/watch?v=…' : 'https://…'}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-300 focus:outline-none"
                                 autoFocus
                               />
 
-                              {extractYouTubeId(linkInputValue) && (
+                              {linkKind === 'youtube' && extractYouTubeId(linkInputValue) && (
                                 <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg overflow-hidden">
                                   <img
                                     src={`https://img.youtube.com/vi/${extractYouTubeId(linkInputValue)}/hqdefault.jpg`}
@@ -4275,6 +4463,9 @@ REGOLE IMPORTANTI:
                                   </div>
                                 </div>
                               )}
+                              {linkKind === 'youtube' && linkInputValue.trim() && !extractYouTubeId(linkInputValue) && (
+                                <p className="mt-2 text-[11px] text-amber-600">Non sembra un link YouTube valido.</p>
+                              )}
 
                               <div className="mt-2.5 flex justify-end gap-2">
                                 <Button
@@ -4283,13 +4474,13 @@ REGOLE IMPORTANTI:
                                   className="h-7 text-xs"
                                   onClick={() => { setShowLinkModal(false); setLinkInputValue('') }}
                                 >
-                                  Annulla
+                                  Indietro
                                 </Button>
                                 <Button
                                   size="sm"
                                   className="h-7 text-xs bg-slate-900 hover:bg-slate-800 text-white"
-                                  disabled={!linkInputValue.trim()}
-                                  onClick={() => linkInputValue.trim() && handleConfirmLink(linkInputValue.trim())}
+                                  disabled={!linkInputValue.trim() || (linkKind === 'youtube' && !extractYouTubeId(linkInputValue))}
+                                  onClick={() => { handleConfirmLink(linkInputValue.trim()); setShowAttachMenu(false) }}
                                 >
                                   Aggiungi
                                 </Button>
@@ -4297,16 +4488,6 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                         </div>}
-
-                        {!sidebarMode && !isMobile && <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
-                          onClick={() => fileInputRef.current?.click()}
-                          title="Allega"
-                        >
-                          <Paperclip className="h-4 w-4" />
-                        </Button>}
                         {!sidebarMode && !isMobile && (
                           <TeacherNotebookPicker
                             attached={attachedNotebooks}
@@ -4316,24 +4497,26 @@ REGOLE IMPORTANTI:
                         )}
 
                         <textarea
+                          ref={composerRef}
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                          onKeyDown={(e) => {
+                            if (onHistoryKey(e)) return
+                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
+                          }}
                           onPaste={handleInputPaste}
                           placeholder={
                             agentMode === 'analysis'
                               ? (analysisTaskId ? 'Domanda specifica (opzionale)...' : 'Seleziona prima sessione e compito...')
                               : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'
                           }
-                          className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
+                          className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 min-h-[36px] leading-relaxed"
                           rows={1}
-                          style={{ overflow: 'hidden' }}
-                          onInput={(e) => {
-                            const target = e.target as HTMLTextAreaElement;
-                            target.style.height = 'auto';
-                            target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
-                          }}
                         />
+
+                        {!sidebarMode && !isMobile && <VoiceRecorder
+                          onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
+                        />}
 
                         {isLoading ? (
                           <Button

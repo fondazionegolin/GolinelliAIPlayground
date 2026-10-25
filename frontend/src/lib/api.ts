@@ -1085,6 +1085,11 @@ export const llmApi = {
   },
   routeIntent: (text: string, history: { role: string; content: string }[]) =>
     api.post<{ intent: 'edit_image' | 'new_image' | 'analyze_image' | 'other'; image: 'attached' | 'previous' | 'none' }>('/llm/route-intent', { text, history }),
+  decideTool: (text: string, allowed?: string[], artifacts?: { type: string; detail?: string }[], recent?: { role: string; content: string }[]) =>
+    api.post<{
+      tool: string; action: 'chat' | 'create' | 'edit' | 'ask_about'; confidence: number; top: string
+      alternatives: { tool: string; probability: number }[]; action_alternatives: { tool: string; probability: number }[]; routed: boolean
+    }>('/llm/decide-tool', { text, allowed, artifacts, recent }),
   generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
