@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi, type BackgroundJob, type BoardCardFields, type BoardSprintInput } from '@/lib/api'
 import { findActiveJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
@@ -133,7 +134,13 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const draggedCard = useRef<string | null>(null)
   const draggedColumn = useRef<string | null>(null)
   const cancelColumnEdit = useRef(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Navbar quick access links here with ?board=<id>.
+  const location = useLocation()
+  const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('board'))
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(location.search).get('board')
+    if (fromUrl) setSelectedId(fromUrl)
+  }, [location.search])
   const [title, setTitle] = useState('')
   const [templateKey, setTemplateKey] = useState('kanban')
   const [shareOnCreate, setShareOnCreate] = useState(false)

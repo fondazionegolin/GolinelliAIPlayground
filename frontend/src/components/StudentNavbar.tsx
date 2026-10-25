@@ -345,8 +345,7 @@ export function StudentNavbar({
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] !text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
-                  style={{ color: '#000' }}
+                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA

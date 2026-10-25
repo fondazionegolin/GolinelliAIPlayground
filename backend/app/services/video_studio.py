@@ -11,6 +11,7 @@ Visual consistency strategy
 """
 import asyncio
 import base64
+import copy
 import io
 import logging
 import textwrap
@@ -155,7 +156,7 @@ async def _save(project_id: uuid.UUID, mutate) -> None:
         project = await db.get(VideoProject, project_id)
         if not project:
             return
-        script = dict(project.script or {})
+        script = copy.deepcopy(project.script or {})
         mutate(project, script)
         project.script = script  # reassign so JSONB change is detected
         await db.commit()

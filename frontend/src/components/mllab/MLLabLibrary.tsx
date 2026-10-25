@@ -18,32 +18,41 @@ const relative = (iso: string) => {
 
 const Smile = createFontIcon('Smile', 'smile')
 
-const MODE_META: Record<Mode, { icon: typeof Camera; color: string; blurb: string }> = {
-  image: { icon: ImageIcon, color: '#3ea9f4', blurb: 'Riconosce oggetti, disegni, scritte: tutto ciò che si può inquadrare.' },
-  pose: { icon: User, color: '#7b69c9', blurb: 'Riconosce la posizione del corpo: braccia alzate, seduto, in piedi, un passo di danza…' },
-  hand: { icon: Hand, color: '#e85c8d', blurb: 'Riconosce i gesti delle mani: pollice in su, pugno, mano aperta, numeri con le dita…' },
-  face: { icon: Smile, color: '#f59e0b', blurb: 'Riconosce le espressioni del viso: felice, triste, sorpreso, arrabbiato… usando i landmark del volto.' },
+const MODE_META: Record<Mode, { icon: typeof Camera; color: string; blurb: string; examples: string }> = {
+  image: { icon: ImageIcon, color: '#3ea9f4', blurb: 'Tutto ciò che si può inquadrare.', examples: 'Oggetti · disegni · scritte' },
+  pose: { icon: User, color: '#7b69c9', blurb: 'La posizione di tutto il corpo.', examples: 'Braccia alzate · seduto · danza' },
+  hand: { icon: Hand, color: '#e85c8d', blurb: 'I gesti fatti con le mani.', examples: 'Pollice su · pugno · numeri' },
+  face: { icon: Smile, color: '#f59e0b', blurb: 'Le espressioni del volto.', examples: 'Felice · triste · sorpreso' },
 }
 
 function ModeChooser({ onPick, onClose }: { onPick: (mode: Mode) => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Che cosa vuoi riconoscere?">
+      <div className="w-full max-w-4xl rounded-[2rem] bg-white p-8 shadow-2xl dark:bg-slate-900 sm:p-10" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Che cosa vuoi riconoscere?">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Che cosa vuoi riconoscere?</h2>
-            <p className="mt-1 text-sm text-slate-500">Scegli il tipo di progetto. Il modo di lavorare è lo stesso: crei le classi, mostri degli esempi e provi dal vivo.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Che cosa vuoi riconoscere?</h2>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Scegli cosa deve “vedere” il tuo modello. Il resto è uguale: classi, esempi, prova dal vivo.</p>
           </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" aria-label="Chiudi"><X className="h-5 w-5" /></button>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(MODE_META) as Mode[]).map((mode) => {
             const meta = MODE_META[mode]
             return (
-              <button key={mode} type="button" onClick={() => onPick(mode)} className="ui-card group flex flex-col items-start gap-3 p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lg">
-                <span className="ds-squircle flex h-14 w-14 items-center justify-center text-white" style={{ background: meta.color }}><meta.icon className="h-7 w-7" strokeWidth={1.7} /></span>
-                <span className="text-base font-bold text-slate-900">{MODE_LABEL[mode]}</span>
-                <span className="text-sm leading-relaxed text-slate-500">{meta.blurb}</span>
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onPick(mode)}
+                className="group flex flex-col items-center gap-4 rounded-3xl px-4 pb-6 pt-8 text-center transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2"
+                style={{ background: `color-mix(in srgb, ${meta.color} 10%, transparent)`, ['--tw-ring-color' as string]: meta.color }}
+              >
+                <span className="ds-squircle flex h-20 w-20 items-center justify-center text-white shadow-lg transition duration-200 group-hover:scale-110" style={{ background: meta.color, boxShadow: `0 10px 24px -8px ${meta.color}` }}>
+                  <meta.icon className="h-10 w-10" strokeWidth={1.6} />
+                </span>
+                <span className="text-lg font-bold text-slate-900 dark:text-white">{MODE_LABEL[mode]}</span>
+                <span className="text-sm leading-snug text-slate-600 dark:text-slate-300">{meta.blurb}</span>
+                <span className="mt-auto pt-1 text-xs font-medium" style={{ color: meta.color }}>{meta.examples}</span>
               </button>
             )
           })}

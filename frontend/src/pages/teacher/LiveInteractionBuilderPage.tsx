@@ -16,7 +16,8 @@ import {
   ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText, Bot, LockKeyhole,
   Copy, LayoutTemplate, UsersRound, ChevronRight,
 } from '@/components/icons'
-import LiveSessionList from '@/components/live/LiveSessionList'
+import LiveSessionList, { isOpenLobby } from '@/components/live/LiveSessionList'
+import EndSessionDialog from '@/components/live/EndSessionDialog'
 
 // ── Types ──
 
@@ -54,6 +55,9 @@ interface LiveInteractionItem {
   current_slide_index: number
   created_at: string
   interaction_type?: 'slides' | 'escape_room'
+  public_enabled?: boolean
+  started_at?: string | null
+  updated_at?: string | null
 }
 
 interface EscapeTeacherbotItem {
@@ -1570,6 +1574,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
   const [editingEscapeId, setEditingEscapeId] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<LiveInteractionItem | null>(null)
   const [duplicateTarget, setDuplicateTarget] = useState<LiveInteractionItem | null>(null)
+  const [endTarget, setEndTarget] = useState<LiveInteractionItem | null>(null)
   const [prefill, setPrefill] = useState<{ title: string; slides: Slide[] } | null>(null)
 
   const { data: interactions, isLoading } = useQuery<LiveInteractionItem[]>({
@@ -1624,6 +1629,16 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast({ title: detail || 'Impossibile pubblicare il Teacherbot', variant: 'destructive' })
     },
+  })
+
+  const endMutation = useMutation({
+    mutationFn: (item: LiveInteractionItem) => isOpenLobby(item) ? liveInteractionApi.disablePublicLink(item.id) : liveInteractionApi.end(item.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live-interactions', activeSessionId] })
+      setEndTarget(null)
+      toast({ title: 'Sessione chiusa per tutti' })
+    },
+    onError: () => toast({ title: 'Impossibile chiudere la sessione', variant: 'destructive' }),
   })
 
   const deleteMutation = useMutation({
@@ -1799,9 +1814,11 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
           onShare={item => setShareTarget(item as LiveInteractionItem)}
           onEdit={item => item.interaction_type === 'escape_room' ? setEditingEscapeId(item.id) : setEditingId(item.id)}
           onDuplicate={item => setDuplicateTarget(item as LiveInteractionItem)}
+          onEnd={item => setEndTarget(item as LiveInteractionItem)}
           onDelete={item => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }}
         />
       )}
+      {endTarget && <EndSessionDialog title={endTarget.title} kind={endTarget.interaction_type} lobby={isOpenLobby(endTarget)} pending={endMutation.isPending} onConfirm={() => endMutation.mutate(endTarget)} onCancel={() => setEndTarget(null)} />}
       {editingEscapeId && <EscapeRoomEditDialog interactionId={editingEscapeId} onClose={() => setEditingEscapeId(null)} />}
       {shareTarget && <LiveInteractionPublicShareModal interactionId={shareTarget.id} title={shareTarget.title} onClose={() => setShareTarget(null)} />}
       {duplicateTarget && activeSessionId && (

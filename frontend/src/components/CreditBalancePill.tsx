@@ -41,8 +41,8 @@ interface CreditBalancePillProps {
   accentColor: string
 }
 
-const teacherCreditColor = '#f97316'
-const poolCreditColor = '#0e7490'
+const teacherCreditColor = '#16a34a'
+const poolCreditColor = '#c026d3'
 
 function formatCreditValue(value: number) {
   if (value === 0) return '0'

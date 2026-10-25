@@ -516,6 +516,34 @@
     color: #2d2d2d;
   }
 
+  /* Quick-access chips in the navbar submenus: flat grey fill, hairline edge, no drop shadow (dark mode stays calm). */
+  .nav-recent-chip {
+    background-color: rgba(100, 116, 139, 0.09);
+    box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.12);
+    transition: background-color 150ms ease;
+  }
+  .nav-recent-chip:hover,
+  .nav-recent-chip:focus-visible {
+    background-color: rgba(100, 116, 139, 0.18);
+  }
+  .dark .nav-recent-chip {
+    background-color: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .dark .nav-recent-chip:hover,
+  .dark .nav-recent-chip:focus-visible {
+    background-color: rgba(255, 255, 255, 0.09);
+  }
+
+  /* Navbar BETA pill: black ink on solid yellow in both themes (dark mode must not recolour either layer). */
+  .brand-beta-pill,
+  .dark .brand-beta-pill {
+    background: #facc15 !important;
+    background-image: none !important;
+    color: #111 !important;
+    -webkit-text-fill-color: #111 !important;
+  }
+
   .brand-wordmark-ai {
     /* Solid pictogram red: any transparency washes it out on the dark canvas. */
     color: var(--logo-pink);

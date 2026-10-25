@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useQueries } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from '@/components/icons'
+import { NavSectionArt } from '@/components/NavSectionArt'
+import type { NavRecent, NavRecentsSpec } from '@/lib/navRecents'
 
 export interface NavClusterItem {
   path: string
@@ -8,6 +11,10 @@ export interface NavClusterItem {
   description?: string
   icon: React.ElementType
   badgeCount?: number
+  /** Longer explanation shown under the title when the menu is wide (with recents). */
+  details?: string
+  /** Quick access to the latest work in this section, shown on the right of the row. */
+  recents?: NavRecentsSpec
 }
 
 export interface NavCluster {
@@ -55,6 +62,42 @@ function useHoverMenu() {
   return { openId, openSoon, closeSoon, openNow }
 }
 
+export const clusterHasRecents = (cluster: NavCluster) => cluster.items.some((item) => item.recents)
+
+const RECENT_LINES = 3
+
+/** Up to three single-name entries, each in its own rounded chip with a soft grey highlight (design-system control). */
+function RecentsColumn({ entries, loading, onPick }: { entries: NavRecent[]; loading: boolean; onPick: () => void }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Recenti</p>
+      {loading ? (
+        <div className="flex flex-col gap-1.5" aria-hidden="true">
+          {Array.from({ length: RECENT_LINES }, (_, index) => <span key={index} className="h-8 w-full animate-pulse rounded-[var(--ds-radius-control)] bg-slate-100" />)}
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="flex h-8 items-center px-1 text-[12px] text-slate-400">Niente di recente</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {entries.slice(0, RECENT_LINES).map((entry) => (
+            <li key={entry.id}>
+              <Link
+                to={entry.to}
+                onClick={onPick}
+                title={[entry.title, entry.meta].filter(Boolean).join(' · ')}
+                className="nav-recent-chip flex h-8 items-center gap-2 rounded-[var(--ds-radius-control)] px-3 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]"
+              >
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-slate-700">{entry.title}</span>
+                {entry.badge && <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-semibold text-emerald-600"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{entry.badge}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
   cluster: NavCluster
   pathname: string
@@ -62,41 +105,87 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
   side?: boolean
   panelRef?: React.Ref<HTMLDivElement>
 }) {
+  const wide = clusterHasRecents(cluster)
+  // Fetch only while the panel is mounted (= menu open); cached briefly so hovering back and forth is free.
+  const results = useQueries({
+    queries: cluster.items.map((item) => ({
+      queryKey: ['nav-recents', ...(item.recents?.queryKey ?? [item.path])],
+      queryFn: item.recents?.fetch ?? (async () => [] as NavRecent[]),
+      enabled: Boolean(item.recents?.fetch),
+      staleTime: 30_000,
+    })),
+  })
   return (
     <div
       ref={panelRef}
       role="menu"
       aria-label={cluster.label}
-      className={`ds-popover w-72 rounded-[var(--ds-radius-panel)] p-2 ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
+      className={`ds-popover rounded-[var(--ds-radius-panel)] p-2 ${wide ? 'w-[min(860px,calc(100vw-2rem))]' : 'w-72'} ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
     >
-      <p className="px-3 pb-1.5 pt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{cluster.label}</p>
-      <div className="flex flex-col gap-1">
-        {cluster.items.map((item, index) => {
-          const Icon = item.icon
-          const active = isNavPathActive(pathname, item.path)
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              role="menuitem"
-              onClick={onPick}
-              style={{ animationDelay: `${60 + index * 35}ms` }}
-              className={`nav-cluster-item group/item flex items-center gap-3 rounded-[var(--ds-radius-control)] px-2.5 py-2 text-left outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active
-                ? 'ds-selected'
-                : 'text-slate-700 hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] focus-visible:bg-[var(--ds-control-hover)]'}`}
-            >
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-white/80 shadow-[var(--ds-shadow-1)]' : 'ds-control'}`}>
-                <Icon className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-emphasis text-[13px] font-bold leading-tight">{item.label}</span>
-                {item.description && <span className="mt-0.5 block truncate text-[11px] leading-tight text-slate-500">{item.description}</span>}
-              </span>
-              <ClusterBadge count={item.badgeCount ?? 0} />
-            </Link>
-          )
-        })}
-      </div>
+      {wide ? (
+        <div className="flex flex-col divide-y divide-slate-200/60">
+          {cluster.items.map((item, index) => {
+            const active = isNavPathActive(pathname, item.path)
+            const spec = item.recents
+            const entries = spec?.entries ?? results[index]?.data ?? []
+            return (
+              <div key={item.path} style={{ animationDelay: `${60 + index * 35}ms` }} className="nav-cluster-item grid min-h-[10rem] grid-cols-[minmax(0,1fr)_16rem] items-start gap-x-8 px-2 py-4">
+                <Link
+                  to={item.path}
+                  role="menuitem"
+                  onClick={onPick}
+                  className={`group/item -mx-2 -my-1 block rounded-[var(--ds-radius-control)] px-2 py-1 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)] focus-visible:bg-[var(--ds-control-hover)]'}`}
+                >
+                  <span className="flex items-start gap-4">
+                    <NavSectionArt path={item.path} className="h-[60px] w-[78px]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-emphasis text-[19px] font-extrabold leading-tight tracking-tight">{item.label}</span>
+                        <ClusterBadge count={item.badgeCount ?? 0} />
+                      </span>
+                      {(item.details || item.description) && <span className="mt-1 line-clamp-3 block text-[12.5px] leading-[1.45] text-slate-500">{item.details || item.description}</span>}
+                    </span>
+                  </span>
+                </Link>
+                <div className="min-w-0">
+                  {spec ? <RecentsColumn entries={entries} loading={!spec.entries && Boolean(results[index]?.isLoading)} onPick={onPick} /> : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <>
+          <p className="px-3 pb-1.5 pt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{cluster.label}</p>
+          <div className="flex flex-col gap-1">
+            {cluster.items.map((item, index) => {
+              const Icon = item.icon
+              const active = isNavPathActive(pathname, item.path)
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  role="menuitem"
+                  onClick={onPick}
+                  style={{ animationDelay: `${60 + index * 35}ms` }}
+                  className={`nav-cluster-item group/item flex items-center gap-3 rounded-[var(--ds-radius-control)] px-2.5 py-2 text-left outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active
+                    ? 'ds-selected'
+                    : 'text-slate-700 hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] focus-visible:bg-[var(--ds-control-hover)]'}`}
+                >
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-white/80 shadow-[var(--ds-shadow-1)]' : 'ds-control'}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-emphasis text-[13px] font-bold leading-tight">{item.label}</span>
+                    {item.description && <span className="mt-0.5 block truncate text-[11px] leading-tight text-slate-500">{item.description}</span>}
+                  </span>
+                  <ClusterBadge count={item.badgeCount ?? 0} />
+                </Link>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -122,7 +211,7 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
   }, [openId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex items-center gap-1.5" onMouseLeave={closeSoon}>
+    <div className="relative flex items-center gap-1.5" onMouseLeave={closeSoon}>
       {clusters.map((cluster) => {
         const active = clusterIsActive(pathname, cluster)
         const single = cluster.items.length === 1 ? cluster.items[0] : null
@@ -164,7 +253,7 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
           }
         }
         return (
-          <div key={cluster.id} className="relative" onMouseEnter={() => openSoon(cluster.id)}>
+          <div key={cluster.id} className={clusterHasRecents(cluster) ? '' : 'relative'} onMouseEnter={() => openSoon(cluster.id)}>
             <button
               type="button"
               className={tabClass}
@@ -176,8 +265,9 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
               {content}
             </button>
             {open && (
-              // pt-2 bridges the gap so the pointer can reach the panel without closing it
-              <div className="absolute left-1/2 top-full z-50 -translate-x-1/2 pt-2" onMouseEnter={() => openSoon(cluster.id)}>
+              // pt-2 bridges the gap so the pointer can reach the panel without closing it.
+              // Wide panels (with recents) anchor to the whole bar so they never overflow the viewport.
+              <div className={`absolute top-full z-50 pt-2 left-1/2 -translate-x-1/2`} onMouseEnter={() => openSoon(cluster.id)}>
                 <ClusterPanel cluster={cluster} pathname={pathname} onPick={() => openNow(null)} panelRef={panelRef} />
               </div>
             )}

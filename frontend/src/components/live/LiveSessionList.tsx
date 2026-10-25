@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark,
   Languages, Leaf, Lightbulb, ListChecks, Lock, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Search, Share2, Shield,
-  Sparkles, Trash2, Trophy, Microscope, Zap, ChevronDown,
+  Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown,
   type LucideIcon,
 } from '@/components/icons'
 
@@ -14,7 +14,15 @@ export interface LiveSessionItem {
   slides_json?: Array<object>
   created_at: string
   interaction_type?: 'slides' | 'escape_room'
+  public_enabled?: boolean
+  started_at?: string | null
+  updated_at?: string | null
 }
+
+/** Draft escape room whose public lobby is still open: students can be waiting in it. */
+export const isOpenLobby = (item: LiveSessionItem) => item.status === 'DRAFT' && item.interaction_type === 'escape_room' && !!item.public_enabled
+/** Something still running that the teacher should conclude. */
+export const isPending = (item: LiveSessionItem) => item.status === 'ACTIVE' || isOpenLobby(item)
 
 type IconType = LucideIcon
 // Platform palette (solid colours used across the app): logo violet and blue, brand pink, teal, indigo, amber.
@@ -99,6 +107,8 @@ interface Actions {
   onEdit: (item: LiveSessionItem) => void
   onDuplicate: (item: LiveSessionItem) => void
   onDelete: (item: LiveSessionItem) => void
+  /** Ask to close the session for everyone (always confirmed by the caller). */
+  onEnd: (item: LiveSessionItem) => void
 }
 
 function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
@@ -114,6 +124,7 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
     { label: 'Link pubblico', icon: Share2, run: () => actions.onShare(item), hidden: item.status === 'CLOSED' },
     { label: 'Modifica', icon: Pencil, run: () => actions.onEdit(item), hidden: item.status !== 'DRAFT' },
     { label: 'Report', icon: FileBarChart2, run: () => actions.onOpen(item), hidden: item.status === 'DRAFT' || item.status === 'CLOSED' },
+    { label: isOpenLobby(item) ? 'Chiudi lobby' : 'Concludi per tutti', icon: Square, run: () => actions.onEnd(item), danger: true, hidden: !isPending(item) },
     { label: 'Duplica', icon: Copy, run: () => actions.onDuplicate(item) },
     { label: 'Elimina', icon: Trash2, run: () => actions.onDelete(item), danger: true, hidden: item.status === 'ACTIVE' },
   ]
@@ -142,17 +153,18 @@ const unit = (item: LiveSessionItem) => `${item.slides_count} ${item.interaction
 
 function Card({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
   const active = item.status === 'ACTIVE'
+  const lobby = isOpenLobby(item)
   const escape = item.interaction_type === 'escape_room'
   const TypeIcon = escape ? Lock : BarChart3
   return (
-    <article className={`ui-card flex flex-col gap-4 p-4 transition hover:-translate-y-0.5 hover:shadow-lg ${active ? 'ring-2 ring-emerald-500/60' : ''}`}>
+    <article className={`ui-card flex flex-col gap-4 p-4 transition hover:-translate-y-0.5 hover:shadow-lg ${active ? 'ring-2 ring-emerald-500/60' : lobby ? 'ring-2 ring-amber-500/70' : ''}`}>
       <div className="flex items-start gap-3.5">
         <Emblem item={item} size="large" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600"><TypeIcon className="h-3 w-3" />{escape ? 'Escape Room' : 'Quiz'}</span>
-            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${active ? 'bg-emerald-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? 'In corso' : 'Bozza'}
+            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${active ? 'bg-emerald-500 text-white' : lobby ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? 'In corso' : lobby ? 'Lobby aperta' : 'Bozza'}
             </span>
           </div>
           {item.status === 'DRAFT'
@@ -219,6 +231,7 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
   }, [items, query, status, type, sort])
 
   const active = visible.filter((i) => i.status === 'ACTIVE')
+  const pending = items.filter(isPending)
   const drafts = visible.filter((i) => i.status === 'DRAFT')
   const archive = visible.filter((i) => i.status === 'CLOSED')
   const archiveShown = showAllArchive || archive.length <= 8 ? archive : archive.slice(0, 8)
@@ -251,6 +264,22 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
         </div>
       </div>
 
+      {pending.length > 0 && (
+        <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white"><Radio className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-amber-900">{pending.length === 1 ? '1 sessione è ancora attiva' : `${pending.length} sessioni sono ancora attive`}: gli studenti della classe la vedono.</p>
+            <p className="truncate text-xs text-amber-800/80">{pending.map(i => i.title).join(' · ')}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pending.map(item => (
+              <button key={item.id} type="button" onClick={() => actions.onEnd(item)} className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">
+                <Square className="h-3.5 w-3.5" />{isOpenLobby(item) ? 'Chiudi lobby' : 'Concludi'}{pending.length > 1 ? ` «${item.title.length > 18 ? item.title.slice(0, 18) + '…' : item.title}»` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {active.length > 0 && (
         <Section title="In corso" hint="Sessioni live attive adesso" count={active.length} tone="emerald">
           <Grid>{active.map((item) => <Card key={item.id} item={item} actions={actions} />)}</Grid>

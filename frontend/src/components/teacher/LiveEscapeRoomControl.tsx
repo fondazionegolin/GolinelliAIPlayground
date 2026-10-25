@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, Maximize2, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import EndSessionDialog from '@/components/live/EndSessionDialog'
 import AchievementIcon from '@/components/live/AchievementIcon'
 import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 import { EscapeRoomEditDialog } from '@/pages/teacher/LiveInteractionBuilderPage'
@@ -44,6 +45,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [, forceTick] = useState(0)
+  const [confirmEnd, setConfirmEnd] = useState(false)
   const { data: results, refetch } = useQuery({
     queryKey: ['live-interaction-results', interaction.id, 'escape'],
     queryFn: () => liveInteractionApi.results(interaction.id).then(response => response.data),
@@ -95,6 +97,8 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   const end = useMutation({
     mutationFn: () => liveInteractionApi.end(interaction.id),
     onSuccess: async () => {
+      setConfirmEnd(false)
+      queryClient.invalidateQueries({ queryKey: ['live-interactions'] })
       await queryClient.invalidateQueries({ queryKey: ['live-interaction', interaction.id] })
       await refetch()
     },
@@ -113,6 +117,8 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
         <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{interaction.title}</h1>
         <span className={`rounded-full px-3 py-1 text-sm font-semibold ${interaction.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : interaction.status === 'CLOSED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>{interaction.status === 'ACTIVE' ? '● LIVE' : interaction.status === 'CLOSED' ? 'Completata' : 'Bozza'}</span>
       </div>
+
+      {confirmEnd && <EndSessionDialog title={interaction.title} kind="escape_room" pending={end.isPending} onConfirm={() => end.mutate()} onCancel={() => setConfirmEnd(false)} />}
 
       {interaction.status === 'DRAFT' ? (
         <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-indigo-700 to-slate-900 p-6 text-white shadow-xl sm:p-10">
@@ -154,7 +160,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
             <Metric icon={PackageOpen} label="Indizi" value={String(results?.total_steps || interaction.slides_json.length)} />
           </section>
 
-          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => end.mutate()} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white"><Square className="h-4 w-4" /> Chiudi e calcola classifica</button></div>}
+          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => setConfirmEnd(true)} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white"><Square className="h-4 w-4" /> Chiudi e calcola classifica</button></div>}
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-bold text-slate-900">{interaction.status === 'CLOSED' ? 'Classifica finale' : 'Avanzamento in tempo reale'}</h2></div>

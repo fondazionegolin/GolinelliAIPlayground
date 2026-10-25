@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { formatDistanceToNow } from 'date-fns'
@@ -82,7 +83,13 @@ export default function TeacherbotsPage() {
   const queryClient = useQueryClient()
   const [display, setDisplay] = useState<DisplayMode>('grid')
   const [search, setSearch] = useState('')
-  const [formTarget, setFormTarget] = useState<'create' | string | null>(null)
+  // Navbar quick access links here with ?edit=<id>.
+  const location = useLocation()
+  const [formTarget, setFormTarget] = useState<'create' | string | null>(() => new URLSearchParams(window.location.search).get('edit'))
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(location.search).get('edit')
+    if (fromUrl) setFormTarget(fromUrl)
+  }, [location.search])
   const [testTarget, setTestTarget] = useState<string | null>(null)
   const [reportsTarget, setReportsTarget] = useState<string | null>(null)
   const [shareBot, setShareBot] = useState<{ id: string; name: string } | null>(null)

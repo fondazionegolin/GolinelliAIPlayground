@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from typing import Annotated, Optional, List, Literal
 from datetime import datetime, timezone
 from uuid import UUID
@@ -728,11 +728,28 @@ async def _load_voice_teacherbot(db: AsyncSession, auth: StudentOrTeacher, teach
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessione non trovata")
 
+    # Same visibility rules as the student's bot list: the student's own studentbots,
+    # plus bots published to their class or shared with them individually.
     result = await db.execute(
         select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+    )
+    bot = result.scalar_one_or_none()
+    if bot:
+        return bot
+
+    result = await db.execute(
+        select(Teacherbot)
+        .distinct()
         .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
         .where(Teacherbot.id == teacherbot_id)
-        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(or_(
+            TeacherbotPublication.class_id == session.class_id,
+            TeacherbotPublication.student_id == student.id,
+        ))
         .where(TeacherbotPublication.is_active == True)
         .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
     )

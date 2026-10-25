@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
+import { navRecentFetchers, type NavRecent } from '@/lib/navRecents'
 import { NavClusterBar, NavClusterRail, isNavPathActive, type NavCluster } from '@/components/NavClusterMenu'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
@@ -373,29 +374,37 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   })
 
   const betaItems = [
-    ...(isAdmin ? [{ path: '/teacher/agentic', label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch }] : []),
+    ...(isAdmin ? [{ path: '/teacher/agentic', details: "Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo.", label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
     ...(isAdmin ? [{ path: '/teacher/video-studio', label: 'Video Studio', description: 'Video didattici da un testo, shot da 5 secondi', icon: Film }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
+  // Classes row: the session being worked on first, then the other running sessions.
+  const sessionRecents: NavRecent[] = [
+    ...(currentSession ? [{ id: currentSession.id, title: currentSession.name, meta: currentSession.className, badge: 'Aperta', to: `/teacher/sessions/${currentSession.id}` }] : []),
+    ...activeSessions
+      .filter((session) => session.id !== currentSession?.id)
+      .map((session) => ({ id: session.id, title: session.name, meta: `${session.className} · ${session.studentCount ?? 0} studenti`, to: `/teacher/sessions/${session.id}` })),
+  ]
+  const sid = currentSession?.id
   const navClusters: NavCluster[] = [
     { id: 'support', label: t('navbar.nav_support'), icon: AcademicAiIcon, items: [
       { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
     ] },
     { id: 'classes', label: t('navbar.nav_classes'), icon: Users, items: [
-      { path: '/teacher/classes', label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount },
-      { path: '/teacher/live-interaction', label: 'Live', description: t('navbar.desc_live'), icon: Zap },
-      { path: '/teacher/boards', label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare },
+      { path: '/teacher/classes', details: "Crea e organizza le tue classi, avvia le sessioni di lavoro con gli studenti, condividi il codice di accesso e gestisci gli inviti dei colleghi.", label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount, recents: { queryKey: ['classes'], limit: 3, entries: sessionRecents } },
+      { path: '/teacher/live-interaction', details: "Lancia quiz, sondaggi, word wall ed escape room in diretta: gli studenti rispondono dal telefono e tu segui risultati e classifica in tempo reale.", label: 'Live', description: t('navbar.desc_live'), icon: Zap, recents: { queryKey: ['live', sid], limit: 3, fetch: navRecentFetchers.live(sid) } },
+      { path: '/teacher/boards', details: "Organizza il lavoro con lavagne Kanban o Scrum condivise con la classe: puoi generare il backlog con l'AI da un prompt o da un file.", label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare, recents: { queryKey: ['boards', sid], limit: 3, fetch: navRecentFetchers.boards(sid) } },
       ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: 'Istituto', description: 'Docenti e informativa famiglie', icon: Building2 }] : []),
     ] },
     { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
-      { path: '/teacher/documents', label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText },
-      { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot },
+      { path: '/teacher/documents', details: "Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare.", label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
+      { path: '/teacher/teacherbots', details: "Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room.", label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
       { path: '/teacher/ai-3d', label: 'AI 3D', description: t('navbar.desc_ai3d'), icon: MushroomIcon },
       { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Box },
     ] },
     { id: 'labs', label: t('navbar.nav_labs'), icon: FlaskConical, items: [
-      { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2 },
-      { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2 },
+      { path: '/teacher/coding', details: "Crea app, giochi e pagine web dialogando con l'AI: anteprima in diretta, versioni salvate e condivisione del progetto con la classe.", label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2, recents: { queryKey: ['coding', sid], limit: 1, fetch: navRecentFetchers.coding(sid) } },
+      { path: '/teacher/notebooks', details: "Quaderni di codice con Python, p5.js, micro:bit e altro: esegui il codice nel browser e chiedi aiuto al tutor AI mentre lavori.", label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2, recents: { queryKey: ['notebooks'], limit: 3, fetch: navRecentFetchers.notebooks } },
       { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain },
       { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network },
     ] },
@@ -444,8 +453,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
-                  className="absolute -bottom-1 -right-2 rounded-full border-0 bg-[var(--brand-yellow)] px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] !text-black shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
-                  style={{ color: '#000' }}
+                  className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
                   aria-label="Scopri le novità della versione beta"
                 >
                   BETA

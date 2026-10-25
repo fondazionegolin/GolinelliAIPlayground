@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import EndSessionDialog from '@/components/live/EndSessionDialog'
 import LiveEscapeRoomControl from '@/components/teacher/LiveEscapeRoomControl'
 import {
   Play, SkipForward, Square, Users, Clock, CheckCircle2,
@@ -393,6 +394,7 @@ export default function LiveInteractionControlPage() {
 
   const [liveState, setLiveState] = useState<LiveState | null>(null)
   const [answerCount, setAnswerCount] = useState<{ count: number; total: number } | null>(null)
+  const [confirmEnd, setConfirmEnd] = useState(false)
 
   const { data: interaction, isLoading } = useQuery({
     queryKey: ['live-interaction', interactionId],
@@ -504,8 +506,10 @@ export default function LiveInteractionControlPage() {
   const endMutation = useMutation({
     mutationFn: () => liveInteractionApi.end(interactionId!),
     onSuccess: () => {
+      setConfirmEnd(false)
       setLiveState(prev => prev ? { ...prev, status: 'CLOSED' } : null)
       refetchResults()
+      queryClient.invalidateQueries({ queryKey: ['live-interactions'] })
     },
     onError: () => toast({ title: 'Errore', variant: 'destructive' }),
   })
@@ -703,8 +707,8 @@ export default function LiveInteractionControlPage() {
             {/* Navigation buttons */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-3">
               <button
-                onClick={() => nextMutation.mutate()}
-                disabled={nextMutation.isPending}
+                onClick={() => { if (isLastSlide) setConfirmEnd(true); else nextMutation.mutate() }}
+                disabled={nextMutation.isPending || endMutation.isPending}
                 className={`w-full flex items-center justify-center gap-2 font-bold py-4 rounded-xl text-white transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-base ${
                   isLastSlide
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-600'
@@ -715,7 +719,7 @@ export default function LiveInteractionControlPage() {
                 {nextMutation.isPending ? 'Avanzamento...' : isLastSlide ? 'Termina sessione' : 'Prossima slide →'}
               </button>
               <button
-                onClick={() => { if (confirm('Terminare la sessione anticipatamente?')) endMutation.mutate() }}
+                onClick={() => setConfirmEnd(true)}
                 disabled={endMutation.isPending}
                 className="w-full flex items-center justify-center gap-2 font-medium py-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all duration-200 disabled:opacity-60 text-sm"
               >
@@ -724,6 +728,10 @@ export default function LiveInteractionControlPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmEnd && (
+        <EndSessionDialog title={interaction?.title || liveState?.title || ''} pending={endMutation.isPending} onConfirm={() => endMutation.mutate()} onCancel={() => setConfirmEnd(false)} />
       )}
 
       {/* ── CLOSED: full report ── */}

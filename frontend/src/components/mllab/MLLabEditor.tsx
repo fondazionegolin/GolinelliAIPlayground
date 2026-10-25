@@ -12,6 +12,7 @@ import {
 import { chatApi, mlLabApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
+import UseModelInP5Card from './UseModelInP5Card'
 import {
   MAX_CLASSES, MAX_SAMPLES_PER_CLASS, deserializeClasses, emptyClass, serializeClasses, summarize, uid,
   type ClassState, type SampleState,
@@ -590,6 +591,8 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
               </ul>
             )}
           </div>
+
+          {trained && upToDate && !training && <UseModelInP5Card name={name} mode={mode} />}
 
           <div className="ui-card space-y-2 p-4 text-sm">
             <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">Qualità del modello</h2>

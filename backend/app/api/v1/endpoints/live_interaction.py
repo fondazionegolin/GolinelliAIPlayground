@@ -142,6 +142,9 @@ def _duplicate_as_draft(
     )
 
 
+LOBBY_MAX_AGE = timedelta(hours=3)
+
+
 def _public_code_needs_rotation(interaction: LiveInteraction) -> bool:
     return (
         not interaction.public_enabled
@@ -339,6 +342,9 @@ async def list_live_interactions(
             "slides_count": len(li.slides_json or []),
             "slides_json": li.slides_json or [],
             "current_slide_index": li.current_slide_index,
+            "public_enabled": bool(li.public_enabled),
+            "started_at": li.started_at.isoformat() if li.started_at else None,
+            "updated_at": li.updated_at.isoformat() if li.updated_at else None,
             "created_at": li.created_at.isoformat(),
         }
         for li in rows
@@ -1176,6 +1182,8 @@ async def get_current_live_interaction(
         LiveInteraction.status == "DRAFT",
         LiveInteraction.interaction_type == "escape_room",
         LiveInteraction.public_enabled.is_(True),
+        # A lobby the teacher forgot open must not trap students for days.
+        LiveInteraction.updated_at >= datetime.now(timezone.utc) - LOBBY_MAX_AGE,
     )
     visible = or_(LiveInteraction.status == "ACTIVE", lobby)
     if interaction_id is not None:
