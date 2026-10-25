@@ -16,16 +16,18 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
-  Upload, Play, Pause, Square, Network, FileText,
+  Play, Pause, Square, Network,
   Zap, RefreshCw, FlaskConical,
   Trash2, Plus, Pencil, X, Share2, HelpCircle, ArrowRight,
 } from '@/components/icons'
 import { Card } from '@/design/primitives/Card'
+import { Input } from '@/design/primitives/Input'
 import { Button } from '@/components/ui/button'
 import { teacherApi } from '@/lib/api'
 import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import ToyLMEmbeddingPanel, { type ToyLMEmbeddingPayload } from '@/components/toy-lm/ToyLMEmbeddingPanel'
+import ToyLMCorpusPicker, { type ToyLMCorpusSelection } from '@/components/toy-lm/ToyLMCorpusPicker'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 
@@ -131,15 +133,6 @@ const PARAM_HELP: Record<string, { title: string; explanation: string; effect: s
   },
 }
 
-const MAX_CORPUS_CHARS = 200_000
-
-const SAMPLE_CORPORA = [
-  { name: 'Divina Commedia', language: 'Italiano', file: 'divina-commedia.txt' },
-  { name: 'Decameron', language: 'Italiano', file: 'decameron.txt' },
-  { name: "Alice's Adventures in Wonderland", language: 'English', file: 'alice-in-wonderland.txt' },
-  { name: 'De bello Gallico', language: 'Latino', file: 'de-bello-gallico.txt' },
-]
-
 // Lab accent — violet, applied via CSS vars so the design-system Button/Card pick it up.
 const LAB_ACCENT: CSSProperties = {
   ['--app-accent' as string]: 'var(--logo-violet)',
@@ -180,10 +173,9 @@ export default function ToyLMPage() {
 
   // New job form
   const [newJobName, setNewJobName] = useState('Modello 1')
-  const [newCorpus, setNewCorpus] = useState('')
-  const [fileNames, setFileNames] = useState<string[]>([])
-  const [isDragging, setIsDragging] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [corpus, setCorpus] = useState<ToyLMCorpusSelection | null>(null)
+  const [isLoadingCorpus, setIsLoadingCorpus] = useState(false)
+  const newCorpus = corpus?.text ?? ''
 
   // Params for new / selected job
   const [params, setParams] = useState<HyperParams>(DEFAULT_PARAMS)
@@ -216,23 +208,6 @@ export default function ToyLMPage() {
   const [shareStatus, setShareStatus] = useState('')
 
   const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null
-
-  const loadSampleCorpus = async (sample: (typeof SAMPLE_CORPORA)[number]) => {
-    setIsWorking(true)
-    try {
-      const response = await fetch(`/toy-lm-corpora/${sample.file}`)
-      if (!response.ok) throw new Error('Documento non disponibile')
-      const text = (await response.text()).slice(0, MAX_CORPUS_CHARS)
-      setNewCorpus(text)
-      setFileNames([sample.file])
-      setNewJobName(`${sample.name} LM`)
-      setStatusMsg(`${sample.name} caricato come corpus di esempio.`)
-    } catch (error) {
-      setStatusMsg(`Impossibile caricare il corpus: ${(error as Error).message}`)
-    } finally {
-      setIsWorking(false)
-    }
-  }
 
   // ── Load jobs on mount ────────────────────────────────────────────────────
 
@@ -340,37 +315,22 @@ export default function ToyLMPage() {
     }
   }, [selectedJobId, jobs, isStreaming, connectSSE])
 
-  // ── File upload ───────────────────────────────────────────────────────────
-
-  const readFiles = useCallback(async (files: FileList | File[]) => {
-    const fileList = Array.from(files).filter(f =>
-      ['txt','md','json','csv','js','ts','py','html','xml'].includes(f.name.split('.').pop()?.toLowerCase() ?? '')
-    )
-    if (!fileList.length) { setStatusMsg('Nessun file di testo valido'); return }
-    const texts = await Promise.all(fileList.map(f => f.text()))
-    const combined = texts.join('\n\n').slice(0, MAX_CORPUS_CHARS)
-    setNewCorpus(combined)
-    setFileNames(fileList.map(f => f.name))
-    setStatusMsg(`${fileList.length} file caricati — ${combined.length.toLocaleString()} caratteri`)
-  }, [])
-
   // ── Create new job ────────────────────────────────────────────────────────
 
   const handleCreateJob = useCallback(async () => {
-    if (!newCorpus) { setStatusMsg('Inserisci o carica un corpus prima'); return }
+    if (!newCorpus.trim()) { setStatusMsg('Scegli un testo prima di creare il modello'); return }
     setIsWorking(true)
     try {
       const job: Job = await apiFetch('/jobs', {
         method: 'POST',
-        body: JSON.stringify({ name: newJobName, corpus: newCorpus, hyperparams: params }),
+        body: JSON.stringify({ name: newJobName.trim() || 'Modello senza nome', corpus: newCorpus, hyperparams: params }),
       })
       setJobs(prev => [job, ...prev])
       setSelectedJobId(job.id)
       setParams(job.hyperparams)
-      setNewCorpus('')
-      setFileNames([])
+      setCorpus(null)
       setShowCreate(false)
-      setStatusMsg(`Job "${job.name}" creato — vocab: ${job.vocabSize} caratteri, ${job.paramCount.toLocaleString()} parametri`)
+      setStatusMsg(`Modello "${job.name}" creato: ${job.vocabSize.toLocaleString('it-IT')} token nel vocabolario. Premi “Avvia training” per iniziare il pretraining.`)
     } catch (e) {
       setStatusMsg('Errore creazione job: ' + (e as Error).message)
     } finally {
@@ -601,6 +561,8 @@ export default function ToyLMPage() {
   const openCreate = useCallback(() => {
     setShowCreate(true)
     setSelectedJobId(null)
+    setParams({ ...DEFAULT_PARAMS })
+    setStatusMsg('')
   }, [])
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -757,117 +719,33 @@ export default function ToyLMPage() {
                 </button>
               </div>
 
+              <ToyLMIntroduction />
+
               <div>
                 <FieldLabel>Nome del modello</FieldLabel>
-                <input
+                <Input
                   value={newJobName}
+                  aria-label="Nome del modello"
+                  maxLength={120}
                   onChange={e => setNewJobName(e.target.value)}
-                  className="h-12 w-full rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)] md:h-auto md:text-sm"
                   placeholder="es. Modello italiano, LM Shakespeare…"
                 />
               </div>
 
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setIsDragging(false); readFiles(e.dataTransfer.files) }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed p-6 transition-all ${
-                  isDragging ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-10)]' : 'border-[var(--border-subtle)] bg-white hover:border-[var(--logo-violet)]'
-                }`}
-              >
-                <Upload className="h-6 w-6 text-[var(--logo-violet)]" />
-                <p className="text-sm font-semibold">Trascina i documenti qui</p>
-                <p className="text-[11px] text-[var(--text-muted)]">.txt .md .json .csv .js .ts .py .html — max {(MAX_CORPUS_CHARS/1000).toFixed(0)}k caratteri</p>
-                <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.json,.csv,.js,.ts,.py,.html,.xml" className="hidden" onChange={e => e.target.files && readFiles(e.target.files)} />
+              <ToyLMCorpusPicker value={corpus} onChange={setCorpus} onBusyChange={setIsLoadingCorpus} />
+
+              <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] p-4">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">2. Scegli quanto allenarlo</h3>
+                <ParamSlider label="Epoche" value={params.totalEpochs} min={1} max={100} step={1} onChange={v => setParams(p => ({ ...p, totalEpochs: v }))} />
+                <p className="text-xs leading-5 text-[var(--text-secondary)]">Un’epoca è una lettura completa del testo. Inizia con 20: più passaggi possono aiutare, ma possono anche portare a imparare il brano a memoria.</p>
+                <p className="text-[11px] leading-5 text-[var(--text-muted)]">La rete lavora su parole e punteggiatura. Le altre impostazioni sono già pronte per questo esperimento.</p>
               </div>
 
-              {fileNames.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {fileNames.map((n, i) => (
-                    <span key={i} className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-white px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                      <FileText className="h-3 w-3 text-[var(--logo-violet)]" />{n}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {!newCorpus.trim() && fileNames.length === 0 && (
-                <div className="rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] p-4">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-[var(--logo-violet)]" />
-                    <SubLabel>Non hai un testo? Usa un documento pronto</SubLabel>
-                  </div>
-                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">Estratti di opere in pubblico dominio, già formattati come file TXT per il training.</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {SAMPLE_CORPORA.map(sample => (
-                      <button key={sample.file} type="button" disabled={isWorking} onClick={() => void loadSampleCorpus(sample)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2.5 text-left transition hover:border-[var(--logo-violet)] disabled:opacity-50">
-                        <span className="block text-xs font-black text-[var(--text-primary)]">{sample.name}</span>
-                        <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">TXT · {sample.language}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <FieldLabel>Oppure incolla il testo direttamente</FieldLabel>
-                <textarea
-                  value={newCorpus}
-                  onChange={e => setNewCorpus(e.target.value.slice(0, MAX_CORPUS_CHARS))}
-                  rows={5}
-                  placeholder="Incolla qui il testo del corpus…"
-                  className="w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-white p-3 font-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
-                />
-                <p className="mt-1 text-right text-[10px] text-[var(--text-muted)]">{newCorpus.length.toLocaleString()} / {MAX_CORPUS_CHARS.toLocaleString()} chars</p>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--border-subtle)] bg-white/60 p-4">
-                <SubLabel>Iperparametri iniziali</SubLabel>
-                <div className="mt-3">
-                  <FieldLabel>Tokenizzazione</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setParams(p => ({ ...p, tokenMode: 'word' }))}
-                      className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
-                        params.tokenMode === 'word'
-                          ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
-                          : 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)] hover:border-[var(--logo-violet)]'
-                      }`}
-                    >
-                      <span className="block font-black">Parole</span>
-                      <span className="mt-0.5 block text-[10px] opacity-75">embedding di parole e punteggiatura</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setParams(p => ({ ...p, tokenMode: 'char' }))}
-                      className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
-                        params.tokenMode === 'char'
-                          ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
-                          : 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)] hover:border-[var(--logo-violet)]'
-                      }`}
-                    >
-                      <span className="block font-black">Caratteri</span>
-                      <span className="mt-0.5 block text-[10px] opacity-75">modalità character-level classica</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3">
-                  <ParamSlider label="Seq len" value={params.seqLen} min={20} max={120} step={5} onChange={v => setParams(p => ({...p, seqLen: v}))} />
-                  <ParamSlider label="Batch size" value={params.batchSize} min={16} max={256} step={16} onChange={v => setParams(p => ({...p, batchSize: v}))} />
-                  <ParamSlider label="Embed dim" value={params.embedDim} min={8} max={64} step={8} onChange={v => setParams(p => ({...p, embedDim: v}))} />
-                  <ParamSlider label="Hidden size" value={params.hiddenSize} min={32} max={512} step={32} onChange={v => setParams(p => ({...p, hiddenSize: v}))} />
-                  <ParamSlider label="Num layers" value={params.numLayers} min={1} max={4} step={1} onChange={v => setParams(p => ({...p, numLayers: v}))} />
-                  <ParamSlider label="Epoche" value={params.totalEpochs} min={1} max={100} step={1} onChange={v => setParams(p => ({...p, totalEpochs: v}))} />
-                  <ParamSlider label="Learning rate" value={params.learningRate} min={0.0001} max={0.01} step={0.0001} onChange={v => setParams(p => ({...p, learningRate: v}))} displayFn={v => v.toFixed(4)} />
-                </div>
-              </div>
-
-              <Button tone="accent" surface="solid" fullWidth disabled={!newCorpus || isWorking} onClick={handleCreateJob}>
+              <Button tone="accent" surface="solid" fullWidth disabled={!newCorpus.trim() || isWorking || isLoadingCorpus} onClick={handleCreateJob}>
                 {isWorking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Crea modello
+                {isWorking ? 'Creazione in corso…' : 'Crea modello'}
               </Button>
+              <p className="text-center text-[11px] text-[var(--text-muted)]">Nel passaggio successivo potrai avviare il training e seguirne i progressi.</p>
             </Card>
 
           /* ── Selected job dashboard ── */
@@ -998,7 +876,7 @@ export default function ToyLMPage() {
                     </span>
                     <div>
                       <h2 className="text-base font-black text-[var(--text-primary)]">Costruisci il tuo piccolo modello linguistico</h2>
-                      <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">Addestra una rete LSTM su un testo e osserva come impara a prevedere il token successivo.</p>
+                      <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">Un esperimento di pretraining: una piccola rete neurale, un solo testo, tutto da imparare.</p>
                     </div>
                   </div>
                   <Button tone="accent" surface="solid" density="compact" onClick={openCreate}>
@@ -1025,6 +903,8 @@ export default function ToyLMPage() {
                     </div>
                   ))}
                 </div>
+
+                <ToyLMIntroduction />
 
                 <div className="grid gap-3 border-t border-[var(--border-subtle)] pt-4 text-xs leading-5 text-[var(--text-secondary)] sm:grid-cols-2">
                   <p><strong className="text-[var(--text-primary)]">A cosa serve:</strong> capire in modo concreto tokenizzazione, addestramento e generazione del testo.</p>
@@ -1104,6 +984,17 @@ export default function ToyLMPage() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ToyLMIntroduction() {
+  return (
+    <div className="space-y-2 rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] p-4">
+      <p className="text-xs font-black text-[var(--logo-violet-strong)]">Pretraining da zero, su un solo testo</p>
+      <p className="text-xs leading-5 text-[var(--text-secondary)]">Partiamo da una piccola rete neurale LSTM con pesi casuali, senza conoscenze già apprese. Rileggendo un unico testo (il corpus), impara a prevedere la parola successiva: questo è il suo pretraining.</p>
+      <p className="text-xs leading-5 text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">Un esperimento didattico, non un LLM come ChatGPT.</strong> Il modello imita gli schemi del brano: non viene addestrato a conversare o a seguire istruzioni.</p>
+      <p className="border-t border-[var(--logo-violet-22)] pt-2 text-[11px] leading-5 text-[var(--text-muted)]"><strong>Cosa aspettarsi:</strong> frasi anche incoerenti, ripetizioni e passaggi memorizzati. Un solo testo limita il vocabolario e la capacità di generalizzare; una loss più bassa non garantisce contenuti sensati o corretti.</p>
+    </div>
+  )
+}
 
 function dotColor(status: string): string {
   switch (status) {
@@ -1248,7 +1139,7 @@ function ParamSlider({
         </div>
         <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled}
+      <input type="range" aria-label={label} min={min} max={max} step={step} value={value} disabled={disabled}
         onChange={e => onChange(parseFloat(e.target.value))}
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--logo-violet-10)] accent-[var(--logo-violet)]"
       />

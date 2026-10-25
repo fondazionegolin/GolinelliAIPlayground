@@ -35,8 +35,6 @@ import torch.nn as nn
 logger = logging.getLogger(__name__)
 
 CHECKPOINT_DIR = os.path.abspath(os.environ.get("TOY_LM_CHECKPOINT_DIR", "data/toy_lm_checkpoints"))
-MAX_CORPUS_CHARS = 200_000
-MAX_SAMPLES = 60_000
 MAX_TRAINING_HOURS = 3.0
 MAX_WORD_VOCAB = 3000
 
@@ -290,7 +288,7 @@ class ToyLMService:
                 if not row or row.status in ("stopped", "completed", "failed"):
                     continue
                 # Snapshot everything needed — don't hold the session in the thread
-                corpus = (row.corpus_text or "")[:MAX_CORPUS_CHARS]
+                corpus = row.corpus_text or ""
                 params = dict(row.hyperparams_json or {})
                 vocab = dict(row.vocab_json or {})
                 start_epoch = row.saved_epoch or 0
@@ -369,17 +367,15 @@ class ToyLMService:
         # Tokenise
         units = tokenize_toy_text(corpus, token_mode)
         tokens = [token_to_idx.get(unit, 0) for unit in units]
-        n_samples = min(len(tokens) - seq_len, MAX_SAMPLES)
+        n_samples = len(tokens) - seq_len
         if n_samples <= 0:
             job.push({"type": "error", "message": "Corpus troppo breve per il seq_len scelto."})
             return
 
-        # Build tensors on CPU first
-        X_all = torch.zeros(n_samples, seq_len, dtype=torch.long)
-        Y_all = torch.zeros(n_samples, dtype=torch.long)
-        for i in range(n_samples):
-            X_all[i] = torch.tensor(tokens[i:i + seq_len], dtype=torch.long)
-            Y_all[i] = tokens[i + seq_len]
+        # A view over the entire corpus: allocate only the current batch's windows.
+        # This includes the end of long books without duplicating every sequence.
+        token_tensor = torch.tensor(tokens, dtype=torch.long)
+        windows = token_tensor.unfold(0, seq_len + 1, 1)
 
         n_batches = max(1, math.ceil(n_samples / batch_size))
 
@@ -423,8 +419,9 @@ class ToyLMService:
                 idx = perm[b * batch_size:(b + 1) * batch_size]
                 if idx.numel() == 0:
                     continue
-                xb = X_all[idx].to(device)
-                yb = Y_all[idx].to(device)
+                batch = windows[idx]
+                xb = batch[:, :seq_len].to(device)
+                yb = batch[:, seq_len].to(device)
 
                 optimizer.zero_grad()
                 logits, _ = model(xb)

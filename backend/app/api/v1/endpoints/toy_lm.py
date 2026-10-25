@@ -17,6 +17,9 @@ POST   /toy-lm/jobs/{id}/generate      — text autocompletion
 GET    /toy-lm/jobs/{id}/embeddings    — checkpoint token embeddings
 POST   /toy-lm/jobs/{id}/corpus        — update corpus text
 GET    /toy-lm/queue                   — global queue status
+GET    /toy-lm/library/books           — search public-domain texts
+GET    /toy-lm/library/books/{id}/text — import one Gutenberg text
+GET    /toy-lm/library/books/{id}/stream — full-book import progress via SSE
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -44,13 +47,11 @@ from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.user import User
 from app.realtime.gateway import sio
 from app.services.toy_lm_trainer import build_toy_vocab, infer_vocab_token_mode, normalize_token_mode, toy_lm_service
+from app.services.toy_lm_library import LibraryError, import_book, import_book_events, search_books, validate_corpus
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-MAX_CORPUS_CHARS = 200_000
-
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -192,13 +193,62 @@ def _job_to_dict(row: ToyLMJob, queue_pos: int = -1) -> dict:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
+@router.get("/library/books")
+async def search_library_books(
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    q: str = Query(default="", max_length=200),
+    language: str = Query(default="", pattern=r"^([a-z]{2})?$"),
+    page: int = Query(default=1, ge=1, le=1000),
+):
+    try:
+        return await search_books(q, language, page)
+    except LibraryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/library/books/{book_id}/text")
+async def import_library_book(
+    book_id: int,
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if book_id < 1:
+        raise HTTPException(status_code=422, detail="Identificativo del testo non valido.")
+    try:
+        return await import_book(book_id)
+    except LibraryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/library/books/{book_id}/stream")
+async def stream_library_book(
+    book_id: int,
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if book_id < 1:
+        raise HTTPException(status_code=422, detail="Identificativo del testo non valido.")
+
+    async def events():
+        try:
+            async for event in import_book_events(book_id):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except LibraryError as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no",
+    })
+
+
 @router.post("/jobs", status_code=201)
 async def create_job(
     body: CreateJobBody,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    corpus = body.corpus[:MAX_CORPUS_CHARS]
+    try:
+        corpus = validate_corpus(body.corpus)
+    except LibraryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     params = {
         "seqLen": 40, "batchSize": 64, "embedDim": 32,
         "hiddenSize": 128, "numLayers": 2,
@@ -209,6 +259,9 @@ async def create_job(
     }
     params["tokenMode"] = normalize_token_mode(params.get("tokenMode"))
     vocab = build_toy_vocab(corpus, params["tokenMode"])
+    token_count = len(corpus) if params["tokenMode"] == "char" else vocab["rawTokenCount"]
+    if token_count <= int(params["seqLen"]):
+        raise HTTPException(status_code=422, detail="Il testo è troppo breve: carica un brano più lungo per iniziare il training.")
     n_params = _count_params(vocab["vocabSize"], params)
 
     row = ToyLMJob(
@@ -294,7 +347,10 @@ async def update_corpus(
     row = await _get_job(job_id, teacher, db)
     if row.status not in ("draft", "stopped", "completed", "failed"):
         raise HTTPException(status.HTTP_409_CONFLICT, "Ferma il training prima di modificare il corpus")
-    corpus = body.corpus[:MAX_CORPUS_CHARS]
+    try:
+        corpus = validate_corpus(body.corpus)
+    except LibraryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     params = row.hyperparams_json or {}
     params["tokenMode"] = normalize_token_mode(params.get("tokenMode"))
     vocab = build_toy_vocab(corpus, params["tokenMode"])
