@@ -1,29 +1,44 @@
 {
-  "generated_at": "2026-10-15T15:39:16.904929+00:00",
-  "version_label": "2026.10.15-eadd665a",
-  "title": "Dataflow, scuole, crediti e Video Studio",
-  "summary": "Nuove funzionalità per docenti e amministratori, strumenti privacy e miglioramenti dei laboratori.",
-  "git_ref": "eadd665a1c81dfab07e486799ed7452ffc9581c1",
+  "generated_at": "2026-10-25T09:06:15.214380+00:00",
+  "version_label": "2026.10.25-a66cdcbf",
+  "title": "Toy LM integrale, navigazione e laboratori",
+  "summary": "Importazione di libri completi con avanzamento, accesso rapido ai progetti recenti e miglioramenti per le attività in classe.",
+  "git_ref": "a66cdcbfddd4cf37a7b8af8f37dd11c9029655c3",
   "items": [
     {
-      "category": "new",
-      "title": "Dataflow Studio",
-      "description": "Tabelle persistenti, cronologia e strumenti di modifica per assistente e workflow."
-    },
-    {
-      "category": "new",
-      "title": "Gestione scuole e crediti",
-      "description": "Inviti e onboarding scuole, pacchetti di crediti e avvisi di saldo."
-    },
-    {
-      "category": "new",
-      "title": "Video Studio e privacy",
-      "description": "Creazione di video e anonimizzazione locale degli allegati."
+      "category": "fixed",
+      "title": "Toy LM: libri interi per il training",
+      "description": "Importa il TXT integrale da Project Gutenberg, segui il download con percentuale e byte ricevuti e salva il file completo. Il corpus non viene più tagliato durante importazione, salvataggio o training."
     },
     {
       "category": "improved",
-      "title": "Laboratori e spazi didattici",
-      "description": "Aggiornamenti a notebook, Coding Lab, modelli ML, RAG e dettatura."
+      "title": "Toy LM: configurazione essenziale e biblioteca affidabile",
+      "description": "Un solo testo per modello e scelta delle epoche, con spiegazioni del pretraining e dei suoi limiti. Il catalogo Gutenberg è conservato sul server e resta consultabile quando il servizio esterno non risponde."
+    },
+    {
+      "category": "new",
+      "title": "Navigazione con progetti recenti",
+      "description": "I menu delle sezioni mostrano gli ultimi lavori e le sessioni aperte, con accesso diretto a documenti, notebook, teacherbot, board e attività live."
+    },
+    {
+      "category": "improved",
+      "title": "ML Lab: dal modello al progetto creativo",
+      "description": "Scelta del tipo di riconoscimento più chiara e guida per riutilizzare il modello addestrato in uno sketch p5.js."
+    },
+    {
+      "category": "fixed",
+      "title": "Sessioni live e lobby sotto controllo",
+      "description": "Le sessioni ancora aperte sono evidenziate e richiedono conferma prima della chiusura per tutti. Le vecchie lobby delle escape room non trattengono più gli studenti per giorni."
+    },
+    {
+      "category": "fixed",
+      "title": "Accesso vocale ai bot e salvataggio dei video",
+      "description": "La voce rispetta la visibilità dei bot personali e condivisi. Il Video Studio conserva correttamente gli aggiornamenti interni dello script."
+    },
+    {
+      "category": "improved",
+      "title": "Dettagli grafici più leggibili",
+      "description": "Badge BETA leggibile in entrambi i temi e colori distinti per i diversi saldi di credito."
     }
   ]
 }
