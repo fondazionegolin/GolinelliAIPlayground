@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-10-26T09:58:55.116267+00:00",
-  "version_label": "2026.10.26-e8a38378",
+  "generated_at": "2026-10-26T13:53:33.769779+00:00",
+  "version_label": "2026.10.26-18df1d95",
   "title": "Aggiornamenti branch staging",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "e8a38378ece08089fa21b65b9c891520daf05097",
+  "git_ref": "18df1d954774fd9da12d120c8f39ee23d3cb6542",
   "items": [
     {
       "category": "new",
-      "title": "Visual comprehension tutor, Lab exercises and Untitled UI icon set",
-      "description": "Visual comprehension tutor, Lab exercises and Untitled UI icon set"
+      "title": "Add podcasts and update landing and privacy",
+      "description": "Add podcasts and update landing and privacy"
     }
   ]
 }
