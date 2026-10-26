@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Sparkles, X, Check, Loader2, Zap, Expand } from '@/components/icons'
-import { llmApi } from '@/lib/api'
+import { teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 
 interface TeacherbotPromptOptimizerProps {
@@ -15,7 +15,6 @@ interface TeacherbotPromptOptimizerProps {
     mode?: 'full' | 'expand'
 }
 
-const MAX_EXPANSION_CHARS = 800
 
 export function TeacherbotPromptOptimizer({
     selectedText,
@@ -57,60 +56,17 @@ export function TeacherbotPromptOptimizer({
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [onClose, isLoading])
 
-    const buildPrompt = () => {
-        if (mode === 'expand') {
-            return `Sei un esperto di Prompt Engineering per chatbot educativi.
-
-Il docente ha scritto questa istruzione/bozza per il suo chatbot:
-"""
-${selectedText}
-"""
-
-Espandi questa istruzione in 4-6 regole comportamentali SPECIFICHE, CONCRETE e DIRETTAMENTE APPLICABILI che il chatbot deve seguire per realizzare l'intento espresso.
-
-Ogni regola deve:
-- Essere un'istruzione diretta al chatbot (inizia con un verbo imperativo)
-- Essere sufficientemente specifica da guidare il comportamento senza ambiguità
-- Coprire un aspetto diverso dell'intenzione originale (tono, metodo, limite, risposta agli errori, ecc.)
-
-Output: SOLO le regole in formato elenco puntato (usa -), nessun commento o introduzione.`
-        }
-
-        // mode === 'full'
-        return `Agisci come un esperto di Prompt Engineering per LLM (Large Language Models) in contesto educativo.
-Il tuo compito è scrivere un SYSTEM PROMPT ottimizzato per un chatbot educativo ("Teacherbot").
-
-Dati del Teacherbot:
-- Nome: ${teacherbotName}
-- Sinossi: ${teacherbotSynopsis}
-
-Bozza attuale dell'utente (o parte di essa):
-"""
-${selectedText}
-"""
-
-Obiettivo:
-Crea una versione espansa e ben strutturata del System Prompt basandoti sulla bozza e sui dati del bot, toccando dove pertinente:
-1. Ruolo e Identità
-2. Obiettivi pedagogici
-3. Tono di voce
-4. Regole di comportamento e limiti
-5. Metodologia didattica (es. Socratica, Spiegazione passo-passo, ecc.)
-
-Vincolo IMPORTANTE: il docente deve poter leggere e mantenere il controllo del prompt. Scrivi in modo denso e diretto, MASSIMO 800 caratteri totali (spazi inclusi). Se non entra tutto, prioritizza ruolo, tono e regole di comportamento.
-
-Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere incollato. Nessuna premessa o commento.`
-    }
-
     const handleOptimize = async () => {
         setIsLoading(true)
         setError(null)
         try {
-            const response = await llmApi.teacherChat(
-                buildPrompt(), [], 'teacher_support', 'anthropic', 'claude-haiku-4-5-20251001'
-            )
-            let msg = (response.data?.response || response.data?.content || '').trim()
-            if (!isExpand && msg.length > MAX_EXPANSION_CHARS) msg = msg.slice(0, MAX_EXPANSION_CHARS).trim()
+            const response = await teacherbotsApi.optimizePrompt({
+                system_prompt: selectedText,
+                name: teacherbotName,
+                synopsis: teacherbotSynopsis,
+                mode,
+            })
+            const msg = (response.data?.prompt || '').trim()
             if (msg) setResult(msg)
             else setError('Nessuna risposta ricevuta')
         } catch (err: any) {

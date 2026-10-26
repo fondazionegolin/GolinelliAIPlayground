@@ -236,7 +236,7 @@ class RAGService:
             JOIN rag_embeddings e ON e.chunk_id = c.id
             JOIN rag_documents d ON d.id = c.document_id
             WHERE d.tenant_id = :tenant_id
-            AND d.status = 'ready'
+            AND d.status = 'READY'
             AND (d.session_id = :session_id OR d.scope = 'CLASS')
             ORDER BY e.embedding <=> CAST(:embedding AS vector)
             LIMIT :top_k
@@ -292,7 +292,7 @@ class RAGService:
             JOIN rag_documents d ON d.id = c.document_id
             WHERE d.teacherbot_id = :teacherbot_id
             AND d.tenant_id = :tenant_id
-            AND d.status = 'ready'
+            AND d.status = 'READY'
             ORDER BY e.embedding <=> CAST(:embedding AS vector)
             LIMIT :top_k
         """)
@@ -316,6 +316,26 @@ class RAGService:
             )
             for row in rows
         ]
+
+    async def get_teacherbot_kb_documents(
+        self,
+        db: AsyncSession,
+        teacherbot_id: UUID,
+        tenant_id: UUID,
+    ) -> list[tuple[str, list[RAGChunk]]]:
+        """Return every ready KB document of a teacherbot with its chunks in reading order."""
+        result = await db.execute(
+            select(RAGDocument.id, RAGDocument.title, RAGChunk)
+            .join(RAGChunk, RAGChunk.document_id == RAGDocument.id)
+            .where(RAGDocument.teacherbot_id == teacherbot_id)
+            .where(RAGDocument.tenant_id == tenant_id)
+            .where(RAGDocument.status == DocumentStatus.READY)
+            .order_by(RAGDocument.created_at.asc(), RAGChunk.chunk_index.asc())
+        )
+        documents: dict[UUID, tuple[str, list[RAGChunk]]] = {}
+        for doc_id, title, chunk in result.all():
+            documents.setdefault(doc_id, (title, []))[1].append(chunk)
+        return list(documents.values())
 
     async def create_citations(
         self,

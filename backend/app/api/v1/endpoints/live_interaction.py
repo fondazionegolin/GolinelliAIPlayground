@@ -1031,16 +1031,6 @@ async def assist_slide(
             f"{body.reference_text.strip()[:REFERENCE_MAX_CHARS]}"
         )
 
-    previous_context = ""
-    if body.previous_slides:
-        previous = [str(s.get("question") or s.get("prompt") or "").strip() for s in body.previous_slides if isinstance(s, dict)]
-        previous = [q for q in previous if q]
-        if previous:
-            previous_context = (
-                "\n\nQuesta è una nuova versione del quiz: NON riproporre né parafrasare queste domande già presenti:\n"
-                + "\n".join(f"- {q[:200]}" for q in previous[:30])
-            )
-
     system_prompt = f"""Sei un assistente per docenti che costruiscono quiz interattivi per lezioni in classe (piattaforma "Live Interaction").
 Il docente sta componendo una slide di tipo "{body.slide_type}". Tipi disponibili e relativo schema JSON:
 {SLIDE_TYPE_DESCRIPTIONS}
@@ -1123,6 +1113,16 @@ async def assist_structure(
             "usa solo fatti/informazioni presenti nel documento, non inventare nulla che lo contraddica.\n"
             f"{body.reference_text.strip()[:REFERENCE_MAX_CHARS]}"
         )
+
+    previous_context = ""
+    if body.previous_slides:
+        previous = [str(s.get("question") or s.get("prompt") or "").strip() for s in body.previous_slides if isinstance(s, dict)]
+        previous = [q for q in previous if q]
+        if previous:
+            previous_context = (
+                "\n\nQuesta è una nuova versione del quiz: NON riproporre né parafrasare queste domande già presenti:\n"
+                + "\n".join(f"- {q[:200]}" for q in previous[:30])
+            )
 
     system_prompt = f"""Sei un assistente per docenti che costruiscono quiz interattivi per lezioni in classe (piattaforma "Live Interaction").
 Tipi di slide disponibili e relativo schema JSON:

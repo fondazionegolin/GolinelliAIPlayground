@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button'
 import {
   ArrowLeft, Save, Loader2, Check, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Sparkles, Layers, Info, Palette, SlidersHorizontal, Terminal, Share2, Link2,
-  Send, RefreshCw, Bot, Users, User, Search, MessageSquare, DoorClosed,
+  Send, RefreshCw, Bot, Users, User, Search, MessageSquare, DoorClosed, Wand2,
 } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { studentbotsApi, teacherbotsApi, type InquiryConfig } from '@/lib/api'
 import InquiryConfigEditor, { emptyInquiryConfig, normalizeInquiryConfig } from './InquiryConfigEditor'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
+import { TeacherbotPromptOptimizeDialog } from './TeacherbotPromptOptimizeDialog'
 import TeacherbotIconPicker from './TeacherbotIconPicker'
 import TeacherbotShareModal from './TeacherbotShareModal'
 import TeacherbotShareLinksModal from './TeacherbotShareLinksModal'
@@ -628,9 +629,16 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
   })
 
   const [pendingKbFiles, setPendingKbFiles] = useState<File[]>([])
+  // Shares the cache of KnowledgeBaseSection, so the optimizer knows whether the bot has documents
+  const { data: kbDocs } = useQuery({
+    queryKey: [`${variant}-kb`, teacherbotId],
+    queryFn: async () => ((await teacherbotsApi.listKbDocuments(teacherbotId!)).data || []) as Array<{ id: string }>,
+    enabled: isEditing && !isStudentbot,
+  })
 
   // Selection state for AI Optimizer
   const [selection, setSelection] = useState<{ text: string, position: { x: number, y: number } } | null>(null)
+  const [optimizeOpen, setOptimizeOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [activeTab, setActiveTab] = useState<TabKey>('info')
@@ -1123,9 +1131,17 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                       {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
                     </p>
                   </div>
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
-                    {formData.system_prompt.trim().length}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                      {formData.system_prompt.trim().length}
+                    </span>
+                    {!isStudentbot && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setOptimizeOpen(true)} className="gap-1.5" title="Ottimizza il prompt con l'AI">
+                        <Wand2 className="h-4 w-4 text-indigo-600" />
+                        Ottimizza
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <p className="mb-2 flex items-center gap-1.5 text-xs text-indigo-600">
@@ -1156,6 +1172,18 @@ Il tuo obiettivo è:
                     position={selection.position}
                     onClose={() => setSelection(null)}
                     onApply={handleApplyOptimization}
+                  />
+                )}
+
+                {!isStudentbot && (
+                  <TeacherbotPromptOptimizeDialog
+                    open={optimizeOpen}
+                    onOpenChange={setOptimizeOpen}
+                    systemPrompt={formData.system_prompt}
+                    teacherbotName={formData.name}
+                    teacherbotSynopsis={formData.synopsis}
+                    hasKnowledgeBase={pendingKbFiles.length > 0 || (kbDocs?.length ?? 0) > 0}
+                    onApply={(prompt) => setFormData({ ...formData, system_prompt: prompt })}
                   />
                 )}
               </section>

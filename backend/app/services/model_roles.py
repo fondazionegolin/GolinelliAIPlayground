@@ -44,6 +44,8 @@ ROLES: dict[str, Role] = {r.id: r for r in [
          where=("Chat di sessione", "Chatbot docente", "Agente docente")),
     Role("chat.fast", "chat", "Assistente veloce", "Risposte rapide ed economiche: tutor dei Notebook, Turing, controlli di formato.", "text",
          ("anthropic", "claude-haiku-4-5-20251001"), where=("Notebook", "Esperimenti Turing")),
+    Role("teacherbot.prompt", "chat", "Teacherbot · ottimizzazione prompt", "Riscrive il system prompt dei teacherbot secondo i principi di prompt design.", "text",
+         ("anthropic", "claude-sonnet-5-5"), where=("Teacherbot",)),
     Role("chat.light", "chat", "Elaborazioni leggere", "Ricerca nei documenti (RAG), riformulazione di query, agente di matematica.", "text",
          ("openai", "gpt-4o-mini"), providers=("openai",), where=("RAG", "Agente di matematica")),
     Role("chat.router", "chat", "Riconoscimento dell'intento", "Decide se un messaggio chiede di modificare, generare o analizzare un'immagine (chiamata breve a ogni messaggio ambiguo).", "text",

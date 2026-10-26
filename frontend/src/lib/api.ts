@@ -1402,6 +1402,15 @@ export const teacherbotsApi = {
   getTeacherConversationMessages: (teacherbotId: string, conversationId: string) =>
     api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
 
+  optimizePrompt: (data: {
+    system_prompt: string
+    instructions?: string
+    name?: string
+    synopsis?: string
+    has_knowledge_base?: boolean
+    mode?: 'full' | 'expand'
+  }) => api.post<{ prompt: string; changes: string[] }>('/teacherbots/optimize-prompt', data),
+
   // Knowledge base
   uploadKbDocument: (teacherbotId: string, file: File) => {
     const formData = new FormData()
