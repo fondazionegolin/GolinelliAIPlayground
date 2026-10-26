@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api.v1.endpoints import podcasts
 from app.api.v1.endpoints import visual_comprehension
 from app.api.v1.endpoints import visual_sessions
 
@@ -10,6 +11,7 @@ from app.api.v1.endpoints import drive
 from app.api.v1.endpoints import platform_api
 
 api_router = APIRouter()
+api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"])
 
 api_router.include_router(system_health.router, prefix="/system", tags=["system"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])

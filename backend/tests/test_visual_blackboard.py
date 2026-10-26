@@ -282,7 +282,7 @@ async def test_a_drawing_missing_the_point_goes_back_to_the_director_once(monkey
     calls = {}
 
     async def critic(*args, **kwargs):
-        return visual_review.Review(legibility=3, alignment=3, clarity=1, restraint=4, verdict="redo", notes=["Manca l'altezza"])
+        return visual_review.Review(insight=1, legibility=3, alignment=3, clarity=1, restraint=4, verdict="redo", notes=["Manca l'altezza"])
 
     async def director(source, grounding, explanation, brief, previous, on_usage, feedback=None, action="explain"):
         calls["feedback"] = feedback
@@ -350,3 +350,15 @@ def test_an_alternative_explanation_must_open_a_board():
     with pytest.raises(ValueError, match="lavagna"):
         require_action(scene, "side")
     assert require_action(scene, "explorer") is scene  # the interactive graph is a widget, not part of the drawing
+
+
+def test_an_area_model_is_a_real_grid_with_steps_that_exist():
+    raw = {**OVERLAY, "boards": [{"id": "prova"}], "steps": ["Quadrato", "a²", "ab", "b²"], "elements": [{"id": "sq", "kind": "area_model", "space": "prova",
+        "box": {"x": 10, "y": 10, "width": 80, "height": 80}, "area_model": {"cols": [{"size": 3, "label": "a"}, {"size": 2, "label": "b"}],
+        "rows": [{"size": 3, "label": "a"}, {"size": 2, "label": "b"}], "top": "a + b", "side": "a + b",
+        "cells": [[{"label": "a²", "color": "blue", "step": 1}, {"label": "ab", "color": "amber", "step": 2}],
+                  [{"label": "ab", "color": "amber", "step": 2}, {"label": "b²", "color": "red", "step": 3}]]}}]}
+    assert validate_scene(raw, GROUNDING).elements[0].area_model.cells[1][1].label == "b²"
+    raw["elements"][0]["area_model"]["cells"] = raw["elements"][0]["area_model"]["cells"][:1]
+    with pytest.raises(ValueError, match="una riga per ogni rows"):
+        validate_scene(raw, GROUNDING)

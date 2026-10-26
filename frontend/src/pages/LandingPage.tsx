@@ -1,26 +1,14 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
+import { PRIVACY_DOCUMENT_VIEWER_URL } from '@/lib/legalDocuments'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ShieldCheck,
-  Sparkles,
-  Workflow,
-  Eye,
   GraduationCap,
   School,
   FlaskConical,
-  MessageSquare,
-  FileText,
-  Terminal,
-  Code2,
-  Brain,
-  Box,
-  Radio,
-  ClipboardList,
   KeyRound,
   Lock,
   ArrowRight,
-  Bot,
   Mail,
 } from '@/components/icons'
 import { X, Check, Loader2 } from '@/components/icons'
@@ -41,123 +29,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-// --- Dotted Grid Background with "ball under paper" deformation ---
-const DottedGridBackground = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const SPACING = 32      // grid dot spacing
-    const DOT_R = 1.6       // base dot radius
-    const INFLUENCE = 150   // ball influence radius (px)
-    const STRENGTH = 50     // max displacement (px)
-
-    // Each ball follows an elliptical orbit defined in normalised [0..1] coordinates
-    const balls = [
-      { cx: 0.22, cy: 0.38, rx: 190, ry: 140, wx: 0.13, wy: 0.08, ph: 0.0 },
-      { cx: 0.78, cy: 0.62, rx: 160, ry: 190, wx: 0.09, wy: 0.14, ph: 2.1 },
-      { cx: 0.58, cy: 0.18, rx: 210, ry: 110, wx: 0.06, wy: 0.19, ph: 0.8 },
-      { cx: 0.38, cy: 0.82, rx: 130, ry: 175, wx: 0.17, wy: 0.10, ph: 3.5 },
-      { cx: 0.88, cy: 0.25, rx: 140, ry: 155, wx: 0.11, wy: 0.07, ph: 1.4 },
-    ]
-
-    let rafId: number
-    let t0: number | null = null
-    let lastFrameTime = 0
-    const TARGET_FPS = 30
-    const FRAME_INTERVAL = 1000 / TARGET_FPS
-
-    const resize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-    }
-    resize()
-    window.addEventListener('resize', resize)
-
-    const frame = (now: number) => {
-      rafId = requestAnimationFrame(frame)
-
-      // Pause when tab is hidden
-      if (document.hidden) return
-
-      // Throttle to ~30fps
-      if (now - lastFrameTime < FRAME_INTERVAL) return
-      lastFrameTime = now
-
-      if (t0 === null) t0 = now
-      const t = (now - t0) * 0.001   // seconds
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      // World positions of balls
-      const bPos = balls.map(b => ({
-        x: b.cx * canvas.width  + b.rx * Math.sin(b.wx * t + b.ph),
-        y: b.cy * canvas.height + b.ry * Math.cos(b.wy * t + b.ph * 0.7),
-      }))
-
-      // Draw displaced grid dots
-      const cols = Math.ceil(canvas.width  / SPACING) + 2
-      const rows = Math.ceil(canvas.height / SPACING) + 2
-
-      const INFLUENCE_SQ = INFLUENCE * INFLUENCE
-
-      for (let r = -1; r < rows; r++) {
-        for (let c = -1; c < cols; c++) {
-          const gx = c * SPACING
-          const gy = r * SPACING
-
-          // Sum displacements from all balls (repulsion radially outward)
-          let dx = 0, dy = 0
-          for (const bp of bPos) {
-            const ex = gx - bp.x
-            const ey = gy - bp.y
-            const dSq = ex * ex + ey * ey
-            if (dSq < INFLUENCE_SQ && dSq > 0) {
-              const d = Math.sqrt(dSq)
-              const f = STRENGTH * (1 - d / INFLUENCE) ** 2
-              dx += (ex / d) * f
-              dy += (ey / d) * f
-            }
-          }
-
-          const dotX = gx + dx
-          const dotY = gy + dy
-          const disp  = Math.sqrt(dx * dx + dy * dy)
-
-          // Slightly enlarge and brighten dots that are displaced
-          const radius = Math.min(DOT_R * (1 + disp * 0.045), DOT_R * 3.5)
-          const alpha  = Math.min(0.28 + disp * 0.007, 0.68)
-
-          ctx.beginPath()
-          ctx.arc(dotX, dotY, radius, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(163, 163, 163, ${alpha})`
-          ctx.fill()
-        }
-      }
-    }
-
-    rafId = requestAnimationFrame(frame)
-    return () => {
-      cancelAnimationFrame(rafId)
-      window.removeEventListener('resize', resize)
-    }
-  }, [])
-
-  return (
-    <>
-      <canvas
-        ref={canvasRef}
-        className="fixed inset-0 -z-20"
-        style={{ background: '#f6f8fc' }}
-      />
-    </>
-  )
-}
-
 export default function LandingPage() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'home' | 'teachers' | 'students'>('home')
@@ -165,9 +36,9 @@ export default function LandingPage() {
 
   const documentMeta = {
     privacy: {
-      title: 'Privacy',
-      description: 'Informativa privacy della piattaforma Golinelli.ai',
-      src: '/docs/informativa-privacy.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitH',
+      title: 'Informativa privacy',
+      description: 'Informativa privacy della piattaforma Golinelli.ai — versione 2.0, 26 ottobre 2026',
+      src: PRIVACY_DOCUMENT_VIEWER_URL,
     },
     'ai-act': {
       title: 'AI Act',
@@ -186,16 +57,15 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col font-sans text-slate-900">
-      <DottedGridBackground />
+    <div className="relative min-h-screen w-full flex flex-col bg-white font-sans text-slate-900">
 
       {/* --- Navbar --- */}
-      <nav className="sticky top-0 z-50 w-full bg-[var(--ds-navbar)] px-4 py-4 shadow-[var(--ds-shadow-2)] md:px-6 md:py-4">
+      <nav className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 px-4 py-4 backdrop-blur-sm md:px-6 md:py-4">
         <div className="mx-auto max-w-screen-2xl">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
-                <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto rounded-md shadow-sm" />
+                <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto" />
                 <span className="text-2xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
                   <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
                   <span className="font-black text-[var(--logo-pink)]">.ai</span>
@@ -212,7 +82,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="hidden md:flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/90 p-1">
+            <div className="hidden md:flex items-center gap-1">
               <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#fe004d">{t('landing.nav_explore')}</TabButton>
               <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#7b69c9">{t('landing.nav_teachers')}</TabButton>
               <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
@@ -226,20 +96,6 @@ export default function LandingPage() {
                 >
                   <Mail size={13} />
                   Contatti
-                </button>
-                <button
-                  onClick={() => setOpenDocument('privacy')}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[var(--logo-pink)]"
-                >
-                  <ShieldCheck size={13} />
-                  Privacy
-                </button>
-                <button
-                  onClick={() => setOpenDocument('ai-act')}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#7b69c9]"
-                >
-                  <Sparkles size={13} />
-                  AI Act
                 </button>
               </div>
               <LanguageSwitcher variant="row" />
@@ -256,6 +112,15 @@ export default function LandingPage() {
               Docente
             </MobileNavButton>
           </div>
+          <div className="mt-3 flex justify-end border-t border-slate-100 pt-2">
+            <button
+              type="button"
+              onClick={() => setOpenDocument('privacy')}
+              className="text-sm font-medium text-slate-600 underline underline-offset-4 transition-colors hover:text-[var(--logo-pink)]"
+            >
+              Informativa privacy
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -269,7 +134,7 @@ export default function LandingPage() {
       </main>
 
       {/* --- Footer --- */}
-      <footer className="bg-[var(--ds-navbar)] py-6 text-center text-sm text-slate-500 shadow-[0_-4px_18px_rgba(88,88,92,0.08)]">
+      <footer className="border-t border-slate-100 bg-white py-8 text-center text-sm text-slate-500">
         <p>{t('landing.footer_copyright')}</p>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
           un progetto di{' '}
@@ -291,7 +156,7 @@ export default function LandingPage() {
               onClick={() => setOpenDocument('privacy')}
               className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
             >
-              Privacy
+              Informativa privacy
             </button>
             <span className="text-slate-300">•</span>
             <button
@@ -380,18 +245,10 @@ function TabButton({ active, children, onClick, color = '#262626' }: {
   return (
     <button
       onClick={onClick}
-      className={`relative px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-        active ? 'text-white' : 'text-slate-600 hover:bg-white'
-      }`}
+      className="relative rounded-lg px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-50"
+      style={{ color: active ? color : undefined }}
+      aria-pressed={active}
     >
-      {active && (
-        <motion.div
-          layoutId="activeTab"
-          className="absolute inset-0 rounded-full"
-          style={{ backgroundColor: color }}
-          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-        />
-      )}
       <span className="relative z-10">{children}</span>
     </button>
   )
@@ -408,15 +265,15 @@ const ACCENT: Record<Accent, { ink: string; soft: string }> = {
 
 const CONTACT_EMAIL = 'a.saracino@fondazionegolinelli.it'
 
-const MODULES: { key: string; icon: typeof Bot; accent: Accent }[] = [
-  { key: 'chat', icon: MessageSquare, accent: 'pink' },
-  { key: 'docs', icon: FileText, accent: 'blue' },
-  { key: 'notebook', icon: Terminal, accent: 'violet' },
-  { key: 'vibe', icon: Code2, accent: 'pink' },
-  { key: 'ml', icon: Brain, accent: 'blue' },
-  { key: 'solid', icon: Box, accent: 'violet' },
-  { key: 'live', icon: Radio, accent: 'pink' },
-  { key: 'classes', icon: ClipboardList, accent: 'blue' },
+const MODULES = [
+  { key: 'chat', illustration: 'teacherbots' },
+  { key: 'docs', illustration: 'documents' },
+  { key: 'notebook', illustration: 'notebooks' },
+  { key: 'vibe', illustration: 'coding' },
+  { key: 'ml', illustration: 'ml-lab' },
+  { key: 'solid', illustration: '3d-lab' },
+  { key: 'live', illustration: 'live-interaction' },
+  { key: 'classes', illustration: 'classes' },
 ]
 
 const MODULE_COPY: Record<string, { title: string; body: string }> = {
@@ -430,56 +287,22 @@ const MODULE_COPY: Record<string, { title: string; body: string }> = {
   classes: { title: 'Classi e compiti', body: 'Classi, sessioni, compiti, report e crediti sotto controllo, sempre con il docente nel loop.' },
 }
 
-// Soft halo under text: raises the alpha of the page background only behind the copy,
-// so the animated dot grid never fights with the letters. Feathered, no hard edge.
-const HALO_CSS = `
-.landing-halo { position: relative; isolation: isolate; }
-.landing-halo::before {
-  content: ''; position: absolute; z-index: -1; pointer-events: none;
-  inset: -1.75rem -2.75rem;
-  background: radial-gradient(ellipse farthest-side at 50% 50%, rgba(246,248,252,0.94) 0%, rgba(246,248,252,0.86) 55%, rgba(246,248,252,0) 100%);
-}
-`
-
-function ModuleCard({ moduleKey, icon: Icon, accent }: { moduleKey: string; icon: typeof Bot; accent: Accent }) {
+function ModuleCard({ moduleKey, illustration }: { moduleKey: string; illustration: string }) {
   const { t } = useTranslation()
-  const a = ACCENT[accent]
   const copy = MODULE_COPY[moduleKey]
   return (
-    <div className="ds-panel rounded-[var(--ds-radius-card)] p-5 transition-transform duration-200 hover:-translate-y-1">
-      <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: a.soft, color: a.ink }}>
-        <Icon size={20} />
-      </span>
-      <h3 className="mt-4 text-base font-extrabold text-[var(--logo-ink)]">
-        {t(`landing.mod_${moduleKey}_title`, { defaultValue: copy.title })}
-      </h3>
-      <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-        {t(`landing.mod_${moduleKey}_body`, { defaultValue: copy.body })}
-      </p>
-    </div>
-  )
-}
-
-// Translucent blocks drifting behind the hero, purely decorative.
-const DRIFT_BLOCKS = [
-  { className: 'left-[-3%] top-[6%] h-28 w-44', dy: 14, dur: 9, rot: -6 },
-  { className: 'right-[2%] top-[-2%] h-36 w-36', dy: -16, dur: 11, rot: 5 },
-  { className: 'left-[38%] bottom-[-6%] h-24 w-56', dy: 12, dur: 10, rot: 3 },
-  { className: 'right-[-4%] bottom-[8%] h-32 w-48', dy: -12, dur: 12, rot: -4 },
-]
-
-function DriftBlocks() {
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-0 hidden md:block">
-      {DRIFT_BLOCKS.map((b, i) => (
-        <motion.div
-          key={i}
-          className={`absolute rounded-[var(--ds-radius-card)] bg-white/45 shadow-[var(--ds-shadow-1)] ${b.className}`}
-          animate={{ y: [0, b.dy, 0], rotate: [b.rot, -b.rot, b.rot] }}
-          transition={{ duration: b.dur, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      ))}
-    </div>
+    <article className="flex flex-col gap-3 border-t border-slate-200 py-6 text-left">
+      <img src={`/illustrations/nav/${illustration}.webp`} alt="" width={80} height={80}
+        loading="lazy" decoding="async" className="h-20 w-20 shrink-0 object-contain" />
+      <div>
+        <h3 className="text-base font-bold text-[var(--logo-ink)]">
+          {t(`landing.mod_${moduleKey}_title`, { defaultValue: copy.title })}
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          {t(`landing.mod_${moduleKey}_body`, { defaultValue: copy.body })}
+        </p>
+      </div>
+    </article>
   )
 }
 
@@ -515,57 +338,6 @@ function useTeacherLogin() {
   return { email, setEmail, password, setPassword, loading, handleLogin }
 }
 
-function QuickLogin({ onStudentCta }: { onStudentCta: () => void }) {
-  const { t } = useTranslation()
-  const { email, setEmail, password, setPassword, loading, handleLogin } = useTeacherLogin()
-  return (
-    <div className="ds-panel relative z-10 w-full rounded-[var(--ds-radius-card)] p-5 md:p-6">
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: ACCENT.pink.soft, color: ACCENT.pink.ink }}>
-          <School size={20} />
-        </span>
-        <div className="text-left">
-          <h2 className="text-lg font-extrabold leading-tight text-[var(--logo-ink)]">
-            {t('landing.quick_title', { defaultValue: 'Accesso rapido' })}
-          </h2>
-          <p className="text-xs text-slate-500">{t('landing.quick_subtitle', { defaultValue: 'Per i docenti con account' })}</p>
-        </div>
-      </div>
-
-      <form onSubmit={handleLogin} className="mt-5 space-y-3 text-left">
-        <div className="space-y-1.5">
-          <Label htmlFor="quick-email">{t('teacher_request.email')}</Label>
-          <Input
-            id="quick-email" type="email" autoComplete="email"
-            placeholder={t('login.email_placeholder')}
-            value={email} onChange={(e) => setEmail(e.target.value)} required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="quick-password">Password</Label>
-          <Input
-            id="quick-password" type="password" autoComplete="current-password"
-            value={password} onChange={(e) => setPassword(e.target.value)} required
-          />
-        </div>
-        <Button type="submit" tone="accent" surface="solid" className="w-full" disabled={loading}>
-          {loading ? t('login.logging_in') : t('login.login_btn')}
-        </Button>
-      </form>
-
-      <div className="mt-4 flex flex-col gap-1 text-left text-sm">
-        <button onClick={onStudentCta} className="inline-flex items-center gap-1 font-semibold text-slate-700 transition-colors hover:text-[var(--logo-pink)]">
-          {t('landing.quick_student', { defaultValue: 'Sei uno studente? Entra con il codice' })} <ArrowRight size={14} />
-        </button>
-        <p className="flex items-center gap-1.5 text-xs text-slate-500">
-          <KeyRound size={12} />
-          {t('landing.quick_invite', { defaultValue: 'Account docente solo su invito' })}
-        </p>
-      </div>
-    </div>
-  )
-}
-
 function HomeSection({
   onTeacherCta,
   onStudentCta,
@@ -576,10 +348,10 @@ function HomeSection({
   const { t } = useTranslation()
   const td = (key: string, fallback: string) => t(`landing.${key}`, { defaultValue: fallback })
 
-  const PILLARS = [
-    { title: t('landing.feature_teacher_loop_title'), icon: Workflow, accent: 'violet' as Accent },
-    { title: t('landing.feature_privacy_title'), icon: ShieldCheck, accent: 'blue' as Accent },
-    { title: t('landing.feature_ai_edu_title'), icon: Eye, accent: 'pink' as Accent },
+  const pillars = [
+    t('landing.feature_teacher_loop_title'),
+    t('landing.feature_privacy_title'),
+    t('landing.feature_ai_edu_title'),
   ]
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -604,33 +376,22 @@ function HomeSection({
       exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
       className="w-full max-w-6xl space-y-20 md:space-y-28"
     >
-      <style>{HALO_CSS}</style>
 
       {/* ---------- Hero ---------- */}
-      <section className="relative grid gap-10 md:grid-cols-[1.15fr_0.85fr] md:items-center md:gap-14">
-        <DriftBlocks />
-        <div className="landing-halo relative z-10 text-left">
+      <section className="relative grid gap-8 py-4 md:grid-cols-[1fr_1.1fr] md:items-center md:gap-10 md:py-10">
+        <div className="relative text-left">
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
             {td('hero_eyebrow', 'Piattaforma didattica per la scuola')}
           </span>
 
-          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-6xl">
-            L'Intelligenza Artificiale <br />
-            <span className="text-[var(--logo-pink)]">entra in classe.</span>
+          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-5xl lg:text-6xl">
+            {td('hero_title', 'L’intelligenza artificiale')}<br />
+            <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', 'entra in classe.')}</span>
           </h1>
 
           <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-700 md:text-lg">
-            {td('hero_body', 'Golinelli.ai è un ambiente sicuro dove il docente prepara la lezione con l\'AI e la porta in classe. Dentro trovi assistenti, documenti, notebook di codice, laboratori di machine learning e 3D, quiz in tempo reale: tutto in una sessione che gli studenti raggiungono con un solo codice.')}
+            {td('hero_body', 'Uno spazio per insegnare, creare e sperimentare con l\'AI. Il docente guida, gli studenti esplorano.')}
           </p>
-
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            {PILLARS.map(p => (
-              <span key={p.title} className="ds-control inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700">
-                <p.icon size={13} style={{ color: ACCENT[p.accent].ink }} />
-                {p.title}
-              </span>
-            ))}
-          </div>
 
           <div className="mt-6 flex flex-wrap gap-3">
             <Button tone="accent" surface="solid" onClick={onTeacherCta}>
@@ -651,19 +412,28 @@ function HomeSection({
           </div>
         </div>
 
-        <QuickLogin onStudentCta={onStudentCta} />
+        <figure className="min-w-0">
+          <img src="/illustrations/landing/learning-together.webp"
+            alt={td('hero_image_alt', 'Due personaggi stringono la mano a una rete neurale sorridente con braccia e gambe.')}
+            width={1536} height={1024} fetchPriority="high" decoding="async"
+            className="mx-auto h-auto w-full max-w-[640px] object-contain" />
+        </figure>
       </section>
 
-      {/* ---------- Modules (layered marquee) ---------- */}
+      <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 border-y border-slate-100 py-5 text-xs font-semibold text-slate-500">
+        {pillars.map(title => <span key={title}>{title}</span>)}
+      </div>
+
+      {/* ---------- Modules ---------- */}
       <section id="landing-modules" className="scroll-mt-28">
         <SectionHeading
           eyebrow={td('modules_eyebrow', 'Dentro la piattaforma')}
           title={td('modules_title', 'Tutto quello che serve per una lezione con l\'AI')}
           body={td('modules_body', 'Ogni modulo si accende per sessione: il docente decide cosa vedono gli studenti.')}
         />
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map(m => (
-            <ModuleCard key={m.key} moduleKey={m.key} icon={m.icon} accent={m.accent} />
+            <ModuleCard key={m.key} moduleKey={m.key} illustration={m.illustration} />
           ))}
         </div>
       </section>
@@ -702,7 +472,7 @@ function HomeSection({
 
       {/* ---------- Contacts ---------- */}
       <section id="landing-contacts" className="scroll-mt-28">
-        <div className="ds-panel flex flex-col gap-5 rounded-[var(--ds-radius-card)] p-6 text-left md:flex-row md:items-center md:justify-between md:p-8">
+        <div className="flex flex-col gap-6 border-t border-slate-200 py-10 text-left md:flex-row md:items-center md:justify-between">
           <div className="max-w-xl">
             <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{td('contacts_eyebrow', 'Contatti')}</span>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--logo-ink)] md:text-3xl">
@@ -733,7 +503,7 @@ function HomeSection({
 
 function SectionHeading({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
   return (
-    <div className="landing-halo max-w-2xl text-left">
+    <div className="max-w-2xl text-left">
       <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{eyebrow}</span>
       <h2 className="mt-2 text-3xl font-black leading-tight tracking-tight text-[var(--logo-ink)] md:text-4xl">{title}</h2>
       <p className="mt-3 text-base leading-relaxed text-slate-600">{body}</p>
@@ -755,8 +525,8 @@ function TutorialTrack({
 }) {
   const a = ACCENT[accent]
   return (
-    <div className="ds-panel rounded-[var(--ds-radius-card)] p-5 md:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <details className="group rounded-2xl border border-slate-200 p-5 md:p-6">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: a.soft, color: a.ink }}>
             <Icon size={20} />
@@ -767,10 +537,10 @@ function TutorialTrack({
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
           style={{ background: a.soft, color: a.ink }}
         >
-          <KeyRound size={12} />
           {badge}
+          <span aria-hidden className="ml-1 text-base transition-transform group-open:rotate-45">+</span>
         </span>
-      </div>
+      </summary>
 
       <ol className="mt-6 space-y-5">
         {steps.map((s, i) => (
@@ -797,7 +567,7 @@ function TutorialTrack({
       <Button tone="neutral" surface="outline" onClick={onAction} className="mt-5 w-full">
         {actionLabel} <ArrowRight size={16} />
       </Button>
-    </div>
+    </details>
   )
 }
 
@@ -876,7 +646,7 @@ function TeachersSection() {
       <div className="overflow-hidden rounded-xl bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-3)]">
         <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
           <div className="relative z-10">
-            <School className="mb-3 h-12 w-12 text-blue-700 md:mx-auto" />
+            <img src="/illustrations/nav/support.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
             <h2 className="text-2xl font-bold">{t('landing.nav_teacher_area')}</h2>
             <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
           </div>
@@ -944,7 +714,7 @@ function StudentsSection() {
     >
       <div className="overflow-hidden rounded-xl bg-[var(--ds-surface-raised)] shadow-[var(--ds-shadow-3)]">
         <div className="bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
-          <GraduationCap className="mb-3 h-12 w-12 text-sky-700 md:mx-auto" />
+          <img src="/illustrations/nav/classes.webp" alt="" width={96} height={96} className="mb-3 h-24 w-24 object-contain md:mx-auto" />
           <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
           <p className="text-sm text-slate-600">{t('student_join.subtitle')}</p>
         </div>

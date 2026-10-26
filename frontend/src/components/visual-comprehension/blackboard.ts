@@ -16,6 +16,10 @@ export type DiagramData = { nodes: Array<{ id: string; label: string; box: Box; 
 export type FretboardData = { label: string; frets: number[]; fingers: number[]; start_fret: number; visible_frets: number; tuning: string[] }
 export type RhythmData = { beats_per_bar: number; beat_unit: number; events: Array<{ label: string; beats: number; rest: boolean }> }
 export type NumberLineData = { min: number; max: number; step: number; marks: Array<{ value: number; label: string; color: Ink }>; jumps: Array<{ start: number; end: number; label: string; color: Ink }> }
+export type AreaModelData = {
+  cols: Array<{ size: number; label: string }>; rows: Array<{ size: number; label: string }>
+  cells: Array<Array<{ label: string; color: Ink; step: number | null }>>; top: string; side: string
+}
 export type AnchorAt = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right'
 /** Named point computed by the renderer (never guessed by the model). */
 export type ScenePoint = {
@@ -24,7 +28,7 @@ export type ScenePoint = {
   at: AnchorAt; refs: string[]; t: number | null; dx: number; dy: number
 }
 export type MarkKind = 'line' | 'arrow' | 'polyline' | 'rectangle' | 'ellipse' | 'text' | 'number' | 'formula' | 'brace' | 'connector' | 'plot' | 'diagram' | 'fretboard' | 'rhythm'
-  | 'polygon' | 'arc' | 'right_angle' | 'circle' | 'tick' | 'dimension' | 'callout' | 'highlight' | 'lens' | 'numberline' | 'spotlight'
+  | 'polygon' | 'arc' | 'right_angle' | 'circle' | 'tick' | 'dimension' | 'callout' | 'highlight' | 'lens' | 'numberline' | 'spotlight' | 'area_model'
 export type DrawingMark = {
   id: string; kind: MarkKind
   /** 'image', a board id, or legacy 'board' (single board of side/below layouts). */
@@ -32,7 +36,7 @@ export type DrawingMark = {
   font_size: number; stroke_width: number; step: number; from_region_id: string | null; to_element_id: string | null
   plot: PlotData | null; diagram: DiagramData | null; fretboard: FretboardData | null; rhythm: RhythmData | null
   // v2 fields: absent in scenes saved before anchors existed
-  numberline?: NumberLineData | null; anchors?: string[]; target?: string | null; radius?: number; count?: number
+  numberline?: NumberLineData | null; area_model?: AreaModelData | null; anchors?: string[]; target?: string | null; radius?: number; count?: number
   // v3: curved arrows and soft strokes
   bend?: number; sharp?: boolean; ink?: boolean
 }

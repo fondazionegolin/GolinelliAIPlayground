@@ -1,0 +1,16 @@
+.platform-media-window:fullscreen {
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  transform: none !important;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+}
+.platform-media-window:fullscreen > div {
+  flex: 1;
+  aspect-ratio: auto;
+}
+.platform-media-window:fullscreen video {
+  max-height: calc(100dvh - 3.5rem);
+}

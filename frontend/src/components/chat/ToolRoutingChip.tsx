@@ -17,6 +17,7 @@ export const TOOL_LABELS: Record<string, string> = {
   presentation: 'Presentazione',
   brochure: 'Brochure',
   dispensa: 'Dispensa',
+  podcast: 'Podcast',
   html_page: 'Pagina interattiva',
   quiz: 'Quiz',
   exercise: 'Esercizio',

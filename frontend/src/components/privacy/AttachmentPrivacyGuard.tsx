@@ -1,3 +1,4 @@
+import { mediaKind } from '@/lib/media'
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AlertTriangle, CheckCircle2, Loader2, ShieldCheck, X } from '@/components/icons'
@@ -19,6 +20,11 @@ function FileRow({ file, state, included, onToggle }: {
 }) {
   const [open, setOpen] = useState(false)
   const preview = state.status === 'ready' ? state.preview : null
+  if (mediaKind(file.name, file.type)) return <li className="rounded-lg border bg-white p-3">
+    <label className="flex items-start gap-3"><input type="checkbox" checked={included} onChange={onToggle} className="mt-1 h-4 w-4 accent-[var(--logo-pink)]" aria-label={`Allega ${file.name}`} />
+      <span className="min-w-0"><span className="block truncate text-sm font-semibold text-gray-900">{file.name}</span><span className="mt-1 block text-xs text-gray-500">Audio/video: verrà caricato il file originale, senza anonimizzazione automatica.</span></span>
+    </label>
+  </li>
   return (
     <li className="rounded-lg border bg-white p-3">
       <div className="flex items-start gap-3">
@@ -79,6 +85,7 @@ function Dialog({ pending, onClose }: { pending: Pending; onClose: (files: File[
   useEffect(() => {
     let cancelled = false
     files.forEach((file, i) => {
+      if (mediaKind(file.name, file.type)) return
       privacyApi.anonymizePreview(file)
         .then((res) => !cancelled && setStates((s) => s.map((x, j) => (j === i ? { status: 'ready', preview: res.data } : x))))
         .catch(() => !cancelled && setStates((s) => s.map((x, j) => (j === i ? { status: 'error' } : x))))
@@ -87,6 +94,7 @@ function Dialog({ pending, onClose }: { pending: Pending; onClose: (files: File[
   }, [files])
 
   const selected = files.filter((_, i) => included[i])
+  const hasMedia = files.some(file => mediaKind(file.name, file.type))
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
@@ -102,8 +110,8 @@ function Dialog({ pending, onClose }: { pending: Pending; onClose: (files: File[
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <p>
               <strong>Attenzione:</strong> sei sicuro che i dati che stai allegando non contengano dati personali?
-              Per tua conoscenza, i dati verranno comunque anonimizzati: i nomi propri di persona diventano <code className="rounded bg-white/70 px-1">[NAME]</code>,
-              e vengono mascherati anche e-mail, telefoni, codici fiscali, IBAN e indirizzi.
+              {hasMedia ? ' I documenti testuali vengono anonimizzati; audio e video vengono conservati e riprodotti nel formato originale.' : <> Per tua conoscenza, i dati verranno comunque anonimizzati: i nomi propri di persona diventano <code className="rounded bg-white/70 px-1">[NAME]</code>,
+              e vengono mascherati anche e-mail, telefoni, codici fiscali, IBAN e indirizzi.</>}
             </p>
           </div>
           <ul className="space-y-2">
@@ -116,7 +124,7 @@ function Dialog({ pending, onClose }: { pending: Pending; onClose: (files: File[
         <div className="flex items-center justify-end gap-2 border-t bg-gray-50 px-5 py-3">
           <Button variant="outline" onClick={() => onClose([])}>Annulla</Button>
           <Button onClick={() => onClose(selected)} disabled={selected.length === 0}>
-            Allega {selected.length > 1 ? `${selected.length} file` : 'file'} (copia anonimizzata)
+            Allega {selected.length > 1 ? `${selected.length} file` : 'file'}{!hasMedia && ' (copia anonimizzata)'}
           </Button>
         </div>
       </div>

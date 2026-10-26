@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Share2, X } from '@/components/icons'
 import { driveApi } from '@/lib/api'
 import { CATEGORY_META, categoryOf, editorPathFor, filenameFromDisposition, formatBytes, formatDate, saveBlob, type DriveItem } from './driveTypes'
+import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
 import { GlbViewer } from './GlbViewer'
 
 const TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024
 const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'py', 'js', 'ts', 'tsx', 'html', 'css', 'xml', 'yaml', 'yml', 'c', 'cpp', 'java', 'ino', 'log']
 
 type Loaded =
+  | { kind: 'media'; url: string }
   | { kind: 'url'; url: string; blob: Blob }
   | { kind: 'text'; text: string }
   | { kind: 'model'; blob: Blob; format: 'glb' | 'stl' }
@@ -27,6 +29,7 @@ async function loadPreview(item: DriveItem): Promise<Loaded> {
     return { kind: 'url', url: URL.createObjectURL(blob), blob }
   }
   if (item.kind !== 'file') return { kind: 'none' }
+  if (category === 'video' || category === 'audio') return { kind: 'media', url: `/api/v1/drive/items/${item.id}/content` }
   const isText = TEXT_EXTENSIONS.includes(ext) || (item.mime_type || '').startsWith('text/')
   const previewable = ['image', 'pdf', 'video', 'audio', 'model3d'].includes(category) || isText
   if (!previewable) return { kind: 'none' }
@@ -166,10 +169,10 @@ export function DrivePreview({
           </div>
         ) : loaded.kind === 'url' && category === 'image' ? (
           <img src={loaded.url} alt={item.name} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
-        ) : loaded.kind === 'url' && category === 'video' ? (
-          <video src={loaded.url} controls autoPlay className="max-h-full max-w-full rounded-lg shadow-2xl" />
-        ) : loaded.kind === 'url' && category === 'audio' ? (
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><audio src={loaded.url} controls autoPlay className="w-full" /></div>
+        ) : loaded.kind === 'media' && category === 'video' ? (
+          <VideoPreview src={loaded.url} title={item.name} />
+        ) : loaded.kind === 'media' && category === 'audio' ? (
+          <AudioPlayer src={loaded.url} title={item.name} />
         ) : loaded.kind === 'url' ? (
           <iframe src={loaded.url} title={item.name} className="h-full w-full max-w-5xl rounded-lg bg-white shadow-2xl" />
         ) : loaded.kind === 'text' ? (

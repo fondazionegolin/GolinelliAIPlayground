@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
+    ELEVENLABS_API_KEY: Optional[str] = None
+    ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
+    ELEVENLABS_COST_PER_1000_CHARS: float = 0.0
     MESHY_API_KEY: Optional[str] = None
     # Video Studio (admin testing): Runware API, https://runware.ai/docs
     RUNWARE_API_KEY: Optional[str] = None

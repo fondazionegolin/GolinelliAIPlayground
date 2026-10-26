@@ -13,7 +13,7 @@ from typing import Annotated, Literal, Optional
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File as UploadField, Form, HTTPException, Query, UploadFile, status
+from fastapi import Request, APIRouter, Depends, File as UploadField, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -411,6 +411,7 @@ async def item_content(
     item_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    http_request: Request,
     download: bool = False,
 ):
     principal = await _principal(db, auth)
@@ -418,8 +419,16 @@ async def item_content(
     await _require(db, principal, item, "viewer")
     if item.kind != "file":
         raise HTTPException(status_code=400, detail="Usa l'esportazione per questo elemento")
+    from app.services.media_http import media_response, media_file_response
+    stored = await db.get(File, item.file_id) if item.file_id else None
+    path = drive.blob_path(stored.storage_key) if stored else None
+    if path is not None:
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="File non trovato")
+        mime = stored.mime_type or item.mime_type or "application/octet-stream"
+        return media_file_response(path, mime, http_request.headers.get("range"), _content_headers(item.name, mime, download))
     data, mime = await _file_bytes(db, item)
-    return Response(content=data, media_type=mime, headers=_content_headers(item.name, mime, download))
+    return media_response(data, mime, http_request.headers.get("range"), _content_headers(item.name, mime, download))
 
 
 @router.get("/items/{item_id}/document")

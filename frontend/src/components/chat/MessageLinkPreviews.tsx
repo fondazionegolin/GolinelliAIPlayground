@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FileText, Video } from '@/components/icons'
+import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
+import { mediaKind, youtubeVideo } from '@/lib/media'
 import { llmApi } from '@/lib/api'
 
 const URL_RE = /https?:\/\/[^\s<>()"']+/gi
@@ -38,11 +40,14 @@ function LinkCard({ url }: { url: string }) {
     return () => { active = false }
   }, [url])
 
-  const isYoutube = /(?:youtube\.com|youtu\.be)/i.test(url)
-  const videoId = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1]
+  const isYoutube = Boolean(youtubeVideo(url))
+  const videoId = youtubeVideo(url)?.id
   const thumbnail = metadata?.image_url || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : undefined)
   let domain = 'Pagina web'
   try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { /* URL remains linkable. */ }
+
+  if (isYoutube || mediaKind(url) === 'video') return <VideoPreview src={url} title={metadata?.title || (isYoutube ? 'Video YouTube' : 'Video')} poster={thumbnail} />
+  if (mediaKind(url) === 'audio') return <AudioPlayer src={url} title={metadata?.title || 'Audio'} />
 
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" title={url}

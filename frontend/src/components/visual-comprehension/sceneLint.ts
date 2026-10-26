@@ -12,7 +12,7 @@ export type Refinement = { geometry: SceneGeometry; shifts: Map<string, XY>; iss
 
 export const MIN_TEXT_PX = 11
 const MAX_TEXT_PER_STEP = 10
-const WIDGETS = new Set(['plot', 'diagram', 'fretboard', 'rhythm', 'numberline', 'lens'])
+const WIDGETS = new Set(['plot', 'diagram', 'fretboard', 'rhythm', 'numberline', 'lens', 'area_model'])
 const DIRECTIONS: XY[] = [{ x: 1, y: -1 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 1 }]
 
 type Item = { mark: DrawingMark; frame: Frame; rect: Frame; callout: boolean; brace?: boolean }

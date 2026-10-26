@@ -113,6 +113,21 @@ def sines():
     return image
 
 
+def identities():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(7, 8), dpi=100)
+    fig.text(.5, .94, "Basic Algebra Formulas", fontsize=24, ha="center", color="#a0522d")
+    for i, f in enumerate([r"$a^2-b^2=(a+b)(a-b)$", r"$a^2+b^2=(a+b)^2-2ab$", r"$(a+b)^2=a^2+2ab+b^2$",
+                           r"$(a-b)^2=a^2-2ab+b^2$", r"$a^3+b^3=(a+b)(a^2-ab+b^2)$"]):
+        fig.text(.5, .8 - i * .16, f, fontsize=26, ha="center")
+    out = io.BytesIO()
+    fig.savefig(out, format="png", facecolor="white")
+    plt.close(fig)
+    return Image.open(io.BytesIO(out.getvalue())).convert("RGB")
+
+
 CASES = {
     "addition": (addition, "Spiegami come si fa questa addizione, un passo alla volta."),
     "triangle": (triangle, "Come calcolo l'area? Fammi vedere l'altezza sul disegno."),
@@ -122,6 +137,7 @@ CASES = {
     "ui_selection": (app_ui, "A cosa serve questo?", {"shape": "lasso", "box": {"x": 82.5, "y": 1.0, "width": 10.5, "height": 7.0},
                      "points": [[82.5, 1.0], [93.0, 1.0], [93.0, 8.0], [82.5, 8.0]]}),
     "sines": (sines, "Indicami qual è la curva blu e disegnami accanto il grafico di y = A·sin(kx + φ) con i parametri che posso cambiare, per capire cosa fanno."),
+    "identities": (identities, "Dammi una dimostrazione visiva di (a+b)^2 = a^2 + 2ab + b^2"),
     "schrodinger": (schrodinger, "Spiegami il significato di questa equazione, termine per termine, anche con un disegno di cosa descrive."),
 }
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } fr
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { useTranslation } from 'react-i18next'
+import { AudioPlayer } from '@/components/media/MediaPlayer'
+import { mediaKind } from '@/lib/media'
 import { chatApi, toyLmApi } from '@/lib/api'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
@@ -331,6 +333,7 @@ export default function ChatSidebar({
     const optimizedFiles = await optimizeImagesForUpload(files)
     const response = await chatApi.uploadFiles(sessionId, optimizedFiles)
     const uploadedUrls: string[] = response.data?.urls || []
+    if (uploadedUrls.length !== optimizedFiles.length) throw new Error('Caricamento degli allegati non completato')
     const filenameMap: Record<string, string> = {}
     uploadedUrls.forEach((url, index) => {
       filenameMap[url] = originalNames[index] || url.split('/').pop() || 'file'
@@ -444,6 +447,7 @@ export default function ChatSidebar({
         let fileUrl = data.url as string
         fileUrl = await resolveDownloadUrl(fileUrl)
         const res = await fetch(fileUrl)
+        if (!res.ok) throw new Error('File non disponibile per la condivisione')
         const blob = await res.blob()
         const fileObj = new globalThis.File([blob], data.filename || 'file', {
           type: data.mime_type || blob.type || 'application/octet-stream'
@@ -768,7 +772,8 @@ export default function ChatSidebar({
       ? rawAttachments.filter((att: any) => att.url)
       : []
     const imageAttachments = allAttachments.filter((att: any) => att.type === 'image')
-    const fileAttachments = allAttachments.filter((att: any) => att.type !== 'image')
+    const audioAttachments = allAttachments.filter((att: any) => mediaKind(att.filename || att.url, att.type) === 'audio')
+    const fileAttachments = allAttachments.filter((att: any) => att.type !== 'image' && mediaKind(att.filename || att.url, att.type) !== 'audio')
     // Per-user accent tints removed: chat bubbles are neutral base surfaces
     // (light grey for own messages, white for received), not accent-coloured.
     const messageAccentTheme = null as (typeof studentAccentTheme | null)
@@ -982,6 +987,15 @@ export default function ChatSidebar({
                       <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
                       <span className="truncate text-[10px] font-semibold">{att.filename || 'Immagine'}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {audioAttachments.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {audioAttachments.map((att: any, index: number) => (
+                  <div key={index} className="max-w-full" onClick={event => event.stopPropagation()}>
+                    <AudioPlayer src={att.url} title={att.filename || 'Podcast audio'} />
                   </div>
                 ))}
               </div>

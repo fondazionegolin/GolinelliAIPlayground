@@ -710,6 +710,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     <button
                       onClick={() => {
                         setShowDropdown(false)
+                        navigate('/privacy')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Informativa privacy
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
                         navigate('/terms')
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"

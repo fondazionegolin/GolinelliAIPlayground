@@ -20,6 +20,10 @@ from app.realtime.gateway import sio
 router = APIRouter()
 
 MAX_SESSION_MESSAGE_PREVIEW_CHARS = 4000
+CHAT_AUDIO_MIME_TYPES = frozenset({
+    "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/aac",
+    "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm", "audio/flac", "audio/opus",
+})
 
 
 def _teacher_display_name(teacher: User) -> str:
@@ -573,7 +577,7 @@ async def upload_chat_files(
     for file in files:
         try:
             print(f"[UPLOAD] Processing file: {file.filename}, content_type: {file.content_type}")
-            if not file.content_type or file.content_type not in settings.ALLOWED_MIME_TYPES:
+            if not file.content_type or (file.content_type not in settings.ALLOWED_MIME_TYPES and file.content_type not in CHAT_AUDIO_MIME_TYPES):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Mime type not allowed: {file.content_type}",

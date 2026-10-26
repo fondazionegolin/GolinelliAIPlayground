@@ -4,11 +4,11 @@ import io
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File as UploadField, Form, HTTPException, UploadFile, status
+from fastapi import Request, APIRouter, Depends, File as UploadField, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import Annotated
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -67,6 +67,71 @@ async def _can_access_file(db: AsyncSession, auth: StudentOrTeacher, stored_file
     if stored_file.scope == Scope.SESSION and stored_file.session_id:
         return await teacher_can_access_session(db, auth.teacher, stored_file.session_id)
     return False
+
+
+@router.post("/media")
+async def upload_chat_media(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    file: UploadFile = UploadField(...),
+):
+    """Chat media can be uploaded by students too, without write access to a teacher's drive root."""
+    import mimetypes
+    from app.services import drive_service as drive
+    from app.models.drive import DriveItem
+    name = Path(file.filename or "media").name[:255]
+    mime = file.content_type
+    if not mime or mime == "application/octet-stream":
+        mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    if not mime.startswith(("audio/", "video/")):
+        raise HTTPException(422, "Scegli un file audio o video.")
+    max_size = settings.DRIVE_MAX_UPLOAD_MB * 1024 * 1024
+    data = await file.read(max_size + 1)
+    if not data or len(data) > max_size:
+        raise HTTPException(413, f"File vuoto o superiore a {settings.DRIVE_MAX_UPLOAD_MB} MB.")
+    owner = auth.student if auth.is_student else auth.teacher
+    if not owner.tenant_id:
+        raise HTTPException(403, "Archivio non disponibile per questo account.")
+    owner_column = File.owner_student_id if auth.is_student else File.owner_teacher_id
+    used = await db.scalar(select(func.coalesce(func.sum(File.size_bytes), 0)).where(owner_column == owner.id))
+    if int(used or 0) + len(data) > settings.DRIVE_QUOTA_MB * 1024 * 1024:
+        raise HTTPException(413, "Spazio disponibile esaurito.")
+    file_id = uuid4()
+    key = f"drive/{owner.tenant_id}/{owner.id}/{file_id}{Path(name).suffix[:16]}"
+    await asyncio.to_thread(drive.write_blob, key, data)
+    stored = File(id=file_id, tenant_id=owner.tenant_id,
+        owner_type=OwnerType.STUDENT if auth.is_student else OwnerType.TEACHER,
+        owner_teacher_id=None if auth.is_student else owner.id, owner_student_id=owner.id if auth.is_student else None,
+        scope=Scope.USER, session_id=owner.session_id if auth.is_student else None,
+        storage_key=key, filename=name, mime_type=mime, size_bytes=len(data), checksum_sha256=hashlib.sha256(data).hexdigest())
+    db.add(stored)
+    await db.flush()
+    if auth.is_teacher:
+        db.add(DriveItem(owner_teacher_id=owner.id, tenant_id=owner.tenant_id, kind="file", name=name,
+                         file_id=file_id, source_type="upload", mime_type=mime, size_bytes=len(data)))
+    await db.commit()
+    return {"id": str(file_id), "name": name, "mime_type": mime, "url": f"/api/v1/files/media/{file_id}"}
+
+
+@router.get("/media/{file_id}")
+async def chat_media_content(file_id: UUID, request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    from app.services import drive_service as drive
+    from app.services.media_http import media_file_response, media_response
+    stored = await db.get(File, file_id)
+    if not stored or not await _can_access_file(db, auth, stored):
+        raise HTTPException(404, "File non trovato.")
+    if not stored.mime_type.startswith(("audio/", "video/")):
+        raise HTTPException(422, "Il file non è multimediale.")
+    headers = {"X-Content-Type-Options": "nosniff", "Content-Disposition": f"inline; filename*=UTF-8''{quote(stored.filename)}"}
+    path = drive.blob_path(stored.storage_key)
+    if path is not None:
+        if not path.is_file():
+            raise HTTPException(404, "File non trovato.")
+        return media_file_response(path, stored.mime_type, request.headers.get("range"), headers)
+    data = await asyncio.to_thread(storage_service.download_file, stored.storage_key)
+    return media_response(data, stored.mime_type, request.headers.get("range"), headers)
 
 
 @router.post("/documents/import")

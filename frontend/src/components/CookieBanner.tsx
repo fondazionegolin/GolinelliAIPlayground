@@ -35,7 +35,7 @@ export function CookieBanner() {
             <p className="mb-0.5 text-sm font-semibold text-slate-800">{t('cookie.title')}</p>
             <p className="text-xs leading-relaxed text-slate-500">
               {t('cookie.body')}{' '}
-              <a href="/privacy-policy" className="font-medium text-blue-600 hover:underline" target="_blank" rel="noreferrer">
+              <a href="/privacy" className="font-medium text-blue-600 hover:underline" target="_blank" rel="noreferrer">
                 {t('cookie.policy_link')}
               </a>
             </p>

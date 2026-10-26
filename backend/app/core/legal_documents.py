@@ -15,10 +15,10 @@ LEGAL_DOCUMENTS = [
     },
     {
         "key": "privacy_dpa",
-        "title": "Privacy e DPA",
-        "version": "2026-02",
-        "source_url": "/docs/informativa-privacy.pdf",
-        "accept_label": "Accetto Privacy e DPA",
+        "title": "Informativa privacy e DPA",
+        "version": "2.0",
+        "source_url": "/docs/informativa-privacy-v2.0.pdf",
+        "accept_label": "Ho letto e accetto l’informativa privacy e DPA",
     },
 ]
 

@@ -33,6 +33,7 @@ ACTIONS = [
 ]
 
 ARTIFACTS = [
+    {"value": "podcast", "description": "An audio summary, narrated explanation, educational podcast or spoken version of attached documents."},
     {"value": "none", "description": "No artifact is involved: plain conversation."},
     {"value": "image", "description": "A picture, illustration, drawing, photo, logo or poster image."},
     {"value": "presentation", "description": "A slide deck / PowerPoint-style presentation."},

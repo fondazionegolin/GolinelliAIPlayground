@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useId, useMemo, useState, type Re
 import { motion, useReducedMotion } from 'framer-motion'
 import katex from 'katex'
 import type { Region } from './types'
-import { INKS, TEXT_INKS, boxInFrame, curveValue, edgePoints, liveFormula, sliderDefault, sliderKey, withParams, type DiagramData, type DrawingLayout, type DrawingMark, type DrawingScene, type Frame, type FretboardData, type PlotData, type RhythmData } from './blackboard'
+import { INKS, TEXT_INKS, boxInFrame, curveValue, edgePoints, liveFormula, sliderDefault, sliderKey, withParams, type AreaModelData, type DiagramData, type DrawingLayout, type DrawingMark, type DrawingScene, type Frame, type FretboardData, type PlotData, type RhythmData } from './blackboard'
 import { fitText } from './sceneGeometry'
 import { refineScene, type Refinement } from './sceneLint'
 import { Lens, NumberLineWidget, calibratedPlot, extraPath, isCalibratedPlot, labelRectFor } from './ExtraMarks'
@@ -24,7 +24,9 @@ function Reveal({ id, box, lines, timing, children }: { id: string; box: Frame; 
 }
 
 /** Written results (digits, formulas, curves) stay, faded, after their step; pointers and highlights belong to one step only. */
-const PERSISTENT = new Set(['text', 'number', 'formula', 'plot', 'numberline'])
+const PERSISTENT = new Set(['text', 'number', 'formula', 'plot', 'numberline', 'area_model'])
+/** A figure the steps build on (an area model) stays fully visible: only its parts appear step by step. */
+const SCAFFOLD = new Set(['area_model'])
 const MinFont = createContext(0)
 /** True when rendering a still (reviewer snapshot): widgets must not start from an animated empty state. */
 const Still = createContext(false)
@@ -246,6 +248,53 @@ function PlotControls({ mark, area, font, values, onParam, appear }: {
   </motion.g>
 }
 
+/**
+ * Area model: a rectangle cut into proportional rows × columns, lengths written on the sides with braces,
+ * each part labelled with its area. Parts appear at their own step, so a proof is built one term at a time.
+ */
+function AreaModelFigure({ data, box, step, stepwise, markStep, animating, delay }: {
+  data: AreaModelData; box: Frame; step: number; stepwise: boolean; markStep: number; animating: boolean; delay: number
+}) {
+  const totalX = data.cols.reduce((s, c) => s + c.size, 0), totalY = data.rows.reduce((s, r) => s + r.size, 0)
+  const margin = Math.min(box.width, box.height) * .2
+  const W = box.width - margin * 1.4, H = box.height - margin * 1.4
+  const k = Math.min(W / totalX, H / totalY)
+  const x0 = box.x + margin + (W - totalX * k) / 2, y0 = box.y + margin + (H - totalY * k) / 2
+  const side = Math.min(totalX, totalY) * k
+  const font = Math.max(side * .085, 10), stroke = Math.max(side * .006, 1.2)
+  const xs = data.cols.reduce<number[]>((acc, c) => [...acc, acc[acc.length - 1] + c.size * k], [x0])
+  const ys = data.rows.reduce<number[]>((acc, r) => [...acc, acc[acc.length - 1] + r.size * k], [y0])
+  const gap = font * .5, depth = font * .55
+  const shown = (cellStep: number | null) => !stepwise || (cellStep ?? markStep) <= step
+  let order = 0
+  return <g>
+    {data.cols.map((c, i) => {
+      const brace = curlyBrace({ x: xs[i + 1], y: y0 - gap }, { x: xs[i], y: y0 - gap }, depth)  // tip up
+      return <g key={`c${i}`}><path d={brace.d} fill="none" stroke={INKS.ink} strokeWidth={stroke * .8} />
+        {c.label && <text x={brace.tip.x} y={brace.tip.y - font * .35} fontSize={font} textAnchor="middle" fill={INKS.ink} fontStyle="italic" fontFamily="ui-serif, Georgia, serif">{c.label}</text>}</g>
+    })}
+    {data.rows.map((r, j) => {
+      const brace = curlyBrace({ x: x0 - gap, y: ys[j] }, { x: x0 - gap, y: ys[j + 1] }, depth)  // tip left
+      return <g key={`r${j}`}><path d={brace.d} fill="none" stroke={INKS.ink} strokeWidth={stroke * .8} />
+        {r.label && <text x={brace.tip.x - font * .35} y={brace.tip.y + font * .35} fontSize={font} textAnchor="end" fill={INKS.ink} fontStyle="italic" fontFamily="ui-serif, Georgia, serif">{r.label}</text>}</g>
+    })}
+    {data.top && <text x={(x0 + xs[xs.length - 1]) / 2} y={y0 - gap - depth - font * 1.6} fontSize={font * 1.1} textAnchor="middle" fill={TEXT_INKS.ink} fontWeight={700}>{data.top}</text>}
+    {data.side && <text x={x0 - gap - depth - font * 1.5} y={(y0 + ys[ys.length - 1]) / 2} fontSize={font * 1.1} textAnchor="middle" fill={TEXT_INKS.ink} fontWeight={700}
+      transform={`rotate(-90 ${x0 - gap - depth - font * 1.5} ${(y0 + ys[ys.length - 1]) / 2})`}>{data.side}</text>}
+    {data.cells.map((row, j) => row.map((cell, i) => {
+      if (!shown(cell.step)) return null
+      const cx = xs[i], cy = ys[j], cw = xs[i + 1] - cx, ch = ys[j + 1] - cy
+      const fresh = animating && (cell.step ?? markStep) === step
+      const size = Math.min(font * 1.7, Math.min(cw, ch) * .36)
+      return <motion.g key={`${i}-${j}`} {...(fresh ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: .45, delay: delay + (order++) * .35 } } : {})}>
+        <rect x={cx} y={cy} width={cw} height={ch} fill={INKS[cell.color]} fillOpacity=".16" stroke={INKS[cell.color]} strokeWidth={stroke} />
+        {cell.label && <text x={cx + cw / 2} y={cy + ch / 2 + size * .35} fontSize={size} textAnchor="middle" fill={TEXT_INKS[cell.color]} fontWeight={700}>{cell.label}</text>}
+      </motion.g>
+    }))}
+    <rect x={x0} y={y0} width={xs[xs.length - 1] - x0} height={ys[ys.length - 1] - y0} fill="none" stroke={INKS.ink} strokeWidth={stroke * 1.6} />
+  </g>
+}
+
 /** A label in a soft white pill: legible on photos and on boards, never a bare floating word. */
 function Pill({ rect, text, size, color, timing, clipId, filter }: { rect: Frame; text: string; size: number; color: string; timing?: Timing; clipId: string; filter: string }) {
   return <g>
@@ -353,7 +402,7 @@ export default function BlackboardDrawing({ scene, layout, regions, visibleStep,
       const region = m.from_region_id ? geometry.regionRect(m.from_region_id) : null
       const explorer = m.kind === 'plot' && m.box && m.plot?.sliders?.length && onParam && !snapshot ? explorerLayout(b, f, m.plot, f !== layout.image) : null
       return <g key={m.id} transform={shift ? `translate(${shift.x} ${shift.y})` : undefined} data-drawing-kind={m.kind} data-drawing-id={m.id}
-        opacity={stepwise && m.step < visibleStep ? .38 : 1}>
+        opacity={stepwise && m.step < visibleStep && !SCAFFOLD.has(m.kind) ? .38 : 1}>
         <title>{m.text || m.fretboard?.label || m.id}</title>
         {m.kind === 'highlight' && (() => {
           const regionInfo = m.from_region_id ? regions.find(r => r.id === m.from_region_id) : undefined
@@ -400,6 +449,8 @@ export default function BlackboardDrawing({ scene, layout, regions, visibleStep,
           </>
         })()}
         {explorer && <PlotControls mark={m} area={explorer.controls} font={explorer.font} values={params?.[m.id]} onParam={onParam!} appear={appear} />}
+        {m.kind === 'area_model' && m.area_model && <AreaModelFigure data={m.area_model} box={b} step={visibleStep} stepwise={stepwise} markStep={m.step}
+          animating={playing} delay={timing?.delay ?? .2} />}
         {['plot', 'diagram', 'fretboard', 'rhythm'].includes(m.kind) && m.box && <motion.svg {...(explorer?.plot ?? b)} overflow="hidden" {...appear}>
           {m.kind === 'plot' && m.plot && <PlotWidget data={withParams(m.plot, params?.[m.id])} prefix={`${prefix}-${m.id}`}
             aspect={(explorer?.plot ?? b).height / Math.max(1, (explorer?.plot ?? b).width)} />}

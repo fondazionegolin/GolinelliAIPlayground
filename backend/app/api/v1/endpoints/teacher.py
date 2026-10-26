@@ -4226,6 +4226,8 @@ class TeacherMessageResponse(BaseModel):
     provider: Optional[str]
     model: Optional[str]
     token_usage_json: Optional[dict] = None
+    attachments_json: Optional[dict] = None
+    podcast: Optional[dict] = None
     created_at: datetime
 
     class Config:
@@ -4360,6 +4362,8 @@ async def get_teacher_conversation(
                 "provider": m.provider,
                 "model": m.model,
                 "token_usage_json": (m.attachments_json or {}).get("token_usage_json"),
+                "attachments_json": {"files": (m.attachments_json or {}).get("files", [])},
+                "podcast": (m.attachments_json or {}).get("podcast"),
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages
@@ -4420,6 +4424,8 @@ async def add_message_to_conversation(
         provider=message.provider,
         model=message.model,
         token_usage_json=(message.attachments_json or {}).get("token_usage_json"),
+        attachments_json={"files": (message.attachments_json or {}).get("files", [])},
+        podcast=(message.attachments_json or {}).get("podcast"),
         created_at=message.created_at,
     )
 

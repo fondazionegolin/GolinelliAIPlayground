@@ -158,6 +158,32 @@ class Rhythm(DataModel):
         return self
 
 
+class AreaPart(DataModel):
+    size: float = Field(gt=0, le=1000, description="Lunghezza relativa del tratto (es. a=3, b=2: proporzioni leggibili)")
+    label: str = Field(default="", max_length=20, description="Misura scritta sul lato, es. 'a'")
+
+
+class AreaCell(DataModel):
+    label: str = Field(default="", max_length=24, description="Area della parte, es. 'a²', 'ab'")
+    color: Ink = "blue"
+    step: int | None = Field(default=None, ge=0, le=7, description="Passo in cui la parte compare (default: quello del segno)")
+
+
+class AreaModel(DataModel):
+    """A rectangle cut into rows × columns of proportional lengths: the figure behind (a+b)², (a+b)(c+d), distributivity."""
+    cols: list[AreaPart] = Field(min_length=1, max_length=4)
+    rows: list[AreaPart] = Field(min_length=1, max_length=4)
+    cells: list[list[AreaCell]] = Field(description="Una riga di celle per ogni elemento di rows, una cella per colonna")
+    top: str = Field(default="", max_length=30, description="Misura dell'intero lato in alto, es. 'a + b'")
+    side: str = Field(default="", max_length=30, description="Misura dell'intero lato a sinistra")
+
+    @model_validator(mode="after")
+    def grid(self):
+        if len(self.cells) != len(self.rows) or any(len(r) != len(self.cols) for r in self.cells):
+            raise ValueError("area_model: cells deve avere una riga per ogni rows e una cella per ogni cols")
+        return self
+
+
 class ScenePoint(DataModel):
     """A named point computed by the renderer, so the model never guesses derived coordinates."""
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,48}$")
@@ -221,7 +247,8 @@ class NumberLine(DataModel):
 class DrawingMark(DataModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,48}$")
     kind: Literal["line", "arrow", "polyline", "rectangle", "ellipse", "text", "number", "formula", "brace", "connector", "plot", "diagram", "fretboard", "rhythm",
-                  "polygon", "arc", "right_angle", "circle", "tick", "dimension", "callout", "highlight", "lens", "numberline", "spotlight"]
+                  "polygon", "arc", "right_angle", "circle", "tick", "dimension", "callout", "highlight", "lens", "numberline", "spotlight",
+                  "area_model"]
     space: str = Field(default="image", pattern=r"^[a-zA-Z0-9_-]{1,48}$", description="image oppure l'id di una lavagna (boards)")
     box: Box | None = None
     points: list[Point] = Field(default_factory=list, max_length=100)
@@ -238,6 +265,7 @@ class DrawingMark(DataModel):
     fretboard: Fretboard | None = None
     rhythm: Rhythm | None = None
     numberline: NumberLine | None = None
+    area_model: AreaModel | None = None
     anchors: list[str] = Field(default_factory=list, max_length=100, description=(
         "Id di punti della scena (scene.points) al posto di points. line/arrow/brace/tick/dimension/circle: 2. "
         "arc/right_angle: 3 = [da, vertice, a]. polyline: >=2. polygon: >=3"))
@@ -274,13 +302,13 @@ class DrawingMark(DataModel):
             raise ValueError("Un grafico richiede un riquadro, oppure anchors [origine, tacca x(, tacca y)] sugli assi della sorgente")
         if self.kind == "plot" and n in (2, 3) and self.plot and (self.plot.x_ref == 0 or self.plot.y_ref == 0):
             raise ValueError("x_ref e y_ref devono essere diversi da zero")
-        if self.kind in {"rectangle", "ellipse", "text", "number", "formula", "diagram", "fretboard", "rhythm", "numberline"} and not self.box:
+        if self.kind in {"rectangle", "ellipse", "text", "number", "formula", "diagram", "fretboard", "rhythm", "numberline", "area_model"} and not self.box:
             raise ValueError("Questo strumento richiede un riquadro di posizionamento")
         if self.kind in {"text", "number", "formula", "dimension"} and not self.text:
             raise ValueError("Una scritta richiede il testo da disegnare")
         if self.kind == "connector" and (not self.from_region_id or not self.to_element_id):
             raise ValueError("Un connettore collega una regione sorgente a un elemento del disegno")
-        for tool in ("plot", "diagram", "fretboard", "rhythm", "numberline"):
+        for tool in ("plot", "diagram", "fretboard", "rhythm", "numberline", "area_model"):
             if self.kind == tool and getattr(self, tool) is None:
                 raise ValueError(f"Mancano i dati dello strumento {tool}")
             if self.kind != tool and getattr(self, tool) is not None:
@@ -331,6 +359,9 @@ class DrawingScene(DataModel):
             raise ValueError(f"Spazi inesistenti: {sorted(unknown - spaces)}; dichiara le lavagne in boards")
         if any(f.step >= len(self.steps) for f in self.focus):
             raise ValueError("La camera inquadra una fase inesistente")
+        for e in self.elements:
+            if e.area_model and any(c.step is not None and c.step >= len(self.steps) for row in e.area_model.cells for c in row):
+                raise ValueError("area_model: il passo di una cella deve esistere")
         if len(self.notes) > len(self.steps) or any(len(n) > 600 for n in self.notes):
             raise ValueError("Una nota (max 600 caratteri) per ciascun passo, non di più")
         if not any(e.kind not in {"rectangle", "ellipse", "highlight", "text"} for e in self.elements):
@@ -556,10 +587,20 @@ async def compose_blackboard(image, grounding, explanation, brief, previous, on_
         "parametro, min/max/step sensati) e formula con quei nomi (es. 'y = A·sin(kx + φ)'); x_min..y_max devono contenere "
         "la curva per tutto l'intervallo dei cursori. Lo studente muove i cursori e vede la curva cambiare in tempo reale "
         "(l'interfaccia mostra i cursori e la formula: non aggiungere callout per i parametri). "
+        "DIMOSTRAZIONI CON LE AREE: per (a+b)², (a−b)², (a+b)(c+d), la proprietà distributiva, prodotti e frazioni usa "
+        "area_model su una lavagna: box quadrato se il totale è quadrato; cols e rows con size proporzionali (es. a=3, b=2) e label "
+        "('a','b'); cells con l'area di ogni parte ('a²','ab','ab','b²') e colori diversi per termini diversi (i due ab dello "
+        "stesso colore); top/side con la misura totale ('a + b'). Il renderer disegna la figura in proporzione con le misure sui "
+        "lati: non ridisegnarla con rettangoli e scritte libere. Usa cell.step per far comparire le parti una per passo "
+        "(passo 0: il quadrato di lato a+b; poi a²; poi i due ab; poi b²; infine una formula che somma le parti). "
         "diagram = nodi (id,label,box locali) + edges. fretboard: frets/fingers dalla 6a alla 1a corda, frets -1=muta 0=vuota, "
         "fingers solo 0–4 (Am aperto: frets=[-1,0,2,2,1,0], fingers=[0,0,2,3,1,0]), tuning con nomi di note. rhythm: "
         "events.beats in pulsazioni (4/4: 1=semiminima, 2=minima, 0.5=croma), solo durate leggibili.\n"
-        "PERCORSO GUIDATO (la regola più importante): la spiegazione è una sequenza di passi e OGNI PASSO RIGUARDA UN SOLO "
+        "SENSO PRIMA DI TUTTO: il disegno deve far CAPIRE visivamente ciò che lo studente chiede. Se chiede una dimostrazione, "
+        "la figura deve rendere verificabile l'uguaglianza: ogni termine corrisponde a una parte visibile, con le misure scritte "
+        "dove servono. Prima di rispondere chiediti: uno studente, guardando solo il disegno, capirebbe perché è vero? Se no, cambia "
+        "figura. Etichette che non indicano niente di preciso sono un errore.\n"
+        "PERCORSO GUIDATO (la regola più importante dopo il senso): la spiegazione è una sequenza di passi e OGNI PASSO RIGUARDA UN SOLO "
         "ELEMENTO (un bottone, un termine, una cifra, un lato, una battuta). Lo studente avanza da solo, un passo alla volta, e vede "
         "SOLO i segni del passo corrente: quindi ogni passo deve bastare a se stesso. Per ogni passo: steps[i] = nome "
         "dell'elemento (2–5 parole, è il titolo della scheda), notes[i] = 1–3 frasi che spiegano cos'è e perché conta nel "
@@ -581,5 +622,5 @@ async def compose_blackboard(image, grounding, explanation, brief, previous, on_
         + json.dumps({"brief": brief, "explanation": explanation, "regions": grounding.model_dump(),
                       "previous_drawing": previous}, ensure_ascii=False),
         DrawingScene, lambda raw: require_action(snap_pins(image, one_element_per_step(salvage_scene(raw, grounding), grounding), grounding), action), image, on_usage,
-        max_tokens=8500, system_prompt=DRAWING_PROMPT, role="vision.tutor", extra_images=extra_images,
+        max_tokens=16000, system_prompt=DRAWING_PROMPT, role="vision.director", extra_images=extra_images, think=True,
     )

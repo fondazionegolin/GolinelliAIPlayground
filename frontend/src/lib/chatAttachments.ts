@@ -1,8 +1,10 @@
 import api, { llmApi } from '@/lib/api'
+import { mediaKind } from '@/lib/media'
 
 export interface MessageAttachment {
   name: string
-  kind: 'image' | 'file'
+  kind: 'image' | 'file' | 'audio' | 'video'
+  mime_type?: string
   /** Image thumbnail: data URL (fresh upload) or server path (reloaded history). */
   url?: string
 }
@@ -39,6 +41,14 @@ function imageThumbnail(file: File): Promise<string | undefined> {
 export async function buildMessageAttachments(files: File[]): Promise<MessageAttachment[]> {
   return Promise.all(
     files.map(async (file): Promise<MessageAttachment> => {
+      const kind = mediaKind(file.name, file.type)
+      if (kind) {
+        const form = new FormData()
+        form.append('file', file)
+        const { data } = await api.post<{ url: string; mime_type: string }>('/files/media', form, { timeout: 0 })
+        if (!data.url) throw new Error('Caricamento del file multimediale non riuscito.')
+        return { name: file.name, kind, mime_type: data.mime_type, url: data.url }
+      }
       if (file.type.startsWith('image/')) {
         return { name: file.name, kind: 'image', url: await imageThumbnail(file) }
       }
@@ -60,7 +70,8 @@ export function attachmentsFromContentJson(contentJson: any): MessageAttachment[
   if (!Array.isArray(files) || files.length === 0) return undefined
   return files.map((f: any): MessageAttachment => ({
     name: String(f.filename ?? f.name ?? 'file'),
-    kind: String(f.mime_type ?? '').startsWith('image/') ? 'image' : 'file',
+    kind: mediaKind(String(f.filename ?? f.name ?? ''), String(f.mime_type ?? '')) || (['image', 'audio', 'video'].includes(f.kind) ? f.kind : String(f.mime_type ?? '').startsWith('image/') ? 'image' : 'file'),
+    mime_type: f.mime_type,
     url: typeof f.url === 'string' ? f.url : undefined,
   }))
 }

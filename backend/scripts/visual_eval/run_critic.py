@@ -27,10 +27,11 @@ async def main():
             usage.append(response.completion_tokens)
         started = time.monotonic()
         source = "data:image/png;base64," + base64.b64encode((out / f"{name}.png").read_bytes()).decode()
-        scene, review, applied = await review_drawing(png, dump["scene"], grounding, dump["message"], dump.get("issues", []), on_usage, source=source)
+        scene, review, applied = await review_drawing(png, dump["scene"], grounding, dump["message"], dump.get("issues", []), on_usage, source=source,
+                                                     request=dump.get("prompt", ""))
         dump.update(scene_reviewed=scene, review={**review.model_dump(), "applied": applied, "seconds": round(time.monotonic() - started, 1)})
         (out / f"{name}.json").write_text(json.dumps(dump, ensure_ascii=False, indent=1))
-        print(name, review.verdict, {k: getattr(review, k) for k in ("legibility", "alignment", "clarity", "restraint")},
+        print(name, review.verdict, {k: getattr(review, k) for k in ("insight", "legibility", "alignment", "clarity", "restraint")},
               f"ops={len(review.ops)} applied={applied}", review.notes)
 
 

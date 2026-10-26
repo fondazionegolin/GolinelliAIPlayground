@@ -1,3 +1,7 @@
+import { PodcastPanel } from '@/components/chat/PodcastPanel'
+import { isPodcastRequest, podcastApi, type PodcastState, type PodcastMessage } from '@/lib/podcasts'
+import { mediaKind } from '@/lib/media'
+import { attachmentsFromContentJson } from '@/lib/chatAttachments'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
 import { buildMessageAttachments, implicitEditImage, type MessageAttachment } from '@/lib/chatAttachments'
@@ -138,6 +142,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   attachments?: MessageAttachment[]
+  podcast?: PodcastState
   timestamp: Date
   provider?: string
   model?: string
@@ -1034,9 +1039,19 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
             provider: m.provider,
             model: m.model,
             token_usage_json: m.token_usage_json,
+            podcast: m.podcast,
+            attachments: attachmentsFromContentJson(m.attachments_json),
           }))
           const localMessageCount = cachedMessages?.length || 0
           const hasLocalPendingMessages = localMessageCount > 0 && serverMessages.length <= localMessageCount
+          if (hasLocalPendingMessages && serverMessages.some((message: Message) => message.podcast)) {
+            // A podcast can finish while this chat is closed. Refresh its persisted state
+            // even when the message count is unchanged, preserving any local pending turns.
+            setMessages((previous) => previous.map((message) => {
+              const saved = serverMessages.find((item: Message) => item.id === message.id && item.podcast)
+              return saved ? { ...message, ...saved } : message
+            }))
+          }
           if (!hasLocalPendingMessages) {
             setMessages(serverMessages)
             setHasMoreMessages(conv.has_more ?? false)
@@ -1094,6 +1109,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           provider: m.provider,
           model: m.model,
           token_usage_json: m.token_usage_json,
+          podcast: m.podcast,
+          attachments: attachmentsFromContentJson(m.attachments_json),
         }))
         setMessages(prev => [...older, ...prev])
         setHasMoreMessages(conv.has_more ?? false)
@@ -1129,6 +1146,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
   const addFilesNow = (files: globalThis.File[]) => {
     files.forEach(file => {
+      if (mediaKind(file.name, file.type)) {
+        setAttachedFiles(prev => [...prev, { file, type: 'document' }])
+        return // Media has its own player; do not upload it again for document thumbnail extraction.
+      }
       const isImage = file.type.startsWith('image/')
       const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
         file.type.includes('spreadsheet') || file.type.includes('excel') ||
@@ -1364,6 +1385,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       await teacherApi.addMessage(convId, {
         role: userMsg.role,
         content: userMsg.content,
+        attachments_json: userMsg.attachments ? { files: userMsg.attachments } : undefined,
         model: model
       })
       await teacherApi.addMessage(convId, {
@@ -2149,11 +2171,42 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     return found
   }
 
+  const updatePodcastMessage = (message: PodcastMessage, conversationId = currentConversationId) => {
+    const update = (items: Message[]) => items.map(item => item.id === message.id ? { ...item, content: message.content, podcast: message.podcast } : item)
+    if (currentConversationId_ref.current === conversationId) setMessages(update)
+    if (conversationId) {
+      const updated = update(conversationCacheRef.current[conversationId] || [])
+      conversationCacheRef.current = { ...conversationCacheRef.current, [conversationId]: updated }
+      setConversationCache(conversationCacheRef.current)
+    }
+  }
+
+  const startPodcast = async (prompt: string) => {
+    if (isLoading) return
+    setIsLoading(true)
+    try {
+      const convId = await ensureConversation(prompt)
+      if (!convId) return
+      const { data } = await podcastApi.configure(convId, prompt, attachedFiles.map(f => f.file))
+      const newMessages: Message[] = [
+        { ...data.user_message, role: 'user', timestamp: new Date(data.user_message.created_at) },
+        { ...data.assistant_message, role: 'assistant', timestamp: new Date(data.assistant_message.created_at || Date.now()) },
+      ]
+      if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
+      conversationCacheRef.current = { ...conversationCacheRef.current, [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
+      setConversationCache(conversationCacheRef.current)
+      setInputText(''); setAttachedFiles([])
+    } catch (error: any) {
+      toast({ title: 'Podcast', description: error?.response?.data?.detail || 'Impossibile preparare il podcast. Riprova.', variant: 'destructive' })
+    } finally { setIsLoading(false) }
+  }
+
   // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
   // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
     const text = (overrideInput ?? inputText).trim()
     if (overrideInput === undefined && text) rememberPrompt(text)
+    if (agentMode === 'default' && isPodcastRequest(text)) return startPodcast(text)
     const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
       && attachedFiles.length === 0 && !attachedYoutube && text.length >= 8
     if (canRoute) {
@@ -2161,7 +2214,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         setStreamingStatus('Analizzo la richiesta…')
         const { data } = await llmApi.decideTool(
           text,
-          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'exercise', 'dataset'],
+          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'exercise', 'dataset', 'podcast'],
           collectRoutingArtifacts(),
           messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
         )
@@ -2169,6 +2222,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
           alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
         }
+        if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text)
         const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
         if (data.tool === 'chat' || !intent) return await runSend(overrideInput, agentMode, false, routing)
         if (data.tool === 'presentation') {
@@ -2200,7 +2254,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
     if ((!userInput && attachedFiles.length === 0 && !attachedYoutube && !canSendAnalysis) || isLoading || attachedYoutube?.status === 'loading') return
 
-    const attachments = attachedFiles.length > 0 ? await buildMessageAttachments(attachedFiles.map(f => f.file)) : undefined
+    let attachments: MessageAttachment[] | undefined
+    try { attachments = attachedFiles.length > 0 ? await buildMessageAttachments(attachedFiles.map(f => f.file)) : undefined }
+    catch { toast({ title: 'Caricamento non riuscito', description: 'Riprova a inviare il file multimediale.', variant: 'destructive' }); return }
     const youtubeInfo = attachedYoutube ? `\n${attachedYoutube.url}` : ''
     let messageContent = userInput || (
       agentMode === 'analysis'
@@ -2251,7 +2307,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     setConversationCache(nextConversationCache)
 
     if (overrideInput === undefined) setInputText('')
-    const currentFiles = [...attachedFiles]
+    const currentMedia = attachedFiles.filter(f => mediaKind(f.file.name, f.file.type))
+    const currentFiles = attachedFiles.filter(f => !mediaKind(f.file.name, f.file.type))
     // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
     // When routing already ran, only re-attach the picture if the message really targets it.
     if (currentFiles.length === 0 && agentMode === 'default' && !presentationRequested && (!routing?.routed || targetsPreviousImage)) {
@@ -2269,6 +2326,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     // Build LLM content: append transcript if available
     let llmContent = messageContent + youtubeInfo
+    if (currentMedia.length) llmContent += '\nSono allegati file audio/video riproducibili nel player. Non hai una trascrizione del loro contenuto: non inventarla.'
     if (currentYoutube?.status === 'ready' && currentYoutube.transcript) {
       const videoLabel = currentYoutube.title ? `"${currentYoutube.title}"` : currentYoutube.url
       llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
@@ -2304,6 +2362,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     }
 
     try {
+      if (currentMedia.length && !currentFiles.length && !userInput) {
+        const assistantMessage: Message = { id: `media-${Date.now()}`, role: 'assistant', content: 'I file sono pronti: usa il player per riprodurli. Per i video puoi scegliere finestra flottante, PiP e schermo intero.', timestamp: new Date() }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage)
+        return
+      }
       if (agentMode === 'default' && presentationRequested) {
         const assistantId = `presentation-${Date.now()}`
         setMessages(prev => [...prev, {
@@ -3849,6 +3913,7 @@ REGOLE IMPORTANTI:
                                   </ReactMarkdown>
                                 </>
                               )}
+                              {msg.podcast && <PodcastPanel messageId={msg.id} state={msg.podcast} onUpdate={message => updatePodcastMessage(message)} />}
                               {msg.role === 'assistant' && ocrOverlays[msg.id] && (
                                 <OcrImageOverlay overlay={ocrOverlays[msg.id]} />
                               )}
@@ -4194,7 +4259,7 @@ REGOLE IMPORTANTI:
                       {/* Input Pill */}
                       <div className="ui-search relative flex items-center gap-1.5 rounded-[24px] p-1.5">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
-                          accept={agentMode === 'ocr' ? 'image/*' : 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
+                          accept={agentMode === 'ocr' ? 'image/*' : 'image/*,audio/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
                           onChange={handleFileSelect} />
 
                         {/* All secondary tools stay behind one control on mobile/sidebar. */}
@@ -5150,6 +5215,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
 
   return (
     <div className={`chat-markdown prose max-w-none ${darkMode ? 'prose-invert text-white' : 'text-slate-800'} ${darkMode ? '' : 'prose-p:text-slate-700'}`}>
+      {cleanContent && <MessageLinkPreviews content={cleanContent} debounceMs={500} />}
       {cleanContent && (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}

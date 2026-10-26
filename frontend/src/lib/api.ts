@@ -809,7 +809,7 @@ export const teacherApi = {
     api.delete('/teacher/conversations'),
   updateConversation: (conversationId: string, data: { title?: string; agent_mode?: string }) =>
     api.patch(`/teacher/conversations/${conversationId}`, data),
-  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown> }) =>
+  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown>; attachments_json?: Record<string, unknown> }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
   saveConversationDocument: (conversationId: string, doc: { type: string; content: string; version: number; title: string }) =>
     api.put(`/teacher/conversations/${conversationId}/document`, doc),

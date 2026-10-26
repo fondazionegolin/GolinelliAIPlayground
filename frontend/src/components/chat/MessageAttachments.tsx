@@ -1,4 +1,5 @@
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon } from '@/components/icons'
+import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
 import type { MessageAttachment } from '@/lib/chatAttachments'
 
 function iconFor(name: string) {
@@ -15,6 +16,8 @@ export function MessageAttachments({ attachments, className = '' }: { attachment
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
       {attachments.map((att, i) => {
+        if (att.kind === 'video' && att.url) return <VideoPreview key={i} src={att.url} title={att.name} />
+        if (att.kind === 'audio' && att.url) return <AudioPlayer key={i} src={att.url} title={att.name} />
         if (att.kind === 'image' && att.url) {
           return (
             <a key={i} href={att.url} target="_blank" rel="noreferrer" title={att.name}>

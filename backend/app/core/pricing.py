@@ -54,6 +54,7 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     # Haiku 5.5: list price for prompts up to 100K tokens ($0.50 / $2.50 beyond).
     "claude-haiku-5-5": usd(0.10, 0.50),
     "claude-sonnet-5-5": usd(2.00, 10.00),
+    "claude-opus-5-5": usd(4.00, 20.00),
     "claude-sonnet-4-6": usd(3.00, 15.00),
     "claude-sonnet-4-5": usd(3.00, 15.00),
     "claude-opus-4-8": usd(5.00, 25.00),

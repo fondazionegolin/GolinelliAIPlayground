@@ -185,6 +185,8 @@ async def review_message(admin, session_id, message_id, snapshot, issues):
         if message["focus"].get("review"):
             return serialize(s)
         scene, content, inventory, image_key = message["focus"]["drawing"], message.get("content", ""), s.inventory, s.image_key
+        index = next(i for i, m in enumerate(s.messages) if m.get("id") == str(message_id))
+        request = next((m.get("content", "") for m in reversed(s.messages[:index]) if m.get("role") == "user"), "")
         last_id = next((m.get("id") for m in reversed(s.messages or []) if m.get("role") == "assistant"), None)
         brief = (s.dialogue or {}).get("drawing_brief", "") if last_id == str(message_id) else ""
     track = await usage_callback(admin)
@@ -193,12 +195,13 @@ async def review_message(admin, session_id, message_id, snapshot, issues):
         raw = await asyncio.to_thread(storage_service.download_file, image_key)
         source = "data:image/png;base64," + base64.b64encode(raw).decode()
         async with asyncio.timeout(120):
-            reviewed, review, applied = await review_drawing(snapshot, scene, grounding, content, issues, track, source=source, brief=brief)
+            reviewed, review, applied = await review_drawing(snapshot, scene, grounding, content, issues, track, source=source, brief=brief,
+                                                             request=request)
     except Exception as exc:  # the original drawing stays usable; record the attempt so it is not retried forever
         logger.warning("visual review failed: %s", exc)
         reviewed, review, applied = scene, None, 0
     summary = {"applied": max(applied, 0), "redone": applied < 0, "failed": review is None,
-               **({"scores": {k: getattr(review, k) for k in ("legibility", "alignment", "clarity", "restraint")},
+               **({"scores": {k: getattr(review, k) for k in ("insight", "legibility", "alignment", "clarity", "restraint")},
                    "verdict": review.verdict, "notes": review.notes} if review else {})}
     async with AsyncSessionLocal() as db:
         s = await owned(db, session_id, admin.id, lock=True)

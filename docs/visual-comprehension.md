@@ -130,8 +130,11 @@ percorso fallito è segnalato nel messaggio con "Rigenera il disegno" (`POST …
 
 ## Modelli e robustezza
 
-Ruoli (Admin → modelli): `vision.grounding` (inventario, con thinking), `vision.tutor` (dialogo e regia,
-senza thinking), `vision.critic` (riservato al revisore grafico); predefinito `claude-haiku-5-5`.
+Ruoli (Admin → modelli): `vision.grounding` (inventario, con thinking, `claude-haiku-5-5`), `vision.tutor` (dialogo e
+widget, `claude-sonnet-5-5`), `vision.director` (regia dei disegni e dimostrazioni, con ragionamento, `claude-opus-5-5`),
+`vision.critic` (revisore, `claude-sonnet-5-5`). Il revisore valuta per primo `insight`: il disegno fa capire ciò che lo
+studente ha chiesto? Con un voto ≤ 2 il disegno si rifà. Le dimostrazioni con le aree usano `area_model` (rettangolo
+diviso in parti proporzionali, misure sui lati con graffe, parti che compaiono una per passo).
 Inventario e dialogo usano gli structured outputs Anthropic; lo schema della scena è troppo grande per la
 grammatica e ricade su schema nel prompt + riparazione del JSON (LaTeX non escapato) + salvataggio parziale
 dei segni validi. Overlay in eccesso o rotti, unità del piano inesistenti o mancanti vengono corretti invece

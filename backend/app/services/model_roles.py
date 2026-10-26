@@ -36,6 +36,8 @@ class Role:
 
 
 ROLES: dict[str, Role] = {r.id: r for r in [
+    Role("podcast.script", "voice", "Copione podcast", "Riassunti audio e podcast dal chatbot docente.", "text",
+         (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL), where=("Chatbot docente",)),
     Role("chat.default", "chat", "Chatbot predefinito",
          "Modello di partenza di chat di sessione, chatbot docente, agenti e classificazione delle intenzioni.", "text",
          (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL), provider_attr="DEFAULT_LLM_PROVIDER", model_attr="DEFAULT_LLM_MODEL",
@@ -60,12 +62,14 @@ ROLES: dict[str, Role] = {r.id: r for r in [
          ("anthropic", "claude-haiku-4-5-20251001"), where=("Dataflow Studio",)),
     Role("vision", "vision", "Analisi di immagini e documenti", "Descrizione di immagini, lettura di pagine di PDF, revisione visiva delle anteprime.", "text",
          ("openai", "gpt-4o"), providers=("openai",), where=("Documenti", "Vibe Lab", "Chatbot docente")),
-    Role("vision.tutor", "vision", "Comprensione visuale · tutor e lavagna", "Dialogo del tutor visuale e regia dei disegni sopra l'immagine (una chiamata per turno ciascuno).", "text",
-         ("anthropic", "claude-haiku-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
+    Role("vision.tutor", "vision", "Comprensione visuale · tutor", "Dialogo del tutor visuale: capisce la richiesta, pianifica, scrive la risposta e i widget del Laboratorio.", "text",
+         ("anthropic", "claude-sonnet-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
+    Role("vision.director", "vision", "Comprensione visuale · regia dei disegni", "Compone i disegni e le dimostrazioni visive sulla lavagna: serve un modello forte nel ragionamento spaziale.", "text",
+         ("anthropic", "claude-opus-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
     Role("vision.grounding", "vision", "Comprensione visuale · localizzazione", "Legge l'immagine e ne localizza regioni e testi con precisione (inventario del tutor visuale). Scegli un modello forte nel grounding.", "text",
          ("anthropic", "claude-haiku-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
-    Role("vision.critic", "vision", "Comprensione visuale · revisore grafico", "Revisione estetica dei disegni del tutor visuale: leggibilità, allineamenti, efficacia comunicativa (chiamata economica).", "text",
-         ("anthropic", "claude-haiku-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
+    Role("vision.critic", "vision", "Comprensione visuale · revisore grafico", "Revisione dei disegni del tutor visuale: se fanno davvero capire, leggibilità, allineamenti, sobrietà.", "text",
+         ("anthropic", "claude-sonnet-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
     Role("image.generation", "image", "Generazione di immagini", "Generatore di immagini di piattaforma (anche nei flussi agentici).", "image",
          ("openai", settings.OPENAI_IMAGE_MODEL), providers=("openai",), model_attr="OPENAI_IMAGE_MODEL", where=("Immagini AI", "Flussi agentici")),
     Role("realtime.voice", "voice", "Voce in tempo reale · interrogazione", "Chatbot vocale dell'interrogazione (WebRTC).", "realtime",

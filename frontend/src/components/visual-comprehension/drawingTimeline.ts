@@ -5,7 +5,7 @@ export type Timing = { delay: number; duration: number }
 export type Timeline = { timings: Map<string, Timing>; total: number; pen: { x: number[]; y: number[]; times: number[] } | null }
 
 const GAP = .14
-const WIDGETS = new Set(['plot', 'diagram', 'fretboard', 'rhythm', 'numberline', 'lens'])
+const WIDGETS = new Set(['plot', 'diagram', 'fretboard', 'rhythm', 'numberline', 'lens', 'area_model'])
 const clamp = (min: number, max: number, v: number) => Math.min(max, Math.max(min, v))
 
 function polylineLength(points: XY[]) {
