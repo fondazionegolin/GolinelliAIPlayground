@@ -37,6 +37,7 @@ from app.models.turing import TuringExperiment, TuringParticipant, TuringMessage
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun, AgenticWorkflowTable, AgenticAssistantConversation
 from app.models.solid_model import SolidModel
 from app.models.video_project import VideoProject
+from app.models.visual_comprehension import VisualComprehensionSession
 from app.models.drive import DriveItem, DriveShare
 
 __all__ = [
@@ -141,6 +142,7 @@ __all__ = [
     "AgenticNodeRun",
     "SolidModel",
     "VideoProject",
+    "VisualComprehensionSession",
     "DriveItem",
     "DriveShare",
 ]

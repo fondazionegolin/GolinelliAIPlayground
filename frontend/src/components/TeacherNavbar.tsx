@@ -376,6 +376,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const betaItems = [
     ...(isAdmin ? [{ path: '/teacher/agentic', details: "Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo.", label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
     ...(isAdmin ? [{ path: '/teacher/video-studio', label: 'Video Studio', description: 'Video didattici da un testo, shot da 5 secondi', icon: Film }] : []),
+    ...(isAdmin ? [{ path: '/teacher/visual-comprehension', label: 'Comprensione visuale', description: 'Esplora immagini e screenshot con un tutor e overlay interattivi', icon: Sparkles }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   // Classes row: the session being worked on first, then the other running sessions.

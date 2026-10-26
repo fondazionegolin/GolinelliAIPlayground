@@ -172,7 +172,9 @@ class LLMService:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         allow_web_search: bool = True,
+        anthropic_options: Optional[dict] = None,
     ) -> LLMResponse:
+        """``anthropic_options`` (e.g. ``thinking``, ``output_config``) is forwarded to Anthropic only."""
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
         model = normalize_llm_model(provider, model) or model
@@ -183,7 +185,8 @@ class LLMService:
         if provider == "openai":
             return await self._generate_openai(messages, system_prompt, model, temperature, max_tokens, use_web_search)
         elif provider == "anthropic":
-            return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search)
+            return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search,
+                                                  options=anthropic_options)
         elif provider == "deepseek":
             return await self._generate_deepseek(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "gemini":
@@ -266,6 +269,7 @@ class LLMService:
         temperature: float,
         max_tokens: int,
         use_web_search: bool = False,
+        options: Optional[dict] = None,
     ) -> LLMResponse:
         if not self.anthropic_client:
             raise RuntimeError("Anthropic client not configured")
@@ -274,7 +278,7 @@ class LLMService:
         # models. Keep the argument in our provider-neutral interface, but do
         # not forward it to messages.create().
         _ = temperature
-        kwargs: dict = {}
+        kwargs: dict = dict(options or {})
         if use_web_search:
             kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
 
@@ -291,7 +295,7 @@ class LLMService:
         text_content = ' '.join(
             block.text for block in response.content
             if hasattr(block, 'text') and getattr(block, 'type', '') == 'text'
-        ) or (response.content[0].text if response.content else '')
+        )
 
         return LLMResponse(
             content=text_content,

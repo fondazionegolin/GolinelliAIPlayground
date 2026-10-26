@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFontIcon } from '@/components/icons/createFontIcon'
-import { Brain, Camera, Check, Hand, Image as ImageIcon, Loader2, Plus, Trash2, User, X } from '@/components/icons'
+import { Smile, Brain, Camera, Check, Hand, Image as ImageIcon, Loader2, Plus, Trash2, User, X } from '@/components/icons'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { CONFIDENCE_THRESHOLD, embedImage, headFromJSON, loadEmbedder, predict, smooth, INPUT_SIZE, type Head, type HeadJSON } from '@/lib/imageClassifier'
 import { MODE_LABEL, drawOverlay, extractFeatures, loadLandmarkEngine, modeOfEngine, type Mode } from '@/lib/mlFeatures'
 import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
 
-const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand, face: createFontIcon('Smile', 'smile') } as const
+const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand, face: Smile } as const
 const MODE_COLOR: Record<Mode, string> = { image: '#3ea9f4', pose: '#7b69c9', hand: '#e85c8d', face: '#f59e0b' }
 
 interface RuntimeModel { id: string; name: string; mode: Mode; classes: Array<{ id: string; name: string; color?: string }>; head: HeadJSON }

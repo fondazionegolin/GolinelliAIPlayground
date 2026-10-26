@@ -1059,23 +1059,11 @@ html:not(#x) :is(input:not([type='checkbox']):not([type='radio']):not([type='ran
   .nav-cluster-unroll, .nav-cluster-unroll-side, .nav-cluster-item { animation: none; }
 }
 
-/* Platform icons (components/icons): a light lilac tint blended into the inherited color, so icons stay
-   readable on solid buttons and colored text. Strength/hue differ in light vs dark. */
+/* Untitled UI line icons: tint the strokes while keeping their interiors transparent. */
 .app-icon {
-  fill: color-mix(in srgb, var(--icon-tint) var(--icon-tint-amount), currentColor);
-}
-/* Webfont variant (Flaticon UIcons): the glyph scales with the element box (Tailwind size classes or --icon-size). */
-:where(.app-icon-font) { width: var(--icon-size, 24px); height: var(--icon-size, 24px); }
-.app-icon-font {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  container-type: size;
   color: color-mix(in srgb, var(--icon-tint) var(--icon-tint-amount), currentColor);
+  flex-shrink: 0;
 }
-.app-icon-font::before { font-size: calc(100cqmin - 2px); line-height: 1; display: block; }
-
 
 /* Squircle tile: smooth superellipse corners where supported, a plain rounded square elsewhere. */
 .ds-squircle { border-radius: 28%; }

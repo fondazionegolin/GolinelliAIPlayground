@@ -3945,9 +3945,7 @@ REGOLE IMPORTANTI:
                               {imageGenerationProgress.step === 'connecting' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                                <Check className="h-3 w-3" />
                               )}
                               <span>Connessione al server {imageGenerationProgress.provider}</span>
                             </div>
@@ -3961,9 +3959,7 @@ REGOLE IMPORTANTI:
                               {imageGenerationProgress.step === 'enhancing' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                                <Check className="h-3 w-3" />
                               ) : (
                                 <div className="h-3 w-3 rounded-full border border-slate-300" />
                               )}
@@ -3979,9 +3975,7 @@ REGOLE IMPORTANTI:
                               {imageGenerationProgress.step === 'generating' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : imageGenerationProgress.step === 'done' ? (
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                                <Check className="h-3 w-3" />
                               ) : (
                                 <div className="h-3 w-3 rounded-full border border-slate-300" />
                               )}

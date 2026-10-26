@@ -1,3 +1,4 @@
+import inspectorSparkles from '@/components/icons/inspector-sparkles.generated'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EditorView } from '@codemirror/view'
@@ -3871,7 +3872,7 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
     button.type = 'button';
     button.className = 'golinelli-agent-button';
     button.title = "Chiedi all'AI di migliorare questa sezione";
-    button.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2l1.9 5.4L19.3 9l-5.4 1.6L12 16l-1.9-5.4L4.7 9l5.4-1.6L12 2zm6.5 11l.95 2.55L22 16.5l-2.55.95L18.5 20l-.95-2.55L15 16.5l2.55-.95L18.5 13z"/></svg><span>AI</span>';
+    button.innerHTML = ${JSON.stringify(inspectorSparkles + '<span>AI</span>')};
     document.body.appendChild(button);
     let target = null;
     const pickTarget = (node) => {

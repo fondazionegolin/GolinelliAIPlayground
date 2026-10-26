@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <rect width="1200" height="760" fill="#faf9f6"/>
+  <path d="M0 120H1200M0 200H1200M0 280H1200M0 360H1200M0 440H1200M0 520H1200M0 600H1200M0 680H1200" stroke="#e8e7ee"/>
+  <rect x="65" y="60" width="220" height="34" rx="17" fill="#ede9fe"/><text x="88" y="83" font-size="17" fill="#6d28d9" font-family="Arial">MATEMATICA · FUNZIONI</text>
+  <text x="75" y="164" font-size="36" fill="#272339" font-family="Arial" font-weight="bold">Una radice, una condizione.</text>
+  <text x="75" y="230" font-size="23" fill="#716b80" font-family="Arial">Determina il dominio e l’immagine della funzione reale:</text>
+  <rect x="75" y="276" width="520" height="118" rx="16" fill="white" stroke="#e0dce9"/>
+  <text x="110" y="355" font-size="54" fill="#272339" font-family="Georgia">f(x) = √(x − 2)</text>
+  <text x="78" y="465" font-size="26" fill="#51495f" font-family="Arial">1. Quali valori può assumere x?</text>
+  <text x="78" y="525" font-size="26" fill="#51495f" font-family="Arial">2. Quali valori assume f(x)?</text>
+  <text x="78" y="635" font-size="19" fill="#8b8398" font-family="Arial">Parti dalla condizione di esistenza della radice quadrata.</text>
+  <g stroke="#c8c2d7" stroke-width="2"><path d="M750 550H1110M795 590V280"/><path d="M1100 544L1110 550L1100 556M789 290L795 280L801 290" fill="none"/></g>
+  <path d="M855 550 Q855 480 910 449 Q1000 398 1090 375" fill="none" stroke="#8b5cf6" stroke-width="5"/>
+  <circle cx="855" cy="550" r="6" fill="#8b5cf6"/>
+  <text x="846" y="580" font-size="20" fill="#716b80" font-family="Arial">2</text><text x="1110" y="578" font-size="22" fill="#716b80" font-family="Georgia">x</text><text x="765" y="285" font-size="22" fill="#716b80" font-family="Georgia">y</text>
+</svg>

@@ -51,10 +51,9 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     
     # Anthropic Claude, official list price per 1M tokens, converted USD -> EUR.
     "claude-haiku-4-5-20251001": usd(1.00, 5.00),
-    # Haiku 5.5: same tier price assumed as Haiku 4.5 until confirmed against the price list.
-    "claude-haiku-5-5": usd(1.00, 5.00),
-    # Sonnet 5.5: same tier price assumed as Sonnet 4.x until confirmed against the price list.
-    "claude-sonnet-5-5": usd(3.00, 15.00),
+    # Haiku 5.5: list price for prompts up to 100K tokens ($0.50 / $2.50 beyond).
+    "claude-haiku-5-5": usd(0.10, 0.50),
+    "claude-sonnet-5-5": usd(2.00, 10.00),
     "claude-sonnet-4-6": usd(3.00, 15.00),
     "claude-sonnet-4-5": usd(3.00, 15.00),
     "claude-opus-4-8": usd(5.00, 25.00),

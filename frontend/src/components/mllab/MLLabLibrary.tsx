@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFontIcon } from '@/components/icons/createFontIcon'
-import { Brain, Camera, Copy, Download, Hand, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Sparkles, Trash2, Upload, User, X, Zap } from '@/components/icons'
+import { Smile, Brain, Camera, Copy, Download, Hand, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Sparkles, Trash2, Upload, User, X, Zap } from '@/components/icons'
 import { MODE_LABEL, modeOfEngine, type Mode } from '@/lib/mlFeatures'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -15,8 +14,6 @@ const relative = (iso: string) => {
   if (minutes < 43200) return `${Math.round(minutes / 1440)} g fa`
   return new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
 }
-
-const Smile = createFontIcon('Smile', 'smile')
 
 const MODE_META: Record<Mode, { icon: typeof Camera; color: string; blurb: string; examples: string }> = {
   image: { icon: ImageIcon, color: '#3ea9f4', blurb: 'Tutto ciò che si può inquadrare.', examples: 'Oggetti · disegni · scritte' },

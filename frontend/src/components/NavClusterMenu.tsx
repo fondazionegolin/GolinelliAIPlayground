@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { Link, useLocation } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from '@/components/icons'
-import { NavSectionArt } from '@/components/NavSectionArt'
+import { hasSectionArt, NavSectionArt } from '@/components/NavSectionArt'
 import type { NavRecent, NavRecentsSpec } from '@/lib/navRecents'
 
 export interface NavClusterItem {
@@ -120,7 +120,7 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
       ref={panelRef}
       role="menu"
       aria-label={cluster.label}
-      className={`ds-popover rounded-[var(--ds-radius-panel)] p-2 ${wide ? 'w-[min(860px,calc(100vw-2rem))]' : 'w-72'} ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
+      className={`ds-popover rounded-[var(--ds-radius-panel)] p-2 ${wide ? 'w-[min(860px,calc(100vw-2rem))]' : 'w-80'} ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
     >
       {wide ? (
         <div className="flex flex-col divide-y divide-slate-200/60">
@@ -137,7 +137,7 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
                   className={`group/item -mx-2 -my-1 block rounded-[var(--ds-radius-control)] px-2 py-1 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)] focus-visible:bg-[var(--ds-control-hover)]'}`}
                 >
                   <span className="flex items-start gap-4">
-                    <NavSectionArt path={item.path} className="h-[60px] w-[78px]" />
+                    <NavSectionArt path={item.path} className="h-[104px] w-[104px]" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-emphasis text-[19px] font-extrabold leading-tight tracking-tight">{item.label}</span>
@@ -172,9 +172,13 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
                     ? 'ds-selected'
                     : 'text-slate-700 hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] focus-visible:bg-[var(--ds-control-hover)]'}`}
                 >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-white/80 shadow-[var(--ds-shadow-1)]' : 'ds-control'}`}>
-                    <Icon className="h-4 w-4" />
-                  </span>
+                  {hasSectionArt(item.path) ? (
+                    <NavSectionArt path={item.path} className="h-[72px] w-[72px]" />
+                  ) : (
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-white/80 shadow-[var(--ds-shadow-1)]' : 'ds-control'}`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-emphasis text-[13px] font-bold leading-tight">{item.label}</span>
                     {item.description && <span className="mt-0.5 block truncate text-[11px] leading-tight text-slate-500">{item.description}</span>}

@@ -1,3 +1,4 @@
+import { Loader2 as LoaderIcon, ListChecks as ListChecksIcon } from '@/components/icons'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { createPortal } from 'react-dom'
@@ -1235,55 +1236,5 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
         )}
       </div>
     </div>
-  )
-}
-
-// Icons
-function LoaderIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 2v4" />
-      <path d="m16.2 7.8 2.9-2.9" />
-      <path d="M18 12h4" />
-      <path d="m16.2 16.2 2.9 2.9" />
-      <path d="M12 18v4" />
-      <path d="m4.9 19.1 2.9-2.9" />
-      <path d="M2 12h4" />
-      <path d="m4.9 4.9 2.9 2.9" />
-    </svg>
-  )
-}
-
-function ListChecksIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m3 17 2 2 4-4" />
-      <path d="m3 7 2 2 4-4" />
-      <path d="M13 6h8" />
-      <path d="M13 12h8" />
-      <path d="M13 18h8" />
-    </svg>
   )
 }

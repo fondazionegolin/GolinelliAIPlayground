@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, type Componen
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen } from '@/components/icons'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen, Sparkles } from '@/components/icons'
 import { MushroomIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const VideoStudioLibraryPage = lazy(() => import('./VideoStudioLibraryPage'))
 const VideoStudioEditorPage = lazy(() => import('./VideoStudioEditorPage'))
+const VisualComprehensionPage = lazy(() => import('./VisualComprehensionPage'))
 const SchoolOwnerPanelPage = lazy(() => import('./SchoolOwnerPanelPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
@@ -169,7 +170,7 @@ export default function TeacherDashboard() {
   const isTeacherHomeRoute = location.pathname === '/teacher' || location.pathname === '/teacher/'
   const isTeacherAssistantRoute = isTeacherHomeRoute || location.pathname === '/teacher/assistant'
   // Routes that own their internal scroll panes (editor/IDE layouts) — the page frame must not scroll them.
-  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') || location.pathname.includes('/teacher/video-studio')
+  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') || location.pathname.includes('/teacher/video-studio') || location.pathname.includes('/teacher/visual-comprehension')
   const showMobileHome = isMobile && isTeacherHomeRoute
 
   const dockTeacherChat = () => {
@@ -241,6 +242,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
     ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
+    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/visual-comprehension', label: 'Comprensione visuale · Beta', icon: Sparkles }] : []),
   ]
 
   const handleMobileLogout = () => {
@@ -465,6 +467,7 @@ export default function TeacherDashboard() {
               <Route path="toy-lm" element={<ToyLMPage />} />
               <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
               <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
@@ -553,9 +556,7 @@ export default function TeacherDashboard() {
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                   <div className="w-16 h-16 rounded-full bg-cyan-100 flex items-center justify-center mb-4">
-                    <svg className="w-8 h-8 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
+                    <MessageSquare className="w-8 h-8 text-cyan-500" />
                   </div>
                   <p className="text-sm font-medium text-slate-700 mb-1">{t('teacher_dashboard.chat_title')}</p>
                   <p className="text-xs text-slate-400">{t('teacher_dashboard.chat_hint')}</p>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="760" viewBox="0 0 1000 760">
+  <rect width="1000" height="760" fill="#faf9f6"/>
+  <path d="M0 150H1000M0 230H1000M0 310H1000M0 390H1000M0 470H1000M0 550H1000M0 630H1000M0 710H1000" stroke="#e8e7ee"/>
+  <rect x="60" y="45" width="280" height="34" rx="17" fill="#ede9fe"/>
+  <text x="80" y="68" font-size="16" fill="#6d28d9" font-family="Arial">MATEMATICA · ADDIZIONE IN COLONNA</text>
+  <text x="65" y="135" font-size="35" fill="#272339" font-family="Arial" font-weight="bold">Una colonna alla volta.</text>
+  <text x="65" y="195" font-size="22" fill="#716b80" font-family="Arial">Calcola la somma. Ricorda di controllare i riporti.</text>
+  <g font-family="Arial" text-anchor="middle" font-size="15" fill="#8b8398"><text x="425" y="278">CENTINAIA</text><text x="535" y="278">DECINE</text><text x="645" y="278">UNITÀ</text></g>
+  <g fill="none" stroke="#c7bfd6" stroke-dasharray="5 5"><rect x="398" y="302" width="54" height="45" rx="6"/><rect x="508" y="302" width="54" height="45" rx="6"/></g>
+  <g font-family="monospace" font-size="74" fill="#272339" text-anchor="middle">
+    <text x="425" y="420">4</text><text x="535" y="420">7</text><text x="645" y="420">8</text>
+    <text x="425" y="520">3</text><text x="535" y="520">6</text><text x="645" y="520">7</text>
+    <text x="320" y="520">+</text>
+  </g>
+  <path d="M355 545H700" stroke="#716b80" stroke-width="3"/>
+  <g fill="white" stroke="#d8d1e3"><rect x="390" y="568" width="70" height="76" rx="8"/><rect x="500" y="568" width="70" height="76" rx="8"/><rect x="610" y="568" width="70" height="76" rx="8"/></g>
+  <text x="65" y="704" font-size="18" fill="#8b8398" font-family="Arial">Parti da destra: somma, cifra da scrivere, riporto. Un passaggio per volta.</text>
+</svg>
