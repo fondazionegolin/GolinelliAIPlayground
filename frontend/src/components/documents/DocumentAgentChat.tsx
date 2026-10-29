@@ -7,10 +7,11 @@ import { useServerHealth } from '@/components/ServerHealthIndicator'
 import type { FormatOperation } from '@/lib/documentFormatOps'
 import { PLACEMENT_LABEL, type WritePlacement, type WriteSpec } from '@/lib/documentWriting'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
+import { tl } from '@/i18n/tl'
 
 export type DocumentAssistContext = {
   id: string
-  kind: 'selected_text' | 'document' | 'slide_block' | 'slide' | 'presentation'
+  kind: 'selected_text' | 'document' | 'slide_block' | 'slide_blocks' | 'slide' | 'presentation'
   label: string
   detail: string
   target: Record<string, unknown>
@@ -72,25 +73,30 @@ function proposalPreview(proposal: Proposal) {
     const content = typeof block.content === 'string' && block.content ? `\n${block.content}` : ''
     return `${String(block.type || 'oggetto')}${content}`
   }
+  const group = proposal.replacement_blocks as Array<Record<string, unknown>> | undefined
+  if (Array.isArray(group)) {
+    const texts = group.map(item => typeof item.content === 'string' && item.type === 'text' ? htmlToPlainText(item.content) : String(item.type || 'oggetto'))
+    return `${group.length} oggetti\n${texts.join(' · ')}`
+  }
   const slide = proposal.replacement_slide as { title?: string; blocks?: unknown[] } | undefined
   if (slide) return `${slide.title || 'Slide'}\n${slide.blocks?.length || 0} oggetti`
   const presentation = proposal.replacement_presentation as { title?: string; slides?: unknown[] } | undefined
   if (presentation) return `${presentation.title || 'Presentazione'}\n${presentation.slides?.length || 0} slide`
-  return 'Modifica pronta'
+  return tl("Modifica pronta")
 }
 
 const SELECTION_SUGGESTIONS: Array<[string, string]> = [
-  ['Espandi', 'Espandi il testo selezionato sviluppando meglio i concetti, con spiegazioni ed esempi'],
-  ['Riassumi', 'Riassumi il testo selezionato'],
-  ['Semplifica', 'Semplifica il testo selezionato con parole più chiare'],
-  ['Correggi', 'Correggi errori e migliora la forma del testo selezionato'],
-  ['Più formale', 'Riscrivi il testo selezionato con un tono più formale'],
+  [tl("Espandi"), tl("Espandi il testo selezionato sviluppando meglio i concetti, con spiegazioni ed esempi")],
+  [tl("Riassumi"), tl("Riassumi il testo selezionato")],
+  [tl("Semplifica"), tl("Semplifica il testo selezionato con parole più chiare")],
+  [tl("Correggi"), tl("Correggi errori e migliora la forma del testo selezionato")],
+  [tl("Più formale"), tl("Riscrivi il testo selezionato con un tono più formale")],
 ]
 const CURSOR_SUGGESTIONS: Array<[string, string]> = [
-  ['Continua a scrivere', 'Continua a scrivere da dove il testo si interrompe, nel mio stile'],
-  ['Sviluppa il documento', 'Sviluppa il documento a partire dal titolo e da ciò che ho già scritto'],
-  ['Aggiungi conclusione', 'Aggiungi una conclusione coerente in fondo al documento'],
-  ['Aggiungi introduzione', 'Scrivi un’introduzione adatta all’inizio del documento'],
+  [tl("Continua a scrivere"), tl("Continua a scrivere da dove il testo si interrompe, nel mio stile")],
+  [tl("Sviluppa il documento"), tl("Sviluppa il documento a partire dal titolo e da ciò che ho già scritto")],
+  [tl("Aggiungi conclusione"), tl("Aggiungi una conclusione coerente in fondo al documento")],
+  [tl("Aggiungi introduzione"), tl("Scrivi un’introduzione adatta all’inizio del documento")],
 ]
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
@@ -141,7 +147,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       setMessages((current) => [...current, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `Hai selezionato ${activeContextLabel.toLowerCase()}: “${activeContextDetail}”. Vuoi chiedermi una modifica?`,
+        content: tl("Hai selezionato {0}: “{1}”. Vuoi chiedermi una modifica?", activeContextLabel.toLowerCase(), activeContextDetail),
       }])
     }
 
@@ -165,7 +171,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         const status = error?.response?.status
         const retryable = !status || [502, 503, 504].includes(status)
         if (!retryable || attempt === maxAttempts) throw error
-        setRetryNotice(`Server ${serverHealth?.status === 'red' ? 'in aggiornamento o sotto carico' : 'temporaneamente occupato'}: nuovo tentativo ${attempt + 1}/${maxAttempts}…`)
+        setRetryNotice(tl("Server {0}: nuovo tentativo {1}/{2}…", serverHealth?.status === 'red' ? 'in aggiornamento o sotto carico' : 'temporaneamente occupato', attempt + 1, maxAttempts))
         await wait(attempt * 2000)
       }
     }
@@ -176,8 +182,8 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'assistant', content, ...extra }])
 
   const failureText = (error: any) => [502, 503, 504].includes(error?.response?.status)
-    ? 'Il server non è ancora disponibile dopo i nuovi tentativi. Riprova tra poco: il documento non è stato modificato.'
-    : error?.response?.data?.detail || 'Non riesco a preparare la modifica in questo momento.'
+    ? tl("Il server non è ancora disponibile dopo i nuovi tentativi. Riprova tra poco: il documento non è stato modificato.")
+    : error?.response?.data?.detail || tl("Non riesco a preparare la modifica in questo momento.")
 
   /** Generates a reviewable proposal (rewrites / slides). */
   const generate = async (prompt: string, target: DocumentAssistContext) => {
@@ -202,13 +208,13 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           id: crypto.randomUUID(),
           role: 'assistant',
           kind: 'agent_step',
-          agentName: step.agent || 'Agente',
+          agentName: step.agent || tl("Agente"),
           content: step.summary || '',
         })),
         {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: data.summary || 'Ho preparato una proposta contestuale.',
+          content: data.summary || tl("Ho preparato una proposta contestuale."),
           proposal: contextualProposal,
           beforePreview: target.beforePreview,
           status: 'pending',
@@ -290,7 +296,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: data.summary || 'Ho preparato il testo.',
+          content: data.summary || tl("Ho preparato il testo."),
           proposal,
           beforePreview: target.beforePreview,
           status: 'pending',
@@ -306,11 +312,11 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
   }
 
   const REFINEMENTS: Array<{ label: string; instruction: string; factor: number }> = [
-    { label: 'Più lungo', instruction: 'Rendi il testo più lungo e sviluppato: aggiungi spiegazioni, esempi concreti e collegamenti, senza ripetere.', factor: 1.6 },
-    { label: 'Più breve', instruction: 'Accorcia il testo mantenendo i punti essenziali.', factor: 0.6 },
-    { label: 'Più formale', instruction: 'Riscrivi con un registro più formale e curato.', factor: 1 },
-    { label: 'Più semplice', instruction: 'Riscrivi con parole e frasi più semplici e chiare, adatte a studenti.', factor: 1 },
-    { label: 'Rigenera', instruction: 'Scrivi una versione diversa, con un taglio e degli esempi alternativi.', factor: 1 },
+    { label: tl("Più lungo"), instruction: 'Rendi il testo più lungo e sviluppato: aggiungi spiegazioni, esempi concreti e collegamenti, senza ripetere.', factor: 1.6 },
+    { label: tl("Più breve"), instruction: 'Accorcia il testo mantenendo i punti essenziali.', factor: 0.6 },
+    { label: tl("Più formale"), instruction: 'Riscrivi con un registro più formale e curato.', factor: 1 },
+    { label: tl("Più semplice"), instruction: 'Riscrivi con parole e frasi più semplici e chiare, adatte a studenti.', factor: 1 },
+    { label: tl("Rigenera"), instruction: 'Scrivi una versione diversa, con un taglio e degli esempi alternativi.', factor: 1 },
   ]
 
   const refineWrite = async (message: ChatMessage, refinement: (typeof REFINEMENTS)[number]) => {
@@ -327,7 +333,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     const prompt = (override ?? input).trim()
     if (!prompt || loading) return
     if (!activeContext) {
-      pushAssistant(isDocument ? 'Il documento non è ancora disponibile.' : 'Prima seleziona un testo nel documento oppure una slide o un oggetto nella presentazione.')
+      pushAssistant(isDocument ? tl("Il documento non è ancora disponibile.") : tl("Prima seleziona un testo nel documento oppure una slide o un oggetto nella presentazione."))
       return
     }
     if (override === undefined) rememberPrompt(prompt)
@@ -343,7 +349,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     updateProposalStatus(message.id, 'applied')
     if (plan.approach === 'format' && onApplyOperations) {
       const lines = onApplyOperations(plan.operations, planTarget)
-      pushAssistant(lines.length ? `Fatto: ${lines.join(' · ')}. Puoi annullare con Ctrl+Z.` : 'Non c’era nulla da cambiare: il documento era già così.')
+      pushAssistant(lines.length ? tl("Fatto: {0}. Puoi annullare con Ctrl+Z.", lines.join(' · ')) : tl("Non c’era nulla da cambiare: il documento era già così."))
       return
     }
     await generate(`${planPrompt}\n\nInterpretazione confermata dall'utente: ${plan.understanding}`, planTarget)
@@ -351,7 +357,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
 
   const correctPlan = (message: ChatMessage) => {
     updateProposalStatus(message.id, 'rejected')
-    pushAssistant('Va bene, non applico nulla. Dimmi cosa vuoi correggere (es. «intendevo l’interlinea, non lo spazio tra paragrafi»).')
+    pushAssistant(tl("Va bene, non applico nulla. Dimmi cosa vuoi correggere (es. «intendevo l’interlinea, non lo spazio tra paragrafi»)."))
   }
 
   const updateProposalStatus = (id: string, status: 'applied' | 'rejected') => {
@@ -361,29 +367,29 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
   return (
     <aside
       className="fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] shrink-0 flex-col border-l border-slate-200 bg-white shadow-2xl xl:static xl:z-auto xl:w-[360px] xl:shadow-sm"
-      aria-label="Assistente documento"
+      aria-label={tl("Assistente documento")}
     >
       <header className="flex min-h-16 items-center gap-3 border-b border-slate-200 px-4 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-black text-slate-950">Document Builder</h3>
-          <p className="truncate text-[11px] font-medium text-slate-500">{isDocument ? 'Scrive, espande, riformula e impagina nel contesto del documento' : 'Modifiche contestuali con conferma'}</p>
+          <p className="truncate text-[11px] font-medium text-slate-500">{isDocument ? tl("Scrive, espande, riformula e impagina nel contesto del documento") : tl("Modifiche contestuali con conferma")}</p>
         </div>
-        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi assistente"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi assistente")}><X className="h-4 w-4" /></button>
       </header>
 
       <div className="border-b border-slate-100 bg-slate-50/80 p-3">
         {isDocument && (
           <div className="mb-2 grid grid-cols-2 rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold">
-            <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Tutto il documento</button>
-            <button type="button" disabled={!selectionContext} onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`} title={selectionContext ? undefined : 'Seleziona del testo nel documento'}>Selezione</button>
+            <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Tutto il documento")}</button>
+            <button type="button" disabled={!selectionContext} onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-40 ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`} title={selectionContext ? undefined : tl("Seleziona del testo nel documento")}>{tl("Selezione")}</button>
           </div>
         )}
         {!isDocument && (selectionContext || presentationContext) && (
           <div className={`mb-2 grid ${selectionContext && presentationContext ? 'grid-cols-3' : 'grid-cols-2'} rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold`}>
-            <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Slide / oggetto</button>
-            {selectionContext && <button type="button" onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Selezionate</button>}
-            {presentationContext && <button type="button" onClick={() => setScope('presentation')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'presentation' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Intera presentazione</button>}
+            <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Slide / oggetto")}</button>
+            {selectionContext && <button type="button" onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Selezionate")}</button>}
+            {presentationContext && <button type="button" onClick={() => setScope('presentation')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'presentation' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>{tl("Intera presentazione")}</button>}
           </div>
         )}
         {activeContext ? (
@@ -395,7 +401,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
             </div>
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">Seleziona testo, una slide o un oggetto per darmi un contesto preciso.</p>
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">{tl("Seleziona testo, una slide o un oggetto per darmi un contesto preciso.")}</p>
         )}
       </div>
 
@@ -403,14 +409,14 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
         {messages.length === 0 && (
           <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 text-xs leading-5 text-violet-950">
             {isDocument
-              ? 'Sono il tuo co-autore. Posso continuare un testo da dove si ferma, svilupparlo a partire da titolo e incipit, espandere o riassumere una selezione, riformulare e sistemare la formattazione: sempre tenendo conto di tutto il documento. Metti il cursore dove vuoi che scriva, oppure seleziona il testo da elaborare. Vedi la proposta prima che venga inserita.'
-              : 'Seleziona ciò che vuoi cambiare: lo analizzerò e mostrerò la proposta prima di applicarla.'}
+              ? tl("Sono il tuo co-autore. Posso continuare un testo da dove si ferma, svilupparlo a partire da titolo e incipit, espandere o riassumere una selezione, riformulare e sistemare la formattazione: sempre tenendo conto di tutto il documento. Metti il cursore dove vuoi che scriva, oppure seleziona il testo da elaborare. Vedi la proposta prima che venga inserita.")
+              : tl("Seleziona ciò che vuoi cambiare: lo analizzerò e mostrerò la proposta prima di applicarla.")}
           </div>
         )}
         {messages.map((message) => {
           if (message.kind === 'agent_step') return (
             <div key={message.id} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-sky-700">{message.agentName || 'Agente'}</p>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-sky-700">{message.agentName || tl("Agente")}</p>
               <p className="text-xs leading-5 text-slate-700">{message.content}</p>
             </div>
           )
@@ -418,25 +424,25 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           return (
             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[92%] rounded-2xl px-3.5 py-3 text-xs leading-5 shadow-sm ${isUser ? 'rounded-br-md bg-slate-950 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700'}`}>
-                {(message.plan || message.understood) && !isUser && <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-violet-700">Ho capito così</p>}
+                {(message.plan || message.understood) && !isUser && <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-violet-700">{tl("Ho capito così")}</p>}
                 <p className="whitespace-pre-wrap">{message.content}</p>
                 {message.plan && (
                   message.status === 'pending' ? (
                     <div className="mt-3 space-y-2">
-                      <p className="text-[11px] font-semibold text-slate-500">{message.plan.approach === 'format' ? 'Applico solo la formattazione, senza toccare le parole.' : 'Riscriverò il testo e vedrai la proposta prima di applicarla.'} Procedo?</p>
+                      <p className="text-[11px] font-semibold text-slate-500">{message.plan.approach === 'format' ? tl("Applico solo la formattazione, senza toccare le parole.") : tl("Riscriverò il testo e vedrai la proposta prima di applicarla.")} {tl("Procedo?")}</p>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => correctPlan(message)} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">No, correggo</button>
-                        <button type="button" onClick={() => void confirmPlan(message)} disabled={loading} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><Check className="h-3.5 w-3.5" />Sì, procedi</button>
+                        <button type="button" onClick={() => correctPlan(message)} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("No, correggo")}</button>
+                        <button type="button" onClick={() => void confirmPlan(message)} disabled={loading} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><Check className="h-3.5 w-3.5" />{tl("Sì, procedi")}</button>
                       </div>
                     </div>
                   ) : (
-                    <p className={`mt-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? 'Confermato' : 'Non confermato'}</p>
+                    <p className={`mt-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Confermato") : tl("Non confermato")}</p>
                   )
                 )}
                 {message.proposal && message.proposal.kind === 'write' ? (
                   <div className="mt-3 overflow-hidden rounded-xl border border-violet-200 bg-white text-slate-700">
                     <div className="flex items-center justify-between gap-2 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-700">
-                      <span>{PLACEMENT_LABEL[message.proposal.placement as WritePlacement] ?? 'Testo proposto'}</span>
+                      <span>{PLACEMENT_LABEL[message.proposal.placement as WritePlacement] ?? tl("Testo proposto")}</span>
                       <span className="shrink-0">{String(message.proposal.words)} parole</span>
                     </div>
                     <div
@@ -445,7 +451,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                     />
                     {message.beforePreview && message.proposal.placement === 'replace_selection' && (
                       <details className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-500">
-                        <summary className="cursor-pointer font-semibold">Testo originale</summary>
+                        <summary className="cursor-pointer font-semibold">{tl("Testo originale")}</summary>
                         <p className="mt-1 whitespace-pre-wrap">{message.beforePreview}</p>
                       </details>
                     )}
@@ -457,27 +463,27 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                           ))}
                         </div>
                         <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
-                          <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">Rifiuta</button>
-                          <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />Inserisci</button>
+                          <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
+                          <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Inserisci")}</button>
                         </div>
                       </>
                     ) : (
-                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? 'Testo inserito · Ctrl+Z per annullare' : 'Proposta scartata'}</p>
+                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Testo inserito · Ctrl+Z per annullare") : tl("Proposta scartata")}</p>
                     )}
                   </div>
                 ) : message.proposal && (
                   <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
                     <div className="grid grid-cols-2 divide-x divide-slate-200">
-                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-red-600">Prima</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{message.beforePreview}</p></div>
-                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-sky-700">Proposta</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{proposalPreview(message.proposal)}</p></div>
+                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-red-600">{tl("Prima")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{message.beforePreview}</p></div>
+                      <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-sky-700">{tl("Proposta")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{proposalPreview(message.proposal)}</p></div>
                     </div>
                     {message.status === 'pending' ? (
                       <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
-                        <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">Rifiuta</button>
-                        <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />Applica</button>
+                        <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
+                        <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Applica")}</button>
                       </div>
                     ) : (
-                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? 'Modifica applicata' : 'Proposta rifiutata'}</p>
+                      <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Modifica applicata") : tl("Proposta rifiutata")}</p>
                     )}
                   </div>
                 )}
@@ -485,7 +491,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
             </div>
           )
         })}
-        {loading && <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900"><Loader2 className="h-4 w-4 animate-spin" />{retryNotice || (isDocument ? 'Sto lavorando sul documento… i testi lunghi richiedono un po’ di tempo' : 'Gli agenti stanno preparando la proposta…')}</div>}
+        {loading && <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900"><Loader2 className="h-4 w-4 animate-spin" />{retryNotice || (isDocument ? tl("Sto lavorando sul documento… i testi lunghi richiedono un po’ di tempo") : tl("Gli agenti stanno preparando la proposta…"))}</div>}
         <div ref={bottomRef} />
       </div>
 
@@ -509,12 +515,12 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() }
             }}
             rows={2}
-            placeholder={activeContext ? (isDocument ? (selectionContext ? 'Es. «Espandi con un esempio concreto»' : 'Es. «Continua» o «Scrivi una conclusione»') : 'Chiedi una modifica…') : 'Seleziona prima un contenuto…'}
+            placeholder={activeContext ? (isDocument ? (selectionContext ? tl("Es. «Espandi con un esempio concreto»") : tl("Es. «Continua» o «Scrivi una conclusione»")) : tl("Chiedi una modifica…")) : tl("Seleziona prima un contenuto…")}
             className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400"
           />
-          <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-violet-300 bg-violet-600 px-3 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-40" title="Invia modifica">
+          <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-violet-300 bg-violet-600 px-3 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-40" title={tl("Invia modifica")}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            <span className="hidden sm:inline">{isDocument ? 'Invia' : 'Invia modifica'}</span>
+            <span className="hidden sm:inline">{isDocument ? tl("Invia") : tl("Invia modifica")}</span>
           </button>
         </div>
       </footer>

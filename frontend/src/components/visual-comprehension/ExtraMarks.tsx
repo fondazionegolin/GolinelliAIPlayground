@@ -1,5 +1,6 @@
 import { INKS, curveValue, edgePoints, type DrawingMark, type Frame, type NumberLineData } from './blackboard'
 import { dist, type SceneGeometry, type XY } from './sceneGeometry'
+import { tl } from '@/i18n/tl'
 
 const unit = (from: XY, to: XY): XY => { const d = dist(from, to) || 1; return { x: (to.x - from.x) / d, y: (to.y - from.y) / d } }
 const fmt = (n: number) => Number(n.toFixed(2))
@@ -41,7 +42,7 @@ export function NumberLineWidget({ data, color }: { data: NumberLineData; color:
   const left = 60, right = 940, y = 190
   const x = (v: number) => left + (v - data.min) * (right - left) / (data.max - data.min)
   const count = Math.round((data.max - data.min) / data.step), every = Math.max(1, Math.ceil((count + 1) / 14))
-  return <svg viewBox="0 0 1000 340" width="100%" height="100%" overflow="hidden" aria-label="Linea dei numeri">
+  return <svg viewBox="0 0 1000 340" width="100%" height="100%" overflow="hidden" aria-label={tl("Linea dei numeri")}>
     <path d={`M${left - 20} ${y}H${right + 25}`} stroke={INKS.ink} strokeWidth="4" />
     {Array.from({ length: count + 1 }, (_, i) => {
       const v = data.min + i * data.step

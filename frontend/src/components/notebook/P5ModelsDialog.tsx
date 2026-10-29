@@ -6,6 +6,7 @@ import { CONFIDENCE_THRESHOLD, embedImage, headFromJSON, loadEmbedder, predict, 
 import { MODE_LABEL, drawOverlay, extractFeatures, loadLandmarkEngine, modeOfEngine, type Mode } from '@/lib/mlFeatures'
 import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 const MODE_ICON = { image: ImageIcon, pose: User, hand: Hand, face: Smile } as const
 const MODE_COLOR: Record<Mode, string> = { image: '#3ea9f4', pose: '#7b69c9', hand: '#e85c8d', face: '#f59e0b' }
@@ -17,8 +18,8 @@ const esc = (text: string) => text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 /** A complete, working sketch that uses the model. */
 export function buildFullSketch(project: MLLabProjectSummary): string {
   const mode = modeOfEngine(project.engine)
-  const first = esc(project.classes[0]?.name ?? 'Classe 1')
-  const noun = mode === 'hand' ? 'gesto' : mode === 'pose' ? 'posa' : mode === 'face' ? 'espressione' : 'oggetto'
+  const first = esc(project.classes[0]?.name ?? tl("Classe 1"))
+  const noun = mode === 'hand' ? 'gesto' : mode === 'pose' ? 'posa' : mode === 'face' ? 'espressione' : tl("oggetto")
   return `// Modello ML «${project.name}» (${MODE_LABEL[mode]}) — classi: ${project.classes.map((c) => `«${c.name}»`).join(', ')}
 // Regole: window.GolinelliML è già disponibile (non serve importare nulla). La webcam resta nel tuo browser.
 //  - model.start(video, { onResult }) analizza il video di continuo
@@ -63,7 +64,7 @@ function draw() {
 
 /** Only the wiring, to paste into an existing sketch. */
 export function buildSnippet(project: MLLabProjectSummary): string {
-  const first = esc(project.classes[0]?.name ?? 'Classe 1')
+  const first = esc(project.classes[0]?.name ?? tl("Classe 1"))
   return `
 // ── Modello ML «${project.name}» (Lab ML) ──────────────────────────────
 // Chiama setupML() dentro setup() e usa mlResult in draw():  mlResult.label è la classe riconosciuta (o null).
@@ -139,7 +140,7 @@ function ModelLivePreview({ projectId }: { projectId: string }) {
       } catch (error: any) {
         if (cancelled) return
         setState('error')
-        setMessage(error?.response?.data?.detail || (error?.name === 'NotAllowedError' ? 'Consenti l’accesso alla webcam per vedere l’anteprima.' : 'Non riesco ad avviare l’anteprima.'))
+        setMessage(error?.response?.data?.detail || (error?.name === 'NotAllowedError' ? tl("Consenti l’accesso alla webcam per vedere l’anteprima.") : tl("Non riesco ad avviare l’anteprima.")))
       }
     })()
     return () => { cancelled = true; clearTimeout(timer); stream?.getTracks().forEach((track) => track.stop()) }
@@ -153,11 +154,11 @@ function ModelLivePreview({ projectId }: { projectId: string }) {
       <div className="relative aspect-[4/3]">
         <video ref={videoRef} playsInline muted className="h-full w-full -scale-x-100 object-cover" />
         {model && model.mode !== 'image' && <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover" />}
-        {state === 'loading' && <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-white/80"><Loader2 className="h-4 w-4 animate-spin" /> Avvio anteprima…</div>}
+        {state === 'loading' && <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-white/80"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Avvio anteprima…")}</div>}
         {state === 'error' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-5 text-center text-sm text-white/80"><Camera className="h-7 w-7" />{message}</div>}
         {state === 'ready' && (
           <span className="absolute inset-x-3 bottom-3 rounded-2xl px-4 py-2 text-center text-sm font-black text-white backdrop-blur" style={{ background: sure ? labels[best]?.color || '#7b69c9' : 'rgba(30,41,59,.82)' }}>
-            {!detected ? 'Nessun riconoscimento: mostrati alla webcam' : sure ? `${labels[best]?.name} · ${Math.round(probs![best] * 100)}%` : 'Non sono sicuro'}
+            {!detected ? tl("Nessun riconoscimento: mostrati alla webcam") : sure ? `${labels[best]?.name} · ${Math.round(probs![best] * 100)}%` : tl("Non sono sicuro")}
           </span>
         )}
       </div>
@@ -200,29 +201,29 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
     if (!selected) return
     setPreparing(true); setPrepError(null)
     try { await prepareModel(selected.id); await queryClient.invalidateQueries({ queryKey: ['ml-lab', 'projects'] }) }
-    catch (error: any) { setPrepError(error?.message || 'Non sono riuscito a preparare il modello.') }
+    catch (error: any) { setPrepError(error?.message || tl("Non sono riuscito a preparare il modello.")) }
     finally { setPreparing(false) }
   }
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Modelli ML per lo sketch">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={tl("Modelli ML per lo sketch")}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-white/10">
           <div className="flex gap-3">
             <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: '#7b69c9' }}><Brain className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Modelli del Lab ML</h2>
-              <p className="mt-0.5 text-xs leading-5 text-slate-500">Usa nello sketch un modello che hai addestrato: gesti delle mani, pose del corpo o immagini. Provalo dal vivo, poi inseriscilo nel codice.</p>
+              <h2 className="text-lg font-bold text-slate-900">{tl("Modelli del Lab ML")}</h2>
+              <p className="mt-0.5 text-xs leading-5 text-slate-500">{tl("Usa nello sketch un modello che hai addestrato: gesti delle mani, pose del corpo o immagini. Provalo dal vivo, poi inseriscilo nel codice.")}</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
 
         <div className="grid min-h-0 flex-1 gap-0 overflow-y-auto md:grid-cols-[17rem_minmax(0,1fr)]">
           {/* list */}
           <div className="space-y-1.5 border-b border-slate-100 p-4 md:border-b-0 md:border-r dark:border-white/10">
             {query.isLoading && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}
-            {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs leading-5 text-slate-500 dark:bg-white/5">Nessun progetto nel Lab ML. Creane uno (immagini, pose o gesti delle mani), registra qualche esempio e torna qui.</p>}
+            {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs leading-5 text-slate-500 dark:bg-white/5">{tl("Nessun progetto nel Lab ML. Creane uno (immagini, pose o gesti delle mani), registra qualche esempio e torna qui.")}</p>}
             {projects.map((project) => {
               const kind = modeOfEngine(project.engine)
               const Icon = MODE_ICON[kind]
@@ -232,9 +233,9 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
                   <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: MODE_COLOR[kind] }}><Icon className="h-5 w-5" strokeWidth={1.7} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{MODE_LABEL[kind]} · {project.classes.length} classi</span>
+                    <span className="block truncate text-[11px] text-slate-500">{MODE_LABEL[kind]} · {project.classes.length} {tl("classi")}</span>
                   </span>
-                  {project.has_model === false && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">Da preparare</span>}
+                  {project.has_model === false && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">{tl("Da preparare")}</span>}
                   {attachedIds.includes(project.id) && <Check className="h-4 w-4 shrink-0 text-emerald-500" />}
                 </button>
               )
@@ -243,46 +244,46 @@ export default function P5ModelsDialog({ attachedIds, onAttach, onDetach, onInse
 
           {/* detail */}
           <div className="p-5">
-            {!selected ? <p className="py-16 text-center text-sm text-slate-400">Scegli un modello per vedere come funziona.</p> : needsPreparing ? (
+            {!selected ? <p className="py-16 text-center text-sm text-slate-400">{tl("Scegli un modello per vedere come funziona.")}</p> : needsPreparing ? (
               <div className="mx-auto max-w-md space-y-4 py-10 text-center">
                 <span className="ds-squircle mx-auto flex h-14 w-14 items-center justify-center text-white" style={{ background: MODE_COLOR[mode] }}><Brain className="h-7 w-7" /></span>
-                <h3 className="text-base font-bold text-slate-900">«{selected.name}» va preparato</h3>
-                <p className="text-sm leading-6 text-slate-500">Questo progetto ha i suoi esempi ma non ha ancora un modello pronto per gli sketch. Lo preparo adesso dagli esempi salvati: ci vuole un attimo e non cambia il progetto.</p>
+                <h3 className="text-base font-bold text-slate-900">«{selected.name}{tl("» va preparato")}</h3>
+                <p className="text-sm leading-6 text-slate-500">{tl("Questo progetto ha i suoi esempi ma non ha ancora un modello pronto per gli sketch. Lo preparo adesso dagli esempi salvati: ci vuole un attimo e non cambia il progetto.")}</p>
                 {prepError && <p className="rounded-xl bg-rose-50 p-3 text-xs leading-5 text-rose-700">{prepError}</p>}
                 <Button tone="accent" surface="solid" onClick={() => void runPrepare()} disabled={preparing}>
-                  {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />} {preparing ? 'Preparo il modello…' : 'Prepara il modello'}
+                  {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />} {preparing ? tl("Preparo il modello…") : tl("Prepara il modello")}
                 </Button>
               </div>
             ) : (
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
-                  <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Anteprima di funzionamento</h3>
+                  <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Anteprima di funzionamento")}</h3>
                   <ModelLivePreview key={selected.id} projectId={selected.id} />
-                  <p className="mt-2 text-[11px] leading-4 text-slate-400">Prova le tue {mode === 'hand' ? 'gesti' : mode === 'pose' ? 'movimenti' : mode === 'face' ? 'espressioni' : 'oggetti'}: è esattamente ciò che vedrà lo sketch.</p>
+                  <p className="mt-2 text-[11px] leading-4 text-slate-400">{tl("Prova le tue")} {mode === 'hand' ? 'gesti' : mode === 'pose' ? 'movimenti' : mode === 'face' ? 'espressioni' : tl("oggetti")}{tl(": è esattamente ciò che vedrà lo sketch.")}</p>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Classi riconosciute</h3>
+                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Classi riconosciute")}</h3>
                     <div className="flex flex-wrap gap-1.5">{selected.classes.map((cls) => <span key={cls.id} className="rounded-full px-2.5 py-1 text-xs font-bold text-white" style={{ background: cls.color }}>{cls.name}</span>)}</div>
                   </div>
                   <div>
-                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Regole d’uso nello sketch</h3>
+                    <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">{tl("Regole d’uso nello sketch")}</h3>
                     <ul className="space-y-1.5 text-xs leading-5 text-slate-600">
-                      <li>• Non serve importare nulla: <code className="rounded bg-slate-100 px-1 dark:bg-white/10">GolinelliML</code> è già nella pagina.</li>
-                      <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.label</code> è la classe riconosciuta, oppure <b>null</b> se il modello non è sicuro.</li>
-                      <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">model.on('Classe', fn)</code> esegue <code>fn</code> quando la classe resta attiva per ~0,25 s.</li>
-                      {mode !== 'image' && <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.{mode === 'hand' ? 'hand' : mode === 'face' ? 'face' : 'pose'}</code> contiene i punti {mode === 'hand' ? 'della mano (21)' : mode === 'face' ? 'del viso (478)' : 'del corpo (17)'} per disegnarli.</li>}
-                      <li>• La webcam resta nel tuo browser: nulla viene inviato.</li>
+                      <li>{tl("• Non serve importare nulla:")} <code className="rounded bg-slate-100 px-1 dark:bg-white/10">GolinelliML</code> {tl("è già nella pagina.")}</li>
+                      <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.label</code> {tl("è la classe riconosciuta, oppure")} <b>null</b> {tl("se il modello non è sicuro.")}</li>
+                      <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">model.on('Classe', fn)</code> esegue <code>fn</code> {tl("quando la classe resta attiva per ~0,25 s.")}</li>
+                      {mode !== 'image' && <li>• <code className="rounded bg-slate-100 px-1 dark:bg-white/10">result.{mode === 'hand' ? 'hand' : mode === 'face' ? 'face' : 'pose'}</code> {tl("contiene i punti")} {mode === 'hand' ? tl("della mano (21)") : mode === 'face' ? tl("del viso (478)") : tl("del corpo (17)")} {tl("per disegnarli.")}</li>}
+                      <li>{tl("• La webcam resta nel tuo browser: nulla viene inviato.")}</li>
                     </ul>
                   </div>
                   <div className="flex flex-col gap-2">
                     <Button tone="accent" surface="solid" onClick={() => { onAttach(selected); onInsert(buildFullSketch(selected), true) }}>
-                      <Plus className="h-4 w-4" /> Crea uno sketch pronto con questo modello
+                      <Plus className="h-4 w-4" /> {tl("Crea uno sketch pronto con questo modello")}
                     </Button>
                     <Button tone="neutral" surface="outline" onClick={() => { onAttach(selected); onInsert(buildSnippet(selected), false) }}>
-                      Aggiungi solo il collegamento al mio sketch
+                      {tl("Aggiungi solo il collegamento al mio sketch")}
                     </Button>
-                    {attached && <button type="button" onClick={() => onDetach(selected.id)} className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /> Scollega dallo sketch</button>}
+                    {attached && <button type="button" onClick={() => onDetach(selected.id)} className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /> {tl("Scollega dallo sketch")}</button>}
                   </div>
                 </div>
               </div>

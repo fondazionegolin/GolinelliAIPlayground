@@ -5,6 +5,7 @@ import { driveApi } from '@/lib/api'
 import { CATEGORY_META, categoryOf, editorPathFor, filenameFromDisposition, formatBytes, formatDate, saveBlob, type DriveItem } from './driveTypes'
 import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
 import { GlbViewer } from './GlbViewer'
+import { tl } from '@/i18n/tl'
 
 const TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024
 const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'py', 'js', 'ts', 'tsx', 'html', 'css', 'xml', 'yaml', 'yml', 'c', 'cpp', 'java', 'ino', 'log']
@@ -96,7 +97,7 @@ export function DrivePreview({
         setLoaded(result)
       })
       .catch((err) => {
-        if (!cancelled) setError(err?.response?.status === 404 ? 'File non più disponibile' : 'Anteprima non riuscita')
+        if (!cancelled) setError(err?.response?.status === 404 ? tl("File non più disponibile") : tl("Anteprima non riuscita"))
       })
     return () => {
       cancelled = true
@@ -123,40 +124,40 @@ export function DrivePreview({
   return (
     <div className="fixed inset-0 z-[1000] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-label={item.name}>
       <header className="flex h-14 shrink-0 items-center gap-3 px-4 text-white">
-        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label="Chiudi anteprima">
+        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label={tl("Chiudi anteprima")}>
           <X className="h-5 w-5" />
         </button>
         <Icon className="h-5 w-5 shrink-0" style={{ color: meta.tone }} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{item.name}</p>
           <p className="truncate text-[11px] text-white/60">
-            {meta.label} · {formatBytes(item.size_bytes)} · modificato {formatDate(item.updated_at)}
-            {item.created_by_student ? ` · di ${item.created_by_student}` : ''}
+            {meta.label} · {formatBytes(item.size_bytes)} {tl("· modificato")} {formatDate(item.updated_at)}
+            {item.created_by_student ? tl(" · di {0}", item.created_by_student) : ''}
           </p>
         </div>
         {editorPath && (
           <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-white/10 px-3 text-xs font-bold hover:bg-white/20">
-            <ExternalLink className="h-4 w-4" /> Apri nell'editor
+            <ExternalLink className="h-4 w-4" /> {tl("Apri nell'editor")}
           </button>
         )}
         {onShare && item.role === 'owner' && (
-          <button type="button" onClick={() => onShare(item)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label="Condividi">
+          <button type="button" onClick={() => onShare(item)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10" aria-label={tl("Condividi")}>
             <Share2 className="h-4 w-4" />
           </button>
         )}
-        <button type="button" onClick={() => void download()} disabled={downloading} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-50" aria-label="Scarica">
+        <button type="button" onClick={() => void download()} disabled={downloading} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-50" aria-label={tl("Scarica")}>
           {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
         </button>
       </header>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-16 pb-6" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
         {prev && (
-          <button type="button" onClick={() => onNavigate(prev)} className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Precedente">
+          <button type="button" onClick={() => onNavigate(prev)} className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label={tl("Precedente")}>
             <ChevronLeft className="h-6 w-6" />
           </button>
         )}
         {next && (
-          <button type="button" onClick={() => onNavigate(next)} className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Successivo">
+          <button type="button" onClick={() => onNavigate(next)} className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label={tl("Successivo")}>
             <ChevronRight className="h-6 w-6" />
           </button>
         )}
@@ -165,7 +166,7 @@ export function DrivePreview({
         ) : !loaded ? (
           <div className="flex flex-col items-center gap-3 text-white/70">
             <Loader2 className="h-7 w-7 animate-spin" />
-            {(item.source_type === 'document' || item.source_type === 'presentation') && <p className="text-xs">Preparo l'anteprima…</p>}
+            {(item.source_type === 'document' || item.source_type === 'presentation') && <p className="text-xs">{tl("Preparo l'anteprima…")}</p>}
           </div>
         ) : loaded.kind === 'url' && category === 'image' ? (
           <img src={loaded.url} alt={item.name} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
@@ -191,17 +192,17 @@ export function DrivePreview({
             <div>
               <p className="text-sm font-bold text-slate-800">{item.name}</p>
               <p className="mt-1 text-xs text-slate-500">
-                {item.source_type === 'solid_model' ? 'Progetto del 3D Lab: aprilo nel modellatore o esportalo.' : 'Anteprima non disponibile per questo formato.'}
+                {item.source_type === 'solid_model' ? tl("Progetto del 3D Lab: aprilo nel modellatore o esportalo.") : tl("Anteprima non disponibile per questo formato.")}
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               {editorPath && (
                 <button type="button" onClick={() => navigate(editorPath)} className="flex h-9 items-center gap-2 rounded-full bg-[var(--app-accent)] px-4 text-xs font-bold text-white">
-                  <ExternalLink className="h-4 w-4" /> Apri
+                  <ExternalLink className="h-4 w-4" /> {tl("Apri")}
                 </button>
               )}
               <button type="button" onClick={() => void download()} className="flex h-9 items-center gap-2 rounded-full bg-slate-100 px-4 text-xs font-bold text-slate-700 hover:bg-slate-200">
-                <Download className="h-4 w-4" /> Scarica
+                <Download className="h-4 w-4" /> {tl("Scarica")}
               </button>
             </div>
           </div>

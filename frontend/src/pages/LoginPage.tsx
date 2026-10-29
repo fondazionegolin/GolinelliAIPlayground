@@ -10,36 +10,37 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/components/ui/use-toast'
 import { useState } from 'react'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { tl } from '@/i18n/tl'
 
 const FEATURES = [
   {
     title: 'Teacher in the Loop',
-    body: 'Il docente mantiene il controllo su prompt, pubblicazioni e workflow didattici.',
+    body: tl("Il docente mantiene il controllo su prompt, pubblicazioni e workflow didattici."),
     icon: Workflow,
   },
   {
     title: 'Privacy by Design',
-    body: 'Gestione dati orientata a minimizzazione, segregazione tenant e tracciabilita operativa.',
+    body: tl("Gestione dati orientata a minimizzazione, segregazione tenant e tracciabilita operativa."),
     icon: ShieldCheck,
   },
   {
-    title: 'AI Act Compliance',
-    body: 'Uso educativo senza scoring o valutazioni automatiche degli studenti.',
+    title: tl("AI Act Compliance"),
+    body: tl("Uso educativo senza scoring o valutazioni automatiche degli studenti."),
     icon: Eye,
   },
   {
-    title: 'Strumenti Multimodali',
-    body: 'Chat, documenti, immagini, quiz e report in un unico ambiente di lezione.',
+    title: tl("Strumenti Multimodali"),
+    body: tl("Chat, documenti, immagini, quiz e report in un unico ambiente di lezione."),
     icon: Sparkles,
   },
   {
-    title: 'Lezione con AI',
-    body: 'Piattaforma progettata per orchestrare attività in classe con assistenti specializzati.',
+    title: tl("Lezione con AI"),
+    body: tl("Piattaforma progettata per orchestrare attività in classe con assistenti specializzati."),
     icon: BrainCircuit,
   },
   {
-    title: 'ML & Data Science Lab',
-    body: 'Laboratori pratici su dataset, analisi e visualizzazioni guidate.',
+    title: tl("ML & Data Science Lab"),
+    body: tl("Laboratori pratici su dataset, analisi e visualizzazioni guidate."),
     icon: FlaskConical,
   },
 ]
@@ -71,8 +72,8 @@ export default function LoginPage() {
       const detail = err.response?.data?.detail
       toast({
         variant: 'destructive',
-        title: 'Errore di accesso',
-        description: typeof detail === 'string' ? detail : 'Credenziali non valide',
+        title: tl("Errore di accesso"),
+        description: typeof detail === 'string' ? detail : tl("Credenziali non valide"),
       })
     } finally {
       setLoading(false)
@@ -85,10 +86,10 @@ export default function LoginPage() {
         <section className="rounded-[32px] border border-sky-100/90 bg-white/88 p-6 text-slate-900 md:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-700">Fondazione Golinelli</p>
           <h1 className="mt-2 text-4xl font-black leading-tight md:text-5xl" style={{ fontFamily: 'var(--font-family-brand)' }}>
-            Golinelli AI Playground
+            {tl("Golinelli AI Playground")}
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-base">
-            Piattaforma moderna per fare lezione con l&apos;AI in modo strutturato, trasparente e conforme al contesto educativo.
+            {tl("Piattaforma moderna per fare lezione con l'AI in modo strutturato, trasparente e conforme al contesto educativo.")}
           </p>
 
           <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -115,13 +116,13 @@ export default function LoginPage() {
         <aside className="flex items-start justify-center lg:items-center">
           <Card className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200/90 bg-white/96 shadow-[var(--shadow-md)]">
             <CardHeader className="border-b border-slate-100/90 pb-4">
-              <CardTitle className="text-slate-900">Accesso Docente / Admin</CardTitle>
-              <CardDescription>Entra in piattaforma o richiedi l&apos;accesso beta.</CardDescription>
+              <CardTitle className="text-slate-900">{tl("Accesso Docente / Admin")}</CardTitle>
+              <CardDescription>{tl("Entra in piattaforma o richiedi l'accesso beta.")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form onSubmit={handleLogin} className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{tl("Email")}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -144,19 +145,19 @@ export default function LoginPage() {
                   />
                 </div>
                 <Button type="submit" tone="neutral" surface="solid" className="w-full h-11" disabled={loading}>
-                  {loading ? 'Accesso in corso...' : 'Accedi'}
+                  {loading ? tl("Accesso in corso...") : tl("Accedi")}
                 </Button>
               </form>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Link to="/teacher-request">
                   <Button tone="accent" surface="outline" className="w-full">
-                    REGISTRATI QUI
+                    {tl("REGISTRATI QUI")}
                   </Button>
                 </Link>
                 <Link to="/join">
                   <Button tone="neutral" surface="soft" className="w-full">
-                    Entra Studente
+                    {tl("Entra Studente")}
                   </Button>
                 </Link>
               </div>

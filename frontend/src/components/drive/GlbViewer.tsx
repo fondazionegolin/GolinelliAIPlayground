@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Loader2 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 /** Orbitable preview for a .glb/.gltf/.stl blob. */
 export function GlbViewer({ blob, format }: { blob: Blob; format: 'glb' | 'stl' }) {
@@ -103,7 +104,7 @@ export function GlbViewer({ blob, format }: { blob: Blob; format: 'glb' | 'stl' 
   return (
     <div ref={hostRef} className="relative h-full w-full overflow-hidden rounded-2xl bg-gradient-to-b from-slate-50 to-slate-200">
       {state === 'loading' && <Loader2 className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 animate-spin text-slate-400" />}
-      {state === 'error' && <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">Impossibile leggere il modello 3D</p>}
+      {state === 'error' && <p className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">{tl("Impossibile leggere il modello 3D")}</p>}
     </div>
   )
 }

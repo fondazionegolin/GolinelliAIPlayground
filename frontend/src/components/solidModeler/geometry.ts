@@ -2,8 +2,10 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js'
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import fontData from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { ADDITION, Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg'
 import type { GroupObject, PrimitiveKind, PrimitiveObject, PrimitiveParams, SceneObject, Vec3 } from './types'
@@ -53,6 +55,12 @@ function buildUnit(kind: PrimitiveKind, p: PrimitiveParams, size: Vec3): THREE.B
     case 'cone': {
       const top = Math.max(0, Math.min(1, p.topRatio ?? 0)) * 0.5
       return normalize(new THREE.CylinderGeometry(top, 0.5, 1, p.sides ?? 32).rotateX(Math.PI / 2))
+    }
+    case 'polyhedron': {
+      const n = Math.max(3, Math.min(63, Math.round(p.faces ?? 7) - 1))
+      const points = Array.from({ length: n }, (_, i) => new THREE.Vector3(Math.cos(i * 2 * Math.PI / n), Math.sin(i * 2 * Math.PI / n), -0.5))
+      points.push(new THREE.Vector3(0, 0, 0.5))
+      return normalize(new ConvexGeometry(points))
     }
     case 'pyramid':
       return normalize(new THREE.ConeGeometry(0.5, 1, 4).rotateY(Math.PI / 4).rotateX(Math.PI / 2))
@@ -114,7 +122,7 @@ const unitCache = new Map<string, THREE.BufferGeometry>()
 
 /** Geometry depends on the real size only for filleted boxes (see buildUnit). */
 function sizeDependent(kind: PrimitiveKind, params: PrimitiveParams): boolean {
-  return kind === 'box' && (params?.radius ?? 0) > 0.001
+  return (kind === 'box' && (params?.radius ?? 0) > 0.001) || !!Object.keys(params.edgeFillets ?? {}).length
 }
 
 export function unitGeometry(kind: PrimitiveKind, params: PrimitiveParams, size: Vec3 = [1, 1, 1]): THREE.BufferGeometry {
@@ -123,6 +131,7 @@ export function unitGeometry(kind: PrimitiveKind, params: PrimitiveParams, size:
   let g = unitCache.get(key)
   if (!g) {
     g = buildUnit(kind, params ?? {}, size)
+    if (Object.keys(params.edgeFillets ?? {}).length && supportsEdgeFillet(kind)) g = filletEdges(g, params, size)
     // Slider edits create many variants; keep the cache bounded (evicted geometries are GC'd once unused).
     if (unitCache.size > 200) unitCache.delete(unitCache.keys().next().value as string)
     unitCache.set(key, g)
@@ -231,4 +240,142 @@ export function exportSTL(objects: SceneObject[]): Blob {
   scene.updateMatrixWorld(true)
   const data = new STLExporter().parse(scene, { binary: true }) as DataView
   return new Blob([data.buffer as ArrayBuffer], { type: 'model/stl' })
+}
+
+/**
+ * Binary glTF for AR viewers (WebXR, Scene Viewer, Quick Look): coloured meshes, holes left out,
+ * converted from the editor frame (millimetres, Z up) to glTF (metres, Y up) at real size,
+ * centred on X/Z and resting on the floor (y = 0).
+ */
+export async function exportGLB(objects: SceneObject[]): Promise<Blob> {
+  const model = new THREE.Group()
+  for (const obj of objects) {
+    if (obj.hole) continue
+    const mesh = new THREE.Mesh(
+      objectGeometry(obj),
+      new THREE.MeshStandardMaterial({ color: obj.color, roughness: 0.55, metalness: 0.02 }),
+    )
+    mesh.name = obj.name
+    mesh.applyMatrix4(objectMatrix(obj))
+    model.add(mesh)
+  }
+  const root = new THREE.Group()
+  root.rotation.x = -Math.PI / 2
+  root.scale.setScalar(0.001)
+  root.add(model)
+  const scene = new THREE.Scene()
+  scene.add(root)
+  scene.updateMatrixWorld(true)
+  const box = new THREE.Box3().setFromObject(root)
+  if (!box.isEmpty()) {
+    const center = box.getCenter(new THREE.Vector3())
+    root.position.set(-center.x, -box.min.y, -center.z)
+    scene.updateMatrixWorld(true)
+  }
+  const data = await new GLTFExporter().parseAsync(scene, { binary: true, onlyVisible: true })
+  return new Blob([data as ArrayBuffer], { type: 'model/gltf-binary' })
+}
+
+
+export interface SolidEdge { id: string; a: THREE.Vector3; b: THREE.Vector3 }
+const vertexKey = (v: THREE.Vector3) => v.toArray().map(n => n.toFixed(5)).join(',')
+export function geometryEdges(g: THREE.BufferGeometry, threshold = 20): SolidEdge[] {
+  const lines = new THREE.EdgesGeometry(g, threshold)
+  const p = lines.getAttribute('position')
+  const result: SolidEdge[] = []
+  for (let i = 0; i < p.count; i += 2) {
+    let a = new THREE.Vector3().fromBufferAttribute(p, i)
+    let b = new THREE.Vector3().fromBufferAttribute(p, i + 1)
+    if (vertexKey(a) > vertexKey(b)) [a, b] = [b, a]
+    result.push({ id: `${vertexKey(a)}|${vertexKey(b)}`, a, b })
+  }
+  lines.dispose()
+  return result
+}
+export function editableEdges(obj: SceneObject): SolidEdge[] {
+  // Keep edge identity stable when a fillet changes the rendered topology.
+  return geometryEdges(obj.kind === 'group' ? objectGeometry(obj) : unitGeometry(obj.kind, { ...obj.params, radius: 0, edgeFillets: undefined }, obj.size), supportsEdgeFillet(obj.kind) ? 0.1 : 20)
+}
+export function edgeLength(obj: SceneObject, edge: SolidEdge): number {
+  return edge.a.clone().applyMatrix4(objectMatrix(obj)).distanceTo(edge.b.clone().applyMatrix4(objectMatrix(obj)))
+}
+export function resizeEdge(obj: SceneObject, edge: SolidEdge, length: number): SceneObject {
+  if (!Number.isFinite(length) || length < 0.1) return obj
+  const current = edgeLength(obj, edge)
+  if (current < 1e-8) return obj
+  const ratio = length / current
+  const delta = edge.b.clone().sub(edge.a)
+  const axes = [0, 1, 2].filter(i => Math.abs(delta.getComponent(i)) > 1e-5)
+  const scale = scaleOf(obj).map((v, i) => v * (axes.length === 1 && axes[0] !== i ? 1 : ratio)) as Vec3
+  const next = obj.kind === 'group' ? { ...obj, scale } : { ...obj, size: scale }
+  next.position = [...obj.position] as Vec3
+  next.position[2] += worldBox(obj).min.z - worldBox(next).min.z
+  return next
+}
+export function supportsEdgeFillet(kind: string): boolean {
+  return ['box', 'polyhedron', 'pyramid', 'wedge', 'cylinder', 'cone'].includes(kind)
+}
+function filletEdges(source: THREE.BufferGeometry, params: PrimitiveParams, size: Vec3): THREE.BufferGeometry {
+  const original = source.clone().scale(...size)
+  const triangles = original.index ? original.toNonIndexed() : original
+  const pos = triangles.getAttribute('position')
+  let polygons: THREE.Vector3[][] = []
+  for (let i = 0; i < pos.count; i += 3) polygons.push([0, 1, 2].map(j => new THREE.Vector3().fromBufferAttribute(pos, i + j)))
+  for (const edge of geometryEdges(source, 0.1)) {
+    const requested = params.edgeFillets?.[edge.id] ?? 0
+    if (!(requested > 0)) continue
+    const a = edge.a.clone().multiply(new THREE.Vector3(...size))
+    const b = edge.b.clone().multiply(new THREE.Vector3(...size))
+    const normals: THREE.Vector3[] = []
+    for (let i = 0; i < pos.count; i += 3) {
+      const v = [0, 1, 2].map(j => new THREE.Vector3().fromBufferAttribute(pos, i + j))
+      const n = v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0])).normalize()
+      if (Math.abs(n.dot(a.clone().sub(v[0]))) < 1e-4 && Math.abs(n.dot(b.clone().sub(v[0]))) < 1e-4 && !normals.some(m => m.dot(n) > 0.9999)) normals.push(n)
+    }
+    if (normals.length !== 2) continue
+    const [n1, n2] = normals
+    const angle = Math.acos(THREE.MathUtils.clamp(n1.dot(n2), -1, 1))
+    const bisector = n1.clone().add(n2).normalize()
+    const radius = Math.min(requested, Math.min(...size) * 0.2, a.distanceTo(b) * 0.2)
+    const center = a.clone().add(b).multiplyScalar(0.5).addScaledVector(bisector, -radius / Math.cos(angle / 2))
+    for (let step = 1; step < 12; step++) {
+      const t = step / 12
+      const n = n1.clone().multiplyScalar(Math.sin((1 - t) * angle)).addScaledVector(n2, Math.sin(t * angle)).normalize()
+      const limit = n.dot(center) + radius
+      const clipped: THREE.Vector3[][] = []
+      const cap = new Map<string, THREE.Vector3>()
+      for (const polygon of polygons) {
+        const points: THREE.Vector3[] = []
+        for (let j = 0; j < polygon.length; j++) {
+          const v = polygon[j], w = polygon[(j + 1) % polygon.length]
+          const dv = n.dot(v) - limit, dw = n.dot(w) - limit
+          if (dv <= 0) points.push(v)
+          if ((dv < 0) !== (dw < 0)) {
+            const intersection = v.clone().lerp(w, dv / (dv - dw))
+            points.push(intersection)
+            cap.set(intersection.toArray().map(x => x.toFixed(7)).join(','), intersection)
+          }
+        }
+        if (points.length >= 3) clipped.push(points)
+      }
+      const ring = [...cap.values()]
+      if (ring.length >= 3) {
+        const middle = ring.reduce((sum, v) => sum.add(v), new THREE.Vector3()).divideScalar(ring.length)
+        const u = ring[0].clone().sub(middle).normalize(), v = n.clone().cross(u)
+        const angleOf = (p: THREE.Vector3) => Math.atan2(p.clone().sub(middle).dot(v), p.clone().sub(middle).dot(u))
+        ring.sort((a, b) => angleOf(a) - angleOf(b))
+        clipped.push(ring)
+      }
+      polygons = clipped
+    }
+  }
+  original.dispose()
+  if (triangles !== original) triangles.dispose()
+  const points = new Map<string, THREE.Vector3>()
+  for (const polygon of polygons) for (const point of polygon) points.set(point.toArray().map(v => v.toFixed(7)).join(','), point)
+  const result = new ConvexGeometry([...points.values()])
+  result.scale(1 / size[0], 1 / size[1], 1 / size[2])
+  result.computeBoundingBox()
+  result.computeBoundingSphere()
+  return result
 }

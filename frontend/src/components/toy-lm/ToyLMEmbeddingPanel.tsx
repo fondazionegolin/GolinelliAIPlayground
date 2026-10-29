@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Search, ScatterChart, Sigma } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 export interface ToyLMEmbeddingToken {
   index: number
@@ -56,7 +57,7 @@ export default function ToyLMEmbeddingPanel({
       setAxisY(Math.min(1, Math.max(next.embeddingDim - 1, 0)))
       setSelectedIndex(next.tokens[0]?.index ?? null)
     } catch (err) {
-      setError((err as Error).message || 'Errore caricamento embedding')
+      setError((err as Error).message || tl("Errore caricamento embedding"))
     } finally {
       setIsLoading(false)
     }
@@ -131,11 +132,11 @@ export default function ToyLMEmbeddingPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ScatterChart className="h-4 w-4 text-[var(--logo-violet)]" />
-          <span className="text-sm font-black">Spazio embedding</span>
+          <span className="text-sm font-black">{tl("Spazio embedding")}</span>
         </div>
         <Button tone="accent" surface={payload ? 'soft' : 'solid'} density="compact" disabled={!canLoad || isLoading} onClick={fetchEmbeddings}>
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          {payload ? 'Aggiorna' : 'Carica embedding'}
+          {payload ? tl("Aggiorna") : tl("Carica embedding")}
         </Button>
       </div>
 
@@ -149,16 +150,16 @@ export default function ToyLMEmbeddingPanel({
         </div>
       ) : !payload ? (
         <div className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-4 text-center text-xs text-[var(--text-muted)]">
-          Carica il checkpoint per esplorare i vettori dei token.
+          {tl("Carica il checkpoint per esplorare i vettori dei token.")}
         </div>
       ) : (
         <>
           <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1.25fr]">
-            <AxisSelect label="Asse X" value={axisX} options={dimOptions} onChange={setAxisX} />
-            <AxisSelect label="Asse Y" value={axisY} options={dimOptions} onChange={setAxisY} />
+            <AxisSelect label={tl("Asse X")} value={axisX} options={dimOptions} onChange={setAxisX} />
+            <AxisSelect label={tl("Asse Y")} value={axisY} options={dimOptions} onChange={setAxisY} />
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <label className="text-xs font-medium text-[var(--text-secondary)]">Zoom</label>
+                <label className="text-xs font-medium text-[var(--text-secondary)]">{tl("Zoom")}</label>
                 <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{zoom.toFixed(1)}x</span>
               </div>
               <input
@@ -172,14 +173,14 @@ export default function ToyLMEmbeddingPanel({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Cerca token</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">{tl("Cerca token")}</label>
               <div className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-white px-2.5 py-1.5">
                 <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                 <input
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--text-muted)]"
-                  placeholder={payload.tokenMode === 'char' ? 'lettera, spazio, newline...' : 'parola o punteggiatura...'}
+                  placeholder={payload.tokenMode === 'char' ? tl("lettera, spazio, newline...") : tl("parola o punteggiatura...")}
                 />
               </div>
             </div>
@@ -187,13 +188,13 @@ export default function ToyLMEmbeddingPanel({
 
           {payload.tokenMode === 'char' && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Questo checkpoint è stato addestrato in modalità caratteri: i punti rappresentano singole lettere. Per vedere parole nello spazio embedding crea un nuovo modello con tokenizzazione “Parole”.
+              {tl("Questo checkpoint è stato addestrato in modalità caratteri: i punti rappresentano singole lettere. Per vedere parole nello spazio embedding crea un nuovo modello con tokenizzazione “Parole”.")}
             </div>
           )}
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_15rem]">
             <div className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-white">
-              <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="block h-[260px] w-full sm:h-[320px]" role="img" aria-label="Proiezione degli embedding dei token">
+              <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="block h-[260px] w-full sm:h-[320px]" role="img" aria-label={tl("Proiezione degli embedding dei token")}>
                 <rect x="0" y="0" width={SVG_W} height={SVG_H} fill="#ffffff" />
                 <line x1={PAD} y1={SVG_H - PAD} x2={SVG_W - PAD} y2={SVG_H - PAD} stroke="#e5e5e5" />
                 <line x1={PAD} y1={PAD} x2={PAD} y2={SVG_H - PAD} stroke="#e5e5e5" />
@@ -235,7 +236,7 @@ export default function ToyLMEmbeddingPanel({
             <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-3">
               <div className="mb-2 flex items-center gap-2">
                 <Sigma className="h-3.5 w-3.5 text-[var(--logo-violet)]" />
-                <span className="text-xs font-black">Token selezionato</span>
+                <span className="text-xs font-black">{tl("Token selezionato")}</span>
               </div>
               {selectedToken ? (
                 <div className="space-y-3">
@@ -251,7 +252,7 @@ export default function ToyLMEmbeddingPanel({
                     </p>
                   </div>
                   <div>
-                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Vicini coseno</p>
+                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Vicini coseno")}</p>
                     <div className="space-y-1">
                       {nearest.map(({ token, score }) => (
                         <button
@@ -268,7 +269,7 @@ export default function ToyLMEmbeddingPanel({
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[var(--text-muted)]">Seleziona un punto nello spazio.</p>
+                <p className="text-xs text-[var(--text-muted)]">{tl("Seleziona un punto nello spazio.")}</p>
               )}
             </div>
           </div>
@@ -278,9 +279,9 @@ export default function ToyLMEmbeddingPanel({
             <span>·</span>
             <span>{payload.embeddingDim} dimensioni</span>
             <span>·</span>
-            <span>{payload.tokenMode === 'char' ? 'caratteri' : 'parole e punteggiatura'}</span>
+            <span>{payload.tokenMode === 'char' ? 'caratteri' : tl("parole e punteggiatura")}</span>
             <span>·</span>
-            <span>vista 2D su dimensioni selezionabili</span>
+            <span>{tl("vista 2D su dimensioni selezionabili")}</span>
           </div>
         </>
       )}
@@ -308,7 +309,7 @@ function AxisSelect({
         className="w-full rounded-xl border border-[var(--border-subtle)] bg-white px-2.5 py-1.5 text-xs text-[var(--text-primary)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
       >
         {options.map(option => (
-          <option key={option} value={option}>Dimensione {option + 1}</option>
+          <option key={option} value={option}>{tl("Dimensione")} {option + 1}</option>
         ))}
       </select>
     </div>

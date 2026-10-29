@@ -3,6 +3,7 @@ import type { SlideBlock } from '@/components/SlideEditor'
 import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 import DocumentTypeBadge, { documentKindMeta, resolveDocumentKind, type DocumentKind } from './DocumentTypeBadge'
+import { tl } from '@/i18n/tl'
 
 type ThumbnailType = DocumentKind
 
@@ -15,7 +16,7 @@ interface DocumentThumbnailProps {
   showTypeBadge?: boolean
 }
 
-type ParsedContent = {
+export type ParsedContent = {
   format?: 'a4' | '16:9' | '4:3'
   slides?: Array<{ title?: string; blocks?: SlideBlock[]; backgroundColor?: string }>
   htmlContent?: string
@@ -32,7 +33,8 @@ const DIMENSIONS = {
   a4: { width: 794, height: 1123 },
 }
 
-function SlidePreview({ content, title }: { content: ParsedContent; title: string }) {
+/** Exact read-only render of a deck's first slide, scaled to fit its container (also used full screen by the presenter). */
+export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { content: ParsedContent; title: string; backdrop?: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 })
   const format = content.format && DIMENSIONS[content.format] ? content.format : '16:9'
@@ -63,7 +65,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index)), [slide?.blocks])
 
   return (
-    <div ref={hostRef} className="relative h-full w-full overflow-hidden bg-slate-100">
+    <div ref={hostRef} className={`relative h-full w-full overflow-hidden ${backdrop}`}>
       {hostSize.width > 0 && hostSize.height > 0 && (
         <div
           className="absolute left-0 top-0 origin-top-left overflow-hidden shadow-inner"
@@ -76,7 +78,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
             backgroundColor: slide?.backgroundColor || '#fff',
           }}
         >
-          {slide && !slide.blocks?.some(block => block.type === 'text' && block.y < 130 && (block.style.fontSize || 0) >= 26) && (
+          {slide && !slide.blocks?.some(block => block.type === 'text') && (
             <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title || title}</h3>
           )}
           {!slide && (
@@ -87,7 +89,7 @@ function SlidePreview({ content, title }: { content: ParsedContent; title: strin
           {blocks.map(({ block, index }) => (
             <div
               key={block.id || index}
-              className="absolute overflow-hidden"
+              className={`absolute ${block.type === 'line' ? 'overflow-visible' : 'overflow-hidden'}`}
               style={{
                 left: block.x,
                 top: block.y,
@@ -210,7 +212,7 @@ function DocumentThumbnail({ contentJson, type, title, className = '', showTypeB
   const useLightweightPreview = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   return (
-    <div className={`pointer-events-none relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={`Anteprima di ${title}`}>
+    <div className={`pointer-events-none relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={tl("Anteprima di {0}", title)}>
       {content.previewImage ? <img src={content.previewImage} alt="" className="h-full w-full object-contain bg-slate-100" />
         : actualType === 'presentation' ? <SlidePreview content={content} title={title} />
         : (actualType === 'document' || (actualType === 'pdf' && !content.url)) && html && !isFullHtml ? <DocumentPagePreview html={html} />

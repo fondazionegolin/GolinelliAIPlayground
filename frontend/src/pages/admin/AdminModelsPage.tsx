@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import ModelRolesPanel, { priceLabel } from '@/components/admin/ModelRolesPanel'
+import { tl } from '@/i18n/tl'
 
 type Provider = 'openai' | 'anthropic' | 'deepseek'
 interface AiModel {
@@ -34,7 +35,7 @@ const PROVIDERS: Record<Provider, { label: string; color: string }> = {
   openai: { label: 'OpenAI', color: '#10a37f' },
   deepseek: { label: 'DeepSeek', color: '#4d6bfe' },
 }
-const STATUS_LABEL = { active: 'Attivo', available: 'Rilevato', deprecated: 'Dismesso' } as const
+const STATUS_LABEL = { active: tl("Attivo"), available: tl("Rilevato"), deprecated: tl("Dismesso") } as const
 const usd = (value: number | null | undefined, digits = 2) => (value === null || value === undefined ? '—' : `$${value.toFixed(value < 1 ? Math.max(digits, 3) : digits)}`)
 const dateLabel = (value?: string | null) => (value ? new Date(value).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 
@@ -54,27 +55,27 @@ export default function AdminModelsPage() {
 
   const query = useQuery<ModelsResponse>({ queryKey: ['admin', 'ai-models'], queryFn: async () => (await adminApi.getAiModels()).data })
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin', 'ai-models'] })
-  const fail = (title: string) => (err: any) => toast({ variant: 'destructive', title, description: err?.response?.data?.detail || 'Riprova tra poco.' })
+  const fail = (title: string) => (err: any) => toast({ variant: 'destructive', title, description: err?.response?.data?.detail || tl("Riprova tra poco.") })
 
   const scan = useMutation({
     mutationFn: async () => (await adminApi.scanAiModels()).data as ScanSummary,
     onSuccess: (summary) => {
       void refresh()
-      const parts = [`${summary.new_models.length} nuovi modelli`, `${summary.price_changes.length} variazioni di prezzo`]
-      toast({ title: 'Controllo completato', description: parts.join(' · ') })
+      const parts = [tl("{0} nuovi modelli", summary.new_models.length), tl("{0} variazioni di prezzo", summary.price_changes.length)]
+      toast({ title: tl("Controllo completato"), description: parts.join(' · ') })
     },
-    onError: fail('Controllo non riuscito'),
+    onError: fail(tl("Controllo non riuscito")),
   })
   const save = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => adminApi.updateAiModel(id, data),
     onSuccess: () => { setEditing(null); setDraft(null); void refresh() },
-    onError: fail('Salvataggio non riuscito'),
+    onError: fail(tl("Salvataggio non riuscito")),
   })
   const act = useMutation({
     mutationFn: ({ id, kind }: { id: string; kind: 'apply' | 'dismiss' | 'ack' }) =>
       kind === 'apply' ? adminApi.applyAiModelProposal(id) : kind === 'dismiss' ? adminApi.dismissAiModelProposal(id) : adminApi.acknowledgeAiModel(id),
-    onSuccess: (_, vars) => { void refresh(); if (vars.kind === 'apply') toast({ title: 'Prezzo applicato', description: 'I costi in crediti usano subito il nuovo listino.' }) },
-    onError: fail('Operazione non riuscita'),
+    onSuccess: (_, vars) => { void refresh(); if (vars.kind === 'apply') toast({ title: tl("Prezzo applicato"), description: tl("I costi in crediti usano subito il nuovo listino.") }) },
+    onError: fail(tl("Operazione non riuscita")),
   })
 
   const offer = useMutation({
@@ -82,9 +83,9 @@ export default function AdminModelsPage() {
     onSuccess: (response) => {
       void refresh()
       const skipped = (response.data?.skipped ?? []) as string[]
-      if (skipped.length) toast({ title: 'Alcuni modelli non sono stati modificati', description: `${skipped.join(', ')}: servono attivo e con prezzo (per nasconderlo: non è il modello predefinito).` })
+      if (skipped.length) toast({ title: tl("Alcuni modelli non sono stati modificati"), description: tl("{0}: servono attivo e con prezzo (per nasconderlo: non è il modello predefinito).", skipped.join(', ')) })
     },
-    onError: fail('Operazione non riuscita'),
+    onError: fail(tl("Operazione non riuscita")),
   })
 
   const data = query.data
@@ -107,7 +108,7 @@ export default function AdminModelsPage() {
   const commit = (m: AiModel) => {
     if (!draft) return
     const body: Record<string, unknown> = { input_usd: toNumber(draft.input_usd), output_usd: toNumber(draft.output_usd), quality_score: toNumber(draft.quality_score), status: draft.status }
-    if (draft.quality_score !== (m.quality_score?.toString() ?? '') && !m.quality_source) body.quality_source = 'Inserito manualmente'
+    if (draft.quality_score !== (m.quality_score?.toString() ?? '') && !m.quality_source) body.quality_source = tl("Inserito manualmente")
     save.mutate({ id: m.id, data: body })
   }
 
@@ -115,13 +116,13 @@ export default function AdminModelsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-[#1a1a2e]">Modelli</h1>
+          <h1 className="text-2xl font-black text-[#1a1a2e]">{tl("Modelli")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Catalogo dei modelli LLM di Anthropic, OpenAI e DeepSeek con listino prezzi ufficiale. I prezzi del listino (USD per 1M token) sono quelli usati per calcolare il consumo in crediti. Il controllo automatico gira ogni 24 ore: le nuove uscite e le variazioni di prezzo restano <b>proposte</b> finché non le approvi.
+            {tl("Catalogo dei modelli LLM di Anthropic, OpenAI e DeepSeek con listino prezzi ufficiale. I prezzi del listino (USD per 1M token) sono quelli usati per calcolare il consumo in crediti. Il controllo automatico gira ogni 24 ore: le nuove uscite e le variazioni di prezzo restano")} <b>proposte</b> {tl("finché non le approvi.")}
           </p>
         </div>
         <Button onClick={() => scan.mutate()} disabled={scan.isPending} className="gap-2 bg-[#e85c8d] text-white hover:bg-[#d34d7d]">
-          {scan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Controlla ora
+          {scan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} {tl("Controlla ora")}
         </Button>
       </div>
 
@@ -135,17 +136,15 @@ export default function AdminModelsPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="max-w-2xl">
-                <h2 className="text-sm font-black text-slate-700">Modelli scelti nei selettori di chat</h2>
+                <h2 className="text-sm font-black text-slate-700">{tl("Modelli scelti nei selettori di chat")}</h2>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Spunta i modelli che docenti e studenti possono scegliere: nel selettore della chat docente, nel «Modello AI predefinito» della sessione e nel chatbot degli studenti.
-                  Sono elencati solo i modelli attivi e con un prezzo (senza listino le chiamate non verrebbero addebitate). Il modello predefinito della piattaforma è sempre disponibile
-                  e Gemini compare quando la sua chiave è configurata.
+                  {tl("Spunta i modelli che docenti e studenti possono scegliere: nel selettore della chat docente, nel «Modello AI predefinito» della sessione e nel chatbot degli studenti. Sono elencati solo i modelli attivi e con un prezzo (senza listino le chiamate non verrebbero addebitate). Il modello predefinito della piattaforma è sempre disponibile e Gemini compare quando la sua chiave è configurata.")}
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span className="font-bold text-slate-500">{shown.length} di {selectable.length} nei selettori</span>
-                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === selectable.length} onClick={() => setMany(selectable, true)}>Tutti</Button>
-                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === 0} onClick={() => setMany(selectable, false)}>Nessuno</Button>
+                <span className="font-bold text-slate-500">{shown.length} {tl("di")} {selectable.length} {tl("nei selettori")}</span>
+                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === selectable.length} onClick={() => setMany(selectable, true)}>{tl("Tutti")}</Button>
+                <Button size="sm" variant="outline" disabled={offer.isPending || shown.length === 0} onClick={() => setMany(selectable, false)}>{tl("Nessuno")}</Button>
               </div>
             </div>
             {(Object.keys(PROVIDERS) as Provider[]).map((p) => {
@@ -155,14 +154,14 @@ export default function AdminModelsPage() {
                 <div key={p} className="mt-3">
                   <div className="mb-1.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-slate-400">
                     <span className="h-2 w-2 rounded-full" style={{ background: PROVIDERS[p].color }} /> {PROVIDERS[p].label}
-                    <button type="button" onClick={() => setMany(list, true)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">tutti</button>
-                    <button type="button" onClick={() => setMany(list, false)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">nessuno</button>
+                    <button type="button" onClick={() => setMany(list, true)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">{tl("tutti")}</button>
+                    <button type="button" onClick={() => setMany(list, false)} disabled={offer.isPending} className="font-bold normal-case text-slate-400 underline hover:text-slate-600">{tl("nessuno")}</button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {list.map((m) => (
                       <button key={m.id} type="button" aria-pressed={m.offered} disabled={offer.isPending}
                         onClick={() => offer.mutate({ ids: [m.id], offered: !m.offered })}
-                        title={`${m.model_id} · ${usd(m.input_usd)} / ${usd(m.output_usd)} per 1M token`}
+                        title={tl("{0} · {1} / {2} per 1M token", m.model_id, usd(m.input_usd), usd(m.output_usd))}
                         className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${m.offered ? 'border-[#e85c8d] bg-pink-50 text-[#b83b69]' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}`}>
                         {m.offered ? <Check className="h-3 w-3" /> : <span className="h-3 w-3 rounded-full border border-slate-300" />}
                         {m.display_name}
@@ -178,34 +177,34 @@ export default function AdminModelsPage() {
       })()}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Ultimo controllo" value={dateLabel(data?.last_scan?.ran_at)} hint={data?.last_scan ? (data.last_scan.trigger === 'scheduled' ? 'automatico' : 'manuale') : 'mai eseguito'} />
-        <Stat label="Nuovi modelli" value={String(fresh.length)} hint="da rivedere" tone={fresh.length ? 'pink' : undefined} />
-        <Stat label="Variazioni di prezzo" value={String(proposals.length)} hint="in attesa di approvazione" tone={proposals.length ? 'amber' : undefined} />
-        <Stat label="Non più nelle API" value={String(summary?.not_in_api.length ?? 0)} hint="modelli attivi non restituiti dal provider" tone={summary?.not_in_api.length ? 'amber' : undefined} />
+        <Stat label={tl("Ultimo controllo")} value={dateLabel(data?.last_scan?.ran_at)} hint={data?.last_scan ? (data.last_scan.trigger === 'scheduled' ? 'automatico' : 'manuale') : tl("mai eseguito")} />
+        <Stat label={tl("Nuovi modelli")} value={String(fresh.length)} hint={tl("da rivedere")} tone={fresh.length ? 'pink' : undefined} />
+        <Stat label={tl("Variazioni di prezzo")} value={String(proposals.length)} hint={tl("in attesa di approvazione")} tone={proposals.length ? 'amber' : undefined} />
+        <Stat label={tl("Non più nelle API")} value={String(summary?.not_in_api.length ?? 0)} hint={tl("modelli attivi non restituiti dal provider")} tone={summary?.not_in_api.length ? 'amber' : undefined} />
       </div>
 
       {summary && Object.keys(summary.errors).length > 0 && (
         <div className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-          <p className="flex items-center gap-1.5 font-bold"><AlertTriangle className="h-4 w-4" /> Alcune verifiche non sono riuscite</p>
+          <p className="flex items-center gap-1.5 font-bold"><AlertTriangle className="h-4 w-4" /> {tl("Alcune verifiche non sono riuscite")}</p>
           {Object.entries(summary.errors).map(([name, message]) => (
             <p key={name}><b>{PROVIDERS[name as Provider]?.label ?? name}:</b> {message}{' '}
-              {data && <a href={data.pricing_urls[name as Provider]} target="_blank" rel="noreferrer" className="underline">apri il listino ufficiale</a>}</p>
+              {data && <a href={data.pricing_urls[name as Provider]} target="_blank" rel="noreferrer" className="underline">{tl("apri il listino ufficiale")}</a>}</p>
           ))}
         </div>
       )}
 
       {proposals.length > 0 && (
         <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-700"><Sparkles className="h-4 w-4 text-amber-500" /> Variazioni di prezzo rilevate sui listini ufficiali</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-700"><Sparkles className="h-4 w-4 text-amber-500" /> {tl("Variazioni di prezzo rilevate sui listini ufficiali")}</h2>
           <div className="space-y-2">
             {proposals.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs">
                 <span className="min-w-[10rem] font-bold text-slate-700">{m.display_name}</span>
                 <span className="text-slate-500">attuale {usd(m.input_usd)} / {usd(m.output_usd)}</span>
-                <span className="font-bold text-amber-700">→ nuovo {usd(m.proposed_input_usd)} / {usd(m.proposed_output_usd)}</span>
+                <span className="font-bold text-amber-700">{tl("→ nuovo")} {usd(m.proposed_input_usd)} / {usd(m.proposed_output_usd)}</span>
                 <span className="ml-auto flex gap-2">
-                  <Button size="sm" onClick={() => act.mutate({ id: m.id, kind: 'apply' })} disabled={act.isPending}><Check className="mr-1 h-3.5 w-3.5" /> Applica</Button>
-                  <Button size="sm" variant="outline" onClick={() => act.mutate({ id: m.id, kind: 'dismiss' })} disabled={act.isPending}>Ignora</Button>
+                  <Button size="sm" onClick={() => act.mutate({ id: m.id, kind: 'apply' })} disabled={act.isPending}><Check className="mr-1 h-3.5 w-3.5" /> {tl("Applica")}</Button>
+                  <Button size="sm" variant="outline" onClick={() => act.mutate({ id: m.id, kind: 'dismiss' })} disabled={act.isPending}>{tl("Ignora")}</Button>
                 </span>
               </div>
             ))}
@@ -214,8 +213,8 @@ export default function AdminModelsPage() {
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-black text-slate-700">Migliori per qualità in rapporto al costo</h2>
-        <p className="mb-3 text-xs text-slate-500">Punteggio di qualità diviso il costo per 1M di token (mix 3 token in ingresso : 1 in uscita). Barra più lunga = più qualità per ogni dollaro. Conta solo i modelli con un punteggio di qualità.</p>
+        <h2 className="text-sm font-black text-slate-700">{tl("Migliori per qualità in rapporto al costo")}</h2>
+        <p className="mb-3 text-xs text-slate-500">{tl("Punteggio di qualità diviso il costo per 1M di token (mix 3 token in ingresso : 1 in uscita). Barra più lunga = più qualità per ogni dollaro. Conta solo i modelli con un punteggio di qualità.")}</p>
         {ranking.length ? (
           <div className="space-y-1.5">
             {ranking.map((m, index) => (
@@ -227,32 +226,32 @@ export default function AdminModelsPage() {
               </div>
             ))}
           </div>
-        ) : <p className="py-6 text-center text-xs text-slate-400">Inserisci un punteggio di qualità nella tabella (matita) per vedere la classifica.</p>}
+        ) : <p className="py-6 text-center text-xs text-slate-400">{tl("Inserisci un punteggio di qualità nella tabella (matita) per vedere la classifica.")}</p>}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3 text-xs">
           {(['all', ...Object.keys(PROVIDERS)] as Array<Provider | 'all'>).map((p) => (
             <button key={p} onClick={() => setProvider(p)} className={`rounded-full px-3 py-1.5 font-bold ${provider === p ? 'bg-[#1a1a2e] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              {p === 'all' ? 'Tutti' : PROVIDERS[p].label}
+              {p === 'all' ? tl("Tutti") : PROVIDERS[p].label}
             </button>
           ))}
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          {([['text', 'Testo'], ['image', 'Immagini'], ['voice', 'Voce']] as const).map(([k, label]) => (
+          {([['text', 'Testo'], ['image', tl("Immagini")], ['voice', tl("Voce")]] as const).map(([k, label]) => (
             <button key={k} onClick={() => setKind(k)} className={`rounded-full px-3 py-1.5 font-bold ${kind === k ? 'bg-[#e85c8d] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
           ))}
-          <label className="ml-auto flex items-center gap-1.5 text-slate-500">Ordina per
+          <label className="ml-auto flex items-center gap-1.5 text-slate-500">{tl("Ordina per")}
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg border border-slate-200 bg-white px-2 py-1">
-              <option value="value">Qualità / costo</option><option value="quality">Qualità</option><option value="cost">Più economici</option><option value="name">Nome</option>
+              <option value="value">{tl("Qualità / costo")}</option><option value="quality">{tl("Qualità")}</option><option value="cost">{tl("Più economici")}</option><option value="name">{tl("Nome")}</option>
             </select>
           </label>
-          <label className="flex items-center gap-1.5 text-slate-500"><input type="checkbox" checked={showDeprecated} onChange={(e) => setShowDeprecated(e.target.checked)} /> Mostra dismessi</label>
+          <label className="flex items-center gap-1.5 text-slate-500"><input type="checkbox" checked={showDeprecated} onChange={(e) => setShowDeprecated(e.target.checked)} /> {tl("Mostra dismessi")}</label>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[56rem] text-left text-xs">
             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
-              <tr><th className="px-3 py-2">Modello</th><th className="px-3 py-2 text-right">Input $/1M</th><th className="px-3 py-2 text-right">Output $/1M</th><th className="px-3 py-2 text-right">Costo mix</th>
-                <th className="px-3 py-2 text-right">Qualità</th><th className="px-3 py-2 text-right">Qualità/$</th><th className="px-3 py-2">Stato</th><th className="px-3 py-2">Prezzo verificato</th><th className="px-3 py-2" /></tr>
+              <tr><th className="px-3 py-2">{tl("Modello")}</th><th className="px-3 py-2 text-right">Input $/1M</th><th className="px-3 py-2 text-right">Output $/1M</th><th className="px-3 py-2 text-right">{tl("Costo mix")}</th>
+                <th className="px-3 py-2 text-right">{tl("Qualità")}</th><th className="px-3 py-2 text-right">{tl("Qualità/$")}</th><th className="px-3 py-2">{tl("Stato")}</th><th className="px-3 py-2">{tl("Prezzo verificato")}</th><th className="px-3 py-2" /></tr>
             </thead>
             <tbody>
               {query.isLoading && <tr><td colSpan={9} className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></td></tr>}
@@ -266,8 +265,8 @@ export default function AdminModelsPage() {
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROVIDERS[m.provider].color }} />
                           <div className="min-w-0">
                             <p className="font-bold text-slate-800">{m.display_name}
-                              {m.is_new && <button onClick={() => act.mutate({ id: m.id, kind: 'ack' })} title="Segna come visto" className="ml-2 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black uppercase text-pink-700">Nuovo</button>}
-                              {m.seen_in_api === false && m.status === 'active' && <span title="Il provider non lo restituisce più: potrebbe essere stato ritirato" className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase text-amber-700">Non in API</span>}
+                              {m.is_new && <button onClick={() => act.mutate({ id: m.id, kind: 'ack' })} title={tl("Segna come visto")} className="ml-2 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black uppercase text-pink-700">{tl("Nuovo")}</button>}
+                              {m.seen_in_api === false && m.status === 'active' && <span title={tl("Il provider non lo restituisce più: potrebbe essere stato ritirato")} className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase text-amber-700">{tl("Non in API")}</span>}
                             </p>
                             <p className="truncate font-mono text-[10px] text-slate-400">{m.model_id}</p>
                           </div>
@@ -284,8 +283,8 @@ export default function AdminModelsPage() {
                             {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                           <td />
                           <td className="whitespace-nowrap px-2 text-right">
-                            <button onClick={() => commit(m)} disabled={save.isPending} className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50" aria-label="Salva"><Check className="h-4 w-4" /></button>
-                            <button onClick={() => { setEditing(null); setDraft(null) }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Annulla"><X className="h-4 w-4" /></button>
+                            <button onClick={() => commit(m)} disabled={save.isPending} className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50" aria-label={tl("Salva")}><Check className="h-4 w-4" /></button>
+                            <button onClick={() => { setEditing(null); setDraft(null) }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label={tl("Annulla")}><X className="h-4 w-4" /></button>
                           </td>
                         </>
                       ) : (
@@ -305,32 +304,30 @@ export default function AdminModelsPage() {
                           <td className="px-3 text-slate-400">{dateLabel(m.price_checked_at)}</td>
                           <td className="whitespace-nowrap px-2 text-right">
                             {m.kind === 'text' && (
-                              <label className="mr-2 inline-flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-slate-400" title="Mostra questo modello nei selettori di chat di docenti e studenti">
-                                <input type="checkbox" checked={m.offered} onChange={(e) => save.mutate({ id: m.id, data: { offered: e.target.checked } })} /> Selettori
+                              <label className="mr-2 inline-flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-slate-400" title={tl("Mostra questo modello nei selettori di chat di docenti e studenti")}>
+                                <input type="checkbox" checked={m.offered} onChange={(e) => save.mutate({ id: m.id, data: { offered: e.target.checked } })} /> {tl("Selettori")}
                               </label>
                             )}
-                            <button onClick={() => startEdit(m)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Modifica"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => startEdit(m)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Modifica")}><Pencil className="h-3.5 w-3.5" /></button>
                           </td>
                         </>
                       )}
                     </tr>
                     {m.status === 'available' && m.input_usd === null && (
                       <tr className="bg-sky-50/50"><td colSpan={9} className="px-3 py-1.5 text-[11px] text-sky-800">
-                        Nuovo modello rilevato dal provider senza prezzo: inserisci il listino (matita) per attivarlo nei calcoli
-                        {data && <> oppure consulta <a href={data.pricing_urls[m.provider]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 underline">il listino <ExternalLink className="h-3 w-3" /></a></>}.
+                        {tl("Nuovo modello rilevato dal provider senza prezzo: inserisci il listino (matita) per attivarlo nei calcoli")}
+                        {data && <> {tl("oppure consulta")} <a href={data.pricing_urls[m.provider]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 underline">{tl("il listino")} <ExternalLink className="h-3 w-3" /></a></>}.
                       </td></tr>
                     )}
                   </Fragment>
                 )
               })}
-              {!query.isLoading && models.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-slate-400">Nessun modello.</td></tr>}
+              {!query.isLoading && models.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-slate-400">{tl("Nessun modello.")}</td></tr>}
             </tbody>
           </table>
         </div>
         <p className="border-t border-slate-100 px-4 py-3 text-[11px] leading-5 text-slate-400">
-          Prezzi DeepSeek: tariffa di picco (nelle ore fuori picco costa la metà), così i budget non vengono sottostimati.
-          La colonna «Qualità» è un punteggio 0–100 da fonti esterne (es. Artificial Analysis Intelligence Index): è indicativo e modificabile, passa il mouse per vedere la fonte.
-          Il controllo legge i listini ufficiali ({data && (Object.keys(PROVIDERS) as Provider[]).map((p, i) => <Fragment key={p}>{i > 0 && ', '}<a href={data.pricing_urls[p]} target="_blank" rel="noreferrer" className="underline">{PROVIDERS[p].label}</a></Fragment>)}).
+          {tl("Prezzi DeepSeek: tariffa di picco (nelle ore fuori picco costa la metà), così i budget non vengono sottostimati. La colonna «Qualità» è un punteggio 0–100 da fonti esterne (es. Artificial Analysis Intelligence Index): è indicativo e modificabile, passa il mouse per vedere la fonte. Il controllo legge i listini ufficiali (")}{data && (Object.keys(PROVIDERS) as Provider[]).map((p, i) => <Fragment key={p}>{i > 0 && ', '}<a href={data.pricing_urls[p]} target="_blank" rel="noreferrer" className="underline">{PROVIDERS[p].label}</a></Fragment>)}).
         </p>
       </section>
     </div>

@@ -43,6 +43,7 @@ import { PageFrame } from '@/components/ui/PageFrame'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
+import { tl } from '@/i18n/tl'
 
 interface SessionInfo {
   session: {
@@ -162,7 +163,7 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     },
     models3d: {
       label: '3D Lab',
-      description: 'Modella oggetti 3D e guarda quelli condivisi dal docente',
+      description: tl("Modella oggetti 3D e guarda quelli condivisi dal docente"),
       icon: Box,
       colorClass: 'text-violet-800',
       bgClass: 'bg-violet-100',
@@ -170,8 +171,8 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       shadowClass: 'shadow-violet-100/40',
     },
     models3d_ai: {
-      label: 'AI 3D',
-      description: 'Genera modelli 3D da un testo o da un’immagine',
+      label: tl("AI 3D"),
+      description: tl("Genera modelli 3D da un testo o da un’immagine"),
       icon: MushroomIcon,
       colorClass: 'text-fuchsia-800',
       bgClass: 'bg-fuchsia-100',
@@ -180,7 +181,7 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     },
     files: {
       label: 'Files',
-      description: 'Materiali e cartelle condivisi dal docente',
+      description: tl("Materiali e cartelle condivisi dal docente"),
       icon: FolderOpen,
       colorClass: 'text-blue-800',
       bgClass: 'bg-blue-100',
@@ -189,7 +190,7 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     },
     boards: {
       label: 'Board',
-      description: 'Organizza task e idee con la classe',
+      description: tl("Organizza task e idee con la classe"),
       icon: KanbanSquare,
       colorClass: 'text-sky-800',
       bgClass: 'bg-sky-100',
@@ -903,17 +904,17 @@ function StudentMobileShell({
   const moduleConfig = getModuleConfig(t)
   const topNav = [
     { key: null as string | null, label: 'Home', detail: sessionInfo.session.title, icon: Home },
-    { key: 'chatbot', label: 'Tutor AI', detail: 'Il tuo chatbot personale', icon: AcademicAiIcon },
-    { key: 'live', label: 'Sessione live', detail: 'Attività in tempo reale', icon: Radio },
-    { key: 'classe', label: 'Classe', detail: 'Chat e videocall', icon: Video },
-    { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : 'Tutto in ordine', icon: ClipboardList },
-    { key: 'documents', label: t('navbar.nav_documents'), detail: 'Materiali in sola lettura', icon: FileText },
-    { key: 'files', label: t('navbar.nav_files'), detail: 'Materiali condivisi dal docente', icon: FolderOpen },
-    { key: 'classification', label: 'ML Lab', detail: 'Allena e prova modelli', icon: Brain },
-    { key: 'coding', label: 'Vibe Lab', detail: 'Crea app con l’AI', icon: Code2 },
-    { key: 'boards', label: 'Board', detail: 'Task e idee', icon: KanbanSquare },
-    { key: 'models3d', label: 'Modelli 3D', detail: 'Guarda e scarica STL', icon: Box },
-    { key: 'models3d_ai', label: 'AI 3D', detail: 'Genera modelli con l’AI', icon: MushroomIcon },
+    { key: 'chatbot', label: tl("Tutor AI"), detail: tl("Il tuo chatbot personale"), icon: AcademicAiIcon },
+    { key: 'live', label: tl("Sessione live"), detail: tl("Attività in tempo reale"), icon: Radio },
+    { key: 'classe', label: tl("Classe"), detail: tl("Chat e videocall"), icon: Video },
+    { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : tl("Tutto in ordine"), icon: ClipboardList },
+    { key: 'documents', label: t('navbar.nav_documents'), detail: tl("Materiali in sola lettura"), icon: FileText },
+    { key: 'files', label: t('navbar.nav_files'), detail: tl("Materiali condivisi dal docente"), icon: FolderOpen },
+    { key: 'classification', label: 'ML Lab', detail: tl("Allena e prova modelli"), icon: Brain },
+    { key: 'coding', label: 'Vibe Lab', detail: tl("Crea app con l’AI"), icon: Code2 },
+    { key: 'boards', label: 'Board', detail: tl("Task e idee"), icon: KanbanSquare },
+    { key: 'models3d', label: tl("Modelli 3D"), detail: tl("Guarda e scarica STL"), icon: Box },
+    { key: 'models3d_ai', label: tl("AI 3D"), detail: tl("Genera modelli con l’AI"), icon: MushroomIcon },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -976,7 +977,7 @@ function StudentMobileShell({
               <Menu className="h-6 w-6" />
             </button>
             <div className="hidden min-w-0 flex-1 sm:block">
-              <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">Area studente</p>
+              <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">{tl("Area studente")}</p>
               <h1 className="truncate text-base font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
             </div>
             <button
@@ -996,7 +997,7 @@ function StudentMobileShell({
               onClick={() => setClassChatOpen(true)}
               className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-sky-800 active:scale-95"
               title={sessionInfo.student.nickname}
-              aria-label={`Apri chat di classe · ${sessionInfo.student.nickname}`}
+              aria-label={tl("Apri chat di classe · {0}", sessionInfo.student.nickname)}
             >
               <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-sky-700" strokeWidth={1.8} />
               <span className="relative -translate-y-px">{sessionInfo.student.nickname.slice(0, 2).toUpperCase()}</span>
@@ -1024,11 +1025,11 @@ function StudentMobileShell({
                   <div className="brand-wordmark text-lg">Golinelli<span className="brand-wordmark-ai">.ai</span></div>
                   <p className="truncate text-xs font-semibold text-slate-500">{sessionInfo.student.nickname}</p>
                 </div>
-                <button onClick={() => setMenuOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700" aria-label="Chiudi menu">
+                <button onClick={() => setMenuOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700" aria-label={tl("Chiudi menu")}>
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <nav className="flex-1 space-y-2 overflow-y-auto" aria-label="Navigazione studente">
+              <nav className="flex-1 space-y-2 overflow-y-auto" aria-label={tl("Navigazione studente")}>
                 {topNav.map((item) => {
                   const Icon = item.icon
                   const isActive = activeModule === item.key || (item.key === null && activeModule === null)
@@ -1085,12 +1086,12 @@ function StudentMobileShell({
                   <div className="absolute -right-14 -top-16 h-44 w-44 rounded-full bg-sky-400/25 blur-2xl" />
                   <div className="relative">
                     <div className="mb-8 flex items-center gap-2 text-xs font-bold text-emerald-300">
-                      <Wifi className="h-4 w-4" /> Sessione connessa
+                      <Wifi className="h-4 w-4" /> {tl("Sessione connessa")}
                     </div>
-                    <p className="text-sm font-semibold text-white/60">Ciao, {sessionInfo.student.nickname}</p>
-                    <h2 className="mt-1 text-3xl font-black leading-tight tracking-tight">Cosa facciamo<br />oggi?</h2>
+                    <p className="text-sm font-semibold text-white/60">{tl("Ciao,")} {sessionInfo.student.nickname}</p>
+                    <h2 className="mt-1 text-3xl font-black leading-tight tracking-tight">{tl("Cosa facciamo")}<br />{tl("oggi?")}</h2>
                     <button onClick={() => handleNavigate('chatbot')} className="mt-6 flex min-h-[58px] w-full items-center justify-between rounded-[20px] bg-white px-5 text-left text-slate-950 shadow-lg active:scale-[0.98]">
-                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-extrabold">Apri il Tutor AI</span></span>
+                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-extrabold">{tl("Apri il Tutor AI")}</span></span>
                       <ChevronRight className="h-5 w-5" />
                     </button>
                   </div>
@@ -1125,9 +1126,9 @@ function StudentMobileShell({
               <div className="mx-auto flex h-full max-w-screen-sm items-center justify-center">
                 <div className="w-full rounded-[30px] border border-white/80 bg-white/85 p-7 text-center shadow-xl backdrop-blur-xl">
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-rose-50 text-rose-600"><Radio className="h-9 w-9" /></div>
-                  <h2 className="mt-6 text-2xl font-black text-slate-950">Sessione live</h2>
-                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">Quando il docente avvia un'attività, comparirà automaticamente qui a schermo intero.</p>
-                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" /> In attesa del docente</div>
+                  <h2 className="mt-6 text-2xl font-black text-slate-950">{tl("Sessione live")}</h2>
+                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">{tl("Quando il docente avvia un'attività, comparirà automaticamente qui a schermo intero.")}</p>
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" /> {tl("In attesa del docente")}</div>
                 </div>
               </div>
             ) : (
@@ -1243,7 +1244,7 @@ function HomeView({
   // Quick start AI profiles
   const quickStartProfiles = [
     { key: 'tutor', label: 'Tutor', icon: '📚' },
-    { key: 'quiz', label: 'Quiz', icon: '📝' },
+    { key: 'quiz', label: tl("Quiz"), icon: '📝' },
     { key: 'math_coach', label: 'Math', icon: '🔢' },
   ]
 

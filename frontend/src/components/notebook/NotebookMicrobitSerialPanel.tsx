@@ -25,6 +25,7 @@ import {
   type MicrobitWebUSBConnection,
 } from '@microbit/microbit-connection'
 import { MicropythonFsHex, microbitBoardId } from '@microbit/microbit-fs'
+import { tl } from '@/i18n/tl'
 
 interface SerialLine {
   id: string
@@ -84,11 +85,11 @@ async function loadFirmware() {
   if (firmwareCache) return firmwareCache
   const [v1, v2] = await Promise.all([
     fetch(FIRMWARE_V1_URL).then((r) => {
-      if (!r.ok) throw new Error('Firmware micro:bit V1 non disponibile.')
+      if (!r.ok) throw new Error(tl("Firmware micro:bit V1 non disponibile."))
       return r.text()
     }),
     fetch(FIRMWARE_V2_URL).then((r) => {
-      if (!r.ok) throw new Error('Firmware micro:bit V2 non disponibile.')
+      if (!r.ok) throw new Error(tl("Firmware micro:bit V2 non disponibile."))
       return r.text()
     }),
   ])
@@ -197,9 +198,9 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
     <div className="flex min-h-0 flex-[1.4] flex-col overflow-hidden bg-white">
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2">
         <Activity className={`h-3.5 w-3.5 ${live ? 'text-emerald-500' : 'text-slate-300'}`} />
-        <span className="text-xs font-bold text-slate-700">Sensori di bordo</span>
+        <span className="text-xs font-bold text-slate-700">{tl("Sensori di bordo")}</span>
         <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-          {live ? 'realtime' : 'in attesa'}
+          {live ? 'realtime' : tl("in attesa")}
         </span>
       </div>
 
@@ -208,42 +209,41 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
           <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
             <Zap className="h-6 w-6 text-slate-300" />
             <p className="mt-3 max-w-xs text-xs leading-5 text-slate-500">
-              Connetti la micro:bit e carica lo script dei sensori sulla scheda. Le righe <span className="font-mono">temp=…</span> stampate dalla micro:bit
-              appariranno qui come valori in tempo reale.
+              {tl("Connetti la micro:bit e carica lo script dei sensori sulla scheda. Le righe")} <span className="font-mono">temp=…</span> {tl("stampate dalla micro:bit appariranno qui come valori in tempo reale.")}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
             {has(values, 'temp') && (
-              <SensorCard icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label="Temperatura">
+              <SensorCard icon={<Thermometer className="h-3.5 w-3.5 text-orange-500" />} label={tl("Temperatura")}>
                 <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{temp}<span className="ml-0.5 text-sm font-semibold text-slate-400">°C</span></p>
                 <SensorBar ratio={(temp - 0) / 40} color="#f97316" />
               </SensorCard>
             )}
 
             {has(values, 'light', 'luce') && (
-              <SensorCard icon={<Sun className="h-3.5 w-3.5 text-amber-500" />} label="Luce">
+              <SensorCard icon={<Sun className="h-3.5 w-3.5 text-amber-500" />} label={tl("Luce")}>
                 <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{light}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
                 <SensorBar ratio={light / 255} color="#f59e0b" />
               </SensorCard>
             )}
 
             {has(values, 'compass') && (
-              <SensorCard icon={<Compass className="h-3.5 w-3.5 text-sky-500" />} label="Bussola">
+              <SensorCard icon={<Compass className="h-3.5 w-3.5 text-sky-500" />} label={tl("Bussola")}>
                 <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{compass}<span className="ml-0.5 text-sm font-semibold text-slate-400">°</span></p>
                 <SensorBar ratio={compass / 360} color="#0ea5e9" />
               </SensorCard>
             )}
 
             {has(values, 'sound') && (
-              <SensorCard icon={<Mic className="h-3.5 w-3.5 text-rose-500" />} label="Microfono">
+              <SensorCard icon={<Mic className="h-3.5 w-3.5 text-rose-500" />} label={tl("Microfono")}>
                 <p className="mt-1 font-mono text-2xl font-bold text-slate-900">{sound}<span className="ml-0.5 text-sm font-semibold text-slate-400">/255</span></p>
                 <SensorBar ratio={sound / 255} color="#f43f5e" />
               </SensorCard>
             )}
 
             {has(values, 'accx', 'accy', 'accz', 'x', 'y', 'z') && (
-              <SensorCard icon={<Move3d className="h-3.5 w-3.5 text-violet-500" />} label="Accelerometro">
+              <SensorCard icon={<Move3d className="h-3.5 w-3.5 text-violet-500" />} label={tl("Accelerometro")}>
                 <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center">
                   {([['X', accx], ['Y', accy], ['Z', accz]] as const).map(([axis, value]) => (
                     <div key={axis} className="rounded-lg bg-slate-50 px-1 py-1.5">
@@ -256,7 +256,7 @@ function SensorDashboard({ values, live }: { values: Record<string, string>; liv
             )}
 
             {has(values, 'a', 'b') && (
-              <SensorCard icon={<CircleDot className="h-3.5 w-3.5 text-emerald-500" />} label="Pulsanti">
+              <SensorCard icon={<CircleDot className="h-3.5 w-3.5 text-emerald-500" />} label={tl("Pulsanti")}>
                 <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center">
                   {([['A', buttonA], ['B', buttonB]] as const).map(([name, pressed]) => (
                     <div key={name} className={`rounded-lg px-1 py-1.5 text-sm font-bold transition ${pressed ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
@@ -368,9 +368,9 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
     try {
       await connection.connect()
       const version = connection.getBoardVersion()
-      appendLine(`micro:bit collegata via WebUSB${version ? ` (${version})` : ''}`, 'system')
+      appendLine(tl("micro:bit collegata via WebUSB{0}", version ? ` (${version})` : ''), 'system')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connessione WebUSB non riuscita. Controlla il cavo dati USB.')
+      setError(err instanceof Error ? err.message : tl("Connessione WebUSB non riuscita. Controlla il cavo dati USB."))
     }
   }, [appendLine, connected])
 
@@ -380,20 +380,20 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
     const connection = connectionRef.current
     if (!connection) return
     if (!usbSupported) {
-      setError('WebUSB non è disponibile in questo browser. Usa Chrome o Edge desktop su HTTPS o localhost.')
+      setError(tl("WebUSB non è disponibile in questo browser. Usa Chrome o Edge desktop su HTTPS o localhost."))
       return
     }
 
     setFlashing(true)
     setFlashProgress(0)
     setError(null)
-    setMessage('Preparo il firmware MicroPython con il tuo codice…')
+    setMessage(tl("Preparo il firmware MicroPython con il tuo codice…"))
     try {
       const code = source.trim() ? source : MICROBIT_SENSOR_SCRIPT
       if (!source.trim()) onReplaceSource?.(code)
 
       const universalHex = await buildHexWithCode(code)
-      setMessage('Carico il firmware sulla micro:bit via WebUSB…')
+      setMessage(tl("Carico il firmware sulla micro:bit via WebUSB…"))
 
       await connection.flash(createUniversalHexFlashDataSource(universalHex), {
         partial: true,
@@ -403,11 +403,11 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
       })
 
       setFlashProgress(null)
-      setMessage('Firmware caricato. La micro:bit esegue il codice: i sensori compaiono nel cruscotto e nel monitor seriale.')
-      appendLine('firmware MicroPython caricato sulla scheda', 'system')
+      setMessage(tl("Firmware caricato. La micro:bit esegue il codice: i sensori compaiono nel cruscotto e nel monitor seriale."))
+      appendLine(tl("firmware MicroPython caricato sulla scheda"), 'system')
     } catch (err) {
       setFlashProgress(null)
-      setError(err instanceof Error ? err.message : 'Caricamento del firmware non riuscito.')
+      setError(err instanceof Error ? err.message : tl("Caricamento del firmware non riuscito."))
     } finally {
       setFlashing(false)
     }
@@ -418,15 +418,15 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
     if (!connection || !connected) return
     try {
       await connection.serialWrite('\r\x03') // Ctrl-C: interrompe il programma ed entra nella REPL
-      appendLine('programma interrotto (Ctrl-C)', 'system')
+      appendLine(tl("programma interrotto (Ctrl-C)"), 'system')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Impossibile interrompere il programma.')
+      setError(err instanceof Error ? err.message : tl("Impossibile interrompere il programma."))
     }
   }, [appendLine, connected])
 
   const loadSensorScript = useCallback(() => {
     onReplaceSource?.(MICROBIT_SENSOR_SCRIPT)
-    setMessage('Script dei sensori caricato nell\'editor. Premi "Carica sulla scheda" per flashare la micro:bit.')
+    setMessage(tl("Script dei sensori caricato nell'editor. Premi \"Carica sulla scheda\" per flashare la micro:bit."))
   }, [onReplaceSource])
 
   const sendCommand = useCallback(async () => {
@@ -445,7 +445,7 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
     error ? 'bg-[var(--logo-pink)]' :
     'bg-slate-300'
   const statusLabel =
-    dataLive ? 'live' : connected ? 'connessa' : connecting ? 'connessione' : flashing ? 'flashing' : error ? 'errore' : 'offline'
+    dataLive ? 'live' : connected ? 'connessa' : connecting ? 'connessione' : flashing ? 'flashing' : error ? tl("errore") : 'offline'
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-0 bg-white shadow-none">
@@ -468,7 +468,7 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
             disabled={connecting || flashing || status === ConnectionStatus.NOT_SUPPORTED}
           >
             {connecting ? <Loader2 className="animate-spin" /> : connected ? <Unplug /> : <Cable />}
-            {connected ? 'Scollega' : 'Connetti'}
+            {connected ? tl("Scollega") : tl("Connetti")}
           </Button>
           <Button
             density="compact"
@@ -479,7 +479,7 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
             disabled={flashing || connecting}
           >
             {flashing ? <Loader2 className="animate-spin" /> : <Upload />}
-            {flashing ? (flashProgress == null ? 'Carico…' : `${flashProgress}%`) : 'Carica'}
+            {flashing ? (flashProgress == null ? tl("Carico…") : `${flashProgress}%`) : tl("Carica")}
           </Button>
           <Button
             density="compact"
@@ -493,7 +493,7 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
             Stop
           </Button>
           <Button density="compact" tone="neutral" surface="ghost" className="h-8 px-2 text-[11px]" onClick={loadSensorScript}>
-            Sensori
+            {tl("Sensori")}
           </Button>
         </div>
       </div>
@@ -506,7 +506,7 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
 
       {status === ConnectionStatus.NOT_SUPPORTED && (
         <p className="shrink-0 border-b border-[var(--border-subtle)] bg-white px-3 py-1.5 text-[11px] leading-4 text-amber-600">
-          WebUSB non è supportato qui. Il flash della micro:bit funziona in Chrome/Edge desktop su HTTPS o localhost.
+          {tl("WebUSB non è supportato qui. Il flash della micro:bit funziona in Chrome/Edge desktop su HTTPS o localhost.")}
         </p>
       )}
       {error && <p className="shrink-0 border-b border-[var(--border-subtle)] bg-white px-3 py-1.5 text-[11px] leading-4 text-[var(--logo-pink)]">{error}</p>}
@@ -519,17 +519,17 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
       <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200 bg-slate-950">
         <div className="flex shrink-0 items-center gap-2 border-b border-slate-800 px-3 py-2">
           <Terminal className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-xs font-semibold text-slate-400">Monitor seriale</span>
+          <span className="text-xs font-semibold text-slate-400">{tl("Monitor seriale")}</span>
           <div className="flex-1" />
           {lines.length > 0 && (
             <button onClick={() => setLines([])} className="text-[10px] font-semibold text-slate-500 hover:text-slate-300">
-              Pulisci
+              {tl("Pulisci")}
             </button>
           )}
         </div>
         <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-xs">
           {lines.length === 0 ? (
-            <p className="text-slate-600">Nessun dato ricevuto.</p>
+            <p className="text-slate-600">{tl("Nessun dato ricevuto.")}</p>
           ) : (
             lines.map((line) => (
               <div key={line.id} className="flex gap-2 py-0.5">
@@ -551,14 +551,14 @@ export default function NotebookMicrobitSerialPanel({ source = '', onReplaceSour
               if (event.key === 'Enter') void sendCommand()
             }}
             disabled={!connected}
-            placeholder="Invia un comando alla micro:bit (REPL)"
+            placeholder={tl("Invia un comando alla micro:bit (REPL)")}
             className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 disabled:opacity-50"
           />
           <button
             onClick={() => void sendCommand()}
             disabled={!connected || !command.trim()}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-40"
-            title="Invia comando"
+            title={tl("Invia comando")}
           >
             <Send className="h-3.5 w-3.5" />
           </button>

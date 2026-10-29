@@ -2,6 +2,7 @@ import { CONFIDENCE_THRESHOLD, ENGINE, headToJSON, thin, trainHead, type Trainin
 import { augmentLandmarks, modeOfEngine, ENGINE_BY_MODE, type Mode } from './mlFeatures'
 import { mlLabApi } from './api'
 import { deserializeClasses } from '@/components/mllab/types'
+import { tl } from '@/i18n/tl'
 
 /**
  * Projects saved before models were stored (or never reopened since) have their examples but no trained model.
@@ -12,10 +13,10 @@ export async function prepareModel(projectId: string): Promise<void> {
   const data = full.data as Record<string, any>
   const mode: Mode = data.mode ?? modeOfEngine(full.engine)
   if (mode === 'image' && data.engine !== ENGINE) {
-    throw new Error('Questo progetto è stato creato con una versione precedente: aprilo una volta nel Lab ML per aggiornarlo.')
+    throw new Error(tl("Questo progetto è stato creato con una versione precedente: aprilo una volta nel Lab ML per aggiornarlo."))
   }
   const ready = deserializeClasses(data).filter((cls) => cls.samples.length >= 2)
-  if (ready.length < 2) throw new Error('Servono almeno due classi con almeno 2 esempi ciascuna: aprilo nel Lab ML e aggiungi esempi.')
+  if (ready.length < 2) throw new Error(tl("Servono almeno due classi con almeno 2 esempi ciascuna: aprilo nel Lab ML e aggiungi esempi."))
 
   const samples: TrainingSample[] = []
   let group = 0

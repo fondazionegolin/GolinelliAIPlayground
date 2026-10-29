@@ -1,6 +1,7 @@
 import { AlertCircle } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
 import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+import { tl } from '@/i18n/tl'
 
 interface P5File {
   name: string
@@ -173,7 +174,7 @@ export default function NotebookP5Preview({
         <div>
           <p className="text-sm font-semibold text-slate-700">Preview p5.js</p>
           <p className="text-[11px] text-slate-400">
-            {livePreview ? 'Aggiornamento live attivo' : 'Aggiornamento manuale'}
+            {livePreview ? tl("Aggiornamento live attivo") : tl("Aggiornamento manuale")}
             {activeLibNames.length > 0 && (
               <span className="ml-2 text-indigo-500">· {activeLibNames.join(', ')}</span>
             )}
@@ -183,11 +184,11 @@ export default function NotebookP5Preview({
       </div>
       <div className="relative h-[calc(100%-49px)]">
         {mlLoading ? (
-          <div className="flex h-full w-full items-center justify-center bg-white text-sm text-slate-500">Carico i modelli ML…</div>
+          <div className="flex h-full w-full items-center justify-center bg-white text-sm text-slate-500">{tl("Carico i modelli ML…")}</div>
         ) : (
           <iframe
             key={`${previewNonce}:${mlModels.map((model) => model.id).join(',')}`}
-            title="Anteprima p5.js"
+            title={tl("Anteprima p5.js")}
             srcDoc={buildPreviewDoc(files, activeLibraries, mlModels)}
             sandbox={needsCamera ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
             allow={needsCamera ? 'camera; microphone' : undefined}
@@ -200,14 +201,14 @@ export default function NotebookP5Preview({
         )}
         {!mlLoading && mlMissing > 0 && (
           <div className="absolute inset-x-4 top-3 z-10 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 shadow ring-1 ring-amber-200">
-            {mlMissing === 1 ? 'Un modello collegato non è disponibile' : `${mlMissing} modelli collegati non sono disponibili`}: riaprilo nel Lab ML (potrebbe essere stato eliminato o non ancora addestrato) oppure scollegalo da «Modelli».
+            {mlMissing === 1 ? tl("Un modello collegato non è disponibile") : tl("{0} modelli collegati non sono disponibili", mlMissing)}{tl(": riaprilo nel Lab ML (potrebbe essere stato eliminato o non ancora addestrato) oppure scollegalo da «Modelli».")}
           </div>
         )}
         {runtimeError && (
           <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-500/30 bg-red-950/85 px-4 py-3 text-sm text-red-100 backdrop-blur">
             <div className="mb-1 flex items-center gap-2 text-red-200">
               <AlertCircle className="h-4 w-4" />
-              Errore di runtime nello sketch
+              {tl("Errore di runtime nello sketch")}
             </div>
             <p className="font-mono text-xs leading-relaxed text-red-50">{runtimeError}</p>
           </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, KeyboardEvent } from 'react'
 import { Plus, X } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface Desktop {
   id: string
@@ -89,7 +90,7 @@ export default function DesktopSwitcher({
         <button
           className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors"
           onClick={onCreate}
-          title="Nuovo desktop"
+          title={tl("Nuovo desktop")}
         >
           <Plus className="h-3.5 w-3.5 text-white/40" />
         </button>

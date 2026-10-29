@@ -318,3 +318,42 @@ def test_an_exercise_on_the_wrong_curve_is_sent_back():
     with pytest.raises(ValueError, match="iperbole"):
         dialogue.compile_dialogue(dialogue.Inventory.model_validate(INVENTORY), raw, requested="exercise", topic="iperbole")
     assert dialogue.requested_family([{"role": "user", "content": "esercizi sulle iperboli"}]) == "iperbole"
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("fammi vedere il modello 3D del tetraedro", "solid"),
+    ("adesso fammi lo sviluppo piano, animato", "solid"),
+    ("la piramide ha base quadrata di lato 4", None),
+    ("calcola x al cubo", None),
+    ("mostrami lo svolgimento dell'esercizio", None),
+])
+def test_explicit_solid_requests_are_recognised(text, expected):
+    found = dialogue.requested_action([{"role": "user", "content": text}])
+    assert found == expected if expected else found != "solid"
+
+
+def test_an_announced_solid_must_come_with_its_widget():
+    inventory = dialogue.Inventory.model_validate(INVENTORY)
+    with pytest.raises(ValueError, match="solid"):
+        dialogue.compile_dialogue(inventory, {**DRAFT, "action": "solid"})
+    solid = {"kind": "solid", "title": "Icosaedro", "shape": "icosahedron", "unfold": True}
+    # A topic named for curves does not apply to a solid.
+    _, _, reply = dialogue.compile_dialogue(inventory, {**DRAFT, "action": "solid", "widgets": [solid]}, requested="solid", topic="parabola")
+    assert reply["widgets"][0]["shape"] == "icosahedron"
+
+
+def test_watermarks_are_not_content():
+    raw = copy.deepcopy(INVENTORY)
+    raw["grounding"]["regions"].append({"id": "wm", "label": "Watermark del sito", "text": "© esercizi.it", "box": {"x": 70, "y": 90, "width": 28, "height": 8}, "confidence": "high"})
+    raw["units"].append({"id": "credits", "label": "Crediti", "region_id": "wm", "content": "© esercizi.it"})
+    clean = dialogue.without_noise(dialogue.Inventory.model_validate(raw))
+    assert [r.id for r in clean.grounding.regions] == ["bar1", "bar2"] and [u.id for u in clean.units] == ["measure1", "measure2"]
+
+
+def test_the_students_canvas_notes_reach_the_tutor():
+    text = dialogue.notes_brief([{"id": "n1", "x": 30.4, "y": 120, "text": "L'altezza divide la base a metà"}])
+    assert "L'altezza divide la base a metà" in text and "30%" in text and "120%" in text
+    assert dialogue.notes_brief([]) == ""
+    assert sessions.with_notes({"memory": "m"}, [dialogue.StudentNote(id="n1", x=1, y=2, text="ok")]) == {
+        "memory": "m", "student_notes": [{"id": "n1", "x": 1, "y": 2, "text": "ok"}]}
+    assert sessions.with_notes({"student_notes": [1]}, None) == {"student_notes": [1]}

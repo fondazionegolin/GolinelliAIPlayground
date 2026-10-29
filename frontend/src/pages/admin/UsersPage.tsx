@@ -30,6 +30,7 @@ import {
   Users,
   Zap,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 type Granularity = 'day' | 'week' | 'month'
 
@@ -197,9 +198,9 @@ function formatDateTime(value?: string | null) {
 }
 
 function roleLabel(role?: string) {
-  if (role === 'student') return 'Studente'
+  if (role === 'student') return tl("Studente")
   if (role === 'admin') return 'Admin'
-  return 'Docente'
+  return tl("Docente")
 }
 
 function escapeCsv(value: string | number) {
@@ -342,7 +343,7 @@ export default function CostsPage() {
       'completion_tokens',
       'total_tokens',
       'media_token_chiamata',
-      'costo',
+      tl("costo"),
       'email_utenti_connessi',
     ]
     const body = rows.map((row) => [
@@ -423,8 +424,8 @@ export default function CostsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Analytics & Consumi</h1>
-          <p className="mt-0.5 text-sm text-slate-500">Reportistica per periodo, utenti, studenti, token e picchi.</p>
+          <h1 className="text-2xl font-bold text-slate-900">{tl("Analytics & Consumi")}</h1>
+          <p className="mt-0.5 text-sm text-slate-500">{tl("Reportistica per periodo, utenti, studenti, token e picchi.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -433,7 +434,7 @@ export default function CostsPage() {
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Aggiorna
+            {tl("Aggiorna")}
           </button>
           <button
             type="button"
@@ -451,7 +452,7 @@ export default function CostsPage() {
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
-            {teacherReportDownloading ? 'Download...' : 'Report docenti'}
+            {teacherReportDownloading ? 'Download...' : tl("Report docenti")}
           </button>
           <button
             type="button"
@@ -460,7 +461,7 @@ export default function CostsPage() {
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
-            {ledgerDownloading ? 'Download...' : 'Ledger crediti'}
+            {ledgerDownloading ? 'Download...' : tl("Ledger crediti")}
           </button>
         </div>
       </div>
@@ -469,7 +470,7 @@ export default function CostsPage() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <CalendarDays className="h-4 w-4 text-slate-500" />
-            Filtri report
+            {tl("Filtri report")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -501,7 +502,7 @@ export default function CostsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="analytics-granularity" className="text-xs text-slate-500">Raggruppamento</Label>
+              <Label htmlFor="analytics-granularity" className="text-xs text-slate-500">{tl("Raggruppamento")}</Label>
               <select
                 id="analytics-granularity"
                 value={granularity}
@@ -511,9 +512,9 @@ export default function CostsPage() {
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
-                <option value="day">Giorno</option>
-                <option value="week">Settimana</option>
-                <option value="month">Mese</option>
+                <option value="day">{tl("Giorno")}</option>
+                <option value="week">{tl("Settimana")}</option>
+                <option value="month">{tl("Mese")}</option>
               </select>
             </div>
             <div className="flex items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -524,10 +525,10 @@ export default function CostsPage() {
                 onChange={(e) => setIncludeEmpty(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300"
               />
-              <Label htmlFor="analytics-empty" className="text-sm text-slate-600">Periodi vuoti</Label>
+              <Label htmlFor="analytics-empty" className="text-sm text-slate-600">{tl("Periodi vuoti")}</Label>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="analytics-search" className="text-xs text-slate-500">Cerca nel ledger</Label>
+              <Label htmlFor="analytics-search" className="text-xs text-slate-500">{tl("Cerca nel ledger")}</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
@@ -537,13 +538,13 @@ export default function CostsPage() {
                     setSearch(e.target.value)
                     setLedgerOffset(0)
                   }}
-                  placeholder="nome, studente, classe, modello..."
+                  placeholder={tl("nome, studente, classe, modello...")}
                   className="h-9 pl-9 text-sm"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="analytics-teacher" className="text-xs text-slate-500">Utente</Label>
+              <Label htmlFor="analytics-teacher" className="text-xs text-slate-500">{tl("Utente")}</Label>
               <select
                 id="analytics-teacher"
                 value={teacherId}
@@ -555,7 +556,7 @@ export default function CostsPage() {
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
-                <option value="">Tutti</option>
+                <option value="">{tl("Tutti")}</option>
                 {(teachers?.items || []).map((teacher) => {
                   const name = [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || teacher.email
                   return (
@@ -567,7 +568,7 @@ export default function CostsPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="analytics-class" className="text-xs text-slate-500">Classe</Label>
+              <Label htmlFor="analytics-class" className="text-xs text-slate-500">{tl("Classe")}</Label>
               <select
                 id="analytics-class"
                 value={classId}
@@ -578,7 +579,7 @@ export default function CostsPage() {
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
-                <option value="">Tutte</option>
+                <option value="">{tl("Tutte")}</option>
                 {classOptions.map((item) => (
                   <option key={item.class_id} value={item.class_id}>
                     {item.class_name} ({item.teacher_email})
@@ -587,7 +588,7 @@ export default function CostsPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="analytics-session" className="text-xs text-slate-500">Sessione</Label>
+              <Label htmlFor="analytics-session" className="text-xs text-slate-500">{tl("Sessione")}</Label>
               <select
                 id="analytics-session"
                 value={sessionId}
@@ -597,7 +598,7 @@ export default function CostsPage() {
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
-                <option value="">Tutte</option>
+                <option value="">{tl("Tutte")}</option>
                 {sessionOptions.map((session) => (
                   <option key={session.session_id} value={session.session_id}>
                     {session.title} · {session.class_name}
@@ -607,7 +608,7 @@ export default function CostsPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
-                <Label htmlFor="analytics-role" className="text-xs text-slate-500">Ruolo</Label>
+                <Label htmlFor="analytics-role" className="text-xs text-slate-500">{tl("Ruolo")}</Label>
                 <select
                   id="analytics-role"
                   value={actorRole}
@@ -617,9 +618,9 @@ export default function CostsPage() {
                   }}
                   className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
-                  <option value="">Tutti</option>
-                  <option value="student">Studenti</option>
-                  <option value="teacher">Docenti</option>
+                  <option value="">{tl("Tutti")}</option>
+                  <option value="student">{tl("Studenti")}</option>
+                  <option value="teacher">{tl("Docenti")}</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
@@ -633,7 +634,7 @@ export default function CostsPage() {
                     setProvider(e.target.value)
                     setLedgerOffset(0)
                   }}
-                  placeholder="tutti"
+                  placeholder={tl("tutti")}
                   className="h-9 text-sm"
                 />
                 <datalist id="analytics-provider-options">
@@ -641,7 +642,7 @@ export default function CostsPage() {
                 </datalist>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="analytics-model" className="text-xs text-slate-500">Modello</Label>
+                <Label htmlFor="analytics-model" className="text-xs text-slate-500">{tl("Modello")}</Label>
                 <Input
                   id="analytics-model"
                   list="analytics-model-options"
@@ -650,7 +651,7 @@ export default function CostsPage() {
                     setModel(e.target.value)
                     setLedgerOffset(0)
                   }}
-                  placeholder="tutti"
+                  placeholder={tl("tutti")}
                   className="h-9 text-sm"
                 />
                 <datalist id="analytics-model-options">
@@ -665,16 +666,16 @@ export default function CostsPage() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <MetricTile
           icon={Users}
-          label="Utenti attivi"
+          label={tl("Utenti attivi")}
           value={formatNumber(summary?.active_users_period || 0)}
-          hint={`${formatNumber(summary?.registered_users_scope || 0)} nel perimetro`}
+          hint={tl("{0} nel perimetro", formatNumber(summary?.registered_users_scope || 0))}
           tone="slate"
         />
         <MetricTile
           icon={GraduationCap}
-          label="Studenti connessi"
+          label={tl("Studenti connessi")}
           value={formatNumber(summary?.active_students_period || 0)}
-          hint={`${formatNumber(summary?.students_joined_period || 0)} nuovi nel periodo`}
+          hint={tl("{0} nuovi nel periodo", formatNumber(summary?.students_joined_period || 0))}
           tone="emerald"
         />
         <MetricTile
@@ -686,14 +687,14 @@ export default function CostsPage() {
         />
         <MetricTile
           icon={Zap}
-          label="Chiamate"
+          label={tl("Chiamate")}
           value={formatNumber(summary?.total_api_calls || 0)}
           hint={`${formatNumber(summary?.average_api_calls_per_bucket || 0)} media`}
           tone="sky"
         />
         <MetricTile
           icon={TrendingUp}
-          label="Costo"
+          label={tl("Costo")}
           value={formatCurrency(summary?.total_cost || 0)}
           hint={formatPeriod(report?.filters?.start_date, report?.filters?.end_date)}
           tone="amber"
@@ -703,11 +704,11 @@ export default function CostsPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Costo docenti vs studenti</CardTitle>
+            <CardTitle className="text-sm font-semibold">{tl("Costo docenti vs studenti")}</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             {isLoading ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-400">Caricamento...</div>
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">{tl("Caricamento...")}</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows.map((r) => ({ ...r, teacher_cost: toCredits(r.teacher_cost), student_cost: toCredits(r.student_cost) }))}>
@@ -725,7 +726,7 @@ export default function CostsPage() {
         </Card>
 
         <BreakdownTable
-          title="Docenti / Studenti"
+          title={tl("Docenti / Studenti")}
           items={(report?.role_breakdown || []).map((item) => ({
             key: roleLabel(item.role),
             calls: item.calls,
@@ -740,12 +741,12 @@ export default function CostsPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
               <Activity className="h-4 w-4 text-slate-500" />
-              Andamento periodo
+              {tl("Andamento periodo")}
             </CardTitle>
           </CardHeader>
           <CardContent className="h-72">
             {isLoading ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-400">Caricamento...</div>
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">{tl("Caricamento...")}</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows}>
@@ -767,14 +768,14 @@ export default function CostsPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Picchi e medie</CardTitle>
+            <CardTitle className="text-sm font-semibold">{tl("Picchi e medie")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <PeakRow label="Picco utenti" value={summary?.peak_active_users.value || 0} period={formatPeriod(summary?.peak_active_users.period_start, summary?.peak_active_users.period_end)} />
-            <PeakRow label="Picco studenti" value={summary?.peak_active_students.value || 0} period={formatPeriod(summary?.peak_active_students.period_start, summary?.peak_active_students.period_end)} />
-            <PeakRow label="Picco token" value={summary?.peak_tokens.value || 0} period={formatPeriod(summary?.peak_tokens.period_start, summary?.peak_tokens.period_end)} compact />
-            <PeakRow label="Media token/chiamata" value={summary?.average_tokens_per_call || 0} period="Periodo" compact />
-            <PeakRow label="Costo massimo" value={summary?.peak_cost.value || 0} period={formatPeriod(summary?.peak_cost.period_start, summary?.peak_cost.period_end)} currency />
+            <PeakRow label={tl("Picco utenti")} value={summary?.peak_active_users.value || 0} period={formatPeriod(summary?.peak_active_users.period_start, summary?.peak_active_users.period_end)} />
+            <PeakRow label={tl("Picco studenti")} value={summary?.peak_active_students.value || 0} period={formatPeriod(summary?.peak_active_students.period_start, summary?.peak_active_students.period_end)} />
+            <PeakRow label={tl("Picco token")} value={summary?.peak_tokens.value || 0} period={formatPeriod(summary?.peak_tokens.period_start, summary?.peak_tokens.period_end)} compact />
+            <PeakRow label={tl("Media token/chiamata")} value={summary?.average_tokens_per_call || 0} period={tl("Periodo")} compact />
+            <PeakRow label={tl("Costo massimo")} value={summary?.peak_cost.value || 0} period={formatPeriod(summary?.peak_cost.period_start, summary?.peak_cost.period_end)} currency />
           </CardContent>
         </Card>
       </div>
@@ -783,34 +784,34 @@ export default function CostsPage() {
         <CardHeader className="border-b border-slate-100 pb-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle className="text-sm font-semibold">Ledger cronologico crediti</CardTitle>
+              <CardTitle className="text-sm font-semibold">{tl("Ledger cronologico crediti")}</CardTitle>
               <p className="mt-1 text-xs text-slate-500">
-                {formatNumber(ledger?.total || 0)} transazioni · {formatCurrency(ledger?.summary?.cost || 0)} nel filtro corrente
+                {formatNumber(ledger?.total || 0)} {tl("transazioni ·")} {formatCurrency(ledger?.summary?.cost || 0)} {tl("nel filtro corrente")}
               </p>
             </div>
             <div className="text-xs text-slate-400">
-              {ledgerFetching ? 'Aggiornamento...' : 'Ordine: più recenti prima'}
+              {ledgerFetching ? tl("Aggiornamento...") : tl("Ordine: più recenti prima")}
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {ledgerGroups.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-400">Nessuna transazione nel filtro selezionato</p>
+            <p className="px-4 py-6 text-sm text-slate-400">{tl("Nessuna transazione nel filtro selezionato")}</p>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
-                      <th className="px-4 py-3 font-medium">Utente</th>
-                      <th className="px-3 py-3 font-medium">Ruolo</th>
-                      <th className="px-3 py-3 font-medium">Pool / Docente</th>
-                      <th className="px-3 py-3 font-medium">Classe</th>
-                      <th className="px-3 py-3 text-right font-medium">Chiamate</th>
+                      <th className="px-4 py-3 font-medium">{tl("Utente")}</th>
+                      <th className="px-3 py-3 font-medium">{tl("Ruolo")}</th>
+                      <th className="px-3 py-3 font-medium">{tl("Pool / Docente")}</th>
+                      <th className="px-3 py-3 font-medium">{tl("Classe")}</th>
+                      <th className="px-3 py-3 text-right font-medium">{tl("Chiamate")}</th>
                       <th className="px-3 py-3 text-right font-medium">Token</th>
-                      <th className="px-3 py-3 text-right font-medium">Crediti</th>
-                      <th className="px-4 py-3 text-right font-medium">Costo</th>
-                      <th className="px-4 py-3 text-right font-medium">Ultima</th>
+                      <th className="px-3 py-3 text-right font-medium">{tl("Crediti")}</th>
+                      <th className="px-4 py-3 text-right font-medium">{tl("Costo")}</th>
+                      <th className="px-4 py-3 text-right font-medium">{tl("Ultima")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -828,7 +829,7 @@ export default function CostsPage() {
                                 {isOpen ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
                                 <span className="min-w-0">
                                   <span className="block truncate font-semibold text-slate-800">{group.actorName}</span>
-                                  {group.actorRole === 'student' && <span className="block text-xs text-slate-400">Studente nel pool</span>}
+                                  {group.actorRole === 'student' && <span className="block text-xs text-slate-400">{tl("Studente nel pool")}</span>}
                                 </span>
                               </button>
                             </td>
@@ -882,10 +883,10 @@ export default function CostsPage() {
                   disabled={ledgerOffset === 0}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
                 >
-                  Precedenti
+                  {tl("Precedenti")}
                 </button>
                 <span className="text-xs text-slate-500">
-                  {formatNumber(ledgerOffset + 1)} - {formatNumber(ledgerOffset + ledgerRows.length)} di {formatNumber(ledger?.total || 0)}
+                  {formatNumber(ledgerOffset + 1)} - {formatNumber(ledgerOffset + ledgerRows.length)} {tl("di")} {formatNumber(ledger?.total || 0)}
                 </span>
                 <button
                   type="button"
@@ -893,7 +894,7 @@ export default function CostsPage() {
                   disabled={ledgerOffset + ledgerRows.length >= (ledger?.total || 0)}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
                 >
-                  Successivi
+                  {tl("Successivi")}
                 </button>
               </div>
             </>
@@ -905,24 +906,24 @@ export default function CostsPage() {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Mail className="h-4 w-4 text-slate-500" />
-            Tabella report
+            {tl("Tabella report")}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-400">Nessun dato nel periodo selezionato</p>
+            <p className="px-4 py-6 text-sm text-slate-400">{tl("Nessun dato nel periodo selezionato")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
-                    <th className="px-4 py-3 font-medium">Periodo</th>
-                    <th className="px-3 py-3 text-right font-medium">Utenti</th>
-                    <th className="px-3 py-3 text-right font-medium">Studenti</th>
-                    <th className="px-3 py-3 text-right font-medium">Chiamate</th>
+                    <th className="px-4 py-3 font-medium">{tl("Periodo")}</th>
+                    <th className="px-3 py-3 text-right font-medium">{tl("Utenti")}</th>
+                    <th className="px-3 py-3 text-right font-medium">{tl("Studenti")}</th>
+                    <th className="px-3 py-3 text-right font-medium">{tl("Chiamate")}</th>
                     <th className="px-3 py-3 text-right font-medium">Token</th>
-                    <th className="px-3 py-3 text-right font-medium">Costo</th>
-                    <th className="px-4 py-3 font-medium">Email utenti connessi</th>
+                    <th className="px-3 py-3 text-right font-medium">{tl("Costo")}</th>
+                    <th className="px-4 py-3 font-medium">{tl("Email utenti connessi")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -957,7 +958,7 @@ export default function CostsPage() {
           }))}
         />
         <BreakdownTable
-          title="Modelli"
+          title={tl("Modelli")}
           items={(report?.model_breakdown || []).slice(0, 12).map((item) => ({
             key: item.model,
             calls: item.calls,
@@ -967,19 +968,19 @@ export default function CostsPage() {
         />
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Utenti per consumo token</CardTitle>
+            <CardTitle className="text-sm font-semibold">{tl("Utenti per consumo token")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {(report?.top_users || []).length === 0 ? (
-              <p className="px-4 py-6 text-xs text-slate-400">Nessun dato</p>
+              <p className="px-4 py-6 text-xs text-slate-400">{tl("Nessun dato")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
-                      <th className="px-4 py-3 font-medium">Utente</th>
+                      <th className="px-4 py-3 font-medium">{tl("Utente")}</th>
                       <th className="px-3 py-3 text-right font-medium">Token</th>
-                      <th className="px-4 py-3 text-right font-medium">Costo</th>
+                      <th className="px-4 py-3 text-right font-medium">{tl("Costo")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1075,16 +1076,16 @@ function BreakdownTable({
       </CardHeader>
       <CardContent className="p-0">
         {items.length === 0 ? (
-          <p className="px-4 py-6 text-xs text-slate-400">Nessun dato</p>
+          <p className="px-4 py-6 text-xs text-slate-400">{tl("Nessun dato")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
-                  <th className="px-4 py-3 font-medium">Nome</th>
-                  <th className="px-3 py-3 text-right font-medium">Chiamate</th>
+                  <th className="px-4 py-3 font-medium">{tl("Nome")}</th>
+                  <th className="px-3 py-3 text-right font-medium">{tl("Chiamate")}</th>
                   <th className="px-3 py-3 text-right font-medium">Token</th>
-                  <th className="px-4 py-3 text-right font-medium">Costo</th>
+                  <th className="px-4 py-3 text-right font-medium">{tl("Costo")}</th>
                 </tr>
               </thead>
               <tbody>

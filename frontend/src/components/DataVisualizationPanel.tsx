@@ -1,4 +1,5 @@
 import { useState, useMemo, Suspense, lazy } from 'react'
+import { tl } from '@/i18n/tl'
 
 const Plot = lazy(() => import('react-plotly.js'))
 
@@ -391,7 +392,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
   if (numericCols.length === 0 && catCols.length === 0) {
     return (
       <div className="mt-4 border border-violet-200 rounded-xl bg-white p-4 text-sm text-slate-500 text-center">
-        Nessuna colonna trovata nel dataset.
+        {tl("Nessuna colonna trovata nel dataset.")}
       </div>
     )
   }
@@ -399,7 +400,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
     return (
       <div className="mt-4 border border-violet-200 rounded-xl bg-white p-4 space-y-3">
         <p className="text-sm text-slate-600 font-medium">
-          Dataset interamente categorico — codifica almeno una colonna per visualizzarla:
+          {tl("Dataset interamente categorico — codifica almeno una colonna per visualizzarla:")}
         </p>
         <div className="flex flex-wrap gap-2">
           {catCols.map(col => (
@@ -422,7 +423,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
 
   const modeLabels: Record<VizMode, string> = {
     scatter: '● Scatter',
-    regression: '↗ Regressione',
+    regression: tl("↗ Regressione"),
     kmeans: '⬡ K-means',
     knn: '◈ K-NN Boundary',
     scatter3d: '⬢ 3D',
@@ -433,7 +434,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
       {/* ── header / controls ── */}
       <div className="bg-violet-50 px-4 py-3 border-b border-violet-100 space-y-3">
         <p className="text-xs font-semibold text-violet-800 tracking-wide uppercase">
-          Esplorazione Dati — {rows.length} campioni · {numericCols.length} num
+          {tl("Esplorazione Dati —")} {rows.length} {tl("campioni ·")} {numericCols.length} num
           {catCols.length > 0 && ` · ${catCols.length} cat`}
           {encodedSet.size > 0 && ` · ${encodedSet.size} codificate`}
         </p>
@@ -442,7 +443,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
         {catCols.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs text-violet-600 font-medium">
-              Encoding (Label) — attiva per usare colonne categoriche sugli assi:
+              {tl("Encoding (Label) — attiva per usare colonne categoriche sugli assi:")}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {catCols.map(col => {
@@ -476,9 +477,9 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
         {/* feature selectors */}
         <div className="flex flex-wrap gap-3">
           {[
-            { label: 'Asse X', val: safeX, set: setXFeat },
-            { label: 'Asse Y', val: safeY, set: setYFeat },
-            ...(mode === 'scatter3d' ? [{ label: 'Asse Z', val: safeZ, set: setZFeat }] : []),
+            { label: tl("Asse X"), val: safeX, set: setXFeat },
+            { label: tl("Asse Y"), val: safeY, set: setYFeat },
+            ...(mode === 'scatter3d' ? [{ label: tl("Asse Z"), val: safeZ, set: setZFeat }] : []),
           ].map(({ label, val, set }) => (
             <label key={label} className="flex items-center gap-1.5 text-xs text-violet-700">
               <span className="font-medium">{label}:</span>
@@ -493,13 +494,13 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
           ))}
           {mode !== 'scatter3d' && mode !== 'kmeans' && (
             <label className="flex items-center gap-1.5 text-xs text-violet-700">
-              <span className="font-medium">Colore per:</span>
+              <span className="font-medium">{tl("Colore per:")}</span>
               <select
                 value={colorFeat}
                 onChange={e => setColorFeat(e.target.value)}
                 className="border border-violet-200 rounded px-2 py-0.5 bg-white text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
               >
-                <option value="">— nessuno —</option>
+                <option value="">{tl("— nessuno —")}</option>
                 {allCols.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
@@ -519,9 +520,9 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
                 onClick={() => setMode(m)}
                 title={
                   m === 'knn' && !canKNN
-                    ? 'Seleziona una colonna per "Colore per" con 2–10 classi'
+                    ? tl("Seleziona una colonna per \"Colore per\" con 2–10 classi")
                     : m === 'scatter3d' && effectiveNumericCols.length < 3
-                    ? 'Servono almeno 3 colonne numeriche (o codifica colonne categoriche)'
+                    ? tl("Servono almeno 3 colonne numeriche (o codifica colonne categoriche)")
                     : ''
                 }
                 className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
@@ -561,12 +562,12 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
       )}
       {mode === 'knn' && !canKNN && (
         <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
-          ⚠️ Seleziona una colonna in <em>Colore per</em> con 2–10 classi per attivare K-NN.
+          {tl("⚠️ Seleziona una colonna in")} <em>{tl("Colore per")}</em> {tl("con 2–10 classi per attivare K-NN.")}
         </div>
       )}
       {mode === 'kmeans' && (
         <div className="px-4 py-1.5 bg-violet-50 border-b border-violet-100 text-xs text-violet-700">
-          K-means++ — {kVal} cluster su {points.length} punti
+          K-means++ — {kVal} {tl("cluster su")} {points.length} punti
         </div>
       )}
 
@@ -574,7 +575,7 @@ export function DataVisualizationPanel({ csvText, rows: rowsProp, columns: colum
       <div className="p-3">
         <Suspense fallback={
           <div className="h-96 flex items-center justify-center text-slate-400 text-sm animate-pulse">
-            Caricamento grafico…
+            {tl("Caricamento grafico…")}
           </div>
         }>
           <Plot

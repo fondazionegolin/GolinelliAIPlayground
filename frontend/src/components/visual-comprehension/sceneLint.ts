@@ -2,6 +2,7 @@ import type { Region } from './types'
 import type { DrawingLayout, DrawingMark, DrawingScene, Frame } from './blackboard'
 import { SceneGeometry, TEXT_KINDS, fitText, measureLabel, overlapArea, type XY } from './sceneGeometry'
 import { isCalibratedPlot } from './ExtraMarks'
+import { tl } from '@/i18n/tl'
 
 export type Issue = {
   rule: 'too-small' | 'overlap-text' | 'covers-source' | 'out-of-bounds' | 'misaligned' | 'dense-step'
@@ -53,7 +54,7 @@ export function refineScene(scene: DrawingScene, regions: Region[], layout: Draw
     const size = geometry.fontSize(m)
     if (size * scale < MIN_TEXT_PX) {
       geometry.fonts.set(m.id, MIN_TEXT_PX / Math.max(scale, 1e-6))
-      issues.push({ rule: 'too-small', id: m.id, detail: `testo di ${(size * scale).toFixed(1)}px alzato a ${MIN_TEXT_PX}px`, fixed: true })
+      issues.push({ rule: 'too-small', id: m.id, detail: tl("testo di {0}px alzato a {1}px", (size * scale).toFixed(1), MIN_TEXT_PX), fixed: true })
     }
   }
 
@@ -113,7 +114,7 @@ export function refineScene(scene: DrawingScene, regions: Region[], layout: Draw
         if (score < best.score - 1e-6) best = { rect: r, score }
       }
       geometry.setLabel(m.id, best.rect)
-      if (best.rect !== item.rect) issues.push({ rule: 'overlap-text', id: m.id, detail: `etichetta della graffa spostata dalla punta (${Math.round(Math.hypot(best.rect.x - item.rect.x, best.rect.y - item.rect.y))})`, fixed: true })
+      if (best.rect !== item.rect) issues.push({ rule: 'overlap-text', id: m.id, detail: tl("etichetta della graffa spostata dalla punta ({0})", Math.round(Math.hypot(best.rect.x - item.rect.x, best.rect.y - item.rect.y))), fixed: true })
       placed.push(best.rect); final.push({ ...item, rect: best.rect })
       continue
     }
@@ -132,7 +133,7 @@ export function refineScene(scene: DrawingScene, regions: Region[], layout: Draw
       if (best.score < before * .7) {
         rect = move(item.rect, best.delta)
         shifts.set(m.id, best.delta)
-        issues.push({ rule: 'overlap-text', id: m.id, detail: 'testo spostato per non coprire la sorgente o altri segni', fixed: true })
+        issues.push({ rule: 'overlap-text', id: m.id, detail: tl("testo spostato per non coprire la sorgente o altri segni"), fixed: true })
       }
     }
     placed.push(rect); final.push({ ...item, rect })
@@ -152,7 +153,7 @@ export function refineScene(scene: DrawingScene, regions: Region[], layout: Draw
         placed[placed.indexOf(item.rect)] = moved; item.rect = moved
         const prev = shifts.get(item.mark.id) ?? { x: 0, y: 0 }
         shifts.set(item.mark.id, { x: prev.x + delta.x, y: prev.y + delta.y })
-        issues.push({ rule: 'misaligned', id: item.mark.id, detail: `allineato a ${other.mark.id}`, fixed: true })
+        issues.push({ rule: 'misaligned', id: item.mark.id, detail: tl("allineato a {0}", other.mark.id), fixed: true })
         break
       }
     })
@@ -161,16 +162,16 @@ export function refineScene(scene: DrawingScene, regions: Region[], layout: Draw
   // 4. What is left is reported, not hidden.
   final.forEach((item, i) => {
     const others = final.slice(0, i).map(o => o.rect).concat(obstacles)
-    if (others.some(o => overlapArea(item.rect, o) / area(item.rect) > .15)) issues.push({ rule: 'overlap-text', id: item.mark.id, detail: 'resta sovrapposto ad altri segni', fixed: false })
-    if (zonesFor(item.frame).some(z => covered(item.rect, z) > .25)) issues.push({ rule: 'covers-source', id: item.mark.id, detail: 'copre testo della sorgente', fixed: false })
-    if (outside(item.rect, item.frame) / area(item.rect) > .05) issues.push({ rule: 'out-of-bounds', id: item.mark.id, detail: 'esce dall\'area di disegno', fixed: false })
+    if (others.some(o => overlapArea(item.rect, o) / area(item.rect) > .15)) issues.push({ rule: 'overlap-text', id: item.mark.id, detail: tl("resta sovrapposto ad altri segni"), fixed: false })
+    if (zonesFor(item.frame).some(z => covered(item.rect, z) > .25)) issues.push({ rule: 'covers-source', id: item.mark.id, detail: tl("copre testo della sorgente"), fixed: false })
+    if (outside(item.rect, item.frame) / area(item.rect) > .05) issues.push({ rule: 'out-of-bounds', id: item.mark.id, detail: tl("esce dall'area di disegno"), fixed: false })
   })
   for (const w of widgets) {
-    if (zonesFor(w.frame).some(z => covered(w.rect, z) > .25)) issues.push({ rule: 'covers-source', id: w.id, detail: 'il riquadro copre testo della sorgente: spostalo in uno spazio libero', fixed: false })
+    if (zonesFor(w.frame).some(z => covered(w.rect, z) > .25)) issues.push({ rule: 'covers-source', id: w.id, detail: tl("il riquadro copre testo della sorgente: spostalo in uno spazio libero"), fixed: false })
   }
   const perStep = new Map<number, number>()
   for (const item of final) perStep.set(item.mark.step, (perStep.get(item.mark.step) ?? 0) + 1)
-  for (const [step, count] of perStep) if (count > MAX_TEXT_PER_STEP) issues.push({ rule: 'dense-step', id: `step-${step}`, detail: `${count} scritte nello stesso passo`, fixed: false })
+  for (const [step, count] of perStep) if (count > MAX_TEXT_PER_STEP) issues.push({ rule: 'dense-step', id: `step-${step}`, detail: tl("{0} scritte nello stesso passo", count), fixed: false })
 
   return { geometry, shifts, issues, minFont: MIN_TEXT_PX / Math.max(scale, 1e-6) }
 }

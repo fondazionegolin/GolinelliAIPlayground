@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { chatApi } from '@/lib/api'
 import { publishRealtimeEvent } from '@/lib/realtimeEvents'
+import { tl } from '@/i18n/tl'
 
 export interface ChatMessage {
   id: string
@@ -342,11 +343,11 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         if (senderId === myId) {
           peerId = targetId || 'unknown'
           const targetUser = onlineUsersRef.current.find(u => u.student_id === peerId)
-          peerName = targetUser?.nickname || 'Destinatario'
+          peerName = targetUser?.nickname || tl("Destinatario")
           peerAvatarUrl = targetUser?.avatar_url
         } else {
           peerId = senderId
-          peerName = msg.sender_name || 'Utente'
+          peerName = msg.sender_name || tl("Utente")
           peerAvatarUrl = msg.sender_avatar_url
         }
 
@@ -430,8 +431,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         id: `notif-${Date.now()}`,
         sender_type: 'TEACHER',
         sender_id: 'system',
-        sender_name: 'Sistema',
-        text: `📋 Nuovo compito: ${data.title}`,
+        sender_name: tl("Sistema"),
+        text: tl("📋 Nuovo compito: {0}", data.title),
         created_at: new Date().toISOString(),
         is_notification: true,
         notification_type: data.task_type === 'quiz' ? 'quiz' : 'task',
@@ -448,8 +449,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         id: `correction-${data.submission_id}-${Date.now()}`,
         sender_type: 'TEACHER',
         sender_id: 'system',
-        sender_name: 'Docente',
-        text: '📝 Hai ricevuto una correzione dal docente',
+        sender_name: tl("Docente"),
+        text: tl("📝 Hai ricevuto una correzione dal docente"),
         created_at: new Date().toISOString(),
         is_notification: true,
         notification_type: 'task',
@@ -467,8 +468,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         id: `feedback-${data.submission_id}-${Date.now()}`,
         sender_type: 'TEACHER',
         sender_id: 'system',
-        sender_name: 'Docente',
-        text: '💬 Il docente ha pubblicato un feedback sul tuo compito',
+        sender_name: tl("Docente"),
+        text: tl("💬 Il docente ha pubblicato un feedback sul tuo compito"),
         created_at: new Date().toISOString(),
         is_notification: true,
         notification_type: 'task_feedback',
@@ -485,8 +486,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         id: `notif-${Date.now()}`,
         sender_type: 'TEACHER',
         sender_id: 'system',
-        sender_name: 'Sistema',
-        text: `📄 Nuovo documento: ${data.filename}`,
+        sender_name: tl("Sistema"),
+        text: tl("📄 Nuovo documento: {0}", data.filename),
         created_at: new Date().toISOString(),
         is_notification: true,
         notification_type: 'document',
@@ -518,7 +519,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         id: `notif-${Date.now()}`,
         sender_type: 'TEACHER',
         sender_id: 'system',
-        sender_name: 'Sistema',
+        sender_name: tl("Sistema"),
         text: `⚠️ ${data.reason}`,
         created_at: new Date().toISOString(),
         is_notification: true,
@@ -636,7 +637,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
       socketRef.current.emit('chat_private_message', {
         target_id: targetId,
-        text: text.trim() || '📎 Allegato',
+        text: text.trim() || tl("📎 Allegato"),
         attachments,
       })
     }
@@ -651,7 +652,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         ...prev,
         [user.student_id]: {
           oderId: user.student_id,
-          peerName: user.nickname || 'Studente',
+          peerName: user.nickname || tl("Studente"),
           peerAvatarUrl: user.avatar_url,
           messages: [],
           unreadCount: 0,

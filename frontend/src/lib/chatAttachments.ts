@@ -1,5 +1,6 @@
 import api, { llmApi } from '@/lib/api'
 import { mediaKind } from '@/lib/media'
+import { tl } from '@/i18n/tl'
 
 export interface MessageAttachment {
   name: string
@@ -46,7 +47,7 @@ export async function buildMessageAttachments(files: File[]): Promise<MessageAtt
         const form = new FormData()
         form.append('file', file)
         const { data } = await api.post<{ url: string; mime_type: string }>('/files/media', form, { timeout: 0 })
-        if (!data.url) throw new Error('Caricamento del file multimediale non riuscito.')
+        if (!data.url) throw new Error(tl("Caricamento del file multimediale non riuscito."))
         return { name: file.name, kind, mime_type: data.mime_type, url: data.url }
       }
       if (file.type.startsWith('image/')) {

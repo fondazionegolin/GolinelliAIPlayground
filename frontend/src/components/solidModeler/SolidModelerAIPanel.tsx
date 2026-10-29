@@ -2,24 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from '@/components/icons'
 import type { AgentStepEvent, SceneObject } from './types'
+import { tl } from '@/i18n/tl'
 
 const MODELS = [
   { value: 'anthropic|claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (consigliato)' },
-  { value: 'anthropic|claude-opus-4-8', label: 'Claude Opus 4.8 (più accurato)' },
+  { value: 'anthropic|claude-opus-4-8', label: tl("Claude Opus 4.8 (più accurato)") },
   { value: 'openai|gpt-5.2', label: 'GPT-5.2' },
-  { value: 'default|', label: 'Modello predefinito piattaforma' },
+  { value: 'default|', label: tl("Modello predefinito piattaforma") },
 ]
 
 // Premium model kept for teachers: student runs draw from the shared student pool.
 const STUDENT_BLOCKED_MODELS = new Set(['anthropic|claude-opus-4-8'])
 
 const SUGGESTIONS = [
-  'Un tavolo con piano rettangolare e quattro gambe cilindriche',
-  'Un portapenne esagonale cavo con base piena',
-  'Una casetta con tetto a spiovente, porta e due finestre',
-  'Un castello con quattro torri merlate agli angoli',
-  'Un portachiavi a stella con foro per l\'anello',
-  'Un razzo con tre alette',
+  tl("Un tavolo con piano rettangolare e quattro gambe cilindriche"),
+  tl("Un portapenne esagonale cavo con base piena"),
+  tl("Una casetta con tetto a spiovente, porta e due finestre"),
+  tl("Un castello con quattro torri merlate agli angoli"),
+  tl("Un portachiavi a stella con foro per l'anello"),
+  tl("Un razzo con tre alette"),
 ]
 
 interface ChatTurn {
@@ -90,7 +91,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
       } else if (ev.type === 'done') patchLast(t => ({ ...t, status: 'done', message: ev.message, cost: ev.cost }))
       else if (ev.type === 'error') patchLast(t => ({ ...t, status: 'error', message: ev.detail || ev.message }))
     })
-    patchLast(t => (t.status === 'running' ? { ...t, status: 'error', message: 'Connessione interrotta: l\'agente continua in background, riapri il progetto tra poco.' } : t))
+    patchLast(t => (t.status === 'running' ? { ...t, status: 'error', message: tl("Connessione interrotta: l'agente continua in background, riapri il progetto tra poco.") } : t))
   }
 
   async function run(text = prompt) {
@@ -122,14 +123,14 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
       })
       if (!res.ok || !res.body) {
         const detail = await res.json().catch(() => null)
-        throw new Error(detail?.detail || `Errore ${res.status}`)
+        throw new Error(detail?.detail || tl("Errore {0}", res.status))
       }
       jobIdRef.current = res.headers.get('X-Job-Id')
       notifyJobsChanged()
       await consumeAgentStream(res)
     } catch (err) {
       const aborted = (err as Error).name === 'AbortError'
-      patchLast(t => ({ ...t, status: aborted ? 'stopped' : 'error', message: aborted ? 'Interrotto: la scena resta all\'ultimo passo.' : (err as Error).message }))
+      patchLast(t => ({ ...t, status: aborted ? 'stopped' : 'error', message: aborted ? tl("Interrotto: la scena resta all'ultimo passo.") : (err as Error).message }))
     } finally {
       setRunning(false)
       abortRef.current = null
@@ -153,7 +154,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
       try {
         const res = await followJobStream(job.id, controller.signal)
         if (res.ok) await consumeAgentStream(res)
-        else patchLast(t => ({ ...t, status: 'done', message: 'L\'agente ha finito mentre eri altrove: il modello salvato è già aggiornato.' }))
+        else patchLast(t => ({ ...t, status: 'done', message: tl("L'agente ha finito mentre eri altrove: il modello salvato è già aggiornato.") }))
       } catch (err) {
         if ((err as Error).name !== 'AbortError') patchLast(t => ({ ...t, status: 'error', message: (err as Error).message }))
       } finally {
@@ -176,10 +177,9 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
       <div ref={logRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {turns.length === 0 && (
           <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-xs leading-5 text-violet-900">
-            <p className="flex items-center gap-1.5 font-black"><Sparkles className="h-3.5 w-3.5" /> Costruttore agentico</p>
+            <p className="flex items-center gap-1.5 font-black"><Sparkles className="h-3.5 w-3.5" /> {tl("Costruttore agentico")}</p>
             <p className="mt-1">
-              Descrivi un oggetto: l'agente lo scompone in primitive, le posiziona, verifica contatti e fori
-              sui bounding box reali e si corregge in più passi. Puoi anche selezionare oggetti e chiedere modifiche.
+              {tl("Descrivi un oggetto: l'agente lo scompone in primitive, le posiziona, verifica contatti e fori sui bounding box reali e si corregge in più passi. Puoi anche selezionare oggetti e chiedere modifiche.")}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {SUGGESTIONS.map(s => (
@@ -196,7 +196,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             {turn.steps.map(step => (
               <div key={step.step} className="rounded-xl border border-slate-200 bg-white/90 p-2.5 text-[11px] leading-5 text-slate-700">
                 <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  <Bot className="h-3 w-3" /> Passo {step.step}
+                  <Bot className="h-3 w-3" /> {tl("Passo")} {step.step}
                 </p>
                 {step.thought && <p className="whitespace-pre-wrap text-slate-800">{step.thought}</p>}
                 {step.actions.length > 0 && (
@@ -211,7 +211,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             ))}
             {turn.status === 'running' && (
               <p className="flex items-center gap-2 px-1 text-[11px] font-semibold text-violet-700">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> L'agente sta {turn.steps.length ? 'verificando e correggendo' : 'progettando'}…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("L'agente sta")} {turn.steps.length ? tl("verificando e correggendo") : 'progettando'}…
               </p>
             )}
             {turn.status !== 'running' && turn.message && (
@@ -222,7 +222,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
                 </p>
                 {turn.status === 'done' && (
                   <p className="mt-1 text-[10px] text-emerald-700">
-                    {turn.model} · {turn.steps.length} passi{turn.cost ? ` · $${turn.cost.toFixed(4)}` : ''} · Ctrl+Z per annullare
+                    {turn.model} · {turn.steps.length} passi{turn.cost ? ` · $${turn.cost.toFixed(4)}` : ''} {tl("· Ctrl+Z per annullare")}
                   </p>
                 )}
               </div>
@@ -236,14 +236,14 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
           onChange={e => setPrompt(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run() } }}
           rows={3}
-          placeholder={selection.length ? 'Cosa cambio negli oggetti selezionati?' : 'Descrivi cosa costruire con le primitive…'}
+          placeholder={selection.length ? tl("Cosa cambio negli oggetti selezionati?") : tl("Descrivi cosa costruire con le primitive…")}
           className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-200"
         />
         <div className="mt-2 flex items-center gap-2">
           <select value={model} onChange={e => setModel(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
             {models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
-          <select value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} title="Passi massimi dell'agente" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+          <select value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} title={tl("Passi massimi dell'agente")} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
             {[3, 4, 6, 8, 10].map(n => <option key={n} value={n}>{n} passi</option>)}
           </select>
           {running ? (
@@ -252,7 +252,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
             </button>
           ) : (
             <button type="button" disabled={!prompt.trim()} onClick={() => run()} className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40">
-              <Send className="h-3 w-3" /> Crea
+              <Send className="h-3 w-3" /> {tl("Crea")}
             </button>
           )}
         </div>

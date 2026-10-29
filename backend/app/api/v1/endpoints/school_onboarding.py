@@ -12,6 +12,9 @@ from html import escape
 from typing import Annotated, Literal, Optional
 from uuid import UUID
 
+import base64
+import time
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
@@ -34,7 +37,7 @@ from app.models.enums import TenantType, UserRole
 from app.models.school_onboarding import ItalianSchool, SchoolOnboardingInvite
 from app.models.tenant import Tenant
 from app.models.user import ActivationToken, LegalDocumentAcceptance, User
-from app.services import school_registry
+from app.services import school_overview, school_registry
 from app.services.credit_service import credit_service
 from app.services.email_service import email_service
 
@@ -74,8 +77,30 @@ def _invite_link(origin: str | None, token: str) -> str:
     return f"{resolve_frontend_url(origin)}/school-invite/{token}"
 
 
+def _record_delivery(obj, sent: bool, error: str | None) -> None:
+    """Every send attempt leaves a trace on the invite (or activation token): outcome, reason, count."""
+    obj.email_attempts = (obj.email_attempts or 0) + 1
+    obj.email_status = "SENT" if sent else "FAILED"
+    obj.email_error = None if sent else error
+    if sent:
+        obj.email_sent_at = _now()
+
+
+def _pixel(origin: str | None, kind: str, ident) -> str:
+    """1×1 image that tells us the e-mail was opened (an estimate: some clients block images, some prefetch them)."""
+    url = f"{resolve_frontend_url(origin)}{settings.API_V1_PREFIX}/school-onboarding/track/{kind}/{ident}.gif"
+    return f'<img src="{escape(url)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">'
+
+
+def _organization(inv: SchoolOnboardingInvite) -> dict | None:
+    if not inv.organization_name:
+        return None
+    return {"name": inv.organization_name, "comune": inv.organization_comune, "province": inv.organization_province}
+
+
 def _invite_to_dict(inv: SchoolOnboardingInvite, origin: str | None, tenant: Tenant | None = None) -> dict:
     return {
+        **school_overview.invite_summary(inv),
         "id": str(inv.id),
         "mode": inv.mode,
         "status": _effective_status(inv),
@@ -92,10 +117,12 @@ def _invite_to_dict(inv: SchoolOnboardingInvite, origin: str | None, tenant: Ten
         "opened_at": inv.opened_at.isoformat() if inv.opened_at else None,
         "completed_at": inv.completed_at.isoformat() if inv.completed_at else None,
         "email_sent_at": inv.email_sent_at.isoformat() if inv.email_sent_at else None,
+        "organization": _organization(inv),
+        "registry_verified": bool(tenant and tenant.registry_verified),
     }
 
 
-def _email_shell(title: str, body_html: str, cta_label: str, link: str) -> str:
+def _email_shell(title: str, body_html: str, cta_label: str, link: str, pixel: str = "") -> str:
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px">
 <div style="background:#1a1a2e;padding:24px;border-radius:10px 10px 0 0;text-align:center">
@@ -104,10 +131,12 @@ def _email_shell(title: str, body_html: str, cta_label: str, link: str) -> str:
 <h2 style="margin-top:0">{escape(title)}</h2>{body_html}
 <div style="text-align:center;margin:28px 0"><a href="{escape(link)}" style="background:#e85c8d;color:#fff;padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:600">{escape(cta_label)}</a></div>
 <p style="font-size:12px;color:#777">Se il pulsante non funziona copia questo indirizzo nel browser:<br>{escape(link)}</p>
-</div></body></html>"""
+</div>{pixel}</body></html>"""
 
 
-async def _send_principal_invite_email(inv: SchoolOnboardingInvite, school_name: str | None, link: str) -> bool:
+async def _send_principal_invite_email(inv: SchoolOnboardingInvite, school_name: str | None, link: str,
+                                       origin: str | None = None) -> bool:
+    """Sends the invite and records the outcome on it (sent, or why not)."""
     if not inv.email:
         return False
     greeting = f"Gentile {escape(' '.join(filter(None, [inv.first_name, inv.last_name])))}," if (inv.first_name or inv.last_name) else "Gentile Dirigente,"
@@ -121,13 +150,14 @@ async def _send_principal_invite_email(inv: SchoolOnboardingInvite, school_name:
         "creare il proprio accesso e gestire il pannello dell'Istituto: da lì potrà invitare fino a "
         f"<strong>{MAX_PILOT_TEACHERS} docenti</strong> e troverà la bozza di informativa per le famiglie.</p>{note}"
     )
-    sent = await email_service.send_email(
+    sent, error = await email_service.send_email_result(
         to_email=inv.email,
         subject="Invito alla sperimentazione Golinelli.ai per il Suo istituto",
-        html_content=_email_shell("Invito alla sperimentazione", body, "Apri l'invito", link),
+        html_content=_email_shell("Invito alla sperimentazione", body, "Apri l'invito", link, _pixel(origin, "invite", inv.id)),
         text_content=f"Invito alla sperimentazione Golinelli.ai. Apra il link per accettare le condizioni e attivare l'accesso: {link}",
     )
-    return bool(sent)
+    _record_delivery(inv, sent, error)
+    return sent
 
 
 # ═════════════════════════════ ADMIN ═════════════════════════════════════════
@@ -141,6 +171,38 @@ class InviteCreate(BaseModel):
     label: Optional[str] = Field(default=None, max_length=160)
     expires_in_days: int = Field(default=DEFAULT_INVITE_DAYS, ge=1, le=180)
     send_email: bool = True
+    # Organizzazione fuori dal registro MIM (scuole non statali/paritarie, enti, scuole estere, …).
+    organization_name: Optional[str] = Field(default=None, max_length=255)
+    organization_comune: Optional[str] = Field(default=None, max_length=128)
+    organization_province: Optional[str] = Field(default=None, max_length=64)
+
+
+def _clean(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+async def _manual_school_tenant(db: AsyncSession, name: str) -> Tenant:
+    """A school (or other organization) that is not in the MIM registry: a SCHOOL tenant without a code.
+
+    An existing one with the same name and no principal yet is reused, so a second invite does not duplicate it.
+    """
+    existing = (await db.execute(
+        select(Tenant).where(func.lower(Tenant.name) == name.lower(), Tenant.tenant_type == TenantType.SCHOOL.value,
+                             Tenant.mechanographic_code.is_(None))
+    )).scalars().first()
+    if existing:
+        if existing.owner_user_id:
+            raise HTTPException(status_code=409, detail=f"L'organizzazione «{existing.name}» ha già un dirigente attivo")
+        return existing
+    tenant = Tenant(
+        name=name, slug=await _unique_slug(db, _slugify(name)), tenant_type=TenantType.SCHOOL.value,
+        max_teachers=MAX_PILOT_TEACHERS, mechanographic_code=None, registry_verified=False,
+    )
+    db.add(tenant)
+    await db.flush()
+    await credit_service.ensure_school_global_limit(db, tenant.id, tenant.monthly_credit_pool or 10.0)
+    return tenant
 
 
 @admin_router.get("/registry/search")
@@ -273,6 +335,8 @@ async def create_school_invite(
         tenant = await _get_or_create_school_tenant(db, school)
         if tenant.owner_user_id:
             raise HTTPException(status_code=409, detail=f"L'istituto «{tenant.name}» ha già un dirigente attivo")
+    elif organization := _clean(body.organization_name):
+        tenant = await _manual_school_tenant(db, organization)
     # un solo invito PENDING per istituto: i precedenti vengono revocati
     if tenant:
         for old in (await db.execute(
@@ -294,6 +358,9 @@ async def create_school_invite(
         label=body.label,
         created_by_id=admin.id,
         expires_at=_now() + timedelta(days=body.expires_in_days),
+        organization_name=None if code else _clean(body.organization_name),
+        organization_comune=None if code else _clean(body.organization_comune),
+        organization_province=None if code else _clean(body.organization_province),
     )
     db.add(inv)
     await db.commit()
@@ -302,10 +369,8 @@ async def create_school_invite(
     origin = request.headers.get("origin")
     email_sent = False
     if body.mode == "EMAIL" and body.send_email:
-        email_sent = await _send_principal_invite_email(inv, tenant.name if tenant else None, _invite_link(origin, inv.token))
-        if email_sent:
-            inv.email_sent_at = _now()
-            await db.commit()
+        email_sent = await _send_principal_invite_email(inv, tenant.name if tenant else None, _invite_link(origin, inv.token), origin)
+        await db.commit()
     return {**_invite_to_dict(inv, origin, tenant), "email_sent": email_sent}
 
 
@@ -361,12 +426,32 @@ async def resend_school_invite(
         raise HTTPException(status_code=400, detail="Invito senza e-mail: copia il link e inviarlo manualmente")
     tenant = (await db.execute(select(Tenant).where(Tenant.id == inv.tenant_id))).scalar_one_or_none() if inv.tenant_id else None
     inv.expires_at = max(inv.expires_at, _now() + timedelta(days=DEFAULT_INVITE_DAYS))
-    sent = await _send_principal_invite_email(inv, tenant.name if tenant else None,
-                                              _invite_link(request.headers.get("origin"), inv.token))
-    if sent:
-        inv.email_sent_at = _now()
+    origin = request.headers.get("origin")
+    sent = await _send_principal_invite_email(inv, tenant.name if tenant else None, _invite_link(origin, inv.token), origin)
     await db.commit()
-    return {"email_sent": sent}
+    return {"email_sent": sent, "email_error": inv.email_error}
+
+
+_EMAIL_HEALTH: dict = {}
+
+
+@admin_router.get("/email-health")
+async def email_health(admin: Annotated[User, Depends(get_current_admin)], refresh: bool = False):
+    """Can the platform send e-mail? Logs in to the SMTP server (nothing is sent); cached for two minutes."""
+    if refresh or not _EMAIL_HEALTH or time.monotonic() - _EMAIL_HEALTH["at"] > 120:
+        ok, error = await email_service.check()
+        _EMAIL_HEALTH.update(at=time.monotonic(), ok=ok, error=error, checked_at=_now().isoformat(),
+                             sender=settings.SMTP_FROM_EMAIL, host=settings.SMTP_HOST)
+    return {k: v for k, v in _EMAIL_HEALTH.items() if k != "at"}
+
+
+@admin_router.get("/schools")
+async def admin_school_overview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Every school with its funnel, principal, invited teachers, activity and credits."""
+    return await school_overview.school_overview(db)
 
 
 # ═════════════════════════════ PUBLIC (dirigente) ════════════════════════════
@@ -393,15 +478,21 @@ def _principal_documents() -> list[dict]:
 @public_router.get("/invites/{token}")
 async def get_invite_public(token: str, db: Annotated[AsyncSession, Depends(get_db)]):
     inv = await _valid_invite(db, token)
-    if not inv.opened_at:
-        inv.opened_at = _now()
-        await db.commit()
+    inv.opened_at = inv.opened_at or _now()
+    inv.last_opened_at = _now()
+    inv.open_count = (inv.open_count or 0) + 1
+    await db.commit()
     school = None
     if inv.mechanographic_code:
         row = (await db.execute(
             select(ItalianSchool).where(ItalianSchool.code == inv.mechanographic_code)
         )).scalar_one_or_none()
         school = school_registry.school_to_dict(row) if row else None
+    # Fuori registro: l'organizzazione indicata dall'admin, o da indicare a mano da chi apre il link.
+    organization = _organization(inv)
+    tenant = await _invite_tenant(db, inv)
+    if not organization and tenant and not school:
+        organization = {"name": tenant.name, "comune": None, "province": None}
     return {
         "mode": inv.mode,
         "school": school,
@@ -413,7 +504,49 @@ async def get_invite_public(token: str, db: Annotated[AsyncSession, Depends(get_
         "max_teachers": MAX_PILOT_TEACHERS,
         "documents": _principal_documents(),
         "expires_at": inv.expires_at.isoformat(),
+        "organization": organization,
+        "accepted": list((inv.progress or {}).get("accepted") or []),
     }
+
+
+async def _invite_tenant(db: AsyncSession, inv: SchoolOnboardingInvite) -> Tenant | None:
+    if not inv.tenant_id:
+        return None
+    return (await db.execute(select(Tenant).where(Tenant.id == inv.tenant_id))).scalar_one_or_none()
+
+
+class InviteProgress(BaseModel):
+    accepted: list[str] = Field(default_factory=list, max_length=20)
+
+
+@public_router.post("/invites/{token}/progress")
+async def invite_progress(token: str, body: InviteProgress, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Documents ticked so far on the invite page: the admin sees a partial acceptance before it is confirmed."""
+    inv = await _valid_invite(db, token)
+    keys = {d["key"] for d in _principal_documents()}
+    inv.progress = {"accepted": [k for k in dict.fromkeys(body.accepted) if k in keys], "updated_at": _now().isoformat()}
+    await db.commit()
+    return {"ok": True, "accepted": inv.progress["accepted"], "total": len(keys)}
+
+
+_GIF = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+
+
+@public_router.get("/track/{kind}/{ident}.gif", include_in_schema=False)
+async def track_email_open(kind: str, ident: str, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Pixel of the invite e-mails: the first load marks the e-mail as read. Always answers with the image."""
+    try:
+        key = UUID(ident)
+        model = {"invite": SchoolOnboardingInvite, "teacher": ActivationToken}.get(kind)
+        if model is not None:
+            row = (await db.execute(select(model).where(model.id == key))).scalar_one_or_none()
+            if row is not None and row.email_opened_at is None:
+                row.email_opened_at = _now()
+                await db.commit()
+    except (ValueError, TypeError):
+        pass
+    return Response(content=_GIF, media_type="image/gif",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"})
 
 
 @public_router.get("/invites/{token}/registry-search")
@@ -448,6 +581,10 @@ class InviteComplete(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     mechanographic_code: Optional[str] = Field(default=None, max_length=16)
     accepted_documents: list[str]
+    # Per chi apre un link monouso e non trova il proprio istituto nel registro MIM.
+    organization_name: Optional[str] = Field(default=None, max_length=255)
+    organization_comune: Optional[str] = Field(default=None, max_length=128)
+    organization_province: Optional[str] = Field(default=None, max_length=64)
 
 
 @public_router.post("/invites/{token}/complete")
@@ -470,16 +607,22 @@ async def complete_invite(
     if (await db.execute(select(User.id).where(User.email == email))).first():
         raise HTTPException(status_code=400, detail="Questa e-mail è già registrata sulla piattaforma")
 
-    code = (inv.mechanographic_code or body.mechanographic_code or "").strip().upper()
-    if not code:
-        raise HTTPException(status_code=400, detail="Seleziona il tuo istituto dal registro delle scuole")
-    school = (await db.execute(select(ItalianSchool).where(ItalianSchool.code == code))).scalar_one_or_none()
-    if not school:
-        raise HTTPException(status_code=400, detail="Istituto non presente nel registro MIM")
-
-    tenant = inv.tenant_id and (await db.execute(select(Tenant).where(Tenant.id == inv.tenant_id))).scalar_one_or_none()
-    if not tenant:
+    # The school was fixed by the admin (from the registry or by hand), picked from the registry, or typed in.
+    tenant = await _invite_tenant(db, inv)
+    code = (inv.mechanographic_code or ("" if tenant else body.mechanographic_code) or "").strip().upper() or None
+    if not tenant and code:
+        school = (await db.execute(select(ItalianSchool).where(ItalianSchool.code == code))).scalar_one_or_none()
+        if not school:
+            raise HTTPException(status_code=400, detail="Istituto non presente nel registro MIM")
         tenant = await _get_or_create_school_tenant(db, school)
+    elif not tenant:
+        organization = _clean(body.organization_name)
+        if not organization:
+            raise HTTPException(status_code=400, detail="Seleziona il tuo istituto dal registro o scrivi il nome dell'organizzazione")
+        tenant = await _manual_school_tenant(db, organization)
+        inv.organization_name = organization
+        inv.organization_comune = _clean(body.organization_comune)
+        inv.organization_province = _clean(body.organization_province)
     if tenant.owner_user_id:
         raise HTTPException(status_code=409, detail="Per questo istituto è già stato attivato un dirigente")
 
@@ -514,7 +657,7 @@ async def complete_invite(
     inv.completed_at = _now()
     inv.claimed_user_id = owner.id
     inv.tenant_id = tenant.id
-    inv.mechanographic_code = code
+    inv.mechanographic_code = code or tenant.mechanographic_code
     await db.commit()
 
     access_token = create_access_token(
@@ -557,40 +700,9 @@ async def _owner_tenant(db: AsyncSession, owner: User) -> Tenant:
 
 
 async def _teacher_rows(db: AsyncSession, tenant: Tenant, owner: User) -> list[dict]:
-    teachers = (await db.execute(
-        select(User).where(User.tenant_id == tenant.id, User.role == UserRole.TEACHER, User.id != owner.id)
-        .order_by(User.created_at.asc())
-    )).scalars().all()
-    ids = [t.id for t in teachers]
-    tokens: dict = {}
-    accepted: dict = {}
-    if ids:
-        for tok in (await db.execute(select(ActivationToken).where(ActivationToken.user_id.in_(ids)))).scalars().all():
-            tokens[tok.user_id] = tok
-        for row in (await db.execute(
-            select(LegalDocumentAcceptance.user_id, func.count(LegalDocumentAcceptance.id))
-            .where(LegalDocumentAcceptance.user_id.in_(ids))
-            .group_by(LegalDocumentAcceptance.user_id)
-        )).all():
-            accepted[row[0]] = row[1]
-    needed = len(LEGAL_DOCUMENTS) + 1
-    out = []
-    for t in teachers:
-        tok = tokens.get(t.id)
-        if not t.is_active:
-            state = "DEACTIVATED"
-        elif tok and not tok.is_used and t.last_login_at is None:
-            state = "INVITED"
-        elif accepted.get(t.id, 0) < needed:
-            state = "TERMS_PENDING"
-        else:
-            state = "ACTIVE"
-        out.append({
-            "id": str(t.id), "email": t.email, "first_name": t.first_name, "last_name": t.last_name,
-            "state": state, "invited_at": t.created_at.isoformat() if t.created_at else None,
-            "last_login_at": t.last_login_at.isoformat() if t.last_login_at else None,
-        })
-    return out
+    """The principal's teachers, with the same states, e-mail delivery and acceptances the admin sees."""
+    overview = await school_overview.school_overview(db, [tenant.id])
+    return overview[0]["teachers"] if overview else []
 
 
 @owner_router.get("/status")
@@ -631,7 +743,8 @@ class TeacherInvite(BaseModel):
     last_name: str = Field(min_length=1, max_length=120)
 
 
-async def _send_teacher_invite_email(user: User, school: str, principal: str, link: str) -> bool:
+async def _send_teacher_invite_email(user: User, school: str, principal: str, link: str,
+                                     token: ActivationToken | None = None, origin: str | None = None) -> bool:
     body = (
         f"<p>Gentile {escape(user.first_name or '')} {escape(user.last_name or '')},</p>"
         f"<p>il Dirigente <strong>{escape(principal)}</strong> la invita a partecipare alla sperimentazione di "
@@ -639,12 +752,16 @@ async def _send_teacher_invite_email(user: User, school: str, principal: str, li
         "<p>Apra il link per scegliere la password: l'account docente sarà subito attivo. Al primo accesso "
         "le sarà chiesto di leggere e accettare le condizioni d'uso e la dichiarazione d'uso del docente.</p>"
     )
-    return bool(await email_service.send_email(
+    sent, error = await email_service.send_email_result(
         to_email=user.email,
         subject=f"Invito a Golinelli.ai da {school}",
-        html_content=_email_shell("Sei stato invitato", body, "Attiva il tuo account", link),
+        html_content=_email_shell("Sei stato invitato", body, "Attiva il tuo account", link,
+                                  _pixel(origin, "teacher", token.id) if token else ""),
         text_content=f"Invito a Golinelli.ai da {school}. Attiva il tuo account: {link}",
-    ))
+    )
+    if token is not None:
+        _record_delivery(token, sent, error)
+    return sent
 
 
 @owner_router.post("/teachers")
@@ -677,16 +794,19 @@ async def owner_invite_teacher(
     db.add(teacher)
     await db.flush()
     activation_token = secrets.token_urlsafe(48)
-    db.add(ActivationToken(
+    token = ActivationToken(
         user_id=teacher.id, token=activation_token, temporary_password=temp_password,
         expires_at=_now() + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS),
-    ))
+    )
+    db.add(token)
     await db.commit()
 
-    link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
+    origin = request.headers.get("origin")
+    link = f"{resolve_frontend_url(origin)}/activate/{activation_token}"
     principal = " ".join(filter(None, [owner.first_name, owner.last_name])) or owner.email
-    sent = await _send_teacher_invite_email(teacher, tenant.name, principal, link)
-    return {"teacher_id": str(teacher.id), "email_sent": sent, "link": link if not sent else None}
+    sent = await _send_teacher_invite_email(teacher, tenant.name, principal, link, token, origin)
+    await db.commit()
+    return {"teacher_id": str(teacher.id), "email_sent": sent, "email_error": token.email_error, "link": link if not sent else None}
 
 
 async def _owned_teacher(db: AsyncSession, owner: User, tenant: Tenant, teacher_id: UUID) -> User:
@@ -715,10 +835,12 @@ async def owner_resend_teacher_invite(
     if not tok or tok.is_used:
         raise HTTPException(status_code=400, detail="Il docente ha già attivato l'account")
     tok.expires_at = _now() + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS)
-    await db.commit()
-    link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{tok.token}"
+    origin = request.headers.get("origin")
+    link = f"{resolve_frontend_url(origin)}/activate/{tok.token}"
     principal = " ".join(filter(None, [owner.first_name, owner.last_name])) or owner.email
-    return {"email_sent": await _send_teacher_invite_email(teacher, tenant.name, principal, link)}
+    sent = await _send_teacher_invite_email(teacher, tenant.name, principal, link, tok, origin)
+    await db.commit()
+    return {"email_sent": sent, "email_error": tok.email_error, "link": link if not sent else None}
 
 
 @owner_router.delete("/teachers/{teacher_id}")

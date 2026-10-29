@@ -1,4 +1,5 @@
 import { X, Clock, Calendar, StickyNote, CheckSquare, FileText, Image, CalendarDays, Sparkles } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface WidgetPaletteProps {
   onAdd: (widgetType: string, defaultConfig: Record<string, unknown>) => void
@@ -10,8 +11,8 @@ interface WidgetPaletteProps {
 const PALETTE_ITEMS = [
   {
     type: 'CLOCK',
-    label: 'Orologio',
-    description: 'Orologio digitale animato',
+    label: tl("Orologio"),
+    description: tl("Orologio digitale animato"),
     icon: Clock,
     color: 'text-cyan-400',
     bg: 'bg-cyan-400/10',
@@ -20,8 +21,8 @@ const PALETTE_ITEMS = [
   },
   {
     type: 'CALENDAR',
-    label: 'Calendario',
-    description: 'Calendario mensile con note',
+    label: tl("Calendario"),
+    description: tl("Calendario mensile con note"),
     icon: Calendar,
     color: 'text-blue-400',
     bg: 'bg-blue-400/10',
@@ -31,7 +32,7 @@ const PALETTE_ITEMS = [
   {
     type: 'NOTE',
     label: 'Post-it',
-    description: 'Nota libera colorata',
+    description: tl("Nota libera colorata"),
     icon: StickyNote,
     color: 'text-amber-400',
     bg: 'bg-amber-400/10',
@@ -40,28 +41,28 @@ const PALETTE_ITEMS = [
   },
   {
     type: 'TASKLIST',
-    label: 'Lista compiti',
-    description: 'Lista di attività con checkbox',
+    label: tl("Lista compiti"),
+    description: tl("Lista di attività con checkbox"),
     icon: CheckSquare,
     color: 'text-emerald-400',
     bg: 'bg-emerald-400/10',
-    defaultConfig: { title: 'Da fare', items: [] },
+    defaultConfig: { title: tl("Da fare"), items: [] },
     defaultSize: { w: 5, h: 5 },
   },
   {
     type: 'FILE_REF',
-    label: 'Riferimento file',
-    description: 'Link rapido a un documento',
+    label: tl("Riferimento file"),
+    description: tl("Link rapido a un documento"),
     icon: FileText,
     color: 'text-violet-400',
     bg: 'bg-violet-400/10',
-    defaultConfig: { filename: 'File', mime_type: '' },
+    defaultConfig: { filename: tl("File"), mime_type: '' },
     defaultSize: { w: 4, h: 3 },
   },
   {
     type: 'IMAGE_REF',
-    label: 'Immagine',
-    description: 'Immagine con anteprima',
+    label: tl("Immagine"),
+    description: tl("Immagine con anteprima"),
     icon: Image,
     color: 'text-pink-400',
     bg: 'bg-pink-400/10',
@@ -71,8 +72,8 @@ const PALETTE_ITEMS = [
   },
   {
     type: 'WEEKLY_CALENDAR',
-    label: 'Calendario sessione',
-    description: 'Calendaria settimanale condiviso',
+    label: tl("Calendario sessione"),
+    description: tl("Calendaria settimanale condiviso"),
     icon: CalendarDays,
     color: 'text-indigo-400',
     bg: 'bg-indigo-400/10',
@@ -82,8 +83,8 @@ const PALETTE_ITEMS = [
   },
   {
     type: 'OGGI_IMPARO',
-    label: 'Oggi Imparo',
-    description: 'Microlezione giornaliera con chatbot',
+    label: tl("Oggi Imparo"),
+    description: tl("Microlezione giornaliera con chatbot"),
     icon: Sparkles,
     color: 'text-violet-400',
     bg: 'bg-violet-400/10',
@@ -100,7 +101,7 @@ export default function WidgetPalette({ onAdd, onClose, sessionId, sessionName }
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-sm font-semibold text-white/80">Aggiungi widget</h3>
+          <h3 className="text-sm font-semibold text-white/80">{tl("Aggiungi widget")}</h3>
           <button
             className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
             onClick={onClose}
@@ -117,7 +118,7 @@ export default function WidgetPalette({ onAdd, onClose, sessionId, sessionName }
               <button
                 key={item.type}
                 disabled={disabled}
-                title={disabled ? 'Seleziona una sessione attiva per usare questo widget' : undefined}
+                title={disabled ? tl("Seleziona una sessione attiva per usare questo widget") : undefined}
                 className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left group ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/5'}`}
                 onClick={() => {
                   if (disabled) return

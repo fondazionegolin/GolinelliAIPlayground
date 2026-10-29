@@ -2,6 +2,7 @@ import {
   Box, File, FileArchive, FileAudio, FileCode2, FileImage, FileSpreadsheet, FileText, FileVideo, Folder,
   Presentation, type LucideIcon,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export type DriveRole = 'owner' | 'editor' | 'viewer'
 
@@ -71,18 +72,18 @@ export function categoryOf(item: Pick<DriveItem, 'kind' | 'source_type' | 'mime_
 }
 
 export const CATEGORY_META: Record<DriveCategory, { label: string; icon: LucideIcon; tone: string }> = {
-  folder: { label: 'Cartella', icon: Folder, tone: 'var(--logo-blue)' },
-  document: { label: 'Documento', icon: FileText, tone: '#2f6fed' },
-  presentation: { label: 'Presentazione', icon: Presentation, tone: '#f08a24' },
-  image: { label: 'Immagine', icon: FileImage, tone: 'var(--logo-pink)' },
-  model3d: { label: 'Modello 3D', icon: Box, tone: 'var(--logo-violet)' },
+  folder: { label: tl("Cartella"), icon: Folder, tone: 'var(--logo-blue)' },
+  document: { label: tl("Documento"), icon: FileText, tone: '#2f6fed' },
+  presentation: { label: tl("Presentazione"), icon: Presentation, tone: '#f08a24' },
+  image: { label: tl("Immagine"), icon: FileImage, tone: 'var(--logo-pink)' },
+  model3d: { label: tl("Modello 3D"), icon: Box, tone: 'var(--logo-violet)' },
   pdf: { label: 'PDF', icon: FileText, tone: '#e5484d' },
   video: { label: 'Video', icon: FileVideo, tone: '#d6409f' },
   audio: { label: 'Audio', icon: FileAudio, tone: '#12a594' },
-  sheet: { label: 'Foglio di calcolo', icon: FileSpreadsheet, tone: '#30a46c' },
-  code: { label: 'Codice', icon: FileCode2, tone: '#475569' },
-  archive: { label: 'Archivio', icon: FileArchive, tone: '#a18072' },
-  other: { label: 'File', icon: File, tone: '#64748b' },
+  sheet: { label: tl("Foglio di calcolo"), icon: FileSpreadsheet, tone: '#30a46c' },
+  code: { label: tl("Codice"), icon: FileCode2, tone: '#475569' },
+  archive: { label: tl("Archivio"), icon: FileArchive, tone: '#a18072' },
+  other: { label: tl("File"), icon: File, tone: '#64748b' },
 }
 
 export function iconFor(item: DriveItem): LucideIcon {
@@ -91,12 +92,12 @@ export function iconFor(item: DriveItem): LucideIcon {
 }
 
 export const FILTERS: { id: 'all' | DriveCategory; label: string }[] = [
-  { id: 'all', label: 'Tutti' },
-  { id: 'folder', label: 'Cartelle' },
-  { id: 'document', label: 'Documenti' },
-  { id: 'presentation', label: 'Presentazioni' },
-  { id: 'image', label: 'Immagini' },
-  { id: 'model3d', label: 'Modelli 3D' },
+  { id: 'all', label: tl("Tutti") },
+  { id: 'folder', label: tl("Cartelle") },
+  { id: 'document', label: tl("Documenti") },
+  { id: 'presentation', label: tl("Presentazioni") },
+  { id: 'image', label: tl("Immagini") },
+  { id: 'model3d', label: tl("Modelli 3D") },
   { id: 'pdf', label: 'PDF' },
   { id: 'video', label: 'Video' },
 ]

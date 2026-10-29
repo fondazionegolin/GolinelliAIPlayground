@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { solidModelerApi, type SolidModelSummary } from '@/lib/api'
 import type { SceneObject } from './types'
+import { publishArModel } from './arPublish'
+import { tl } from '@/i18n/tl'
 
 export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 
-const DEFAULT_NAME = 'Progetto senza titolo'
+const DEFAULT_NAME = tl("Progetto senza titolo")
 const CURRENT_KEY = 'solid_modeler_current_server_v1'
 // Pre-database prototype projects lived in localStorage: offered once for import.
 const LEGACY_KEY = 'solid_modeler_projects_v1'
@@ -107,7 +109,9 @@ export function useSolidProject({ objects, resetScene, snapshot, student = false
           writeStorage(CURRENT_KEY, res.data.id)
         } else {
           try {
-            await solidModelerApi.update(idRef.current, { name: currentName, scene, ...(thumbnail !== undefined ? { thumbnail } : {}) })
+            const res = await solidModelerApi.update(idRef.current, { name: currentName, scene, ...(thumbnail !== undefined ? { thumbnail } : {}) })
+            // Publicly shared: keep the AR snapshot behind the QR code in step with the saved scene.
+            if (res.data.public_enabled) void publishArModel(res.data.id, scene)
           } catch (err) {
             // Project deleted server-side (another tab, admin cleanup): recreate it from the in-memory scene.
             if ((err as { response?: { status?: number } })?.response?.status !== 404) throw err

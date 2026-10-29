@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { describeDocumentForAgent, type FormatRange } from '@/lib/documentFormatOps'
+import { tl } from '@/i18n/tl'
 
 /** Where a piece of generated text goes (decided by the Document Builder planner). */
 export type WritePlacement = 'replace_selection' | 'after_selection' | 'at_cursor' | 'end_of_document'
@@ -15,10 +16,10 @@ export interface WriteSpec {
 }
 
 export const PLACEMENT_LABEL: Record<WritePlacement, string> = {
-  replace_selection: 'Sostituisce il testo selezionato',
-  after_selection: 'Inserito dopo la selezione',
-  at_cursor: 'Inserito nel punto del cursore',
-  end_of_document: 'Aggiunto in fondo al documento',
+  replace_selection: tl("Sostituisce il testo selezionato"),
+  after_selection: tl("Inserito dopo la selezione"),
+  at_cursor: tl("Inserito nel punto del cursore"),
+  end_of_document: tl("Aggiunto in fondo al documento"),
 }
 
 type Range = { from: number; to: number }

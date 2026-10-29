@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2 } from '@/components/icons'
 import { codingApi } from '@/lib/api'
 import CodingSandpackPreview from '@/components/coding/CodingSandpackPreview'
+import { tl } from '@/i18n/tl'
 
 // New projects are real React apps (rendered by Sandpack); legacy ones are static HTML/CSS/JS.
 function isReactProject(files: PublishedFile[]): boolean {
@@ -38,7 +39,7 @@ export default function PublicCodingSitePage() {
         if (active) setSite(response.data as PublishedSite)
       })
       .catch((err) => {
-        if (active) setError(err?.response?.data?.detail || 'Sito non trovato.')
+        if (active) setError(err?.response?.data?.detail || tl("Sito non trovato."))
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -71,7 +72,7 @@ export default function PublicCodingSitePage() {
       else if (data.action === 'saveData') { guestData.set(key, data.payload?.value ?? null); reply({ ok: true, result: { key, value: data.payload?.value ?? null } }) }
       else if (data.action === 'deleteData') { guestData.delete(key); reply({ ok: true, result: {} }) }
       else if (data.action === 'openExternalLink') reply({ ok: true, result: {} })
-      else reply({ ok: false, error: 'Questa funzione è disponibile solo aprendo l’app dentro Golinelli.ai.' })
+      else reply({ ok: false, error: tl("Questa funzione è disponibile solo aprendo l’app dentro Golinelli.ai.") })
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
@@ -84,7 +85,7 @@ export default function PublicCodingSitePage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Caricamento sito...
+        {tl("Caricamento sito...")}
       </div>
     )
   }
@@ -93,8 +94,8 @@ export default function PublicCodingSitePage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <div className="max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <h1 className="text-base font-bold text-slate-900">Sito non disponibile</h1>
-          <p className="mt-2 text-sm text-slate-500">{error || 'La pubblicazione richiesta non esiste.'}</p>
+          <h1 className="text-base font-bold text-slate-900">{tl("Sito non disponibile")}</h1>
+          <p className="mt-2 text-sm text-slate-500">{error || tl("La pubblicazione richiesta non esiste.")}</p>
         </div>
       </div>
     )

@@ -61,6 +61,7 @@ import {
 import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
+import { tl } from '@/i18n/tl'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -70,18 +71,18 @@ const FALLBACK_MODELS = [
 ]
 
 const AGENT_MODES = [
-  { id: 'default', label: 'Chat' },
+  { id: 'default', label: tl("Chat") },
   // { id: 'web_search', label: 'Web Search' },  // Hidden - not mature yet
   { id: 'report', label: 'Report' },
-  { id: 'quiz', label: 'Quiz' },
-  { id: 'exercise', label: 'Esercizio' },
-  { id: 'image', label: 'Immagine' },
+  { id: 'quiz', label: tl("Quiz") },
+  { id: 'exercise', label: tl("Esercizio") },
+  { id: 'image', label: tl("Immagine") },
   { id: 'ocr', label: 'OCR' },
   { id: 'dataset', label: 'Dataset' },
-  { id: 'analysis', label: 'Analisi' },
+  { id: 'analysis', label: tl("Analisi") },
   { id: 'brochure', label: 'Brochure' },
-  { id: 'dispensa', label: 'Dispensa' },
-  { id: 'html_page', label: 'Pagina Interattiva' },
+  { id: 'dispensa', label: tl("Dispensa") },
+  { id: 'html_page', label: tl("Pagina Interattiva") },
   { id: 'deep_research', label: 'Deep Research' },
 ] as const
 
@@ -232,7 +233,7 @@ function parseDispensaPlan(raw: string): DispensaPlan | null {
       objectives: Array.isArray(parsed.objectives) ? parsed.objectives.slice(0, 8).map(String) : [],
       sections: parsed.sections.slice(0, 10).map((section, index) => ({
         id: section.id || `s${index + 1}`,
-        title: section.title || `Sezione ${index + 1}`,
+        title: section.title || tl("Sezione {0}", index + 1),
         focus: section.focus || '',
       })),
       estimatedPages: parsed.estimatedPages,
@@ -429,7 +430,7 @@ function parseDispensaSectionPayload(raw: string): DispensaSection | null {
         kind: ['definition', 'theorem', 'example', 'warning', 'note'].includes(String(block.kind || ''))
           ? block.kind as 'definition' | 'theorem' | 'example' | 'warning' | 'note'
           : 'note',
-        title: block.title || 'Approfondimento',
+        title: block.title || tl("Approfondimento"),
         content: block.content || '',
       }))
       : [],
@@ -450,7 +451,7 @@ function parseDispensaAppendixPayload(raw: string): DispensaAppendixPayload | nu
   return {
     exercises: Array.isArray(parsed.exercises)
       ? parsed.exercises.slice(0, 6).map((exercise) => ({
-          title: exercise.title || 'Esercizio',
+          title: exercise.title || tl("Esercizio"),
           prompt: exercise.prompt || '',
           solution: exercise.solution,
         }))
@@ -462,28 +463,28 @@ function parseDispensaAppendixPayload(raw: string): DispensaAppendixPayload | nu
 const REPORT_TYPE_OPTIONS = [
   {
     id: 'dashboard_classe',
-    label: 'Dashboard Classe',
-    description: 'panoramica completa della sessione con KPI, trend, ranking e azioni consigliate',
+    label: tl("Dashboard Classe"),
+    description: tl("panoramica completa della sessione con KPI, trend, ranking e azioni consigliate"),
   },
   {
     id: 'apprendimenti',
-    label: 'Apprendimenti',
-    description: 'competenze emerse, apprendimenti, lacune e priorità didattiche',
+    label: tl("Apprendimenti"),
+    description: tl("competenze emerse, apprendimenti, lacune e priorità didattiche"),
   },
   {
     id: 'partecipazione',
-    label: 'Partecipazione',
-    description: 'engagement, chat, task, chatbot e livelli di coinvolgimento',
+    label: tl("Partecipazione"),
+    description: tl("engagement, chat, task, chatbot e livelli di coinvolgimento"),
   },
   {
     id: 'classifiche',
-    label: 'Classifiche',
-    description: 'ranking, top performer, studenti costanti e studenti da recuperare',
+    label: tl("Classifiche"),
+    description: tl("ranking, top performer, studenti costanti e studenti da recuperare"),
   },
   {
     id: 'criticita',
-    label: 'Criticità e Rischi',
-    description: 'consegne mancanti, cali di attività, fragilità e interventi urgenti',
+    label: tl("Criticità e Rischi"),
+    description: tl("consegne mancanti, cali di attività, fragilità e interventi urgenti"),
   },
 ] as const
 
@@ -499,10 +500,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   // to confirm the click registered instead of appearing to do nothing.
   const isDockArmed = dockArmed && !sidebarMode
   const dockControlLabel = sidebarMode
-    ? 'Chiudi la colonna laterale della chat'
+    ? tl("Chiudi la colonna laterale della chat")
     : isDockArmed
-      ? 'Chat ancorata: comparirà nella colonna verticale a destra quando apri un’altra sezione.'
-      : 'Ancora la chat in una colonna verticale a destra. Comparirà quando apri un’altra sezione.'
+      ? tl("Chat ancorata: comparirà nella colonna verticale a destra quando apri un’altra sezione.")
+      : tl("Ancora la chat in una colonna verticale a destra. Comparirà quando apri un’altra sezione.")
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -601,7 +602,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const teacherDisplayName = useMemo(() => {
     const first = teacherProfileData?.firstName?.trim() || ''
     const last = teacherProfileData?.lastName?.trim() || ''
-    return [first, last].filter(Boolean).join(' ') || 'Docente'
+    return [first, last].filter(Boolean).join(' ') || tl("Docente")
   }, [teacherProfileData])
   const accentVars = useMemo(() => ({
     '--teacher-accent': accentTheme.accent,
@@ -717,19 +718,19 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
   const paletteGroups = useMemo(() => ([
     {
-      label: 'Toni luminosi',
+      label: tl("Toni luminosi"),
       colors: ['#ffffff', '#fbfdff', '#f7fbff', '#fffaf4', '#f8f5ff'],
     },
     {
-      label: 'Toni di azzurro',
+      label: tl("Toni di azzurro"),
       colors: ['#eff6ff', '#dbeafe', '#bfdbfe', '#93c5fd', '#60a5fa'],
     },
     {
-      label: 'Toni di verde',
+      label: tl("Toni di verde"),
       colors: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#34d399'],
     },
     {
-      label: 'Toni di viola',
+      label: tl("Toni di viola"),
       colors: ['#f5f3ff', '#ede9fe', '#ddd6fe', '#c4b5fd', '#a78bfa'],
     },
   ]), [])
@@ -868,10 +869,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           sessions.forEach((s: any) => {
             allSessions.push({
               id: s.id,
-              title: s.title || s.name || 'Sessione senza titolo',
+              title: s.title || s.name || tl("Sessione senza titolo"),
               class_name: cls.name,
               class_join_code: cls.join_code || null,
-              status: s.status || 'attiva'
+              status: s.status || tl("attiva")
             })
           })
         } catch (e) { } // Ignore errors for individual session fetches
@@ -921,7 +922,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         const serverConversations = response.data || []
         setConversations(serverConversations.map((c: any) => ({
           id: c.id,
-          title: c.title || 'Nuova conversazione',
+          title: c.title || tl("Nuova conversazione"),
           agentMode: isAgentMode(c.agent_mode) ? c.agent_mode : 'default',
           messages: [], // Messages loaded on demand when selecting a conversation
           createdAt: new Date(c.created_at),
@@ -1217,7 +1218,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setAttachedYoutube(prev => prev
-        ? { ...prev, status: 'error', errorMsg: detail || 'Trascritto non disponibile' }
+        ? { ...prev, status: 'error', errorMsg: detail || tl("Trascritto non disponibile") }
         : null
       )
     }
@@ -1356,7 +1357,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       setCurrentConversationId(convId)
       setConversations(prev => [{
         id: convId,
-        title: response.data.title || 'Nuova conversazione',
+        title: response.data.title || tl("Nuova conversazione"),
         agentMode: isAgentMode(response.data.agent_mode) ? response.data.agent_mode : agentMode,
         messages: [],
         createdAt: new Date()
@@ -1476,13 +1477,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           } else if (data.type === 'calendar_event_created') {
             opts?.onCalendarEvent?.(data.event)
           } else if (data.type === 'error') {
-            throw new Error(data.message || 'Errore durante lo stream')
+            throw new Error(data.message || tl("Errore durante lo stream"))
           }
         })
       }
 
       if (!finalContent.trim()) {
-        throw new Error('Il modello non ha restituito alcun contenuto')
+        throw new Error(tl("Il modello non ha restituito alcun contenuto"))
       }
 
       // Footer listing the notebook fragments the answer was grounded on ([[n]] references).
@@ -1511,10 +1512,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       if (alreadyUsingFallback || nonRetryableStatuses.has(error?.status)) throw error
 
       opts?.onFallback?.()
-      opts?.onStatus?.('⚡ Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…')
+      opts?.onStatus?.(tl("⚡ Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…"))
       toast({
-        title: 'Modello temporaneamente non raggiungibile',
-        description: 'La richiesta viene completata automaticamente con Claude Haiku 4.5.',
+        title: tl("Modello temporaneamente non raggiungibile"),
+        description: tl("La richiesta viene completata automaticamente con Claude Haiku 4.5."),
       })
       return executeRequest(fallbackProvider, fallbackModel)
     }
@@ -1549,13 +1550,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       )
       const templateId = matchedReportType?.id || 'dashboard_classe'
       prompt = [
-        'Compila SOLO i dati variabili di un report didattico. Il layout HTML/CSS/JS viene applicato dal sistema tramite template locale.',
+        tl("Compila SOLO i dati variabili di un report didattico. Il layout HTML/CSS/JS viene applicato dal sistema tramite template locale."),
         '',
-        'TEMPLATE SELEZIONATO:',
+        tl("TEMPLATE SELEZIONATO:"),
         `- templateId: ${templateId}`,
         `- focus: ${matchedReportType?.description || 'panoramica completa della sessione con KPI, grafici, ranking e azioni'}`,
         '',
-        'RISPOSTA OBBLIGATORIA:',
+        tl("RISPOSTA OBBLIGATORIA:"),
         '- Rispondi SOLO con un blocco ```report_data contenente un JSON valido',
         '- Nessun commento prima o dopo',
         '- Non generare HTML',
@@ -1585,7 +1586,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   "methodology": "nota metodologica breve"
 }`,
         '',
-        'VINCOLI DI COMPILAZIONE:',
+        tl("VINCOLI DI COMPILAZIONE:"),
         '- Massimo 6 KPI',
         '- Massimo 4 grafici',
         '- Massimo 10 righe in leaderboard',
@@ -1594,7 +1595,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         '- Se un valore numerico non è disponibile, non inventarlo: usa tabelle, ranking qualitativi o KPI testuali',
         '- Inserisci in assumptions ciò che è stimato o incompleto',
         '',
-        'DATI DA TRASFORMARE:',
+        tl("DATI DA TRASFORMARE:"),
         userRequest,
         '',
         chatHistory.length > 0 ? `CONTESTO CONVERSAZIONALE:\n${historyContext}` : '',
@@ -1603,9 +1604,9 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     } else if (mode === 'brochure') {
       const currentPayload = isEdit && currentDoc ? parseBrochurePayload(currentDoc.content) : null
       prompt = [
-        'Compila SOLO i dati variabili di una brochure. Il layout HTML/CSS è applicato dal sistema tramite template locale.',
+        tl("Compila SOLO i dati variabili di una brochure. Il layout HTML/CSS è applicato dal sistema tramite template locale."),
         '',
-        'RISPOSTA OBBLIGATORIA:',
+        tl("RISPOSTA OBBLIGATORIA:"),
         '- Rispondi SOLO con un blocco ```brochure_data contenente JSON valido',
         '- Nessun commento prima o dopo',
         '- Non generare HTML',
@@ -1634,7 +1635,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   "closingAuthor": "autore citazione"
 }`,
         '',
-        'VINCOLI DI COMPILAZIONE:',
+        tl("VINCOLI DI COMPILAZIONE:"),
         '- Massimo 6 keyPoints',
         '- Massimo 6 features',
         '- Massimo 8 benefits',
@@ -1649,15 +1650,15 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
             ? `\`\`\`brochure_data\n${JSON.stringify(currentPayload, null, 2)}\n\`\`\``
             : `\`\`\`html\n${currentDoc.content.substring(0, 10000)}\n\`\`\``
           : '',
-        isEdit ? `MODIFICA RICHIESTA: ${userRequest}` : `TOPIC: ${userRequest}`,
+        isEdit ? tl("MODIFICA RICHIESTA: {0}", userRequest) : `TOPIC: ${userRequest}`,
         contextSection,
       ].filter(Boolean).join('\n')
     } else {
       const currentPayload = isEdit && currentDoc ? parseDispensaPayload(currentDoc.content) : null
       prompt = [
-        'Compila SOLO i dati variabili di una dispensa universitaria destinata a composizione PDF in stile LaTeX. Il layout finale non va generato dal modello.',
+        tl("Compila SOLO i dati variabili di una dispensa universitaria destinata a composizione PDF in stile LaTeX. Il layout finale non va generato dal modello."),
         '',
-        'RISPOSTA OBBLIGATORIA:',
+        tl("RISPOSTA OBBLIGATORIA:"),
         '- Rispondi SOLO con un blocco ```dispensa_data contenente JSON valido',
         '- Nessun commento prima o dopo',
         '- Non generare HTML o LaTeX',
@@ -1683,7 +1684,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   "references": ["riferimento"]
 }`,
         '',
-        'VINCOLI DI COMPILAZIONE:',
+        tl("VINCOLI DI COMPILAZIONE:"),
         '- Massimo 8 sections',
         '- Ogni section deve avere intro sostanziosa',
         '- Ogni section può avere fino a 4 blocks',
@@ -1693,7 +1694,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         '- Non sprecare token in markup o boilerplate',
         '- Mantieni coerenza rigorosa con il planning approvato',
         '',
-        approvedPlan ? 'PLANNING APPROVATO:' : '',
+        approvedPlan ? tl("PLANNING APPROVATO:") : '',
         approvedPlan ? `\`\`\`json\n${JSON.stringify(approvedPlan, null, 2)}\n\`\`\`` : '',
         isEdit && currentDoc ? 'DISPENSA ATTUALE:' : '',
         isEdit && currentDoc
@@ -1701,7 +1702,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
             ? `\`\`\`dispensa_data\n${JSON.stringify(currentPayload, null, 2)}\n\`\`\``
             : `\`\`\`html\n${currentDoc.content.substring(0, 10000)}\n\`\`\``
           : '',
-        isEdit ? `MODIFICA RICHIESTA: ${userRequest}` : `ARGOMENTO: ${userRequest}`,
+        isEdit ? tl("MODIFICA RICHIESTA: {0}", userRequest) : tl("ARGOMENTO: {0}", userRequest),
         contextSection,
       ].filter(Boolean).join('\n')
     }
@@ -2032,7 +2033,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   /** Step 1: ask the chatbot for the research topics (or a clarifying question) and show them for approval. */
   const proposeResearch = async (convId: string, userMessage: Message, request: string, signal: AbortSignal) => {
     const existing = researchDocFor(convId)
-    setStreamingStatus('🧭 Preparo il piano di ricerca…')
+    setStreamingStatus(tl("🧭 Preparo il piano di ricerca…"))
     const { data } = await api.post('/llm/teacher/deep-research/plan', {
       content: request,
       history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
@@ -2044,13 +2045,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     if (data.plan?.subtopics?.length) {
       setPendingResearch({ convId, request, plan: data.plan })
       content = [
-        existing ? `Per ampliare **${existing.title}** propongo di cercare:` : `Ecco come impostare la ricerca su **${data.plan.title}**:`,
+        existing ? tl("Per ampliare **{0}** propongo di cercare:", existing.title) : tl("Ecco come impostare la ricerca su **{0}**:", data.plan.title),
         '', ...data.plan.subtopics.map((s: { title: string }) => `- ${s.title}`), '',
-        'Modifica argomenti e query nel riquadro qui sotto (o scrivimi cosa cambiare), poi premi **Approva e avvia**: i sub-agent cercheranno e leggeranno le fonti finché gli argomenti non si esauriscono.',
+        tl("Modifica argomenti e query nel riquadro qui sotto (o scrivimi cosa cambiare), poi premi **Approva e avvia**: i sub-agent cercheranno e leggeranno le fonti finché gli argomenti non si esauriscono."),
       ].join('\n')
     } else {
       setPendingResearch(null)
-      content = data.clarifying_question || 'Puoi descrivere meglio cosa vuoi approfondire?'
+      content = data.clarifying_question || tl("Puoi descrivere meglio cosa vuoi approfondire?")
     }
     const assistantMessage: Message = { id: `resp-${Date.now()}`, role: 'assistant', content, timestamp: new Date() }
     setMessages((prev) => [...prev, assistantMessage])
@@ -2064,13 +2065,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     const { convId } = pending
     const existing = researchDocFor(convId)
     setPendingResearch(null)
-    const userMessage: Message = { id: `msg-${Date.now()}`, role: 'user', content: 'Approvo il piano di ricerca', timestamp: new Date() }
+    const userMessage: Message = { id: `msg-${Date.now()}`, role: 'user', content: tl("Approvo il piano di ricerca"), timestamp: new Date() }
     setMessages((prev) => [...prev, userMessage])
     setIsLoading(true)
     const abortController = new AbortController()
     activeGenerationAbortRef.current?.abort()
     activeGenerationAbortRef.current = abortController
-    setResearchRun({ ...EMPTY_RESEARCH_RUN, status: 'running', statusText: 'Avvio dei sub-agent…' })
+    setResearchRun({ ...EMPTY_RESEARCH_RUN, status: 'running', statusText: tl("Avvio dei sub-agent…") })
     setResearchRunConv(convId)
     setShowCanvas(true)
     try {
@@ -2086,16 +2087,16 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           ...modelForResearch(),
         }),
       })
-      if (!response.ok || !response.body) throw new Error('Impossibile avviare la ricerca')
+      if (!response.ok || !response.body) throw new Error(tl("Impossibile avviare la ricerca"))
       researchJobIdRef.current = response.headers.get('X-Job-Id')
       notifyJobsChanged()
       let finalEvent: any = null
       await consumeSseStream(response.body.getReader(), (data) => {
         setResearchRun((prev) => applyResearchEvent(prev, data))
         if (data.type === 'done') finalEvent = data
-        if (data.type === 'error') throw new Error(data.message || 'Ricerca non riuscita')
+        if (data.type === 'error') throw new Error(data.message || tl("Ricerca non riuscita"))
       })
-      if (!finalEvent) throw new Error('La ricerca si è interrotta prima del termine')
+      if (!finalEvent) throw new Error(tl("La ricerca si è interrotta prima del termine"))
       const newDoc: GeneratedDoc = finalEvent.document
       setActiveDoc(newDoc)
       docCacheRef.current[convId] = newDoc
@@ -2111,8 +2112,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
     } catch (e: any) {
       if (e?.name === 'AbortError') return
-      setResearchRun((prev) => ({ ...prev, status: 'error', error: e?.message || 'Ricerca non riuscita' }))
-      setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `La ricerca non è andata a buon fine: ${e?.message || 'errore sconosciuto'}`, timestamp: new Date() }])
+      setResearchRun((prev) => ({ ...prev, status: 'error', error: e?.message || tl("Ricerca non riuscita") }))
+      setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: tl("La ricerca non è andata a buon fine: {0}", e?.message || 'errore sconosciuto'), timestamp: new Date() }])
     } finally {
       if (activeGenerationAbortRef.current === abortController) {
         activeGenerationAbortRef.current = null
@@ -2127,7 +2128,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     activeGenerationAbortRef.current?.abort()
     activeGenerationAbortRef.current = null
     setIsLoading(false)
-    setResearchRun((prev) => ({ ...prev, status: 'error', error: 'Ricerca interrotta dal docente' }))
+    setResearchRun((prev) => ({ ...prev, status: 'error', error: tl("Ricerca interrotta dal docente") }))
     cancelJob(jobId).catch(() => undefined)
   }
 
@@ -2160,7 +2161,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     messages.forEach((m, idx) => {
       if (m.role !== 'assistant') return
       const ago = messages.length - idx
-      const when = `${ago} messaggi fa`
+      const when = tl("{0} messaggi fa", ago)
       if (/!\[[^\]]*\]\(/.test(m.content) || m.content.includes('[IMMAGINE')) push('image', `generata ${when}`)
       if (m.content.includes('```presentation_document')) push('presentation', `creata ${when}`)
       if (/\*\*Pagina Interattiva (generata|aggiornata)/.test(m.content)) push('html_page', `${doc?.type === 'html_page' ? `v${doc.version} · ${doc.title} · ` : ''}${when}`)
@@ -2197,7 +2198,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       setConversationCache(conversationCacheRef.current)
       setInputText(''); setAttachedFiles([])
     } catch (error: any) {
-      toast({ title: 'Podcast', description: error?.response?.data?.detail || 'Impossibile preparare il podcast. Riprova.', variant: 'destructive' })
+      toast({ title: 'Podcast', description: error?.response?.data?.detail || tl("Impossibile preparare il podcast. Riprova."), variant: 'destructive' })
     } finally { setIsLoading(false) }
   }
 
@@ -2211,7 +2212,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       && attachedFiles.length === 0 && !attachedYoutube && text.length >= 8
     if (canRoute) {
       try {
-        setStreamingStatus('Analizzo la richiesta…')
+        setStreamingStatus(tl("Analizzo la richiesta…"))
         const { data } = await llmApi.decideTool(
           text,
           ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'exercise', 'dataset', 'podcast'],
@@ -2256,23 +2257,23 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     let attachments: MessageAttachment[] | undefined
     try { attachments = attachedFiles.length > 0 ? await buildMessageAttachments(attachedFiles.map(f => f.file)) : undefined }
-    catch { toast({ title: 'Caricamento non riuscito', description: 'Riprova a inviare il file multimediale.', variant: 'destructive' }); return }
+    catch { toast({ title: tl("Caricamento non riuscito"), description: tl("Riprova a inviare il file multimediale."), variant: 'destructive' }); return }
     const youtubeInfo = attachedYoutube ? `\n${attachedYoutube.url}` : ''
     let messageContent = userInput || (
       agentMode === 'analysis'
-        ? 'Analizza le risposte degli studenti'
+        ? tl("Analizza le risposte degli studenti")
         : agentMode === 'ocr'
-          ? 'Trascrivi elaborato con OCR'
-        : attachedYoutube ? 'Analizza questo video' : 'Analizza questi documenti'
+          ? tl("Trascrivi elaborato con OCR")
+        : attachedYoutube ? tl("Analizza questo video") : tl("Analizza questi documenti")
     )
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
       const prefixes: Partial<Record<AgentMode, string>> = {
-        web_search: 'RICERCA WEB:',
-        report: 'GENERA REPORT:',
-        dataset: 'GENERA DATASET:',
-        quiz: 'GENERA QUIZ:',
-        exercise: 'GENERA ESERCIZIO:',
+        web_search: tl("RICERCA WEB:"),
+        report: tl("GENERA REPORT:"),
+        dataset: tl("GENERA DATASET:"),
+        quiz: tl("GENERA QUIZ:"),
+        exercise: tl("GENERA ESERCIZIO:"),
         ocr: 'OCR:',
       }
       const prefix = prefixes[agentMode]
@@ -2326,7 +2327,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     // Build LLM content: append transcript if available
     let llmContent = messageContent + youtubeInfo
-    if (currentMedia.length) llmContent += '\nSono allegati file audio/video riproducibili nel player. Non hai una trascrizione del loro contenuto: non inventarla.'
+    if (currentMedia.length) llmContent += tl("\nSono allegati file audio/video riproducibili nel player. Non hai una trascrizione del loro contenuto: non inventarla.")
     if (currentYoutube?.status === 'ready' && currentYoutube.transcript) {
       const videoLabel = currentYoutube.title ? `"${currentYoutube.title}"` : currentYoutube.url
       llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
@@ -2345,14 +2346,14 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       || (agentMode === 'default' && presentationRequested)
     if (attachedNotebooks.length > 0 && usesClientSideGeneration) {
       try {
-        setStreamingStatus('📚 Ricerca nei notebook RAG allegati…')
+        setStreamingStatus(tl("📚 Ricerca nei notebook RAG allegati…"))
         const results = await Promise.all(attachedNotebooks.map((nb) =>
           teacherRagApi.search(userInput || messageContent, undefined, 12, nb.id).then((r) => (r.data || []) as Array<{ document_title: string; page?: number; text: string; score?: number }>)))
         const fragments = results.flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 14)
         if (fragments.length > 0) {
           llmContent += '\n\n--- BASE DI CONOSCENZA (RAG) ---\nUsa questi frammenti dai notebook del docente come fonte primaria:\n\n'
             + fragments.map((f, i) => `[${i + 1}] ${f.document_title}${f.page ? ` (p.${f.page})` : ''}:\n${f.text}`).join('\n\n')
-            + '\n--- FINE BASE DI CONOSCENZA ---'
+            + tl("\n--- FINE BASE DI CONOSCENZA ---")
         }
       } catch (kbError) {
         console.warn('Notebook RAG retrieval failed', kbError)
@@ -2363,7 +2364,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     try {
       if (currentMedia.length && !currentFiles.length && !userInput) {
-        const assistantMessage: Message = { id: `media-${Date.now()}`, role: 'assistant', content: 'I file sono pronti: usa il player per riprodurli. Per i video puoi scegliere finestra flottante, PiP e schermo intero.', timestamp: new Date() }
+        const assistantMessage: Message = { id: `media-${Date.now()}`, role: 'assistant', content: tl("I file sono pronti: usa il player per riprodurli. Per i video puoi scegliere finestra flottante, PiP e schermo intero."), timestamp: new Date() }
         setMessages(prev => [...prev, assistantMessage])
         await saveMessageToServer(convId, userMessage, assistantMessage)
         return
@@ -2373,10 +2374,10 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         setMessages(prev => [...prev, {
           id: assistantId,
           role: 'assistant' as const,
-          content: intent === 'edit' ? 'Sto aggiornando la presentazione…' : 'Sto creando una presentazione editabile e la salverò nei Documenti…',
+          content: intent === 'edit' ? tl("Sto aggiornando la presentazione…") : tl("Sto creando una presentazione editabile e la salverò nei Documenti…"),
           timestamp: new Date(),
         }])
-        setStreamingStatus(intent === 'edit' ? 'Aggiorno la presentazione esistente…' : 'Creo una presentazione editabile…')
+        setStreamingStatus(intent === 'edit' ? tl("Aggiorno la presentazione esistente…") : tl("Creo una presentazione editabile…"))
 
         // Edit: load the deck created earlier in this chat so the agent changes it instead of starting over.
         let editingDraftId = ''
@@ -2387,11 +2388,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           const drafts = editingDraftId ? ((await teacherApi.listDocumentDrafts()).data || []) as Array<{ id: string; content_json?: string }> : []
           const draft = drafts.find(d => String(d.id) === editingDraftId)
           try { currentPresentation = draft?.content_json ? JSON.parse(draft.content_json) : undefined } catch { /* unreadable */ }
-          if (!currentPresentation) throw new Error('Non trovo la presentazione da modificare: aprila dai Documenti oppure chiedimi di crearne una nuova.')
+          if (!currentPresentation) throw new Error(tl("Non trovo la presentazione da modificare: aprila dai Documenti oppure chiedimi di crearne una nuova."))
         }
 
         const attachmentContext = currentFiles.length > 0
-          ? `\n\nMateriali allegati dal docente: ${currentFiles.map(item => item.file.name).join(', ')}.`
+          ? tl("\n\nMateriali allegati dal docente: {0}.", currentFiles.map(item => item.file.name).join(', '))
           : ''
         const response = await llmApi.presentationAgent({
           prompt: `${llmContent}${attachmentContext}`,
@@ -2404,12 +2405,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           title?: string
           format?: string
           slides?: Array<Record<string, unknown>>
+          theme?: Record<string, unknown>
         }
         if (!Array.isArray(presentation.slides) || presentation.slides.length === 0) {
-          throw new Error('La generazione non ha prodotto slide modificabili.')
+          throw new Error(tl("La generazione non ha prodotto slide modificabili."))
         }
 
-        const title = presentation.title?.trim() || 'Nuova presentazione'
+        const title = presentation.title?.trim() || tl("Nuova presentazione")
         const presentationDraft = {
           title,
           doc_type: 'presentation',
@@ -2418,13 +2420,14 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
             format: presentation.format || '16:9',
             title,
             slides: presentation.slides,
+            ...(presentation.theme ? { theme: presentation.theme } : {}),
           }),
         }
         const draftResponse = editingDraftId
           ? await teacherApi.updateDocumentDraft(editingDraftId, presentationDraft)
           : await teacherApi.createDocumentDraft(presentationDraft)
         const draftId = String(draftResponse.data?.id || editingDraftId || '')
-        if (!draftId) throw new Error('La presentazione è stata generata, ma non è stato possibile salvarla nei Documenti.')
+        if (!draftId) throw new Error(tl("La presentazione è stata generata, ma non è stato possibile salvarla nei Documenti."))
 
         const presentationReference: PresentationDocumentData = {
           draft_id: draftId,
@@ -2432,7 +2435,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           slide_count: presentation.slides.length,
         }
         const assistantContent = [
-          editingDraftId ? 'Presentazione aggiornata nella sezione Documenti.' : 'Presentazione editabile pronta nella sezione Documenti.',
+          editingDraftId ? tl("Presentazione aggiornata nella sezione Documenti.") : tl("Presentazione editabile pronta nella sezione Documenti."),
           '',
           '```presentation_document',
           JSON.stringify(presentationReference),
@@ -2459,14 +2462,14 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         const imageFile = currentFiles.find(f => f.type === 'image')?.file
         const imageAttachment = currentFiles.find(f => f.type === 'image')
         if (!imageFile) {
-          throw new Error('Allega una foto dell elaborato prima di avviare l OCR.')
+          throw new Error(tl("Allega una foto dell elaborato prima di avviare l OCR."))
         }
 
         const assistantId = `ocr-${Date.now()}`
         setMessages(prev => [...prev, {
           id: assistantId,
           role: 'assistant' as const,
-          content: 'Sto leggendo l immagine con OCR locale...',
+          content: tl("Sto leggendo l immagine con OCR locale..."),
           timestamp: new Date()
         }])
 
@@ -2477,13 +2480,13 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
           : ''
         const assistantContent = text
           ? [
-              '**Trascrizione OCR**',
+              tl("**Trascrizione OCR**"),
               '',
               '```text',
               text,
               '```',
               '',
-              `**Motore locale:** ${response.data.engine}${confidence}`,
+              tl("**Motore locale:** {0}{1}", response.data.engine, confidence),
             ].join('\n')
           : `**Trascrizione OCR**\n\nNon ho rilevato testo leggibile nell immagine.\n\n**Motore locale:** ${response.data.engine}`
 
@@ -2587,26 +2590,26 @@ REGOLE IMPORTANTI:
           // Save to server
           await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } else {
-          throw new Error("Nessuna URL immagine ricevuta")
+          throw new Error(tl("Nessuna URL immagine ricevuta"))
         }
 
       } else if (agentMode === 'analysis') {
         if (!analysisSessionId || !analysisTaskId) {
-          throw new Error('Seleziona una sessione e un compito prima di avviare l\'analisi.')
+          throw new Error(tl("Seleziona una sessione e un compito prima di avviare l'analisi."))
         }
-        const taskTitle = analysisTasksData?.find(t => t.id === analysisTaskId)?.title || 'compito selezionato'
-        const sessionTitle = (classesData || []).find((s: any) => s.id === analysisSessionId)?.title || 'sessione'
+        const taskTitle = analysisTasksData?.find(t => t.id === analysisTaskId)?.title || tl("compito selezionato")
+        const sessionTitle = (classesData || []).find((s: any) => s.id === analysisSessionId)?.title || tl("sessione")
 
         // Show status in the streaming slot
         const assistantId = `resp-${Date.now()}`
         setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
-        setStreamingStatus(`Caricamento risposte per «${taskTitle}»...`)
+        setStreamingStatus(tl("Caricamento risposte per «{0}»...", taskTitle))
 
         const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined, signal)
         const data = res.data
-        const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
+        const submissionSummary = tl("📋 *{0} su {1} studenti hanno consegnato «{2}» (sessione: {3})*\n\n", data.submission_count, data.total_students, data.task_title, sessionTitle)
         const fullContent = data.formatted_analysis
-          || submissionSummary + (data.overview?.summary || 'Nessuna analisi disponibile.')
+          || submissionSummary + (data.overview?.summary || tl("Nessuna analisi disponibile."))
 
         setStreamingStatus(null)
         setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullContent } : m))
@@ -2624,15 +2627,15 @@ REGOLE IMPORTANTI:
         const isEdit = intent === 'edit' ? !!baseDoc : intent === 'create' ? false : (showCanvas && activeDoc?.type === 'html_page')
 
         const phases = isEdit
-          ? ['Analizzo la pagina attuale', 'Applico le modifiche richieste', 'Riscrivo l\'interattività (JavaScript)', 'Controllo e salvo']
-          : ['Progetto layout e contenuti', 'Scrivo struttura e stile (HTML/CSS)', 'Aggiungo l\'interattività (JavaScript)', 'Controllo e salvo']
+          ? [tl("Analizzo la pagina attuale"), tl("Applico le modifiche richieste"), tl("Riscrivo l'interattività (JavaScript)"), tl("Controllo e salvo")]
+          : [tl("Progetto layout e contenuti"), tl("Scrivo struttura e stile (HTML/CSS)"), tl("Aggiungo l'interattività (JavaScript)"), tl("Controllo e salvo")]
         const startedAt = Date.now()
         const progressId = `progress-${startedAt}`
-        const title = isEdit ? 'Aggiorno la tua pagina interattiva' : 'Genero la tua pagina interattiva'
+        const title = isEdit ? tl("Aggiorno la tua pagina interattiva") : tl("Genero la tua pagina interattiva")
         setGenProgress(isEdit
           // Edits are not streamed: the model returns the changed CSS/HTML/JS sections in one go.
-          ? { title, phases, activeIndex: 1, note: 'Il modello sta riscrivendo gli stili e il codice interessati: può richiedere fino a un minuto…', startedAt }
-          : { title, phases, activeIndex: 0, note: 'Invio la richiesta al modello e attendo i primi token…', startedAt })
+          ? { title, phases, activeIndex: 1, note: tl("Il modello sta riscrivendo gli stili e il codice interessati: può richiedere fino a un minuto…"), startedAt }
+          : { title, phases, activeIndex: 0, note: tl("Invio la richiesta al modello e attendo i primi token…"), startedAt })
 
         try {
           const htmlContent = await generateDocument(
@@ -2651,18 +2654,18 @@ REGOLE IMPORTANTI:
                 : /<style|<body/i.test(text) ? 1
                 : 0
               const note = !text
-                ? (attempt > 0 ? `Tentativo ${attempt + 1}/${maxAttempts}: l'output era incompleto, rigenero da capo…` : 'Il modello sta ragionando sul progetto…')
-                : activeIndex === 1 ? 'Sto scrivendo struttura e stile della pagina…'
-                : activeIndex === 2 ? 'Sto scrivendo la logica interattiva: è la parte più lunga…'
-                : activeIndex === 3 ? 'Codice completato, verifico che la pagina sia valida…'
-                : 'Sto definendo la struttura dei contenuti…'
-              setGenProgress({ title, phases, activeIndex, note: attempt > 0 && text ? `Tentativo ${attempt + 1}/${maxAttempts} · ${note}` : note, chars: text.length, startedAt })
+                ? (attempt > 0 ? tl("Tentativo {0}/{1}: l'output era incompleto, rigenero da capo…", attempt + 1, maxAttempts) : tl("Il modello sta ragionando sul progetto…"))
+                : activeIndex === 1 ? tl("Sto scrivendo struttura e stile della pagina…")
+                : activeIndex === 2 ? tl("Sto scrivendo la logica interattiva: è la parte più lunga…")
+                : activeIndex === 3 ? tl("Codice completato, verifico che la pagina sia valida…")
+                : tl("Sto definendo la struttura dei contenuti…")
+              setGenProgress({ title, phases, activeIndex, note: attempt > 0 && text ? tl("Tentativo {0}/{1} · {2}", attempt + 1, maxAttempts, note) : note, chars: text.length, startedAt })
             }
           )
           if (isEdit && baseDoc && htmlContent.trim() === baseDoc.content.trim()) {
-            throw new Error('Il modello non ha applicato nessuna modifica alla pagina. Riprova descrivendo il cambiamento in modo più specifico.')
+            throw new Error(tl("Il modello non ha applicato nessuna modifica alla pagina. Riprova descrivendo il cambiamento in modo più specifico."))
           }
-          setGenProgress({ title, phases, activeIndex: 3, note: 'Salvo la pagina nei tuoi documenti…', startedAt })
+          setGenProgress({ title, phases, activeIndex: 3, note: tl("Salvo la pagina nei tuoi documenti…"), startedAt })
 
           const newDoc: GeneratedDoc = {
             type: 'html_page',
@@ -2680,8 +2683,8 @@ REGOLE IMPORTANTI:
           })
 
           const finalContent = isEdit
-            ? `**Pagina Interattiva aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
-            : `**Pagina Interattiva generata** (v${newDoc.version}) — il codice è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
+            ? tl("**Pagina Interattiva aggiornata** (v{0}) — le modifiche sono visibili nel canvas a destra.", newDoc.version)
+            : tl("**Pagina Interattiva generata** (v{0}) — il codice è aperto nel canvas. Puoi chiedere modifiche continuando la chat.", newDoc.version)
           const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
           setGenProgress(null)
           setMessages(prev => [...prev, assistantMessage])
@@ -2703,7 +2706,7 @@ REGOLE IMPORTANTI:
         const cachedDoc = docCacheRef.current[convId]
         const baseDoc = activeDoc?.type === agentMode ? activeDoc : (cachedDoc?.type === agentMode ? cachedDoc : null)
         const isEdit = intent === 'edit' ? !!baseDoc : intent === 'create' ? false : (showCanvas && activeDoc?.type === agentMode)
-        const docLabel = agentMode === 'brochure' ? 'Brochure' : 'Dispensa'
+        const docLabel = agentMode === 'brochure' ? 'Brochure' : tl("Dispensa")
 
         const shouldPlanDispensa = agentMode === 'dispensa'
           && !isEdit
@@ -2713,17 +2716,17 @@ REGOLE IMPORTANTI:
           const plan = await generateDispensaPlan(llmContent, messages, filesContext, signal)
           setIsGeneratingDoc(false)
           if (!plan) {
-            throw new Error('Planning dispensa non valido.')
+            throw new Error(tl("Planning dispensa non valido."))
           }
           setPendingDispensaPlan(plan)
           setPendingDispensaRequest(llmContent)
           setPendingDispensaFilesContext(filesContext)
           const planSummary = [
-            `## Piano dispensa`,
-            `**Titolo:** ${plan.title}`,
-            plan.subtitle ? `**Sottotitolo:** ${plan.subtitle}` : '',
-            plan.estimatedPages ? `**Stima pagine:** ${plan.estimatedPages}` : '',
-            plan.objectives.length ? `**Obiettivi:** ${plan.objectives.join(' · ')}` : '',
+            tl("## Piano dispensa"),
+            tl("**Titolo:** {0}", plan.title),
+            plan.subtitle ? tl("**Sottotitolo:** {0}", plan.subtitle) : '',
+            plan.estimatedPages ? tl("**Stima pagine:** {0}", plan.estimatedPages) : '',
+            plan.objectives.length ? tl("**Obiettivi:** {0}", plan.objectives.join(' · ')) : '',
             '',
             ...plan.sections.map((section, index) => `${index + 1}. **${section.title}**${section.focus ? ` — ${section.focus}` : ''}`),
           ].filter(Boolean).join('\n')
@@ -2743,10 +2746,10 @@ REGOLE IMPORTANTI:
         // Add live progress message
         const progressId = `progress-${Date.now()}`
         const progressSteps = isEdit
-          ? ['✏️ Analizzando il documento corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il contenuto...', 'Quasi pronto...']
+          ? [tl("✏️ Analizzando il documento corrente..."), tl("🔄 Applicando le modifiche richieste..."), tl("🎨 Rigenerando il contenuto..."), tl("Quasi pronto...")]
           : agentMode === 'brochure'
-            ? ['🎨 Progettando il layout e la palette colori...', '✍️ Generando le sezioni di contenuto...', '🖼️ Ottimizzando il design HTML...', 'Finalizzando la brochure...']
-            : ['📚 Strutturando capitoli, box e layout HTML...', '✍️ Generando contenuto accademico con formule...', '🔍 Revisione critica del documento...', '✨ Migliorando e finalizzando la dispensa...']
+            ? [tl("🎨 Progettando il layout e la palette colori..."), tl("✍️ Generando le sezioni di contenuto..."), tl("🖼️ Ottimizzando il design HTML..."), tl("Finalizzando la brochure...")]
+            : [tl("📚 Strutturando capitoli, box e layout HTML..."), tl("✍️ Generando contenuto accademico con formule..."), tl("🔍 Revisione critica del documento..."), tl("✨ Migliorando e finalizzando la dispensa...")]
         setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
 
         // Advance progress steps during generation
@@ -2800,8 +2803,8 @@ REGOLE IMPORTANTI:
 
           // Replace progress message with final result
           const finalContent = isEdit
-            ? `**${docLabel} aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
-            : `**${docLabel} generata** (v${newDoc.version}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
+            ? tl("**{0} aggiornata** (v{1}) — le modifiche sono visibili nel canvas a destra.", docLabel, newDoc.version)
+            : tl("**{0} generata** (v{1}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.", docLabel, newDoc.version)
           setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
           const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
           await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
@@ -2822,7 +2825,7 @@ REGOLE IMPORTANTI:
 
         if (shouldBuildReportArtifact) {
           setIsGeneratingDoc(true)
-          setStreamingStatus('🧩 Generazione dashboard interattiva...')
+          setStreamingStatus(tl("🧩 Generazione dashboard interattiva..."))
           try {
             const reportPayloadRaw = await generateDocument(
               'report',
@@ -2841,7 +2844,7 @@ REGOLE IMPORTANTI:
               version: currentConversationId === convId && activeDoc?.type === 'report'
                 ? (activeDoc.version ?? 0) + 1
                 : ((docCacheRef.current[convId]?.type === 'report' ? docCacheRef.current[convId].version : 0) + 1),
-              title: userInput.substring(0, 80) || 'Report interattivo classe',
+              title: userInput.substring(0, 80) || tl("Report interattivo classe"),
             }
             setActiveDoc(reportDoc)
             setShowCanvas(true)
@@ -2891,7 +2894,7 @@ REGOLE IMPORTANTI:
           const assistantMessage: Message = {
             id: `resp-${Date.now()}`,
             role: 'assistant',
-            content: response.data?.response || 'Errore nella risposta.',
+            content: response.data?.response || tl("Errore nella risposta."),
             timestamp: new Date(),
             provider: response.data?.provider,
             model: response.data?.model,
@@ -2935,7 +2938,7 @@ REGOLE IMPORTANTI:
             },
             onCalendarEvent: (evt) => {
               toast({
-                title: '📅 Evento creato',
+                title: tl("📅 Evento creato"),
                 description: `"${evt.title}" il ${evt.event_date}${evt.event_time ? ` alle ${evt.event_time.slice(0,5)}` : ''}`,
               })
             },
@@ -2987,7 +2990,7 @@ REGOLE IMPORTANTI:
       
       setImageGenerationProgress(null)
       setStreamingStatus(null)
-      toast({ title: "Errore", description: `Impossibile completare la richiesta: ${e.response?.data?.detail || e.message}`, variant: "destructive" })
+      toast({ title: tl("Errore"), description: tl("Impossibile completare la richiesta: {0}", e.response?.data?.detail || e.message), variant: "destructive" })
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
@@ -3041,7 +3044,7 @@ REGOLE IMPORTANTI:
   }
 
   const handleClearAllConversations = async () => {
-    if (!confirm('Eliminare tutta la cronologia del chatbot docente?')) return
+    if (!confirm(tl("Eliminare tutta la cronologia del chatbot docente?"))) return
     try {
       await teacherApi.deleteAllConversations()
       setConversations([])
@@ -3057,33 +3060,33 @@ REGOLE IMPORTANTI:
       localStorage.removeItem('teacher_support_messages_cache')
       localStorage.removeItem('teacher_support_current_conversation_id')
       localStorage.removeItem('teacher_canvas_docs')
-      toast({ title: 'Cronologia eliminata', description: 'Tutte le conversazioni del docente sono state rimosse.' })
+      toast({ title: tl("Cronologia eliminata"), description: tl("Tutte le conversazioni del docente sono state rimosse.") })
     } catch (e) {
       console.error(e)
-      toast({ title: 'Errore', description: 'Impossibile eliminare la cronologia completa.', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile eliminare la cronologia completa."), variant: 'destructive' })
     }
   }
 
   const buildModeInvitation = (mode: AgentMode): string | null => {
     if (mode === 'dataset') {
-      return 'Sei in modalità **Dataset**. Descrivi il dataset che vuoi generare: argomento, numero di colonne e righe, tipo di dati, eventuale correlazione tra variabili.'
+      return tl("Sei in modalità **Dataset**. Descrivi il dataset che vuoi generare: argomento, numero di colonne e righe, tipo di dati, eventuale correlazione tra variabili.")
     }
     if (mode === 'image') {
-      return "Sei in modalità **Immagine**. Descrivi l'immagine che vuoi generare: soggetto, azione, sfondo, stile visivo."
+      return tl("Sei in modalità **Immagine**. Descrivi l'immagine che vuoi generare: soggetto, azione, sfondo, stile visivo.")
     }
     if (mode === 'quiz') {
-      return 'Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, opzioni per domanda, livello di difficoltà.'
+      return tl("Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, opzioni per domanda, livello di difficoltà.")
     }
     if (mode === 'exercise') {
-      return 'Sei in modalità **Esercizio**. Descrivi l\'esercizio che vuoi generare: argomento, consegna, livello di difficoltà, eventuali esempi o vincoli.'
+      return tl("Sei in modalità **Esercizio**. Descrivi l'esercizio che vuoi generare: argomento, consegna, livello di difficoltà, eventuali esempi o vincoli.")
     }
     if (mode === 'ocr') {
-      return 'Sei in modalità **OCR**. Allega una foto nitida dell elaborato a mano: genererò una trascrizione automatica locale, pronta da copiare o usare come base per correzione e feedback.'
+      return tl("Sei in modalità **OCR**. Allega una foto nitida dell elaborato a mano: genererò una trascrizione automatica locale, pronta da copiare o usare come base per correzione e feedback.")
     }
     if (mode === 'report') {
       const sessions = classesData || []
       return [
-        'Per generare la reportistica devo prima sapere quale sessione analizzare e quale formato vuoi ottenere.',
+        tl("Per generare la reportistica devo prima sapere quale sessione analizzare e quale formato vuoi ottenere."),
         '',
         '```session_selector',
         JSON.stringify(sessions, null, 2),
@@ -3095,13 +3098,13 @@ REGOLE IMPORTANTI:
       ].join('\n')
     }
     if (mode === 'brochure') {
-      return 'Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.'
+      return tl("Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
     }
     if (mode === 'deep_research') {
       return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, finché i contenuti non iniziano a sovrapporsi, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
     }
     if (mode === 'dispensa') {
-      return 'Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.'
+      return tl("Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
     }
     return null
   }
@@ -3149,11 +3152,11 @@ REGOLE IMPORTANTI:
       let contentJson = ""
       let taskType = ""
       let title = ""
-      let description = `Compito creato da AI Support (${publishModal.type})`
+      let description = tl("Compito creato da AI Support ({0})", publishModal.type)
 
       if (publishModal.type === 'quiz') {
         if (!publishModal.data?.questions) {
-          toast({ title: "Errore", description: "Quiz non valido", variant: "destructive" })
+          toast({ title: tl("Errore"), description: tl("Quiz non valido"), variant: "destructive" })
           return
         }
         contentJson = JSON.stringify({
@@ -3166,7 +3169,7 @@ REGOLE IMPORTANTI:
           }))
         })
         taskType = 'quiz'
-        title = publishModal.data.title || "Nuovo Quiz"
+        title = publishModal.data.title || tl("Nuovo Quiz")
         description = publishModal.data.description || description
       } else if (publishModal.type === 'lesson') {
         contentJson = JSON.stringify({
@@ -3174,11 +3177,11 @@ REGOLE IMPORTANTI:
           content: publishModal.data?.content || ''
         })
         taskType = 'lesson'
-        title = publishModal.data?.title || "Nuova Lezione"
+        title = publishModal.data?.title || tl("Nuova Lezione")
         description = publishModal.data?.description || description
       } else if (publishModal.type === 'exercise') {
         if (!publishModal.data?.instructions) {
-          toast({ title: "Errore", description: "Esercizio non valido", variant: "destructive" })
+          toast({ title: tl("Errore"), description: tl("Esercizio non valido"), variant: "destructive" })
           return
         }
         const examples = Array.isArray(publishModal.data.examples)
@@ -3186,7 +3189,7 @@ REGOLE IMPORTANTI:
           : []
         contentJson = JSON.stringify({
           type: 'exercise',
-          title: publishModal.data.title || "Nuovo Esercizio",
+          title: publishModal.data.title || tl("Nuovo Esercizio"),
           description: publishModal.data.description || '',
           text: publishModal.data.instructions,
           instructions: publishModal.data.instructions,
@@ -3196,7 +3199,7 @@ REGOLE IMPORTANTI:
           response_mode: publishModal.data.response_mode || 'free_text'
         })
         taskType = 'exercise'
-        title = publishModal.data.title || "Nuovo Esercizio"
+        title = publishModal.data.title || tl("Nuovo Esercizio")
         description = publishModal.data.description || description
       } else {
         contentJson = JSON.stringify({
@@ -3204,7 +3207,7 @@ REGOLE IMPORTANTI:
           text: `Analizza il seguente dataset CSV:\n\n${publishModal.data}`
         })
         taskType = 'exercise'
-        title = "Analisi Dataset CSV"
+        title = tl("Analisi Dataset CSV")
       }
 
       const taskRes = await teacherApi.createTask(sessionId, {
@@ -3220,15 +3223,15 @@ REGOLE IMPORTANTI:
       }
 
       toast({
-        title: publishMode === 'published' ? "Compito pubblicato!" : "Compito salvato in bozza",
-        description: publishMode === 'published' ? "Notifica automatica inviata agli studenti" : "Puoi pubblicarlo in seguito dal pannello sessione",
+        title: publishMode === 'published' ? tl("Compito pubblicato!") : tl("Compito salvato in bozza"),
+        description: publishMode === 'published' ? tl("Notifica automatica inviata agli studenti") : tl("Puoi pubblicarlo in seguito dal pannello sessione"),
         className: "bg-green-500 text-white"
       })
       setPublishModal({ isOpen: false, type: 'quiz', data: null })
       setPublishMode('published')
     } catch (e) {
       console.error(e)
-      toast({ title: "Errore pubblicazione", variant: "destructive" })
+      toast({ title: tl("Errore pubblicazione"), variant: "destructive" })
     }
   }
 
@@ -3237,7 +3240,7 @@ REGOLE IMPORTANTI:
     <>
       {showMemory && <TeacherMemoryModal onClose={() => setShowMemory(false)} />}
       <div className="teacher-support-shell relative h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop} {...dropHighlightProps}>
-      <DropOverlay active={dropActive} label="Rilascia per allegare" hint="Il file verrà aggiunto al messaggio" />
+      <DropOverlay active={dropActive} label={tl("Rilascia per allegare")} hint={tl("Il file verrà aggiunto al messaggio")} />
         
 
 
@@ -3246,7 +3249,7 @@ REGOLE IMPORTANTI:
           <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
             <div className="w-72 h-full shadow-[var(--shadow-xl)] flex flex-col border-r border-slate-200 bg-white/92 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
               <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
-                <h2 className="text-sm font-semibold text-slate-800">Cronologia</h2>
+                <h2 className="text-sm font-semibold text-slate-800">{tl("Cronologia")}</h2>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0" style={accentButtonStyle}>
                     <Plus className="h-4 w-4" />
@@ -3269,7 +3272,7 @@ REGOLE IMPORTANTI:
                   </button>
                 ))}
                 {conversations.length === 0 && (
-                  <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                  <p className="text-xs text-slate-400 text-center py-8">{tl("Nessuna conversazione")}</p>
                 )}
               </div>
             </div>
@@ -3287,10 +3290,10 @@ REGOLE IMPORTANTI:
                   {isSidebarCollapsed ? (
                     <SidebarRail
                       bare
-                      expandLabel="Espandi conversazioni"
+                      expandLabel={tl("Espandi conversazioni")}
                       onExpand={() => setIsSidebarCollapsed(false)}
                       onCreate={handleNewChat}
-                      createLabel="Nuova chat"
+                      createLabel={tl("Nuova chat")}
                       items={conversations.map(conv => ({
                         id: conv.id,
                         title: conv.title,
@@ -3306,20 +3309,20 @@ REGOLE IMPORTANTI:
                           <MessageCircle className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-black leading-tight text-[var(--text-primary)]">Chatbot docente</p>
-                          <p className="truncate text-[10px] text-[var(--text-muted)]">Conversazioni e strumenti didattici</p>
+                          <p className="truncate text-sm font-black leading-tight text-[var(--text-primary)]">{tl("Chatbot docente")}</p>
+                          <p className="truncate text-[10px] text-[var(--text-muted)]">{tl("Conversazioni e strumenti didattici")}</p>
                         </div>
-                        <SidebarCollapseButton onClick={() => setIsSidebarCollapsed(true)} label="Comprimi conversazioni" />
+                        <SidebarCollapseButton onClick={() => setIsSidebarCollapsed(true)} label={tl("Comprimi conversazioni")} />
                       </div>
 
                       <div className="shrink-0 px-3 pt-3">
                         <button type="button" onClick={handleNewChat} className="flex min-h-[var(--selection-height)] w-full items-center justify-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]">
-                          <Plus className="h-3.5 w-3.5" /> Nuova chat
+                          <Plus className="h-3.5 w-3.5" /> {tl("Nuova chat")}
                         </button>
                       </div>
 
                       <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Conversazioni</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Conversazioni")}</span>
                         <span className="flex items-center gap-1.5">
                           <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">{conversations.length}</span>
                           {conversations.length > 0 && (
@@ -3327,8 +3330,8 @@ REGOLE IMPORTANTI:
                               type="button"
                               onClick={handleClearAllConversations}
                               className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500"
-                              title="Pulisci cronologia"
-                              aria-label="Pulisci cronologia"
+                              title={tl("Pulisci cronologia")}
+                              aria-label={tl("Pulisci cronologia")}
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
@@ -3356,7 +3359,7 @@ REGOLE IMPORTANTI:
                               type="button"
                               className="mr-1 rounded-md p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 focus:opacity-100 group-hover:opacity-100"
                               onClick={async () => {
-                                if (confirm('Eliminare questa conversazione?')) {
+                                if (confirm(tl("Eliminare questa conversazione?"))) {
                                   try {
                                     await teacherApi.deleteConversation(conv.id)
                                   } catch (err) {
@@ -3376,14 +3379,14 @@ REGOLE IMPORTANTI:
                                   if (currentConversationId === conv.id) handleNewChat()
                                 }
                               }}
-                              aria-label={`Elimina ${conv.title}`}
+                              aria-label={tl("Elimina {0}", conv.title)}
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
                         ))}
                         {conversations.length === 0 && (
-                          <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">Nessuna conversazione.</p>
+                          <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">{tl("Nessuna conversazione.")}</p>
                         )}
                       </div>
                     </>
@@ -3419,8 +3422,8 @@ REGOLE IMPORTANTI:
                               <Settings className="h-4 w-4" />
                             </div>
                             <div>
-                              <h2 className="text-sm font-bold text-slate-800">Personalizza il tuo Assistente</h2>
-                              <p className="text-xs text-slate-500">Modifica il comportamento del chatbot di supporto docente</p>
+                              <h2 className="text-sm font-bold text-slate-800">{tl("Personalizza il tuo Assistente")}</h2>
+                              <p className="text-xs text-slate-500">{tl("Modifica il comportamento del chatbot di supporto docente")}</p>
                             </div>
                           </div>
                           <button onClick={() => setShowPromptEditor(false)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
@@ -3429,10 +3432,10 @@ REGOLE IMPORTANTI:
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
                           <p className="text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-200">
-                            Questo è il <strong>system prompt</strong> del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.
+                            {tl("Questo è il")} <strong>system prompt</strong> {tl("del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.")}
                           </p>
                           <div>
-                            <p className="mb-2 text-xs font-bold text-slate-700">Formato delle risposte</p>
+                            <p className="mb-2 text-xs font-bold text-slate-700">{tl("Formato delle risposte")}</p>
                             <div className="grid grid-cols-3 gap-2">
                               {RESPONSE_LENGTH_OPTIONS.map((option) => {
                                 const selected = responseLength === option.id
@@ -3450,14 +3453,14 @@ REGOLE IMPORTANTI:
                                 )
                               })}
                             </div>
-                            <p className="mt-1.5 text-[10px] text-slate-400">Si applica subito alle nuove risposte.</p>
+                            <p className="mt-1.5 text-[10px] text-slate-400">{tl("Si applica subito alle nuove risposte.")}</p>
                           </div>
                           <textarea
                             value={promptEditorValue}
                             onChange={(e) => setPromptEditorValue(e.target.value)}
                             className="w-full h-80 text-xs font-mono border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:border-transparent"
                             style={{ ['--tw-ring-color' as string]: accentTheme.border }}
-                            placeholder="Inserisci qui il system prompt del tuo assistente..."
+                            placeholder={tl("Inserisci qui il system prompt del tuo assistente...")}
                             spellCheck={false}
                           />
                         </div>
@@ -3467,11 +3470,11 @@ REGOLE IMPORTANTI:
                             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
-                            Ripristina default
+                            {tl("Ripristina default")}
                           </button>
                           <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" onClick={() => setShowPromptEditor(false)}>
-                              Annulla
+                              {tl("Annulla")}
                             </Button>
                             <Button
                               size="sm"
@@ -3480,7 +3483,7 @@ REGOLE IMPORTANTI:
                               disabled={promptEditorSaving}
                               onClick={handleSavePrompt}
                             >
-                              {promptEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Salva'}
+                              {promptEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : tl("Salva")}
                             </Button>
                           </div>
                         </div>
@@ -3495,21 +3498,21 @@ REGOLE IMPORTANTI:
                         <button
                           onClick={() => !sidebarMode && setMobileHistoryOpen(true)}
                           className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${sidebarMode ? 'invisible' : 'hover:bg-slate-100'}`}
-                          aria-label="Cronologia chat"
+                          aria-label={tl("Cronologia chat")}
                         >
                           <History className="h-5 w-5 text-slate-500" />
                         </button>
 
                         <div className="flex items-center gap-1.5">
                           <AcademicAiIcon className="h-4 w-4" style={{ color: accentTheme.accent }} />
-                          <span className="text-sm font-bold text-slate-800">Assistente</span>
+                          <span className="text-sm font-bold text-slate-800">{tl("Assistente")}</span>
                         </div>
 
                         <div className="flex items-center gap-1">
                           <button
                             onClick={handleNewChat}
                             className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-slate-100"
-                            aria-label="Nuova chat"
+                            aria-label={tl("Nuova chat")}
                           >
                             <Plus className="h-5 w-5 text-slate-500" />
                           </button>
@@ -3530,12 +3533,12 @@ REGOLE IMPORTANTI:
                       <>
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="min-w-0">
-                        <h1 className="truncate text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                        <h1 className="truncate text-sm font-bold text-slate-800">{tl("Supporto Docente AI")}</h1>
                         <p className="truncate text-xs text-slate-500">
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
-                              ? 'OCR locale'
+                              ? tl("OCR locale")
                             : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
@@ -3551,7 +3554,7 @@ REGOLE IMPORTANTI:
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors"
                         >
                           <Layout className="h-3 w-3" />
-                          Riapri documento
+                          {tl("Riapri documento")}
                         </button>
                       )}
                     </div>
@@ -3605,10 +3608,10 @@ REGOLE IMPORTANTI:
                                 className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
                                 style={{ ['--tw-ring-color' as string]: accentTheme.border }}
                               >
-                                <option value="1024x1024">1:1 Quadrato</option>
-                                <option value="1024x768">4:3 Orizzontale</option>
-                                <option value="768x1024">3:4 Verticale</option>
-                                <option value="1280x720">16:9 Panorama</option>
+                                <option value="1024x1024">{tl("1:1 Quadrato")}</option>
+                                <option value="1024x768">{tl("4:3 Orizzontale")}</option>
+                                <option value="768x1024">{tl("3:4 Verticale")}</option>
+                                <option value="1280x720">{tl("16:9 Panorama")}</option>
                                 <option value="720x1280">9:16 Portrait</option>
                               </select>
                               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none" />
@@ -3624,7 +3627,7 @@ REGOLE IMPORTANTI:
                           </span>
                         ) : !sidebarMode && (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
-                            Claude Haiku (fisso)
+                            {tl("Claude Haiku (fisso)")}
                           </div>
                         ) : (
                           (sidebarMode || agentMode !== 'image') && (
@@ -3635,7 +3638,7 @@ REGOLE IMPORTANTI:
                                   ? "ds-control flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all"
                                   : "ds-control flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
                                 style={selectedSoftStyle}
-                                title="Seleziona modello"
+                                title={tl("Seleziona modello")}
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
@@ -3648,7 +3651,7 @@ REGOLE IMPORTANTI:
                               {showModelMenu && (
                                 <div className="ds-popover absolute top-full right-0 mt-2 w-72 rounded-xl py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible">
                                   <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 mb-1 flex justify-between items-center">
-                                    <span>Seleziona Modello</span>
+                                    <span>{tl("Seleziona Modello")}</span>
                                     <span className="text-[9px] font-normal text-slate-400">Default</span>
                                   </div>
                                   {availableModels.map(m => (
@@ -3682,7 +3685,7 @@ REGOLE IMPORTANTI:
                                       <div
                                         className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-100 transition-colors"
                                         onClick={(e) => handleSetDefaultModel(m.id, e)}
-                                        title="Imposta come default"
+                                        title={tl("Imposta come default")}
                                       >
                                         <div
                                           className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
@@ -3709,7 +3712,7 @@ REGOLE IMPORTANTI:
                           size="sm"
                           onClick={handleOpenPromptEditor}
                           className="text-slate-500 hover:text-slate-700"
-                          title="Personalizza il prompt del tuo assistente"
+                          title={tl("Personalizza il prompt del tuo assistente")}
                         >
                           <Settings className="h-4 w-4" />
                         </Button>
@@ -3718,7 +3721,7 @@ REGOLE IMPORTANTI:
                           size="sm"
                           onClick={() => setShowMemory(true)}
                           className="text-slate-500 hover:text-slate-700"
-                          title="Memoria dell'assistente: cosa sa di te e di cosa fai"
+                          title={tl("Memoria dell'assistente: cosa sa di te e di cosa fai")}
                         >
                           <Brain className="h-4 w-4" />
                         </Button>
@@ -3728,7 +3731,7 @@ REGOLE IMPORTANTI:
                             size="sm"
                             onClick={() => setShowBgPalette((v) => !v)}
                             className="text-slate-500 hover:text-slate-700"
-                            title="Scegli colore"
+                            title={tl("Scegli colore")}
                           >
                             <Palette className="h-4 w-4" />
                           </Button>
@@ -3756,14 +3759,14 @@ REGOLE IMPORTANTI:
                                 ))}
                               </div>
                               <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                                <span>Palette ridotta</span>
+                                <span>{tl("Palette ridotta")}</span>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
                                     className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
                                     disabled={!chatBg}
                                   >
-                                    Imposta default
+                                    {tl("Imposta default")}
                                   </button>
                                   {chatBgDefault && (
                                     <button
@@ -3773,7 +3776,7 @@ REGOLE IMPORTANTI:
                                       }}
                                       className="text-slate-500 hover:text-slate-700"
                                     >
-                                      Usa default
+                                      {tl("Usa default")}
                                     </button>
                                   )}
                                   <button
@@ -3815,14 +3818,14 @@ REGOLE IMPORTANTI:
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
-                          <span className="ml-1">Caricamento messaggi precedenti</span>
+                          <span className="ml-1">{tl("Caricamento messaggi precedenti")}</span>
                         </div>
                       </div>
                     )}
                     {hasMoreMessages && !isLoadingOlder && (
                       <div className="flex justify-center py-2">
                         <button onClick={loadOlderMessages} className="text-xs text-slate-400 hover:text-slate-600 underline">
-                          Carica messaggi precedenti
+                          {tl("Carica messaggi precedenti")}
                         </button>
                       </div>
                     )}
@@ -3867,7 +3870,7 @@ REGOLE IMPORTANTI:
                           <span className="teacher-support-hero flex h-14 w-14 items-center justify-center rounded-2xl bg-white">
                             <AcademicAiIcon className="h-7 w-7" style={{ color: accentTheme.accent }} />
                           </span>
-                          <p className="text-sm font-semibold text-slate-500">Cosa prepariamo?</p>
+                          <p className="text-sm font-semibold text-slate-500">{tl("Cosa prepariamo?")}</p>
                         </div>
                       )
                     ) : (
@@ -3927,7 +3930,7 @@ REGOLE IMPORTANTI:
                                   className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 transition-colors"
                                 >
                                   <Layout className="h-3 w-3" />
-                                  {showCanvas ? 'Documento aperto →' : 'Riapri documento'}
+                                  {showCanvas ? tl("Documento aperto →") : tl("Riapri documento")}
                                 </button>
                               )}
                               {msg.role === 'assistant' && (
@@ -3954,7 +3957,7 @@ REGOLE IMPORTANTI:
                         <div className="bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
                           <div className="flex items-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-                            <span className="text-sm text-slate-500">Generazione documento con Claude Sonnet 4.6...</span>
+                            <span className="text-sm text-slate-500">{tl("Generazione documento con Claude Sonnet 4.6...")}</span>
                           </div>
                         </div>
                       </div>
@@ -4012,7 +4015,7 @@ REGOLE IMPORTANTI:
                               ) : (
                                 <Check className="h-3 w-3" />
                               )}
-                              <span>Connessione al server {imageGenerationProgress.provider}</span>
+                              <span>{tl("Connessione al server")} {imageGenerationProgress.provider}</span>
                             </div>
                             {/* Step 2: Ottimizzazione */}
                             <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
@@ -4028,7 +4031,7 @@ REGOLE IMPORTANTI:
                               ) : (
                                 <div className="h-3 w-3 rounded-full border border-slate-300" />
                               )}
-                              <span>Ottimizzazione prompt</span>
+                              <span>{tl("Ottimizzazione prompt")}</span>
                             </div>
                             {/* Step 3: Generazione */}
                             <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
@@ -4044,14 +4047,14 @@ REGOLE IMPORTANTI:
                               ) : (
                                 <div className="h-3 w-3 rounded-full border border-slate-300" />
                               )}
-                              <span>Generazione immagine</span>
+                              <span>{tl("Generazione immagine")}</span>
                             </div>
                           </div>
 
                           {/* Enhanced Prompt Preview */}
                           {imageGenerationProgress.enhancedPrompt && (
                             <div className="mt-3 border-t border-violet-200 pt-3">
-                              <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
+                              <div className="text-xs font-medium text-violet-700 mb-1">{tl("Prompt ottimizzato:")}</div>
                               <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
                                 "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
                               </div>
@@ -4083,9 +4086,9 @@ REGOLE IMPORTANTI:
                         <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="text-xs font-semibold text-amber-800">Piano dispensa pronto</div>
+                              <div className="text-xs font-semibold text-amber-800">{tl("Piano dispensa pronto")}</div>
                               <div className="text-[11px] text-amber-700 mt-1">
-                                {pendingDispensaPlan.title} · {pendingDispensaPlan.sections.length} sezioni{pendingDispensaPlan.estimatedPages ? ` · ${pendingDispensaPlan.estimatedPages} pagine stimate` : ''}
+                                {pendingDispensaPlan.title} · {pendingDispensaPlan.sections.length} {tl("sezioni")}{pendingDispensaPlan.estimatedPages ? tl(" · {0} pagine stimate", pendingDispensaPlan.estimatedPages) : ''}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -4100,11 +4103,11 @@ REGOLE IMPORTANTI:
                                 Reset
                               </button>
                               <button
-                                onClick={() => handleSend('Approva piano dispensa')}
+                                onClick={() => handleSend(tl("Approva piano dispensa"))}
                                 disabled={isLoading}
                                 className="px-2.5 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 disabled:opacity-50"
                               >
-                                Approva e genera PDF
+                                {tl("Approva e genera PDF")}
                               </button>
                             </div>
                           </div>
@@ -4116,11 +4119,11 @@ REGOLE IMPORTANTI:
                         <div className="mb-2 flex flex-wrap items-center gap-1.5">
                           {attachedNotebooks.map((nb) => (
                             <span key={nb.id} className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 py-1 pl-2 pr-1 text-[11px] font-semibold text-emerald-800"
-                              title="Notebook RAG: la chat recupera i frammenti pertinenti da questa knowledge base">
+                              title={tl("Notebook RAG: la chat recupera i frammenti pertinenti da questa knowledge base")}>
                               <Database className="h-3 w-3 shrink-0" />
                               <span className="truncate">{nb.name}</span>
                               <button type="button" onClick={() => updateAttachedNotebooks(attachedNotebooks.filter((n) => n.id !== nb.id))}
-                                className="rounded-full p-0.5 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-800" aria-label={`Scollega ${nb.name}`}>
+                                className="rounded-full p-0.5 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-800" aria-label={tl("Scollega {0}", nb.name)}>
                                 <X className="h-3 w-3" />
                               </button>
                             </span>
@@ -4143,13 +4146,13 @@ REGOLE IMPORTANTI:
                                 </span>
                                 <span className="text-[10px] text-red-400 leading-tight flex items-center gap-1">
                                   {attachedYoutube.status === 'loading' && (
-                                    <><Loader2 className="h-2.5 w-2.5 animate-spin" />Caricamento trascritto...</>
+                                    <><Loader2 className="h-2.5 w-2.5 animate-spin" />{tl("Caricamento trascritto...")}</>
                                   )}
                                   {attachedYoutube.status === 'ready' && (
-                                    <><Check className="h-2.5 w-2.5 text-green-500" />Trascritto acquisito</>
+                                    <><Check className="h-2.5 w-2.5 text-green-500" />{tl("Trascritto acquisito")}</>
                                   )}
                                   {attachedYoutube.status === 'error' && (
-                                    <span className="text-red-500">{attachedYoutube.errorMsg || 'Errore'}</span>
+                                    <span className="text-red-500">{attachedYoutube.errorMsg || tl("Errore")}</span>
                                   )}
                                 </span>
                               </div>
@@ -4170,7 +4173,7 @@ REGOLE IMPORTANTI:
                             <div key={i} className="relative group">
                               {f.preview ? (
                                 <div className="relative w-20 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                                  <img src={f.preview} alt={`Anteprima di ${f.file.name}`} className="h-20 w-full object-contain" />
+                                  <img src={f.preview} alt={tl("Anteprima di {0}", f.file.name)} className="h-20 w-full object-contain" />
                                   <span className="block truncate px-1 text-[10px] text-slate-600">{f.file.name}</span>
                                   <button onClick={() => removeFile(i)} className="absolute right-0 top-0 rounded-bl bg-white/90 p-0.5 text-slate-500 hover:text-red-500"><X className="h-3 w-3" /></button>
                                 </div>
@@ -4221,7 +4224,7 @@ REGOLE IMPORTANTI:
                         <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
                           <div className="flex items-center gap-2 mb-2">
                             <BarChart2 className="h-3.5 w-3.5 text-violet-600" />
-                            <span className="text-xs font-semibold text-violet-700">Analisi risposte studenti</span>
+                            <span className="text-xs font-semibold text-violet-700">{tl("Analisi risposte studenti")}</span>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <select
@@ -4229,7 +4232,7 @@ REGOLE IMPORTANTI:
                               onChange={e => { setAnalysisSessionId(e.target.value); setAnalysisTaskId('') }}
                               className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
                             >
-                              <option value="">— Sessione —</option>
+                              <option value="">{tl("— Sessione —")}</option>
                               {(classesData || []).map((s: any) => (
                                 <option key={s.id} value={s.id}>{s.class_name}: {s.title}</option>
                               ))}
@@ -4240,7 +4243,7 @@ REGOLE IMPORTANTI:
                               disabled={!analysisSessionId}
                               className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
                             >
-                              <option value="">— Compito/Quiz —</option>
+                              <option value="">{tl("— Compito/Quiz —")}</option>
                               {(analysisTasksData || [])
                                 .filter(t => t.status === 'published' || t.status === 'closed')
                                 .map(t => (
@@ -4250,7 +4253,7 @@ REGOLE IMPORTANTI:
                           </div>
                           {analysisTaskId && (
                             <p className="mt-1.5 text-[10px] text-violet-500">
-                              Scrivi una domanda specifica oppure invia per un'analisi completa
+                              {tl("Scrivi una domanda specifica oppure invia per un'analisi completa")}
                             </p>
                           )}
                         </div>
@@ -4270,16 +4273,16 @@ REGOLE IMPORTANTI:
                               size="icon"
                               className="h-9 w-9 rounded-full bg-slate-950 text-white hover:bg-slate-800"
                               onClick={() => setShowActionMenu((prev) => !prev)}
-                              title="Strumenti chatbot"
+                              title={tl("Strumenti chatbot")}
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
                             {showActionMenu && (
                               <div className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Strumenti</div>
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Strumenti")}</div>
                                 <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
                                   <VoiceRecorder onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)} />
-                                  <span className="text-xs font-medium text-slate-600">Dettatura vocale</span>
+                                  <span className="text-xs font-medium text-slate-600">{tl("Dettatura vocale")}</span>
                                 </div>
                                 <button
                                   type="button"
@@ -4290,7 +4293,7 @@ REGOLE IMPORTANTI:
                                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                                 >
                                   <Paperclip className="h-3.5 w-3.5" />
-                                  Allegati
+                                  {tl("Allegati")}
                                 </button>
                                 <button
                                   type="button"
@@ -4320,7 +4323,7 @@ REGOLE IMPORTANTI:
                                           setShowActionMenu(false)
                                         }
                                       }}
-                                      placeholder="Incolla link..."
+                                      placeholder={tl("Incolla link...")}
                                       className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
                                     />
                                     <Button
@@ -4333,7 +4336,7 @@ REGOLE IMPORTANTI:
                                         setShowActionMenu(false)
                                       }}
                                     >
-                                      Aggiungi
+                                      {tl("Aggiungi")}
                                     </Button>
                                   </div>
                                 )}
@@ -4386,7 +4389,7 @@ REGOLE IMPORTANTI:
                               size="sm"
                               className="h-8 rounded-full bg-transparent px-1.5 text-slate-500 hover:bg-slate-100 gap-1"
                               onClick={() => setShowModeMenu(v => !v)}
-                              title="Modalità attiva: cambia"
+                              title={tl("Modalità attiva: cambia")}
                             >
                               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 selectedModeMeta.id === 'default'
@@ -4460,7 +4463,7 @@ REGOLE IMPORTANTI:
                             size="icon"
                             className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
                             onClick={() => { setShowAttachMenu(v => !v); setShowLinkModal(false); setLinkInputValue('') }}
-                            title="Allega"
+                            title={tl("Allega")}
                           >
                             <Paperclip className="h-4 w-4" />
                           </Button>
@@ -4472,28 +4475,28 @@ REGOLE IMPORTANTI:
                                 onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click() }}
                                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                               >
-                                <Paperclip className="h-3.5 w-3.5" /> File
+                                <Paperclip className="h-3.5 w-3.5" /> {tl("File")}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => { setLinkKind('youtube'); setShowLinkModal(true) }}
                                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                               >
-                                <Youtube className="h-3.5 w-3.5 text-red-500" /> Link YouTube
+                                <Youtube className="h-3.5 w-3.5 text-red-500" /> {tl("Link YouTube")}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => { setLinkKind('web'); setShowLinkModal(true) }}
                                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                               >
-                                <Globe className="h-3.5 w-3.5" /> Link al sito web
+                                <Globe className="h-3.5 w-3.5" /> {tl("Link al sito web")}
                               </button>
                             </div>
                           )}
 
                           {showAttachMenu && showLinkModal && (
                             <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in duration-150">
-                              <p className="text-xs font-semibold text-slate-600 mb-2">{linkKind === 'youtube' ? 'Link YouTube' : 'Link al sito web'}</p>
+                              <p className="text-xs font-semibold text-slate-600 mb-2">{linkKind === 'youtube' ? tl("Link YouTube") : tl("Link al sito web")}</p>
                               <input
                                 type="url"
                                 value={linkInputValue}
@@ -4514,16 +4517,16 @@ REGOLE IMPORTANTI:
                                   <div className="py-2 pr-2 flex flex-col justify-center min-w-0">
                                     <p className="text-xs font-semibold text-red-700 flex items-center gap-1">
                                       <Video className="h-3 w-3" />
-                                      Video YouTube rilevato
+                                      {tl("Video YouTube rilevato")}
                                     </p>
                                     <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
-                                      Acquisirò il trascritto del video automaticamente
+                                      {tl("Acquisirò il trascritto del video automaticamente")}
                                     </p>
                                   </div>
                                 </div>
                               )}
                               {linkKind === 'youtube' && linkInputValue.trim() && !extractYouTubeId(linkInputValue) && (
-                                <p className="mt-2 text-[11px] text-amber-600">Non sembra un link YouTube valido.</p>
+                                <p className="mt-2 text-[11px] text-amber-600">{tl("Non sembra un link YouTube valido.")}</p>
                               )}
 
                               <div className="mt-2.5 flex justify-end gap-2">
@@ -4533,7 +4536,7 @@ REGOLE IMPORTANTI:
                                   className="h-7 text-xs"
                                   onClick={() => { setShowLinkModal(false); setLinkInputValue('') }}
                                 >
-                                  Indietro
+                                  {tl("Indietro")}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -4541,7 +4544,7 @@ REGOLE IMPORTANTI:
                                   disabled={!linkInputValue.trim() || (linkKind === 'youtube' && !extractYouTubeId(linkInputValue))}
                                   onClick={() => { handleConfirmLink(linkInputValue.trim()); setShowAttachMenu(false) }}
                                 >
-                                  Aggiungi
+                                  {tl("Aggiungi")}
                                 </Button>
                               </div>
                             </div>
@@ -4566,8 +4569,8 @@ REGOLE IMPORTANTI:
                           onPaste={handleInputPaste}
                           placeholder={
                             agentMode === 'analysis'
-                              ? (analysisTaskId ? 'Domanda specifica (opzionale)...' : 'Seleziona prima sessione e compito...')
-                              : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'
+                              ? (analysisTaskId ? tl("Domanda specifica (opzionale)...") : tl("Seleziona prima sessione e compito..."))
+                              : isMobile ? tl("Scrivi...") : tl("Scrivi o trascina file qui...")
                           }
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 min-h-[36px] leading-relaxed"
                           rows={1}
@@ -4582,7 +4585,7 @@ REGOLE IMPORTANTI:
                             onClick={stopActiveGeneration}
                             className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
                             size="icon"
-                            title="Interrompi generazione"
+                            title={tl("Interrompi generazione")}
                           >
                             <Square className="h-3.5 w-3.5 fill-current" />
                           </Button>
@@ -4636,32 +4639,32 @@ REGOLE IMPORTANTI:
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-800">Pubblica come Compito</h3>
+                <h3 className="text-lg font-bold text-slate-800">{tl("Pubblica come Compito")}</h3>
                 <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>
                   <X className="h-5 w-5" />
                 </Button>
               </div>
 
               <p className="text-sm text-slate-600 mb-6">
-                Scegli la sessione e la modalita di pubblicazione per {publishModal.type === 'quiz' ? 'questo quiz' : publishModal.type === 'exercise' ? 'questo esercizio' : publishModal.type === 'lesson' ? 'questa lezione' : 'questo dataset'}.
+                {tl("Scegli la sessione e la modalita di pubblicazione per")} {publishModal.type === 'quiz' ? tl("questo quiz") : publishModal.type === 'exercise' ? tl("questo esercizio") : publishModal.type === 'lesson' ? tl("questa lezione") : tl("questo dataset")}.
               </p>
 
               <div className="mb-5 rounded-lg border border-slate-200 p-3">
-                <div className="text-xs font-semibold text-slate-700 mb-2">Modalita pubblicazione</div>
+                <div className="text-xs font-semibold text-slate-700 mb-2">{tl("Modalita pubblicazione")}</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPublishMode('published')}
                     className={`text-xs px-3 py-1.5 rounded-lg border ${publishMode === 'published' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                     style={publishMode === 'published' ? selectedSoftStyle : undefined}
                   >
-                    Pubblica subito
+                    {tl("Pubblica subito")}
                   </button>
                   <button
                     onClick={() => setPublishMode('draft')}
                     className={`text-xs px-3 py-1.5 rounded-lg border ${publishMode === 'draft' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                     style={publishMode === 'draft' ? selectedSoftStyle : undefined}
                   >
-                    Tieni in bozza
+                    {tl("Tieni in bozza")}
                   </button>
                 </div>
               </div>
@@ -4686,12 +4689,12 @@ REGOLE IMPORTANTI:
                   </button>
                 ))}
                 {(!classesData || classesData.length === 0) && (
-                  <p className="text-center text-xs text-slate-400 py-4">Nessuna sessione attiva trovata.</p>
+                  <p className="text-center text-xs text-slate-400 py-4">{tl("Nessuna sessione attiva trovata.")}</p>
                 )}
               </div>
 
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>Annulla</Button>
+                <Button variant="ghost" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>{tl("Annulla")}</Button>
               </div>
             </div>
           </div>
@@ -5025,8 +5028,8 @@ function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (i
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Seleziona Sessione</span>
-        <span className="text-[10px] text-slate-400">{sessions.length} sessioni attive</span>
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Seleziona Sessione")}</span>
+        <span className="text-[10px] text-slate-400">{sessions.length} {tl("sessioni attive")}</span>
       </div>
       <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
         {sessions.map(s => (
@@ -5057,8 +5060,8 @@ function StudentSelector({ students, onSelect }: { students: any[], onSelect: (s
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Seleziona Studenti</span>
-        <span className="text-[10px] text-slate-400">{students.length} studenti</span>
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Seleziona Studenti")}</span>
+        <span className="text-[10px] text-slate-400">{students.length} {tl("studenti")}</span>
       </div>
       <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
         {students.map(s => (
@@ -5083,7 +5086,7 @@ function StudentSelector({ students, onSelect }: { students: any[], onSelect: (s
           className="text-xs bg-red-600 hover:bg-red-700 text-white"
           onClick={() => onSelect(selected)}
         >
-          Genera Report per {selected.length} {selected.length === 1 ? 'studente' : 'studenti'}
+          {tl("Genera Report per")} {selected.length} {selected.length === 1 ? tl("studente") : tl("studenti")}
         </Button>
       </div>
     </div>
@@ -5122,12 +5125,12 @@ function ReportConfigurator({
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Configurazione Report</span>
-        <span className="text-[10px] text-slate-400">Sessione + tipologia</span>
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{tl("Configurazione Report")}</span>
+        <span className="text-[10px] text-slate-400">{tl("Sessione + tipologia")}</span>
       </div>
       <div className="p-4 space-y-4">
         <div>
-          <div className="text-[11px] font-semibold text-slate-600 mb-2">Sessione</div>
+          <div className="text-[11px] font-semibold text-slate-600 mb-2">{tl("Sessione")}</div>
           <div className="grid grid-cols-1 gap-2 max-h-52 overflow-y-auto">
             {sessions.map((s) => (
               <button
@@ -5142,7 +5145,7 @@ function ReportConfigurator({
           </div>
         </div>
         <div>
-          <div className="text-[11px] font-semibold text-slate-600 mb-2">Tipo di report</div>
+          <div className="text-[11px] font-semibold text-slate-600 mb-2">{tl("Tipo di report")}</div>
           <div className="grid grid-cols-1 gap-2">
             {reportTypes.map((option) => (
               <button
@@ -5164,7 +5167,7 @@ function ReportConfigurator({
           className="text-xs bg-red-600 hover:bg-red-700 text-white"
           onClick={() => onSubmit(selectedSessionId, selectedReportType)}
         >
-          Genera report avanzato
+          {tl("Genera report avanzato")}
         </Button>
       </div>
     </div>
@@ -5189,12 +5192,12 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         <div className={`flex items-center gap-2 ${darkMode ? 'text-cyan-200' : 'text-cyan-600'}`}>
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">
-            {generationType === 'image' && 'Generazione immagine in corso...'}
-            {generationType === 'csv' && 'Generazione dataset in corso...'}
-            {generationType === 'quiz' && 'Generazione quiz in corso...'}
-            {generationType === 'exercise' && 'Generazione esercizio in corso...'}
-            {generationType === 'lesson' && 'Generazione lezione in corso...'}
-            {!generationType && 'Elaborazione in corso...'}
+            {generationType === 'image' && tl("Generazione immagine in corso...")}
+            {generationType === 'csv' && tl("Generazione dataset in corso...")}
+            {generationType === 'quiz' && tl("Generazione quiz in corso...")}
+            {generationType === 'exercise' && tl("Generazione esercizio in corso...")}
+            {generationType === 'lesson' && tl("Generazione lezione in corso...")}
+            {!generationType && tl("Elaborazione in corso...")}
           </span>
         </div>
       </div>
@@ -5239,7 +5242,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               >
                 <img
                   src={src}
-                  alt={alt || 'Immagine generata'}
+                  alt={alt || tl("Immagine generata")}
                   className="max-w-full h-auto rounded-lg shadow-md"
                   {...props}
                 />
@@ -5257,13 +5260,13 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                       }
                     }}
                     className="bg-white/90 hover:bg-white p-2 rounded-lg shadow-md"
-                    title="Scarica immagine"
+                    title={tl("Scarica immagine")}
                   >
                     <Download className="h-4 w-4 text-slate-700" />
                   </button>
                 </div>
                 <div className="absolute bottom-2 left-2 bg-violet-600/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  Trascina nella chat di classe
+                  {tl("Trascina nella chat di classe")}
                 </div>
               </div>
             ),
@@ -5290,7 +5293,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 e.dataTransfer.effectAllowed = 'copy'
               }}
             >
-              <img src={imgSrc} alt="Generata" className="max-w-full h-auto rounded-lg shadow-md" />
+              <img src={imgSrc} alt={tl("Generata")} className="max-w-full h-auto rounded-lg shadow-md" />
               <button
                 onClick={() => {
                   const link = document.createElement('a')
@@ -5332,7 +5335,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onPublish('dataset', csv)}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Pubblica
+                {tl("Pubblica")}
               </Button>
               <Button
                 size="sm"
@@ -5341,7 +5344,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => downloadCsv(csv)}
               >
                 <Download className="h-3 w-3 mr-1" />
-                Scarica
+                {tl("Scarica")}
               </Button>
             </div>
           </div>
@@ -5358,7 +5361,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         <div className="mt-3">
           <div className="bg-cyan-50 border border-cyan-200 rounded-t-lg px-4 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-cyan-700 flex items-center gap-2">
-              📝 Quiz: {quiz.title}
+              {tl("📝 Quiz:")} {quiz.title}
             </span>
             <div className="flex gap-2">
               <Button
@@ -5368,7 +5371,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onEdit('quiz', quiz)}
               >
                 <Edit3 className="h-3 w-3 mr-1" />
-                Modifica
+                {tl("Modifica")}
               </Button>
               <Button
                 size="sm"
@@ -5376,12 +5379,12 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onPublish('quiz', quiz)}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Pubblica
+                {tl("Pubblica")}
               </Button>
             </div>
           </div>
           <InteractiveQuiz quiz={quiz} onSubmitAnswers={(_ans) => {
-            toast({ title: "Risposte verificate", description: "Hai completato il quiz in anteprima." })
+            toast({ title: tl("Risposte verificate"), description: tl("Hai completato il quiz in anteprima.") })
           }} />
         </div>
       )}
@@ -5391,7 +5394,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           <div className="bg-teal-50 px-3 py-2 flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-teal-700 flex items-center gap-2 min-w-0">
               <Edit3 className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">Esercizio: {exerciseData.title}</span>
+              <span className="truncate">{tl("Esercizio:")} {exerciseData.title}</span>
             </span>
             <div className="flex gap-2 flex-shrink-0">
               <Button
@@ -5401,7 +5404,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onEdit('exercise', exerciseData)}
               >
                 <Edit3 className="h-3 w-3 mr-1" />
-                Modifica
+                {tl("Modifica")}
               </Button>
               <Button
                 size="sm"
@@ -5409,7 +5412,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onPublish('exercise', exerciseData)}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Pubblica
+                {tl("Pubblica")}
               </Button>
             </div>
           </div>
@@ -5428,7 +5431,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             </ReactMarkdown>
             {exerciseData.examples && exerciseData.examples.length > 0 && (
               <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Esempi</div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">{tl("Esempi")}</div>
                 <ul className="space-y-1.5 m-0 pl-4">
                   {exerciseData.examples.map((example, index) => (
                     <li key={index} className="text-xs text-slate-600">{example}</li>
@@ -5438,7 +5441,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             )}
             {exerciseData.hint && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                Suggerimento: {exerciseData.hint}
+                {tl("Suggerimento:")} {exerciseData.hint}
               </div>
             )}
           </div>
@@ -5464,7 +5467,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             </span>
             <div className="min-w-0 flex-1">
               <p className="m-0 truncate text-sm font-bold text-indigo-950">{presentationDocument.title}</p>
-              <p className="m-0 text-xs text-indigo-600">Presentazione editabile · {presentationDocument.slide_count} slide</p>
+              <p className="m-0 text-xs text-indigo-600">{tl("Presentazione editabile ·")} {presentationDocument.slide_count} slide</p>
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-indigo-100 px-3 py-2.5">
@@ -5478,7 +5481,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               }}
             >
               <Edit3 className="mr-1 h-3.5 w-3.5" />
-              Apri e modifica
+              {tl("Apri e modifica")}
             </Button>
             <Button
               size="sm"
@@ -5489,7 +5492,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               }}
             >
               <Plus className="mr-1 h-3.5 w-3.5" />
-              Pubblica
+              {tl("Pubblica")}
             </Button>
           </div>
         </div>
@@ -5500,7 +5503,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           <div className="bg-emerald-50 px-3 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-emerald-700 flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Lezione: {lessonData.title}
+              {tl("Lezione:")} {lessonData.title}
             </span>
             <div className="flex shrink-0 gap-2">
               <Button
@@ -5510,7 +5513,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => setFullLessonOpen(true)}
               >
                 <FileText className="mr-1 h-3 w-3" />
-                Apri
+                {tl("Apri")}
               </Button>
               <Button
                 size="sm"
@@ -5518,7 +5521,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 onClick={() => onPublish('lesson', lessonData)}
               >
                 <Plus className="h-3 w-3 mr-1" />
-                Pubblica
+                {tl("Pubblica")}
               </Button>
             </div>
           </div>
@@ -5533,7 +5536,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               className="prose prose-sm max-w-none text-slate-700"
             >
               {lessonData.content.length > 600
-                ? lessonData.content.slice(0, 600) + '\n\n*...(anteprima troncata)*'
+                ? lessonData.content.slice(0, 600) + tl("\n\n*...(anteprima troncata)*")
                 : lessonData.content}
             </ReactMarkdown>
           </div>
@@ -5545,10 +5548,10 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-emerald-50 px-5 py-4">
               <div className="min-w-0">
-                <p className="m-0 text-xs font-bold uppercase tracking-wide text-emerald-600">Lezione completa</p>
+                <p className="m-0 text-xs font-bold uppercase tracking-wide text-emerald-600">{tl("Lezione completa")}</p>
                 <h2 className="m-0 truncate text-lg font-black text-emerald-950">{lessonData.title}</h2>
               </div>
-              <button type="button" onClick={() => setFullLessonOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800" aria-label="Chiudi lezione">
+              <button type="button" onClick={() => setFullLessonOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800" aria-label={tl("Chiudi lezione")}>
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -5559,9 +5562,9 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               </ReactMarkdown>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
-              <Button variant="outline" onClick={() => setFullLessonOpen(false)}>Chiudi</Button>
+              <Button variant="outline" onClick={() => setFullLessonOpen(false)}>{tl("Chiudi")}</Button>
               <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onPublish('lesson', lessonData)}>
-                <Plus className="mr-1 h-4 w-4" /> Pubblica
+                <Plus className="mr-1 h-4 w-4" /> {tl("Pubblica")}
               </Button>
             </div>
           </div>
@@ -5575,7 +5578,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           onSubmit={(sessionId, reportTypeId) => {
             const session = sessionSelector.find(s => s.id === sessionId)
             const reportType = reportTypeSelector.find(r => r.id === reportTypeId)
-            onInput(`Generami il report ${reportType?.label || reportTypeId} per la sessione: ${session?.title} (${sessionId})`)
+            onInput(tl("Generami il report {0} per la sessione: {1} ({2})", reportType?.label || reportTypeId, session?.title, sessionId))
           }}
         />
       )}
@@ -5585,7 +5588,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           sessions={sessionSelector} 
           onSelect={(id) => {
             const session = sessionSelector.find(s => s.id === id);
-            onInput(`Generami un report per la sessione: ${session?.title} (${id})`);
+            onInput(tl("Generami un report per la sessione: {0} ({1})", session?.title, id));
           }} 
         />
       )}
@@ -5598,7 +5601,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               .filter(s => selectedIds.includes(s.id))
               .map(s => s.nickname)
               .join(', ');
-            onInput(`Generami un report per questi studenti: ${names}`);
+            onInput(tl("Generami un report per questi studenti: {0}", names));
           }} 
         />
       )}
@@ -5639,7 +5642,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
       return `${idx + 1}${letter}`
     }).join(', ')
 
-    onSubmitAnswers(`Le mie risposte: ${answerText}`)
+    onSubmitAnswers(tl("Le mie risposte: {0}", answerText))
   }
 
   const score = quiz.questions.reduce((acc, q, idx) => {
@@ -5705,7 +5708,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-xs ${isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-cyan-50 text-cyan-800 border border-cyan-100'}`}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    {isCorrect ? <div className="font-bold uppercase tracking-tighter">Corretto</div> : <div className="font-bold uppercase tracking-tighter">Spiegazione</div>}
+                    {isCorrect ? <div className="font-bold uppercase tracking-tighter">{tl("Corretto")}</div> : <div className="font-bold uppercase tracking-tighter">{tl("Spiegazione")}</div>}
                   </div>
                   {q.explanation}
                 </div>
@@ -5724,16 +5727,16 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
         >
-          {allAnswered ? 'Verifica Risposte' : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
+          {allAnswered ? tl("Verifica Risposte") : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
         </Button>
       ) : (
         <div className="mt-6 p-6 bg-white rounded-2xl shadow-inner border-2 border-cyan-100 text-center animate-in zoom-in duration-300">
           <div className="text-4xl font-black text-cyan-600 mb-1">
             {score} / {quiz.questions.length}
           </div>
-          <div className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Punteggio Finale</div>
+          <div className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">{tl("Punteggio Finale")}</div>
           <p className="text-slate-600 italic">
-            {score === quiz.questions.length ? '🥇 Risultato Perfetto! Ottimo lavoro.' : score >= quiz.questions.length / 2 ? '👏 Buon lavoro! Hai una buona base.' : '📚 Ti consiglio di ripassare l\'argomento.'}
+            {score === quiz.questions.length ? tl("🥇 Risultato Perfetto! Ottimo lavoro.") : score >= quiz.questions.length / 2 ? tl("👏 Buon lavoro! Hai una buona base.") : tl("📚 Ti consiglio di ripassare l'argomento.")}
           </p>
         </div>
       )}

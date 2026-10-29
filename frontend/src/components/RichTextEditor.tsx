@@ -83,7 +83,7 @@ const DocumentCommentMark = Mark.create({
       text: { default: null, parseHTML: element => element.getAttribute('data-comment-text') },
     }
   },
-  parseHTML: () => [{ tag: 'span[data-docx-comment="true"]' }],
+  parseHTML: () => [{ tag: "span[data-docx-comment=\"true\"]" }],
   renderHTML({ HTMLAttributes }) {
     const { id, author, date, text, ...attributes } = HTMLAttributes
     const title = [author, text].filter(Boolean).join(': ')
@@ -109,14 +109,14 @@ const DocumentRevisionMark = Mark.create({
       date: { default: null, parseHTML: element => element.getAttribute('data-revision-date') },
     }
   },
-  parseHTML: () => [{ tag: 'span[data-revision-kind]' }],
+  parseHTML: () => [{ tag: "span[data-revision-kind]" }],
   renderHTML({ HTMLAttributes }) {
     const { kind, author, date, ...attributes } = HTMLAttributes
     return ['span', mergeAttributes(attributes, {
       'data-revision-kind': kind,
       'data-revision-author': author,
       'data-revision-date': date,
-      title: [kind === 'delete' ? 'Eliminato' : 'Aggiunto', author].filter(Boolean).join(' da '),
+      title: [kind === 'delete' ? tl("Eliminato") : tl("Aggiunto"), author].filter(Boolean).join(' da '),
       class: kind === 'delete' ? 'docx-revision-delete' : 'docx-revision-insert',
     }), 0]
   },
@@ -133,7 +133,7 @@ const DocxRegion = Node.create({
       label: { default: '', parseHTML: element => element.getAttribute('data-docx-region-label') },
     }
   },
-  parseHTML: () => [{ tag: 'section[data-docx-region]' }],
+  parseHTML: () => [{ tag: "section[data-docx-region]" }],
   renderHTML({ HTMLAttributes }) {
     const { kind, label, ...attributes } = HTMLAttributes
     return ['section', mergeAttributes(attributes, {
@@ -172,6 +172,7 @@ import { ParagraphFormatExtension } from '@/lib/tiptapParagraphFormat'
 import { DocumentComposition } from '@/lib/tiptapComposition'
 import { SmartPaste } from '@/lib/tiptapPaste'
 import 'katex/dist/katex.min.css'
+import { tl } from '@/i18n/tl'
 
 interface RichTextEditorProps {
   content: string
@@ -654,7 +655,7 @@ export function RichTextEditor({
           variant="floating"
           onClose={() => setSelection(null)}
           onApply={handleApplyAIText}
-          context="Documento didattico"
+          context={tl("Documento didattico")}
         />
       )}
     </div>

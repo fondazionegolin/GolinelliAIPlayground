@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { X, Loader2, Users, UserRound, Check, Globe } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotShareModalProps {
   teacherbotId: string
@@ -72,34 +73,34 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
   const publishClassMutation = useMutation({
     mutationFn: (classId: string) => teacherbotsApi.publish(teacherbotId, classId),
     onSuccess: () => {
-      toast({ title: 'Condiviso con la classe' })
+      toast({ title: tl("Condiviso con la classe") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
       setSelectedClassId(null)
     },
     onError: (error: any) => {
-      toast({ title: 'Errore', description: error?.response?.data?.detail || 'Condivisione non riuscita', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: error?.response?.data?.detail || tl("Condivisione non riuscita"), variant: 'destructive' })
     },
   })
 
   const publishStudentMutation = useMutation({
     mutationFn: (studentId: string) => teacherbotsApi.publishToStudent(teacherbotId, studentId),
     onSuccess: () => {
-      toast({ title: 'Condiviso con lo studente' })
+      toast({ title: tl("Condiviso con lo studente") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
     },
     onError: (error: any) => {
-      toast({ title: 'Errore', description: error?.response?.data?.detail || 'Condivisione non riuscita', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: error?.response?.data?.detail || tl("Condivisione non riuscita"), variant: 'destructive' })
     },
   })
 
   const unpublishMutation = useMutation({
     mutationFn: (publicationId: string) => teacherbotsApi.unpublish(teacherbotId, publicationId),
     onSuccess: () => {
-      toast({ title: 'Condivisione rimossa' })
+      toast({ title: tl("Condivisione rimossa") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile rimuovere la condivisione', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile rimuovere la condivisione"), variant: 'destructive' })
     },
   })
 
@@ -113,7 +114,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
-          <h3 className="text-lg font-bold text-slate-800 truncate">Condividi — {teacherbotName}</h3>
+          <h3 className="text-lg font-bold text-slate-800 truncate">{tl("Condividi —")} {teacherbotName}</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
@@ -125,14 +126,14 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'class' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Users className="h-3.5 w-3.5" />
-            Classe
+            {tl("Classe")}
           </button>
           <button
             onClick={() => setTab('student')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'student' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <UserRound className="h-3.5 w-3.5" />
-            Studenti
+            {tl("Studenti")}
           </button>
         </div>
 
@@ -140,7 +141,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
           {tab === 'class' ? (
             <>
               <p className="text-sm text-slate-600 mb-4">
-                Rendi il teacherbot disponibile a tutti gli studenti di una classe, in tutte le sue sessioni.
+                {tl("Rendi il teacherbot disponibile a tutti gli studenti di una classe, in tutte le sue sessioni.")}
               </p>
 
               {classPublications.length > 0 && (
@@ -152,7 +153,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                         {pub.class_name}
                       </span>
                       <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => unpublishMutation.mutate(pub.id)}>
-                        Rimuovi
+                        {tl("Rimuovi")}
                       </Button>
                     </div>
                   ))}
@@ -174,7 +175,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                     </button>
                   ))}
                   {classesQuery.data?.filter(c => !publishedClassIds.has(c.id)).length === 0 && (
-                    <p className="text-center text-sm text-slate-400 py-4">Già condiviso con tutte le classi</p>
+                    <p className="text-center text-sm text-slate-400 py-4">{tl("Già condiviso con tutte le classi")}</p>
                   )}
                 </div>
               )}
@@ -185,14 +186,14 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                   disabled={!selectedClassId || publishClassMutation.isPending}
                 >
                   {publishClassMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Globe className="h-4 w-4 mr-2" />}
-                  Condividi con la classe
+                  {tl("Condividi con la classe")}
                 </Button>
               </div>
             </>
           ) : (
             <>
               <p className="text-sm text-slate-600 mb-4">
-                Condividi solo con studenti specifici, all'interno di una sessione.
+                {tl("Condividi solo con studenti specifici, all'interno di una sessione.")}
               </p>
 
               {studentPublications.length > 0 && (
@@ -204,7 +205,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                         {pub.student_nickname}
                       </span>
                       <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => unpublishMutation.mutate(pub.id)}>
-                        Rimuovi
+                        {tl("Rimuovi")}
                       </Button>
                     </div>
                   ))}
@@ -217,7 +218,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                   onChange={(e) => { setStudentClassId(e.target.value || null); setStudentSessionId(null) }}
                   className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
                 >
-                  <option value="">Seleziona classe…</option>
+                  <option value="">{tl("Seleziona classe…")}</option>
                   {classesQuery.data?.map(cls => (
                     <option key={cls.id} value={cls.id}>{cls.name}</option>
                   ))}
@@ -228,7 +229,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                   disabled={!studentClassId || sessionsQuery.isLoading}
                   className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white disabled:opacity-50"
                 >
-                  <option value="">Seleziona sessione…</option>
+                  <option value="">{tl("Seleziona sessione…")}</option>
                   {sessionsQuery.data?.map(session => (
                     <option key={session.id} value={session.id}>{session.title || session.name}</option>
                   ))}
@@ -248,12 +249,12 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                           onClick={() => publishStudentMutation.mutate(student.id)}
                           disabled={publishStudentMutation.isPending}
                         >
-                          Condividi
+                          {tl("Condividi")}
                         </Button>
                       </div>
                     ))}
                     {sessionLiveQuery.data?.students.filter(s => !sharedStudentIds.has(s.id)).length === 0 && (
-                      <p className="text-center text-sm text-slate-400 py-4">Nessuno studente disponibile in questa sessione</p>
+                      <p className="text-center text-sm text-slate-400 py-4">{tl("Nessuno studente disponibile in questa sessione")}</p>
                     )}
                   </div>
                 )

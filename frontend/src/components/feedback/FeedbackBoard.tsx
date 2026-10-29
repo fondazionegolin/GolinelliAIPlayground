@@ -9,6 +9,7 @@ import {
   CheckCircle, Mail, Globe, Monitor, ImageIcon, X, Share2, Trash2, Plus, Loader2,
   Send, Columns3, Settings2,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface BoardCard {
@@ -60,10 +61,10 @@ type BoardConfig = {
 
 // ── Board taxonomy (mirrors backend contract) ─────────────────────────────────
 const DEFAULT_COLUMNS: BoardColumn[] = [
-  { id: 'inbox', label: 'Inbox / Nuovi', hint: 'Segnalazioni grezze da leggere e valutare', color: '#737373' },
-  { id: 'triage', label: 'In Analisi / Triage', hint: 'Qualifica: bug, feature o errore d’uso. Assegna priorità', color: '#0ea5e9' },
-  { id: 'qa', label: 'In Revisione / QA', hint: 'Verifica tecnica e qualitativa del fix', color: '#a855f7' },
-  { id: 'released', label: 'Rilasciato / Chiuso', hint: 'Online e cliente avvisato', color: '#10b981' },
+  { id: 'inbox', label: tl("Inbox / Nuovi"), hint: tl("Segnalazioni grezze da leggere e valutare"), color: '#737373' },
+  { id: 'triage', label: tl("In Analisi / Triage"), hint: tl("Qualifica: bug, feature o errore d’uso. Assegna priorità"), color: '#0ea5e9' },
+  { id: 'qa', label: tl("In Revisione / QA"), hint: tl("Verifica tecnica e qualitativa del fix"), color: '#a855f7' },
+  { id: 'released', label: tl("Rilasciato / Chiuso"), hint: tl("Online e cliente avvisato"), color: '#10b981' },
 ]
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof Bug; cls: string }> = {
@@ -74,9 +75,9 @@ const CATEGORY_META: Record<string, { label: string; icon: typeof Bug; cls: stri
 }
 
 const URGENCY_META: Record<string, { label: string; cls: string; dot: string }> = {
-  alta: { label: 'Alta', cls: 'bg-red-50 text-red-600 border-red-200', dot: 'bg-red-500' },
-  media: { label: 'Media', cls: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
-  bassa: { label: 'Bassa', cls: 'bg-slate-100 text-slate-500 border-slate-200', dot: 'bg-slate-400' },
+  alta: { label: tl("Alta"), cls: 'bg-red-50 text-red-600 border-red-200', dot: 'bg-red-500' },
+  media: { label: tl("Media"), cls: 'bg-amber-50 text-amber-600 border-amber-200', dot: 'bg-amber-500' },
+  bassa: { label: tl("Bassa"), cls: 'bg-slate-100 text-slate-500 border-slate-200', dot: 'bg-slate-400' },
 }
 
 const URGENCY_ORDER: Record<string, number> = { alta: 0, media: 1, bassa: 2 }
@@ -84,7 +85,7 @@ const URGENCY_ORDER: Record<string, number> = { alta: 0, media: 1, bassa: 2 }
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'adesso'
+  if (mins < 1) return tl("adesso")
   if (mins < 60) return `${mins}m fa`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h fa`
@@ -187,7 +188,7 @@ function Card({
         }`}>
           {(card.user_display_name?.[0] || '?').toUpperCase()}
         </div>
-        <span className="text-[11px] text-slate-500 truncate">{card.user_display_name || 'Anonimo'}</span>
+        <span className="text-[11px] text-slate-500 truncate">{card.user_display_name || tl("Anonimo")}</span>
         {card.source === 'manual' && (
           <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">task</span>
         )}
@@ -200,9 +201,9 @@ function Card({
       </div>
       {(card.created_by_display_name || card.last_actor_display_name) && (
         <div className="mt-1.5 text-[10px] leading-tight text-slate-400">
-          {card.created_by_display_name && <span>Creato da {card.created_by_display_name}</span>}
+          {card.created_by_display_name && <span>{tl("Creato da")} {card.created_by_display_name}</span>}
           {card.last_actor_display_name && card.last_actor_display_name !== card.created_by_display_name && (
-            <span> · ultima modifica {card.last_actor_display_name}</span>
+            <span> {tl("· ultima modifica")} {card.last_actor_display_name}</span>
           )}
         </div>
       )}
@@ -260,7 +261,7 @@ function DetailModal({
               {(card.user_display_name?.[0] || '?').toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800">{card.user_display_name || 'Anonimo'}</p>
+              <p className="text-sm font-semibold text-slate-800">{card.user_display_name || tl("Anonimo")}</p>
               {card.user_email && (
                 <a href={`mailto:${card.user_email}`} className="flex items-center gap-1 text-[11px] text-indigo-500 hover:underline">
                   <Mail className="h-3 w-3" />{card.user_email}
@@ -291,7 +292,7 @@ function DetailModal({
           {/* Classification controls */}
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Tipologia</span>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Tipologia")}</span>
               <select
                 value={card.category || ''}
                 onChange={(e) => onPatch({ category: e.target.value })}
@@ -302,7 +303,7 @@ function DetailModal({
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Urgenza</span>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Urgenza")}</span>
               <select
                 value={card.urgency || ''}
                 onChange={(e) => onPatch({ urgency: e.target.value })}
@@ -317,7 +318,7 @@ function DetailModal({
           {/* Move + classify */}
           <div className="flex items-end gap-2">
             <label className="block flex-1">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Sposta in…</span>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Sposta in…")}</span>
               <select
                 value={card.board_status}
                 onChange={(e) => onPatch({ board_status: e.target.value })}
@@ -330,22 +331,22 @@ function DetailModal({
               onClick={onClassify}
               disabled={busy}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              title="Riclassifica con AI"
+              title={tl("Riclassifica con AI")}
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              AI
+              {tl("AI")}
             </button>
           </div>
 
           {/* Internal note */}
           <label className="block">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Nota interna</span>
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Nota interna")}</span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               onBlur={() => { if (note !== (card.internal_note || '')) onPatch({ internal_note: note }) }}
               rows={2}
-              placeholder="Annotazioni del team (non visibili all'utente)…"
+              placeholder={tl("Annotazioni del team (non visibili all'utente)…")}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-slate-300"
             />
           </label>
@@ -353,7 +354,7 @@ function DetailModal({
           {/* Technical details */}
           {(card.browser_info?.user_agent || card.console_errors?.length > 0) && (
             <details className="rounded-lg bg-slate-50 px-3 py-2">
-              <summary className="cursor-pointer text-[11px] font-semibold text-slate-500">Dettagli tecnici</summary>
+              <summary className="cursor-pointer text-[11px] font-semibold text-slate-500">{tl("Dettagli tecnici")}</summary>
               {card.browser_info?.user_agent && (
                 <div className="mt-2 flex items-start gap-1.5">
                   <Monitor className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-400" />
@@ -375,7 +376,7 @@ function DetailModal({
             <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
               {replySent ? (
                 <span className="flex items-center gap-1 text-[11px] text-green-600">
-                  <Send className="h-3 w-3" /> Email inviata ({replySent === 'in_progress' ? 'in lavorazione' : 'risolto'})
+                  <Send className="h-3 w-3" /> {tl("Email inviata (")}{replySent === 'in_progress' ? tl("in lavorazione") : 'risolto'})
                 </span>
               ) : (
                 <>
@@ -383,13 +384,13 @@ function DetailModal({
                     onClick={() => { onReply('in_progress'); setReplySent('in_progress') }}
                     className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-amber-600 hover:bg-amber-50"
                   >
-                    <Wrench className="h-3.5 w-3.5" /> Avvisa: in lavorazione
+                    <Wrench className="h-3.5 w-3.5" /> {tl("Avvisa: in lavorazione")}
                   </button>
                   <button
                     onClick={() => { onReply('resolved'); setReplySent('resolved') }}
                     className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-green-600 hover:bg-green-50"
                   >
-                    <CheckCircle className="h-3.5 w-3.5" /> Avvisa: risolto
+                    <CheckCircle className="h-3.5 w-3.5" /> {tl("Avvisa: risolto")}
                   </button>
                 </>
               )}
@@ -433,9 +434,9 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
       setPickerOpen(false)
       queryClient.invalidateQueries({ queryKey: ['feedback-board-collaborators'] })
       queryClient.invalidateQueries({ queryKey: ['feedback-board-eligible'] })
-      toast({ title: 'Collaboratore aggiunto' })
+      toast({ title: tl("Collaboratore aggiunto") })
     },
-    onError: (err: any) => toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Impossibile aggiungere' }),
+    onError: (err: any) => toast({ variant: 'destructive', title: tl("Errore"), description: err.response?.data?.detail || tl("Impossibile aggiungere") }),
   })
 
   const removeMutation = useMutation({
@@ -447,11 +448,11 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h3 className="flex items-center gap-2 text-base font-bold text-slate-800"><Share2 className="h-4 w-4" /> Condividi la board</h3>
+          <h3 className="flex items-center gap-2 text-base font-bold text-slate-800"><Share2 className="h-4 w-4" /> {tl("Condividi la board")}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
         </div>
         <div className="px-5 py-4 space-y-4">
-          <p className="text-xs text-slate-500">I docenti aggiunti vedranno la board come voce "Board" nella loro navbar.</p>
+          <p className="text-xs text-slate-500">{tl("I docenti aggiunti vedranno la board come voce \"Board\" nella loro navbar.")}</p>
 
           {/* Searchable picker of registered teachers */}
           <div className="relative">
@@ -461,7 +462,7 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => { setSearch(e.target.value); setPickerOpen(true) }}
               onFocus={() => setPickerOpen(true)}
               onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
-              placeholder="Cerca un docente registrato…"
+              placeholder={tl("Cerca un docente registrato…")}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
             />
             {pickerOpen && filteredEligible.length > 0 && (
@@ -485,7 +486,7 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
             )}
             {pickerOpen && search.trim() && filteredEligible.length === 0 && (
               <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-lg">
-                Nessun docente registrato corrisponde — usa l'email qui sotto.
+                {tl("Nessun docente registrato corrisponde — usa l'email qui sotto.")}
               </div>
             )}
           </div>
@@ -499,7 +500,7 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="oppure aggiungi via email"
+              placeholder={tl("oppure aggiungi via email")}
               className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
             />
             <button
@@ -508,15 +509,15 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
               className="flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
             >
               {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Aggiungi
+              {tl("Aggiungi")}
             </button>
           </form>
 
           <div className="space-y-1.5">
             {isLoading ? (
-              <p className="text-sm text-slate-400">Caricamento…</p>
+              <p className="text-sm text-slate-400">{tl("Caricamento…")}</p>
             ) : collaborators.length === 0 ? (
-              <p className="text-sm text-slate-400">Nessun collaboratore ancora.</p>
+              <p className="text-sm text-slate-400">{tl("Nessun collaboratore ancora.")}</p>
             ) : (
               collaborators.map((c) => (
                 <div key={c.teacher_id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2">
@@ -527,7 +528,7 @@ function CollaboratorsModal({ onClose }: { onClose: () => void }) {
                   <button
                     onClick={() => removeMutation.mutate(c.teacher_id)}
                     className="text-slate-300 hover:text-red-500"
-                    title="Rimuovi"
+                    title={tl("Rimuovi")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -576,7 +577,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
       )
     },
     onError: () => {
-      toast({ variant: 'destructive', title: 'Errore', description: 'Aggiornamento non riuscito' })
+      toast({ variant: 'destructive', title: tl("Errore"), description: tl("Aggiornamento non riuscito") })
       queryClient.invalidateQueries({ queryKey: ['feedback-board'] })
     },
   })
@@ -593,8 +594,8 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
 
   const replyMutation = useMutation({
     mutationFn: ({ id, type }: { id: string; type: 'in_progress' | 'resolved' }) => feedbackApi.replyBoardCard(id, type),
-    onSuccess: () => toast({ title: 'Email inviata' }),
-    onError: (err: any) => toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Invio non riuscito' }),
+    onSuccess: () => toast({ title: tl("Email inviata") }),
+    onError: (err: any) => toast({ variant: 'destructive', title: tl("Errore"), description: err.response?.data?.detail || tl("Invio non riuscito") }),
   })
 
   const classifyAllMutation = useMutation({
@@ -603,10 +604,10 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
       const { classified } = res.data as { classified: number; total: number }
       queryClient.invalidateQueries({ queryKey: ['feedback-board'] })
       toast({
-        title: classified > 0 ? 'Valutazione completata' : 'Niente da valutare',
+        title: classified > 0 ? tl("Valutazione completata") : tl("Niente da valutare"),
         description: classified > 0
-          ? `${classified} feedback classificati con AI. Quelli già etichettati non sono stati toccati.`
-          : 'Tutti i feedback hanno già tipologia e urgenza.',
+          ? tl("{0} feedback classificati con AI. Quelli già etichettati non sono stati toccati.", classified)
+          : tl("Tutti i feedback hanno già tipologia e urgenza."),
       })
     },
     onError: () => toast({ variant: 'destructive', title: 'Errore', description: 'Valutazione AI non riuscita' }),
@@ -620,9 +621,9 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
       setNewTaskText('')
       setInlineColumnId(null)
       queryClient.setQueryData<BoardCard[]>(['feedback-board'], (old) => [created, ...(old || [])])
-      toast({ title: 'Task creato' })
+      toast({ title: tl("Task creato") })
     },
-    onError: (err: any) => toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Creazione task non riuscita' }),
+    onError: (err: any) => toast({ variant: 'destructive', title: tl("Errore"), description: err.response?.data?.detail || tl("Creazione task non riuscita") }),
   })
 
   const updateConfigMutation = useMutation({
@@ -630,9 +631,9 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     onSuccess: (res) => {
       queryClient.setQueryData(['feedback-board-config'], res.data)
       queryClient.invalidateQueries({ queryKey: ['feedback-board'] })
-      toast({ title: 'Board aggiornata' })
+      toast({ title: tl("Board aggiornata") })
     },
-    onError: (err: any) => toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Configurazione non salvata' }),
+    onError: (err: any) => toast({ variant: 'destructive', title: tl("Errore"), description: err.response?.data?.detail || tl("Configurazione non salvata") }),
   })
 
   const unclassifiedCount = useMemo(() => cards.filter((c) => !c.category || !c.urgency).length, [cards])
@@ -694,7 +695,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     if (!label) return
     const id = (label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`).slice(0, 20)
     updateConfigMutation.mutate({
-      columns: [...columns, { id, label, hint: 'Colonna personalizzata', color: '#737373' }],
+      columns: [...columns, { id, label, hint: tl("Colonna personalizzata"), color: '#737373' }],
     })
     setNewColumnName('')
   }
@@ -705,13 +706,13 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     }`}>
       <header className="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 shadow-[var(--shadow-sm)] sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <h1 className="truncate text-base font-bold text-[var(--text-primary)]">{config?.title || 'Board di sviluppo'}</h1>
+          <h1 className="truncate text-base font-bold text-[var(--text-primary)]">{config?.title || tl("Board di sviluppo")}</h1>
           <p className="text-xs text-[var(--text-secondary)]">{cards.length} task · {columns.length} colonne</p>
         </div>
         <SearchPill
           value={searchQuery}
           onValueChange={setSearchQuery}
-          placeholder="Cerca task, etichette o persone…"
+          placeholder={tl("Cerca task, etichette o persone…")}
           className="col-span-2 row-start-2 w-full sm:col-span-1 sm:col-start-2 sm:row-start-1"
         />
         <div className="flex min-w-0 items-center justify-end gap-2 sm:col-start-3">
@@ -722,17 +723,17 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
             density="compact"
             onClick={() => classifyAllMutation.mutate()}
             disabled={classifyAllMutation.isPending || unclassifiedCount === 0}
-            title={unclassifiedCount === 0 ? 'Tutti i feedback sono già etichettati' : `${unclassifiedCount} feedback da valutare`}
+            title={unclassifiedCount === 0 ? tl("Tutti i feedback sono già etichettati") : tl("{0} feedback da valutare", unclassifiedCount)}
           >
             {classifyAllMutation.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
-            <span className="hidden xl:inline">Valuta con AI</span>
+            <span className="hidden xl:inline">{tl("Valuta con AI")}</span>
             {unclassifiedCount > 0 && (
               <span className="rounded-full bg-[var(--surface-base)] px-1.5 py-0.5 text-[10px] font-bold">{unclassifiedCount}</span>
             )}
           </Button>
           {isAdmin && (
             <Button type="button" tone="neutral" surface="soft" density="compact" onClick={() => setShowCollaborators(true)}>
-              <Share2 /> <span className="hidden xl:inline">Condividi</span>
+              <Share2 /> <span className="hidden xl:inline">{tl("Condividi")}</span>
             </Button>
           )}
           <div className="relative">
@@ -744,7 +745,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
               onClick={() => setShowSettings((visible) => !visible)}
               aria-expanded={showSettings}
             >
-              <Settings2 /> <span className="hidden xl:inline">Configura</span>
+              <Settings2 /> <span className="hidden xl:inline">{tl("Configura")}</span>
             </Button>
             {showSettings && (
               <div className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-[min(360px,calc(100vw-2rem))] space-y-3 rounded-[var(--card-radius)] border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3 text-[var(--text-primary)] shadow-[var(--shadow-xl)]">
@@ -756,7 +757,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                   disabled={updateConfigMutation.isPending}
                   className="h-9 w-full rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-2 text-sm font-medium text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--selection-border)]"
                 >
-                  <option value="" disabled>Seleziona un template</option>
+                  <option value="" disabled>{tl("Seleziona un template")}</option>
                   {(config?.templates || []).map((template) => (
                     <option key={template.id} value={template.id}>{template.label}</option>
                   ))}
@@ -769,12 +770,12 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                 }}
                 className="space-y-1"
               >
-                <label className="block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">Nuova colonna</label>
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("Nuova colonna")}</label>
                 <div className="flex gap-2">
                   <input
                     value={newColumnName}
                     onChange={(e) => setNewColumnName(e.target.value)}
-                    placeholder="Nome colonna"
+                    placeholder={tl("Nome colonna")}
                     className="h-9 min-w-0 flex-1 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-secondary)] focus:ring-2 focus:ring-[var(--selection-border)]"
                   />
                   <Button
@@ -784,7 +785,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                     density="compact"
                     disabled={updateConfigMutation.isPending || !newColumnName.trim()}
                   >
-                    <Columns3 /> Aggiungi
+                    <Columns3 /> {tl("Aggiungi")}
                   </Button>
                 </div>
               </form>
@@ -829,8 +830,8 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                         setInlineColumnId((current) => current === col.id ? null : col.id)
                       }}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 opacity-100 shadow-sm transition hover:border-slate-300 hover:text-slate-800 lg:opacity-0 lg:group-hover/column:opacity-100 lg:focus-visible:opacity-100"
-                      title={`Aggiungi task in ${col.label}`}
-                      aria-label={`Aggiungi task in ${col.label}`}
+                      title={tl("Aggiungi task in {0}", col.label)}
+                      aria-label={tl("Aggiungi task in {0}", col.label)}
                     >
                       <Plus className="h-4 w-4" />
                     </button>
@@ -848,8 +849,8 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                       className="w-[280px] shrink-0 space-y-2 border border-slate-200 bg-white p-3 shadow-sm lg:w-auto"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700">Nuovo task</span>
-                        <button type="button" onClick={() => setInlineColumnId(null)} className="text-slate-400 hover:text-slate-700" aria-label="Annulla">
+                        <span className="text-xs font-bold text-slate-700">{tl("Nuovo task")}</span>
+                        <button type="button" onClick={() => setInlineColumnId(null)} className="text-slate-400 hover:text-slate-700" aria-label={tl("Annulla")}>
                           <X className="h-4 w-4" />
                         </button>
                       </div>
@@ -857,7 +858,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                         autoFocus
                         value={newTaskText}
                         onChange={(e) => setNewTaskText(e.target.value)}
-                        placeholder="Descrivi il task o l'attività…"
+                        placeholder={tl("Descrivi il task o l'attività…")}
                         rows={3}
                         className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
                       />
@@ -870,7 +871,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                         disabled={createCardMutation.isPending || !newTaskText.trim()}
                       >
                         {createCardMutation.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
-                        Crea task
+                        {tl("Crea task")}
                       </Button>
                     </form>
                   )}
@@ -879,7 +880,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
                   ))}
                   {colCards.length === 0 && inlineColumnId !== col.id && (
                     <div className="flex min-w-[160px] flex-1 items-center justify-center py-6 text-center text-[11px] text-slate-300">
-                      {searchQuery.trim() ? 'Nessun risultato' : 'Trascina qui'}
+                      {searchQuery.trim() ? tl("Nessun risultato") : tl("Trascina qui")}
                     </div>
                   )}
                 </div>

@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useTranslation } from 'react-i18next'
 import { getApiAuthHeaders } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface VoiceRecorderProps {
   onInsertText: (text: string) => void
@@ -43,7 +44,7 @@ interface VoiceRecorderProps {
 export type RecorderState = 'idle' | 'recording' | 'processing' | 'review'
 
 const LANGUAGES = [
-  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { code: 'it', label: tl("Italiano"), flag: '🇮🇹' },
   { code: 'en', label: 'English', flag: '🇬🇧' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
@@ -179,8 +180,8 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
       })
 
       if (!resp.ok) {
-        const body = await resp.json().catch(() => ({ detail: 'Errore sconosciuto' }))
-        throw new Error(body.detail || 'Trascrizione fallita')
+        const body = await resp.json().catch(() => ({ detail: tl("Errore sconosciuto") }))
+        throw new Error(body.detail || tl("Trascrizione fallita"))
       }
 
       const data = await resp.json()
@@ -188,7 +189,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
       setDetectedLanguage(data.language || '')
       setRecorderState('review')
     } catch (e: any) {
-      setError(e.message || 'Errore nella trascrizione. Riprova.')
+      setError(e.message || tl("Errore nella trascrizione. Riprova."))
       setRecorderState('idle')
     }
   }

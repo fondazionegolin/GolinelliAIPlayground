@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, RectangleHorizontal, RectangleVertical, Shapes, Ruler } from '@/components/icons'
 import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
+import { tl } from '@/i18n/tl'
 
 export type DocumentEditorMode = 'document' | 'slides' | 'sheet' | 'canvas' | 'web' | 'pdf'
 
@@ -201,13 +202,13 @@ export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
 
   return (
     <div ref={ref} className="relative">
-      <HeaderIconButton label="Impostazione pagina" onClick={() => setOpen((current) => !current)} active={open} disabled={disabled}>
+      <HeaderIconButton label={tl("Impostazione pagina")} onClick={() => setOpen((current) => !current)} active={open} disabled={disabled}>
         <Ruler className="h-4 w-4" />
       </HeaderIconButton>
       {open && (
         <div className="ds-popover absolute right-0 top-full z-50 mt-2 w-[220px] space-y-3 rounded-2xl p-3">
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Formato</p>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Formato")}</p>
             <div className="flex gap-1">
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <button key={size.value} type="button" className={option(value.size === size.value)} onClick={() => onChange({ ...value, size: size.value })}>
@@ -217,17 +218,17 @@ export function HeaderPageSetupMenu({ value, onChange, disabled = false }: {
             </div>
           </div>
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Orientamento</p>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Orientamento")}</p>
             <div className="flex gap-1">
               <button type="button" className={option(value.orientation === 'portrait')} onClick={() => onChange({ ...value, orientation: 'portrait' })}>
-                <RectangleVertical className="h-3.5 w-3.5" /> Verticale
+                <RectangleVertical className="h-3.5 w-3.5" /> {tl("Verticale")}
               </button>
               <button type="button" className={option(value.orientation === 'landscape')} onClick={() => onChange({ ...value, orientation: 'landscape' })}>
-                <RectangleHorizontal className="h-3.5 w-3.5" /> Orizz.
+                <RectangleHorizontal className="h-3.5 w-3.5" /> {tl("Orizz.")}
               </button>
             </div>
           </div>
-          <p className="text-[10px] leading-4 text-slate-400">I margini si regolano trascinando i cursori del righello.</p>
+          <p className="text-[10px] leading-4 text-slate-400">{tl("I margini si regolano trascinando i cursori del righello.")}</p>
         </div>
       )}
     </div>

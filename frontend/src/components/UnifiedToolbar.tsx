@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { ColorPicker } from '@/components/ui/ColorPicker'
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -8,7 +9,7 @@ import {
 } from '@/components/icons'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
-import { SlideBlock, SlideBlockType, SlideSnapOptions } from './SlideEditor'
+import { SlideBlock, SlideBlockType, SlideSnapOptions, type ShapeSlideBlock, type TextSlideBlock } from './SlideEditor'
 import { AIImageGeneratorModal } from './AIImageGeneratorModal'
 import { DocumentTableMenu } from '@/components/documents/DocumentTableMenu'
 import { useFormatPainter } from '@/hooks/useFormatPainter'
@@ -19,6 +20,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   DEFAULT_DOC_FONT_PT, DOC_FONTS as FONTS, DOC_FONT_SIZES as FONT_SIZES, fontSizeToPoints, primaryFontFamily, setFontSize, stepFontSize,
 } from '@/lib/documentTextFormat'
+import { tl } from '@/i18n/tl'
 
 interface UnifiedToolbarProps {
   mode: 'document' | 'slides'
@@ -32,6 +34,12 @@ interface UnifiedToolbarProps {
   onAddSlideBlock?: (type: SlideBlockType) => void
   onAddSlideImage?: (imageUrl: string) => void
   selectedBlock?: SlideBlock
+  /** How many slide objects are selected (multi-selection applies styles to all of them). */
+  selectionCount?: number
+  /** Every selected slide object: mixed selections show shape and text controls together. */
+  selectedBlocks?: SlideBlock[]
+  /** Colours already used in the deck, offered first by the colour picker. */
+  documentColors?: string[]
   onUpdateBlockStyle?: (key: string, value: any) => void
   /** The focused slide text block's TipTap instance, if any (see SlideEditor's onActiveTextEditorChange).
    * When it has a non-collapsed selection, formatting buttons apply to that range instead of the whole block. */
@@ -55,6 +63,9 @@ export function UnifiedToolbar({
   onAddSlideBlock,
   onAddSlideImage,
   selectedBlock,
+  selectionCount = 1,
+  selectedBlocks,
+  documentColors = [],
   onUpdateBlockStyle,
   activeBlockEditor,
   onOpenAIAssist,
@@ -91,8 +102,8 @@ export function UnifiedToolbar({
     const { from, to, empty } = editor.state.selection
     const { lines, changed } = applyFormatOperations(editor, STRUCTURE_CLEANUP, empty ? null : { from, to })
     toast({
-      title: changed ? 'Struttura riordinata' : 'Nessuna modifica necessaria',
-      description: changed ? `${lines.join(' · ')}. Puoi annullare con Ctrl+Z.` : 'Non ho trovato righe vuote usate come spazio né titoli da riconoscere.',
+      title: changed ? tl("Struttura riordinata") : tl("Nessuna modifica necessaria"),
+      description: changed ? tl("{0}. Puoi annullare con Ctrl+Z.", lines.join(' · ')) : tl("Non ho trovato righe vuote usate come spazio né titoli da riconoscere."),
     })
   }
 
@@ -141,6 +152,14 @@ export function UnifiedToolbar({
       editor.off('selectionUpdate', updateSelectionState)
     }
   }, [editor, mode])
+
+  const selectionList = selectedBlocks && selectedBlocks.length > 0 ? selectedBlocks : selectedBlock ? [selectedBlock] : []
+  const isShape = (block: SlideBlock): block is ShapeSlideBlock => block.type === 'rectangle' || block.type === 'ellipse' || block.type === 'line'
+  const isText = (block: SlideBlock): block is TextSlideBlock => block.type === 'text'
+  // The primary (last clicked) block wins when it has the right type, so its values are displayed.
+  const shapeBlock = selectedBlock && isShape(selectedBlock) ? selectedBlock : selectionList.find(isShape)
+  const rectBlock = [selectedBlock, ...selectionList].find((block): block is ShapeSlideBlock => Boolean(block && block.type === 'rectangle'))
+  const textBlock = selectedBlock && isText(selectedBlock) ? selectedBlock : selectionList.find(isText)
 
   // Same pattern as the document-mode selection tracking above, but for whichever slide text
   // block is currently focused — drives whether formatting buttons target the highlighted
@@ -235,14 +254,14 @@ export function UnifiedToolbar({
       {/* History Group */}
       {(mode === 'document' || slideHistory) && <div className={groupClass}>
         <Button size="icon" variant="ghost" className="h-8 w-8"
-          title="Annulla (Ctrl+Z)"
+          title={tl("Annulla (Ctrl+Z)")}
           onClick={() => mode === 'document' ? editor?.chain().focus().undo().run() : slideHistory?.undo()}
           disabled={mode === 'document' ? !editor?.can().undo() : !slideHistory?.canUndo}
         >
           <Undo className="h-4 w-4" />
         </Button>
         <Button size="icon" variant="ghost" className="h-8 w-8"
-          title="Ripeti (Ctrl+Shift+Z)"
+          title={tl("Ripeti (Ctrl+Shift+Z)")}
           onClick={() => mode === 'document' ? editor?.chain().focus().redo().run() : slideHistory?.redo()}
           disabled={mode === 'document' ? !editor?.can().redo() : !slideHistory?.canRedo}
         >
@@ -256,7 +275,7 @@ export function UnifiedToolbar({
             size="icon"
             variant="ghost"
             className={`h-8 w-8 ${formatPainter.armed ? 'bg-violet-100 text-violet-700' : ''}`}
-            title={formatPainter.armed ? 'Seleziona il testo a cui applicare la formattazione (Esc per annullare)' : 'Copia formattazione: copia lo stile del testo o paragrafo corrente'}
+            title={formatPainter.armed ? tl("Seleziona il testo a cui applicare la formattazione (Esc per annullare)") : tl("Copia formattazione: copia lo stile del testo o paragrafo corrente")}
             aria-pressed={formatPainter.armed}
             onClick={formatPainter.copy}
           >
@@ -266,7 +285,7 @@ export function UnifiedToolbar({
             size="icon"
             variant="ghost"
             className="h-8 w-8"
-            title="Riordina struttura: righe vuote → spaziatura tra paragrafi, riconosce capitoli e titoli (solo sulla selezione, se presente)"
+            title={tl("Riordina struttura: righe vuote → spaziatura tra paragrafi, riconosce capitoli e titoli (solo sulla selezione, se presente)")}
             onClick={cleanUpStructure}
           >
             <ListTree className="h-4 w-4" />
@@ -286,12 +305,12 @@ export function UnifiedToolbar({
               value={activeFontFamily}
               onMouseDown={saveSelection}
               onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
-              title="Carattere"
+              title={tl("Carattere")}
             >
               {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
             </select>
             <div className="flex items-center gap-0.5 ml-1">
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title="Riduci font">
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title={tl("Riduci font")}>
                 <Minus className="h-4 w-4" />
               </Button>
               <select
@@ -299,13 +318,13 @@ export function UnifiedToolbar({
                 value={String(activeFontSize)}
                 onMouseDown={saveSelection}
                 onChange={(e) => applyFontSize(Number(e.target.value))}
-                title="Dimensione font"
+                title={tl("Dimensione font")}
               >
                 {fontSizeOptions.map((size) => (
                   <option key={size} value={size}>{size}</option>
                 ))}
               </select>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title="Aumenta font">
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title={tl("Aumenta font")}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -328,13 +347,12 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
               <Strikethrough className="h-4 w-4" />
             </Button>
-            <input
-              type="color"
-              onMouseDown={saveSelection}
-              onInput={event => restoreSelection(editor.chain().focus()).setColor((event.target as HTMLInputElement).value).run()}
+            <ColorPicker
+              className="ml-1"
+              glyph="A"
               value={editor.getAttributes('textStyle').color || '#000000'}
-              className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
-              title="Colore testo"
+              onChange={(color) => editor.chain().focus().setColor(color).run()}
+              title={tl("Colore testo")}
             />
               </>
             )}
@@ -371,18 +389,18 @@ export function UnifiedToolbar({
                 if (value === 'p') chain.setParagraph().run()
                 else chain.setHeading({ level: Number(value.slice(1)) as 1 | 2 | 3 }).run()
               }}
-              title="Stile del paragrafo (Ctrl+Alt+0…3)"
+              title={tl("Stile del paragrafo (Ctrl+Alt+0…3)")}
             >
-              <option value="p">Testo normale</option>
-              <option value="h1">Titolo 1</option>
-              <option value="h2">Titolo 2</option>
-              <option value="h3">Titolo 3</option>
+              <option value="p">{tl("Testo normale")}</option>
+              <option value="h1">{tl("Titolo 1")}</option>
+              <option value="h2">{tl("Titolo 2")}</option>
+              <option value="h3">{tl("Titolo 3")}</option>
             </select>
-            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('importedHighlight') ? 'bg-yellow-100' : ''}`} title="Evidenzia (Ctrl+Alt+H)"
+            <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('importedHighlight') ? 'bg-yellow-100' : ''}`} title={tl("Evidenzia (Ctrl+Alt+H)")}
               onClick={() => (editor.isActive('importedHighlight') ? editor.chain().focus().unsetMark('importedHighlight').run() : editor.chain().focus().setMark('importedHighlight', { color: '#fef08a' }).run())}>
               <Highlighter className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" title="Cancella formattazione (Ctrl+\\)" onClick={() => clearFormatting(editor)}>
+            <Button size="icon" variant="ghost" className="h-8 w-8" title={tl("Cancella formattazione (Ctrl+\\\\)")} onClick={() => clearFormatting(editor)}>
               <Eraser className="h-4 w-4" />
             </Button>
           </div>
@@ -401,7 +419,7 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}>
               <LinkIcon className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine">
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title={tl("Inserisci immagine")}>
               <ImageIcon className="h-4 w-4" />
             </Button>
             <DocumentTableMenu editor={editor} />
@@ -422,7 +440,7 @@ export function UnifiedToolbar({
                   y: rect.bottom + 8
                 })
               }}
-              title={hasTextSelection ? 'Espandi o trasforma il testo selezionato con AI' : 'Seleziona del testo per attivare l’assistente AI'}
+              title={hasTextSelection ? tl("Espandi o trasforma il testo selezionato con AI") : tl("Seleziona del testo per attivare l’assistente AI")}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
@@ -433,7 +451,7 @@ export function UnifiedToolbar({
                   variant="ghost"
                   className="h-8 w-8"
                   onClick={() => setShowOverflowMenu((v) => !v)}
-                  title="Altri strumenti"
+                  title={tl("Altri strumenti")}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -445,13 +463,13 @@ export function UnifiedToolbar({
                         value={activeFontFamily}
                         onMouseDown={saveSelection}
                         onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
-                        title="Carattere"
+                        title={tl("Carattere")}
                       >
                         {fontOptions.map(f => <option key={f} value={f} style={{ fontFamily: `'${f}'` }}>{f}</option>)}
                       </select>
                     </div>
                     <div className="flex items-center gap-1 pb-1 mb-1 border-b border-slate-100">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title="Riduci font">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title={tl("Riduci font")}>
                         <Minus className="h-4 w-4" />
                       </Button>
                       <select
@@ -459,13 +477,13 @@ export function UnifiedToolbar({
                         value={String(activeFontSize)}
                         onMouseDown={saveSelection}
                         onChange={(e) => applyFontSize(Number(e.target.value))}
-                        title="Dimensione font"
+                        title={tl("Dimensione font")}
                       >
                         {fontSizeOptions.map((size) => (
                           <option key={size} value={size}>{size} pt</option>
                         ))}
                       </select>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title="Aumenta font">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title={tl("Aumenta font")}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
@@ -473,13 +491,11 @@ export function UnifiedToolbar({
                       <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
                         <Strikethrough className="h-4 w-4" />
                       </Button>
-                      <input
-                        type="color"
-                        onMouseDown={saveSelection}
-                        onInput={event => restoreSelection(editor.chain().focus()).setColor((event.target as HTMLInputElement).value).run()}
+                      <ColorPicker
+                        glyph="A"
                         value={editor.getAttributes('textStyle').color || '#000000'}
-                        className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
-                        title="Colore testo"
+                        onChange={(color) => editor.chain().focus().setColor(color).run()}
+                        title={tl("Colore testo")}
                       />
                       <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}><AlignLeft className="h-4 w-4" /></Button>
                       <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('center').run()}><AlignCenter className="h-4 w-4" /></Button>
@@ -495,14 +511,14 @@ export function UnifiedToolbar({
                     </div>
                     <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}><LinkIcon className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine"><ImageIcon className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title={tl("Inserisci immagine")}><ImageIcon className="h-4 w-4" /></Button>
                       <DocumentTableMenu editor={editor} />
                       <Button
                         size="icon"
                         variant="ghost"
                         className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
                         onClick={onToggleRuledLines}
-                        title="Mostra/Nascondi righe del foglio"
+                        title={tl("Mostra/Nascondi righe del foglio")}
                       >
                         <Rows3 className="h-4 w-4" />
                       </Button>
@@ -521,7 +537,7 @@ export function UnifiedToolbar({
                 variant="ghost"
                 className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
                 onClick={onToggleRuledLines}
-                title="Mostra/Nascondi righe del foglio"
+                title={tl("Mostra/Nascondi righe del foglio")}
               >
                 <Rows3 className="h-4 w-4" />
               </Button>
@@ -551,14 +567,14 @@ export function UnifiedToolbar({
             <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
               <Button
                 size="icon" variant="ghost" className={`h-8 w-8 ${snapOptions.gridEnabled ? 'bg-slate-200' : ''}`}
-                title="Snap alla griglia"
+                title={tl("Snap alla griglia")}
                 onClick={() => onChangeSnapOptions({ ...snapOptions, gridEnabled: !snapOptions.gridEnabled })}
               >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
               <Button
                 size="icon" variant="ghost" className={`h-8 w-8 ${snapOptions.guidesEnabled ? 'bg-slate-200' : ''}`}
-                title="Guide intelligenti (allineamento)"
+                title={tl("Guide intelligenti (allineamento)")}
                 onClick={() => onChangeSnapOptions({ ...snapOptions, guidesEnabled: !snapOptions.guidesEnabled })}
               >
                 <Magnet className="h-4 w-4" />
@@ -571,7 +587,7 @@ export function UnifiedToolbar({
             <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
               <Button
                 size="icon" variant="ghost" className={`h-8 w-8 ${layersPanelOpen ? 'bg-slate-200' : ''}`}
-                title="Livelli"
+                title={tl("Livelli")}
                 onClick={onToggleLayersPanel}
               >
                 <Layers className="h-4 w-4" />
@@ -581,68 +597,75 @@ export function UnifiedToolbar({
 
           {/* Insert Group */}
           <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
-            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('text')} className="h-8 w-8 rounded-lg" title="Testo">
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('text')} className="h-8 w-8 rounded-lg" title={tl("Testo")}>
               <Type className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setShowImageModal(true)} className="h-8 w-8 rounded-lg" title="Immagine">
+            <Button variant="ghost" size="icon" onClick={() => setShowImageModal(true)} className="h-8 w-8 rounded-lg" title={tl("Immagine")}>
               <ImageIcon className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 w-8 rounded-lg" title="Rettangolo">
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 w-8 rounded-lg" title={tl("Rettangolo")}>
               <Square className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('ellipse')} className="h-8 w-8 rounded-lg" title="Ellisse">
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('ellipse')} className="h-8 w-8 rounded-lg" title={tl("Ellisse")}>
               <Circle className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('line')} className="h-8 w-8 rounded-lg" title="Linea">
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('line')} className="h-8 w-8 rounded-lg" title={tl("Linea")}>
               <Minus className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Contextual Properties (Shapes) */}
-          {selectedBlock && (selectedBlock.type === 'rectangle' || selectedBlock.type === 'ellipse' || selectedBlock.type === 'line') && onUpdateBlockStyle && (
+          {selectedBlock && selectionCount > 1 && (
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700" title={tl("Le modifiche si applicano a tutti gli oggetti selezionati")}>
+              {selectionCount} {tl("oggetti")}
+            </span>
+          )}
+
+          {/* Contextual Properties (Shapes) — shown whenever the selection contains a shape */}
+          {shapeBlock && onUpdateBlockStyle && (
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-              {selectedBlock.type !== 'line' && (
-                <input
-                  type="color"
-                  value={selectedBlock.style?.fill || '#e5e5e5'}
-                  onChange={(e) => onUpdateBlockStyle('fill', e.target.value)}
-                  className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
-                  title="Riempimento"
+              {shapeBlock.type !== 'line' && (
+                <ColorPicker
+                  value={shapeBlock.style?.fill || '#e5e5e5'}
+                  onChange={(color) => onUpdateBlockStyle('fill', color)}
+                  documentColors={documentColors}
+                  allowTransparent
+                  title={tl("Riempimento")}
                 />
               )}
-              <input
-                type="color"
-                value={selectedBlock.style?.stroke || '#262626'}
-                onChange={(e) => onUpdateBlockStyle('stroke', e.target.value)}
-                className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
-                title="Bordo"
+              <ColorPicker
+                className="ml-1"
+                value={shapeBlock.style?.stroke || '#262626'}
+                onChange={(color) => onUpdateBlockStyle('stroke', color)}
+                documentColors={documentColors}
+                allowTransparent
+                title={tl("Bordo")}
               />
-              <div className="flex items-center border rounded h-8 px-1 ml-1" title="Spessore bordo">
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', Math.max(0, (selectedBlock.style?.strokeWidth ?? 2) - 1))}>
+              <div className="flex items-center border rounded h-8 px-1 ml-1" title={tl("Spessore bordo")}>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', Math.max(0, (shapeBlock.style?.strokeWidth ?? 2) - 1))}>
                   <Minus className="h-3 w-3" />
                 </Button>
                 <input
                   type="number"
                   className="h-6 w-8 text-xs border-0 text-center focus:ring-0 p-0"
-                  value={selectedBlock.style?.strokeWidth ?? 2}
+                  value={shapeBlock.style?.strokeWidth ?? 2}
                   onChange={(e) => onUpdateBlockStyle('strokeWidth', parseInt(e.target.value) || 0)}
                 />
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', (selectedBlock.style?.strokeWidth ?? 2) + 1)}>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', (shapeBlock.style?.strokeWidth ?? 2) + 1)}>
                   <Plus className="h-3 w-3" />
                 </Button>
               </div>
-              {selectedBlock.type === 'rectangle' && (
-                <div className="flex items-center border rounded h-8 px-1 ml-1" title="Raggio angoli">
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', Math.max(0, (selectedBlock.style?.cornerRadius ?? 0) - 4))}>
+              {rectBlock && (
+                <div className="flex items-center border rounded h-8 px-1 ml-1" title={tl("Raggio angoli")}>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', Math.max(0, (rectBlock.style?.cornerRadius ?? 0) - 4))}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <input
                     type="number"
                     className="h-6 w-8 text-xs border-0 text-center focus:ring-0 p-0"
-                    value={selectedBlock.style?.cornerRadius ?? 0}
+                    value={rectBlock.style?.cornerRadius ?? 0}
                     onChange={(e) => onUpdateBlockStyle('cornerRadius', parseInt(e.target.value) || 0)}
                   />
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', (selectedBlock.style?.cornerRadius ?? 0) + 4)}>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', (rectBlock.style?.cornerRadius ?? 0) + 4)}>
                     <Plus className="h-3 w-3" />
                   </Button>
                 </div>
@@ -652,7 +675,7 @@ export function UnifiedToolbar({
 
           {/* Rotation (any block type) */}
           {selectedBlock && onUpdateBlockStyle && (
-            <div className="flex items-center gap-1 border-l pl-2 ml-1 border-slate-300" title="Rotazione (gradi)">
+            <div className="flex items-center gap-1 border-l pl-2 ml-1 border-slate-300" title={tl("Rotazione (gradi)")}>
               <RotateCw className="h-3.5 w-3.5 text-slate-400" />
               <input
                 type="number"
@@ -664,11 +687,12 @@ export function UnifiedToolbar({
           )}
 
           {/* Contextual Properties (Text) */}
-          {selectedBlock?.type === 'text' && onUpdateBlockStyle && (() => {
+          {textBlock && onUpdateBlockStyle && (() => {
+            const selectedBlock = textBlock
             // When there's a highlighted range in the focused block, format commands target
             // that range via TipTap; otherwise they fall back to the whole block's style
             // (today's behavior — the sane default before the user has typed/selected anything).
-            const useRange = hasBlockRangeSelection && !!activeBlockEditor
+            const useRange = selectionCount <= 1 && hasBlockRangeSelection && !!activeBlockEditor
             const isBold = useRange ? activeBlockEditor!.isActive('bold') : selectedBlock.style?.fontWeight === 'bold'
             const isItalic = useRange ? activeBlockEditor!.isActive('italic') : selectedBlock.style?.fontStyle === 'italic'
             const isUnderline = useRange ? activeBlockEditor!.isActive('underline') : selectedBlock.style?.textDecoration === 'underline'
@@ -697,6 +721,14 @@ export function UnifiedToolbar({
 
             return (
             <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              {selectionCount <= 1 && (
+                <span
+                  className={`rounded-full px-2 py-1 text-[11px] font-bold ${useRange ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'}`}
+                  title={useRange ? tl("Le modifiche valgono solo per il testo evidenziato") : tl("Le modifiche valgono per tutto il testo del blocco")}
+                >
+                  {useRange ? tl("Testo selezionato") : tl("Tutto il blocco")}
+                </span>
+              )}
               <select
                 className="h-8 text-xs border rounded px-2 w-32"
                 value={primaryFontFamily(activeFontFamily) || 'Arial'}
@@ -735,19 +767,20 @@ export function UnifiedToolbar({
               </div>
 
               <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
-                <input
-                  type="color"
+                <ColorPicker
+                  glyph="A"
                   value={activeColor}
-                  onChange={(e) => applyColor(e.target.value)}
-                  className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
-                  title="Colore Testo"
+                  onChange={applyColor}
+                  documentColors={documentColors}
+                  title={tl("Colore testo")}
                 />
-                <input
-                  type="color"
-                  value={selectedBlock.style?.backgroundColor === 'transparent' ? '#ffffff' : selectedBlock.style?.backgroundColor}
-                  onChange={(e) => onUpdateBlockStyle('backgroundColor', e.target.value)}
-                  className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
-                  title="Colore Sfondo"
+                <ColorPicker
+                  className="ml-1"
+                  value={selectedBlock.style?.backgroundColor}
+                  onChange={(color) => onUpdateBlockStyle('backgroundColor', color)}
+                  documentColors={documentColors}
+                  allowTransparent
+                  title={tl("Colore di sfondo del testo")}
                 />
               </div>
 

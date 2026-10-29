@@ -8,6 +8,7 @@ import {
   ChevronRight, GraduationCap, Users, BookOpen,
   Search, Zap, Clock, Wifi, Building2,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 /* ─── types ─────────────────────────────────────────── */
 interface StudentInfo {
@@ -104,7 +105,7 @@ export default function ClassesPage() {
   })
   const schoolGroups = Array.from(filteredClasses.reduce((groups, cls) => {
     const key = cls.school_id || 'unassigned'
-    const group = groups.get(key) || { id: key, name: cls.school_name || 'Senza istituto', classes: [] as ClassInfo[] }
+    const group = groups.get(key) || { id: key, name: cls.school_name || tl("Senza istituto"), classes: [] as ClassInfo[] }
     group.classes.push(cls)
     groups.set(key, group)
     return groups
@@ -125,10 +126,10 @@ export default function ClassesPage() {
       {/* Header */}
       <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Struttura didattica</p>
-          <h1 className="text-2xl font-bold text-white">Istituti, classi e sessioni</h1>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{tl("Struttura didattica")}</p>
+          <h1 className="text-2xl font-bold text-white">{tl("Istituti, classi e sessioni")}</h1>
           <p className="text-sm text-slate-300 mt-1">
-            {allClasses.length} classi · {totalSessions} sessioni · {totalStudents} studenti totali
+            {allClasses.length} {tl("classi ·")} {totalSessions} {tl("sessioni ·")} {totalStudents} {tl("studenti totali")}
           </p>
         </div>
         <div className="relative max-w-xs">
@@ -136,7 +137,7 @@ export default function ClassesPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca classi, docenti…"
+            placeholder={tl("Cerca classi, docenti…")}
             className="pl-9 h-10 border-slate-600 bg-slate-800 text-sm text-white placeholder:text-slate-400"
           />
         </div>
@@ -147,21 +148,21 @@ export default function ClassesPage() {
         <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <BookOpen className="h-5 w-5 text-indigo-500 flex-shrink-0" />
           <div>
-            <p className="text-[11px] text-slate-500">Sessioni</p>
+            <p className="text-[11px] text-slate-500">{tl("Sessioni")}</p>
             <p className="text-lg font-bold text-slate-900">{totalSessions}</p>
           </div>
         </div>
         <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <Users className="h-5 w-5 text-emerald-500 flex-shrink-0" />
           <div>
-            <p className="text-[11px] text-slate-500">Studenti</p>
+            <p className="text-[11px] text-slate-500">{tl("Studenti")}</p>
             <p className="text-lg font-bold text-slate-900">{totalStudents}</p>
           </div>
         </div>
         <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <Zap className="h-5 w-5 text-slate-500 flex-shrink-0" />
           <div>
-            <p className="text-[11px] text-slate-500">Costo totale</p>
+            <p className="text-[11px] text-slate-500">{tl("Costo totale")}</p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(totalCost)}</p>
           </div>
         </div>
@@ -169,9 +170,9 @@ export default function ClassesPage() {
 
       {/* Class list */}
       {isLoading ? (
-        <div className="py-16 text-center text-slate-400 text-sm">Caricamento…</div>
+        <div className="py-16 text-center text-slate-400 text-sm">{tl("Caricamento…")}</div>
       ) : filteredClasses.length === 0 ? (
-        <div className="py-16 text-center text-slate-400 text-sm">Nessuna classe trovata</div>
+        <div className="py-16 text-center text-slate-400 text-sm">{tl("Nessuna classe trovata")}</div>
       ) : (
         <div className="space-y-6">
           {schoolGroups.map((school) => (
@@ -179,7 +180,7 @@ export default function ClassesPage() {
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-5 py-3">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><Building2 className="h-4 w-4" /></span>
-                  <div><h2 className="text-sm font-bold text-slate-900">{school.name}</h2><p className="text-[11px] text-slate-500">{school.classes.length} classi</p></div>
+                  <div><h2 className="text-sm font-bold text-slate-900">{school.name}</h2><p className="text-[11px] text-slate-500">{school.classes.length} {tl("classi")}</p></div>
                 </div>
               </div>
               <div className="divide-y divide-slate-200">
@@ -234,7 +235,7 @@ export default function ClassesPage() {
                 {isClassOpen && (
                   <div className="border-t border-slate-100 bg-slate-50/60">
                     {cls.sessions.length === 0 ? (
-                      <p className="px-8 py-4 text-xs text-slate-400">Nessuna sessione</p>
+                      <p className="px-8 py-4 text-xs text-slate-400">{tl("Nessuna sessione")}</p>
                     ) : (
                       cls.sessions.map((sess) => {
                         const isSessOpen = expandedSessions.has(sess.session_id)
@@ -278,22 +279,22 @@ export default function ClassesPage() {
                             {isSessOpen && (
                               <div className="px-12 pb-3">
                                 {sess.students.length === 0 ? (
-                                  <p className="text-xs text-slate-400 py-2">Nessuno studente</p>
+                                  <p className="text-xs text-slate-400 py-2">{tl("Nessuno studente")}</p>
                                 ) : (
-                                  <table className="w-full text-xs">
+                                  <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-xs">
                                     <thead>
                                       <tr className="text-[10px] uppercase text-slate-400 border-b border-slate-200">
                                         <th className="pb-1.5 text-left font-medium">Nickname</th>
                                         <th className="pb-1.5 text-left font-medium">
                                           <span className="flex items-center gap-1">
                                             <Clock className="h-3 w-3" />
-                                            Iscritto
+                                            {tl("Iscritto")}
                                           </span>
                                         </th>
                                         <th className="pb-1.5 text-left font-medium">
                                           <span className="flex items-center gap-1">
                                             <Wifi className="h-3 w-3" />
-                                            Ultimo accesso
+                                            {tl("Ultimo accesso")}
                                           </span>
                                         </th>
                                       </tr>
@@ -307,7 +308,7 @@ export default function ClassesPage() {
                                         </tr>
                                       ))}
                                     </tbody>
-                                  </table>
+                                  </table></div>
                                 )}
                               </div>
                             )}

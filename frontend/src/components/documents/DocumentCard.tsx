@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Trash2 } from '@/components/icons'
 import DocumentThumbnail from './DocumentThumbnail'
 import type { DocumentKind } from './DocumentTypeBadge'
+import { tl } from '@/i18n/tl'
 
 interface DocumentCardProps {
   title: string
@@ -21,7 +22,7 @@ interface DocumentCardProps {
  * Catalog tile: square preview that always states the file type, then title + meta.
  * The whole tile is one keyboard-reachable control; delete is a separate button.
  */
-export default function DocumentCard({ title, type, contentJson, meta, status, onOpen, onDelete, deleteLabel = 'Elimina', className = '' }: DocumentCardProps) {
+export default function DocumentCard({ title, type, contentJson, meta, status, onOpen, onDelete, deleteLabel = tl("Elimina"), className = '' }: DocumentCardProps) {
   return (
     <div
       role="button"

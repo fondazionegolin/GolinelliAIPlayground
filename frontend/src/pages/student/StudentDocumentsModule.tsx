@@ -8,7 +8,7 @@ import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
 import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
-import { createShapeBlock } from '@/lib/slideBlocks'
+import { createShapeBlock, applyStyleToBlocks, applyBlockGroupReplacement, blockGroupAssistTarget } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
@@ -27,8 +27,13 @@ import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
 import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
+import { collectDocumentColors } from '@/components/ui/ColorPicker'
+import PresentationStudio from '@/components/presentation/PresentationStudio'
+import PresentationDeckTools from '@/components/presentation/PresentationDeckTools'
+import { withImage, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
 import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
+import { tl } from '@/i18n/tl'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -40,6 +45,11 @@ interface Slide {
   title: string
   blocks: Block[]
   backgroundColor?: string
+  speakerNotes?: string
+  /** Presentation Studio slides keep their layout + structured content (see lib/presentationStudio). */
+  layout?: StudioSlide['layout']
+  content?: Record<string, unknown>
+  customized?: boolean
 }
 
 interface DocumentHeader {
@@ -53,6 +63,8 @@ interface Document {
   title: string
   format: Format
   slides: Slide[]
+  /** Deck theme (Presentation Studio); colours are re-resolved server-side. */
+  theme?: DeckTheme
   textContent?: string
   header?: DocumentHeader
   headerFooter?: HeaderFooterConfig
@@ -132,9 +144,9 @@ interface PresentationTemplate {
 
 // Format dimensions
 const FORMAT_DIMENSIONS = {
-  '16:9': { width: 960, height: 540, label: '16:9 (Presentazione)' },
+  '16:9': { width: 960, height: 540, label: tl("16:9 (Presentazione)") },
   '4:3': { width: 800, height: 600, label: '4:3 (Standard)' },
-  'a4': { width: 794, height: 1123, label: 'A4 (Documento)' }
+  'a4': { width: 794, height: 1123, label: tl("A4 (Documento)") }
 }
 
 const DOC_PAGE_GAP = 28
@@ -142,7 +154,7 @@ const EMPTY_DOC_HTML = '<p></p>'
 const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
 const DEFAULT_SHEET_CHART: SheetChartConfig = {
   type: 'line',
-  title: 'Grafico tabella',
+  title: tl("Grafico tabella"),
   xCol: 0,
   yCol: 1,
   showRegression: true,
@@ -263,6 +275,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([])
+  // Any external single-selection change (slide switch, AI apply, layers panel…) resets the multi-selection.
+  useEffect(() => {
+    setSelectedBlockIds(ids => !selectedBlockId ? [] : ids.includes(selectedBlockId) ? ids : [selectedBlockId])
+  }, [selectedBlockId])
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
   const [activeBlockEditor, setActiveBlockEditor] = useState<Editor | null>(null)
@@ -280,6 +297,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   // UI State
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [showPresentationStudio, setShowPresentationStudio] = useState(false)
   const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit?: () => void | Promise<void>; editLabel?: string } | null>(null)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
@@ -312,6 +330,18 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         beforePreview: `${document.title} · ${documentPageCount} ${isEnglishUi ? 'pages' : 'pagine'}`,
       }
     }
+    const groupBlocks = currentSlide.blocks.filter(b => selectedBlockIds.includes(b.id))
+    if (mode === 'slides' && groupBlocks.length > 1) {
+      const summary = groupBlocks.map(b => b.type === 'text' ? b.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : b.type).join(' · ')
+      return {
+        id: `blocks-${currentSlideIndex}-${groupBlocks.map(b => b.id).join('-')}`,
+        kind: 'slide_blocks',
+        label: isEnglishUi ? `Selected group (${groupBlocks.length} objects)` : `Gruppo selezionato (${groupBlocks.length} oggetti)`,
+        detail: summary,
+        target: blockGroupAssistTarget(currentSlide, currentSlideIndex, groupBlocks.map(b => b.id)),
+        beforePreview: `${groupBlocks.length} ${isEnglishUi ? 'objects' : 'oggetti'}\n${summary}`,
+      }
+    }
     if (mode === 'slides' && selectedBlock) {
       const detail = selectedBlock.type === 'text'
         ? selectedBlock.content
@@ -333,7 +363,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         kind: 'slide',
         label: isEnglishUi ? 'Current slide' : 'Slide corrente',
         detail: `${currentSlideIndex + 1}. ${currentSlide.title}`,
-        target: { slide: currentSlide, slide_index: currentSlideIndex },
+        target: { slide: currentSlide, slide_index: currentSlideIndex, theme: document.theme },
         beforePreview: `${currentSlide.title}\n${currentSlide.blocks.length} oggetti`,
       }
     }
@@ -344,7 +374,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     kind: 'presentation',
     label: isEnglishUi ? 'Whole presentation' : 'Intera presentazione',
     detail: `${document.title} · ${document.slides.length} slide`,
-    target: { title: document.title, format: document.format, slides: document.slides },
+    target: { title: document.title, format: document.format, slides: document.slides, theme: document.theme },
     beforePreview: `${document.title}\n${document.slides.length} slide`,
   } : null
   const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
@@ -366,6 +396,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       format: document.format,
       slides: selectedSlides,
       selected_slide_ids: selectedSlides.map((slide) => slide.id),
+      slide_indexes: selectedSlides.map((slide) => document.slides.indexOf(slide)),
+      theme: document.theme,
     },
     beforePreview: `${selectedSlides.length} ${isEnglishUi ? 'selected slides' : 'slide selezionate'}`,
   } : null)
@@ -449,6 +481,26 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           ? { ...slide, blocks: slide.blocks.map((block) => block.id === targetBlockId ? { ...replacement, id: block.id, zIndex: block.zIndex } : block) }
           : slide),
       }))
+      return
+    }
+    if (proposal.kind === 'slide_blocks' && Array.isArray(proposal.replacement_blocks)) {
+      const groupIds = Array.isArray(clientContext.block_ids) ? clientContext.block_ids.filter((id): id is string => typeof id === 'string') : []
+      const targetSlideIndex = typeof clientContext.slide_index === 'number' ? clientContext.slide_index : currentSlideIndex
+      const slide = document.slides[targetSlideIndex]
+      if (!slide || !groupIds.length) return
+      const before = new Set(slide.blocks.map(b => b.id))
+      const nextBlocks = applyBlockGroupReplacement(slide.blocks, groupIds, proposal.replacement_blocks as Block[])
+      setDocument((current) => ({
+        ...current,
+        slides: current.slides.map((item, slideIndex) => slideIndex === targetSlideIndex ? withSlideBlocks(item, nextBlocks) : item),
+      }))
+      // Keep the reworked group selected so it can be refined with a follow-up request.
+      const group = new Set(groupIds)
+      const nextGroup = nextBlocks.filter(b => group.has(b.id) || !before.has(b.id)).map(b => b.id)
+      if (targetSlideIndex === currentSlideIndex && nextGroup.length) {
+        setSelectedBlockId(nextGroup[nextGroup.length - 1])
+        setSelectedBlockIds(nextGroup)
+      }
       return
     }
     if (proposal.kind === 'slide' && proposal.replacement_slide && typeof proposal.replacement_slide === 'object') {
@@ -559,6 +611,32 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setViewMode('editor')
   }
 
+  const createPresentationFromStudio = (deck: RenderedDeck) => {
+    setDocument({
+      id: crypto.randomUUID(),
+      title: uniqueDocumentTitle(deck.title || defaultPresentationTitle),
+      format: deck.format,
+      slides: deck.slides as Slide[],
+      theme: deck.theme,
+      textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
+    })
+    setMode('slides')
+    setSubmitted(false)
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+    setDraftId(null)
+    setIsReadOnlyLesson(false)
+    setActiveLessonTaskId(null)
+    setActiveSubmittedDocument(null)
+    setIsCorrectionPreview(false)
+    setShowPresentationStudio(false)
+    setViewMode('editor')
+  }
+
   const createNewSheet = () => {
     setDocument({
       id: crypto.randomUUID(), title: uniqueDocumentTitle(defaultSheetTitle), format: 'a4', slides: [], textContent: '',
@@ -577,7 +655,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const buildNativeContentJson = (submission = false) => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
     const nativeContent = mode === 'slides'
-        ? { type: submission ? 'student_presentation' : 'presentation_v2', format: document.format, title: document.title, slides: document.slides }
+        ? { type: submission ? 'student_presentation' : 'presentation_v2', format: document.format, title: document.title, slides: document.slides, ...(document.theme ? { theme: document.theme } : {}) }
         : mode === 'sheet'
           ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
@@ -679,7 +757,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         setViewMode('list')
       }
     } catch (e) {
-      toast({ title: 'Errore durante l\'eliminazione', variant: 'destructive' })
+      toast({ title: tl("Errore durante l'eliminazione"), variant: 'destructive' })
     }
   }
 
@@ -780,7 +858,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               || filename.endsWith('.htm')
           })
           .map((file) => {
-            const filename = String(file.filename || 'Documento condiviso')
+            const filename = String(file.filename || tl("Documento condiviso"))
             const mimeType = String(file.mime_type || '')
             const isPdf = mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')
             return {
@@ -876,6 +954,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         setDraftId(externalReadOnly ? null : doc.id)
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
           ? content.slides.map((s: any) => ({
+              ...s,
               id: s.id || crypto.randomUUID(),
               title: s.title || 'Slide',
               blocks: s.blocks || []
@@ -887,6 +966,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           title: doc.title,
           format: content.format || '16:9',
           slides: safeSlides,
+          theme: content.theme,
           textContent: '',
           webUrl: '',
           source: content.source,
@@ -1091,13 +1171,20 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setSelectedSlideIds([newSlide.id])
   }
 
+  // Shift+click ranges start from a fixed anchor (the last plain/Ctrl click), not from the slide
+  // just shift-clicked: otherwise every further Shift+click kept only two slides.
+  const slideAnchorRef = useRef<string | null>(null)
   const selectSlide = (index: number, event: React.MouseEvent) => {
     const slide = document.slides[index]
     if (!slide) return
-    if (event.shiftKey && document.slides[currentSlideIndex]) {
-      const start = Math.min(currentSlideIndex, index)
-      const end = Math.max(currentSlideIndex, index)
-      setSelectedSlideIds(document.slides.slice(start, end + 1).map((item) => item.id))
+    const anchorIndex = document.slides.findIndex(item => item.id === slideAnchorRef.current)
+    const anchor = anchorIndex >= 0 ? anchorIndex : currentSlideIndex
+    if (!event.shiftKey) slideAnchorRef.current = slide.id
+    if (event.shiftKey && document.slides[anchor]) {
+      const start = Math.min(anchor, index)
+      const end = Math.max(anchor, index)
+      const range = document.slides.slice(start, end + 1).map(item => item.id)
+      setSelectedSlideIds(previous => (event.metaKey || event.ctrlKey) ? Array.from(new Set([...previous, ...range])) : range)
     } else if (event.metaKey || event.ctrlKey) {
       setSelectedSlideIds((previous) => {
         const next = previous.includes(slide.id)
@@ -1152,7 +1239,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   const updateSlideBlocks = (blocks: Block[]) => {
     const newSlides = [...document.slides]
-    newSlides[currentSlideIndex] = { ...newSlides[currentSlideIndex], blocks }
+    newSlides[currentSlideIndex] = withSlideBlocks(newSlides[currentSlideIndex], blocks)
     setDocument(prev => ({ ...prev, slides: newSlides }))
   }
 
@@ -1263,15 +1350,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   }
 
   const updateBlockStyle = (key: string, value: unknown) => {
-    if (!selectedBlockId) return
-    const newBlocks = currentSlide.blocks.map(b => {
-      if (b.id !== selectedBlockId) return b
-      if (key === 'rotation') return { ...b, rotation: value as number }
-      // `key` is a dynamic string (toolbar only ever passes a key valid for the selected block's
-      // own type), so TS can't narrow the resulting style shape back to the union member — safe cast.
-      return { ...b, style: { ...b.style, [key]: value } } as Block
-    })
-    updateSlideBlocks(newBlocks)
+    const ids = selectedBlockIds.length ? selectedBlockIds : selectedBlockId ? [selectedBlockId] : []
+    if (ids.length === 0) return
+    updateSlideBlocks(applyStyleToBlocks(currentSlide.blocks, ids, key, value))
   }
 
   // Submit document to teacher
@@ -1291,13 +1372,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       setShowSubmitModal(false)
       setSubmitted(true)
       toast({
-        title: "Documento inviato!",
+        title: tl("Documento inviato!"),
         description: t('documents.sent_body'),
         className: "bg-green-500 text-white"
       })
     } catch (e) {
       console.error('Submit error:', e)
-      toast({ title: "Errore invio", description: "Impossibile inviare il documento. Riprova.", variant: "destructive" })
+      toast({ title: tl("Errore invio"), description: tl("Impossibile inviare il documento. Riprova."), variant: "destructive" })
     } finally {
       setIsSubmitting(false)
     }
@@ -1383,7 +1464,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               <div className="mx-auto max-w-3xl text-center">
                 <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
                   <div className="overflow-hidden">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Documenti</p>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">{tl("Documenti")}</p>
                     <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
                     <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
                       {readOnlyCatalog
@@ -1399,7 +1480,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     {docSearch && <button onClick={() => setDocSearch('')} className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
                   </label>
                   <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="h-[46px] rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none">
-                    <option value="all">{isEnglishUi ? 'All types' : 'Tutti i tipi'}</option><option value="document">Documenti</option><option value="presentation">Presentazioni</option><option value="sheet">Tabelle</option><option value="canvas">Lavagne</option><option value="pdf">PDF</option><option value="web">Web</option>
+                    <option value="all">{isEnglishUi ? 'All types' : 'Tutti i tipi'}</option><option value="document">{tl("Documenti")}</option><option value="presentation">{tl("Presentazioni")}</option><option value="sheet">{tl("Tabelle")}</option><option value="canvas">{tl("Lavagne")}</option><option value="pdf">PDF</option><option value="web">Web</option>
                   </select>
                 </div>
                 {!readOnlyCatalog && (
@@ -1419,7 +1500,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     </button>
                     <button
                       type="button"
-                      onClick={createNewPresentation}
+                      onClick={() => setShowPresentationStudio(true)}
                       className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-violet-200/80 bg-violet-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
@@ -1579,6 +1660,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           )}
         </div>
 
+        {showPresentationStudio && (
+          <PresentationStudio
+            onClose={() => setShowPresentationStudio(false)}
+            onCreate={createPresentationFromStudio}
+            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+          />
+        )}
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {!readOnlyCatalog && showNewModal && (
           <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center z-50 p-4">
@@ -1590,7 +1678,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div className="w-9 h-9 rounded-lg border border-emerald-200 bg-white/80 flex items-center justify-center text-emerald-800 flex-shrink-0"><FileText className="h-4 w-4" /></div>
                   <span className="text-sm font-black">{t('documents.new_document')}</span>
                 </button>
-                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-white text-emerald-900 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-left shadow-sm" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-white text-emerald-900 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-left shadow-sm" onClick={() => { setShowPresentationStudio(true); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg border border-emerald-200 bg-emerald-100 flex items-center justify-center text-emerald-800 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
                   <span className="text-sm font-black">{t('documents.new_presentation')}</span>
                 </button>
@@ -1674,7 +1762,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div className="flex justify-center overflow-hidden bg-slate-100 p-2">
                     <div className="relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
                       <div className="relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
-                        {!slide.blocks.some(block => block.type === 'text' && block.y < 130 && (block.style.fontSize || 0) >= 26) && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
+                        {!slide.blocks.some(block => block.type === 'text') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
                         <SlideEditor blocks={slide.blocks} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
                       </div>
                     </div>
@@ -1689,7 +1777,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   className="relative origin-top-left bg-white"
                   style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${scale})` }}
                 >
-                  {!currentSlide.blocks.some(block => block.type === 'text' && block.y < 130 && (block.style.fontSize || 0) >= 26) && (
+                  {!currentSlide.blocks.some(block => block.type === 'text') && (
                     <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{currentSlide.title}</h3>
                   )}
                   <SlideEditor
@@ -1799,6 +1887,22 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   ]}
                 />
               )}
+              {mode === 'slides' && !isEditorReadOnly && (
+                <>
+                  <HeaderToolDivider />
+                  <PresentationDeckTools
+                    slides={document.slides as StudioSlide[]}
+                    theme={document.theme}
+                    dims={FORMAT_DIMENSIONS[document.format]}
+                    onApply={(slides, theme) => setDocument(prev => ({ ...prev, slides: slides as Slide[], ...(theme ? { theme } : {}) }))}
+                    onJump={(slideIndex, blockId) => { setCurrentSlideIndex(Math.min(slideIndex, document.slides.length - 1)); setSelectedBlockId(blockId) }}
+                    onPatchImage={(slideId, blockId, url) => setDocument(prev => ({ ...prev, slides: withImage(prev.slides, slideId, blockId, url) }))}
+                    deckTitle={document.title}
+                    format={document.format === '4:3' ? '4:3' : '16:9'}
+                    currentSlideIndex={currentSlideIndex}
+                  />
+                </>
+              )}
               {(mode === 'slides' || mode === 'document') && !isEditorReadOnly && (
                 <>
                   <HeaderToolDivider />
@@ -1877,6 +1981,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             onAddSlideBlock={addSlideBlock}
             onAddSlideImage={addSlideImage}
             selectedBlock={selectedBlock}
+            selectionCount={selectedBlockIds.length || 1}
+            selectedBlocks={currentSlide.blocks.filter(block => selectedBlockIds.includes(block.id))}
+            documentColors={mode === 'slides' ? collectDocumentColors(document.slides.flatMap(slide => slide.blocks)) : []}
             onUpdateBlockStyle={updateBlockStyle}
             activeBlockEditor={activeBlockEditor}
             snapOptions={snapOptions}
@@ -1941,6 +2048,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    {document.slides.map((slide, idx) => (
                      <div
                        key={slide.id}
+                       onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
                        className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${selectedSlideIds.includes(slide.id)
                          ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
@@ -1955,7 +2063,17 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                          aria-label={isEnglishUi ? `Select slide ${idx + 1}` : `Seleziona slide ${idx + 1}`}
                          aria-pressed={selectedSlideIds.includes(slide.id)}
                        >
-                         <CheckSquare className={`h-3.5 w-3.5 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-300'}`} />
+                         <button
+                           type="button"
+                           role="checkbox"
+                           aria-checked={selectedSlideIds.includes(slide.id)}
+                           aria-label={tl("Seleziona slide")}
+                           title={tl("Aggiungi o togli dalla selezione (anche Ctrl/Cmd+clic, Shift+clic per un intervallo)")}
+                           onClick={(event) => { event.stopPropagation(); setSelectedSlideIds(previous => previous.includes(slide.id) ? previous.filter(id => id !== slide.id) : [...previous, slide.id]) }}
+                           className="rounded p-0.5 hover:bg-indigo-100"
+                         >
+                           <CheckSquare className={`h-4 w-4 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-400'}`} />
+                         </button>
                        </button>
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
@@ -2333,7 +2451,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
              {mode === 'slides' && (
                <>
                <div className="flex w-full flex-col gap-2 border-b border-slate-200 bg-slate-50 p-3 md:hidden">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Slide della presentazione</p>
+                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{tl("Slide della presentazione")}</p>
                  {document.slides.map((slide, index) => (
                    <button key={slide.id} type="button" onClick={() => { setCurrentSlideIndex(index); setSelectedBlockId(null) }} className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-left ${currentSlideIndex === index ? 'border-indigo-300 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700'}`}>
                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black">{index + 1}</span>
@@ -2354,8 +2472,6 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                >
                   {!currentSlide.blocks.some(block => (
                     block.type === 'text'
-                    && block.y < 130
-                    && (block.style.fontSize || 0) >= 26
                   )) && <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
                        value={currentSlide.title}
@@ -2376,6 +2492,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}
+                      selectedBlockIds={selectedBlockIds}
+                      onSelectBlocks={setSelectedBlockIds}
                       scale={scale}
                       readOnly={isEditorReadOnly}
                       slideWidth={FORMAT_DIMENSIONS[document.format].width}
@@ -2474,6 +2592,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         </div>
 
         {/* New Document Modal */}
+        {showPresentationStudio && (
+          <PresentationStudio
+            onClose={() => setShowPresentationStudio(false)}
+            onCreate={createPresentationFromStudio}
+            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+          />
+        )}
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -2500,7 +2625,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   surface="solid"
                   className="w-full justify-center rounded-lg border border-emerald-200 bg-white font-black text-emerald-900 hover:bg-emerald-50"
                   onClick={() => {
-                    createNewPresentation()
+                    setShowPresentationStudio(true)
                     setShowNewModal(false)
                   }}
                 >

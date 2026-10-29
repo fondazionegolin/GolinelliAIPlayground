@@ -4,6 +4,7 @@ import { useQueries } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from '@/components/icons'
 import { hasSectionArt, NavSectionArt } from '@/components/NavSectionArt'
 import type { NavRecent, NavRecentsSpec } from '@/lib/navRecents'
+import { tl } from '@/i18n/tl'
 
 export interface NavClusterItem {
   path: string
@@ -70,13 +71,13 @@ const RECENT_LINES = 3
 function RecentsColumn({ entries, loading, onPick }: { entries: NavRecent[]; loading: boolean; onPick: () => void }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Recenti</p>
+      <p className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{tl("Recenti")}</p>
       {loading ? (
         <div className="flex flex-col gap-1.5" aria-hidden="true">
           {Array.from({ length: RECENT_LINES }, (_, index) => <span key={index} className="h-8 w-full animate-pulse rounded-[var(--ds-radius-control)] bg-slate-100" />)}
         </div>
       ) : entries.length === 0 ? (
-        <p className="flex h-8 items-center px-1 text-[12px] text-slate-400">Niente di recente</p>
+        <p className="flex h-8 items-center px-1 text-[12px] text-slate-400">{tl("Niente di recente")}</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {entries.slice(0, RECENT_LINES).map((entry) => (
@@ -261,7 +262,7 @@ export function NavClusterBar({ clusters }: { clusters: NavCluster[] }) {
             <button
               type="button"
               className={tabClass}
-              aria-haspopup="menu"
+              aria-haspopup={"menu"}
               aria-expanded={open}
               onClick={() => openNow(open ? null : cluster.id)}
               onKeyDown={onKeyDown}
@@ -322,7 +323,7 @@ export function NavClusterRail({ clusters }: { clusters: NavCluster[] }) {
             {single ? (
               <Link to={single.path} aria-label={cluster.label} className={buttonClass}>{content}</Link>
             ) : (
-              <button type="button" aria-label={cluster.label} aria-haspopup="menu" aria-expanded={open} onClick={() => openNow(open ? null : cluster.id)} className={buttonClass}>
+              <button type="button" aria-label={cluster.label} aria-haspopup={"menu"} aria-expanded={open} onClick={() => openNow(open ? null : cluster.id)} className={buttonClass}>
                 {content}
               </button>
             )}

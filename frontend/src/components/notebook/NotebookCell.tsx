@@ -6,6 +6,7 @@ import { Play, Trash2, Plus, GripVertical, Loader2, Sparkles, Check, X, Scissors
 import NotebookCellOutput from './NotebookCellOutput'
 import { editorKeymap, getEditorExtensions, getNotebookThemeSurface, proposalDecorationExtension } from './editorConfig'
 import type { Cell, NotebookCodeProposal, NotebookFontFamily, NotebookProjectType, NotebookTheme } from './types'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   cell: Cell
@@ -216,28 +217,28 @@ export default function NotebookCell({
               <>
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteSelection() }}
-                  title="Elimina selezione"
+                  title={tl("Elimina selezione")}
                   className={`rounded p-1 transition-colors ${isLight ? 'text-slate-500 hover:bg-slate-200 hover:text-slate-800' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
                 >
                   <Scissors className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); duplicateSelection() }}
-                  title="Duplica selezione"
+                  title={tl("Duplica selezione")}
                   className={`rounded p-1 transition-colors ${isLight ? 'text-slate-500 hover:bg-slate-200 hover:text-slate-800' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); moveSelectedLines('up') }}
-                  title="Sposta blocco su"
+                  title={tl("Sposta blocco su")}
                   className={`rounded p-1 transition-colors ${isLight ? 'text-slate-500 hover:bg-slate-200 hover:text-slate-800' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
                 >
                   <ArrowUpDown className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); moveSelectedLines('down') }}
-                  title="Sposta blocco giù"
+                  title={tl("Sposta blocco giù")}
                   className={`rounded p-1 transition-colors ${isLight ? 'text-slate-500 hover:bg-slate-200 hover:text-slate-800' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
                 >
                   <ArrowUpDown className="h-3.5 w-3.5 rotate-180" />
@@ -248,28 +249,28 @@ export default function NotebookCell({
               <>
                 <button
                   onClick={(e) => { e.stopPropagation(); onMoveUp?.() }}
-                  title="Sposta su"
+                  title={tl("Sposta su")}
                   className={`px-1 text-[10px] transition-colors ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-200'}`}
                 >
                   ▲
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onMoveDown?.() }}
-                  title="Sposta giù"
+                  title={tl("Sposta giù")}
                   className={`px-1 text-[10px] transition-colors ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-200'}`}
                 >
                   ▼
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onInsertBelow?.() }}
-                  title="Aggiungi cella sotto (Alt+Enter)"
+                  title={tl("Aggiungi cella sotto (Alt+Enter)")}
                   className={`rounded p-0.5 transition-colors ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-200'}`}
                 >
                   <Plus className="h-3 w-3" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDelete?.() }}
-                  title="Elimina cella"
+                  title={tl("Elimina cella")}
                   className={`rounded p-0.5 transition-colors ${isLight ? 'text-slate-500 hover:text-red-600' : 'text-slate-500 hover:text-red-400'}`}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -280,7 +281,7 @@ export default function NotebookCell({
               <button
                 onClick={(e) => { e.stopPropagation(); onRun() }}
                 disabled={isRunning}
-                title="Esegui (Shift+Enter)"
+                title={tl("Esegui (Shift+Enter)")}
                 className={`ml-1 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-white transition-colors disabled:opacity-50 ${surface.runButton}`}
               >
                 {isRunning ? (
@@ -334,7 +335,7 @@ export default function NotebookCell({
           <div className={`flex max-h-[55%] shrink-0 flex-col overflow-hidden border-t px-3 py-2 ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'}`}>
             <div className={`mb-2 flex shrink-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <Sparkles className="h-3.5 w-3.5 text-indigo-300" />
-              Proposte AI da approvare
+              {tl("Proposte AI da approvare")}
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {proposals.map((proposal) => (
@@ -343,7 +344,7 @@ export default function NotebookCell({
                   className={`rounded-xl border px-3 py-2 text-xs ${severityStyles[proposal.severity]}`}
                 >
                   <p className="font-semibold">
-                    Righe {proposal.line_start}{proposal.line_end !== proposal.line_start ? `-${proposal.line_end}` : ''}: {proposal.message}
+                    {tl("Righe")} {proposal.line_start}{proposal.line_end !== proposal.line_start ? `-${proposal.line_end}` : ''}: {proposal.message}
                   </p>
                   {proposal.teacher_note && (
                     <p className="mt-1 leading-relaxed text-white/90">{proposal.teacher_note}</p>
@@ -360,14 +361,14 @@ export default function NotebookCell({
                       className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/30"
                     >
                       <Check className="h-3 w-3" />
-                      Applica
+                      {tl("Applica")}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onRejectProposal?.(proposal.id) }}
                       className="inline-flex items-center gap-1 rounded-full bg-slate-500/20 px-2.5 py-1 text-[11px] font-semibold text-slate-100 transition hover:bg-slate-500/30"
                     >
                       <X className="h-3 w-3" />
-                      Rifiuta
+                      {tl("Rifiuta")}
                     </button>
                   </div>
                 </div>

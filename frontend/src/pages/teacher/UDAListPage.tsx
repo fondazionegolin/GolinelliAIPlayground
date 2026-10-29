@@ -5,6 +5,7 @@ import { udaApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, Plus, BookOpen, Loader2, Trash2, CheckCircle, Clock } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface Uda {
   id: string
@@ -18,10 +19,10 @@ interface Uda {
 const PHASE_LABELS: Record<string, string> = {
   briefing: 'Briefing',
   kb: 'Knowledge Base',
-  plan: 'Piano',
-  generating: 'Generazione...',
-  review: 'In revisione',
-  published: 'Pubblicata',
+  plan: tl("Piano"),
+  generating: tl("Generazione..."),
+  review: tl("In revisione"),
+  published: tl("Pubblicata"),
 }
 
 export default function UDAListPage() {
@@ -49,13 +50,13 @@ export default function UDAListPage() {
       setShowCreate(false)
       navigate(`/teacher/classes/${classId}/uda/${res.data.id}`)
     },
-    onError: () => toast({ title: 'Errore creazione UDA', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore creazione UDA"), variant: 'destructive' }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (udaId: string) => udaApi.deleteUda(classId!, udaId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['udas', classId] }),
-    onError: () => toast({ title: 'Errore eliminazione', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore eliminazione"), variant: 'destructive' }),
   })
 
   return (
@@ -68,13 +69,13 @@ export default function UDAListPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Unità Didattiche</h1>
-              <p className="text-sm text-slate-500 mt-0.5">Crea e gestisci le UDA della tua classe</p>
+              <h1 className="text-2xl font-bold text-slate-900">{tl("Unità Didattiche")}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{tl("Crea e gestisci le UDA della tua classe")}</p>
             </div>
           </div>
           <Button tone="neutral" surface="solid" size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4 mr-1.5" />
-            Nuova UDA
+            {tl("Nuova UDA")}
           </Button>
         </div>
 
@@ -82,19 +83,19 @@ export default function UDAListPage() {
         {/* Create form */}
         {showCreate && (
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-800">Nuova Unità Didattica</h3>
+            <h3 className="text-sm font-semibold text-slate-800">{tl("Nuova Unità Didattica")}</h3>
             <input
               autoFocus
               type="text"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--teacher-accent,#6366f1)]/30 focus:border-[var(--teacher-accent,#6366f1)] transition-colors"
-              placeholder="Es: Il laghetto delle rane scomparse"
+              placeholder={tl("Es: Il laghetto delle rane scomparse")}
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && newTitle.trim() && createMutation.mutate()}
             />
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={() => { setShowCreate(false); setNewTitle('') }}>
-                Annulla
+                {tl("Annulla")}
               </Button>
               <Button
                 tone="accent"
@@ -104,7 +105,7 @@ export default function UDAListPage() {
                 onClick={() => createMutation.mutate()}
               >
                 {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
-                Crea
+                {tl("Crea")}
               </Button>
             </div>
           </div>
@@ -118,13 +119,13 @@ export default function UDAListPage() {
         ) : udas.length === 0 && !showCreate ? (
           <div className="bg-white rounded-xl border border-dashed border-slate-200 text-center py-16">
             <BookOpen className="h-10 w-10 mx-auto text-slate-300 mb-4" />
-            <h3 className="font-semibold text-slate-600 mb-1">Nessuna UDA ancora</h3>
+            <h3 className="font-semibold text-slate-600 mb-1">{tl("Nessuna UDA ancora")}</h3>
             <p className="text-sm text-slate-400 max-w-sm mx-auto mb-5">
-              Un'Unità Didattica raggruppa documenti, quiz, esercizi e presentazioni in una cartella tematica per i tuoi studenti.
+              {tl("Un'Unità Didattica raggruppa documenti, quiz, esercizi e presentazioni in una cartella tematica per i tuoi studenti.")}
             </p>
             <Button tone="neutral" surface="solid" size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="h-4 w-4 mr-1.5" />
-              Crea la prima UDA
+              {tl("Crea la prima UDA")}
             </Button>
           </div>
         ) : (
@@ -167,7 +168,7 @@ export default function UDAListPage() {
                     className="h-8 w-8 p-0 rounded-lg text-slate-300 hover:text-red-500"
                     onClick={e => {
                       e.stopPropagation()
-                      if (confirm('Eliminare questa UDA e tutti i suoi contenuti?')) {
+                      if (confirm(tl("Eliminare questa UDA e tutti i suoi contenuti?"))) {
                         deleteMutation.mutate(uda.id)
                       }
                     }}

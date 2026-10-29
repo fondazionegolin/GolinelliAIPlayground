@@ -6,6 +6,7 @@ import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
 import { findActiveJob, followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   notebookId: string
@@ -20,10 +21,10 @@ interface Props {
   onOpenVersions?: () => void
 }
 
-const CREDIT_EXHAUSTED_MESSAGE = 'Crediti AI esauriti. Attendi il rinnovo del plafond o contatta il docente/amministratore.'
+const CREDIT_EXHAUSTED_MESSAGE = tl("Crediti AI esauriti. Attendi il rinnovo del plafond o contatta il docente/amministratore.")
 
 // Agent pipeline stages, in the order the backend runs them.
-const PIPELINE_STEPS = ['Prompt Analyst', 'Architetto', 'File Writer', 'Reviewer', 'Coding Builder'] as const
+const PIPELINE_STEPS = ['Prompt Analyst', tl("Architetto"), tl("File Writer"), 'Reviewer', 'Coding Builder'] as const
 
 interface ActiveStage { agent: string; label: string }
 
@@ -38,7 +39,7 @@ function PipelineProgress({ done, active, elapsed }: { done: string[]; active: A
   return (
     <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-sky-700">
-        <span>Agenti al lavoro</span>
+        <span>{tl("Agenti al lavoro")}</span>
         <span className="font-mono normal-case tabular-nums">{formatElapsed(elapsed)}</span>
       </div>
       <ol className="space-y-1">
@@ -63,7 +64,7 @@ function PipelineProgress({ done, active, elapsed }: { done: string[]; active: A
         })}
       </ol>
       <p className="mt-2 text-[10px] leading-snug text-sky-700/80">
-        Con sketch lunghi o modelli ML può richiedere uno o due minuti: puoi cambiare pagina, il lavoro continua in background.
+        {tl("Con sketch lunghi o modelli ML può richiedere uno o due minuti: puoi cambiare pagina, il lavoro continua in background.")}
       </p>
     </div>
   )
@@ -80,7 +81,7 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
   const isUser = message.role === 'user'
   const kind = message.metadata?.kind
   const isFeedback = kind === 'agent_progress' || kind === 'agent_reasoning' || kind === 'file_write_summary' || kind === 'agent_feedback'
-  const label = isUser ? 'Tu' : message.agent_name || 'Agente'
+  const label = isUser ? 'Tu' : message.agent_name || tl("Agente")
 
   if (isFeedback) {
     const tone = kind === 'file_write_summary'
@@ -133,7 +134,7 @@ function HunkDiff({ proposal }: { proposal: NotebookCodeProposal }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-        <span>{hunks.length} {hunks.length === 1 ? 'blocco modificato' : 'blocchi modificati'}</span>
+        <span>{hunks.length} {hunks.length === 1 ? tl("blocco modificato") : tl("blocchi modificati")}</span>
         <span className="text-emerald-600">+{added}</span>
         <span className="text-red-500">−{removed}</span>
       </div>
@@ -186,35 +187,35 @@ function DiffBlock({ source, proposal }: { source: string; proposal: NotebookCod
 const DEVICE_COPY = {
   microbit: {
     label: 'micro:bit',
-    title: 'Tutor agentico micro:bit',
-    subtitle: 'Trasforma intenzioni creative in codice commentato',
-    intro: 'Il tutor propone codice Python o JavaScript per micro:bit, aggiunge commenti in italiano e mostra il diff prima di applicare.',
-    placeholder: 'Esempio: voglio accendere i LED quando inclino la scheda e mandare la temperatura al browser',
-    emptyTitle: 'Descrivi cosa vuoi far fare alla scheda.',
+    title: tl("Tutor agentico micro:bit"),
+    subtitle: tl("Trasforma intenzioni creative in codice commentato"),
+    intro: tl("Il tutor propone codice Python o JavaScript per micro:bit, aggiunge commenti in italiano e mostra il diff prima di applicare."),
+    placeholder: tl("Esempio: voglio accendere i LED quando inclino la scheda e mandare la temperatura al browser"),
+    emptyTitle: tl("Descrivi cosa vuoi far fare alla scheda."),
   },
   circuitplayground: {
     label: 'Circuit Playground Express',
-    title: 'Tutor agentico Circuit Playground',
-    subtitle: 'Trasforma intenzioni creative in MakeCode TypeScript',
-    intro: 'Il tutor propone codice MakeCode TypeScript per Circuit Playground Express, aggiunge commenti in italiano e mostra il diff prima di applicare.',
-    placeholder: 'Esempio: voglio cambiare i NeoPixel con la luce e mandare temperatura e movimento al browser',
-    emptyTitle: 'Descrivi cosa vuoi far fare alla scheda.',
+    title: tl("Tutor agentico Circuit Playground"),
+    subtitle: tl("Trasforma intenzioni creative in MakeCode TypeScript"),
+    intro: tl("Il tutor propone codice MakeCode TypeScript per Circuit Playground Express, aggiunge commenti in italiano e mostra il diff prima di applicare."),
+    placeholder: tl("Esempio: voglio cambiare i NeoPixel con la luce e mandare temperatura e movimento al browser"),
+    emptyTitle: tl("Descrivi cosa vuoi far fare alla scheda."),
   },
   python: {
     label: 'Python',
-    title: 'Tutor agentico Python',
-    subtitle: 'Trasforma richieste in codice Python commentato',
-    intro: 'Il tutor propone modifiche al codice Python della cella, aggiunge commenti in italiano e mostra il diff prima di applicare.',
-    placeholder: 'Esempio: voglio leggere un file CSV e stampare la media di una colonna',
-    emptyTitle: 'Descrivi cosa vuoi che faccia il tuo codice.',
+    title: tl("Tutor agentico Python"),
+    subtitle: tl("Trasforma richieste in codice Python commentato"),
+    intro: tl("Il tutor propone modifiche al codice Python della cella, aggiunge commenti in italiano e mostra il diff prima di applicare."),
+    placeholder: tl("Esempio: voglio leggere un file CSV e stampare la media di una colonna"),
+    emptyTitle: tl("Descrivi cosa vuoi che faccia il tuo codice."),
   },
   p5js: {
     label: 'p5.js',
-    title: 'Tutor agentico p5.js',
-    subtitle: 'Trasforma idee creative in sketch p5.js',
-    intro: 'Il tutor propone codice p5.js per il tuo sketch, aggiunge commenti in italiano e mostra il diff prima di applicare.',
-    placeholder: 'Esempio: voglio che i cerchi cambino colore quando muovo il mouse',
-    emptyTitle: 'Descrivi cosa vuoi che faccia il tuo sketch.',
+    title: tl("Tutor agentico p5.js"),
+    subtitle: tl("Trasforma idee creative in sketch p5.js"),
+    intro: tl("Il tutor propone codice p5.js per il tuo sketch, aggiunge commenti in italiano e mostra il diff prima di applicare."),
+    placeholder: tl("Esempio: voglio che i cerchi cambino colore quando muovo il mouse"),
+    emptyTitle: tl("Descrivi cosa vuoi che faccia il tuo sketch."),
   },
 } as const
 
@@ -242,91 +243,91 @@ function getContextualSuggestions({
 
   if (hasPendingProposals) {
     return [
-      'Spiegami il diff proposto con parole semplici, senza applicare altre modifiche.',
-      'Controlla se la modifica proposta può essere semplificata per un principiante.',
-      'Suggeriscimi una prova pratica per verificare che la modifica funzioni.',
+      tl("Spiegami il diff proposto con parole semplici, senza applicare altre modifiche."),
+      tl("Controlla se la modifica proposta può essere semplificata per un principiante."),
+      tl("Suggeriscimi una prova pratica per verificare che la modifica funzioni."),
     ]
   }
 
   if (hasError) {
     return device === 'python'
       ? [
-          'Spiegami l’errore nell’ultimo output con parole semplici e indicami la riga da controllare.',
-          'Proponi la correzione minima per risolvere l’errore, commentando il codice.',
-          'Aiutami ad aggiungere dei print di controllo per capire dove nasce il problema.',
+          tl("Spiegami l’errore nell’ultimo output con parole semplici e indicami la riga da controllare."),
+          tl("Proponi la correzione minima per risolvere l’errore, commentando il codice."),
+          tl("Aiutami ad aggiungere dei print di controllo per capire dove nasce il problema."),
         ]
       : [
-          'Spiegami l’errore dello sketch con parole semplici e indicami dove intervenire.',
-          'Proponi la correzione minima per far ripartire lo sketch p5.js.',
-          'Aiutami a controllare i valori nel draw() usando console.log senza confondermi.',
+          tl("Spiegami l’errore dello sketch con parole semplici e indicami dove intervenire."),
+          tl("Proponi la correzione minima per far ripartire lo sketch p5.js."),
+          tl("Aiutami a controllare i valori nel draw() usando console.log senza confondermi."),
         ]
   }
 
   if (!normalizedSource) {
     return device === 'python'
       ? [
-          'Scrivi un esempio semplice con variabili, input e print, spiegandomi ogni riga.',
-          'Creiamo insieme un piccolo programma che calcola media, minimo e massimo.',
-          'Proponimi un esercizio Python facile e guidami un passaggio alla volta.',
+          tl("Scrivi un esempio semplice con variabili, input e print, spiegandomi ogni riga."),
+          tl("Creiamo insieme un piccolo programma che calcola media, minimo e massimo."),
+          tl("Proponimi un esercizio Python facile e guidami un passaggio alla volta."),
         ]
       : [
-          'Crea uno sketch semplice con setup() e draw() e spiegami a cosa servono.',
-          'Disegna una forma che segue il mouse e spiegami il codice un passaggio alla volta.',
-          'Proponimi un piccolo esercizio creativo p5.js adatto a chi inizia.',
+          tl("Crea uno sketch semplice con setup() e draw() e spiegami a cosa servono."),
+          tl("Disegna una forma che segue il mouse e spiegami il codice un passaggio alla volta."),
+          tl("Proponimi un piccolo esercizio creativo p5.js adatto a chi inizia."),
         ]
   }
 
   if (device === 'python') {
     if (/\bdef\s+\w+\s*\(/.test(normalizedSource)) {
       return [
-        'Spiegami come funziona questa funzione e fammi vedere un esempio di chiamata.',
-        'Aiutami a provare questa funzione con tre casi semplici, incluso un caso limite.',
-        'Suggerisci un nome e dei commenti più chiari senza cambiare il comportamento.',
+        tl("Spiegami come funziona questa funzione e fammi vedere un esempio di chiamata."),
+        tl("Aiutami a provare questa funzione con tre casi semplici, incluso un caso limite."),
+        tl("Suggerisci un nome e dei commenti più chiari senza cambiare il comportamento."),
       ]
     }
     if (/\b(for|while)\b/.test(normalizedSource)) {
       return [
-        'Spiegami questo ciclo passo per passo mostrando come cambiano le variabili.',
-        'Aiutami ad aggiungere una condizione al ciclo senza renderlo troppo complesso.',
-        'Controlla se il ciclo può bloccarsi o saltare un elemento e spiegami perché.',
+        tl("Spiegami questo ciclo passo per passo mostrando come cambiano le variabili."),
+        tl("Aiutami ad aggiungere una condizione al ciclo senza renderlo troppo complesso."),
+        tl("Controlla se il ciclo può bloccarsi o saltare un elemento e spiegami perché."),
       ]
     }
     if (/\b(input|list|append)\b|\[[^\]]*\]/.test(normalizedSource)) {
       return [
-        'Spiegami come vengono raccolti e usati i dati in questo codice.',
-        'Aiutami a gestire un valore non valido inserito dall’utente.',
-        'Aggiungi un risultato utile, come conteggio, media, minimo o massimo.',
+        tl("Spiegami come vengono raccolti e usati i dati in questo codice."),
+        tl("Aiutami a gestire un valore non valido inserito dall’utente."),
+        tl("Aggiungi un risultato utile, come conteggio, media, minimo o massimo."),
       ]
     }
     return [
-      'Spiegami questo codice riga per riga come se fosse la mia prima lezione di Python.',
-      'Suggeriscimi una piccola modifica per sperimentare senza riscrivere tutto.',
+      tl("Spiegami questo codice riga per riga come se fosse la mia prima lezione di Python."),
+      tl("Suggeriscimi una piccola modifica per sperimentare senza riscrivere tutto."),
       hasConversation
-        ? 'Riprendi la mia ultima richiesta e proponimi il prossimo passo più semplice.'
-        : 'Controlla il codice e indicami cosa potrei migliorare mantenendolo semplice.',
+        ? tl("Riprendi la mia ultima richiesta e proponimi il prossimo passo più semplice.")
+        : tl("Controlla il codice e indicami cosa potrei migliorare mantenendolo semplice."),
     ]
   }
 
   if (/\b(mouse|key|touch)/.test(normalizedSource)) {
     return [
-      'Spiegami come questo sketch reagisce all’interazione dell’utente.',
-      'Aiutami ad aggiungere una seconda interazione semplice con mouse o tastiera.',
-      'Mostrami come evitare che la forma esca dai bordi del canvas.',
+      tl("Spiegami come questo sketch reagisce all’interazione dell’utente."),
+      tl("Aiutami ad aggiungere una seconda interazione semplice con mouse o tastiera."),
+      tl("Mostrami come evitare che la forma esca dai bordi del canvas."),
     ]
   }
   if (/\b(ellipse|circle|rect|line|triangle|image)\s*\(/.test(normalizedSource)) {
     return [
-      'Spiegami come vengono disegnate e posizionate le forme in questo sketch.',
-      'Aiutami ad animare una forma cambiando una sola variabile alla volta.',
-      'Aggiungi colori o dimensioni variabili e spiegami ogni modifica.',
+      tl("Spiegami come vengono disegnate e posizionate le forme in questo sketch."),
+      tl("Aiutami ad animare una forma cambiando una sola variabile alla volta."),
+      tl("Aggiungi colori o dimensioni variabili e spiegami ogni modifica."),
     ]
   }
   return [
-    'Spiegami cosa succede in setup() e draw() durante l’esecuzione dello sketch.',
-    'Suggeriscimi una piccola modifica visiva adatta a un principiante.',
+    tl("Spiegami cosa succede in setup() e draw() durante l’esecuzione dello sketch."),
+    tl("Suggeriscimi una piccola modifica visiva adatta a un principiante."),
     hasConversation
-      ? 'Riprendi la mia ultima idea e proponimi il prossimo passo più semplice.'
-      : 'Controlla lo sketch e indicami come renderlo interattivo passo per passo.',
+      ? tl("Riprendi la mia ultima idea e proponimi il prossimo passo più semplice.")
+      : tl("Controlla lo sketch e indicami come renderlo interattivo passo per passo."),
   ]
 }
 
@@ -417,7 +418,7 @@ export default function NotebookMicrobitAgentChat({
       body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput }),
     })
     if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
-    if (!response.ok || !response.body) throw new Error('stream non partito')
+    if (!response.ok || !response.body) throw new Error(tl("stream non partito"))
     notifyJobsChanged()
     await consumeAssistStream(response)
   }
@@ -435,18 +436,18 @@ export default function NotebookMicrobitAgentChat({
         // The agent that has just taken over, and what it is doing right now.
         setActiveStage({ agent: String(event.agent_name || ''), label: String(event.label || '') })
       } else if (event.type === 'done') {
-        const summary = event.summary || 'Modifica pronta.'
+        const summary = event.summary || tl("Modifica pronta.")
         const proposals = (event.proposals || []) as NotebookCodeProposal[]
         onProposals(summary, proposals)
         if (Array.isArray(event.history)) setMessages(event.history as NotebookTutorMessage[])
         finished = true
         return true
       } else if (event.type === 'error') {
-        throw new Error(event.message || 'Generazione non riuscita.')
+        throw new Error(event.message || tl("Generazione non riuscita."))
       }
       // 'ping' (heartbeat) ignorato.
     })
-    if (!finished) throw new Error('stream interrotto')
+    if (!finished) throw new Error(tl("stream interrotto"))
   }
 
   // La pipeline gira sul server come job in background: tornando sul notebook si riaggancia
@@ -476,7 +477,7 @@ export default function NotebookMicrobitAgentChat({
 
     setInput('')
     setDoneAgents([])
-    setActiveStage({ agent: 'Prompt Analyst', label: 'Leggo la richiesta e il codice attuale…' })
+    setActiveStage({ agent: 'Prompt Analyst', label: tl("Leggo la richiesta e il codice attuale…") })
     setLoading(true)
 
     const nextMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: text }]
@@ -491,7 +492,7 @@ export default function NotebookMicrobitAgentChat({
           current_cell_source: currentCellSource,
           last_output: lastOutput,
         })
-        const summary = response.data.summary || 'Ho preparato una proposta di modifica.'
+        const summary = response.data.summary || tl("Ho preparato una proposta di modifica.")
         const proposals = (response.data.proposals || []) as NotebookCodeProposal[]
         onProposals(summary, proposals)
         const history = Array.isArray(response.data.history) ? response.data.history as NotebookTutorMessage[] : null
@@ -505,7 +506,7 @@ export default function NotebookMicrobitAgentChat({
         role: 'assistant',
         content: creditLimitExceeded
           ? CREDIT_EXHAUSTED_MESSAGE
-          : 'Non riesco a generare una proposta in questo momento.',
+          : tl("Non riesco a generare una proposta in questo momento."),
       }])
     } finally {
       setLoading(false)
@@ -526,7 +527,7 @@ export default function NotebookMicrobitAgentChat({
           <button
             onClick={onOpenVersions}
             className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            title="Cronologia versioni / rollback"
+            title={tl("Cronologia versioni / rollback")}
           >
             <History className="h-4 w-4" />
           </button>
@@ -554,7 +555,7 @@ export default function NotebookMicrobitAgentChat({
               : (
                 <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-700">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Il tutor sta preparando la proposta… {formatElapsed(elapsed)}
+                  {tl("Il tutor sta preparando la proposta…")} {formatElapsed(elapsed)}
                 </div>
               )
           )}
@@ -563,7 +564,7 @@ export default function NotebookMicrobitAgentChat({
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <GitCompare className="h-3.5 w-3.5" />
-                Diff da approvare
+                {tl("Diff da approvare")}
               </div>
               {pendingProposals.map((proposal) => (
                 <div key={proposal.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -572,7 +573,7 @@ export default function NotebookMicrobitAgentChat({
                     {proposal.explanation && <p className="mt-1 text-xs leading-5 text-slate-600">{proposal.explanation}</p>}
                     {proposal.required_libraries && proposal.required_libraries.length > 0 && (
                       <p className="mt-1.5 text-[11px] text-indigo-600">
-                        Richiede librerie: {proposal.required_libraries.join(', ')} (abilitate automaticamente all&apos;applicazione)
+                        {tl("Richiede librerie:")} {proposal.required_libraries.join(', ')} {tl("(abilitate automaticamente all'applicazione)")}
                       </p>
                     )}
                   </div>
@@ -583,14 +584,14 @@ export default function NotebookMicrobitAgentChat({
                       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
                     >
                       <Check className="h-3.5 w-3.5" />
-                      Applica
+                      {tl("Applica")}
                     </button>
                     <button
                       onClick={() => onRejectProposal(proposal.id)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                     >
                       <X className="h-3.5 w-3.5" />
-                      Scarta
+                      {tl("Scarta")}
                     </button>
                   </div>
                 </div>
@@ -601,7 +602,7 @@ export default function NotebookMicrobitAgentChat({
           {contextualSuggestions.length > 0 && !loading && (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-indigo-600">
-                Puoi chiedere anche
+                {tl("Puoi chiedere anche")}
               </p>
               <div className="space-y-2">
                 {contextualSuggestions.map(suggestion => (
@@ -649,7 +650,7 @@ export default function NotebookMicrobitAgentChat({
             onClick={() => void send()}
             disabled={!input.trim() || loading}
             className="shrink-0"
-            title="Invia al tutor (Invio) · Maiusc+Invio per andare a capo"
+            title={tl("Invia al tutor (Invio) · Maiusc+Invio per andare a capo")}
           >
             {loading ? <Loader2 className="animate-spin" /> : <Send />}
           </IconButton>

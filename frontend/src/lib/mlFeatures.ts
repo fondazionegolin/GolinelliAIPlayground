@@ -9,9 +9,10 @@
 import * as tf from '@tensorflow/tfjs'
 import type { PoseDetector } from '@tensorflow-models/pose-detection'
 import { assetUrl } from './mlAssets'
+import { tl } from '@/i18n/tl'
 
 export type Mode = 'image' | 'pose' | 'hand' | 'face'
-export const MODE_LABEL: Record<Mode, string> = { image: 'Immagini', pose: 'Pose del corpo', hand: 'Gesti delle mani', face: 'Espressioni del viso' }
+export const MODE_LABEL: Record<Mode, string> = { image: tl("Immagini"), pose: tl("Pose del corpo"), hand: tl("Gesti delle mani"), face: tl("Espressioni del viso") }
 export const ENGINE_BY_MODE: Record<Mode, string> = { image: 'mobilenet-v1-050-160/1', pose: 'movenet-lightning/1', hand: 'mediapipe-hand/1', face: 'mediapipe-face/1' }
 export const modeOfEngine = (engine?: string | null): Mode => (
   engine?.startsWith('movenet') ? 'pose' : engine?.startsWith('mediapipe-hand') ? 'hand' : engine?.startsWith('mediapipe-face') ? 'face' : 'image'

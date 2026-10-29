@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 export interface LibraryTemplate {
   id: string
   name: string
@@ -17,10 +18,10 @@ export interface NotebookLibrary {
 }
 
 export const LIBRARY_CATEGORIES: Record<NotebookLibrary['category'], string> = {
-  ml: 'ML & AI',
+  ml: tl("ML & AI"),
   audio: 'Audio',
-  physics: 'Fisica',
-  graphics: 'Grafica',
+  physics: tl("Fisica"),
+  graphics: tl("Grafica"),
 }
 
 // Hand connections for ml5 v1 / MediaPipe 21-keypoint model
@@ -48,7 +49,7 @@ export const NOTEBOOK_LIBRARIES: NotebookLibrary[] = [
   {
     id: 'ml5',
     name: 'ml5.js',
-    description: 'Machine learning nel browser: hand pose, body pose, object detection, segmentazione e classificazione immagini',
+    description: tl("Machine learning nel browser: hand pose, body pose, object detection, segmentazione e classificazione immagini"),
     icon: '🤖',
     category: 'ml',
     cdnUrls: ['https://unpkg.com/ml5@1/dist/ml5.min.js'],
@@ -404,7 +405,7 @@ function draw() {
   {
     id: 'matterjs',
     name: 'Matter.js',
-    description: 'Motore fisico 2D: gravità, collisioni, corpi rigidi, vincoli e mouse drag',
+    description: tl("Motore fisico 2D: gravità, collisioni, corpi rigidi, vincoli e mouse drag"),
     icon: '⚙️',
     category: 'physics',
     cdnUrls: ['https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js'],
@@ -546,7 +547,7 @@ function mousePressed() {
   {
     id: 'tonejs',
     name: 'Tone.js',
-    description: 'Sintesi audio, sequencer, effetti e musica generativa nel browser',
+    description: tl("Sintesi audio, sequencer, effetti e musica generativa nel browser"),
     icon: '🎵',
     category: 'audio',
     cdnUrls: ['https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js'],
@@ -712,7 +713,7 @@ async function mousePressed() {
   {
     id: 'mediapipe-hands',
     name: 'MediaPipe Hands',
-    description: 'Tracciamento mani raw con API ufficiale Google MediaPipe (alternativa più avanzata a ml5 handPose)',
+    description: tl("Tracciamento mani raw con API ufficiale Google MediaPipe (alternativa più avanzata a ml5 handPose)"),
     icon: '✋',
     category: 'ml',
     cdnUrls: [
@@ -800,7 +801,7 @@ function draw() {
   {
     id: 'mediapipe-face',
     name: 'Face Landmarks',
-    description: 'Landmark facciali con AI (MediaPipe Face Mesh): 468 punti su occhi, sopracciglia, labbra, ovale del viso e 10 sull’iride',
+    description: tl("Landmark facciali con AI (MediaPipe Face Mesh): 468 punti su occhi, sopracciglia, labbra, ovale del viso e 10 sull’iride"),
     icon: '🙂',
     category: 'ml',
     cdnUrls: [
@@ -965,7 +966,7 @@ function draw() {
   {
     id: 'p5sound',
     name: 'p5.sound',
-    description: 'Analisi audio real-time: FFT, waveform, microfono e visualizzazioni sonore',
+    description: tl("Analisi audio real-time: FFT, waveform, microfono e visualizzazioni sonore"),
     icon: '🎤',
     category: 'audio',
     cdnUrls: ['https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/addons/p5.sound.min.js'],

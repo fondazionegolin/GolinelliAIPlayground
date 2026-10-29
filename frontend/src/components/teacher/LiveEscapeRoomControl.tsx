@@ -8,6 +8,7 @@ import EndSessionDialog from '@/components/live/EndSessionDialog'
 import AchievementIcon from '@/components/live/AchievementIcon'
 import LiveInteractionPublicShareModal from '@/components/teacher/LiveInteractionPublicShareModal'
 import { EscapeRoomEditDialog } from '@/pages/teacher/LiveInteractionBuilderPage'
+import { tl } from '@/i18n/tl'
 
 interface Interaction {
   id: string
@@ -69,7 +70,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
         setPublicCode(response.data.access_code)
         setPublicUrl(`${window.location.origin}/live/${response.data.token}`)
       })
-      .catch(() => toast({ title: 'Impossibile creare il link pubblico', variant: 'destructive' }))
+      .catch(() => toast({ title: tl("Impossibile creare il link pubblico"), variant: 'destructive' }))
     return () => { cancelled = true }
   }, [interaction.id, interaction.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,7 +93,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
       await queryClient.invalidateQueries({ queryKey: ['live-interaction', interaction.id] })
       await refetch()
     },
-    onError: () => toast({ title: 'Impossibile avviare la sessione', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Impossibile avviare la sessione"), variant: 'destructive' }),
   })
   const end = useMutation({
     mutationFn: () => liveInteractionApi.end(interaction.id),
@@ -113,9 +114,9 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /> Lista</button>
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /> {tl("Lista")}</button>
         <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{interaction.title}</h1>
-        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${interaction.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : interaction.status === 'CLOSED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>{interaction.status === 'ACTIVE' ? '● LIVE' : interaction.status === 'CLOSED' ? 'Completata' : 'Bozza'}</span>
+        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${interaction.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : interaction.status === 'CLOSED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>{interaction.status === 'ACTIVE' ? '● LIVE' : interaction.status === 'CLOSED' ? tl("Completata") : tl("Bozza")}</span>
       </div>
 
       {confirmEnd && <EndSessionDialog title={interaction.title} kind="escape_room" pending={end.isPending} onConfirm={() => end.mutate()} onCancel={() => setConfirmEnd(false)} />}
@@ -126,26 +127,26 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
             <div className="mx-auto w-full max-w-[300px]">
               <div className="overflow-hidden rounded-3xl bg-white p-3 shadow-2xl">
                 {qrDataUrl
-                  ? <img src={qrDataUrl} alt="QR code per entrare nell'escape room" className="aspect-square w-full" />
+                  ? <img src={qrDataUrl} alt={tl("QR code per entrare nell'escape room")} className="aspect-square w-full" />
                   : <div className="flex aspect-square w-full items-center justify-center text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>}
               </div>
-              <button onClick={() => setShowShare(true)} disabled={!publicUrl} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 disabled:opacity-50"><Maximize2 className="h-4 w-4" /> Proietta QR a schermo intero</button>
+              <button onClick={() => setShowShare(true)} disabled={!publicUrl} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 disabled:opacity-50"><Maximize2 className="h-4 w-4" /> {tl("Proietta QR a schermo intero")}</button>
             </div>
             <div className="text-center md:text-left">
               <LockKeyhole className="mx-auto h-10 w-10 text-violet-200 md:mx-0" />
-              <h2 className="mt-3 text-3xl font-black">La stanza è pronta</h2>
-              <p className="mt-2 max-w-xl text-white/70">{interaction.escape_config?.mission || `${interaction.slides_json.length} indizi con inventario e classifica finale.`}</p>
-              {publicCode && <p className="mt-4 text-xs font-bold uppercase tracking-widest text-white/50">Codice Live <span className="ml-2 text-2xl font-black tracking-[0.18em] text-amber-300">{publicCode}</span></p>}
+              <h2 className="mt-3 text-3xl font-black">{tl("La stanza è pronta")}</h2>
+              <p className="mt-2 max-w-xl text-white/70">{interaction.escape_config?.mission || tl("{0} indizi con inventario e classifica finale.", interaction.slides_json.length)}</p>
+              {publicCode && <p className="mt-4 text-xs font-bold uppercase tracking-widest text-white/50">{tl("Codice Live")} <span className="ml-2 text-2xl font-black tracking-[0.18em] text-amber-300">{publicCode}</span></p>}
               {publicUrl && <p className="mt-1 break-all font-mono text-sm text-violet-200">{publicUrl}</p>}
               <div className="mt-5 rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
-                <p className="flex items-center justify-center gap-2 text-sm font-bold md:justify-start"><Users className="h-4 w-4" /> {participants.length} {participants.length === 1 ? 'studente pronto' : 'studenti pronti'}</p>
+                <p className="flex items-center justify-center gap-2 text-sm font-bold md:justify-start"><Users className="h-4 w-4" /> {participants.length} {participants.length === 1 ? tl("studente pronto") : tl("studenti pronti")}</p>
                 <div className="mt-3 flex max-h-40 flex-wrap justify-center gap-2 overflow-y-auto md:justify-start">
                   {participants.map(item => <span key={item.student_id} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">{item.student_nickname}</span>)}
-                  {participants.length === 0 && <span className="text-sm text-white/60">In attesa che gli studenti scansionino il QR…</span>}
+                  {participants.length === 0 && <span className="text-sm text-white/60">{tl("In attesa che gli studenti scansionino il QR…")}</span>}
                 </div>
               </div>
-              <button onClick={() => setShowEdit(true)} className="mt-5 block text-sm font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline md:text-left">Modifica indizi o rigenera il set ({interaction.slides_json.length})</button>
-              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} Via! Avvia l'escape room</button>
+              <button onClick={() => setShowEdit(true)} className="mt-5 block text-sm font-semibold text-white/80 underline-offset-2 hover:text-white hover:underline md:text-left">{tl("Modifica indizi o rigenera il set (")}{interaction.slides_json.length})</button>
+              <button onClick={() => start.mutate()} disabled={start.isPending} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-3.5 font-bold text-violet-700 shadow-lg disabled:opacity-60">{start.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />} {tl("Via! Avvia l'escape room")}</button>
             </div>
           </div>
           {showEdit && <EscapeRoomEditDialog interactionId={interaction.id} onClose={() => setShowEdit(false)} />}
@@ -154,16 +155,16 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
       ) : (
         <>
           <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Metric icon={Users} label="Partecipanti" value={`${participants.length}/${totalStudents}`} />
-            <Metric icon={CheckCircle2} label="Completate" value={`${completed}/${totalStudents}`} />
-            <Metric icon={Clock3} label="Tempo sessione" value={formatTime(results?.ended_at ? Math.floor((new Date(results.ended_at).getTime() - new Date(results.started_at).getTime()) / 1000) : liveSeconds)} />
-            <Metric icon={PackageOpen} label="Indizi" value={String(results?.total_steps || interaction.slides_json.length)} />
+            <Metric icon={Users} label={tl("Partecipanti")} value={`${participants.length}/${totalStudents}`} />
+            <Metric icon={CheckCircle2} label={tl("Completate")} value={`${completed}/${totalStudents}`} />
+            <Metric icon={Clock3} label={tl("Tempo sessione")} value={formatTime(results?.ended_at ? Math.floor((new Date(results.ended_at).getTime() - new Date(results.started_at).getTime()) / 1000) : liveSeconds)} />
+            <Metric icon={PackageOpen} label={tl("Indizi")} value={String(results?.total_steps || interaction.slides_json.length)} />
           </section>
 
-          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => setConfirmEnd(true)} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white"><Square className="h-4 w-4" /> Chiudi e calcola classifica</button></div>}
+          {interaction.status === 'ACTIVE' && <div className="flex justify-end"><button onClick={() => setConfirmEnd(true)} disabled={end.isPending} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white"><Square className="h-4 w-4" /> {tl("Chiudi e calcola classifica")}</button></div>}
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-bold text-slate-900">{interaction.status === 'CLOSED' ? 'Classifica finale' : 'Avanzamento in tempo reale'}</h2></div>
+            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><Trophy className="h-5 w-5 text-amber-500" /><h2 className="font-bold text-slate-900">{interaction.status === 'CLOSED' ? tl("Classifica finale") : tl("Avanzamento in tempo reale")}</h2></div>
             <div className="divide-y divide-slate-100">
               {participants.map((item, index) => (
                 <div key={item.student_id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-4">
@@ -173,26 +174,26 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
                   {interaction.status === 'CLOSED' && (
                     <details className="group col-span-3 mt-1 rounded-xl border border-slate-200 bg-slate-50/70">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold text-violet-700 marker:hidden">
-                        Domande e risposte <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                        {tl("Domande e risposte")} <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                       </summary>
                       <div className="space-y-4 border-t border-slate-200 px-4 py-4">
                         {challenges.map((challenge, stepIndex) => {
                           const answers = (item.answers || []).filter(answer => answer.step_index === stepIndex)
                           return (
                             <div key={stepIndex} className="rounded-xl border border-slate-200 bg-white p-3">
-                              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Indizio {stepIndex + 1}</p>
+                              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">{tl("Indizio")} {stepIndex + 1}</p>
                               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{challenge.false_statement}</p>
                               {challenge.prompt && <p className="mt-1 text-xs text-slate-500">{challenge.prompt}</p>}
                               {answers.length > 0 ? (
                                 <ul className="mt-3 space-y-1.5">
                                   {answers.map((answer, answerIndex) => (
                                     <li key={answerIndex} className="flex items-start gap-2 text-sm">
-                                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${answer.correct ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{answer.correct ? 'Corretta' : 'Errata'}</span>
+                                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${answer.correct ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{answer.correct ? tl("Corretta") : tl("Errata")}</span>
                                       <span className="min-w-0 whitespace-pre-wrap break-words text-slate-700">{answer.value}</span>
                                     </li>
                                   ))}
                                 </ul>
-                              ) : <p className="mt-2 text-xs text-slate-500">{stepIndex <= item.current_step && item.attempts > 0 ? 'Risposte non disponibili per questa sessione.' : 'Nessuna risposta.'}</p>}
+                              ) : <p className="mt-2 text-xs text-slate-500">{stepIndex <= item.current_step && item.attempts > 0 ? tl("Risposte non disponibili per questa sessione.") : tl("Nessuna risposta.")}</p>}
                             </div>
                           )
                         })}
@@ -201,7 +202,7 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
                   )}
                 </div>
               ))}
-              {participants.length === 0 && <p className="p-10 text-center text-sm text-slate-400">In attesa che gli studenti entrino nella stanza…</p>}
+              {participants.length === 0 && <p className="p-10 text-center text-sm text-slate-400">{tl("In attesa che gli studenti entrino nella stanza…")}</p>}
             </div>
           </section>
         </>

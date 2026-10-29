@@ -28,6 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { tl } from '@/i18n/tl'
+import { LandingFaq } from '@/components/landing/LandingFaq'
 
 export default function LandingPage() {
   const { t } = useTranslation()
@@ -36,13 +38,13 @@ export default function LandingPage() {
 
   const documentMeta = {
     privacy: {
-      title: 'Informativa privacy',
-      description: 'Informativa privacy della piattaforma Golinelli.ai — versione 2.0, 26 ottobre 2026',
+      title: tl("Informativa privacy"),
+      description: tl("Informativa privacy della piattaforma Golinelli.ai — versione 2.0, 26 ottobre 2026"),
       src: PRIVACY_DOCUMENT_VIEWER_URL,
     },
     'ai-act': {
-      title: 'AI Act',
-      description: 'Audit AI Act e conformità del sistema Golinelli.ai',
+      title: tl("AI Act"),
+      description: tl("Audit AI Act e conformità del sistema Golinelli.ai"),
       src: '/docs/audit-ai.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitH',
     },
   } as const
@@ -65,7 +67,7 @@ export default function LandingPage() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
-                <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto" />
+                <img src="/logo_new.png" alt={tl("Golinelli AI")} className="h-10 w-auto" />
                 <span className="text-2xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
                   <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
                   <span className="font-black text-[var(--logo-pink)]">.ai</span>
@@ -95,21 +97,21 @@ export default function LandingPage() {
                   className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[var(--logo-pink)]"
                 >
                   <Mail size={13} />
-                  Contatti
+                  {tl("Contatti")}
                 </button>
               </div>
               <LanguageSwitcher variant="row" />
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 md:hidden" aria-label="Accesso alla piattaforma">
+          <div className="mt-3 grid grid-cols-2 gap-2 md:hidden" aria-label={tl("Accesso alla piattaforma")}>
             <MobileNavButton active={activeTab === 'students'} onClick={() => switchTab('students')} tone="sky">
               <GraduationCap className="h-4 w-4" />
-              Studente
+              {tl("Studente")}
             </MobileNavButton>
             <MobileNavButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} tone="violet">
               <School className="h-4 w-4" />
-              Docente
+              {tl("Docente")}
             </MobileNavButton>
           </div>
           <div className="mt-3 flex justify-end border-t border-slate-100 pt-2">
@@ -118,7 +120,7 @@ export default function LandingPage() {
               onClick={() => setOpenDocument('privacy')}
               className="text-sm font-medium text-slate-600 underline underline-offset-4 transition-colors hover:text-[var(--logo-pink)]"
             >
-              Informativa privacy
+              {tl("Informativa privacy")}
             </button>
           </div>
         </div>
@@ -137,7 +139,7 @@ export default function LandingPage() {
       <footer className="border-t border-slate-100 bg-white py-8 text-center text-sm text-slate-500">
         <p>{t('landing.footer_copyright')}</p>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
-          un progetto di{' '}
+          {tl("un progetto di")}{' '}
           <a
             href="https://www.fondazionegolinelli.it"
             target="_blank"
@@ -156,21 +158,21 @@ export default function LandingPage() {
               onClick={() => setOpenDocument('privacy')}
               className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
             >
-              Informativa privacy
+              {tl("Informativa privacy")}
             </button>
             <span className="text-slate-300">•</span>
             <button
               onClick={() => setOpenDocument('ai-act')}
               className="text-slate-400 hover:text-[#7b69c9] transition-colors underline underline-offset-2"
             >
-              AI Act
+              {tl("AI Act")}
             </button>
             <span className="text-slate-300">•</span>
             <Link
               to="/terms"
               className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
             >
-              Termini
+              {tl("Termini")}
             </Link>
           </span>
         </p>
@@ -277,14 +279,14 @@ const MODULES = [
 ]
 
 const MODULE_COPY: Record<string, { title: string; body: string }> = {
-  chat: { title: 'Chat AI e Teacherbot', body: 'Assistenti con prompt, conoscenza e limiti scelti dal docente, per la preparazione e per la classe.' },
-  docs: { title: 'Documenti e slide', body: 'Testi, schede e presentazioni generati e rifiniti con l\'AI, da pubblicare agli studenti.' },
-  notebook: { title: 'Notebook', body: 'Python, p5.js e micro:bit con tutor AI integrato e cronologia delle versioni.' },
-  vibe: { title: 'Vibe Lab', body: 'Si descrive un\'app o un gioco, l\'AI lo scrive, lo studente lo vede girare e lo modifica.' },
-  ml: { title: 'ML Lab', body: 'Classificatori di immagini, pose e mani addestrati dal browser, per capire come impara una macchina.' },
-  solid: { title: '3D Lab', body: 'Modellazione solida stile Tinkercad con un assistente AI e link pubblico con QR.' },
-  live: { title: 'Live Interaction', body: 'Quiz, nuvole di parole, sondaggi e feedback in tempo reale durante la lezione.' },
-  classes: { title: 'Classi e compiti', body: 'Classi, sessioni, compiti, report e crediti sotto controllo, sempre con il docente nel loop.' },
+  chat: { title: tl("Chat AI e Teacherbot"), body: tl("Assistenti con prompt, conoscenza e limiti scelti dal docente, per la preparazione e per la classe.") },
+  docs: { title: tl("Documenti e slide"), body: tl("Testi, schede e presentazioni generati e rifiniti con l'AI, da pubblicare agli studenti.") },
+  notebook: { title: 'Notebook', body: tl("Python, p5.js e micro:bit con tutor AI integrato e cronologia delle versioni.") },
+  vibe: { title: 'Vibe Lab', body: tl("Si descrive un'app o un gioco, l'AI lo scrive, lo studente lo vede girare e lo modifica.") },
+  ml: { title: 'ML Lab', body: tl("Classificatori di immagini, pose e mani addestrati dal browser, per capire come impara una macchina.") },
+  solid: { title: '3D Lab', body: tl("Modellazione solida stile Tinkercad con un assistente AI e link pubblico con QR.") },
+  live: { title: 'Live Interaction', body: tl("Quiz, nuvole di parole, sondaggi e feedback in tempo reale durante la lezione.") },
+  classes: { title: tl("Classi e compiti"), body: tl("Classi, sessioni, compiti, report e crediti sotto controllo, sempre con il docente nel loop.") },
 }
 
 function ModuleCard({ moduleKey, illustration }: { moduleKey: string; illustration: string }) {
@@ -328,7 +330,7 @@ function useTeacherLogin() {
       toast({
         variant: 'destructive',
         title: t('login.title'),
-        description: typeof detail === 'string' ? detail : 'Controlla le credenziali.',
+        description: typeof detail === 'string' ? detail : tl("Controlla le credenziali."),
       })
     } finally {
       setLoading(false)
@@ -357,17 +359,17 @@ function HomeSection({
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const TEACHER_STEPS = [
-    { title: td('tut_t1_title', 'Ricevi l\'invito'), body: td('tut_t1_body', 'Per ora i docenti si registrano solo su invito: arriva una mail con un link personale di attivazione.') },
-    { title: td('tut_t2_title', 'Attiva l\'account'), body: td('tut_t2_body', 'Apri il link, scegli la password e accetta le informative. I crediti mensili sono già assegnati.') },
-    { title: td('tut_t3_title', 'Crea classe e sessione'), body: td('tut_t3_body', 'Dall\'area docenti crei una classe, avvii una sessione e scegli i moduli da abilitare.') },
-    { title: td('tut_t4_title', 'Condividi il codice'), body: td('tut_t4_body', 'La sessione genera un codice di accesso: lo comunichi in aula o sul registro, e gli studenti entrano.') },
+    { title: td('tut_t1_title', tl("Ricevi l'invito")), body: td('tut_t1_body', tl("Per ora i docenti si registrano solo su invito: arriva una mail con un link personale di attivazione.")) },
+    { title: td('tut_t2_title', tl("Attiva l'account")), body: td('tut_t2_body', tl("Apri il link, scegli la password e accetta le informative. I crediti mensili sono già assegnati.")) },
+    { title: td('tut_t3_title', tl("Crea classe e sessione")), body: td('tut_t3_body', tl("Dall'area docenti crei una classe, avvii una sessione e scegli i moduli da abilitare.")) },
+    { title: td('tut_t4_title', tl("Condividi il codice")), body: td('tut_t4_body', tl("La sessione genera un codice di accesso: lo comunichi in aula o sul registro, e gli studenti entrano.")) },
   ]
 
   const STUDENT_STEPS = [
-    { title: td('tut_s1_title', 'Chiedi il codice al docente'), body: td('tut_s1_body', 'Serve il codice di una sessione già avviata dal docente. Senza codice non si può entrare.') },
-    { title: td('tut_s2_title', 'Apri «Accesso studenti»'), body: td('tut_s2_body', 'Inserisci il codice e scegli un nickname: nessuna email, nessun dato personale richiesto.') },
-    { title: td('tut_s3_title', 'Imposta la password'), body: td('tut_s3_body', 'Al primo ingresso crei una password per il tuo nickname; le volte dopo accedi con quella.') },
-    { title: td('tut_s4_title', 'Lavora nei moduli'), body: td('tut_s4_body', 'Trovi solo i moduli abilitati dal docente per quella sessione, con il suo controllo sempre attivo.') },
+    { title: td('tut_s1_title', tl("Chiedi il codice al docente")), body: td('tut_s1_body', tl("Serve il codice di una sessione già avviata dal docente. Senza codice non si può entrare.")) },
+    { title: td('tut_s2_title', tl("Apri «Accesso studenti»")), body: td('tut_s2_body', tl("Inserisci il codice e scegli un nickname: nessuna email, nessun dato personale richiesto.")) },
+    { title: td('tut_s3_title', tl("Imposta la password")), body: td('tut_s3_body', tl("Al primo ingresso crei una password per il tuo nickname; le volte dopo accedi con quella.")) },
+    { title: td('tut_s4_title', tl("Lavora nei moduli")), body: td('tut_s4_body', tl("Trovi solo i moduli abilitati dal docente per quella sessione, con il suo controllo sempre attivo.")) },
   ]
 
   return (
@@ -381,40 +383,40 @@ function HomeSection({
       <section className="relative grid gap-8 py-4 md:grid-cols-[1fr_1.1fr] md:items-center md:gap-10 md:py-10">
         <div className="relative text-left">
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-            {td('hero_eyebrow', 'Piattaforma didattica per la scuola')}
+            {td('hero_eyebrow', tl("Piattaforma didattica per la scuola"))}
           </span>
 
           <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight text-[var(--logo-ink)] md:text-5xl lg:text-6xl">
-            {td('hero_title', 'L’intelligenza artificiale')}<br />
-            <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', 'entra in classe.')}</span>
+            {td('hero_title', tl("L’intelligenza artificiale"))}<br />
+            <span className="text-[var(--logo-violet-strong)]">{td('hero_title_accent', tl("entra in classe."))}</span>
           </h1>
 
           <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-700 md:text-lg">
-            {td('hero_body', 'Uno spazio per insegnare, creare e sperimentare con l\'AI. Il docente guida, gli studenti esplorano.')}
+            {td('hero_body', tl("Uno spazio per insegnare, creare e sperimentare con l'AI. Il docente guida, gli studenti esplorano."))}
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
             <Button tone="accent" surface="solid" onClick={onTeacherCta}>
-              {td('cta_teachers', 'Area docenti')}
+              {td('cta_teachers', tl("Area docenti"))}
             </Button>
             <Button tone="neutral" surface="outline" onClick={onStudentCta}>
-              {td('cta_students', 'Accesso studenti')}
+              {td('cta_students', tl("Accesso studenti"))}
             </Button>
           </div>
 
           <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold">
             <button onClick={() => scrollTo('landing-modules')} className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-[var(--logo-pink)]">
-              {td('link_modules', 'Cosa trovi dentro')} <ArrowRight size={14} />
+              {td('link_modules', tl("Cosa trovi dentro"))} <ArrowRight size={14} />
             </button>
             <button onClick={() => scrollTo('landing-tutorial')} className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-[var(--logo-pink)]">
-              {td('link_tutorial', 'Come si entra')} <ArrowRight size={14} />
+              {td('link_tutorial', tl("Come si entra"))} <ArrowRight size={14} />
             </button>
           </div>
         </div>
 
         <figure className="min-w-0">
           <img src="/illustrations/landing/learning-together.webp"
-            alt={td('hero_image_alt', 'Due personaggi stringono la mano a una rete neurale sorridente con braccia e gambe.')}
+            alt={td('hero_image_alt', tl("Due personaggi stringono la mano a una rete neurale sorridente con braccia e gambe."))}
             width={1536} height={1024} fetchPriority="high" decoding="async"
             className="mx-auto h-auto w-full max-w-[640px] object-contain" />
         </figure>
@@ -427,9 +429,9 @@ function HomeSection({
       {/* ---------- Modules ---------- */}
       <section id="landing-modules" className="scroll-mt-28">
         <SectionHeading
-          eyebrow={td('modules_eyebrow', 'Dentro la piattaforma')}
-          title={td('modules_title', 'Tutto quello che serve per una lezione con l\'AI')}
-          body={td('modules_body', 'Ogni modulo si accende per sessione: il docente decide cosa vedono gli studenti.')}
+          eyebrow={td('modules_eyebrow', tl("Dentro la piattaforma"))}
+          title={td('modules_title', tl("Tutto quello che serve per una lezione con l'AI"))}
+          body={td('modules_body', tl("Ogni modulo si accende per sessione: il docente decide cosa vedono gli studenti."))}
         />
         <div className="mt-8 grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map(m => (
@@ -442,44 +444,47 @@ function HomeSection({
       <section id="landing-tutorial" className="scroll-mt-28">
         <SectionHeading
           eyebrow={td('tut_eyebrow', 'Tutorial')}
-          title={td('tut_title', 'Come si entra in piattaforma')}
-          body={td('tut_body', 'Due percorsi diversi: i docenti hanno un account su invito, gli studenti entrano con il codice della sessione.')}
+          title={td('tut_title', tl("Come si entra in piattaforma"))}
+          body={td('tut_body', tl("Due percorsi diversi: i docenti hanno un account su invito, gli studenti entrano con il codice della sessione."))}
         />
 
         <div className="mt-8 grid gap-5 lg:grid-cols-2">
           <TutorialTrack
             accent="violet"
             icon={School}
-            title={td('tut_teacher_title', 'Per i docenti')}
-            badge={td('tut_teacher_badge', 'Solo su invito')}
+            title={td('tut_teacher_title', tl("Per i docenti"))}
+            badge={td('tut_teacher_badge', tl("Solo su invito"))}
             steps={TEACHER_STEPS}
-            note={td('tut_teacher_note', 'Al momento la registrazione docenti è chiusa: non esiste un form di iscrizione pubblico. Se non hai ricevuto un invito, chiedilo alla tua scuola o a Fondazione Golinelli.')}
-            actionLabel={td('tut_teacher_action', 'Vai al login docenti')}
+            note={td('tut_teacher_note', tl("Al momento la registrazione docenti è chiusa: non esiste un form di iscrizione pubblico. Se non hai ricevuto un invito, chiedilo alla tua scuola o a Fondazione Golinelli."))}
+            actionLabel={td('tut_teacher_action', tl("Vai al login docenti"))}
             onAction={onTeacherCta}
           />
           <TutorialTrack
             accent="blue"
             icon={GraduationCap}
-            title={td('tut_student_title', 'Per gli studenti')}
-            badge={td('tut_student_badge', 'Serve il codice sessione')}
+            title={td('tut_student_title', tl("Per gli studenti"))}
+            badge={td('tut_student_badge', tl("Serve il codice sessione"))}
             steps={STUDENT_STEPS}
-            note={td('tut_student_note', 'Senza il codice di una sessione già avviata dal docente non è possibile entrare, e non ci si può registrare in autonomia. Il codice lo comunica solo il docente.')}
-            actionLabel={td('tut_student_action', 'Ho un codice: entra')}
+            note={td('tut_student_note', tl("Senza il codice di una sessione già avviata dal docente non è possibile entrare, e non ci si può registrare in autonomia. Il codice lo comunica solo il docente."))}
+            actionLabel={td('tut_student_action', tl("Ho un codice: entra"))}
             onAction={onStudentCta}
           />
         </div>
       </section>
 
+      {/* ---------- FAQ ---------- */}
+      <LandingFaq />
+
       {/* ---------- Contacts ---------- */}
       <section id="landing-contacts" className="scroll-mt-28">
         <div className="flex flex-col gap-6 border-t border-slate-200 py-10 text-left md:flex-row md:items-center md:justify-between">
           <div className="max-w-xl">
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{td('contacts_eyebrow', 'Contatti')}</span>
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--logo-pink)]">{td('contacts_eyebrow', tl("Contatti"))}</span>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--logo-ink)] md:text-3xl">
-              {td('contacts_title', 'Vuoi portare Golinelli.ai nella tua scuola?')}
+              {td('contacts_title', tl("Vuoi portare Golinelli.ai nella tua scuola?"))}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 md:text-base">
-              {td('contacts_body', 'Per richiedere un invito docente, avere informazioni sulla piattaforma o segnalare un problema, scrivici.')}
+              {td('contacts_body', tl("Per richiedere un invito docente, avere informazioni sulla piattaforma o segnalare un problema, scrivici."))}
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
@@ -596,19 +601,19 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
             <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
               <Check className="w-6 h-6 text-green-600" />
             </div>
-            <h3 className="text-base font-bold text-slate-800 mb-1">Email inviata</h3>
-            <p className="text-sm text-slate-500 mb-4">Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.</p>
-            <Button tone="neutral" surface="solid" className="w-full">Chiudi</Button>
+            <h3 className="text-base font-bold text-slate-800 mb-1">{tl("Email inviata")}</h3>
+            <p className="text-sm text-slate-500 mb-4">{tl("Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.")}</p>
+            <Button tone="neutral" surface="solid" className="w-full">{tl("Chiudi")}</Button>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-800">Recupera password</h3>
+              <h3 className="text-base font-bold text-slate-800">{tl("Recupera password")}</h3>
               <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-sm text-slate-500 mb-4">Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.</p>
+            <p className="text-sm text-slate-500 mb-4">{tl("Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.")}</p>
             <form onSubmit={handleSubmit} className="space-y-3">
               <Input
                 type="email"
@@ -621,8 +626,8 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
               />
               <Button type="submit" tone="accent" surface="solid" className="w-full" disabled={loading || !email.trim()}>
                 {loading ? (
-                  <span className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" />Invio...</span>
-                ) : 'Invia link di reset'}
+                  <span className="flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" />{tl("Invio...")}</span>
+                ) : tl("Invia link di reset")}
               </Button>
             </form>
           </>
@@ -667,7 +672,7 @@ function TeachersSection() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label htmlFor="password">Password</Label>
-                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-blue-700 hover:underline">Recupera?</button>
+                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-blue-700 hover:underline">{tl("Recupera?")}</button>
               </div>
               <Input
                 id="password" type="password"
@@ -696,7 +701,7 @@ function TeachersSection() {
       </div>
       <div className="mt-4 text-center">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-medium border border-amber-200">
-          <FlaskConical size={12} /> Piattaforma in Beta Privata
+          <FlaskConical size={12} /> {tl("Piattaforma in Beta Privata")}
         </span>
       </div>
     </motion.div>

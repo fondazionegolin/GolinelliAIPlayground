@@ -9,6 +9,22 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def describe_smtp_error(exc: Exception) -> str:
+    """A failed send, explained: the raw SMTP error is kept short at the end for support."""
+    raw = str(exc).replace("\n", " ")[:180]
+    if isinstance(exc, aiosmtplib.SMTPAuthenticationError) or " 535" in f" {raw}" or "BadCredentials" in raw:
+        return ("Credenziali SMTP rifiutate da Gmail: la password per le app è scaduta o revocata. "
+                "Va rigenerata nell'account Google e aggiornata nel file .env del server. (" + raw + ")")
+    if isinstance(exc, aiosmtplib.SMTPRecipientsRefused):
+        return "Indirizzo del destinatario rifiutato dal server di posta (" + raw + ")"
+    # SMTPServerDisconnected is an OSError too: it is checked before the network errors.
+    if isinstance(exc, aiosmtplib.SMTPServerDisconnected):
+        return "Il server di posta ha chiuso la connessione (spesso: credenziali non valide) (" + raw + ")"
+    if isinstance(exc, (aiosmtplib.SMTPConnectError, aiosmtplib.SMTPConnectTimeoutError, aiosmtplib.SMTPTimeoutError, OSError)):
+        return "Server di posta non raggiungibile (" + raw + ")"
+    return "Invio non riuscito (" + raw + ")"
+
+
 class EmailService:
     """Service for sending emails via SMTP (Google Workspace)"""
     
@@ -25,39 +41,63 @@ class EmailService:
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
+        text_content: Optional[str] = None
     ) -> bool:
         """Send an email via SMTP"""
+        ok, _ = await self.send_email_result(to_email, subject, html_content, text_content)
+        return ok
+
+    async def send_email_result(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Send an email and say why it failed, in words an admin can act on."""
         if not self.password:
             logger.warning("SMTP password not configured, skipping email send")
-            return False
-        
+            return False, "SMTP non configurato: manca la password del server di posta"
+        message = MIMEMultipart("alternative")
+        message["From"] = f"{self.from_name} <{self.from_email}>"
+        message["To"] = to_email
+        message["Subject"] = subject
+        if text_content:
+            message.attach(MIMEText(text_content, "plain", "utf-8"))
+        message.attach(MIMEText(html_content, "html", "utf-8"))
         try:
-            message = MIMEMultipart("alternative")
-            message["From"] = f"{self.from_name} <{self.from_email}>"
-            message["To"] = to_email
-            message["Subject"] = subject
-            
-            if text_content:
-                message.attach(MIMEText(text_content, "plain", "utf-8"))
-            message.attach(MIMEText(html_content, "html", "utf-8"))
-            
-            await aiosmtplib.send(
-                message,
-                hostname=self.host,
-                port=self.port,
-                username=self.username,
-                password=self.password,
-                start_tls=True,
-            )
-            
+            async with self._client() as smtp:
+                await self._authenticate(smtp)
+                await smtp.send_message(message)
             logger.info(f"Email sent successfully to {to_email}")
-            return True
-            
+            return True, None
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {e}")
-            return False
-    
+            reason = describe_smtp_error(e)
+            logger.error(f"Failed to send email to {to_email}: {e} ({reason})")
+            return False, reason
+
+    def _client(self) -> aiosmtplib.SMTP:
+        return aiosmtplib.SMTP(hostname=self.host, port=self.port, start_tls=True, timeout=30)
+
+    async def _authenticate(self, smtp: aiosmtplib.SMTP) -> None:
+        # Gmail drops the connection after a failed AUTH LOGIN, which aiosmtplib reports as "Connection lost":
+        # AUTH PLAIN gets the real 535 answer back when the app password is rejected.
+        if "plain" in smtp.server_auth_methods:
+            await smtp.auth_plain(self.username, self.password)
+        else:
+            await smtp.login(self.username, self.password)
+
+    async def check(self) -> tuple[bool, Optional[str]]:
+        """Can the platform send mail right now? Connects and authenticates, sends nothing."""
+        if not self.password:
+            return False, "SMTP non configurato: manca la password del server di posta"
+        try:
+            async with self._client() as smtp:
+                await self._authenticate(smtp)
+            return True, None
+        except Exception as e:
+            return False, describe_smtp_error(e)
+
     async def send_teacher_activation_email(
         self,
         to_email: str,

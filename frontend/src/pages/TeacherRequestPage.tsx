@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { GraduationCap, ArrowLeft, CheckCircle } from '@/components/icons'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { useTranslation } from 'react-i18next'
+import { tl } from '@/i18n/tl'
 
 export default function TeacherRequestPage() {
   const { t } = useTranslation()
@@ -112,7 +113,7 @@ export default function TeacherRequestPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="schoolName">Scuola / Istituto</Label>
+                <Label htmlFor="schoolName">{tl("Scuola / Istituto")}</Label>
                 <Input
                   id="schoolName" type="text"
                   placeholder="I.I.S. Galileo Galilei"
@@ -120,7 +121,7 @@ export default function TeacherRequestPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="tenantSlug">Codice Scuola (opzionale)</Label>
+                <Label htmlFor="tenantSlug">{tl("Codice Scuola (opzionale)")}</Label>
                 <Input
                   id="tenantSlug" type="text"
                   placeholder="liceo-galilei"
@@ -128,7 +129,7 @@ export default function TeacherRequestPage() {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Invio in corso...' : 'Invia Richiesta'}
+                {loading ? tl("Invio in corso...") : tl("Invia Richiesta")}
               </Button>
             </form>
           </CardContent>

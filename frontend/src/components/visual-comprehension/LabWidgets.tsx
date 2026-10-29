@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import type { DrawingLayout, Frame } from './blackboard'
 import { MathError, contour, judge, parseEquation, samples, type Equation } from './mathExpr'
 import type { ExerciseWidget, ExplorerWidget, LabWidget, LabWindow } from './types'
+import { SolidCard } from './SolidCard'
+import { tl } from '@/i18n/tl'
 
 /** The Lab: interactive cards placed to the right of the source and its boards, independent of the step-by-step tour. */
 export type LabLayout = { width: number; height: number; cards: Array<{ widget: LabWidget; frame: Frame }>; area: Frame | null }
@@ -40,7 +42,7 @@ function LabPlot({ window: w, curves, height }: { window: LabWindow; curves: Cur
   }), [curves, w.x_min, w.x_max, w.y_min, w.y_max]) // eslint-disable-line react-hooks/exhaustive-deps
   const zeroX = Math.min(Math.max(0, w.x_min), w.x_max), zeroY = Math.min(Math.max(0, w.y_min), w.y_max)
   const clip = `vc-lab-clip-${useId().replace(/:/g, '')}`
-  return <svg viewBox={`0 0 ${W} ${H}`} className="vc-lab-plot" role="img" aria-label="Grafico">
+  return <svg viewBox={`0 0 ${W} ${H}`} className="vc-lab-plot" role="img" aria-label={tl("Grafico")}>
     <defs><clipPath id={clip}><rect x={m.l} y={m.t} width={W - m.l - m.r} height={H - m.t - m.b} /></clipPath></defs>
     {ticks(w.x_min, w.x_max, sx).map(x => <g key={`x${x}`}><path d={`M${px(x)} ${m.t}V${H - m.b}`} stroke="#eef0f5" /><text x={px(x)} y={H - m.b + 22} textAnchor="middle" className="vc-lab-tick">{Number(x.toFixed(6))}</text></g>)}
     {ticks(w.y_min, w.y_max, sy).map(y => <g key={`y${y}`}><path d={`M${m.l} ${py(y)}H${W - m.r}`} stroke="#eef0f5" /><text x={m.l - 8} y={py(y) + 5} textAnchor="end" className="vc-lab-tick">{Number(y.toFixed(6))}</text></g>)}
@@ -58,12 +60,12 @@ function ExplorerCard({ widget }: { widget: ExplorerWidget }) {
   const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString('it-IT')
   return <>
     <div className="vc-lab-formula">{widget.formula || widget.equation}</div>
-    {eq ? <LabPlot window={widget.window} curves={[{ eq, env: values, color: '#3e63dd' }]} height={.58} /> : <p className="vc-lab-error">Equazione non leggibile.</p>}
+    {eq ? <LabPlot window={widget.window} curves={[{ eq, env: values, color: '#3e63dd' }]} height={.58} /> : <p className="vc-lab-error">{tl("Equazione non leggibile.")}</p>}
     {widget.params.map(p => <label key={p.name} className="vc-lab-row"><span>{p.label}</span>
-      <input type="range" min={p.min} max={p.max} step={p.step} value={values[p.name]} aria-label={`Parametro ${p.label}`}
+      <input type="range" min={p.min} max={p.max} step={p.step} value={values[p.name]} aria-label={tl("Parametro {0}", p.label)}
         onChange={e => { const v = Number(e.target.value); setValues(old => ({ ...old, [p.name]: v })) }} />
       <output>{fmt(values[p.name])}</output></label>)}
-    <div className="vc-lab-foot">{widget.note && <p>{widget.note}</p>}<button type="button" onClick={() => setValues(initial)}>Ripristina</button></div>
+    <div className="vc-lab-foot">{widget.note && <p>{widget.note}</p>}<button type="button" onClick={() => setValues(initial)}>{tl("Ripristina")}</button></div>
   </>
 }
 
@@ -79,6 +81,8 @@ function ExerciseCard({ widget, onAsk }: { widget: ExerciseWidget; onAsk?: (text
   const [free, setFree] = useState('')
   const [hints, setHints] = useState(0)
   const [solution, setSolution] = useState(false)
+  // The student gets there first: the solution opens only after trying and using every hint.
+  const [tried, setTried] = useState(false)
   const attemptText = widget.template
     ? (parts.every((part, i) => i % 2 === 0 || (blanks[part] ?? '').trim()) ? parts.map((part, i) => i % 2 ? `(${blanks[part]})` : part).join('') : '')
     : free
@@ -90,22 +94,23 @@ function ExerciseCard({ widget, onAsk }: { widget: ExerciseWidget; onAsk?: (text
     try {
       const attempt = parseEquation(debounced)
       return { attempt, verdict: judge(attempt, target) }
-    } catch (e) { return { error: e instanceof MathError ? e.message : 'Non riesco a leggere l\'equazione.' } }
+    } catch (e) { return { error: e instanceof MathError ? e.message : tl("Non riesco a leggere l'equazione.") } }
   }, [debounced, target])
   const curves: Curve[] = [
     ...(widget.show_target || solution ? [{ eq: target, env: {}, color: '#94a3b8', dashed: true, width: 3 }] : []),
     ...(result && 'attempt' in result && result.attempt ? [{ eq: result.attempt, env: {}, color: result.verdict.correct ? '#2b9a66' : '#3e63dd' }] : []),
   ]
   const solved = !!(result && 'verdict' in result && result.verdict.correct)
+  useEffect(() => { if (result && 'verdict' in result) setTried(true) }, [result])
   return <>
     <p className="vc-lab-prompt">{widget.prompt}</p>
     <LabPlot window={widget.window} curves={curves} height={.5} />
-    <div className="vc-lab-legend">{(widget.show_target || solution) && <span><i className="vc-dash" />da trovare</span>}<span><i className="vc-solid" />la tua</span></div>
-    <div className="vc-lab-input" aria-label="La tua equazione">
+    <div className="vc-lab-legend">{(widget.show_target || solution) && <span><i className="vc-dash" />{tl("da trovare")}</span>}<span><i className="vc-solid" />{tl("la tua")}</span></div>
+    <div className="vc-lab-input" aria-label={tl("La tua equazione")}>
       {widget.template ? parts.map((part, i) => i % 2 === 0 ? <span key={i}>{pretty(part)}</span>
-        : <input key={i} value={blanks[part] ?? ''} aria-label={`Casella ${part}`} placeholder="?" size={Math.max(2, (blanks[part] ?? '').length + 1)}
+        : <input key={i} value={blanks[part] ?? ''} aria-label={tl("Casella {0}", part)} placeholder="?" size={Math.max(2, (blanks[part] ?? '').length + 1)}
           onChange={e => { const v = e.target.value; setBlanks(old => ({ ...old, [part]: v })) }} />)
-        : <input className="vc-lab-free" value={free} placeholder="Scrivi l'equazione, es. y = 2x^2 - 3" aria-label="Equazione"
+        : <input className="vc-lab-free" value={free} placeholder={tl("Scrivi l'equazione, es. y = 2x^2 - 3")} aria-label={tl("Equazione")}
           onChange={e => setFree(e.target.value)} />}
     </div>
     {result && <p className={`vc-lab-feedback ${'error' in result ? 'vc-fb-error' : solved ? 'vc-fb-ok' : 'vc-fb-no'}`} role="status">
@@ -113,10 +118,10 @@ function ExerciseCard({ widget, onAsk }: { widget: ExerciseWidget; onAsk?: (text
     {hints > 0 && <ul className="vc-lab-hints">{widget.hints.slice(0, hints).map((h, i) => <li key={i}>{h}</li>)}</ul>}
     {(solved || solution) && widget.explanation && <p className="vc-lab-explanation">{solution && !solved && <strong>{widget.target} · </strong>}{widget.explanation}</p>}
     <div className="vc-lab-foot">
-      {hints < widget.hints.length && !solved && <button type="button" onClick={() => setHints(h => h + 1)}>Suggerimento</button>}
-      {!solved && !solution && <button type="button" onClick={() => setSolution(true)}>Mostra soluzione</button>}
-      {onAsk && attemptText.trim() && <button type="button" onClick={() => onAsk(`Esercizio «${widget.title}»: ho scritto ${attemptText}.` +
-        (result && 'verdict' in result ? ` La lavagna dice: ${result.verdict.message}` : '') + ' Aiutami a capire.')}>Chiedi al tutor</button>}
+      {hints < widget.hints.length && !solved && <button type="button" onClick={() => setHints(h => h + 1)}>{tl("Suggerimento")}</button>}
+      {!solved && !solution && tried && hints >= widget.hints.length && <button type="button" onClick={() => setSolution(true)}>{tl("Mostra soluzione")}</button>}
+      {onAsk && attemptText.trim() && <button type="button" onClick={() => onAsk(tl("Esercizio «{0}»: ho scritto {1}.", widget.title, attemptText) +
+        (result && 'verdict' in result ? tl(" La lavagna dice: {0}", result.verdict.message) : '') + ' Aiutami a capire.')}>{tl("Chiedi al tutor")}</button>}
     </div>
   </>
 }
@@ -128,12 +133,13 @@ function ExerciseCard({ widget, onAsk }: { widget: ExerciseWidget; onAsk?: (text
 export function LabCards({ lab, unit, onAsk }: { lab: LabLayout; unit: number; onAsk?: (text: string) => void }) {
   if (!lab.area) return null
   return <g className="vc-lab">
-    <text x={lab.area.x} y={lab.area.y - unit * .018} fontSize={unit * .024} fontWeight={600} fill="#64748b" fontFamily="ui-sans-serif, system-ui, sans-serif">Laboratorio</text>
+    <text x={lab.area.x} y={lab.area.y - unit * .018} fontSize={unit * .024} fontWeight={600} fill="#64748b" fontFamily="ui-sans-serif, system-ui, sans-serif">{tl("Laboratorio")}</text>
     {lab.cards.map(({ widget, frame }) => <foreignObject key={widget.id} {...frame}>
       <div className="vc-lab-card" style={{ fontSize: frame.width / 34 }} data-widget-id={widget.id}
         onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-        <div className="vc-lab-head"><span>{widget.kind === 'explorer' ? 'Esplora' : 'Esercizio'}</span><strong>{widget.title}</strong></div>
-        {widget.kind === 'explorer' ? <ExplorerCard widget={widget} /> : <ExerciseCard widget={widget} onAsk={onAsk} />}
+        <div className="vc-lab-head"><span>{widget.kind === 'explorer' ? tl("Esplora") : widget.kind === 'solid' ? tl("Solido 3D") : tl("Esercizio")}</span><strong>{widget.title}</strong></div>
+        {widget.kind === 'explorer' ? <ExplorerCard widget={widget} /> : widget.kind === 'solid' ? <SolidCard widget={widget} onAsk={onAsk} />
+          : <ExerciseCard widget={widget} onAsk={onAsk} />}
       </div>
     </foreignObject>)}
   </g>

@@ -11,6 +11,7 @@ import {
   Pencil, Trash2, Loader2, ChevronDown, ChevronUp,
   Upload, Bot, X, Save, ChevronLeft, ChevronRight, Circle
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -60,10 +61,10 @@ type Phase = typeof PHASES[number]
 const PHASE_LABELS: Record<Phase, string> = {
   briefing: 'Briefing',
   kb: 'Knowledge Base',
-  plan: 'Piano',
-  generating: 'Generazione',
-  review: 'Revisione',
-  published: 'Pubblicata',
+  plan: tl("Piano"),
+  generating: tl("Generazione"),
+  review: tl("Revisione"),
+  published: tl("Pubblicata"),
 }
 
 const PHASE_ICONS: Record<Phase, React.ReactNode> = {
@@ -76,14 +77,14 @@ const PHASE_ICONS: Record<Phase, React.ReactNode> = {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  lesson: 'Documento',
-  quiz: 'Quiz',
-  exercise: 'Esercizio',
-  presentation: 'Presentazione',
+  lesson: tl("Documento"),
+  quiz: tl("Quiz"),
+  exercise: tl("Esercizio"),
+  presentation: tl("Presentazione"),
 }
 
 const LANGUAGE_OPTIONS = [
-  { value: 'italiano', label: 'Italiano' },
+  { value: 'italiano', label: tl("Italiano") },
   { value: 'english', label: 'English' },
   { value: 'français', label: 'Français' },
   { value: 'español', label: 'Español' },
@@ -91,14 +92,14 @@ const LANGUAGE_OPTIONS = [
 ]
 
 const GRADE_OPTIONS = [
-  { value: '', label: 'Seleziona grado scolastico' },
-  { value: 'Scuola dell\'Infanzia (3–6 anni)', label: 'Infanzia (3–6 anni)' },
-  { value: 'Scuola Primaria – I ciclo (1ª–2ª)', label: 'Primaria I ciclo (1ª–2ª)' },
-  { value: 'Scuola Primaria – II ciclo (3ª–5ª)', label: 'Primaria II ciclo (3ª–5ª)' },
-  { value: 'Scuola Secondaria I grado (6ª–8ª)', label: 'Secondaria I grado (Media)' },
-  { value: 'Scuola Secondaria II grado – Biennio (1ª–2ª)', label: 'Secondaria II grado – Biennio' },
-  { value: 'Scuola Secondaria II grado – Triennio (3ª–5ª)', label: 'Secondaria II grado – Triennio' },
-  { value: 'Università / Formazione superiore', label: 'Università / Formazione superiore' },
+  { value: '', label: tl("Seleziona grado scolastico") },
+  { value: 'Scuola dell\'Infanzia (3–6 anni)', label: tl("Infanzia (3–6 anni)") },
+  { value: 'Scuola Primaria – I ciclo (1ª–2ª)', label: tl("Primaria I ciclo (1ª–2ª)") },
+  { value: 'Scuola Primaria – II ciclo (3ª–5ª)', label: tl("Primaria II ciclo (3ª–5ª)") },
+  { value: 'Scuola Secondaria I grado (6ª–8ª)', label: tl("Secondaria I grado (Media)") },
+  { value: 'Scuola Secondaria II grado – Biennio (1ª–2ª)', label: tl("Secondaria II grado – Biennio") },
+  { value: 'Scuola Secondaria II grado – Triennio (3ª–5ª)', label: tl("Secondaria II grado – Triennio") },
+  { value: 'Università / Formazione superiore', label: tl("Università / Formazione superiore") },
 ]
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ export default function UDACreatorPage() {
   const [planDraft, setPlanDraft] = useState('')
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [briefingPrompt, setBriefingPrompt] = useState('')
-  const [selectedLanguage, setSelectedLanguage] = useState('italiano')
+  const [selectedLanguage, setSelectedLanguage] = useState(tl("italiano"))
   const [selectedGrade, setSelectedGrade] = useState('')
   const [previewChild, setPreviewChild] = useState<ChildTask | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -156,18 +157,18 @@ export default function UDACreatorPage() {
       queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
       queryClient.invalidateQueries({ queryKey: ['udas', classId] })
       setUploadFiles([])
-      toast({ title: 'Knowledge base generata' })
+      toast({ title: tl("Knowledge base generata") })
     },
-    onError: () => toast({ title: 'Errore generazione KB', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore generazione KB"), variant: 'destructive' }),
   })
 
   const generatePlanMutation = useMutation({
     mutationFn: () => udaApi.generatePlan(classId!, udaId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
-      toast({ title: 'Piano generato' })
+      toast({ title: tl("Piano generato") })
     },
-    onError: () => toast({ title: 'Errore generazione piano', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore generazione piano"), variant: 'destructive' }),
   })
 
   const updateKbMutation = useMutation({
@@ -195,9 +196,9 @@ export default function UDACreatorPage() {
     mutationFn: () => udaApi.publishUda(classId!, udaId!),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
-      toast({ title: `UDA pubblicata su ${res.data.session_count} sessioni!` })
+      toast({ title: tl("UDA pubblicata su {0} sessioni!", res.data.session_count) })
     },
-    onError: () => toast({ title: 'Errore pubblicazione', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore pubblicazione"), variant: 'destructive' }),
   })
 
   const chatMutation = useMutation({
@@ -208,7 +209,7 @@ export default function UDACreatorPage() {
         queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
       }
     },
-    onError: () => toast({ title: 'Errore chat', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore chat"), variant: 'destructive' }),
   })
 
   // ─── Generate content via SSE ─────────────────────────────────────────────
@@ -221,9 +222,9 @@ export default function UDACreatorPage() {
     } else if (ev.event === 'item_error') {
       setGenProgress(p => [...p, { text: ev.error, state: 'error' }])
     } else if (ev.event === 'done') {
-      setGenProgress(p => [...p, { text: 'Generazione completata', state: 'done' }])
+      setGenProgress(p => [...p, { text: tl("Generazione completata"), state: 'done' }])
     } else if (ev.type === 'error') {
-      setGenProgress(p => [...p, { text: ev.message || 'Generazione interrotta', state: 'error' }])
+      setGenProgress(p => [...p, { text: ev.message || tl("Generazione interrotta"), state: 'error' }])
     }
   }
 
@@ -237,11 +238,11 @@ export default function UDACreatorPage() {
         credentials: 'include',
         headers: getApiAuthHeaders(),
       })
-      if (!res.ok) throw new Error(`Errore ${res.status}`)
+      if (!res.ok) throw new Error(tl("Errore {0}", res.status))
       notifyJobsChanged()
       await readEventStream(res, 'sse', handleGenerationEvent)
     } catch {
-      toast({ title: 'Errore generazione contenuti', variant: 'destructive' })
+      toast({ title: tl("Errore generazione contenuti"), variant: 'destructive' })
     } finally {
       setGenerating(false)
       notifyJobsChanged()
@@ -293,7 +294,7 @@ export default function UDACreatorPage() {
   }
 
   if (!uda) {
-    return <div className="p-8 text-center text-slate-500">UDA non trovata.</div>
+    return <div className="p-8 text-center text-slate-500">{tl("UDA non trovata.")}</div>
   }
 
   const phase = uda.uda_phase as Phase
@@ -308,7 +309,7 @@ export default function UDACreatorPage() {
         </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold text-slate-800 truncate">{uda.title}</h1>
-          <p className="text-xs text-slate-500">Unità Didattica</p>
+          <p className="text-xs text-slate-500">{tl("Unità Didattica")}</p>
         </div>
         {/* Phase stepper — flat, minimal */}
         <div className="hidden md:flex items-center gap-1">
@@ -339,13 +340,13 @@ export default function UDACreatorPage() {
             disabled={publishMutation.isPending}
           >
             {publishMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <span className="mr-2 block w-2 h-2 rounded-full bg-white" />}
-            Pubblica UDA
+            {tl("Pubblica UDA")}
           </Button>
         )}
         {phase === 'published' && (
           <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm font-medium flex items-center gap-1.5">
             <span className="block w-2 h-2 rounded-full bg-indigo-400" />
-            Pubblicata
+            {tl("Pubblicata")}
           </span>
         )}
       </div>
@@ -356,17 +357,16 @@ export default function UDACreatorPage() {
 
           {/* PHASE: briefing */}
           {(phase === 'briefing' || phase === 'kb') && (
-            <PhaseCard title="Fase 1 – Descrivi la tua UDA" icon={<Lightbulb />} active={phase === 'briefing'}>
+            <PhaseCard title={tl("Fase 1 – Descrivi la tua UDA")} icon={<Lightbulb />} active={phase === 'briefing'}>
               {phase === 'briefing' && (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600">
-                    Descrivi la tua Unità Didattica nel dettaglio: argomento, obiettivi, contenuti, durata prevista.
-                    Più è precisa la descrizione, più il contenuto generato sarà fedele e di qualità.
+                    {tl("Descrivi la tua Unità Didattica nel dettaglio: argomento, obiettivi, contenuti, durata prevista. Più è precisa la descrizione, più il contenuto generato sarà fedele e di qualità.")}
                   </p>
                   <textarea
                     className="w-full border border-slate-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     rows={6}
-                    placeholder="Es: Voglio creare una UDA sull'ecosistema del laghetto. Durata 4 settimane. Gli studenti devono capire le catene alimentari, i cicli dell'acqua e l'equilibrio degli ecosistemi, con riferimenti alla biologia di Odum e Margalef..."
+                    placeholder={tl("Es: Voglio creare una UDA sull'ecosistema del laghetto. Durata 4 settimane. Gli studenti devono capire le catene alimentari, i cicli dell'acqua e l'equilibrio degli ecosistemi, con riferimenti alla biologia di Odum e Margalef...")}
                     value={briefingPrompt}
                     onChange={e => setBriefingPrompt(e.target.value)}
                   />
@@ -374,7 +374,7 @@ export default function UDACreatorPage() {
                   {/* Language + Grade selectors */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Lingua dei contenuti</label>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">{tl("Lingua dei contenuti")}</label>
                       <select
                         value={selectedLanguage}
                         onChange={e => setSelectedLanguage(e.target.value)}
@@ -386,7 +386,7 @@ export default function UDACreatorPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Grado scolastico</label>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">{tl("Grado scolastico")}</label>
                       <select
                         value={selectedGrade}
                         onChange={e => setSelectedGrade(e.target.value)}
@@ -410,10 +410,10 @@ export default function UDACreatorPage() {
                     />
                     <Button tone="neutral" surface="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                       <Upload className="h-4 w-4 mr-2" />
-                      Allega documenti
+                      {tl("Allega documenti")}
                     </Button>
                     {uploadFiles.length > 0 && (
-                      <span className="text-sm text-slate-500">{uploadFiles.length} file selezionati</span>
+                      <span className="text-sm text-slate-500">{uploadFiles.length} {tl("file selezionati")}</span>
                     )}
                     <Button
                       tone="accent"
@@ -423,7 +423,7 @@ export default function UDACreatorPage() {
                       onClick={() => generateKbMutation.mutate()}
                     >
                       {generateKbMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
-                      Genera Knowledge Base
+                      {tl("Genera Knowledge Base")}
                     </Button>
                   </div>
                 </div>
@@ -443,11 +443,11 @@ export default function UDACreatorPage() {
                     onChange={e => setKbDraft(e.target.value)}
                   />
                   <div className="flex gap-2 justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingKb(false)}>Annulla</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingKb(false)}>{tl("Annulla")}</Button>
                     <Button size="sm" onClick={() => {
                       try { updateKbMutation.mutate(JSON.parse(kbDraft)) }
                       catch { toast({ title: 'JSON non valido', variant: 'destructive' }) }
-                    }}>Salva</Button>
+                    }}>{tl("Salva")}</Button>
                   </div>
                 </div>
               ) : (
@@ -456,7 +456,7 @@ export default function UDACreatorPage() {
                   {phase !== 'published' && (
                     <div className="flex gap-2 flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => { setKbDraft(JSON.stringify(uda.kb, null, 2)); setEditingKb(true) }}>
-                        <Pencil className="h-3 w-3 mr-1" />Modifica
+                        <Pencil className="h-3 w-3 mr-1" />{tl("Modifica")}
                       </Button>
                       {phase === 'kb' && (
                         <Button
@@ -467,7 +467,7 @@ export default function UDACreatorPage() {
                           onClick={() => generatePlanMutation.mutate()}
                         >
                           {generatePlanMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <List className="h-4 w-4 mr-1" />}
-                          Genera Piano
+                          {tl("Genera Piano")}
                         </Button>
                       )}
                     </div>
@@ -479,7 +479,7 @@ export default function UDACreatorPage() {
 
           {/* PHASE: Plan */}
           {(phase === 'plan' || phase === 'generating' || phase === 'review' || phase === 'published') && uda.plan?.items && (
-            <PhaseCard title="Piano Operativo" icon={<List />} active={phase === 'plan'} collapsible defaultOpen={phase === 'plan'}>
+            <PhaseCard title={tl("Piano Operativo")} icon={<List />} active={phase === 'plan'} collapsible defaultOpen={phase === 'plan'}>
               {editingPlan ? (
                 <div className="space-y-2">
                   <textarea
@@ -489,11 +489,11 @@ export default function UDACreatorPage() {
                     onChange={e => setPlanDraft(e.target.value)}
                   />
                   <div className="flex gap-2 justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingPlan(false)}>Annulla</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingPlan(false)}>{tl("Annulla")}</Button>
                     <Button size="sm" onClick={() => {
                       try { updatePlanMutation.mutate(JSON.parse(planDraft)) }
                       catch { toast({ title: 'JSON non valido', variant: 'destructive' }) }
-                    }}>Salva</Button>
+                    }}>{tl("Salva")}</Button>
                   </div>
                 </div>
               ) : (
@@ -512,7 +512,7 @@ export default function UDACreatorPage() {
                   {phase === 'plan' && (
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => { setPlanDraft(JSON.stringify(uda.plan, null, 2)); setEditingPlan(true) }}>
-                        <Pencil className="h-3 w-3 mr-1" />Modifica Piano
+                        <Pencil className="h-3 w-3 mr-1" />{tl("Modifica Piano")}
                       </Button>
                       <Button
                         tone="accent"
@@ -522,7 +522,7 @@ export default function UDACreatorPage() {
                         onClick={startGeneration}
                       >
                         {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
-                        Genera Contenuti
+                        {tl("Genera Contenuti")}
                       </Button>
                     </div>
                   )}
@@ -533,7 +533,7 @@ export default function UDACreatorPage() {
 
           {/* Generation progress — flat minimal */}
           {(generating || genProgress.length > 0) && (
-            <PhaseCard title="Generazione in corso" icon={<Zap />} active>
+            <PhaseCard title={tl("Generazione in corso")} icon={<Zap />} active>
               <div className="space-y-1.5">
                 {genProgress.map((item, i) => (
                   <div key={i} className="flex items-center gap-2.5 text-sm">
@@ -552,7 +552,7 @@ export default function UDACreatorPage() {
 
           {/* PHASE: Review – children */}
           {(phase === 'review' || phase === 'published') && uda.children.length > 0 && (
-            <PhaseCard title="Contenuti Generati" icon={<Eye />} active={phase === 'review'} collapsible defaultOpen>
+            <PhaseCard title={tl("Contenuti Generati")} icon={<Eye />} active={phase === 'review'} collapsible defaultOpen>
               <div className="space-y-2">
                 {uda.children.map((child) => (
                   <div key={child.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-3 border border-slate-100 shadow-sm hover:border-indigo-200 transition-colors">
@@ -562,13 +562,13 @@ export default function UDACreatorPage() {
                     <span className="text-sm flex-1 font-medium truncate">{child.title}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1 ${child.status === 'published' ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-400'}`}>
                       {child.status === 'published' && <span className="block w-1.5 h-1.5 rounded-full bg-indigo-400" />}
-                      {child.status === 'published' ? 'Pubblicato' : 'Bozza'}
+                      {child.status === 'published' ? tl("Pubblicato") : tl("Bozza")}
                     </span>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 flex-shrink-0"
-                      title="Anteprima e modifica"
+                      title={tl("Anteprima e modifica")}
                       onClick={() => setPreviewChild(child)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -594,18 +594,18 @@ export default function UDACreatorPage() {
         <div className="w-80 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
             <Bot className="h-4 w-4 text-indigo-500" />
-            <span className="text-sm font-semibold text-slate-700">Assistente UDA</span>
+            <span className="text-sm font-semibold text-slate-700">{tl("Assistente UDA")}</span>
           </div>
           <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
             {chatMessages.length === 0 && (
               <div className="text-center py-8 text-slate-400 text-xs">
                 <Bot className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>Chiedimi di modificare la knowledge base, il piano, o qualsiasi cosa sull'UDA.</p>
+                <p>{tl("Chiedimi di modificare la knowledge base, il piano, o qualsiasi cosa sull'UDA.")}</p>
                 <div className="mt-4 space-y-2">
                   {[
-                    'Aggiungi un obiettivo sulla sostenibilità',
-                    'Rimuovi la presentazione dal piano',
-                    'Aggiungi un quiz sulla biodiversità',
+                    tl("Aggiungi un obiettivo sulla sostenibilità"),
+                    tl("Rimuovi la presentazione dal piano"),
+                    tl("Aggiungi un quiz sulla biodiversità"),
                   ].map(s => (
                     <button
                       key={s}
@@ -642,7 +642,7 @@ export default function UDACreatorPage() {
             <div className="flex gap-2">
               <input
                 className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="Modifica, chiedi, aggiungi..."
+                placeholder={tl("Modifica, chiedi, aggiungi...")}
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleChatSend()}
@@ -721,17 +721,17 @@ function PhaseCard({
 
 function KbDisplay({ kb }: { kb: Record<string, unknown> }) {
   const labels: Record<string, string> = {
-    title: 'Titolo',
+    title: tl("Titolo"),
     language: 'Lingua',
-    school_level: 'Livello scolastico',
-    subject: 'Disciplina',
-    duration: 'Durata',
-    objectives: 'Obiettivi',
-    prerequisites: 'Prerequisiti',
-    key_contents: 'Contenuti chiave',
-    methodology: 'Metodologie',
-    evaluation_criteria: 'Criteri di valutazione',
-    notes: 'Note',
+    school_level: tl("Livello scolastico"),
+    subject: tl("Disciplina"),
+    duration: tl("Durata"),
+    objectives: tl("Obiettivi"),
+    prerequisites: tl("Prerequisiti"),
+    key_contents: tl("Contenuti chiave"),
+    methodology: tl("Metodologie"),
+    evaluation_criteria: tl("Criteri di valutazione"),
+    notes: tl("Note"),
   }
 
   return (
@@ -869,11 +869,11 @@ function ChildPreviewModal({
       return udaApi.updateChild(classId, udaId, child.id, { title: titleDraft, content: newContent })
     },
     onSuccess: (res) => {
-      toast({ title: 'Modifiche salvate' })
+      toast({ title: tl("Modifiche salvate") })
       setEditing(false)
       onSaved({ ...child, title: titleDraft, content: res.data.content ?? child.content })
     },
-    onError: () => toast({ title: 'Errore salvataggio', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore salvataggio"), variant: 'destructive' }),
   })
 
   return (
@@ -898,13 +898,13 @@ function ChildPreviewModal({
           <div className="flex gap-2 flex-shrink-0">
             {!readOnly && !editing && (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="h-8 text-xs">
-                <Pencil className="h-3.5 w-3.5 mr-1" />Modifica
+                <Pencil className="h-3.5 w-3.5 mr-1" />{tl("Modifica")}
               </Button>
             )}
             {editing && (
               <>
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="h-8 text-xs">
-                  Annulla
+                  {tl("Annulla")}
                 </Button>
                 <Button
                   size="sm"
@@ -913,7 +913,7 @@ function ChildPreviewModal({
                   onClick={() => saveMutation.mutate()}
                 >
                   {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-                  Salva
+                  {tl("Salva")}
                 </Button>
               </>
             )}
@@ -928,7 +928,7 @@ function ChildPreviewModal({
           {child.task_type === 'lesson' && (
             editing ? (
               <div className="space-y-2">
-                <p className="text-xs text-slate-400">Modifica il contenuto HTML del documento</p>
+                <p className="text-xs text-slate-400">{tl("Modifica il contenuto HTML del documento")}</p>
                 <textarea
                   className="w-full font-mono text-xs border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 min-h-[400px]"
                   value={lessonHtml}
@@ -1006,7 +1006,7 @@ function ChildPreviewModal({
           {child.task_type === 'exercise' && (
             <div className="space-y-4">
               <div className={`rounded-xl p-4 ${editing ? 'border border-slate-200' : 'bg-slate-50'}`}>
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Istruzioni</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">{tl("Istruzioni")}</p>
                 {editing ? (
                   <textarea
                     className="w-full text-sm border-0 focus:outline-none resize-none bg-transparent"
@@ -1039,7 +1039,7 @@ function ChildPreviewModal({
               ))}
               {exerciseDraft.evaluation_rubric && (
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-amber-600 mb-1">Criteri di valutazione</p>
+                  <p className="text-xs font-semibold text-amber-600 mb-1">{tl("Criteri di valutazione")}</p>
                   {editing ? (
                     <textarea
                       className="w-full text-sm border-0 focus:outline-none resize-none bg-transparent"
@@ -1113,7 +1113,7 @@ function ChildPreviewModal({
                   </div>
                   {slides[slideIndex].notes && (
                     <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
-                      <p className="text-xs text-slate-400 italic">Note: {slides[slideIndex].notes}</p>
+                      <p className="text-xs text-slate-400 italic">{tl("Note:")} {slides[slideIndex].notes}</p>
                     </div>
                   )}
                 </div>

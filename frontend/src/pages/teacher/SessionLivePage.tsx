@@ -39,6 +39,7 @@ import 'katex/dist/katex.min.css'
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
 import { Switch } from '@/components/ui/switch'
+import { tl } from '@/i18n/tl'
 
 interface StudentData {
   id: string
@@ -228,7 +229,7 @@ export default function SessionLivePage() {
     mutationFn: (status: string) => teacherApi.updateSession(sessionId!, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: 'Stato aggiornato!' })
+      toast({ title: tl("Stato aggiornato!") })
     },
   })
 
@@ -237,7 +238,7 @@ export default function SessionLivePage() {
       teacherApi.toggleModule(sessionId!, moduleKey, isEnabled),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: `Modulo ${variables.isEnabled ? 'attivato' : 'disattivato'}` })
+      toast({ title: tl("Modulo {0}", variables.isEnabled ? 'attivato' : 'disattivato') })
     },
   })
 
@@ -246,7 +247,7 @@ export default function SessionLivePage() {
       teacherApi.updateSession(sessionId!, { default_llm_provider: provider, default_llm_model: model }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
-      toast({ title: 'Modello di default aggiornato!' })
+      toast({ title: tl("Modello di default aggiornato!") })
     },
   })
 
@@ -256,7 +257,7 @@ export default function SessionLivePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
       setShowTaskBuilder(false)
-      toast({ title: 'Compito creato!' })
+      toast({ title: tl("Compito creato!") })
     },
   })
 
@@ -264,7 +265,7 @@ export default function SessionLivePage() {
     mutationFn: (taskId: string) => teacherApi.updateTask(sessionId!, taskId, { new_status: 'published' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
-      toast({ title: 'Compito pubblicato!' })
+      toast({ title: tl("Compito pubblicato!") })
     },
   })
 
@@ -272,13 +273,13 @@ export default function SessionLivePage() {
     mutationFn: (taskId: string) => teacherApi.deleteTask(sessionId!, taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
-      toast({ title: 'Compito eliminato' })
+      toast({ title: tl("Compito eliminato") })
     },
   })
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
-    toast({ title: 'Codice copiato!' })
+    toast({ title: tl("Codice copiato!") })
   }
 
 
@@ -336,7 +337,7 @@ export default function SessionLivePage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <MonitorPlay className="h-4 w-4 text-[#e85c8d]" />
-                {t('teacher_chat.mode_image') === 'Image' ? 'Demo Mode' : 'Modalità Demo'}
+                {t('teacher_chat.mode_image') === 'Image' ? 'Demo Mode' : tl("Modalità Demo")}
               </div>
               <button
                 onClick={() => setDemoBotId(null)}
@@ -386,21 +387,21 @@ export default function SessionLivePage() {
 
             {/* Center: join code */}
             <div className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 shadow-[var(--shadow-sm)] md:justify-start">
-              <span className="text-xs text-slate-500">Codice:</span>
+              <span className="text-xs text-slate-500">{tl("Codice:")}</span>
               {joinCodeAvailable ? (
                 <>
                   <code className="font-mono font-bold text-base text-slate-800 tracking-wider">{session.join_code}</code>
                   <button
                     onClick={() => copyCode(session.join_code)}
                     className="ml-1 text-slate-400 hover:text-slate-700 transition-colors"
-                    title="Copia codice"
+                    title={tl("Copia codice")}
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </button>
                 </>
               ) : (
                 <span className="text-sm font-medium text-slate-400">
-                  {session.status === 'paused' ? 'Non disponibile in pausa' : 'Codice dismesso'}
+                  {session.status === 'paused' ? tl("Non disponibile in pausa") : tl("Codice dismesso")}
                 </span>
               )}
             </div>
@@ -410,24 +411,24 @@ export default function SessionLivePage() {
               {session.status === 'draft' && (
                 <Button size="sm" tone="accent" surface="solid" onClick={() => updateStatusMutation.mutate('active')}>
                   <Play className="h-3.5 w-3.5 mr-1.5" />
-                  Avvia
+                  {tl("Avvia")}
                 </Button>
               )}
               {session.status === 'active' && (
                 <>
                   <Button size="sm" tone="neutral" surface="outline" onClick={() => updateStatusMutation.mutate('paused')}>
                     <Square className="h-3.5 w-3.5 mr-1.5" />
-                    Pausa
+                    {tl("Pausa")}
                   </Button>
                   <Button size="sm" tone="danger" surface="outline" onClick={() => updateStatusMutation.mutate('ended')}>
-                    Termina
+                    {tl("Termina")}
                   </Button>
                 </>
               )}
               {session.status === 'paused' && (
                 <Button size="sm" tone="accent" surface="solid" onClick={() => updateStatusMutation.mutate('active')}>
                   <Play className="h-3.5 w-3.5 mr-1.5" />
-                  Riprendi
+                  {tl("Riprendi")}
                 </Button>
               )}
             </div>
@@ -450,9 +451,9 @@ export default function SessionLivePage() {
                   }}
                 >
                   {([
-                    { key: 'modules', icon: Brain, label: 'Moduli' },
+                    { key: 'modules', icon: Brain, label: tl("Moduli") },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
-                    { key: 'documents', icon: FileText, label: 'Documenti' },
+                    { key: 'documents', icon: FileText, label: tl("Documenti") },
                     { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
                   ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
                     <TabsTrigger
@@ -484,11 +485,11 @@ export default function SessionLivePage() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
                       <Brain className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                       <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-black text-slate-900">Moduli visibili agli studenti</h2>
-                        <p className="text-xs text-slate-500">Attiva gli strumenti che gli studenti vedono nella sessione.</p>
+                        <h2 className="text-base font-black text-slate-900">{tl("Moduli visibili agli studenti")}</h2>
+                        <p className="text-xs text-slate-500">{tl("Attiva gli strumenti che gli studenti vedono nella sessione.")}</p>
                       </div>
                       <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
-                        {displayModules.filter((mod) => mod.is_enabled).length} di {displayModules.length} attivi
+                        {displayModules.filter((mod) => mod.is_enabled).length} {tl("di")} {displayModules.length} {tl("attivi")}
                       </span>
                     </div>
                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3 xl:grid-cols-4">
@@ -496,63 +497,63 @@ export default function SessionLivePage() {
                         const cfg: Record<string, { icon: React.FC<{ className?: string }>; label: string; subtitle: string; desc: string }> = {
                           chatbot: {
                             icon: Bot,
-                            label: 'Chatbot AI',
-                            subtitle: 'Tutor virtuale per lo studio',
-                            desc: 'Assistente personale per lo studio individuale, il ripasso e il chiarimento dei dubbi sui contenuti.',
+                            label: tl("Chatbot AI"),
+                            subtitle: tl("Tutor virtuale per lo studio"),
+                            desc: tl("Assistente personale per lo studio individuale, il ripasso e il chiarimento dei dubbi sui contenuti."),
                           },
                           self_assessment: {
                             icon: ListChecks,
-                            label: 'Autovalutazione',
-                            subtitle: 'Quiz e feedback immediato',
-                            desc: 'Genera test e verifiche automatiche per tracciare la comprensione della classe in tempo reale.',
+                            label: tl("Autovalutazione"),
+                            subtitle: tl("Quiz e feedback immediato"),
+                            desc: tl("Genera test e verifiche automatiche per tracciare la comprensione della classe in tempo reale."),
                           },
                           notebook: {
                             icon: FileCode2,
                             label: 'Coding Lab',
-                            subtitle: 'Ambiente Notebook',
-                            desc: 'Spazio interattivo per eseguire codice Python, svolgere esercitazioni guidate e analizzare dati.',
+                            subtitle: tl("Ambiente Notebook"),
+                            desc: tl("Spazio interattivo per eseguire codice Python, svolgere esercitazioni guidate e analizzare dati."),
                           },
                           boards: {
                             icon: SquareKanban,
                             label: 'Boards',
-                            subtitle: 'Gestione e organizzazione',
-                            desc: "Bacheca visiva per assegnare compiti, organizzare il lavoro della classe e tracciare l'avanzamento dei progetti.",
+                            subtitle: tl("Gestione e organizzazione"),
+                            desc: tl("Bacheca visiva per assegnare compiti, organizzare il lavoro della classe e tracciare l'avanzamento dei progetti."),
                           },
                           classification: {
                             icon: Brain,
-                            label: 'Classificazione ML',
-                            subtitle: 'Modelli di Machine Learning',
-                            desc: 'Ambiente pratico per addestrare e testare modelli di intelligenza artificiale su immagini, testi e dati.',
+                            label: tl("Classificazione ML"),
+                            subtitle: tl("Modelli di Machine Learning"),
+                            desc: tl("Ambiente pratico per addestrare e testare modelli di intelligenza artificiale su immagini, testi e dati."),
                           },
                           chat: {
                             icon: MessageSquare,
-                            label: 'Chat privata',
-                            subtitle: 'Comunicazione 1 a 1',
-                            desc: 'Spazio di messaggistica diretto per offrire supporto individuale e feedback riservato a ciascun studente.',
+                            label: tl("Chat privata"),
+                            subtitle: tl("Comunicazione 1 a 1"),
+                            desc: tl("Spazio di messaggistica diretto per offrire supporto individuale e feedback riservato a ciascun studente."),
                           },
                           coding: {
                             icon: Code2,
                             label: 'Vibe Lab',
-                            subtitle: 'Generatore di Web App',
-                            desc: 'Crea e progetta piccole applicazioni web tramite prompt di testo, con anteprima istantanea del codice.',
+                            subtitle: tl("Generatore di Web App"),
+                            desc: tl("Crea e progetta piccole applicazioni web tramite prompt di testo, con anteprima istantanea del codice."),
                           },
                           models3d: {
                             icon: Box,
                             label: '3D Lab',
-                            subtitle: 'Modellazione solida',
-                            desc: 'Modellatore 3D in stile Tinkercad con assistente AI: gli studenti costruiscono oggetti ed esportano STL per la stampa 3D.',
+                            subtitle: tl("Modellazione solida"),
+                            desc: tl("Modellatore 3D in stile Tinkercad con assistente AI: gli studenti costruiscono oggetti ed esportano STL per la stampa 3D."),
                           },
                           models3d_ai: {
                             icon: MushroomIcon,
-                            label: 'AI 3D',
-                            subtitle: 'Modelli 3D generativi',
-                            desc: 'Generazione di modelli 3D da un testo o da un’immagine con Meshy, pronti da scaricare e condividere in chat.',
+                            label: tl("AI 3D"),
+                            subtitle: tl("Modelli 3D generativi"),
+                            desc: tl("Generazione di modelli 3D da un testo o da un’immagine con Meshy, pronti da scaricare e condividere in chat."),
                           },
                           chat_collaboration: {
                             icon: Users,
-                            label: 'Collaborazione chat',
-                            subtitle: 'Lavoro di gruppo assistito',
-                            desc: 'Spazio condiviso dove gli studenti collaborano in team interagendo insieme con lo stesso tutor AI.',
+                            label: tl("Collaborazione chat"),
+                            subtitle: tl("Lavoro di gruppo assistito"),
+                            desc: tl("Spazio condiviso dove gli studenti collaborano in team interagendo insieme con lo stesso tutor AI."),
                           },
                         }
                         const c = cfg[mod.module_key] ?? { icon: Bot, label: mod.module_key, subtitle: '', desc: '' }
@@ -599,7 +600,7 @@ export default function SessionLivePage() {
                             </div>
                             <p className="mt-2 line-clamp-3 text-xs leading-[1.4] text-slate-500">{c.desc}</p>
                             <p className={`mt-auto pt-2 text-[10px] font-bold uppercase tracking-wide ${mod.is_enabled ? 'text-[var(--logo-violet)]' : 'text-slate-400'}`}>
-                              {mod.is_enabled ? 'Visibile agli studenti' : 'Nascosto'}
+                              {mod.is_enabled ? tl("Visibile agli studenti") : tl("Nascosto")}
                             </p>
                           </div>
                         )
@@ -612,8 +613,8 @@ export default function SessionLivePage() {
                     <div className="flex items-center gap-3 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
                       <Bot className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                       <div className="min-w-0">
-                        <h2 className="text-base font-black text-slate-900">Modello AI predefinito</h2>
-                        <p className="text-xs text-slate-500">Usato dagli strumenti AI degli studenti in questa sessione.</p>
+                        <h2 className="text-base font-black text-slate-900">{tl("Modello AI predefinito")}</h2>
+                        <p className="text-xs text-slate-500">{tl("Usato dagli strumenti AI degli studenti in questa sessione.")}</p>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 p-4 sm:p-5">
@@ -661,7 +662,7 @@ export default function SessionLivePage() {
                       {!showTaskBuilder && (
                         <Button size="sm" onClick={() => setShowTaskBuilder(true)} className="h-7 text-xs">
                           <Plus className="h-3 w-3 mr-1" />
-                          Nuovo compito
+                          {tl("Nuovo compito")}
                         </Button>
                       )}
                     </div>
@@ -682,7 +683,7 @@ export default function SessionLivePage() {
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-muted)] pointer-events-none" />
                           <input
                             type="text"
-                            placeholder="Cerca compiti..."
+                            placeholder={tl("Cerca compiti...")}
                             value={taskSearch}
                             onChange={e => setTaskSearch(e.target.value)}
                             className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded-full focus:outline-none focus:ring-2 focus:ring-[var(--border-strong)] transition-colors"
@@ -698,14 +699,14 @@ export default function SessionLivePage() {
                           <button
                             onClick={() => setTaskViewMode('grid')}
                             className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'grid' ? 'bg-[var(--surface-base)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                            title="Vista griglia"
+                            title={tl("Vista griglia")}
                           >
                             <LayoutGrid className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => setTaskViewMode('list')}
                             className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${taskViewMode === 'list' ? 'bg-[var(--surface-base)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                            title="Vista elenco"
+                            title={tl("Vista elenco")}
                           >
                             <List className="h-3.5 w-3.5" />
                           </button>
@@ -714,7 +715,7 @@ export default function SessionLivePage() {
                     )}
                     {!tasksData || tasksData.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-8">
-                        Nessun compito assegnato. Crea il primo compito sopra.
+                        {tl("Nessun compito assegnato. Crea il primo compito sopra.")}
                       </p>
                     ) : (() => {
                       const filtered = tasksData.filter(t => {
@@ -726,7 +727,7 @@ export default function SessionLivePage() {
                       if (filtered.length === 0) return (
                         <div className="flex flex-col items-center py-10 text-center">
                           <Search className="h-7 w-7 text-slate-200 mb-2" />
-                          <p className="text-sm text-slate-400">Nessun compito corrisponde a <strong>"{taskSearch}"</strong></p>
+                          <p className="text-sm text-slate-400">{tl("Nessun compito corrisponde a")} <strong>"{taskSearch}"</strong></p>
                         </div>
                       )
                       if (taskViewMode === 'list') return (
@@ -781,7 +782,7 @@ export default function SessionLivePage() {
                       aria-expanded={showPedagogicalAnalysis}
                     >
                       <Brain className="h-3.5 w-3.5" />
-                      Analisi pedagogica
+                      {tl("Analisi pedagogica")}
                       {showPedagogicalAnalysis ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </button>
                   </div>
@@ -863,10 +864,10 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
           <p className="truncate text-sm font-semibold text-slate-800">{doc.title}</p>
           <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
             <User className="h-3 w-3" />
-            Autore: {doc.author_name}
+            {tl("Autore:")} {doc.author_name}
           </p>
           <p className="mt-1 text-[10px] text-slate-400">
-            {doc.doc_type || 'documento'} · {formatPublishedAt(doc.updated_at)}
+            {doc.doc_type || tl("documento")} · {formatPublishedAt(doc.updated_at)}
           </p>
         </div>
       </div>
@@ -877,7 +878,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
         <FileText className="h-4 w-4 text-slate-500" />
-        <span className="text-sm font-semibold text-slate-800">Documenti</span>
+        <span className="text-sm font-semibold text-slate-800">{tl("Documenti")}</span>
         <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
           {visibleDocuments.length === documents.length
             ? documents.length
@@ -887,7 +888,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
       <div className="space-y-5 p-4">
         {documents.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-400">
-            Nessun documento condiviso o inviato in questa sessione.
+            {tl("Nessun documento condiviso o inviato in questa sessione.")}
           </p>
         ) : (
           <>
@@ -897,15 +898,15 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                 type="search"
                 value={documentSearch}
                 onChange={(event) => setDocumentSearch(event.target.value)}
-                placeholder="Cerca per titolo, autore o tipo…"
-                aria-label="Cerca documenti per titolo, autore o tipo"
+                placeholder={tl("Cerca per titolo, autore o tipo…")}
+                aria-label={tl("Cerca documenti per titolo, autore o tipo")}
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               />
               {documentSearch && (
                 <button
                   type="button"
                   onClick={() => setDocumentSearch('')}
-                  aria-label="Cancella ricerca documenti"
+                  aria-label={tl("Cancella ricerca documenti")}
                   className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -916,36 +917,36 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
               <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
                 <Filter className="h-4 w-4 shrink-0 text-slate-400" />
-                <span>Filtra</span>
+                <span>{tl("Filtra")}</span>
                 <select
                   value={sourceFilter}
                   onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}
                   className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 >
-                  <option value="all">Tutti</option>
-                  <option value="student">Studenti</option>
-                  <option value="teacher">Docente</option>
+                  <option value="all">{tl("Tutti")}</option>
+                  <option value="student">{tl("Studenti")}</option>
+                  <option value="teacher">{tl("Docente")}</option>
                 </select>
               </label>
               <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
                 <ArrowUpDown className="h-4 w-4 shrink-0 text-slate-400" />
-                <span>Ordina</span>
+                <span>{tl("Ordina")}</span>
                 <select
                   value={sortOrder}
                   onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
                   className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 >
-                  <option value="newest">Più recenti</option>
-                  <option value="oldest">Meno recenti</option>
-                  <option value="az">Titolo A–Z</option>
-                  <option value="za">Titolo Z–A</option>
+                  <option value="newest">{tl("Più recenti")}</option>
+                  <option value="oldest">{tl("Meno recenti")}</option>
+                  <option value="az">{tl("Titolo A–Z")}</option>
+                  <option value="za">{tl("Titolo Z–A")}</option>
                 </select>
               </label>
             </div>
 
             {visibleDocuments.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-                Nessun documento corrisponde alla ricerca e ai filtri selezionati.
+                {tl("Nessun documento corrisponde alla ricerca e ai filtri selezionati.")}
               </div>
             )}
 
@@ -953,20 +954,20 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Condivisi dagli studenti</h3>
-                  <p className="mt-1 text-xs text-emerald-700/70">{studentDocuments.length} documenti ricevuti</p>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">{tl("Condivisi dagli studenti")}</h3>
+                  <p className="mt-1 text-xs text-emerald-700/70">{studentDocuments.length} {tl("documenti ricevuti")}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setStudentDocsCollapsed(value => !value)}
                   className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
                 >
-                  {studentDocsCollapsed ? 'Espandi' : 'Comprimi'}
+                  {studentDocsCollapsed ? tl("Espandi") : tl("Comprimi")}
                 </button>
               </div>
               {studentDocuments.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-emerald-200 bg-white/55 px-4 py-5 text-center text-xs text-emerald-700/60">
-                  Nessun documento inviato dagli studenti.
+                  {tl("Nessun documento inviato dagli studenti.")}
                 </div>
               ) : studentDocsCollapsed ? (
                 <div className="flex min-h-10 items-center gap-2 overflow-x-auto rounded-xl bg-white/65 px-2 py-2">
@@ -993,10 +994,10 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             )}
             {sourceFilter !== 'student' && visibleDocuments.length > 0 && (
             <section>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dal docente</h3>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tl("Condivisi dal docente")}</h3>
               {teacherDocuments.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
-                  Nessun documento docente in questa sessione.
+                  {tl("Nessun documento docente in questa sessione.")}
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1007,7 +1008,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             )}
             {visibleDocuments.length > 0 && (
             <section>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Tutti i documenti</h3>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tl("Tutti i documenti")}</h3>
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 {visibleDocuments.map((doc) => (
                   <button
@@ -1022,7 +1023,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-slate-800">{doc.title}</p>
                       <p className="truncate text-[10px] text-slate-500">
-                        {doc.source === 'student' ? 'Studente' : 'Docente'} · {doc.author_name}
+                        {doc.source === 'student' ? tl("Studente") : tl("Docente")} · {doc.author_name}
                       </p>
                     </div>
                     <span className="shrink-0 text-[10px] font-medium text-slate-400">
@@ -1119,11 +1120,11 @@ interface TaskAnalysisData {
 }
 
 const FORMATIVE_FLAG_META: Record<FormativeFlagType, { label: string; className: string }> = {
-  incomplete: { label: 'Risposta incompleta', className: 'border-amber-200 bg-amber-50 text-amber-900' },
-  misconception: { label: 'Possibile fraintendimento', className: 'border-orange-200 bg-orange-50 text-orange-900' },
-  off_topic: { label: 'Possibile fuori tema', className: 'border-rose-200 bg-rose-50 text-rose-900' },
-  similar_answer: { label: 'Risposte molto simili', className: 'border-violet-200 bg-violet-50 text-violet-900' },
-  strong_reasoning: { label: 'Ragionamento solido', className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
+  incomplete: { label: tl("Risposta incompleta"), className: 'border-amber-200 bg-amber-50 text-amber-900' },
+  misconception: { label: tl("Possibile fraintendimento"), className: 'border-orange-200 bg-orange-50 text-orange-900' },
+  off_topic: { label: tl("Possibile fuori tema"), className: 'border-rose-200 bg-rose-50 text-rose-900' },
+  similar_answer: { label: tl("Risposte molto simili"), className: 'border-violet-200 bg-violet-50 text-violet-900' },
+  strong_reasoning: { label: tl("Ragionamento solido"), className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
 }
 
 function parseTaskContent(raw?: string | null): Record<string, any> | null {
@@ -1149,7 +1150,7 @@ function TaskContentPreview({ task }: { task: TaskData }) {
             srcDoc={html}
             sandbox="allow-same-origin"
             className="h-80 w-full border-0"
-            title={`Contenuto ${task.title}`}
+            title={tl("Contenuto {0}", task.title)}
           />
         </div>
       )
@@ -1160,7 +1161,7 @@ function TaskContentPreview({ task }: { task: TaskData }) {
       return (
         <div className="rounded-lg border bg-white p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Presentazione · {slides.length} slide
+            {tl("Presentazione ·")} {slides.length} slide
           </p>
           <div className="space-y-2">
             {slides.map((slide: any, index: number) => (
@@ -1180,11 +1181,11 @@ function TaskContentPreview({ task }: { task: TaskData }) {
       return (
         <div className="rounded-lg border bg-white p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Quiz · {content.questions.length} domande
+            {tl("Quiz ·")} {content.questions.length} {tl("domande")}
           </p>
           <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
             {content.questions.map((question: any, index: number) => (
-              <li key={index}>{question.question || question.text || `Domanda ${index + 1}`}</li>
+              <li key={index}>{question.question || question.text || tl("Domanda {0}", index + 1)}</li>
             ))}
           </ol>
         </div>
@@ -1212,7 +1213,7 @@ function TaskContentPreview({ task }: { task: TaskData }) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-      Il contenuto è disponibile, ma non può essere mostrato in anteprima.
+      {tl("Il contenuto è disponibile, ma non può essere mostrato in anteprima.")}
     </div>
   )
 }
@@ -1229,7 +1230,7 @@ function SubmissionContentPreview({ submission, task }: { submission: Submission
         {text && <p className="text-sm text-slate-700">{text}</p>}
         <div className="rounded-lg border border-slate-200 bg-white p-2">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Risposte quiz
+            {tl("Risposte quiz")}
           </p>
           <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
             {submissionContent.answers.map((answer: any, index: number) => {
@@ -1238,11 +1239,11 @@ function SubmissionContentPreview({ submission, task }: { submission: Submission
               const question = questions[questionIndex]
               const selectedAnswer = Array.isArray(question?.options)
                 ? question.options[selectedIndex]
-                : `Opzione ${Number.isFinite(selectedIndex) ? selectedIndex + 1 : '-'}`
+                : tl("Opzione {0}", Number.isFinite(selectedIndex) ? selectedIndex + 1 : '-')
               return (
                 <li key={`${submission.id}-answer-${index}`}>
-                  <span className="font-medium">{question?.question || `Domanda ${questionIndex + 1}`}</span>
-                  <span className="block text-slate-600">Risposta: {selectedAnswer || 'Non disponibile'}</span>
+                  <span className="font-medium">{question?.question || tl("Domanda {0}", questionIndex + 1)}</span>
+                  <span className="block text-slate-600">{tl("Risposta:")} {selectedAnswer || tl("Non disponibile")}</span>
                 </li>
               )
             })}
@@ -1264,13 +1265,13 @@ function SubmissionContentPreview({ submission, task }: { submission: Submission
   if (submission.content_json) {
     return (
       <details className="rounded-lg border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Mostra dati consegna</summary>
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">{tl("Mostra dati consegna")}</summary>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs">{submission.content_json}</pre>
       </details>
     )
   }
 
-  return <p className="text-sm text-muted-foreground">Risposta vuota.</p>
+  return <p className="text-sm text-muted-foreground">{tl("Risposta vuota.")}</p>
 }
 
 function ExerciseCorrectionPanel({
@@ -1298,12 +1299,12 @@ function ExerciseCorrectionPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, task.id] })
       setIsEditing(false)
-      toast({ title: 'Correzione inviata allo studente' })
+      toast({ title: tl("Correzione inviata allo studente") })
     },
     onError: (error: any) => {
       const noChanges = error?.response?.status === 409
       toast({
-        title: noChanges ? 'Nessuna modifica da inviare' : 'Impossibile salvare la correzione',
+        title: noChanges ? tl("Nessuna modifica da inviare") : tl("Impossibile salvare la correzione"),
         variant: 'destructive',
       })
     },
@@ -1313,8 +1314,8 @@ function ExerciseCorrectionPanel({
     <div className="mt-3 overflow-hidden rounded-xl border border-amber-200 bg-white">
       <div className="flex items-center justify-between gap-3 border-b border-amber-100 bg-amber-50/70 px-3 py-2">
         <div>
-          <p className="text-xs font-bold text-amber-950">Correzione in linea</p>
-          <p className="text-[11px] text-amber-800">Le modifiche vengono evidenziate automaticamente.</p>
+          <p className="text-xs font-bold text-amber-950">{tl("Correzione in linea")}</p>
+          <p className="text-[11px] text-amber-800">{tl("Le modifiche vengono evidenziate automaticamente.")}</p>
         </div>
         {correction && (
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
@@ -1324,7 +1325,7 @@ function ExerciseCorrectionPanel({
           }`}>
             {correction.status === 'read'
               ? `Letto${correction.read_at ? ` · ${new Date(correction.read_at).toLocaleString('it-IT')}` : ''}`
-              : 'Inviata · da leggere'}
+              : tl("Inviata · da leggere")}
           </span>
         )}
       </div>
@@ -1336,10 +1337,10 @@ function ExerciseCorrectionPanel({
               value={correctedText}
               onChange={(event) => setCorrectedText(event.target.value)}
               className="min-h-[150px] w-full resize-y rounded-lg border border-amber-200 bg-amber-50/30 p-3 text-sm leading-6 text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-              aria-label={`Correzione della risposta di ${submission.student_nickname}`}
+              aria-label={tl("Correzione della risposta di {0}", submission.student_nickname)}
             />
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Anteprima per lo studente</p>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{tl("Anteprima per lo studente")}</p>
               <TrackedCorrectionText original={original} corrected={correctedText} />
             </div>
             <div className="flex justify-end gap-2">
@@ -1351,7 +1352,7 @@ function ExerciseCorrectionPanel({
                   setIsEditing(false)
                 }}
               >
-                Annulla
+                {tl("Annulla")}
               </Button>
               <Button
                 size="sm"
@@ -1359,7 +1360,7 @@ function ExerciseCorrectionPanel({
                 disabled={saveCorrection.isPending || !correctedText.trim() || correctedText.trim() === original.trim()}
                 className="bg-amber-600 text-white hover:bg-amber-700"
               >
-                {saveCorrection.isPending ? 'Invio…' : 'Invia correzione'}
+                {saveCorrection.isPending ? tl("Invio…") : tl("Invia correzione")}
               </Button>
             </div>
           </>
@@ -1368,15 +1369,15 @@ function ExerciseCorrectionPanel({
             <TrackedCorrectionText original={original} corrected={correction.suggested_content} />
             <div className="flex justify-end">
               <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                Modifica correzione
+                {tl("Modifica correzione")}
               </Button>
             </div>
           </>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-slate-600">La risposta originale non verrà modificata.</p>
+            <p className="text-xs text-slate-600">{tl("La risposta originale non verrà modificata.")}</p>
             <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} disabled={!original.trim()}>
-              Correggi risposta
+              {tl("Correggi risposta")}
             </Button>
           </div>
         )}
@@ -1413,20 +1414,20 @@ function SubmissionFeedbackEditor({ submission, task, sessionId }: { submission:
     }),
     onSuccess: (_, publish) => {
       queryClient.invalidateQueries({ queryKey: ['task-submissions', sessionId, task.id] })
-      toast({ title: publish ? 'Feedback pubblicato allo studente' : 'Bozza feedback salvata' })
+      toast({ title: publish ? tl("Feedback pubblicato allo studente") : tl("Bozza feedback salvata") })
     },
-    onError: () => toast({ title: 'Impossibile salvare il feedback', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Impossibile salvare il feedback"), variant: 'destructive' }),
   })
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-sky-200 bg-white">
       <div className="flex items-center justify-between gap-3 border-b border-sky-100 bg-sky-50/70 px-3 py-2">
         <div>
-          <p className="text-xs font-bold text-sky-950">Feedback del docente</p>
-          <p className="text-[11px] text-sky-800">Salva in bozza oppure pubblica quando è pronto.</p>
+          <p className="text-xs font-bold text-sky-950">{tl("Feedback del docente")}</p>
+          <p className="text-[11px] text-sky-800">{tl("Salva in bozza oppure pubblica quando è pronto.")}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${submission.feedback_published_at ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-          {submission.feedback_published_at ? `Pubblicato · ${new Date(submission.feedback_published_at).toLocaleDateString('it-IT')}` : 'Non pubblicato'}
+          {submission.feedback_published_at ? tl("Pubblicato · {0}", new Date(submission.feedback_published_at).toLocaleDateString('it-IT')) : tl("Non pubblicato")}
         </span>
       </div>
       <div className="space-y-3 p-3">
@@ -1435,22 +1436,22 @@ function SubmissionFeedbackEditor({ submission, task, sessionId }: { submission:
           const question = questions[questionIndex]
           return (
             <label key={`${submission.id}-feedback-${questionIndex}`} className="block rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-              <span className="mb-1.5 block text-[11px] font-bold text-slate-700">{questionIndex + 1}. {question?.question || 'Risposta'}</span>
-              <textarea value={answerFeedback[String(questionIndex)] || ''} onChange={(event) => setAnswerFeedback(current => ({ ...current, [String(questionIndex)]: event.target.value }))} rows={2} placeholder="Commento su questa risposta…" className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-sky-300" />
+              <span className="mb-1.5 block text-[11px] font-bold text-slate-700">{questionIndex + 1}. {question?.question || tl("Risposta")}</span>
+              <textarea value={answerFeedback[String(questionIndex)] || ''} onChange={(event) => setAnswerFeedback(current => ({ ...current, [String(questionIndex)]: event.target.value }))} rows={2} placeholder={tl("Commento su questa risposta…")} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-sky-300" />
             </label>
           )
         })}
         <label className="block">
-          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">Feedback complessivo</span>
-          <textarea value={overallFeedback} onChange={(event) => setOverallFeedback(event.target.value)} rows={3} placeholder="Scrivi il riepilogo per lo studente…" className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300" />
+          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">{tl("Feedback complessivo")}</span>
+          <textarea value={overallFeedback} onChange={(event) => setOverallFeedback(event.target.value)} rows={3} placeholder={tl("Scrivi il riepilogo per lo studente…")} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300" />
         </label>
         <label className="block max-w-40">
-          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">Voto (opzionale)</span>
+          <span className="mb-1.5 block text-[11px] font-bold text-slate-700">{tl("Voto (opzionale)")}</span>
           <input value={score} onChange={(event) => setScore(event.target.value)} placeholder="es. 8/10" className="h-9 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-sky-300" />
         </label>
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-          <Button size="sm" variant="outline" onClick={() => save.mutate(false)} disabled={save.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Salva bozza</Button>
-          <Button size="sm" onClick={() => save.mutate(true)} disabled={save.isPending || (!overallFeedback.trim() && !Object.values(answerFeedback).some(value => value.trim()))}><Send className="mr-1.5 h-3.5 w-3.5" />Pubblica feedback</Button>
+          <Button size="sm" variant="outline" onClick={() => save.mutate(false)} disabled={save.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />{tl("Salva bozza")}</Button>
+          <Button size="sm" onClick={() => save.mutate(true)} disabled={save.isPending || (!overallFeedback.trim() && !Object.values(answerFeedback).some(value => value.trim()))}><Send className="mr-1.5 h-3.5 w-3.5" />{tl("Pubblica feedback")}</Button>
         </div>
       </div>
     </div>
@@ -1490,7 +1491,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
         wrongAnswers.push({
           questionNumber: answer.questionIndex + 1,
           question: q.question,
-          selectedAnswer: q.options[answer.selectedIndex] ?? 'Nessuna risposta',
+          selectedAnswer: q.options[answer.selectedIndex] ?? tl("Nessuna risposta"),
           correctAnswer: q.options[q.correctIndex] ?? 'N/D',
         })
       }
@@ -1539,28 +1540,28 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
       setIsEditingDraft(false)
-      toast({ title: 'Compito aggiornato' })
+      toast({ title: tl("Compito aggiornato") })
     },
     onError: () => {
-      toast({ title: 'Errore aggiornamento compito', variant: 'destructive' })
+      toast({ title: tl("Errore aggiornamento compito"), variant: 'destructive' })
     },
   })
 
-  const statusLabel = task.status === 'published' ? 'Pubblicato' : 'Bozza'
+  const statusLabel = task.status === 'published' ? tl("Pubblicato") : tl("Bozza")
   const typeLabel = task.task_type
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
   const dueLabel = task.due_at
     ? new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(task.due_at))
-    : 'Senza scadenza'
+    : tl("Senza scadenza")
   const submissionCount = task.submission_count ?? 0
   const scoreSummary = task.score_summary
   const resultLabel = submissionCount === 0
-    ? 'Nessuna consegna'
+    ? tl("Nessuna consegna")
     : task.task_type === 'quiz'
       ? scoreSummary?.average_percent != null
-        ? `Media ${scoreSummary.average_percent}%`
-        : 'Risultati non disponibili'
+        ? tl("Media {0}%", scoreSummary.average_percent)
+        : tl("Risultati non disponibili")
       : `${submissionCount} ${submissionCount === 1 ? 'completamento' : 'completamenti'}`
   const visibleFormativeFlags = (taskAnalysis?.student_flags || []).flatMap((student) =>
     student.flags.map((flag, index) => ({
@@ -1610,7 +1611,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
           }`}>
             <div className="min-w-0">
               <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                {task.task_type === 'quiz' ? 'Indicatore quiz' : 'Avanzamento'}
+                {task.task_type === 'quiz' ? tl("Indicatore quiz") : tl("Avanzamento")}
               </span>
               <span className={`block truncate text-sm font-bold ${task.task_type === 'quiz' ? 'text-indigo-800' : 'text-slate-700'}`}>
                 {resultLabel}
@@ -1618,7 +1619,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
             </div>
             {task.task_type === 'quiz' && scoreSummary?.scored_count != null && scoreSummary.scored_count > 0 && (
               <span className="shrink-0 text-[10px] font-semibold text-indigo-600">
-                {scoreSummary.scored_count} {scoreSummary.scored_count === 1 ? 'risultato' : 'risultati'}
+                {scoreSummary.scored_count} {scoreSummary.scored_count === 1 ? tl("risultato") : tl("risultati")}
               </span>
             )}
           </div>
@@ -1628,12 +1629,12 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
           <div className="flex min-w-0 flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={onToggle} className="min-w-[112px] px-4 text-xs font-semibold">
             {isExpanded ? <ChevronUp className="mr-1.5 h-3.5 w-3.5" /> : <ChevronDown className="mr-1.5 h-3.5 w-3.5" />}
-            {isExpanded ? 'Chiudi' : 'Dettagli'}
+            {isExpanded ? tl("Chiudi") : tl("Dettagli")}
           </Button>
           {task.status === 'draft' && (
             <Button size="sm" variant="outline" onClick={onPublish} className="min-w-[112px] px-4 text-xs font-semibold">
               <Check className="mr-1.5 h-3.5 w-3.5" />
-              Pubblica
+              {tl("Pubblica")}
             </Button>
           )}
           </div>
@@ -1641,13 +1642,13 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
             size="sm"
             variant="ghost"
             onClick={() => {
-              if (window.confirm(`Eliminare definitivamente il compito "${task.title}"? Questa azione non può essere annullata.`)) {
+              if (window.confirm(tl("Eliminare definitivamente il compito \"{0}\"? Questa azione non può essere annullata.", task.title))) {
                 onDelete()
               }
             }}
             className="h-9 w-9 shrink-0 rounded-full p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
-            title="Elimina compito"
-            aria-label={`Elimina compito ${task.title}`}
+            title={tl("Elimina compito")}
+            aria-label={tl("Elimina compito {0}", task.title)}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -1658,16 +1659,16 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
         <div className="border-t p-4 bg-white rounded-b-lg">
           <h4 className="font-medium mb-3 flex items-center gap-2">
             <Eye className="h-4 w-4" />
-            Dettagli Compito
+            {tl("Dettagli Compito")}
           </h4>
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-slate-600">
               {task.status === 'draft'
-                ? 'Questa attività è in bozza: puoi modificarla prima della pubblicazione.'
-                : 'Puoi aggiornare la scadenza anche dopo la pubblicazione.'}
+                ? tl("Questa attività è in bozza: puoi modificarla prima della pubblicazione.")
+                : tl("Puoi aggiornare la scadenza anche dopo la pubblicazione.")}
             </p>
             <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
-              {isEditingDraft ? 'Annulla Modifica' : task.status === 'draft' ? 'Modifica Bozza' : 'Modifica Scadenza'}
+              {isEditingDraft ? tl("Annulla Modifica") : task.status === 'draft' ? tl("Modifica Bozza") : tl("Modifica Scadenza")}
             </Button>
           </div>
 
@@ -1688,7 +1689,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
             ) : (
               <div className="space-y-3 rounded-lg border bg-slate-50 p-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-600">Scadenza</label>
+                  <label className="text-xs font-medium text-slate-600">{tl("Scadenza")}</label>
                   <input
                     type="datetime-local"
                     value={editDueAt}
@@ -1704,7 +1705,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                     })}
                     disabled={updateTaskMutation.isPending}
                   >
-                    Salva modifiche
+                    {tl("Salva modifiche")}
                   </Button>
                 </div>
               </div>
@@ -1712,7 +1713,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
           ) : (
             <div className="space-y-3">
               {task.description && (
-                <p className="text-sm text-slate-700"><span className="font-medium">Descrizione:</span> {task.description}</p>
+                <p className="text-sm text-slate-700"><span className="font-medium">{tl("Descrizione:")}</span> {task.description}</p>
               )}
               {task.content_json && <TaskContentPreview task={task} />}
             </div>
@@ -1721,11 +1722,11 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
           {task.status === 'published' && (
             <div className="mt-6">
               <div className="mb-3">
-                <h5 className="text-sm font-semibold text-slate-900">Consegne degli studenti</h5>
+                <h5 className="text-sm font-semibold text-slate-900">{tl("Consegne degli studenti")}</h5>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {task.task_type === 'quiz'
-                    ? 'I risultati automatici sono indicatori di supporto alla valutazione del docente.'
-                  : 'Il completamento segnala la consegna e non costituisce una valutazione.'}
+                    ? tl("I risultati automatici sono indicatori di supporto alla valutazione del docente.")
+                  : tl("Il completamento segnala la consegna e non costituisce una valutazione.")}
                 </p>
               </div>
               {task.task_type === 'exercise' && (
@@ -1734,10 +1735,10 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                     <div className="min-w-0">
                       <h6 className="flex items-center gap-2 text-sm font-bold text-indigo-950">
                         <Brain className="h-4 w-4 text-indigo-600" />
-                        Overview formativa
+                        {tl("Overview formativa")}
                       </h6>
                       <p className="mt-1 text-xs leading-5 text-indigo-800/80">
-                        Analizza le consegne e propone indicatori documentati. Non assegna voti e non sostituisce il giudizio del docente.
+                        {tl("Analizza le consegne e propone indicatori documentati. Non assegna voti e non sostituisce il giudizio del docente.")}
                       </p>
                     </div>
                     <Button
@@ -1748,16 +1749,16 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                     >
                       <Brain className="mr-1.5 h-3.5 w-3.5" />
                       {isAnalyzingTask
-                        ? 'Analisi in corso…'
+                        ? tl("Analisi in corso…")
                         : taskAnalysis
-                          ? 'Rigenera overview'
-                          : 'Analizza le risposte'}
+                          ? tl("Rigenera overview")
+                          : tl("Analizza le risposte")}
                     </Button>
                   </div>
 
                   {taskAnalysisError && (
                     <div className="border-t border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700">
-                      Analisi non disponibile. Verifica i crediti docente e riprova.
+                      {tl("Analisi non disponibile. Verifica i crediti docente e riprova.")}
                     </div>
                   )}
 
@@ -1765,13 +1766,13 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                     <div className="space-y-4 border-t border-indigo-200 bg-white/80 p-4">
                       {isTaskAnalysisStale && (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                          Le consegne sono cambiate: rigenera l’overview per aggiornare gli indicatori.
+                          {tl("Le consegne sono cambiate: rigenera l’overview per aggiornare gli indicatori.")}
                         </div>
                       )}
 
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-bold text-slate-900">Panoramica della classe</p>
+                          <p className="text-sm font-bold text-slate-900">{tl("Panoramica della classe")}</p>
                           <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
                             {taskAnalysis.submission_count}/{taskAnalysis.total_students} consegne
                           </span>
@@ -1784,9 +1785,9 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
 
                       <div className="grid gap-3 md:grid-cols-3">
                         {[
-                          { title: 'Punti di forza', values: taskAnalysis.overview.strengths, tone: 'border-emerald-200 bg-emerald-50/70' },
-                          { title: 'Da approfondire', values: taskAnalysis.overview.gaps, tone: 'border-amber-200 bg-amber-50/70' },
-                          { title: 'Azioni suggerite', values: taskAnalysis.overview.suggestions, tone: 'border-sky-200 bg-sky-50/70' },
+                          { title: tl("Punti di forza"), values: taskAnalysis.overview.strengths, tone: 'border-emerald-200 bg-emerald-50/70' },
+                          { title: tl("Da approfondire"), values: taskAnalysis.overview.gaps, tone: 'border-amber-200 bg-amber-50/70' },
+                          { title: tl("Azioni suggerite"), values: taskAnalysis.overview.suggestions, tone: 'border-sky-200 bg-sky-50/70' },
                         ].map(section => (
                           <div key={section.title} className={`rounded-lg border p-3 ${section.tone}`}>
                             <p className="text-xs font-bold text-slate-800">{section.title}</p>
@@ -1795,7 +1796,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                                 {section.values.map((value, index) => <li key={`${section.title}-${index}`}>{value}</li>)}
                               </ul>
                             ) : (
-                              <p className="mt-2 text-xs text-slate-500">Nessun elemento rilevato.</p>
+                              <p className="mt-2 text-xs text-slate-500">{tl("Nessun elemento rilevato.")}</p>
                             )}
                           </div>
                         ))}
@@ -1803,12 +1804,12 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
 
                       <div>
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <p className="text-sm font-bold text-slate-900">Flag sulle consegne</p>
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Da verificare dal docente</span>
+                          <p className="text-sm font-bold text-slate-900">{tl("Flag sulle consegne")}</p>
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tl("Da verificare dal docente")}</span>
                         </div>
                         {visibleFormativeFlags.length === 0 ? (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                            Nessun flag attivo. Gli indicatori ignorati restano esclusi fino alla prossima analisi.
+                            {tl("Nessun flag attivo. Gli indicatori ignorati restano esclusi fino alla prossima analisi.")}
                           </p>
                         ) : (
                           <div className="space-y-2">
@@ -1821,7 +1822,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-xs font-black">{flag.studentNickname}</span>
                                         <span className="rounded-full border border-current/20 bg-white/50 px-2 py-0.5 text-[10px] font-bold">{meta.label}</span>
-                                        <span className="text-[10px] font-semibold opacity-70">Confidenza {Math.round(flag.confidence * 100)}%</span>
+                                        <span className="text-[10px] font-semibold opacity-70">{tl("Confidenza")} {Math.round(flag.confidence * 100)}%</span>
                                       </div>
                                       <p className="mt-2 text-xs font-semibold">{flag.title}</p>
                                       <p className="mt-1 text-xs leading-5 opacity-90">{flag.reason}</p>
@@ -1833,9 +1834,9 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                                       type="button"
                                       onClick={() => setIgnoredFormativeFlags(previous => new Set(previous).add(flag.key))}
                                       className="shrink-0 rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-[10px] font-bold hover:bg-white"
-                                      title="Nascondi questo indicatore"
+                                      title={tl("Nascondi questo indicatore")}
                                     >
-                                      Ignora
+                                      {tl("Ignora")}
                                     </button>
                                   </div>
                                 </div>
@@ -1849,9 +1850,9 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                 </div>
               )}
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">Caricamento...</p>
+                <p className="text-sm text-muted-foreground">{tl("Caricamento...")}</p>
               ) : !submissions || submissions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nessuna risposta ancora.</p>
+                <p className="text-sm text-muted-foreground">{tl("Nessuna risposta ancora.")}</p>
               ) : (
                 <div className="space-y-3">
                   {submissions.map((sub) => (
@@ -1870,12 +1871,12 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                           <span className="rounded-full border border-indigo-200 bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
                             {sub.score
                               ? `${sub.score}${sub.score_percent != null ? ` · ${sub.score_percent}%` : ''}`
-                              : 'Risultato non disponibile'}
+                              : tl("Risultato non disponibile")}
                           </span>
                         ) : (
                           <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                             <Check className="mr-1 inline h-3 w-3" />
-                            Completato
+                            {tl("Completato")}
                           </span>
                         )}
                       </div>
@@ -1893,7 +1894,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                         return (
                           <div className="mt-3 bg-red-50 rounded-lg border border-red-200 p-2 space-y-2">
                             <p className="text-xs font-medium text-red-700">
-                              Errori: {wrongAnswers.length}
+                              {tl("Errori:")} {wrongAnswers.length}
                             </p>
                             {wrongAnswers.map((wa) => (
                               <div key={`${sub.id}-wrong-${wa.questionNumber}`} className="text-xs bg-white border border-red-100 rounded p-2">
@@ -1901,10 +1902,10 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                                   {wa.questionNumber}. {wa.question}
                                 </p>
                                 <p className="text-red-700">
-                                  Risposta studente: {wa.selectedAnswer}
+                                  {tl("Risposta studente:")} {wa.selectedAnswer}
                                 </p>
                                 <p className="text-emerald-700">
-                                  Corretta: {wa.correctAnswer}
+                                  {tl("Corretta:")} {wa.correctAnswer}
                                 </p>
                               </div>
                             ))}
@@ -2026,15 +2027,15 @@ function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Sock
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Brain className="h-4 w-4 text-indigo-500" />
-          Analisi Pedagogica
-          <span className="text-xs font-normal text-slate-400 ml-1">{conversations.length} conversazioni • {Object.keys(studentActivity).length} studenti</span>
+          {tl("Analisi Pedagogica")}
+          <span className="text-xs font-normal text-slate-400 ml-1">{conversations.length} {tl("conversazioni •")} {Object.keys(studentActivity).length} {tl("studenti")}</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Student activity ranking */}
           <div>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Studenti più attivi</h4>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{tl("Studenti più attivi")}</h4>
             <div className="space-y-2.5">
               {studentActivity.map((s, i) => (
                 <div key={s.nickname} className="flex items-center gap-2">
@@ -2058,7 +2059,7 @@ function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Sock
 
           {/* Argomenti frequenti (tag cloud) */}
           <div>
-            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Argomenti frequenti</h4>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{tl("Argomenti frequenti")}</h4>
             <div className="flex flex-wrap gap-1.5">
               {topWords.map(([word, count]) => (
                 <span
@@ -2074,7 +2075,7 @@ function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Sock
                 </span>
               ))}
               {topWords.length === 0 && (
-                <p className="text-xs text-slate-400">Nessun titolo disponibile per l'analisi</p>
+                <p className="text-xs text-slate-400">{tl("Nessun titolo disponibile per l'analisi")}</p>
               )}
             </div>
           </div>
@@ -2260,9 +2261,9 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
   const isLoadingActiveMsgs = historyTab === 'teacherbot' ? loadingTBMessages : loadingMessages
 
   const TAB_CONFIG = [
-    { key: 'chatbot' as const, label: 'Chatbot AI', icon: Bot,          count: aiConversations.length },
+    { key: 'chatbot' as const, label: tl("Chatbot AI"), icon: Bot,          count: aiConversations.length },
     { key: 'teacherbot' as const, label: 'Teacherbot', icon: User,       count: (tbConversations ?? []).length },
-    { key: 'learning' as const, label: 'Apprendimento', icon: BookOpen,  count: learningConversations.length },
+    { key: 'learning' as const, label: tl("Apprendimento"), icon: BookOpen,  count: learningConversations.length },
   ]
 
   return (
@@ -2274,15 +2275,15 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
         <div className="flex items-center gap-2 px-4 pb-1 pt-4">
           <Search className="h-4 w-4 text-slate-400" />
           <div>
-            <p className="text-sm font-bold text-slate-800">Esplora conversazioni</p>
-            <p className="text-[11px] text-slate-400">Seleziona uno studente e apri una chat</p>
+            <p className="text-sm font-bold text-slate-800">{tl("Esplora conversazioni")}</p>
+            <p className="text-[11px] text-slate-400">{tl("Seleziona uno studente e apri una chat")}</p>
           </div>
         </div>
 
         {/* Conversation type dropdown */}
         <div className="m-3 flex-shrink-0">
           <label htmlFor="history-conversation-type" className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-            Tipo di conversazione
+            {tl("Tipo di conversazione")}
           </label>
           <div className="relative">
             <select
@@ -2309,9 +2310,9 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
           {/* ── Chatbot / Learning tabs ── */}
           {(historyTab === 'chatbot' || historyTab === 'learning') && (
             (loadingConversations)
-              ? <div className="p-4 text-xs text-slate-400 text-center">Caricamento…</div>
+              ? <div className="p-4 text-xs text-slate-400 text-center">{tl("Caricamento…")}</div>
               : Object.keys(byStudent).length === 0
-                ? <div className="p-4 text-xs text-slate-400 text-center">Nessuna conversazione</div>
+                ? <div className="p-4 text-xs text-slate-400 text-center">{tl("Nessuna conversazione")}</div>
                 : Object.entries(byStudent).map(([studentId, { nickname, conversations: convs }]) => {
                     const isExpanded = expandedStudents.has(studentId)
                     const hasSelected = convs.some(c => c.id === selectedConversationId)
@@ -2340,7 +2341,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="truncate text-xs font-semibold capitalize text-slate-700">{conv.title || conv.profile_key}</p>
-                                <p className="text-[11px] text-slate-400">{conv.message_count} messaggi · {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
+                                <p className="text-[11px] text-slate-400">{conv.message_count} {tl("messaggi ·")} {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
                               </div>
                               {isActive && <ChevronRight className="h-3 w-3 text-violet-400 flex-shrink-0" />}
                             </button>
@@ -2354,9 +2355,9 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
           {/* ── Teacherbot tab ── */}
           {historyTab === 'teacherbot' && (
             (loadingTBConversations)
-              ? <div className="p-4 text-xs text-slate-400 text-center">Caricamento…</div>
+              ? <div className="p-4 text-xs text-slate-400 text-center">{tl("Caricamento…")}</div>
               : Object.keys(tbByStudent).length === 0
-                ? <div className="p-4 text-xs text-slate-400 text-center">Nessuna conversazione teacherbot</div>
+                ? <div className="p-4 text-xs text-slate-400 text-center">{tl("Nessuna conversazione teacherbot")}</div>
                 : Object.entries(tbByStudent).map(([studentId, { nickname, conversations: convs }]) => {
                     const isExpanded = expandedStudents.has(studentId)
                     const hasSelected = convs.some(c => c.id === selectedTBConvId)
@@ -2374,12 +2375,12 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                             <div className="flex items-center gap-2">
                               <span className="truncate text-xs font-semibold text-slate-800">{nickname}</span>
                               <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">
-                                {convs.length} chat
+                                {convs.length} {tl("chat")}
                               </span>
                             </div>
                             {latestConv && (
                               <p className="truncate text-[10px] text-slate-400">
-                                Ultima attivita {new Date(latestConv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                {tl("Ultima attivita")} {new Date(latestConv.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                               </p>
                             )}
                           </div>
@@ -2408,7 +2409,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                                   <p className="truncate text-[11px] font-semibold text-slate-700">{conv.teacherbot_name}</p>
                                   {isActive && (
                                     <span className="rounded-full bg-violet-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
-                                      Aperta
+                                      {tl("Aperta")}
                                     </span>
                                   )}
                                 </div>
@@ -2446,7 +2447,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
           if (!activeId) return (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 bg-slate-50/50">
               <Bot className="h-10 w-10 opacity-20" />
-              <p className="text-sm">Seleziona una conversazione dalla lista</p>
+              <p className="text-sm">{tl("Seleziona una conversazione dalla lista")}</p>
             </div>
           )
 
@@ -2460,7 +2461,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                   <p className="font-semibold text-sm text-slate-800 truncate">{activeName}</p>
                   <p className="text-xs text-slate-500 capitalize">{activeSubtitle}</p>
                 </div>
-                <span className="text-xs text-slate-400">{activeCount} messaggi</span>
+                <span className="text-xs text-slate-400">{activeCount} {tl("messaggi")}</span>
                 <button onClick={onClose} className="ml-2 h-7 w-7 rounded-full flex items-center justify-center hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
@@ -2477,7 +2478,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                   </div>
                 ) : activeMsgs.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-slate-400 text-sm">
-                    Nessun messaggio in questa conversazione.
+                    {tl("Nessun messaggio in questa conversazione.")}
                   </div>
                 ) : (
                   activeMsgs.map((msg, index) => {
@@ -2521,7 +2522,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                         <div className={`mt-1 flex flex-wrap gap-1 ${msg.role === 'user' ? 'justify-end pr-1' : 'pl-11'}`}>
                           {msg.files.map((file, fileIndex) => (
                             <span key={fileIndex} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
-                              📎 {file.filename && file.filename !== 'blob' ? file.filename : (file.mime_type?.startsWith('image/') ? 'Immagine allegata' : 'File allegato')}
+                              📎 {file.filename && file.filename !== 'blob' ? file.filename : (file.mime_type?.startsWith('image/') ? tl("Immagine allegata") : tl("File allegato"))}
                             </span>
                           ))}
                         </div>

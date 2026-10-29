@@ -6,6 +6,7 @@ import { jobsApi, type BackgroundJob } from '@/lib/api'
 import { cancelJob, JOBS_CHANGED_EVENT, useTicker } from '@/lib/backgroundJobs'
 import { useToast } from '@/components/ui/use-toast'
 import { ProgressPie } from '@/components/ui/ProgressGlyph'
+import { tl } from '@/i18n/tl'
 
 const QUERY_KEY = ['background-jobs']
 
@@ -27,11 +28,11 @@ function displayProgress(job: BackgroundJob) {
 const PieProgress = ProgressPie
 
 const STATUS_TEXT: Record<BackgroundJob['status'], string> = {
-  running: 'In corso',
-  succeeded: 'Completato',
-  failed: 'Non riuscito',
-  cancelled: 'Annullato',
-  interrupted: 'Interrotto',
+  running: tl("In corso"),
+  succeeded: tl("Completato"),
+  failed: tl("Non riuscito"),
+  cancelled: tl("Annullato"),
+  interrupted: tl("Interrotto"),
 }
 
 /** Navbar reminder of long AI generations running in the background (next to the credits pill). */
@@ -66,7 +67,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
       const before = seen.get(job.id)
       if (before === 'running' && job.status !== 'running') {
         toast({
-          title: job.status === 'succeeded' ? `Pronto: ${job.title}` : `${STATUS_TEXT[job.status]}: ${job.title}`,
+          title: job.status === 'succeeded' ? tl("Pronto: {0}", job.title) : `${STATUS_TEXT[job.status]}: ${job.title}`,
           description: job.status === 'succeeded' ? (job.progress_label || undefined) : (job.error || undefined),
           variant: job.status === 'succeeded' ? undefined : 'destructive',
         })
@@ -113,7 +114,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
   const color = running.length ? accentColor : failed ? '#dc2626' : '#059669'
   const title = running.length
     ? `${running.length === 1 ? lead.title : `${running.length} generazioni in corso`} · ${Math.round(aggregate * 100)}%`
-    : failed ? 'Una generazione non è riuscita' : 'Generazioni completate'
+    : failed ? tl("Una generazione non è riuscita") : tl("Generazioni completate")
 
   return (
     <div className="relative" ref={panelRef}>
@@ -141,14 +142,14 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
         <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div>
-              <p className="text-sm font-black text-slate-900">Generazioni in background</p>
+              <p className="text-sm font-black text-slate-900">{tl("Generazioni in background")}</p>
               <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Continuano anche se cambi pagina o ricarichi{student ? '' : ' il browser'}.
+                {tl("Continuano anche se cambi pagina o ricarichi")}{student ? '' : tl(" il browser")}.
               </p>
             </div>
             {finished.length > 0 && (
               <button type="button" onClick={() => void dismiss(finished.map((job) => job.id))} className="shrink-0 rounded-md px-2 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-100">
-                Pulisci
+                {tl("Pulisci")}
               </button>
             )}
           </div>
@@ -180,26 +181,26 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
                       )}
                       <p className={`mt-1 truncate text-[11px] ${isRunning ? 'text-slate-600' : job.status === 'succeeded' ? 'text-emerald-700' : 'text-red-700'}`}>
                         {isRunning
-                          ? (job.progress_label || 'Elaborazione in corso…')
+                          ? (job.progress_label || tl("Elaborazione in corso…"))
                           : job.status === 'succeeded' ? (job.progress_label || STATUS_TEXT[job.status]) : `${STATUS_TEXT[job.status]}${job.error ? `: ${job.error}` : ''}`}
                       </p>
                       <div className="mt-1.5 flex items-center gap-1">
                         {job.route && (
                           <button type="button" onClick={() => openJob(job)} className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-700 hover:bg-slate-100">
-                            <ExternalLink className="h-3 w-3" /> Apri
+                            <ExternalLink className="h-3 w-3" /> {tl("Apri")}
                           </button>
                         )}
                         {isRunning && (
                           <button
                             type="button"
-                            onClick={() => { if (window.confirm(`Annullare "${job.title}"?`)) void cancelJob(job.id) }}
+                            onClick={() => { if (window.confirm(tl("Annullare \"{0}\"?", job.title))) void cancelJob(job.id) }}
                             className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-red-50 hover:text-red-600"
                           >
-                            <Square className="h-3 w-3" /> Annulla
+                            <Square className="h-3 w-3" /> {tl("Annulla")}
                           </button>
                         )}
                         {!isRunning && (
-                          <button type="button" onClick={() => void dismiss([job.id])} className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Rimuovi dall'elenco">
+                          <button type="button" onClick={() => void dismiss([job.id])} className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Rimuovi dall'elenco")}>
                             <X className="h-3.5 w-3.5" />
                           </button>
                         )}
@@ -212,7 +213,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
           </ul>
           {running.length > 0 && (
             <p className="flex items-center gap-1.5 border-t border-slate-100 px-4 py-2 text-[10px] text-slate-400">
-              <Loader2 className="h-3 w-3 animate-spin" /> Aggiornamento automatico
+              <Loader2 className="h-3 w-3 animate-spin" /> {tl("Aggiornamento automatico")}
             </p>
           )}
         </div>

@@ -4,6 +4,7 @@ import { Bot, Loader2, Lock, AlertTriangle } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import api, { publicTeacherbotApi } from '@/lib/api'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
+import { tl } from '@/i18n/tl'
 
 // The very same chat the logged-in students use: voice, inquiry, escape room, attachments, ...
 const ChatbotModule = lazy(() => import('@/pages/student/ChatbotModule'))
@@ -57,7 +58,7 @@ export default function PublicTeacherbotChatPage() {
       .then((res) => { if (active) setLinkInfo(res.data as LinkInfo) })
       .catch((err) => {
         if (!active) return
-        setError(err?.response?.status === 410 ? 'Questo link è scaduto.' : 'Link non valido.')
+        setError(err?.response?.status === 410 ? tl("Questo link è scaduto.") : tl("Link non valido."))
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -91,10 +92,10 @@ export default function PublicTeacherbotChatPage() {
     } catch (err: any) {
       const status = err?.response?.status
       setCodeError(
-        status === 401 ? 'Codice non corretto.'
-          : status === 429 ? 'Troppi tentativi, riprova tra poco.'
-          : status === 410 ? 'Questo link non è più disponibile.'
-          : 'Impossibile entrare, riprova.'
+        status === 401 ? tl("Codice non corretto.")
+          : status === 429 ? tl("Troppi tentativi, riprova tra poco.")
+          : status === 410 ? tl("Questo link non è più disponibile.")
+          : tl("Impossibile entrare, riprova.")
       )
     } finally {
       setEntering(false)
@@ -117,7 +118,7 @@ export default function PublicTeacherbotChatPage() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-sm text-center">
           <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-500" />
-          <p className="text-lg font-semibold text-slate-800">{error || 'Link non valido.'}</p>
+          <p className="text-lg font-semibold text-slate-800">{error || tl("Link non valido.")}</p>
         </div>
       </div>
     )
@@ -157,14 +158,14 @@ export default function PublicTeacherbotChatPage() {
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="Codice di accesso"
+              placeholder={tl("Codice di accesso")}
               autoFocus
               className="w-full rounded-xl border border-slate-200 py-3 pl-9 pr-3 text-center font-mono text-lg tracking-widest outline-none focus:border-slate-400"
             />
           </div>
           {codeError && <p className="text-sm text-red-600">{codeError}</p>}
-          <Button type="submit" disabled={entering || !code.trim()} className="w-full bg-[#181b1e] hover:bg-[#0f1113]">
-            {entering ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Entra'}
+          <Button type="submit" disabled={entering || !code.trim()} tone="accent" surface="solid" fullWidth>
+            {entering ? <Loader2 className="h-4 w-4 animate-spin" /> : tl("Entra")}
           </Button>
         </form>
       </div>

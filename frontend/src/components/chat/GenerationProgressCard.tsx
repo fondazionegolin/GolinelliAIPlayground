@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export interface GenerationProgress {
   title: string
@@ -13,10 +14,10 @@ export interface GenerationProgress {
 }
 
 const HEARTBEATS = [
-  'Sto lavorando alla tua richiesta…',
-  'Ancora qualche secondo…',
-  'Ci vuole un po\' di tempo: il modello sta scrivendo il codice.',
-  'Quasi lì, sto rifinendo i dettagli…',
+  tl("Sto lavorando alla tua richiesta…"),
+  tl("Ancora qualche secondo…"),
+  tl("Ci vuole un po' di tempo: il modello sta scrivendo il codice."),
+  tl("Quasi lì, sto rifinendo i dettagli…"),
 ]
 
 /** Live status for long document generations: real phases, elapsed time and streamed size. */

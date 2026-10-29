@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ProgressRing } from '@/components/ui/ProgressGlyph'
 import { creditsApi, studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 type CreditBalance = {
   credits_remaining: number | null
@@ -84,10 +85,10 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       await creditsApi.createRequest({ credits, reason: requestReason.trim() || undefined, limit_id: balance?.limit_id ?? undefined })
       setRequestSent(true)
       setRequestOpen(false)
-      toast({ title: 'Richiesta inviata', description: "L'amministratore riceverà la tua richiesta di crediti." })
+      toast({ title: tl("Richiesta inviata"), description: tl("L'amministratore riceverà la tua richiesta di crediti.") })
     } catch (err: any) {
       const detail = err?.response?.data?.detail
-      toast({ variant: 'destructive', title: 'Richiesta non inviata', description: typeof detail === 'string' ? detail : 'Riprova tra poco.' })
+      toast({ variant: 'destructive', title: tl("Richiesta non inviata"), description: typeof detail === 'string' ? detail : tl("Riprova tra poco.") })
     } finally {
       setRequestSending(false)
     }
@@ -168,11 +169,11 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
   const ringColor = remainingRatio <= 0.1 ? '#dc2626' : remainingRatio <= 0.3 ? '#d97706' : mainColor
   const percentAvailable = Math.round(remainingRatio * 100)
   const title = isPool
-    ? 'Pool crediti studenti'
+    ? tl("Pool crediti studenti")
     : audience === 'student'
-      ? (isStudentPoolLimiting ? 'Pool della classe' : 'I tuoi crediti')
-      : 'Crediti AI docente'
-  const remainingLabel = typeof remaining === 'number' ? formatCreditValue(remaining) : 'Illimitati'
+      ? (isStudentPoolLimiting ? tl("Pool della classe") : tl("I tuoi crediti"))
+      : tl("Crediti AI docente")
+  const remainingLabel = typeof remaining === 'number' ? formatCreditValue(remaining) : tl("Illimitati")
 
   return (
     <div className="relative" ref={panelRef}>
@@ -185,7 +186,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
           '--tw-ring-color': accentColor,
         } as CSSProperties}
         aria-label={`${title}: ${percentAvailable}% disponibile, ${remainingLabel} crediti rimasti`}
-        title={`${title} · ${percentAvailable}% disponibile`}
+        title={tl("{0} · {1}% disponibile", title, percentAvailable)}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
@@ -205,14 +206,14 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
               <CreditRing value={remainingRatio} color={ringColor} size={38} />
               <div>
                 <p className="text-sm font-black text-slate-900">{title}</p>
-                <p className="mt-0.5 text-xs font-medium text-slate-500">Aggiornato automaticamente · {percentAvailable}% del plafond disponibile</p>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">{tl("Aggiornato automaticamente ·")} {percentAvailable}{tl("% del plafond disponibile")}</p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {[
-                ['Disponibili', remainingLabel],
-                ['Consumati', formatCreditValue(used)],
-                ['Plafond', typeof cap === 'number' ? formatCreditValue(cap) : 'Illimitato'],
+                [tl("Disponibili"), remainingLabel],
+                [tl("Consumati"), formatCreditValue(used)],
+                [tl("Plafond"), typeof cap === 'number' ? formatCreditValue(cap) : tl("Illimitato")],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 px-3 py-2">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
@@ -224,20 +225,20 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
           {(balance?.low_balance || balance?.exhausted) && (
             <div className={`border-b px-4 py-3 ${balance?.exhausted ? 'border-red-100 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
               <p className={`text-sm font-black ${balance?.exhausted ? 'text-red-700' : 'text-amber-800'}`}>
-                {balance?.exhausted ? 'Crediti esauriti' : 'Crediti in esaurimento'}
+                {balance?.exhausted ? tl("Crediti esauriti") : tl("Crediti in esaurimento")}
               </p>
               <p className={`mt-0.5 text-xs ${balance?.exhausted ? 'text-red-700' : 'text-amber-700'}`}>
                 {audience === 'student'
-                  ? 'Avvisa il tuo docente: potrà chiedere un nuovo bundle di crediti.'
-                  : 'Chiedi un nuovo bundle: l\'amministratore riceve un avviso e può autorizzarlo subito.'}
+                  ? tl("Avvisa il tuo docente: potrà chiedere un nuovo bundle di crediti.")
+                  : tl("Chiedi un nuovo bundle: l'amministratore riceve un avviso e può autorizzarlo subito.")}
               </p>
               {audience !== 'student' && (
                 requestSent ? (
-                  <p className="mt-2 text-xs font-bold text-slate-700">Richiesta inviata — in attesa dell'amministratore.</p>
+                  <p className="mt-2 text-xs font-bold text-slate-700">{tl("Richiesta inviata — in attesa dell'amministratore.")}</p>
                 ) : requestOpen ? (
                   <div className="mt-2 flex flex-wrap items-end gap-2">
                     <label className="text-[11px] font-bold text-slate-600">
-                      Crediti
+                      {tl("Crediti")}
                       <input
                         value={requestCredits}
                         onChange={(event) => setRequestCredits(event.target.value)}
@@ -246,7 +247,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                       />
                     </label>
                     <label className="min-w-40 flex-1 text-[11px] font-bold text-slate-600">
-                      Motivazione (facoltativa)
+                      {tl("Motivazione (facoltativa)")}
                       <input
                         value={requestReason}
                         onChange={(event) => setRequestReason(event.target.value)}
@@ -259,7 +260,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                       disabled={requestSending}
                       className="h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50"
                     >
-                      {requestSending ? 'Invio…' : 'Invia richiesta'}
+                      {requestSending ? tl("Invio…") : tl("Invia richiesta")}
                     </button>
                   </div>
                 ) : (
@@ -268,7 +269,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                     onClick={() => setRequestOpen(true)}
                     className="mt-2 h-8 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white"
                   >
-                    Richiedi nuovi crediti
+                    {tl("Richiedi nuovi crediti")}
                   </button>
                 )
               )}
@@ -276,7 +277,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
           )}
           {isPool && (balance?.classes?.length ?? 0) > 0 && (
             <div className="border-b border-slate-100 px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Budget per classe</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Budget per classe")}</p>
               <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                 {balance!.classes!.map((cls) => (
                   <div key={cls.class_id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs">
@@ -290,33 +291,33 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
             </div>
           )}
           <div className="border-b border-slate-100 px-4 py-2.5">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-600">Storico consumi</p>
+            <p className="text-xs font-black uppercase tracking-wide text-slate-600">{tl("Storico consumi")}</p>
           </div>
           <div className="max-h-80 overflow-auto">
             {historyLoading ? (
-              <div className="px-3 py-6 text-center text-sm text-slate-500">Caricamento...</div>
+              <div className="px-3 py-6 text-center text-sm text-slate-500">{tl("Caricamento...")}</div>
             ) : history.length === 0 ? (
-              <div className="px-3 py-6 text-center text-sm text-slate-500">Nessuna chiamata recente</div>
+              <div className="px-3 py-6 text-center text-sm text-slate-500">{tl("Nessuna chiamata recente")}</div>
             ) : (
               <table className="w-full min-w-[560px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                   <tr>
-                    <th className="px-4 py-2">Data</th>
-                    <th className="px-3 py-2">Servizio</th>
-                    {isPool && <th className="px-3 py-2">Studente / sessione</th>}
-                    <th className="px-3 py-2">Provider / modello</th>
-                    <th className="px-4 py-2 text-right">Crediti</th>
+                    <th className="px-4 py-2">{tl("Data")}</th>
+                    <th className="px-3 py-2">{tl("Servizio")}</th>
+                    {isPool && <th className="px-3 py-2">{tl("Studente / sessione")}</th>}
+                    <th className="px-3 py-2">{tl("Provider / modello")}</th>
+                    <th className="px-4 py-2 text-right">{tl("Crediti")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {history.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50/80">
                       <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-600">{formatWhen(item.timestamp)}</td>
-                      <td className="px-3 py-2.5 font-black text-slate-800">{item.service || 'Servizi AI'}</td>
+                      <td className="px-3 py-2.5 font-black text-slate-800">{item.service || tl("Servizi AI")}</td>
                       {isPool && (
                         <td className="max-w-44 px-3 py-2.5">
-                          <p className="truncate font-bold text-slate-700">{item.student_name || 'Studente'}</p>
-                          <p className="truncate text-[11px] text-slate-400">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || 'Sessione'}</p>
+                          <p className="truncate font-bold text-slate-700">{item.student_name || tl("Studente")}</p>
+                          <p className="truncate text-[11px] text-slate-400">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || tl("Sessione")}</p>
                         </td>
                       )}
                       <td className="max-w-48 px-3 py-2.5">

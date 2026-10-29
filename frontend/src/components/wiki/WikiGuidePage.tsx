@@ -3,6 +3,7 @@ import type { LucideIcon } from '@/components/icons'
 import { ArrowRight, CheckCircle2, Layers3, Search, X } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
+import { tl } from '@/i18n/tl'
 
 export interface WikiFeature {
   title: string
@@ -127,7 +128,7 @@ export default function WikiGuidePage({
         <SidebarRail
           className="hidden md:flex"
           label={title}
-          expandLabel="Espandi indice"
+          expandLabel={tl("Espandi indice")}
           onExpand={() => setSidebarCollapsed(false)}
           items={filteredSections.map((section) => {
             const SectionIcon = section.icon
@@ -155,7 +156,7 @@ export default function WikiGuidePage({
               <h1 className="truncate text-sm font-bold text-slate-950">{title}</h1>
             </div>
             <span className="ml-auto">
-              <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label="Comprimi indice" />
+              <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label={tl("Comprimi indice")} />
             </span>
           </div>
           <p className="mt-3 text-xs leading-5 text-slate-500">{intro}</p>

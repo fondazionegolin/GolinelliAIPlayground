@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { hexToRgba } from '@/design/themes/colorUtils'
+import { tl } from '@/i18n/tl'
 
 interface TeacherInfo {
   id: string
@@ -88,10 +89,10 @@ export function TeachersManagementModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
       setEmail('')
-      toast({ title: 'Invito inviato!' })
+      toast({ title: tl("Invito inviato!") })
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      const detail = error.response?.data?.detail || 'Errore nell\'invio dell\'invito'
+      const detail = error.response?.data?.detail || tl("Errore nell'invio dell'invito")
       toast({ variant: 'destructive', title: detail })
     },
   })
@@ -102,9 +103,9 @@ export function TeachersManagementModal({
       : teacherApi.resendSessionTeacherInvitation(targetId, invitationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
-      toast({ title: 'Invito inviato nuovamente' })
+      toast({ title: tl("Invito inviato nuovamente") })
     },
-    onError: () => toast({ variant: 'destructive', title: 'Impossibile reinviare l’invito' }),
+    onError: () => toast({ variant: 'destructive', title: tl("Impossibile reinviare l’invito") }),
   })
 
   const removeMutation = useMutation({
@@ -115,10 +116,10 @@ export function TeachersManagementModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
       queryClient.invalidateQueries({ queryKey: ['classes'] })
-      toast({ title: 'Docente rimosso' })
+      toast({ title: tl("Docente rimosso") })
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      const detail = error.response?.data?.detail || 'Errore nella rimozione'
+      const detail = error.response?.data?.detail || tl("Errore nella rimozione")
       toast({ variant: 'destructive', title: detail })
     },
   })
@@ -165,7 +166,7 @@ export function TeachersManagementModal({
         >
           <div>
             <h2 className="text-lg font-bold text-slate-900">
-              {type === 'class' ? 'Docenti della Classe' : 'Docenti della Sessione'}
+              {type === 'class' ? tl("Docenti della Classe") : tl("Docenti della Sessione")}
             </h2>
             <p className="text-sm text-slate-600 mt-0.5">{targetName}</p>
             {className && (
@@ -185,17 +186,17 @@ export function TeachersManagementModal({
           {/* Invite Form */}
           <form onSubmit={handleInvite} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
-              Invita docente o admin
+              {tl("Invita docente o admin")}
             </label>
             {type === 'class' && (
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-xs font-bold">
-                <button type="button" onClick={() => setInviteScope('class')} className={`rounded-lg px-3 py-2 ${inviteScope === 'class' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Intera classe</button>
-                <button type="button" onClick={() => setInviteScope('session')} className={`rounded-lg px-3 py-2 ${inviteScope === 'session' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Una sessione</button>
+                <button type="button" onClick={() => setInviteScope('class')} className={`rounded-lg px-3 py-2 ${inviteScope === 'class' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{tl("Intera classe")}</button>
+                <button type="button" onClick={() => setInviteScope('session')} className={`rounded-lg px-3 py-2 ${inviteScope === 'session' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{tl("Una sessione")}</button>
               </div>
             )}
             {type === 'class' && inviteScope === 'session' && (
               <select value={inviteSessionId} onChange={(event) => setInviteSessionId(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700">
-                <option value="">Seleziona la sessione…</option>
+                <option value="">{tl("Seleziona la sessione…")}</option>
                 {classSessions.filter(session => !session.deleted_at).map(session => <option key={session.id} value={session.id}>{session.title}</option>)}
               </select>
             )}
@@ -204,7 +205,7 @@ export function TeachersManagementModal({
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   type="email"
-                  placeholder="Email del docente o admin..."
+                  placeholder={tl("Email del docente o admin...")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -221,13 +222,13 @@ export function TeachersManagementModal({
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4 mr-2" />
-                    Invita
+                    {tl("Invita")}
                   </>
                 )}
               </Button>
             </div>
             <p className="text-xs text-slate-500">
-              I docenti devono appartenere allo stesso istituto; gli admin possono essere invitati a qualsiasi classe o sessione.
+              {tl("I docenti devono appartenere allo stesso istituto; gli admin possono essere invitati a qualsiasi classe o sessione.")}
             </p>
           </form>
 
@@ -244,7 +245,7 @@ export function TeachersManagementModal({
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Docenti attuali ({data.teachers.length})
+                  {tl("Docenti attuali (")}{data.teachers.length})
                 </h3>
                 <div className="space-y-2">
                   {data.teachers.map((entry, idx) => (
@@ -280,7 +281,7 @@ export function TeachersManagementModal({
                           {entry.is_owner && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
                               <Crown className="h-3 w-3" />
-                              Proprietario
+                              {tl("Proprietario")}
                             </span>
                           )}
                           {entry.via_class && !entry.is_owner && (
@@ -291,7 +292,7 @@ export function TeachersManagementModal({
                                 color: accentTheme.text,
                               }}
                             >
-                              Via classe
+                              {tl("Via classe")}
                             </span>
                           )}
                         </div>
@@ -322,7 +323,7 @@ export function TeachersManagementModal({
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Inviti in attesa ({data.pending_invitations.length})
+                    {tl("Inviti in attesa (")}{data.pending_invitations.length})
                   </h3>
                   <div className="space-y-2">
                     {data.pending_invitations.map((inv) => (
@@ -352,15 +353,15 @@ export function TeachersManagementModal({
                             {inv.invitee.email}
                           </p>
                           <p className="text-xs text-amber-600 mt-0.5">
-                            Inviato il {formatDate(inv.created_at)}
+                            {tl("Inviato il")} {formatDate(inv.created_at)}
                           </p>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => resendMutation.mutate(inv.id)} disabled={resendMutation.isPending} className="flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50" title="Reinvia email e notifica">
-                            <RefreshCw className={`h-3 w-3 ${resendMutation.isPending ? 'animate-spin' : ''}`} /> Reinvia
+                          <button type="button" onClick={() => resendMutation.mutate(inv.id)} disabled={resendMutation.isPending} className="flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50" title={tl("Reinvia email e notifica")}>
+                            <RefreshCw className={`h-3 w-3 ${resendMutation.isPending ? 'animate-spin' : ''}`} /> {tl("Reinvia")}
                           </button>
-                          <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-lg">In attesa</span>
+                          <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-lg">{tl("In attesa")}</span>
                         </div>
                       </div>
                     ))}
@@ -374,7 +375,7 @@ export function TeachersManagementModal({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50">
           <Button variant="outline" onClick={onClose} className="w-full">
-            Chiudi
+            {tl("Chiudi")}
           </Button>
         </div>
       </div>

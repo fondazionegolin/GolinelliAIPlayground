@@ -27,7 +27,7 @@ from app.services.json_extract import extract_json
 
 PRIMITIVE_KINDS = {
     "box", "cylinder", "sphere", "cone", "pyramid", "hemisphere",
-    "wedge", "torus", "tube", "star", "text",
+    "wedge", "torus", "tube", "star", "text", "polyhedron",
 }
 PLATE_SIZE = 200.0
 MAX_OBJECTS = 160
@@ -52,6 +52,8 @@ stima le proporzioni reali, posiziona le parti in modo che si tocchino/compenetr
 - cylinder: asse Z. params.sides (3–64, default 32; 6 = prisma esagonale).
 - cone: punta in alto (+Z). params.topRatio (0 = punta, 0.5 = tronco di cono), params.sides.
 - pyramid: base quadrata, punta in alto.
+- polyhedron: piramide a base poligonale, params.faces (4–64, default 7) indica il numero totale di facce.
+- params.edgeFillets: mappa identificativo spigolo → raggio in mm; preserva questi raccordi nelle modifiche.
 - sphere: sfera/ellissoide.
 - hemisphere: cupola, base piatta in basso.
 - wedge: cuneo/rampa: faccia piena a -X alta quanto size z, scende a 0 verso +X.
@@ -223,10 +225,10 @@ def _clean_params(kind: str, params: Any) -> dict:
     if not isinstance(params, dict):
         return {}
     out: dict = {}
-    for key in ("sides", "points"):
+    for key in ("sides", "points", "faces"):
         if key in params:
             try:
-                out[key] = max(3, min(64, int(params[key])))
+                out[key] = max(4 if key == "faces" else 3, min(64, int(params[key])))
             except (TypeError, ValueError):
                 pass
     for key, lo, hi in (("radius", 0.0, 0.5), ("topRatio", 0.0, 1.0), ("thickness", 0.05, 0.45), ("wall", 0.05, 0.45), ("inner", 0.2, 0.9)):
@@ -235,6 +237,18 @@ def _clean_params(kind: str, params: Any) -> dict:
                 out[key] = max(lo, min(hi, float(params[key])))
             except (TypeError, ValueError):
                 pass
+    if isinstance(params.get("edgeFillets"), dict):
+        fillets = {}
+        for edge, radius in list(params["edgeFillets"].items())[:192]:
+            if not isinstance(edge, str) or len(edge) > 160 or not re.fullmatch(r"[-0-9.,]+\|[-0-9.,]+", edge):
+                continue
+            try:
+                value = float(radius)
+                if math.isfinite(value) and value >= 0:
+                    fillets[edge] = min(200.0, value)
+            except (TypeError, ValueError):
+                pass
+        out["edgeFillets"] = fillets
     if kind == "text":
         out["text"] = str(params.get("text") or "Testo")[:24]
     return out

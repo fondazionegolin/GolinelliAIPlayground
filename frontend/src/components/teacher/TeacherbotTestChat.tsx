@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotTestChatProps {
   teacherbotId: string
@@ -83,7 +84,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
       queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile testare il teacherbot', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile testare il teacherbot"), variant: 'destructive' })
     },
   })
 
@@ -150,7 +151,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
       <div className="flex items-center gap-4 mb-4">
         <Button variant="ghost" onClick={onBack} className="text-slate-600">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Indietro
+          {tl("Indietro")}
         </Button>
         <div className="flex-1 flex items-center gap-3">
           <div className={`w-10 h-10 rounded-lg ${getColorClass(teacherbot?.color)} flex items-center justify-center`}>
@@ -158,12 +159,12 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
           </div>
           <div>
             <h2 className="font-bold text-slate-800">Test: {teacherbot?.name}</h2>
-            <p className="text-xs text-slate-500">Prova il tuo teacherbot prima di pubblicarlo</p>
+            <p className="text-xs text-slate-500">{tl("Prova il tuo teacherbot prima di pubblicarlo")}</p>
           </div>
         </div>
         <Button variant="outline" onClick={handleReset} className="text-slate-600">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Ricomincia
+          {tl("Ricomincia")}
         </Button>
       </div>
 
@@ -174,8 +175,8 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-50">
               <Bot className="h-12 w-12 text-slate-300 mb-4" />
-              <p className="text-slate-400 font-medium">Inizia a conversare con il tuo bot</p>
-              <p className="text-sm text-slate-400">Testa come risponde prima di pubblicarlo</p>
+              <p className="text-slate-400 font-medium">{tl("Inizia a conversare con il tuo bot")}</p>
+              <p className="text-sm text-slate-400">{tl("Testa come risponde prima di pubblicarlo")}</p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -241,7 +242,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                   handleSend()
                 }
               }}
-              placeholder="Scrivi un messaggio di test..."
+              placeholder={tl("Scrivi un messaggio di test...")}
               className="flex-1 resize-none px-4 py-2 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm leading-6"
               disabled={isLoading}
             />
@@ -259,8 +260,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
       {/* Info Panel */}
       <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
         <p className="text-sm text-amber-800">
-          <strong>Modalita Test:</strong> Questa chat e solo per testare il comportamento del tuo bot.
-          Le conversazioni non vengono salvate e non generano report.
+          <strong>{tl("Modalita Test:")}</strong> {tl("Questa chat e solo per testare il comportamento del tuo bot. Le conversazioni non vengono salvate e non generano report.")}
         </p>
       </div>
     </div>

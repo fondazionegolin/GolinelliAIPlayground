@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Circle, Eye, EyeOff, GripVertical, Image as ImageIcon, Lock, Minus, Square, Type, Unlock } from '@/components/icons'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { reorderBlockLayer, toggleBlockHidden, toggleBlockLocked } from '@/lib/slideBlocks'
+import { tl } from '@/i18n/tl'
 
 interface SlideLayersPanelProps {
   blocks: SlideBlock[]
@@ -21,12 +22,12 @@ const TYPE_ICON: Record<SlideBlock['type'], typeof Type> = {
 function blockLabel(block: SlideBlock): string {
   if (block.type === 'text') {
     const plain = block.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-    return plain ? plain.slice(0, 40) : 'Testo vuoto'
+    return plain ? plain.slice(0, 40) : tl("Testo vuoto")
   }
-  if (block.type === 'image') return 'Immagine'
-  if (block.type === 'rectangle') return 'Rettangolo'
-  if (block.type === 'ellipse') return 'Ellisse'
-  return 'Linea'
+  if (block.type === 'image') return tl("Immagine")
+  if (block.type === 'rectangle') return tl("Rettangolo")
+  if (block.type === 'ellipse') return tl("Ellisse")
+  return tl("Linea")
 }
 
 /** Per-slide layer list: select-through-occlusion, lock/hide toggles, drag reorder. Mirrors the canvas context menu's layer actions (shared helpers in lib/slideBlocks) so both stay in sync. */
@@ -55,7 +56,7 @@ export function SlideLayersPanel({ blocks, onChange, selectedBlockId, onSelectBl
   }
 
   if (!blocks.length) {
-    return <div className="px-3 py-6 text-center text-xs text-slate-400">Nessun oggetto in questa slide.</div>
+    return <div className="px-3 py-6 text-center text-xs text-slate-400">{tl("Nessun oggetto in questa slide.")}</div>
   }
 
   return (
@@ -82,7 +83,7 @@ export function SlideLayersPanel({ blocks, onChange, selectedBlockId, onSelectBl
             <span className="flex-1 truncate">{blockLabel(block)}</span>
             <button
               type="button"
-              title={block.locked ? 'Sblocca' : 'Blocca'}
+              title={block.locked ? tl("Sblocca") : tl("Blocca")}
               className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               onClick={(e) => { e.stopPropagation(); onChange(toggleBlockLocked(blocks, block.id)) }}
             >
@@ -90,7 +91,7 @@ export function SlideLayersPanel({ blocks, onChange, selectedBlockId, onSelectBl
             </button>
             <button
               type="button"
-              title={block.hidden ? 'Mostra' : 'Nascondi'}
+              title={block.hidden ? tl("Mostra") : tl("Nascondi")}
               className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               onClick={(e) => {
                 e.stopPropagation()

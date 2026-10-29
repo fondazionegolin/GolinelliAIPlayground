@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ColorPicker } from '@/components/ui/ColorPicker'
 import { Bold, Hash, ImagePlus, Italic, Trash2, Type } from '@/components/icons'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -173,7 +174,7 @@ export function DocumentHeaderFooterDialog({ open, onOpenChange, value, onChange
                 <select className="h-8 w-16 rounded-lg border border-slate-200 bg-white px-1.5 text-xs" value={selected.sizePt ?? 9} onChange={(event) => patchItem(selected.id, { sizePt: Number(event.target.value) })} aria-label={t('Dimensione', 'Size')}>
                   {(SIZES.includes(selected.sizePt ?? 9) ? SIZES : [...SIZES, selected.sizePt ?? 9].sort((a, b) => a - b)).map((size) => <option key={size} value={size}>{size} pt</option>)}
                 </select>
-                <input type="color" className="h-8 w-8 cursor-pointer rounded border border-slate-200 bg-white p-0.5" value={selected.color ?? '#64748b'} onChange={(event) => patchItem(selected.id, { color: event.target.value })} title={t('Colore', 'Colour')} />
+                <ColorPicker value={selected.color ?? '#64748b'} onChange={(color) => patchItem(selected.id, { color: color })} title={t('Colore', 'Colour')} />
                 <button type="button" className={iconToggle(selected.bold === true)} aria-pressed={selected.bold === true} onClick={() => patchItem(selected.id, { bold: !selected.bold })} title={t('Grassetto', 'Bold')}><Bold className="h-4 w-4" /></button>
                 <button type="button" className={iconToggle(selected.italic === true)} aria-pressed={selected.italic === true} onClick={() => patchItem(selected.id, { italic: !selected.italic })} title={t('Corsivo', 'Italic')}><Italic className="h-4 w-4" /></button>
               </div>

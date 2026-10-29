@@ -61,6 +61,7 @@ import { useAuthStore } from '@/stores/auth'
 import { TEACHER_PROFILE_KEY, type TeacherProfileData } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
+import { tl } from '@/i18n/tl'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -168,25 +169,27 @@ type PreviewApiRequest = {
   payload?: Record<string, unknown>
 }
 
-type InterviewQuestion = { question: string; suggestions: string[] }
+type InterviewTurn = { role: 'user' | 'assistant'; content: string; suggestions?: string[] }
+type BuildMilestone = { title: string; goal: string; features: string[] }
+type BuildPlan = { projectId: string; milestones: BuildMilestone[]; next: number }
+// Ideas longer than this are always analysed into spec.md + milestones instead of fed raw to codegen.
+const SPEC_PROMPT_THRESHOLD = 700
 type ModelProvider = 'anthropic' | 'openai' | 'deepseek'
 type ModelOption = { key: string; label: string; hint: string; provider: ModelProvider }
 
 // Selectable generation models. Keys must match CODING_MODEL_CHOICES on the backend.
 const MODEL_OPTIONS: ModelOption[] = [
-  { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità', provider: 'anthropic' },
-  { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce', provider: 'anthropic' },
-  { key: 'haiku-5', label: 'Haiku 5.5', hint: 'Veloce e preciso', provider: 'anthropic' },
-  { key: 'luna', label: 'GPT-5.6 Luna', hint: 'Veloce ed economico', provider: 'openai' },
-  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico', provider: 'deepseek' },
-  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata', provider: 'deepseek' },
+  { key: 'sonnet', label: 'Sonnet 4.6', hint: tl("Massima qualità"), provider: 'anthropic' },
+  { key: 'haiku', label: 'Haiku 4.5', hint: tl("Più veloce"), provider: 'anthropic' },
+  { key: 'haiku-5', label: 'Haiku 5.5', hint: tl("Veloce e preciso"), provider: 'anthropic' },
+  { key: 'luna', label: 'GPT-5.6 Luna', hint: tl("Veloce ed economico"), provider: 'openai' },
+  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: tl("Qualità elevata"), provider: 'deepseek' },
 ]
 // Students may only generate with DeepSeek and Claude Haiku 5.5 (the other Claude models are off).
 // (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
-const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro', 'haiku-5'])
+const STUDENT_MODEL_KEYS = new Set(['deepseek-pro', 'haiku-5'])
 const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
-const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-flash'
-const STUDENT_FLASH_DEFAULT_MIGRATION_KEY = 'coding_student_flash_default_v1'
+const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-pro'
 const PROJECT_MODEL_DATA_KEY = '_golinelli_generation_model'
 function modelOptionsFor(isTeacher: boolean) {
   return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
@@ -194,17 +197,12 @@ function modelOptionsFor(isTeacher: boolean) {
 function initialModelKey(isTeacher: boolean): string {
   const fallback = isTeacher ? TEACHER_DEFAULT_MODEL_KEY : STUDENT_DEFAULT_MODEL_KEY
   const stored = localStorage.getItem('coding_model_key') || ''
-  if (!isTeacher && stored === 'deepseek-pro' && localStorage.getItem(STUDENT_FLASH_DEFAULT_MIGRATION_KEY) !== '1') {
-    localStorage.setItem(STUDENT_FLASH_DEFAULT_MIGRATION_KEY, '1')
-    localStorage.setItem('coding_model_key', STUDENT_DEFAULT_MODEL_KEY)
-    return STUDENT_DEFAULT_MODEL_KEY
-  }
   return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
 }
 
 const MODEL_PROVIDER_ASSETS: Record<ModelProvider, { src: string; alt: string }> = {
   anthropic: { src: '/icone_ai/anthropic.svg', alt: 'Anthropic' },
-  openai: { src: '/icone_ai/OpenAI_logo_2025_(symbol).svg.png', alt: 'OpenAI' },
+  openai: { src: "/icone_ai/OpenAI_logo_2025_(symbol).svg.png", alt: 'OpenAI' },
   deepseek: { src: '/icone_ai/deepseek-logo-icon.svg', alt: 'DeepSeek' },
 }
 
@@ -254,7 +252,7 @@ function CodingModelSelector({
         className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} ds-control flex items-center gap-1.5 font-semibold text-[var(--logo-violet-strong)] outline-none transition focus-visible:shadow-[var(--ds-shadow-focus)]`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Modello usato per generare il codice"
+        title={tl("Modello usato per generare il codice")}
       >
         <ModelProviderIcon provider={selected.provider} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
         <span className="min-w-0 flex-1 truncate text-left">{compact ? selected.label : `${selected.label} · ${selected.hint}`}</span>
@@ -263,7 +261,7 @@ function CodingModelSelector({
       {open && (
         <div
           role="listbox"
-          aria-label="Seleziona il modello"
+          aria-label={tl("Seleziona il modello")}
           className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} ds-popover absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl p-1.5`}
         >
           {options.map((option) => {
@@ -316,8 +314,8 @@ function DeepSeekDisclaimer({ consent, onAccept, className = '' }: {
   return (
     <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 ${className}`}>
       <p className="mb-2 leading-snug">
-        Stai usando un modello <strong>DeepSeek</strong>: i tuoi messaggi vengono inviati ai server di DeepSeek per generare il codice.{' '}
-        <a href={consent.source_url} target="_blank" rel="noreferrer" className="font-bold underline">Leggi l'informativa privacy di DeepSeek</a>.
+        {tl("Stai usando un modello")} <strong>DeepSeek</strong>{tl(": i tuoi messaggi vengono inviati ai server di DeepSeek per generare il codice.")}{' '}
+        <a href={consent.source_url} target="_blank" rel="noreferrer" className="font-bold underline">{tl("Leggi l'informativa privacy di DeepSeek")}</a>.
       </p>
       <button
         type="button"
@@ -349,10 +347,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // Identity exposed to generated apps through GolinelliAI.me(): display name + role only. Read from
   // what the app already knows (teacher profile cache / student session) — never an extra request.
   const bridgeIdentity = (): { name: string; role: 'student' | 'teacher' } => {
-    if (!isTeacher) return { name: useAuthStore.getState().studentSession?.nickname || 'Studente', role: 'student' }
+    if (!isTeacher) return { name: useAuthStore.getState().studentSession?.nickname || tl("Studente"), role: 'student' }
     const profile = queryClient.getQueryData<TeacherProfileData>(TEACHER_PROFILE_KEY)
     const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ')
-    return { name: fullName || useAuthStore.getState().user?.email?.split('@')[0] || 'Docente', role: 'teacher' }
+    return { name: fullName || useAuthStore.getState().user?.email?.split('@')[0] || tl("Docente"), role: 'teacher' }
   }
   const bridgeIdentityRef = useRef(bridgeIdentity)
   bridgeIdentityRef.current = bridgeIdentity
@@ -393,8 +391,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const fullscreenResets = useRef(0)
   const previewLoadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const detailLoadSeq = useRef(0)
-  const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[] | null>(null)
-  const [interviewAnswers, setInterviewAnswers] = useState<Record<number, string>>({})
+  const [chatTurns, setChatTurns] = useState<InterviewTurn[] | null>(null)
+  const [chatInput, setChatInput] = useState('')
+  const [chatReady, setChatReady] = useState(false)
+  const [specBusy, setSpecBusy] = useState(false)
+  const [buildPlan, setBuildPlan] = useState<BuildPlan | null>(null)
   const [interviewing, setInterviewing] = useState(false)
   const applyingSubjectiveStateRef = useRef(false)
 
@@ -654,8 +655,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewingCommitId(null)
     setPreviewingVersionId(null)
     setUpstreamStatus(null)
-    setInterviewQuestions(null)
-    setInterviewAnswers({})
+    setChatTurns(null)
+    setChatInput('')
+    setChatReady(false)
+    setBuildPlan(null)
     setDraftDirty(false)
     setDraftSaving(false)
     setDraftSavedAt(null)
@@ -673,7 +676,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           parent_version_id: selectedProject?.current_version_id || null,
           source_manifest_json: {
             files,
-            summary: 'Bozza salvata prima di creare un nuovo progetto.',
+            summary: tl("Bozza salvata prima di creare un nuovo progetto."),
             ...(collaboration ? { collaboration } : {}),
           },
           artifact_manifest_json: {},
@@ -688,7 +691,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             : project
         )))
       } catch (err: any) {
-        setError(err?.response?.data?.detail || 'Salvataggio del progetto non riuscito. Riprova prima di crearne uno nuovo.')
+        setError(err?.response?.data?.detail || tl("Salvataggio del progetto non riuscito. Riprova prima di crearne uno nuovo."))
         return
       } finally {
         setDraftSaving(false)
@@ -715,7 +718,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setCreatePanelOpen(true)
       }
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Impossibile caricare i progetti.')
+      setError(err?.response?.data?.detail || tl("Impossibile caricare i progetti."))
     } finally {
       setLoading(false)
     }
@@ -767,7 +770,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setPreviewingVersionId(null)
     } catch (err: any) {
       if (seq === detailLoadSeq.current) {
-        setError(err?.response?.data?.detail || 'Impossibile caricare il progetto.')
+        setError(err?.response?.data?.detail || tl("Impossibile caricare il progetto."))
       }
     }
   }
@@ -784,9 +787,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setProjects((prev) => [forked, ...prev.filter((item) => item.id !== forked.id)])
         setSelectedProjectId(forked.id)
         setActiveWorkbench('preview')
-        setShareUrl('Copia personale creata dal progetto condiviso.')
+        setShareUrl(tl("Copia personale creata dal progetto condiviso."))
       } catch (err: any) {
-        setError(err?.response?.data?.detail || 'Impossibile aprire il progetto condiviso.')
+        setError(err?.response?.data?.detail || tl("Impossibile aprire il progetto condiviso."))
       } finally {
         setLoading(false)
       }
@@ -891,7 +894,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           parent_version_id: selectedProject?.current_version_id || null,
           source_manifest_json: {
             files: filesSnapshot,
-            summary: 'Bozza salvata automaticamente.',
+            summary: tl("Bozza salvata automaticamente."),
             ...(collaboration ? { collaboration } : {}),
           },
           artifact_manifest_json: {},
@@ -912,7 +915,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           )))
         }
       } catch (err: any) {
-        setError(err?.response?.data?.detail || 'Salvataggio bozza non riuscito.')
+        setError(err?.response?.data?.detail || tl("Salvataggio bozza non riuscito."))
       } finally {
         setDraftSaving(false)
       }
@@ -944,9 +947,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         setPromptPanelOpen(true)
         setSelectedProjectId(project.id)
         setActiveWorkbench('preview')
-        setShareUrl(project.status === 'fork' ? 'Copia personale creata. Puoi modificarla e inviare un commit al creatore.' : 'Hai aperto il tuo progetto condiviso.')
+        setShareUrl(project.status === 'fork' ? tl("Copia personale creata. Puoi modificarla e inviare un commit al creatore.") : tl("Hai aperto il tuo progetto condiviso."))
       } catch (err: any) {
-        if (!cancelled) setError(err?.response?.data?.detail || 'Impossibile aprire il progetto condiviso.')
+        if (!cancelled) setError(err?.response?.data?.detail || tl("Impossibile aprire il progetto condiviso."))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -1016,7 +1019,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           const payload = data.payload || {}
           // Vibe Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
           // ignoring any provider the generated mini-app may pass.
-          setImageJobStatus({ status: 'generating', message: 'Genero l’immagine sul server…' })
+          setImageJobStatus({ status: 'generating', message: tl("Genero l’immagine sul server…") })
           const response = await llmApi.generateImage(String(payload.prompt || ''), 'gpt-image-2-2026-04-21')
           const result = response.data
           // The backend returns a path relative to the platform's own origin (e.g.
@@ -1027,11 +1030,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           const imageUrl = typeof result?.image_url === 'string' && result.image_url.startsWith('/')
             ? `${window.location.origin}${result.image_url}`
             : result?.image_url
-          setImageJobStatus({ status: 'optimizing', message: 'Ottimizzo e preparo il file…' })
+          setImageJobStatus({ status: 'optimizing', message: tl("Ottimizzo e preparo il file…") })
           if (typeof imageUrl === 'string') {
             await waitForImageUrl(imageUrl)
           }
-          setImageJobStatus({ status: 'ready', message: 'Immagine pronta.' })
+          setImageJobStatus({ status: 'ready', message: tl("Immagine pronta.") })
           window.setTimeout(() => setImageJobStatus(null), 1800)
           reply({ ok: true, result: { ...result, image_url: imageUrl } })
           return
@@ -1039,9 +1042,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
         if (data.action === 'saveData' || data.action === 'loadData' || data.action === 'deleteData') {
           const projectId = selectedProjectIdRef.current
-          if (!projectId) { reply({ ok: false, error: 'Nessun progetto attivo.' }); return }
+          if (!projectId) { reply({ ok: false, error: tl("Nessun progetto attivo.") }); return }
           const key = String(data.payload?.key || '').trim()
-          if (!key) { reply({ ok: false, error: 'Chiave dati mancante.' }); return }
+          if (!key) { reply({ ok: false, error: tl("Chiave dati mancante.") }); return }
 
           if (data.action === 'saveData') {
             const response = await codingApi.putProjectData(projectId, key, data.payload?.value ?? null)
@@ -1069,9 +1072,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           const tagName = String(payload.tagName || '').trim()
           const text = String(payload.text || '').trim()
           // Show only a readable reference in the prompt box — never the raw HTML.
-          const label = text ? `«${text.slice(0, 120)}»` : (tagName ? `<${tagName}>` : 'elemento selezionato')
-          const where = tagName ? `elemento <${tagName}>${selector ? `, ${selector}` : ''}` : selector
-          const reference = where ? `Migliora questa sezione: ${label} (${where})` : `Migliora questa sezione: ${label}`
+          const label = text ? `«${text.slice(0, 120)}»` : (tagName ? `<${tagName}>` : tl("elemento selezionato"))
+          const where = tagName ? tl("elemento <{0}>{1}", tagName, selector ? `, ${selector}` : '') : selector
+          const reference = where ? tl("Migliora questa sezione: {0} ({1})", label, where) : tl("Migliora questa sezione: {0}", label)
           setMessage((prev) => prev.trim() ? `${reference}\n${prev.trim()}` : reference)
           reply({ ok: true, result: { inserted: true } })
           return
@@ -1080,7 +1083,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         if (data.action === 'sharedGet' || data.action === 'sharedSet' || data.action === 'sharedAppend') {
           const projectId = selectedProjectIdRef.current
           const key = String(data.payload?.key || '').trim()
-          if (!projectId || !key) { reply({ ok: false, error: 'Chiave condivisa mancante.' }); return }
+          if (!projectId || !key) { reply({ ok: false, error: tl("Chiave condivisa mancante.") }); return }
           const response = data.action === 'sharedGet'
             ? await codingApi.getSharedData(projectId, key)
             : data.action === 'sharedSet'
@@ -1107,7 +1110,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               system: typeof payload.system === 'string' ? payload.system : undefined,
             }),
           })
-          if (!response.ok || !response.body) throw new Error('Chat non disponibile.')
+          if (!response.ok || !response.body) throw new Error(tl("Chat non disponibile."))
           const reader = response.body.getReader()
           const decoder = new TextDecoder()
           let buffer = ''
@@ -1127,7 +1130,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 full += frame.text
                 event.source?.postMessage({ source: 'golinelli-coding-host', id: data.id, partial: true, delta: frame.text }, { targetOrigin: replyOrigin })
               } else if (frame.type === 'error') {
-                throw new Error(frame.message || 'Chat non riuscita.')
+                throw new Error(frame.message || tl("Chat non riuscita."))
               } else if (frame.type === 'done' && typeof frame.response === 'string') {
                 full = frame.response
               }
@@ -1175,12 +1178,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         }
       } catch (err: any) {
         if (data.action === 'generateImage') {
-          setImageJobStatus({ status: 'error', message: err?.response?.data?.detail || err?.message || 'Generazione immagine non riuscita.' })
+          setImageJobStatus({ status: 'error', message: err?.response?.data?.detail || err?.message || tl("Generazione immagine non riuscita.") })
           window.setTimeout(() => setImageJobStatus(null), 5000)
         }
         reply({
           ok: false,
-          error: err?.response?.data?.detail || err?.message || 'Chiamata AI non riuscita.',
+          error: err?.response?.data?.detail || err?.message || tl("Chiamata AI non riuscita."),
         })
       }
     }
@@ -1189,75 +1192,129 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return () => window.removeEventListener('message', handlePreviewApi)
   }, [])
 
-  // Step 1: interview the student before generating (always, per project setup).
-  const handleStartInterview = async () => {
-    if (!prompt.trim()) return
+  // Step 1: conversational interview. A failure is surfaced (retry / explicit "generate anyway"),
+  // never silently turned into a blind generation.
+  const askInterviewer = async (turns: InterviewTurn[]) => {
     const projectTitle = title.trim() || prompt.trim().slice(0, 56)
-    if (!title.trim()) setTitle(projectTitle)
     setInterviewing(true)
     setError(null)
+    setChatTurns(turns)
     try {
-      const response = await codingApi.interview({ title: projectTitle, prompt: constrainGenerationPrompt(prompt) })
-      const questions = (response.data?.questions || []) as InterviewQuestion[]
-      if (questions.length) {
-        setInterviewQuestions(questions)
-        setInterviewAnswers({})
-      } else {
-        await createAndGenerate('')
-      }
-    } catch {
-      // If the interview step fails, never block: generate directly.
-      await createAndGenerate('')
+      const response = await codingApi.interviewChat({
+        title: projectTitle,
+        prompt: prompt.trim(),
+        messages: turns.map(({ role, content }) => ({ role, content })),
+      })
+      const data = response.data || {}
+      setChatTurns([...turns, { role: 'assistant', content: String(data.reply || ''), suggestions: data.suggestions || [] }])
+      setChatReady(Boolean(data.ready))
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || tl("Intervista non disponibile, riprova."))
     } finally {
       setInterviewing(false)
     }
   }
 
-  const createAndGenerate = async (answersText: string) => {
+  const handleStartInterview = async () => {
     if (!prompt.trim()) return
-    const projectTitle = title.trim() || prompt.trim().slice(0, 56)
+    if (!title.trim()) setTitle(prompt.trim().slice(0, 56))
+    setChatReady(false)
+    setChatInput('')
+    await askInterviewer([])
+  }
+
+  const sendChatAnswer = async (text: string) => {
+    const value = text.trim()
+    if (!value || interviewing || !chatTurns) return
+    setChatInput('')
+    await askInterviewer([...chatTurns, { role: 'user', content: value }])
+  }
+
+  const milestonePrompt = (plan: BuildMilestone[], index: number, hasSpec: boolean) => {
+    const m = plan[index]
+    const features = m.features.length ? `\nFunzioni da completare: ${m.features.join(', ')}.` : ''
+    return [
+      `MILESTONE ${index + 1} di ${plan.length}: ${m.title}`,
+      `Obiettivo: ${m.goal}${features}`,
+      hasSpec ? 'La fonte di verità è spec.md (knowledge base): rispettala senza ridurre i requisiti.' : '',
+      index === 0
+        ? 'Crea lo scheletro funzionante: struttura file, navigazione, dati di esempio e la funzione principale. Mantieni i file compatti.'
+        : 'Estendi il progetto esistente: modifica solo i file necessari e non riscrivere ciò che già funziona.',
+    ].filter(Boolean).join('\n')
+  }
+
+  const runMilestones = async (projectId: string, milestones: BuildMilestone[], startIndex: number, firstFiles?: GeneratedFile[]) => {
+    for (let i = startIndex; i < milestones.length; i += 1) {
+      setBuildPlan({ projectId, milestones, next: i })
+      const ok = await generateCode(projectId, milestonePrompt(milestones, i, true), i === startIndex ? firstFiles : undefined)
+      if (!ok) return false
+    }
+    setBuildPlan(null)
+    return true
+  }
+
+  const createAndGenerate = async (turns: InterviewTurn[] = []) => {
+    if (!prompt.trim()) return
+    const idea = prompt.trim()
+    const projectTitle = title.trim() || idea.slice(0, 56)
+    const needsSpec = turns.length > 0 || idea.length > SPEC_PROMPT_THRESHOLD
     setCreating(true)
     setError(null)
     try {
+      // Analyse the idea (+ interview) into a structured spec and a milestone plan first, so even a
+      // very long, detailed brief is decomposed instead of overflowing a single generation.
+      let specMd = ''
+      let milestones: BuildMilestone[] = []
+      if (needsSpec) {
+        setSpecBusy(true)
+        try {
+          const specResponse = await codingApi.spec({
+            title: projectTitle,
+            prompt: idea,
+            messages: turns.map(({ role, content }) => ({ role, content })),
+          })
+          specMd = String(specResponse.data?.spec_md || '')
+          milestones = (specResponse.data?.milestones || []) as BuildMilestone[]
+        } finally {
+          setSpecBusy(false)
+        }
+      }
       const response = await codingApi.createProject({
         title: projectTitle,
         session_id: sessionId,
         template_key: 'vite-react',
-        initial_prompt: constrainGenerationPrompt(prompt),
+        initial_prompt: constrainGenerationPrompt(idea),
       })
       const project = response.data as CodingProject
       void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
-        setError('Progetto creato, ma non è stato possibile salvare la preferenza del modello.')
+        setError(tl("Progetto creato, ma non è stato possibile salvare la preferenza del modello."))
       })
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
-      setInterviewQuestions(null)
-      const description = composeDescription(projectTitle, constrainGenerationPrompt(prompt), answersText)
-      // Keep any context files the student added with "+ File"; refresh description.md.
+      setChatTurns(null)
+      const shortIdea = specMd && idea.length > 1500 ? `${idea.slice(0, 1500)}…\n\n(Brief completo analizzato in spec.md)` : idea
+      const description = composeDescription(projectTitle, constrainGenerationPrompt(shortIdea), '')
+      // Keep any context files the student added with "+ File"; refresh description.md and spec.md.
       const initialFiles: GeneratedFile[] = [
         { path: 'description.md', content: description, language: 'markdown' },
-        ...files.filter((file) => file.path !== 'description.md'),
+        ...(specMd ? [{ path: 'spec.md', content: specMd, language: 'markdown' }] : []),
+        ...files.filter((file) => file.path !== 'description.md' && file.path !== 'spec.md'),
       ]
       setFiles(initialFiles)
-      const genPrompt = answersText ? `${prompt.trim()}\n\nDettagli dal colloquio:\n${answersText}` : prompt.trim()
-      await generateCode(project.id, genPrompt, initialFiles)
+      if (milestones.length) await runMilestones(project.id, milestones, 0, initialFiles)
+      else await generateCode(project.id, idea, initialFiles)
       if (isMobile) setMobilePane('workbench')
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Impossibile creare il progetto.')
+      setError(err?.response?.data?.detail || tl("Impossibile creare il progetto."))
     } finally {
       setCreating(false)
     }
   }
 
-  const submitInterview = async () => {
-    if (!interviewQuestions) return
-    const answersText = interviewQuestions
-      .map((item, index) => ({ q: item.question, a: (interviewAnswers[index] || '').trim() }))
-      .filter((entry) => entry.a)
-      .map((entry) => `- ${entry.q}\n  → ${entry.a}`)
-      .join('\n')
-    await createAndGenerate(answersText)
+  const resumeBuildPlan = async () => {
+    if (!buildPlan || generating) return
+    await runMilestones(buildPlan.projectId, buildPlan.milestones, buildPlan.next)
   }
 
   const handleModelChange = (nextModelKey: string) => {
@@ -1265,7 +1322,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setModelKey(nextModelKey)
     if (selectedProjectId) {
       void codingApi.putProjectData(selectedProjectId, PROJECT_MODEL_DATA_KEY, { model_key: nextModelKey }).catch(() => {
-        setError('Non è stato possibile salvare il modello scelto per questo progetto.')
+        setError(tl("Non è stato possibile salvare il modello scelto per questo progetto."))
       })
     }
   }
@@ -1273,7 +1330,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // Parse the generation SSE stream (new run or a replay of a background job) into the live UI.
   // Returns the generated files on success; throws with the server's message on error.
   const consumeGenerationStream = async (response: Response): Promise<GeneratedFile[] | null> => {
-    if (!response.body) throw new Error('La generazione non è partita.')
+    if (!response.body) throw new Error(tl("La generazione non è partita."))
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -1299,24 +1356,24 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           continue
         }
         if (event.type === 'reasoning') {
-          setLiveStatus('L’architetto sta definendo struttura e modifiche…')
+          setLiveStatus(tl("L’architetto sta definendo struttura e modifiche…"))
           setLiveReasoning((prev) => prev + (event.content || ''))
         } else if (event.type === 'status') {
-          setLiveStatus(String(event.message || 'Elaborazione in corso…'))
+          setLiveStatus(String(event.message || tl("Elaborazione in corso…")))
         } else if (event.type === 'plan') {
-          setLiveStatus(`Piano pronto: ${event.files?.length || 0} file da elaborare.`)
+          setLiveStatus(tl("Piano pronto: {0} file da elaborare.", event.files?.length || 0))
           setLivePlan((event.files || []) as { path: string; purpose: string }[])
           setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
         } else if (event.type === 'file_start') {
-          setLiveStatus(event.op === 'patch' ? `Modifico ${String(event.path)}…` : `Scrittura di ${String(event.path)}…`)
+          setLiveStatus(event.op === 'patch' ? tl("Modifico {0}…", String(event.path)) : tl("Scrittura di {0}…", String(event.path)))
           setLiveFiles((prev) => prev.some((file) => file.path === event.path)
             ? prev.map((file) => file.path === event.path ? { ...file, op: event.op } : file)
             : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const, op: event.op }])
         } else if (event.type === 'file_progress') {
-          setLiveStatus(`Scrittura di ${String(event.path)}: ${event.lines || 0} righe…`)
+          setLiveStatus(tl("Scrittura di {0}: {1} righe…", String(event.path), event.lines || 0))
           setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
         } else if (event.type === 'file_done') {
-          setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? `Modifica pronta per ${String(event.path)}.` : `${String(event.path)} completato (${event.lines || 0} righe).`)
+          setLiveStatus(event.op === 'delete' ? `${String(event.path)} eliminato.` : event.op === 'patch' ? tl("Modifica pronta per {0}.", String(event.path)) : `${String(event.path)} completato (${event.lines || 0} righe).`)
           setLiveFiles((prev) => {
             const next = { path: String(event.path), lines: event.lines || 0, status: 'done' as const, op: event.op }
             return prev.some((file) => file.path === event.path)
@@ -1324,11 +1381,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               : [...prev, next]
           })
         } else if (event.type === 'done') {
-          setLiveStatus('Versione pronta. Aggiorno progetto e anteprima…')
+          setLiveStatus(tl("Versione pronta. Aggiorno progetto e anteprima…"))
           generatedFiles = (event.files || []) as GeneratedFile[]
           finished = true
         } else if (event.type === 'error') {
-          streamError = event.message || 'Generazione non riuscita.'
+          streamError = event.message || tl("Generazione non riuscita.")
           finished = true
         }
         // 'chunk' events only keep the connection alive; visible progress is carried by status,
@@ -1337,7 +1394,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
 
     if (streamError) throw new Error(streamError)
-    if (!generatedFiles) throw new Error('Connessione interrotta: la generazione prosegue in background, riapri il progetto tra poco.')
+    if (!generatedFiles) throw new Error(tl("Connessione interrotta: la generazione prosegue in background, riapri il progetto tra poco."))
     return generatedFiles
   }
 
@@ -1352,7 +1409,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setLiveReasoning('')
     setLivePlan([])
     setLiveFiles([])
-    setLiveStatus(fix ? 'Leggo gli errori dell’anteprima e preparo una correzione mirata…' : 'Preparo il progetto e il contesto della richiesta…')
+    setLiveStatus(fix ? tl("Leggo gli errori dell’anteprima e preparo una correzione mirata…") : tl("Preparo il progetto e il contesto della richiesta…"))
     // A fresh user-driven generation starts a new fix budget; an auto-fix iteration spends from it.
     if (!fix) {
       autoFixAttempts.current = 0
@@ -1380,7 +1437,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               model_key: modelKey,
             }),
       })
-      if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
+      if (!response.ok || !response.body) throw new Error(tl("La generazione non è partita."))
       generationJobIdRef.current = response.headers.get('X-Job-Id')
       notifyJobsChanged()
       const generatedFiles = await consumeGenerationStream(response)
@@ -1393,16 +1450,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         if (isReactProject(generatedFiles)) startObservation()
       }
       await loadProjectDetail(projectId)
+      return true
     } catch (err: any) {
-      if (err?.name === 'AbortError') setError('Generazione interrotta: il progetto è rimasto alla versione precedente.')
+      if (err?.name === 'AbortError') setError(tl("Generazione interrotta: il progetto è rimasto alla versione precedente."))
       else {
-        const failure = err?.message || 'Generazione codice non riuscita.'
+        const failure = err?.message || tl("Generazione codice non riuscita.")
         setError(failure)
         // A fix turn that itself fails (network, empty model output…) must not end the loop: try again.
         if (fix && fix.mode !== 'visual' && autoFixAttempts.current < MAX_AUTO_FIX && !/credit|limite|quota|consenso|accesso|non autorizzat/i.test(failure)) {
           window.setTimeout(() => { void runAutoFixRef.current(lastFixErrorsRef.current) }, 3000)
         }
       }
+      return false
     } finally {
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null
@@ -1507,9 +1566,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   // Ask the bridge inside the preview iframe for a screenshot (the host cannot read a cross-origin frame).
   const capturePreview = () => new Promise<string>((resolve, reject) => {
     const frame = previewFrameRef.current?.querySelector('iframe')
-    if (!frame?.contentWindow) { reject(new Error('Anteprima non disponibile.')); return }
+    if (!frame?.contentWindow) { reject(new Error(tl("Anteprima non disponibile."))); return }
     const id = `capture_${Date.now()}`
-    const timer = window.setTimeout(() => { captureWaitersRef.current.delete(id); reject(new Error('Screenshot non riuscito (tempo scaduto).')) }, 20000)
+    const timer = window.setTimeout(() => { captureWaitersRef.current.delete(id); reject(new Error(tl("Screenshot non riuscito (tempo scaduto)."))) }, 20000)
     captureWaitersRef.current.set(id, (result) => {
       window.clearTimeout(timer)
       captureWaitersRef.current.delete(id)
@@ -1529,7 +1588,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setVisualReview({ status: 'done', ...response.data })
       await loadProjectDetail(projectId)
     } catch (err: any) {
-      setVisualReview({ status: 'error', error: err?.response?.data?.detail || err?.message || 'Revisione visiva non riuscita.' })
+      setVisualReview({ status: 'error', error: err?.response?.data?.detail || err?.message || tl("Revisione visiva non riuscita.") })
     }
   }
   const runVisualReviewRef = useRef(runVisualReview)
@@ -1551,11 +1610,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPublishing(true)
     setError(null)
     try {
-      await saveCurrentFilesVersion('Versione salvata prima della pubblicazione.')
+      await saveCurrentFilesVersion(tl("Versione salvata prima della pubblicazione."))
       const response = await codingApi.publishProject(selectedProjectId)
       setPublication({ url: `${window.location.origin}${response.data.url_path}` })
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Pubblicazione non riuscita.')
+      setError(err?.response?.data?.detail || tl("Pubblicazione non riuscita."))
     } finally {
       setPublishing(false)
     }
@@ -1574,7 +1633,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setLiveReasoning('')
     setLivePlan([])
     setLiveFiles([])
-    setLiveStatus('Generazione in corso in background: riprendo da dove era arrivata…')
+    setLiveStatus(tl("Generazione in corso in background: riprendo da dove era arrivata…"))
     try {
       const response = await followJobStream(jobId, controller.signal)
       if (!response.ok) {
@@ -1592,7 +1651,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       }
       await loadProjectDetail(projectId)
     } catch (err: any) {
-      if (err?.name !== 'AbortError') setError(err?.message || 'Generazione codice non riuscita.')
+      if (err?.name !== 'AbortError') setError(err?.message || tl("Generazione codice non riuscita."))
     } finally {
       if (generationAbortRef.current === controller) {
         generationAbortRef.current = null
@@ -1655,7 +1714,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
       await generateCode(selectedProjectId, nextPrompt)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Impossibile salvare il messaggio.')
+      setError(err?.response?.data?.detail || tl("Impossibile salvare il messaggio."))
     } finally {
       setSending(false)
     }
@@ -1686,12 +1745,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPublishing(true)
     setError(null)
     try {
-      await saveCurrentFilesVersion('Versione salvata prima della condivisione in classe.')
+      await saveCurrentFilesVersion(tl("Versione salvata prima della condivisione in classe."))
       await codingApi.shareToClass(selectedProjectId)
-      setShareUrl('Progetto condiviso nella chat di classe. I compagni lo aprono nel Vibe Lab e lavorano su una copia.')
+      setShareUrl(tl("Progetto condiviso nella chat di classe. I compagni lo aprono nel Vibe Lab e lavorano su una copia."))
       await loadProjects()
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Condivisione non riuscita.')
+      setError(err?.response?.data?.detail || tl("Condivisione non riuscita."))
     } finally {
       setPublishing(false)
     }
@@ -1702,7 +1761,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setDownloadingZip(true)
     setError(null)
     try {
-      await saveCurrentFilesVersion('Versione salvata prima del download ZIP.')
+      await saveCurrentFilesVersion(tl("Versione salvata prima del download ZIP."))
       const response = await codingApi.downloadProjectZip(selectedProjectId)
       const blob = new Blob([response.data], { type: 'application/zip' })
       const url = URL.createObjectURL(blob)
@@ -1717,9 +1776,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       link.click()
       link.remove()
       URL.revokeObjectURL(url)
-      setShareUrl('ZIP pronto: include sorgenti, Dockerfile, docker-compose.yml e README.')
+      setShareUrl(tl("ZIP pronto: include sorgenti, Dockerfile, docker-compose.yml e README."))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Download ZIP non riuscito.')
+      setError(err?.response?.data?.detail || tl("Download ZIP non riuscito."))
     } finally {
       setDownloadingZip(false)
     }
@@ -1730,11 +1789,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPublishing(true)
     setError(null)
     try {
-      await saveCurrentFilesVersion('Versione salvata prima del commit al creatore.')
+      await saveCurrentFilesVersion(tl("Versione salvata prima del commit al creatore."))
       await codingApi.commitToCreator(selectedProjectId)
-      setShareUrl('Commit inviato al creatore. Potra provarlo e mergiarlo nel suo progetto.')
+      setShareUrl(tl("Commit inviato al creatore. Potra provarlo e mergiarlo nel suo progetto."))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Invio commit non riuscito.')
+      setError(err?.response?.data?.detail || tl("Invio commit non riuscito."))
     } finally {
       setPublishing(false)
     }
@@ -1748,9 +1807,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       await codingApi.mergeCommit(selectedProjectId, commitId)
       await loadProjectDetail(selectedProjectId)
       await loadProjectCommits(selectedProjectId)
-      setShareUrl('Commit mergiato nel progetto.')
+      setShareUrl(tl("Commit mergiato nel progetto."))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Merge non riuscito.')
+      setError(err?.response?.data?.detail || tl("Merge non riuscito."))
     } finally {
       setPublishing(false)
     }
@@ -1764,9 +1823,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       await codingApi.rollbackVersion(selectedProjectId, versionId)
       await loadProjectDetail(selectedProjectId)
       await loadUpstreamStatus(selectedProjectId)
-      setShareUrl('Rollback completato. La versione scelta e` diventata una nuova versione corrente.')
+      setShareUrl(tl("Rollback completato. La versione scelta e` diventata una nuova versione corrente."))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Rollback non riuscito.')
+      setError(err?.response?.data?.detail || tl("Rollback non riuscito."))
     } finally {
       setPublishing(false)
     }
@@ -1780,9 +1839,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       await codingApi.pullUpstream(selectedProjectId)
       await loadProjectDetail(selectedProjectId)
       await loadUpstreamStatus(selectedProjectId)
-      setShareUrl('Copia aggiornata alla nuova versione del creatore. La tua versione precedente resta nello storico.')
+      setShareUrl(tl("Copia aggiornata alla nuova versione del creatore. La tua versione precedente resta nello storico."))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Aggiornamento dal creatore non riuscito.')
+      setError(err?.response?.data?.detail || tl("Aggiornamento dal creatore non riuscito."))
     } finally {
       setPublishing(false)
     }
@@ -1819,7 +1878,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           const collaboration = latestVersion?.source_manifest_json?.collaboration
           const response = await codingApi.createVersion(selectedProjectId, {
             parent_version_id: selectedProject?.current_version_id || null,
-            source_manifest_json: { files: nextFiles, summary: `Design system “${name}” applicato.`, ...(collaboration ? { collaboration } : {}) },
+            source_manifest_json: { files: nextFiles, summary: tl("Design system “{0}” applicato.", name), ...(collaboration ? { collaboration } : {}) },
             artifact_manifest_json: {},
             build_status: 'ready',
             review_status: 'pending',
@@ -1849,11 +1908,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const applyMlModels = (projects: MLLabProjectSummary[]) => {
     setMlPickerOpen(false)
     const others = files.filter((file) => file.path !== ML_MODELS_PATH)
-    if (projects.length === 0) { setFiles(others); setDesignNotice('Modelli ML scollegati dal progetto.'); window.setTimeout(() => setDesignNotice(null), 5000); return }
+    if (projects.length === 0) { setFiles(others); setDesignNotice(tl("Modelli ML scollegati dal progetto.")); window.setTimeout(() => setDesignNotice(null), 5000); return }
     setFiles([...others, { path: ML_MODELS_PATH, language: 'markdown', content: buildMlModelsMarkdown(projects) }])
     setSelectedPath(ML_MODELS_PATH)
     if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
-    setDesignNotice(`${projects.length === 1 ? 'Modello ML collegato' : `${projects.length} modelli ML collegati`}: la prossima generazione li userà con window.GolinelliML.`)
+    setDesignNotice(tl("{0}: la prossima generazione li userà con window.GolinelliML.", projects.length === 1 ? 'Modello ML collegato' : `${projects.length} modelli ML collegati`))
     window.setTimeout(() => setDesignNotice(null), 6000)
   }
 
@@ -1910,10 +1969,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       {!isMobile && explorerCollapsed && (
         <SidebarRail
           label="Vibe Lab"
-          expandLabel="Espandi elenco progetti"
+          expandLabel={tl("Espandi elenco progetti")}
           onExpand={() => setExplorerCollapsed(false)}
           onCreate={() => { setExplorerCollapsed(false); handleStartNewProject() }}
-          createLabel="Nuovo progetto"
+          createLabel={tl("Nuovo progetto")}
           items={projects.map((project) => ({
             id: project.id,
             title: project.title,
@@ -1925,12 +1984,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       )}
       {!isMobile && !explorerCollapsed && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
-          eyebrow={isTeacher ? 'Pannello docente' : 'Spazio studente'}
+          eyebrow={isTeacher ? tl("Pannello docente") : tl("Spazio studente")}
           title="Vibe Lab"
-          description="Progetti, versioni e condivisioni in un unico explorer."
+          description={tl("Progetti, versioni e condivisioni in un unico explorer.")}
           action={(
             <div className="flex shrink-0 items-center gap-1.5">
-            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label="Comprimi elenco progetti" />}
+            {!isMobile && <SidebarCollapseButton onClick={() => setExplorerCollapsed(true)} label={tl("Comprimi elenco progetti")} />}
             <Button
               type="button"
               onClick={handleStartNewProject}
@@ -1939,8 +1998,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               tone="accent"
               surface="solid"
               className="h-9 w-9 shrink-0 rounded-full p-0"
-              title="Nuovo progetto"
-              aria-label="Nuovo progetto"
+              title={tl("Nuovo progetto")}
+              aria-label={tl("Nuovo progetto")}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -1948,8 +2007,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           )}
           searchValue={projectListSearch}
           onSearchChange={setProjectListSearch}
-          searchPlaceholder="Cerca progetti..."
-          clearSearchLabel="Cancella ricerca progetti"
+          searchPlaceholder={tl("Cerca progetti...")}
+          clearSearchLabel={tl("Cancella ricerca progetti")}
         />
         <WorkspaceExplorerList>
           {loading ? (
@@ -1957,9 +2016,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : projects.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-slate-400">Nessun progetto ancora.</p>
+            <p className="px-2 py-6 text-center text-xs text-slate-400">{tl("Nessun progetto ancora.")}</p>
           ) : filteredProjects.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-slate-400">Nessun progetto corrisponde a “{projectListSearch}”.</p>
+            <p className="px-2 py-6 text-center text-xs text-slate-400">{tl("Nessun progetto corrisponde a “")}{projectListSearch}”.</p>
           ) : (
             <div className="space-y-2">
               {filteredProjects.map((project) => (
@@ -1973,7 +2032,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   badges={(
                     <>
                       <WorkspaceExplorerBadge>{new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</WorkspaceExplorerBadge>
-                      {project.visibility === 'class_shared' && <WorkspaceExplorerBadge>Condiviso</WorkspaceExplorerBadge>}
+                      {project.visibility === 'class_shared' && <WorkspaceExplorerBadge>{tl("Condiviso")}</WorkspaceExplorerBadge>}
                     </>
                   )}
                 />
@@ -2037,9 +2096,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   }
                 }}
                 className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-400"
-                aria-label="Progetto Vibe Lab"
+                aria-label={tl("Progetto Vibe Lab")}
               >
-                <option value="">{loading ? 'Caricamento…' : 'Scegli un progetto'}</option>
+                <option value="">{loading ? tl("Caricamento…") : tl("Scegli un progetto")}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.title}</option>
                 ))}
@@ -2052,13 +2111,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 }}
                 disabled={creating || generating || draftSaving}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] disabled:opacity-40"
-                aria-label="Nuovo progetto"
+                aria-label={tl("Nuovo progetto")}
               >
                 <Plus className="h-5 w-5" />
               </button>
             </div>
             {!createPanelOpen && (
-              <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Vista Vibe Lab">
+              <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label={tl("Vista Vibe Lab")}>
                 <button
                   type="button"
                   role="tab"
@@ -2075,7 +2134,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   onClick={() => setMobilePane('workbench')}
                   className={`min-h-10 rounded-lg text-xs font-black ${mobilePane === 'workbench' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500'}`}
                 >
-                  Codice e anteprima
+                  {tl("Codice e anteprima")}
                 </button>
               </div>
             )}
@@ -2105,7 +2164,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   type="button"
                   onClick={() => setPromptPanelOpen((value) => !value)}
                   className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700 lg:block"
-                  title={promptPanelOpen ? 'Comprimi prompt' : 'Espandi prompt'}
+                  title={promptPanelOpen ? tl("Comprimi prompt") : tl("Espandi prompt")}
                 >
                   {promptPanelOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
                 </button>
@@ -2118,112 +2177,153 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {createPanelOpen && (
               <div>
                 <div className="mb-8 text-center">
-                  <h2 className="text-xl font-black text-[var(--text-primary)]">Cosa vuoi creare?</h2>
-                  <p className="mt-1 hidden text-sm text-[var(--text-muted)] md:block">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
+                  <h2 className="text-xl font-black text-[var(--text-primary)]">{tl("Cosa vuoi creare?")}</h2>
+                  <p className="mt-1 hidden text-sm text-[var(--text-muted)] md:block">{tl("Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.")}</p>
                 </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold text-slate-700">Nuovo progetto</p>
-                      <p className="text-xs text-slate-500">Il progetto corrente resta nello storico.</p>
+                      <p className="text-xs font-bold text-slate-700">{tl("Nuovo progetto")}</p>
+                      <p className="text-xs text-slate-500">{tl("Il progetto corrente resta nello storico.")}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setCreatePanelOpen(false)}
                       className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700"
-                      title="Chiudi"
+                      title={tl("Chiudi")}
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
                 )}
                 <div>
-                  <label htmlFor="vibe-project-title" className="mb-2 block text-sm font-bold text-slate-700">Dai un nome al progetto</label>
+                  <label htmlFor="vibe-project-title" className="mb-2 block text-sm font-bold text-slate-700">{tl("Dai un nome al progetto")}</label>
                   <input
                     id="vibe-project-title"
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Dai un nome al progetto"
+                    placeholder={tl("Dai un nome al progetto")}
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:shadow-[var(--ds-shadow-focus)]"
                   />
                 </div>
                 <div className="mt-6">
-                  <label htmlFor="vibe-project-prompt" className="mb-2 block text-sm font-bold text-slate-700">Descrivi cosa vuoi creare</label>
+                  <label htmlFor="vibe-project-prompt" className="mb-2 block text-sm font-bold text-slate-700">{tl("Descrivi cosa vuoi creare")}</label>
                   <textarea
                     id="vibe-project-prompt"
                     value={prompt}
                     onChange={(event) => setPrompt(event.target.value)}
+                    maxLength={20000}
                     rows={7}
-                    placeholder="Per esempio: crea un quiz interattivo sul sistema solare…"
+                    placeholder={tl("Per esempio: crea un quiz interattivo sul sistema solare…")}
                     className="min-h-40 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 shadow-inner outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[var(--logo-violet)] focus:bg-white focus:shadow-[var(--ds-shadow-focus)] md:text-sm"
                   />
                 </div>
                 <div className="hidden md:block">
-                  <div className="mb-2 mt-6 text-sm font-bold text-slate-700">Modello</div>
+                  <div className="mb-2 mt-6 text-sm font-bold text-slate-700">{tl("Modello")}</div>
                   <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
                 </div>
                 {showDeepSeekDisclaimer && deepSeekConsent && (
                   <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mt-3" />
                 )}
-                {!interviewQuestions ? (
-                  <button
-                    type="button"
-                    onClick={handleStartInterview}
-                    disabled={interviewing || creating || !prompt.trim()}
-                    className="ui-cta mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition disabled:opacity-40 md:h-11 md:min-h-0 md:w-auto"
-                  >
-                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    {interviewing ? 'Creo...' : 'Crea'}
-                  </button>
+                {!chatTurns ? (
+                  <div className="mt-6 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleStartInterview}
+                      disabled={interviewing || creating || !prompt.trim()}
+                      className="ui-cta inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition disabled:opacity-40 md:h-11 md:min-h-0 md:flex-none"
+                    >
+                      {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                      {interviewing ? tl("Apro l'intervista...") : tl("Crea con intervista")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => createAndGenerate([])}
+                      disabled={interviewing || creating || !prompt.trim()}
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-400 disabled:opacity-40"
+                      title={tl("Il brief viene comunque analizzato e scomposto in milestone se è lungo")}
+                    >
+                      {tl("Salta intervista")}
+                    </button>
+                  </div>
                 ) : (
-                  <div className="mt-3 space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
-                    <p className="text-xs font-bold text-indigo-900">Qualche domanda per capire meglio cosa vuoi</p>
-                    {interviewQuestions.map((item, index) => (
-                      <div key={index} className="space-y-1.5">
-                        <p className="text-xs font-semibold text-slate-700">{item.question}</p>
-                        {item.suggestions.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.suggestions.map((suggestion) => (
-                              <button
-                                key={suggestion}
-                                type="button"
-                                onClick={() => setInterviewAnswers((prev) => ({ ...prev, [index]: suggestion }))}
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                                  interviewAnswers[index] === suggestion
-                                    ? 'border-indigo-500 bg-indigo-600 text-white'
-                                    : 'border-indigo-200 bg-white text-indigo-700 hover:border-indigo-400'
-                                }`}
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
+                  <div className="mt-4 space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+                    <p className="text-xs font-bold text-indigo-900">{tl("Intervista sul progetto")}</p>
+                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                      {chatTurns.map((turn, index) => (
+                        <div key={index} className={turn.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+                          <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                            turn.role === 'user' ? 'bg-indigo-600 text-white' : 'border border-indigo-100 bg-white text-slate-800'
+                          }`}>
+                            {turn.content}
                           </div>
-                        )}
-                        <input
-                          value={interviewAnswers[index] || ''}
-                          onChange={(event) => setInterviewAnswers((prev) => ({ ...prev, [index]: event.target.value }))}
-                          placeholder="La tua risposta (opzionale)"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-indigo-400"
-                        />
+                        </div>
+                      ))}
+                      {interviewing && (
+                        <div className="flex items-center gap-2 text-xs text-indigo-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tl("L'intervistatore sta pensando…")}</div>
+                      )}
+                    </div>
+                    {!interviewing && chatTurns[chatTurns.length - 1]?.role === 'user' && (
+                      <button
+                        type="button"
+                        onClick={() => askInterviewer(chatTurns)}
+                        className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700"
+                      >
+                        {tl("Riprova")}
+                      </button>
+                    )}
+                    {!interviewing && chatTurns.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => askInterviewer([])}
+                        className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700"
+                      >
+                        {tl("Riprova")}
+                      </button>
+                    )}
+                    {!interviewing && (chatTurns[chatTurns.length - 1]?.suggestions?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {chatTurns[chatTurns.length - 1].suggestions!.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => void sendChatAnswer(suggestion)}
+                            className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:border-indigo-400"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    <div className="flex gap-2">
+                      <input
+                        value={chatInput}
+                        onChange={(event) => setChatInput(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatAnswer(chatInput) } }}
+                        disabled={interviewing || creating}
+                        placeholder={tl("Rispondi o aggiungi dettagli…")}
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendChatAnswer(chatInput)}
+                        disabled={interviewing || creating || !chatInput.trim()}
+                        className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
+                      >
+                        {tl("Invia")}
+                      </button>
+                    </div>
                     <div className="flex gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={submitInterview}
-                        disabled={creating || generating}
-                        className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
+                        onClick={() => createAndGenerate(chatTurns)}
+                        disabled={creating || generating || interviewing}
+                        className={`inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-transparent px-3 text-xs font-bold transition disabled:opacity-40 ${
+                          chatReady ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-300 bg-white text-slate-700'
+                        }`}
                       >
                         {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                        Genera progetto
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => createAndGenerate('')}
-                        disabled={creating || generating}
-                        className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-400 disabled:opacity-40"
-                      >
-                        Salta e genera
+                        {specBusy ? tl("Scrivo le specifiche…") : chatReady ? tl("Genera specifiche e crea") : tl("Basta così, genera")}
                       </button>
                     </div>
                   </div>
@@ -2233,9 +2333,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
               {projectDetail && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-muted)]">Conversazione</h3>
+                  <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-muted)]">{tl("Conversazione")}</h3>
                   {projectDetail.messages.length === 0 ? (
-                    <p className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-400">Nessun messaggio.</p>
+                    <p className="rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-400">{tl("Nessun messaggio.")}</p>
                   ) : (
                     projectDetail.messages.map((item) => (
                       <ConversationBubble
@@ -2244,6 +2344,23 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         onShowFileDiff={handleShowFileDiff}
                       />
                     ))
+                  )}
+                  {buildPlan && buildPlan.projectId === selectedProjectId && (
+                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
+                      <p className="font-bold">
+                        {tl("Piano di costruzione")} · {generating ? tl("in corso") : tl("in pausa")} {buildPlan.next + 1}/{buildPlan.milestones.length}
+                      </p>
+                      <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                        {buildPlan.milestones.map((m, i) => (
+                          <li key={i} className={i < buildPlan.next ? 'text-slate-400 line-through' : i === buildPlan.next ? 'font-semibold' : ''}>{m.title}</li>
+                        ))}
+                      </ol>
+                      {!generating && (
+                        <button type="button" onClick={() => void resumeBuildPlan()} className="mt-2 rounded-full bg-indigo-600 px-3 py-1 font-bold text-white">
+                          {tl("Riprendi dalla milestone")} {buildPlan.next + 1}
+                        </button>
+                      )}
+                    </div>
                   )}
                   {generating && (
                     <div className="sticky bottom-0 z-20 rounded-2xl border border-[color:var(--border-subtle)] bg-white/95 p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
@@ -2256,7 +2373,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
             {!createPanelOpen && <div className="border-t border-slate-100 bg-white/90 p-3">
               <div className="mb-2 flex items-center justify-end gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Modello</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Modello")}</span>
                 <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
               </div>
               {showDeepSeekDisclaimer && deepSeekConsent && (
@@ -2274,7 +2391,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   }}
                   disabled={!selectedProjectId}
                   rows={2}
-                  placeholder="Chiedi una modifica al progetto..."
+                  placeholder={tl("Chiedi una modifica al progetto...")}
                   className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
                 />
                 <button
@@ -2294,7 +2411,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   type="button"
                   onClick={() => setPromptPanelOpen(true)}
                   className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-                  title="Espandi prompt"
+                  title={tl("Espandi prompt")}
                 >
                   <MessageSquare className="h-4 w-4" />
                 </button>
@@ -2307,14 +2424,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
                 <CodingToolbarIconButton
                   icon={<FileCode2 className="h-4 w-4" />}
-                  label="Codice"
+                  label={tl("Codice")}
                   active={activeWorkbench === 'code'}
                   onClick={() => setActiveWorkbench('code')}
                   dark={activeWorkbench === 'code'}
                 />
                 <CodingToolbarIconButton
                   icon={<Eye className="h-4 w-4" />}
-                  label="Anteprima"
+                  label={tl("Anteprima")}
                   active={activeWorkbench === 'preview'}
                   onClick={() => setActiveWorkbench('preview')}
                   dark={activeWorkbench === 'code'}
@@ -2323,12 +2440,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {activeWorkbench === 'code' && selectedProjectId && (
                 <div className="ml-auto text-[11px] font-semibold text-slate-400">
                   {draftSaving
-                    ? 'Salvataggio...'
+                    ? tl("Salvataggio...")
                     : draftDirty
-                      ? 'Modifiche non salvate'
+                      ? tl("Modifiche non salvate")
                       : draftSavedAt
-                        ? `Salvato ${draftSavedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
-                        : 'Salvato sul server'}
+                        ? tl("Salvato {0}", draftSavedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }))
+                        : tl("Salvato sul server")}
                 </div>
               )}
               {activeWorkbench === 'preview' && hasPreview && (
@@ -2339,14 +2456,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       label="Desktop"
                       active={previewDevice === 'desktop'}
                       onClick={() => setPreviewDevice('desktop')}
-                      title="Anteprima desktop"
+                      title={tl("Anteprima desktop")}
                     />}
                     <CodingToolbarIconButton
                       icon={<Smartphone className="h-4 w-4" />}
                       label="Mobile"
                       active={previewDevice === 'mobile'}
                       onClick={() => setPreviewDevice('mobile')}
-                      title="Anteprima mobile"
+                      title={tl("Anteprima mobile")}
                     />
                   </div>
                   {isFork && (
@@ -2361,39 +2478,39 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )}
                   <CodingToolbarIconButton
                     icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                    label="Condividi"
+                    label={tl("Condividi")}
                     onClick={handleShareProject}
                     disabled={!selectedProjectId || publishing}
-                    title="Condividi in classe"
+                    title={tl("Condividi in classe")}
                   />
                   {isReactPreview && (
                     <CodingToolbarIconButton
                       icon={visualReview?.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                      label="Revisione"
+                      label={tl("Revisione")}
                       onClick={() => { void runVisualReview() }}
                       disabled={!selectedProjectId || generating || visualReview?.status === 'reviewing'}
-                      title="Revisione visiva con screenshot"
+                      title={tl("Revisione visiva con screenshot")}
                     />
                   )}
                   <CodingToolbarIconButton
                     icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                    label="Pubblica"
+                    label={tl("Pubblica")}
                     onClick={handlePublishProject}
                     disabled={!selectedProjectId || publishing}
-                    title="Pubblica con un link e un codice da incorporare"
+                    title={tl("Pubblica con un link e un codice da incorporare")}
                   />
                   <CodingToolbarIconButton
                     icon={downloadingZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     label="ZIP"
                     onClick={handleDownloadZip}
                     disabled={!selectedProjectId || downloadingZip || publishing}
-                    title="Scarica sorgenti e Docker compose"
+                    title={tl("Scarica sorgenti e Docker compose")}
                   />
                   <CodingToolbarIconButton
                     icon={<Maximize2 className="h-4 w-4" />}
-                    label="Schermo"
+                    label={tl("Schermo")}
                     onClick={openPreviewFullscreen}
-                    title="Pagina intera"
+                    title={tl("Pagina intera")}
                   />
                 </div>
               )}
@@ -2408,12 +2525,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             )}
             {activeWorkbench === 'preview' && previewingCommitId && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">
-                Stai testando una proposta di commit. Il codice originale non cambia finche non premi Merge.
+                {tl("Stai testando una proposta di commit. Il codice originale non cambia finche non premi Merge.")}
               </div>
             )}
             {activeWorkbench === 'preview' && previewingVersionId && !previewingCommitId && (
               <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-900">
-                Stai visualizzando una versione storica. Usa Rollback per renderla la versione corrente.
+                {tl("Stai visualizzando una versione storica. Usa Rollback per renderla la versione corrente.")}
               </div>
             )}
             {/* Both panels stay mounted and are toggled via CSS (not conditional rendering) so
@@ -2421,7 +2538,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             <div className={activeWorkbench === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
               <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-slate-900 p-2 md:hidden">
                 {files.length === 0 && (
-                  <span className="px-2 py-1 text-xs text-slate-500">Nessun file — aggiungi contesto o genera</span>
+                  <span className="px-2 py-1 text-xs text-slate-500">{tl("Nessun file — aggiungi contesto o genera")}</span>
                 )}
                 {files.map((file) => (
                   <button
@@ -2445,20 +2562,20 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <button
                   type="button"
                   onClick={addNewFile}
-                  title="Aggiungi file di contesto (knowledge base di progetto)"
+                  title={tl("Aggiungi file di contesto (knowledge base di progetto)")}
                   className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-white/20 bg-white/5 px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/10"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  File
+                  {tl("File")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMlPickerOpen(true)}
-                  title="Collega modelli del Lab ML (pose, gesti delle mani, immagini) a questo progetto"
+                  title={tl("Collega modelli del Lab ML (pose, gesti delle mani, immagini) a questo progetto")}
                   className={`ml-1 inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold hover:bg-white/10 ${mlModels.length ? 'border-violet-400/60 bg-violet-500/15 text-violet-200' : 'border-dashed border-white/20 bg-white/5 text-slate-300'}`}
                 >
                   <Brain className="h-3.5 w-3.5" />
-                  Modelli ML{mlModels.length ? ` · ${mlModels.length}` : ''}
+                  {tl("Modelli ML")}{mlModels.length ? ` · ${mlModels.length}` : ''}
                 </button>
               </div>
               <div className="flex min-h-0 flex-1">
@@ -2472,7 +2589,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-slate-500">
-                    Crea un progetto per vedere il codice.
+                    {tl("Crea un progetto per vedere il codice.")}
                   </div>
                 )}
               </div>
@@ -2513,10 +2630,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     <div className="pointer-events-auto flex w-full max-w-lg items-start gap-2 rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-amber-200 backdrop-blur" role="alert">
                       <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-slate-900">Riconoscimento visivo: {visionError.context || 'errore'}</p>
+                        <p className="font-bold text-slate-900">{tl("Riconoscimento visivo:")} {visionError.context || tl("errore")}</p>
                         <p className="mt-1 break-words font-mono leading-5">{visionError.error}</p>
                       </div>
-                      <button type="button" onClick={() => setVisionError(null)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => setVisionError(null)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                 )}
@@ -2525,9 +2642,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     type="button"
                     onClick={openPreviewFullscreen}
                     className="absolute bottom-3 right-3 z-10 inline-flex h-11 items-center gap-1.5 rounded-full bg-slate-900/85 px-4 text-xs font-bold text-white shadow-lg backdrop-blur active:scale-95"
-                    aria-label="Apri l’app a schermo intero"
+                    aria-label={tl("Apri l’app a schermo intero")}
                   >
-                    <Maximize2 className="h-4 w-4" /> Schermo intero
+                    <Maximize2 className="h-4 w-4" /> {tl("Schermo intero")}
                   </button>
                 )}
                 {verifyState === 'idle' && !generating && visualReview && (
@@ -2551,13 +2668,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             <div className="flex flex-1 items-center justify-center p-6">
               <div className="w-full max-w-sm rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <Bot className="mx-auto h-8 w-8 text-slate-400" />
-                <h3 className="mt-3 text-sm font-bold text-slate-800">Preview non ancora generata</h3>
+                <h3 className="mt-3 text-sm font-bold text-slate-800">{tl("Preview non ancora generata")}</h3>
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                  Scrivi un prompt e genera una mini app. L'anteprima interattiva apparira qui.
+                  {tl("Scrivi un prompt e genera una mini app. L'anteprima interattiva apparira qui.")}
                 </p>
                 {projectDetail?.versions?.[0] && (
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                    Versione {projectDetail.versions[0].version_number} · build {projectDetail.versions[0].build_status}
+                    {tl("Versione")} {projectDetail.versions[0].version_number} · build {projectDetail.versions[0].build_status}
                   </div>
                 )}
               </div>
@@ -2576,7 +2693,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 type="button"
                 onClick={() => { setMediaStatus(null); setMediaReloadNonce((value) => value + 1); setFullscreenNonce((value) => value + 1) }}
                 className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/70 text-white shadow-lg backdrop-blur active:scale-95"
-                aria-label="Ricarica app"
+                aria-label={tl("Ricarica app")}
               >
                 <RefreshCw className="h-4 w-4" />
               </button>
@@ -2584,7 +2701,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 type="button"
                 onClick={closePreviewFullscreen}
                 className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/70 text-white shadow-lg backdrop-blur active:scale-95"
-                aria-label="Esci dalla schermata intera"
+                aria-label={tl("Esci dalla schermata intera")}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2593,13 +2710,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
                 <Eye className="h-4 w-4" />
-                Anteprima
+                {tl("Anteprima")}
               </div>
               <button
                 type="button"
                 onClick={closePreviewFullscreen}
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                title="Chiudi anteprima"
+                title={tl("Chiudi anteprima")}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2659,10 +2776,10 @@ const CODING_TUTORIAL_STEPS = [
     grad: 'from-sky-500 to-indigo-600',
     ring: 'ring-sky-300/40',
     glow: 'shadow-sky-500/25',
-    label: 'Panoramica',
-    title: 'Benvenuto nel Vibe Lab',
-    desc: 'Qui trasformi un’idea in una mini app: descrivi il progetto, scegli uno stile, guarda l’anteprima e chiedi modifiche al chatbot finché il risultato funziona.',
-    tips: ['Prompt e cronologia stanno al centro', 'I progetti e le versioni restano nella sidebar', 'Codice e anteprima si alternano a destra'],
+    label: tl("Panoramica"),
+    title: tl("Benvenuto nel Vibe Lab"),
+    desc: tl("Qui trasformi un’idea in una mini app: descrivi il progetto, scegli uno stile, guarda l’anteprima e chiedi modifiche al chatbot finché il risultato funziona."),
+    tips: [tl("Prompt e cronologia stanno al centro"), tl("I progetti e le versioni restano nella sidebar"), tl("Codice e anteprima si alternano a destra")],
     visual: () => (
       <div className="grid grid-cols-[0.72fr_1fr] gap-3">
         <div className="space-y-2 rounded-2xl bg-white/10 p-3">
@@ -2690,10 +2807,10 @@ const CODING_TUTORIAL_STEPS = [
     grad: 'from-fuchsia-500 to-rose-500',
     ring: 'ring-fuchsia-300/40',
     glow: 'shadow-fuchsia-500/25',
-    label: 'Crea',
-    title: 'Crea il primo progetto',
-    desc: 'Premi Nuovo, dai un titolo chiaro e descrivi cosa deve fare la mini app. Il colloquio iniziale serve a chiarire obiettivo, interazioni e vincoli.',
-    tips: ['Usa un titolo breve e riconoscibile', 'Descrivi l’utente finale', 'Indica cosa deve succedere al click, all’input o al download'],
+    label: tl("Crea"),
+    title: tl("Crea il primo progetto"),
+    desc: tl("Premi Nuovo, dai un titolo chiaro e descrivi cosa deve fare la mini app. Il colloquio iniziale serve a chiarire obiettivo, interazioni e vincoli."),
+    tips: [tl("Usa un titolo breve e riconoscibile"), tl("Descrivi l’utente finale"), tl("Indica cosa deve succedere al click, all’input o al download")],
     visual: () => (
       <div className="space-y-3">
         {['Titolo del progetto', 'Prompt iniziale', 'Domande di chiarimento'].map((item, index) => (
@@ -2720,16 +2837,16 @@ const CODING_TUTORIAL_STEPS = [
     ring: 'ring-amber-300/40',
     glow: 'shadow-amber-500/25',
     label: 'Prompt',
-    title: 'Scrivi prompt efficaci',
-    desc: 'Un buon prompt non dice solo “fammi una pagina bella”: specifica obiettivo, pubblico, contenuti, comportamento, stile e criteri di successo.',
-    tips: ['Formula: obiettivo + utenti + schermate + dati + azioni + stile', 'Aggiungi esempi concreti di contenuto', 'Chiedi output verificabili: pulsanti, stati vuoti, errori, responsive'],
+    title: tl("Scrivi prompt efficaci"),
+    desc: tl("Un buon prompt non dice solo “fammi una pagina bella”: specifica obiettivo, pubblico, contenuti, comportamento, stile e criteri di successo."),
+    tips: [tl("Formula: obiettivo + utenti + schermate + dati + azioni + stile"), tl("Aggiungi esempi concreti di contenuto"), tl("Chiedi output verificabili: pulsanti, stati vuoti, errori, responsive")],
     visual: () => (
       <div className="space-y-2.5">
         {[
-          ['Obiettivo', 'Crea un simulatore per...'],
-          ['Interazioni', 'Input, bottone, risultato, reset'],
-          ['Stile', 'Colori, tono, layout, accessibilità'],
-          ['Vincoli', 'Niente login, funziona mobile'],
+          [tl("Obiettivo"), tl("Crea un simulatore per...")],
+          [tl("Interazioni"), tl("Input, bottone, risultato, reset")],
+          [tl("Stile"), tl("Colori, tono, layout, accessibilità")],
+          [tl("Vincoli"), tl("Niente login, funziona mobile")],
         ].map(([label, text], index) => (
           <motion.div
             key={label}
@@ -2752,9 +2869,9 @@ const CODING_TUTORIAL_STEPS = [
     ring: 'ring-violet-300/40',
     glow: 'shadow-violet-500/25',
     label: 'Design',
-    title: 'Gestisci il Design System',
-    desc: 'Il Design System crea regole condivise per palette, tipografia, bottoni, superfici e priorità visive. Applicalo prima di generare o durante l’iterazione.',
-    tips: ['Scegli palette e tono in base al dominio del progetto', 'Mantieni contrasto e leggibilità', 'Salva il contratto di stile nel progetto'],
+    title: tl("Gestisci il Design System"),
+    desc: tl("Il Design System crea regole condivise per palette, tipografia, bottoni, superfici e priorità visive. Applicalo prima di generare o durante l’iterazione."),
+    tips: [tl("Scegli palette e tono in base al dominio del progetto"), tl("Mantieni contrasto e leggibilità"), tl("Salva il contratto di stile nel progetto")],
     visual: () => (
       <div className="space-y-3">
         <div className="grid grid-cols-5 gap-2">
@@ -2781,14 +2898,14 @@ const CODING_TUTORIAL_STEPS = [
     ring: 'ring-emerald-300/40',
     glow: 'shadow-emerald-500/25',
     label: 'Test',
-    title: 'Testa codice e anteprima',
-    desc: 'Apri Anteprima per provare l’app come utente. Se serve, passa a Codice per controllare i file o usa Pagina intera per testare layout e interazioni.',
-    tips: ['Controlla mobile e desktop', 'Prova stati vuoti, errori e casi limite', 'Usa le versioni per tornare indietro se una modifica non convince'],
+    title: tl("Testa codice e anteprima"),
+    desc: tl("Apri Anteprima per provare l’app come utente. Se serve, passa a Codice per controllare i file o usa Pagina intera per testare layout e interazioni."),
+    tips: [tl("Controlla mobile e desktop"), tl("Prova stati vuoti, errori e casi limite"), tl("Usa le versioni per tornare indietro se una modifica non convince")],
     visual: () => (
       <div className="rounded-2xl bg-white/10 p-3">
         <div className="mb-3 flex gap-2">
-          <span className="rounded-lg bg-white/15 px-3 py-1 text-xs font-bold text-white/55">Codice</span>
-          <span className="rounded-lg bg-emerald-400 px-3 py-1 text-xs font-bold text-white">Anteprima</span>
+          <span className="rounded-lg bg-white/15 px-3 py-1 text-xs font-bold text-white/55">{tl("Codice")}</span>
+          <span className="rounded-lg bg-emerald-400 px-3 py-1 text-xs font-bold text-white">{tl("Anteprima")}</span>
         </div>
         <motion.div
           animate={{ opacity: [0.75, 1, 0.75] }}
@@ -2806,20 +2923,20 @@ const CODING_TUTORIAL_STEPS = [
     grad: 'from-blue-500 to-cyan-500',
     ring: 'ring-blue-300/40',
     glow: 'shadow-blue-500/25',
-    label: 'Itera',
-    title: 'Itera con il chatbot',
-    desc: 'Dopo la prima generazione chiedi modifiche piccole e verificabili. Il chatbot aggiorna i file, mostra il lavoro degli agenti e salva nuove versioni.',
-    tips: ['Una richiesta per volta funziona meglio', 'Scrivi cosa non va e come dovrebbe comportarsi', 'Esempio: “riduci il testo, aggiungi stato loading, migliora il contrasto del bottone”'],
+    label: tl("Itera"),
+    title: tl("Itera con il chatbot"),
+    desc: tl("Dopo la prima generazione chiedi modifiche piccole e verificabili. Il chatbot aggiorna i file, mostra il lavoro degli agenti e salva nuove versioni."),
+    tips: [tl("Una richiesta per volta funziona meglio"), tl("Scrivi cosa non va e come dovrebbe comportarsi"), tl("Esempio: “riduci il testo, aggiungi stato loading, migliora il contrasto del bottone”")],
     visual: () => (
       <div className="space-y-2">
         <div className="ml-auto max-w-[82%] rounded-2xl border border-sky-300/50 bg-sky-400/15 px-3 py-2 text-sm font-semibold text-sky-100">
-          Aggiungi un filtro per categoria e uno stato vuoto.
+          {tl("Aggiungi un filtro per categoria e uno stato vuoto.")}
         </div>
         <div className="max-w-[82%] rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/75">
-          Aggiorno componenti, stato e preview.
+          {tl("Aggiorno componenti, stato e preview.")}
         </div>
         <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 p-2.5 text-xs font-bold text-emerald-100">
-          File Writer: 4/4 file aggiornati
+          {tl("File Writer: 4/4 file aggiornati")}
         </div>
       </div>
     ),
@@ -2868,7 +2985,7 @@ function CodingLabTutorialModal({
           type="button"
           onClick={onClose}
           className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
-          title="Chiudi tutorial"
+          title={tl("Chiudi tutorial")}
         >
           <X className="h-4 w-4" />
         </button>
@@ -2881,10 +2998,10 @@ function CodingLabTutorialModal({
                 <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Vibe Lab</span>
               </div>
               <h2 className="text-3xl font-black leading-tight text-white">
-                Costruisci mini app con metodo
+                {tl("Costruisci mini app con metodo")}
               </h2>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/55">
-                Una guida rapida per partire, progettare lo stile, testare l’anteprima e iterare con richieste precise.
+                {tl("Una guida rapida per partire, progettare lo stile, testare l’anteprima e iterare con richieste precise.")}
               </p>
             </div>
 
@@ -2917,9 +3034,9 @@ function CodingLabTutorialModal({
             </div>
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-3 text-xs font-black uppercase tracking-widest text-white/45">Prompting efficace</p>
+              <p className="mb-3 text-xs font-black uppercase tracking-widest text-white/45">{tl("Prompting efficace")}</p>
               <div className="grid gap-2">
-                {['Obiettivo', 'Pubblico', 'Interazioni', 'Stile', 'Vincoli'].map((item, index) => (
+                {[tl("Obiettivo"), tl("Pubblico"), tl("Interazioni"), tl("Stile"), tl("Vincoli")].map((item, index) => (
                   <div key={item} className="flex items-center gap-2 text-sm text-white/70">
                     <CheckCircle2 className={`h-4 w-4 ${index < 2 ? 'text-sky-300' : index < 4 ? 'text-amber-300' : 'text-emerald-300'}`} />
                     <span>{item}</span>
@@ -2970,7 +3087,7 @@ function CodingLabTutorialModal({
                     type="button"
                     onClick={() => setActive(index)}
                     className={`h-2 rounded-full transition-all ${index === active ? 'w-8 bg-white' : 'w-2 bg-white/25 hover:bg-white/45'}`}
-                    title={`Vai allo step ${index + 1}`}
+                    title={tl("Vai allo step {0}", index + 1)}
                   />
                 ))}
               </div>
@@ -2982,7 +3099,7 @@ function CodingLabTutorialModal({
                   disabled={active === 0}
                   className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-white/65 transition hover:bg-white/10 disabled:opacity-35"
                 >
-                  Indietro
+                  {tl("Indietro")}
                 </button>
                 {step.num === 3 ? (
                   <button
@@ -2990,7 +3107,7 @@ function CodingLabTutorialModal({
                     onClick={onOpenDesignSystem}
                     className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
                   >
-                    Apri Design System
+                    {tl("Apri Design System")}
                     <Palette className="h-4 w-4" />
                   </button>
                 ) : isLast ? (
@@ -2999,7 +3116,7 @@ function CodingLabTutorialModal({
                     onClick={onCreateProject}
                     className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
                   >
-                    Crea progetto
+                    {tl("Crea progetto")}
                     <Wand2 className="h-4 w-4" />
                   </button>
                 ) : (
@@ -3008,7 +3125,7 @@ function CodingLabTutorialModal({
                     onClick={next}
                     className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
                   >
-                    Continua
+                    {tl("Continua")}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
@@ -3031,8 +3148,8 @@ function PreviewLoadingSplash() {
           <span />
         </div>
         <div>
-          <p className="text-sm font-black text-[var(--text-primary)]">Caricamento anteprima</p>
-          <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">Preparo il sandbox del progetto</p>
+          <p className="text-sm font-black text-[var(--text-primary)]">{tl("Caricamento anteprima")}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">{tl("Preparo il sandbox del progetto")}</p>
         </div>
       </div>
     </div>
@@ -3100,14 +3217,14 @@ function SidebarVersioningPanel({
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">Versioning</h3>
-          <p className="text-xs text-[var(--text-secondary)]">{sortedVersions.length} versioni · {pendingCommits.length} commit</p>
+          <p className="text-xs text-[var(--text-secondary)]">{sortedVersions.length} {tl("versioni ·")} {pendingCommits.length} commit</p>
         </div>
         <Button
           type="button"
           onClick={onRefreshCommits}
           variant="ghost"
           size="icon"
-          title="Aggiorna commit"
+          title={tl("Aggiorna commit")}
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -3115,9 +3232,9 @@ function SidebarVersioningPanel({
 
       {isFork && upstreamStatus?.update_available && (
         <div className="mb-2 rounded-lg border border-[color:var(--border-subtle)] bg-[var(--surface-card)] p-2.5 shadow-sm">
-          <p className="text-xs font-bold text-amber-950">Nuova v{upstreamStatus.source_version_number} del creatore</p>
+          <p className="text-xs font-bold text-amber-950">{tl("Nuova v")}{upstreamStatus.source_version_number} {tl("del creatore")}</p>
           <p className="mt-0.5 text-[11px] text-amber-900/75">
-            {upstreamStatus.file_count ?? 0} file · {upstreamStatus.total_lines ?? 0} righe
+            {upstreamStatus.file_count ?? 0} {tl("file ·")} {upstreamStatus.total_lines ?? 0} righe
           </p>
           <Button
             type="button"
@@ -3129,7 +3246,7 @@ function SidebarVersioningPanel({
             fullWidth
             className="mt-2 text-xs font-bold"
           >
-            Aggiorna copia
+            {tl("Aggiorna copia")}
           </Button>
         </div>
       )}
@@ -3149,7 +3266,7 @@ function SidebarVersioningPanel({
                     {commit.status}
                   </span>
                 </div>
-                <p className="mt-0.5 text-[11px] text-slate-500">{commit.files.length} file · {commit.summary?.total_lines ?? 0} righe</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">{commit.files.length} {tl("file ·")} {commit.summary?.total_lines ?? 0} righe</p>
                 <div className="mt-2 flex gap-1">
                   <Button
                     type="button"
@@ -3158,7 +3275,7 @@ function SidebarVersioningPanel({
                     density="compact"
                     className="h-8 flex-1 text-[11px] font-bold"
                   >
-                    Testa
+                    {tl("Testa")}
                   </Button>
                   <Button
                     type="button"
@@ -3179,7 +3296,7 @@ function SidebarVersioningPanel({
       {sortedVersions.length > 0 && (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="mb-1 flex items-center justify-between">
-            <h4 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">Versioni</h4>
+            <h4 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">{tl("Versioni")}</h4>
             <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{sortedVersions.length}</span>
           </div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
@@ -3227,11 +3344,11 @@ function CollapsibleVersionRow({
         <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
         <span className="text-xs font-black text-slate-900">v{version.version_number}</span>
         {isCurrent && <span className="rounded-full bg-[var(--app-accent,var(--primary))] px-1.5 py-0.5 text-[8px] font-bold text-white">corrente</span>}
-        <span className="ml-auto truncate text-[10px] text-slate-400">{versionFiles.length} file · {totalLines} righe</span>
+        <span className="ml-auto truncate text-[10px] text-slate-400">{versionFiles.length} {tl("file ·")} {totalLines} righe</span>
       </button>
       {open && (
         <div className="px-2.5 pb-2.5">
-          <p className="line-clamp-4 text-xs text-[var(--text-secondary)]">{version.source_manifest_json?.summary || 'Versione salvata'}</p>
+          <p className="line-clamp-4 text-xs text-[var(--text-secondary)]">{version.source_manifest_json?.summary || tl("Versione salvata")}</p>
           <div className="mt-2 flex gap-1">
             <Button
               type="button"
@@ -3241,7 +3358,7 @@ function CollapsibleVersionRow({
               density="compact"
               className="h-8 flex-1 text-[11px] font-bold"
             >
-              Apri
+              {tl("Apri")}
             </Button>
             <Button
               type="button"
@@ -3325,11 +3442,11 @@ function ProjectFileTree({ files, selectedPath, onSelect, onAddFile }: { files: 
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-white/10 bg-slate-900/60 md:flex">
       <div className="flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-        <span>File · {files.length}</span>
-        <button type="button" onClick={onAddFile} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" title="Aggiungi file di contesto (knowledge base di progetto)"><Plus className="h-3.5 w-3.5" /></button>
+        <span>{tl("File ·")} {files.length}</span>
+        <button type="button" onClick={onAddFile} className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white" title={tl("Aggiungi file di contesto (knowledge base di progetto)")}><Plus className="h-3.5 w-3.5" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
-        {files.length ? renderNodes(tree, 0) : <p className="px-2 py-4 text-xs text-slate-500">Nessun file ancora.</p>}
+        {files.length ? renderNodes(tree, 0) : <p className="px-2 py-4 text-xs text-slate-500">{tl("Nessun file ancora.")}</p>}
       </div>
     </aside>
   )
@@ -3361,9 +3478,9 @@ function VisualReviewCard({ review, onApply, onClose }: {
         <div className="flex items-center gap-2">
           {review.status === 'reviewing' ? <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> : <Eye className="h-4 w-4 text-slate-500" />}
           <p className="flex-1 font-bold text-slate-900">
-            {review.status === 'reviewing' ? 'Revisione visiva in corso…' : review.status === 'error' ? 'Revisione visiva non riuscita' : `Revisione visiva${review.score ? ` · ${review.score}/10` : ''}`}
+            {review.status === 'reviewing' ? tl("Revisione visiva in corso…") : review.status === 'error' ? tl("Revisione visiva non riuscita") : tl("Revisione visiva{0}", review.score ? ` · ${review.score}/10` : '')}
           </p>
-          {review.status !== 'reviewing' && <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>}
+          {review.status !== 'reviewing' && <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>}
         </div>
         {review.status === 'error' && <p className="mt-1 text-rose-600">{review.error}</p>}
         {review.status === 'done' && (
@@ -3378,10 +3495,10 @@ function VisualReviewCard({ review, onApply, onClose }: {
                   </li>
                 ))}
               </ul>
-            ) : <p className="mt-1 text-emerald-700">Nessun difetto visivo rilevante.</p>}
+            ) : <p className="mt-1 text-emerald-700">{tl("Nessun difetto visivo rilevante.")}</p>}
             {issues.length > 0 && (
               <button type="button" onClick={onApply} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-700">
-                <Wand2 className="h-3.5 w-3.5" /> Correggi questi difetti
+                <Wand2 className="h-3.5 w-3.5" /> {tl("Correggi questi difetti")}
               </button>
             )}
           </>
@@ -3400,12 +3517,12 @@ function PublicationBanner({ url, onClose }: { url: string; onClose: () => void 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900">
       <Globe className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-bold">Pubblicata:</span>
+      <span className="font-bold">{tl("Pubblicata:")}</span>
       <a href={url} target="_blank" rel="noreferrer" className="min-w-0 max-w-[40ch] truncate font-semibold underline">{url}</a>
-      <button type="button" onClick={() => copy('link')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'link' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Link</button>
-      <button type="button" onClick={() => copy('embed')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'embed' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Codice incorporamento</button>
-      <span className="text-emerald-700">Le funzioni AI dell'app restano disponibili solo dentro Golinelli.ai.</span>
-      <button type="button" onClick={onClose} className="ml-auto rounded-full p-1 hover:bg-emerald-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={() => copy('link')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'link' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Link")}</button>
+      <button type="button" onClick={() => copy('embed')} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-bold ring-1 ring-emerald-200 hover:bg-emerald-100">{copied === 'embed' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {tl("Codice incorporamento")}</button>
+      <span className="text-emerald-700">{tl("Le funzioni AI dell'app restano disponibili solo dentro Golinelli.ai.")}</span>
+      <button type="button" onClick={onClose} className="ml-auto rounded-full p-1 hover:bg-emerald-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>
     </div>
   )
 }
@@ -3425,34 +3542,34 @@ function isActionableRuntimeError(error: SandpackRuntimeError) {
 
 function browserPermissionHint(): string {
   const agent = navigator.userAgent
-  if (/Firefox\//.test(agent)) return 'Firefox: clicca l’icona della fotocamera/microfono barrata a sinistra dell’indirizzo e rimuovi il blocco, poi ricarica l’anteprima.'
-  if (/Safari\//.test(agent) && !/Chrome\//.test(agent)) return 'Safari: menu Safari › Impostazioni per questo sito web › Fotocamera/Microfono › Consenti, poi ricarica l’anteprima.'
-  return 'Chrome/Edge: clicca l’icona a sinistra dell’indirizzo (lucchetto o impostazioni sito), imposta Fotocamera e Microfono su Consenti, poi ricarica l’anteprima.'
+  if (/Firefox\//.test(agent)) return tl("Firefox: clicca l’icona della fotocamera/microfono barrata a sinistra dell’indirizzo e rimuovi il blocco, poi ricarica l’anteprima.")
+  if (/Safari\//.test(agent) && !/Chrome\//.test(agent)) return tl("Safari: menu Safari › Impostazioni per questo sito web › Fotocamera/Microfono › Consenti, poi ricarica l’anteprima.")
+  return tl("Chrome/Edge: clicca l’icona a sinistra dell’indirizzo (lucchetto o impostazioni sito), imposta Fotocamera e Microfono su Consenti, poi ricarica l’anteprima.")
 }
 
 function MediaPermissionBanner({ status, onReload, onAllow, hostBlocked, onClose }: { status: { kind: string; state: string; error: string }; onReload: () => void; onAllow: () => void; hostBlocked: boolean; onClose: () => void }) {
-  const device = status.kind === 'microphone' ? 'il microfono' : status.kind === 'camera' ? 'la webcam' : 'webcam e microfono'
+  const device = status.kind === 'microphone' ? tl("il microfono") : status.kind === 'camera' ? tl("la webcam") : tl("webcam e microfono")
   if (status.state === 'prompt') {
     return (
       <div className="pointer-events-none absolute inset-x-0 top-12 z-20 flex justify-center p-2">
         <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg" role="status">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> L’app chiede di usare {device}: rispondi alla richiesta del browser in alto, accanto all’indirizzo.
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("L’app chiede di usare")} {device}{tl(": rispondi alla richiesta del browser in alto, accanto all’indirizzo.")}
         </div>
       </div>
     )
   }
-  const title = status.state === 'denied' ? `Il browser ha bloccato ${device}`
-    : status.state === 'unsupported' ? 'Questo browser non supporta webcam e microfono'
-      : status.error === 'NotFoundError' ? 'Nessun dispositivo trovato'
-        : status.error === 'NotReadableError' ? 'Dispositivo già in uso'
-          : `Non riesco ad accedere a ${device}`
+  const title = status.state === 'denied' ? tl("Il browser ha bloccato {0}", device)
+    : status.state === 'unsupported' ? tl("Questo browser non supporta webcam e microfono")
+      : status.error === 'NotFoundError' ? tl("Nessun dispositivo trovato")
+        : status.error === 'NotReadableError' ? tl("Dispositivo già in uso")
+          : tl("Non riesco ad accedere a {0}", device)
   // Until the top-level page has itself been refused, the fix is one tap: ask the browser from here.
   const canAskFromHost = status.state === 'denied' && !hostBlocked
-  const hint = canAskFromHost ? 'Tocca “Consenti” e rispondi alla richiesta del browser: poi l’app riparte da sola.'
+  const hint = canAskFromHost ? tl("Tocca “Consenti” e rispondi alla richiesta del browser: poi l’app riparte da sola.")
     : status.state === 'denied' ? browserPermissionHint()
-    : status.error === 'NotFoundError' ? 'Collega una webcam o un microfono, poi ricarica l’anteprima.'
-      : status.error === 'NotReadableError' ? 'Chiudi le altre app o schede che usano la webcam (videochiamate, altre anteprime) e ricarica.'
-        : 'Usa un browser aggiornato (Chrome, Edge, Firefox o Safari) e ricarica l’anteprima.'
+    : status.error === 'NotFoundError' ? tl("Collega una webcam o un microfono, poi ricarica l’anteprima.")
+      : status.error === 'NotReadableError' ? tl("Chiudi le altre app o schede che usano la webcam (videochiamate, altre anteprime) e ricarica.")
+        : tl("Usa un browser aggiornato (Chrome, Edge, Firefox o Safari) e ricarica l’anteprima.")
   return (
     <div className="pointer-events-none absolute inset-x-0 top-12 z-20 flex justify-center p-2">
       <div className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white/95 p-3 text-xs text-slate-700 shadow-2xl ring-1 ring-amber-200 backdrop-blur" role="alert">
@@ -3464,22 +3581,22 @@ function MediaPermissionBanner({ status, onReload, onAllow, hostBlocked, onClose
             <div className="mt-2 flex flex-wrap gap-2">
               {canAskFromHost && (
                 <button type="button" onClick={onAllow} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-4 font-bold text-white hover:bg-emerald-500">
-                  Consenti {device}
+                  {tl("Consenti")} {device}
                 </button>
               )}
               <button type="button" onClick={onReload} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-slate-900 px-3 font-bold text-white hover:bg-slate-700">
-                <RefreshCw className="h-3.5 w-3.5" /> Ricarica anteprima
+                <RefreshCw className="h-3.5 w-3.5" /> {tl("Ricarica anteprima")}
               </button>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-3.5 w-3.5" /></button>
         </div>
       </div>
     </div>
   )
 }
 function describeRuntimeError(error: SandpackRuntimeError) {
-  const kind = error.kind === 'compile' ? 'Compilazione' : error.kind === 'runtime' ? 'Runtime' : 'Console'
+  const kind = error.kind === 'compile' ? tl("Compilazione") : error.kind === 'runtime' ? 'Runtime' : 'Console'
   const where = error.path ? ` ${error.path}${error.line ? `:${error.line}` : ''}` : ''
   return `${kind}${where}: ${error.message.slice(0, 500)}`
 }
@@ -3497,15 +3614,15 @@ function VerifyStatusPill({ state, attempt, maxAttempts, errors, onRetry, onDism
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
       <div className={`pointer-events-auto flex max-w-[92%] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg ${tone}`} role="status" aria-live="polite" title={errors.map(describeRuntimeError).join('\n')}>
-        {state === 'observing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifico l’app in esecuzione…</>}
-        {state === 'fixing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Correggo gli errori trovati (tentativo {Math.max(1, attempt)}/{maxAttempts})…</>}
-        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> Verificata: nessun errore in esecuzione</>}
+        {state === 'observing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Verifico l’app in esecuzione…")}</>}
+        {state === 'fixing' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Correggo gli errori trovati (tentativo")} {Math.max(1, attempt)}/{maxAttempts})…</>}
+        {state === 'clean' && <><Check className="h-3.5 w-3.5" /> {tl("Verificata: nessun errore in esecuzione")}</>}
         {state === 'failed' && (
           <>
             <X className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Restano {errors.length} errori: {errors[0] ? describeRuntimeError(errors[0]) : ''}</span>
-            <button type="button" onClick={onRetry} className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 font-bold hover:bg-white/40">Riprova</button>
-            <button type="button" onClick={onDismiss} className="shrink-0 rounded-full p-0.5 hover:bg-white/25" aria-label="Chiudi"><X className="h-3 w-3" /></button>
+            <span className="truncate">{tl("Restano")} {errors.length} errori: {errors[0] ? describeRuntimeError(errors[0]) : ''}</span>
+            <button type="button" onClick={onRetry} className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 font-bold hover:bg-white/40">{tl("Riprova")}</button>
+            <button type="button" onClick={onDismiss} className="shrink-0 rounded-full p-0.5 hover:bg-white/25" aria-label={tl("Chiudi")}><X className="h-3 w-3" /></button>
           </>
         )}
       </div>
@@ -3539,13 +3656,13 @@ function LiveGenerationPanel({
     <div className="space-y-2">
       <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold leading-5 text-indigo-900" role="status" aria-live="polite">
         <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
-        <span className="min-w-0 flex-1">{status || 'Avvio della generazione…'}</span>
+        <span className="min-w-0 flex-1">{status || tl("Avvio della generazione…")}</span>
         <button type="button" onClick={onStop} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50">Stop</button>
       </div>
       <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
         <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {mode === 'fix' ? 'Verificatore' : reasoning ? 'Architetto' : 'Sto progettando la struttura...'}
+          {mode === 'fix' ? tl("Verificatore") : reasoning ? tl("Architetto") : tl("Sto progettando la struttura...")}
         </div>
         {reasoning && (
           <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
@@ -3557,8 +3674,8 @@ function LiveGenerationPanel({
       {files.length > 0 && (
         <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-sky-700">
-            <span>{mode === 'fix' ? 'Correzioni' : 'Piano di lavoro'}</span>
-            <span>{doneCount}/{files.length} file</span>
+            <span>{mode === 'fix' ? tl("Correzioni") : tl("Piano di lavoro")}</span>
+            <span>{doneCount}/{files.length} {tl("file")}</span>
           </div>
           <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-sky-200/75 bg-white/[0.82] p-2 font-code">
             {files.map((file) => {
@@ -3572,7 +3689,7 @@ function LiveGenerationPanel({
                     <span className="block truncate">{file.path}</span>
                     {purpose && <span className="block truncate font-sans text-[11px] text-slate-500">{purpose}</span>}
                   </span>
-                  <span className="shrink-0 text-xs font-bold text-sky-700">{file.op === 'patch' ? 'modifica' : file.op === 'delete' ? 'eliminato' : `${file.lines} ln`}</span>
+                  <span className="shrink-0 text-xs font-bold text-sky-700">{file.op === 'patch' ? tl("modifica") : file.op === 'delete' ? tl("eliminato") : `${file.lines} ln`}</span>
                 </div>
               )
             })}
@@ -3581,7 +3698,7 @@ function LiveGenerationPanel({
       )}
 
       {plan.length === 0 && files.length === 0 && reasoning && (
-        <p className="px-1 text-xs text-slate-500">Sto definendo i file da creare...</p>
+        <p className="px-1 text-xs text-slate-500">{tl("Sto definendo i file da creare...")}</p>
       )}
     </div>
   )
@@ -3591,7 +3708,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
   const isUser = item.role === 'user' || item.actor_type === 'student' || item.actor_type === 'teacher'
   const kind = item.metadata_json?.kind
   const isFeedback = kind === 'agent_feedback' || kind === 'agent_progress' || kind === 'file_write_summary' || kind === 'agent_reasoning'
-  const label = isUser ? 'Tu' : item.agent_name || 'Agente'
+  const label = isUser ? 'Tu' : item.agent_name || tl("Agente")
 
   if (isFeedback) {
     const isFileSummary = kind === 'file_write_summary'
@@ -3626,7 +3743,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
                 type="button"
                 onClick={() => onShowFileDiff(String(file.path))}
                 className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-bold text-[var(--logo-blue-strong)] hover:border-[rgba(62,169,244,0.42)]"
-                title="Mostra modifiche (rosso = prima, celeste = dopo)"
+                title={tl("Mostra modifiche (rosso = prima, celeste = dopo)")}
               >
                 {file.path} · {file.lines} righe
               </button>
@@ -3650,7 +3767,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
         {Array.isArray(item.metadata_json?.attachments) && item.metadata_json.attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {item.metadata_json.attachments.map((src: string, idx: number) => (
-              <img key={idx} src={src} alt={`Allegato ${idx + 1}`} className="h-14 w-14 rounded-lg border border-white/40 object-cover" />
+              <img key={idx} src={src} alt={tl("Allegato {0}", idx + 1)} className="h-14 w-14 rounded-lg border border-white/40 object-cover" />
             ))}
           </div>
         )}
@@ -3690,11 +3807,11 @@ function detectMediaPitfalls(files: GeneratedFile[]): SandpackRuntimeError[] {
       found.push({
         kind: 'runtime',
         path: `/${file.path}`,
-        message: 'Il riconoscimento di volto/mani/corpo carica uno script legacy da CDN (MediaPipe face_mesh/hands/pose), fragile nel sandbox. '
-          + 'Sostituiscilo con il motore della piattaforma: const tracker = await window.GolinelliAI.ml.face() (oppure .hand() / .pose()); '
+        message: tl("Il riconoscimento di volto/mani/corpo carica uno script legacy da CDN (MediaPipe face_mesh/hands/pose), fragile nel sandbox. ")
+          + tl("Sostituiscilo con il motore della piattaforma: const tracker = await window.GolinelliAI.ml.face() (oppure .hand() / .pose()); ")
           + 'poi tracker.start(videoElement, { onResult }) o await tracker.detect(videoElement). Risultato: { detected, faces[i].landmarks (478 punti normalizzati 0..1), '
           + 'faces[i].features: leftEye, rightEye, nose, mouthTop, mouthBottom, eyeDistance, roll, mouthOpen, smile, eyesClosed }. '
-          + 'Rimuovi loadScript/CDN e l\'uso di window.FaceMesh.',
+          + tl("Rimuovi loadScript/CDN e l'uso di window.FaceMesh."),
       })
       continue
     }
@@ -3707,10 +3824,10 @@ function detectMediaPitfalls(files: GeneratedFile[]): SandpackRuntimeError[] {
         found.push({
           kind: 'runtime',
           path: `/${file.path}`,
-          message: 'La webcam non mostra mai il video: <video> è montato solo in modo condizionale (es. status === \'active\' && <video …>), '
-            + 'quindi videoRef.current è null quando si chiama media.attach() e lo stato non diventa mai "attivo" (la schermata resta su "Attivazione webcam…"). '
-            + 'Correzione: il <video ref={videoRef} playsInline muted autoPlay> deve essere SEMPRE nel JSX (nascondilo con className/stile finché non è attivo), '
-            + 'poi dopo aver ottenuto lo stream chiama media.attach(videoRef.current, stream) e SOLO DOPO imposta lo stato su "attivo".',
+          message: tl("La webcam non mostra mai il video: <video> è montato solo in modo condizionale (es. status === 'active' && <video …>), ")
+            + tl("quindi videoRef.current è null quando si chiama media.attach() e lo stato non diventa mai \"attivo\" (la schermata resta su \"Attivazione webcam…\"). ")
+            + tl("Correzione: il <video ref={videoRef} playsInline muted autoPlay> deve essere SEMPRE nel JSX (nascondilo con className/stile finché non è attivo), ")
+            + tl("poi dopo aver ottenuto lo stream chiama media.attach(videoRef.current, stream) e SOLO DOPO imposta lo stato su \"attivo\"."),
         })
         break
       }
@@ -4065,15 +4182,15 @@ function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-900">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
         <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-100">
-          markdown generato · {lineCount} ln
+          {tl("markdown generato ·")} {lineCount} ln
         </span>
         <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-          Compilato dal prompt
+          {tl("Compilato dal prompt")}
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-50">
-          Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.
+          {tl("Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.")}
         </div>
         <div className="rounded-lg border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100">
           <ReasoningMarkdown dark>{file.content}</ReasoningMarkdown>
@@ -4141,7 +4258,7 @@ function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChan
           lintKeymap: false,
         }}
         className="min-h-0 flex-1 text-[13px]"
-        aria-label={`Modifica ${file.path}`}
+        aria-label={tl("Modifica {0}", file.path)}
       />
     </div>
   )
@@ -4266,13 +4383,13 @@ function DiffViewer({
               density="compact"
               className="text-xs font-bold"
             >
-              Apri nel codice
+              {tl("Apri nel codice")}
             </Button>
             <button
               type="button"
               onClick={onClose}
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-              title="Chiudi"
+              title={tl("Chiudi")}
             >
               <X className="h-5 w-5" />
             </button>
@@ -4280,12 +4397,12 @@ function DiffViewer({
         </header>
         <div className="min-h-0 flex-1 overflow-auto bg-neutral-900 py-2 font-mono text-[12px] leading-relaxed">
           {!hasChanges && (
-            <div className="px-4 py-6 text-center text-xs text-slate-400">Nessuna differenza rispetto alla versione precedente.</div>
+            <div className="px-4 py-6 text-center text-xs text-slate-400">{tl("Nessuna differenza rispetto alla versione precedente.")}</div>
           )}
           {rows.map((row, index) =>
             row.collapsed ? (
               <div key={index} className="px-3 py-1 text-center text-[10px] text-slate-500">
-                ··· {row.count} righe invariate ···
+                ··· {row.count} {tl("righe invariate ···")}
               </div>
             ) : (
               <div
@@ -4309,11 +4426,11 @@ function DiffViewer({
         <footer className="flex shrink-0 items-center gap-4 border-t border-slate-200 px-4 py-2 text-[11px] font-semibold">
           <span className="flex items-center gap-1.5 text-rose-600">
             <span className="h-2.5 w-2.5 rounded bg-rose-400" />
-            Prima
+            {tl("Prima")}
           </span>
           <span className="flex items-center gap-1.5 text-sky-600">
             <span className="h-2.5 w-2.5 rounded bg-sky-400" />
-            Dopo
+            {tl("Dopo")}
           </span>
         </footer>
       </div>

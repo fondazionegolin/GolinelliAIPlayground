@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { tl } from '@/i18n/tl'
 
 export type PyodideStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -315,7 +316,7 @@ export function usePyodide(enabled = true) {
           // SAB not available: resolve any pending cell with an explanatory error
           const pending = [...pendingRef.current.entries()]
           for (const [pid, res] of pending) {
-            res([{ output_type: 'error', ename: 'RuntimeError', evalue: 'input() non disponibile: il sito non è in modalità Cross-Origin Isolated. Ricarica la pagina o contatta l\'amministratore.', traceback: [] }])
+            res([{ output_type: 'error', ename: 'RuntimeError', evalue: tl("input() non disponibile: il sito non è in modalità Cross-Origin Isolated. Ricarica la pagina o contatta l'amministratore."), traceback: [] }])
             pendingRef.current.delete(pid)
           }
           break
@@ -346,7 +347,7 @@ export function usePyodide(enabled = true) {
 
     worker.onerror = (e) => {
       setStatus('error')
-      setError(e.message || 'Errore nel worker Python')
+      setError(e.message || tl("Errore nel worker Python"))
     }
 
     worker.postMessage({

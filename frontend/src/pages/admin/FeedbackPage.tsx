@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
 import { ZoomableImage } from '@/components/ui/ZoomableImage'
 import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send, ImageIcon } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface FeedbackReport {
   id: string
@@ -29,7 +30,7 @@ interface FeedbackReport {
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'adesso'
+  if (mins < 1) return tl("adesso")
   if (mins < 60) return `${mins}m fa`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h fa`
@@ -64,16 +65,16 @@ function FeedbackCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold text-slate-800">
-                {report.user_display_name || 'Utente sconosciuto'}
+                {report.user_display_name || tl("Utente sconosciuto")}
               </span>
               <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
                 report.user_type === 'teacher' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'
               }`}>
-                {report.user_type === 'teacher' ? 'Docente' : 'Studente'}
+                {report.user_type === 'teacher' ? tl("Docente") : tl("Studente")}
               </span>
               {isNew && (
                 <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                  Nuovo
+                  {tl("Nuovo")}
                 </span>
               )}
               <span className="text-xs text-slate-400 ml-auto">{timeAgo(report.created_at)}</span>
@@ -106,7 +107,7 @@ function FeedbackCard({
               <div className="mt-2.5">
                 <div className="flex items-center gap-1 mb-1">
                   <ImageIcon className="h-3 w-3 text-slate-400" />
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Screenshot allegato</span>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{tl("Screenshot allegato")}</span>
                 </div>
                 <ZoomableImage
                   src={report.browser_info.screenshot_base64}
@@ -131,7 +132,7 @@ function FeedbackCard({
           {report.console_errors.length > 0 && (
             <div className="flex items-center gap-1 text-amber-600">
               <AlertTriangle className="h-3.5 w-3.5" />
-              <span className="text-[11px] font-medium">{report.console_errors.length} errori console</span>
+              <span className="text-[11px] font-medium">{report.console_errors.length} {tl("errori console")}</span>
             </div>
           )}
           {(report.browser_info.user_agent || report.console_errors.length > 0) && (
@@ -140,7 +141,7 @@ function FeedbackCard({
               className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors ml-1"
             >
               {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {expanded ? 'Meno dettagli' : 'Dettagli tecnici'}
+              {expanded ? tl("Meno dettagli") : tl("Dettagli tecnici")}
             </button>
           )}
           <div className="flex-1" />
@@ -151,25 +152,25 @@ function FeedbackCard({
               {replySent ? (
                 <span className="text-[11px] text-green-600 flex items-center gap-1">
                   <Send className="h-3 w-3" />
-                  Email inviata ({replySent === 'in_progress' ? 'in lavorazione' : 'risolto'})
+                  {tl("Email inviata (")}{replySent === 'in_progress' ? tl("in lavorazione") : 'risolto'})
                 </span>
               ) : (
                 <>
                   <button
                     onClick={() => { onReply(report.id, 'in_progress'); setReplySent('in_progress') }}
                     className="flex items-center gap-1 text-[11px] text-amber-600 hover:text-amber-700 px-2 py-1 rounded-lg hover:bg-amber-50 transition-colors font-medium"
-                    title="Invia email: stiamo lavorando al problema"
+                    title={tl("Invia email: stiamo lavorando al problema")}
                   >
                     <Wrench className="h-3 w-3" />
-                    In lavorazione
+                    {tl("In lavorazione")}
                   </button>
                   <button
                     onClick={() => { onReply(report.id, 'resolved'); setReplySent('resolved') }}
                     className="flex items-center gap-1 text-[11px] text-green-600 hover:text-green-700 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors font-medium"
-                    title="Invia email: problema risolto"
+                    title={tl("Invia email: problema risolto")}
                   >
                     <CheckCircle className="h-3 w-3" />
-                    Risolto
+                    {tl("Risolto")}
                   </button>
                 </>
               )}
@@ -182,7 +183,7 @@ function FeedbackCard({
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-green-600 transition-colors px-2 py-1 rounded-lg hover:bg-green-50"
             >
               <CheckCircle className="h-3.5 w-3.5" />
-              Segna come letto
+              {tl("Segna come letto")}
             </button>
           )}
         </div>
@@ -198,7 +199,7 @@ function FeedbackCard({
                   <p className="text-[11px] text-slate-600 break-all">{report.browser_info.user_agent}</p>
                   {report.browser_info.screen_width && (
                     <p className="text-[11px] text-slate-400">
-                      Schermo: {report.browser_info.screen_width}×{report.browser_info.screen_height}
+                      {tl("Schermo:")} {report.browser_info.screen_width}×{report.browser_info.screen_height}
                       {report.browser_info.viewport_width && ` · Viewport: ${report.browser_info.viewport_width}×${report.browser_info.viewport_height}`}
                       {report.browser_info.language && ` · ${report.browser_info.language}`}
                     </p>
@@ -208,7 +209,7 @@ function FeedbackCard({
             )}
             {report.console_errors.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Errori console</p>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{tl("Errori console")}</p>
                 <div className="bg-slate-900 rounded-lg p-3 max-h-40 overflow-y-auto">
                   {report.console_errors.map((err, i) => (
                     <p key={i} className="text-[11px] text-red-300 font-mono leading-relaxed">{err}</p>
@@ -262,13 +263,13 @@ export default function FeedbackPage() {
             Feedback Beta
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Segnalazioni bug e comportamenti inattesi dagli utenti
+            {tl("Segnalazioni bug e comportamenti inattesi dagli utenti")}
           </p>
         </div>
         {newCount > 0 && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
             <Clock className="h-4 w-4" />
-            {newCount} nuovi
+            {newCount} {tl("nuovi")}
           </div>
         )}
       </div>
@@ -283,7 +284,7 @@ export default function FeedbackPage() {
               filter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            {f === 'all' ? 'Tutti' : f === 'new' ? 'Nuovi' : 'Letti'}
+            {f === 'all' ? tl("Tutti") : f === 'new' ? tl("Nuovi") : tl("Letti")}
           </button>
         ))}
       </div>
@@ -298,8 +299,8 @@ export default function FeedbackPage() {
           <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-3">
             <Bug className="h-7 w-7 text-slate-400" />
           </div>
-          <p className="text-slate-500 font-medium">Nessun feedback</p>
-          <p className="text-sm text-slate-400 mt-1">I feedback degli utenti appariranno qui</p>
+          <p className="text-slate-500 font-medium">{tl("Nessun feedback")}</p>
+          <p className="text-sm text-slate-400 mt-1">{tl("I feedback degli utenti appariranno qui")}</p>
         </div>
       ) : (
         <div className="space-y-3">

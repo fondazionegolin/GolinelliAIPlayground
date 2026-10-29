@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronUp } from '@/components/icons'
 import { INQUIRY_FLAGS, llmApi, type InquiryClue, type InquiryConfig, type InquiryFlag, type InquirySuspect } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 const VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']
 
@@ -47,14 +48,14 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 
 const FLAG_LABEL: Record<InquiryFlag, string> = {
-  defensive: 'Difensivo',
-  nervous: 'Nervoso',
-  persuasive: 'Persuasivo',
-  dramatic: 'Drammatico',
-  humorous: 'Umoristico',
-  cooperative: 'Cooperativo',
+  defensive: tl("Difensivo"),
+  nervous: tl("Nervoso"),
+  persuasive: tl("Persuasivo"),
+  dramatic: tl("Drammatico"),
+  humorous: tl("Umoristico"),
+  cooperative: tl("Cooperativo"),
 }
-const INTENSITY_LABEL = ['Off', 'Lieve', 'Marcato', 'Forte']
+const INTENSITY_LABEL = ['Off', tl("Lieve"), tl("Marcato"), tl("Forte")]
 
 interface Props {
   value: InquiryConfig
@@ -102,7 +103,7 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
       const url = String(res.data.image_url)
       return url
     } catch (e: any) {
-      toast({ title: t('common.error'), description: e?.response?.data?.detail || 'Generazione avatar non riuscita', variant: 'destructive' })
+      toast({ title: t('common.error'), description: e?.response?.data?.detail || tl("Generazione avatar non riuscita"), variant: 'destructive' })
       return null
     } finally {
       setAvatarBusy(null)
@@ -126,10 +127,10 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
 
   const generateCast = async () => {
     if (!value.case_title.trim() && !value.case_brief.trim()) {
-      toast({ title: t('common.error'), description: 'Scrivi almeno titolo o briefing del caso.', variant: 'destructive' })
+      toast({ title: t('common.error'), description: tl("Scrivi almeno titolo o briefing del caso."), variant: 'destructive' })
       return
     }
-    if (value.suspects.some((sp) => sp.name.trim()) && !window.confirm('Sostituire i sospettati e gli indizi attuali con quelli generati?')) return
+    if (value.suspects.some((sp) => sp.name.trim()) && !window.confirm(tl("Sostituire i sospettati e gli indizi attuali con quelli generati?"))) return
     setGenerating(true)
     try {
       const { data } = await llmApi.generateInquirySuspects({
@@ -148,12 +149,12 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
         clues: data.clues,
         correct_answer: data.correct_answer || value.correct_answer,
         truth: value.truth.trim() ? value.truth : (data.truth || value.truth),
-        final_question: value.final_question || 'Chi è il colpevole e perché?',
+        final_question: value.final_question || tl("Chi è il colpevole e perché?"),
         min_clues: Math.min(Math.max(value.min_clues, 3), Math.max(1, data.clues.length)),
       })
-      toast({ title: 'Cast generato', description: 'Rivedi i sospettati e gli indizi, poi genera gli avatar.' })
+      toast({ title: tl("Cast generato"), description: tl("Rivedi i sospettati e gli indizi, poi genera gli avatar.") })
     } catch (e: any) {
-      toast({ title: t('common.error'), description: e?.response?.data?.detail || 'Generazione non riuscita', variant: 'destructive' })
+      toast({ title: t('common.error'), description: e?.response?.data?.detail || tl("Generazione non riuscita"), variant: 'destructive' })
     } finally {
       setGenerating(false)
     }
@@ -177,7 +178,7 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label>{t('teacherbot.inquiry_case_title', 'Titolo del caso')}</Label>
-          <input className={inputCls} value={value.case_title} maxLength={200} onChange={(e) => set('case_title', e.target.value)} placeholder="es. Il furto della Gioconda" />
+          <input className={inputCls} value={value.case_title} maxLength={200} onChange={(e) => set('case_title', e.target.value)} placeholder={tl("es. Il furto della Gioconda")} />
         </div>
         <div>
           <Label>{t('teacherbot.inquiry_min_clues', 'Indizi minimi per rispondere')}</Label>
@@ -186,11 +187,11 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
       </div>
       <div>
         <Label>{t('teacherbot.inquiry_case_brief', 'Briefing per lo studente (visibile)')}</Label>
-        <textarea className={`${inputCls} min-h-[60px]`} value={value.case_brief} maxLength={2000} onChange={(e) => set('case_brief', e.target.value)} placeholder="Cosa sa lo studente prima di iniziare l'interrogatorio." />
+        <textarea className={`${inputCls} min-h-[60px]`} value={value.case_brief} maxLength={2000} onChange={(e) => set('case_brief', e.target.value)} placeholder={tl("Cosa sa lo studente prima di iniziare l'interrogatorio.")} />
       </div>
       <div>
         <Label>{t('teacherbot.inquiry_truth', 'La verità completa (segreta)')}</Label>
-        <textarea className={`${inputCls} min-h-[100px]`} value={value.truth} maxLength={6000} onChange={(e) => set('truth', e.target.value)} placeholder="Tutto ciò che l'NPC sa: chi, come, perché, cronologia… Non viene mai mostrato allo studente." />
+        <textarea className={`${inputCls} min-h-[100px]`} value={value.truth} maxLength={6000} onChange={(e) => set('truth', e.target.value)} placeholder={tl("Tutto ciò che l'NPC sa: chi, come, perché, cronologia… Non viene mai mostrato allo studente.")} />
       </div>
 
       {/* Cast */}
@@ -198,15 +199,15 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <Label>{t('teacherbot.inquiry_cast', 'Sospettati / interlocutori')}</Label>
           <div className="flex flex-wrap items-center gap-2">
-            <select className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700" value={genCount} onChange={(e) => setGenCount(Number(e.target.value))} title="Quanti sospettati generare">
+            <select className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700" value={genCount} onChange={(e) => setGenCount(Number(e.target.value))} title={tl("Quanti sospettati generare")}>
               {[2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} sospettati</option>)}
             </select>
             <button type="button" onClick={generateCast} disabled={generating} className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white disabled:opacity-50">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {generating ? 'Generazione…' : 'Genera con AI'}
+              {generating ? tl("Generazione…") : tl("Genera con AI")}
             </button>
             <button type="button" onClick={generateAllAvatars} disabled={avatarBusy !== null} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
-              <ImageIcon className="h-3.5 w-3.5" /> Avatar per tutti
+              <ImageIcon className="h-3.5 w-3.5" /> {tl("Avatar per tutti")}
             </button>
             <button type="button" onClick={addSuspect} disabled={value.suspects.length >= 8} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
               <Plus className="h-3.5 w-3.5" /> {t('teacherbot.inquiry_add_suspect', 'Aggiungi')}
@@ -215,8 +216,8 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
         </div>
         <p className="mb-2 text-[11px] leading-4 text-slate-400">
           {multi
-            ? 'Lo studente sceglie chi interrogare e alla fine accusa un sospettato. Ogni NPC conosce solo ciò che scrivi qui, non la soluzione completa.'
-            : 'Con un solo NPC l\'intervista è diretta. Aggiungi altri sospettati per creare un caso a più voci.'}
+            ? tl("Lo studente sceglie chi interrogare e alla fine accusa un sospettato. Ogni NPC conosce solo ciò che scrivi qui, non la soluzione completa.")
+            : tl("Con un solo NPC l'intervista è diretta. Aggiungi altri sospettati per creare un caso a più voci.")}
         </p>
         <div className="space-y-3">
           {value.suspects.map((sp) => (
@@ -228,28 +229,28 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
                   </span>
                   <button type="button" onClick={() => generateOneAvatar(sp)} disabled={avatarBusy !== null || !sp.name.trim()} className="inline-flex items-center gap-1 text-[10px] font-extrabold text-violet-700 disabled:opacity-40">
                     {avatarBusy === sp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
-                    {sp.avatar_url ? 'Rigenera' : 'Avatar'}
+                    {sp.avatar_url ? tl("Rigenera") : 'Avatar'}
                   </button>
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <input className={inputCls} value={sp.name} maxLength={80} onChange={(e) => updateSuspect(sp.id, { name: e.target.value })} placeholder="Nome (es. Dott. Bellandi)" />
-                    <input className={inputCls} value={sp.role} maxLength={200} onChange={(e) => updateSuspect(sp.id, { role: e.target.value })} placeholder="Ruolo (es. custode del museo)" />
+                    <input className={inputCls} value={sp.name} maxLength={80} onChange={(e) => updateSuspect(sp.id, { name: e.target.value })} placeholder={tl("Nome (es. Dott. Bellandi)")} />
+                    <input className={inputCls} value={sp.role} maxLength={200} onChange={(e) => updateSuspect(sp.id, { role: e.target.value })} placeholder={tl("Ruolo (es. custode del museo)")} />
                   </div>
-                  <textarea className={`${inputCls} min-h-[48px]`} value={sp.personality} maxLength={800} onChange={(e) => updateSuspect(sp.id, { personality: e.target.value })} placeholder="Personalità e modo di parlare: elegante, sospettoso, ama le digressioni…" />
-                  <textarea className={`${inputCls} min-h-[72px]`} value={sp.knowledge} maxLength={3000} onChange={(e) => updateSuspect(sp.id, { knowledge: e.target.value })} placeholder={multi ? 'Cosa sa, cosa nasconde, che alibi o bugia racconta (segreto)' : 'Cosa sa in più della verità generale (facoltativo)'} />
+                  <textarea className={`${inputCls} min-h-[48px]`} value={sp.personality} maxLength={800} onChange={(e) => updateSuspect(sp.id, { personality: e.target.value })} placeholder={tl("Personalità e modo di parlare: elegante, sospettoso, ama le digressioni…")} />
+                  <textarea className={`${inputCls} min-h-[72px]`} value={sp.knowledge} maxLength={3000} onChange={(e) => updateSuspect(sp.id, { knowledge: e.target.value })} placeholder={multi ? tl("Cosa sa, cosa nasconde, che alibi o bugia racconta (segreto)") : tl("Cosa sa in più della verità generale (facoltativo)")} />
                   <div className="flex flex-wrap items-center gap-3">
-                    <select className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700" value={sp.voice || ''} onChange={(e) => updateSuspect(sp.id, { voice: e.target.value || null })} title="Voce dell'NPC">
-                      <option value="">Voce: scelta dallo studente</option>
-                      {VOICES.map((v) => <option key={v} value={v}>Voce: {v}</option>)}
+                    <select className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700" value={sp.voice || ''} onChange={(e) => updateSuspect(sp.id, { voice: e.target.value || null })} title={tl("Voce dell'NPC")}>
+                      <option value="">{tl("Voce: scelta dallo studente")}</option>
+                      {VOICES.map((v) => <option key={v} value={v}>{tl("Voce:")} {v}</option>)}
                     </select>
                     {multi && (
                       <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-slate-700">
                         <input type="radio" name="inquiry-culprit" checked={sp.is_culprit} onChange={() => setCulprit(sp.id)} />
-                        <Crosshair className="h-3.5 w-3.5 text-rose-500" /> È il colpevole
+                        <Crosshair className="h-3.5 w-3.5 text-rose-500" /> {tl("È il colpevole")}
                       </label>
                     )}
-                    <button type="button" onClick={() => removeSuspect(sp.id)} disabled={value.suspects.length <= 1} className="ml-auto rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label="Rimuovi sospettato">
+                    <button type="button" onClick={() => removeSuspect(sp.id)} disabled={value.suspects.length <= 1} className="ml-auto rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label={tl("Rimuovi sospettato")}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
@@ -263,11 +264,11 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label>{t('teacherbot.inquiry_final_question', 'Domanda finale')}</Label>
-          <input className={inputCls} value={value.final_question} maxLength={400} onChange={(e) => set('final_question', e.target.value)} placeholder={multi ? 'Facoltativo — default: Chi è il colpevole e perché?' : "es. Chi è stato l'assassino?"} />
+          <input className={inputCls} value={value.final_question} maxLength={400} onChange={(e) => set('final_question', e.target.value)} placeholder={multi ? tl("Facoltativo — default: Chi è il colpevole e perché?") : tl("es. Chi è stato l'assassino?")} />
         </div>
         <div>
           <Label>{multi ? t('teacherbot.inquiry_correct_motive', 'Soluzione (movente e prove)') : t('teacherbot.inquiry_correct_answer', 'Risposta corretta')}</Label>
-          <input className={inputCls} value={value.correct_answer} maxLength={1200} onChange={(e) => set('correct_answer', e.target.value)} placeholder={multi ? 'es. Il giardiniere, per vendetta: ha lasciato le impronte nel garage' : 'es. Il giardiniere, per vendetta'} />
+          <input className={inputCls} value={value.correct_answer} maxLength={1200} onChange={(e) => set('correct_answer', e.target.value)} placeholder={multi ? tl("es. Il giardiniere, per vendetta: ha lasciato le impronte nel garage") : tl("es. Il giardiniere, per vendetta")} />
         </div>
       </div>
 
@@ -284,23 +285,23 @@ export default function InquiryConfigEditor({ value, onChange, teacherbotId }: P
           {value.clues.map((clue, idx) => (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-start gap-2">
-                <textarea className={`${inputCls} min-h-[48px] flex-1`} value={clue.text} maxLength={1000} onChange={(e) => updateClue(idx, { text: e.target.value })} placeholder="Cosa lascia trapelare l'NPC quando lo sblocca" />
+                <textarea className={`${inputCls} min-h-[48px] flex-1`} value={clue.text} maxLength={1000} onChange={(e) => updateClue(idx, { text: e.target.value })} placeholder={tl("Cosa lascia trapelare l'NPC quando lo sblocca")} />
                 {multi && (
-                  <select className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700" value={clue.suspect_id || ''} onChange={(e) => updateClue(idx, { suspect_id: e.target.value || null })} title="Chi può dare questo indizio">
-                    <option value="">Chiunque</option>
+                  <select className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700" value={clue.suspect_id || ''} onChange={(e) => updateClue(idx, { suspect_id: e.target.value || null })} title={tl("Chi può dare questo indizio")}>
+                    <option value="">{tl("Chiunque")}</option>
                     {value.suspects.map((sp) => <option key={sp.id} value={sp.id}>{sp.name || sp.id}</option>)}
                   </select>
                 )}
-                <select className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700" value={clue.tier} onChange={(e) => updateClue(idx, { tier: Number(e.target.value) as 1 | 2 | 3 })} title="Livello di segretezza">
-                  <option value={1}>Livello 1 · facile</option>
-                  <option value={2}>Livello 2 · fiducia/pressione</option>
-                  <option value={3}>Livello 3 · tardivo</option>
+                <select className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700" value={clue.tier} onChange={(e) => updateClue(idx, { tier: Number(e.target.value) as 1 | 2 | 3 })} title={tl("Livello di segretezza")}>
+                  <option value={1}>{tl("Livello 1 · facile")}</option>
+                  <option value={2}>{tl("Livello 2 · fiducia/pressione")}</option>
+                  <option value={3}>{tl("Livello 3 · tardivo")}</option>
                 </select>
-                <button type="button" onClick={() => set('clues', value.clues.filter((_, i) => i !== idx))} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Rimuovi indizio">
+                <button type="button" onClick={() => set('clues', value.clues.filter((_, i) => i !== idx))} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={tl("Rimuovi indizio")}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
-              <input className={`${inputCls} mt-2`} value={clue.unlock_hint} maxLength={400} onChange={(e) => updateClue(idx, { unlock_hint: e.target.value })} placeholder="Che tipo di domanda lo guadagna? (es. chiedere dove si trovava alle 22)" />
+              <input className={`${inputCls} mt-2`} value={clue.unlock_hint} maxLength={400} onChange={(e) => updateClue(idx, { unlock_hint: e.target.value })} placeholder={tl("Che tipo di domanda lo guadagna? (es. chiedere dove si trovava alle 22)")} />
             </div>
           ))}
         </div>
@@ -351,17 +352,17 @@ function InquirySessionsReview({ teacherbotId }: { teacherbotId: string }) {
             <div key={s.id} className="rounded-lg border border-slate-100 p-2">
               <button type="button" onClick={() => setExpanded(expanded === s.id ? null : s.id)} className="flex w-full items-center justify-between text-left text-xs">
                 <span className="font-semibold text-slate-700">
-                  {s.is_test ? 'Test docente' : s.student || 'Studente'} · {s.status} · {s.clues_found} indizi · {s.attempts} tentativi
+                  {s.is_test ? tl("Test docente") : s.student || tl("Studente")} · {s.status} · {s.clues_found} {tl("indizi ·")} {s.attempts} tentativi
                   {s.verdict ? ` · ${s.verdict.score}/100` : ''}
                 </span>
                 <span className="text-slate-400">{s.created_at ? new Date(s.created_at).toLocaleString() : ''}</span>
               </button>
               {expanded === s.id && (
                 <div className="mt-2 space-y-1 text-xs">
-                  {s.final_answer && <p className="rounded bg-slate-50 p-2"><b>Risposta finale:</b> {s.final_answer}</p>}
+                  {s.final_answer && <p className="rounded bg-slate-50 p-2"><b>{tl("Risposta finale:")}</b> {s.final_answer}</p>}
                   {s.transcript.map((turn, i) => (
                     <p key={i} className={turn.role === 'user' ? 'text-slate-700' : 'text-indigo-700'}>
-                      <b>{turn.role === 'user' ? 'Studente' : 'NPC'}</b>
+                      <b>{turn.role === 'user' ? tl("Studente") : 'NPC'}</b>
                       {turn.flag ? ` [${turn.flag}]` : ''}: {turn.text}
                     </p>
                   ))}

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { X, Upload, Check } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ── Palette generation ────────────────────────────────────────────────────────
 // 16 columns × 16 rows = 256 colors
@@ -122,7 +123,7 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-white/80">Scegli sfondo</h3>
+          <h3 className="text-sm font-semibold text-white/80">{tl("Scegli sfondo")}</h3>
           <button
             className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
             onClick={onClose}
@@ -132,7 +133,7 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
         </div>
 
         {/* 256-color palette — 16 cols × 16 rows */}
-        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">Colori</div>
+        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">{tl("Colori")}</div>
         <div
           className="grid gap-[3px] mb-4"
           style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}
@@ -160,7 +161,7 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
         </div>
 
         {/* Image upload */}
-        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">Immagine</div>
+        <div className="mb-1 text-[10px] text-white/30 uppercase tracking-wider">{tl("Immagine")}</div>
         <button
           disabled={compressing}
           className={`w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 transition-all text-xs font-medium ${
@@ -176,13 +177,13 @@ export default function WallpaperPicker({ current, onSelect, onClose }: Wallpape
           onClick={() => fileInputRef.current?.click()}
         >
           {compressing ? (
-            <span className="text-white/60">Caricamento...</span>
+            <span className="text-white/60">{tl("Caricamento...")}</span>
           ) : !isCustomImage ? (
-            <><Upload className="h-3.5 w-3.5" />Carica immagine</>
+            <><Upload className="h-3.5 w-3.5" />{tl("Carica immagine")}</>
           ) : (
             <div className="bg-black/50 rounded-lg px-3 py-1 flex items-center gap-1.5">
               <Check className="h-3 w-3 text-white" />
-              <span className="text-white text-[10px]">Cambia immagine</span>
+              <span className="text-white text-[10px]">{tl("Cambia immagine")}</span>
             </div>
           )}
         </button>

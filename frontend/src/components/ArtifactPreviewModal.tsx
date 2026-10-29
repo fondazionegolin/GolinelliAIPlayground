@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { tl } from '@/i18n/tl'
 
 interface ArtifactPreviewModalProps {
   isOpen: boolean
@@ -49,11 +50,11 @@ export function ArtifactPreviewModal({
 
   const getTitle = () => {
     switch (artifactType) {
-      case 'lesson': return isEditing ? 'Modifica Lezione' : 'Anteprima Lezione'
-      case 'presentation': return isEditing ? 'Modifica Presentazione' : 'Anteprima Presentazione'
-      case 'quiz': return isEditing ? 'Modifica Quiz' : 'Anteprima Quiz'
-      case 'exercise': return isEditing ? 'Modifica Esercizio' : 'Anteprima Esercizio'
-      default: return 'Contenuto'
+      case 'lesson': return isEditing ? tl("Modifica Lezione") : tl("Anteprima Lezione")
+      case 'presentation': return isEditing ? tl("Modifica Presentazione") : tl("Anteprima Presentazione")
+      case 'quiz': return isEditing ? tl("Modifica Quiz") : tl("Anteprima Quiz")
+      case 'exercise': return isEditing ? tl("Modifica Esercizio") : tl("Anteprima Esercizio")
+      default: return tl("Contenuto")
     }
   }
 
@@ -70,8 +71,8 @@ export function ArtifactPreviewModal({
                 <DialogTitle className="text-xl">{getTitle()}</DialogTitle>
                 <DialogDescription className="hidden md:block">
                   {isEditing 
-                    ? "Modifica i contenuti generati prima di salvarli." 
-                    : "Rivedi il contenuto come lo vedranno gli studenti."}
+                    ? tl("Modifica i contenuti generati prima di salvarli.") 
+                    : tl("Rivedi il contenuto come lo vedranno gli studenti.")}
                 </DialogDescription>
               </div>
             </div>
@@ -85,12 +86,12 @@ export function ArtifactPreviewModal({
                 {isEditing ? (
                   <>
                     <BookOpen className="h-4 w-4" />
-                    Torna all\'Anteprima
+                    {tl("Torna all\\'Anteprima")}
                   </>
                 ) : (
                   <>
                     <Edit2 className="h-4 w-4" />
-                    Modifica Contenuto
+                    {tl("Modifica Contenuto")}
                   </>
                 )}
               </Button>
@@ -129,15 +130,15 @@ export function ArtifactPreviewModal({
           <div className="flex justify-between w-full items-center gap-4">
              <p className="text-xs text-slate-500 hidden md:block">
                {isEditing 
-                 ? "Le modifiche vengono applicate immediatamente all\'anteprima." 
-                 : "Salvando come bozza potrai assegnarlo successivamente."}
+                 ? tl("Le modifiche vengono applicate immediatamente all'anteprima.") 
+                 : tl("Salvando come bozza potrai assegnarlo successivamente.")}
              </p>
              <div className="flex gap-2 ml-auto">
-               <Button variant="outline" onClick={onClose}>Chiudi</Button>
+               <Button variant="outline" onClick={onClose}>{tl("Chiudi")}</Button>
                <Button onClick={handleSave} disabled={isSaving} className="bg-violet-600 hover:bg-violet-700 shadow-sm">
                  {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                  <Save className="h-4 w-4 mr-2" />
-                 Salva Bozza
+                 {tl("Salva Bozza")}
                </Button>
              </div>
           </div>
@@ -165,7 +166,7 @@ function LessonViewer({ content }: { content: any }) {
       {/* Sidebar Navigation */}
       <div className="w-64 border-r bg-slate-50 flex flex-col overflow-hidden hidden md:flex">
         <div className="p-4 border-b">
-          <h3 className="font-semibold text-slate-800 text-sm">Indice Lezione</h3>
+          <h3 className="font-semibold text-slate-800 text-sm">{tl("Indice Lezione")}</h3>
         </div>
         <ScrollArea className="flex-1 p-3">
           <div className="space-y-1">
@@ -173,7 +174,7 @@ function LessonViewer({ content }: { content: any }) {
               onClick={() => setCurrentSection(-1)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${ currentSection === -1 ? 'bg-emerald-100 text-emerald-800' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              Panoramica
+              {tl("Panoramica")}
             </button>
             {sections.map((s: any, idx: number) => (
               <button
@@ -189,7 +190,7 @@ function LessonViewer({ content }: { content: any }) {
                 onClick={() => setCurrentSection(sections.length)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${ currentSection === sections.length ? 'bg-emerald-100 text-emerald-800' : 'text-slate-600 hover:bg-slate-100'}`}
               >
-                Conclusioni & Attività
+                {tl("Conclusioni & Attività")}
               </button>
             )}
           </div>
@@ -211,7 +212,7 @@ function LessonViewer({ content }: { content: any }) {
                   <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100">
                     <h3 className="text-amber-900 font-bold mb-4 flex items-center gap-2">
                       <Target className="h-5 w-5" />
-                      Obiettivi di Apprendimento
+                      {tl("Obiettivi di Apprendimento")}
                     </h3>
                     <ul className="grid gap-3">
                       {objectives.map((obj: string, i: number) => (
@@ -228,7 +229,7 @@ function LessonViewer({ content }: { content: any }) {
                   <div>
                     <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                       <Sparkles className="h-5 w-5 text-violet-500" />
-                      Concetti Chiave
+                      {tl("Concetti Chiave")}
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {keyConcepts.map((concept: string, i: number) => (
@@ -242,7 +243,7 @@ function LessonViewer({ content }: { content: any }) {
                 
                 <div className="pt-8 flex justify-center">
                    <Button onClick={() => setCurrentSection(0)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8">
-                     Inizia la Lezione
+                     {tl("Inizia la Lezione")}
                      <ChevronRight className="ml-2 h-4 w-4" />
                    </Button>
                 </div>
@@ -252,7 +253,7 @@ function LessonViewer({ content }: { content: any }) {
             {currentSection >= 0 && currentSection < sections.length && (
               <div className="animate-in slide-in-from-right-4 duration-300">
                 <span className="text-sm font-bold text-emerald-600 mb-2 block tracking-wider uppercase">
-                  Capitolo {currentSection + 1}
+                  {tl("Capitolo")} {currentSection + 1}
                 </span>
                 <h2 className="text-3xl font-bold text-slate-900 mb-8">{sections[currentSection].title}</h2>
                 <div className="prose prose-lg prose-slate max-w-none prose-headings:text-slate-800 prose-p:text-slate-600">
@@ -265,13 +266,13 @@ function LessonViewer({ content }: { content: any }) {
 
             {currentSection === sections.length && (
               <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
-                <h2 className="text-3xl font-bold text-slate-900 border-b pb-4">Riepilogo e Attività</h2>
+                <h2 className="text-3xl font-bold text-slate-900 border-b pb-4">{tl("Riepilogo e Attività")}</h2>
                 
                 {content.summary && (
                    <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
                      <h3 className="text-blue-900 font-bold mb-3 flex items-center gap-2">
                        <BookMarked className="h-5 w-5" />
-                       In Sintesi
+                       {tl("In Sintesi")}
                      </h3>
                      <p className="text-blue-800 leading-relaxed">{content.summary}</p>
                    </div>
@@ -279,7 +280,7 @@ function LessonViewer({ content }: { content: any }) {
 
                 {activities.length > 0 && (
                   <div>
-                    <h3 className="font-bold text-slate-900 mb-4 text-xl">Attività Suggerite</h3>
+                    <h3 className="font-bold text-slate-900 mb-4 text-xl">{tl("Attività Suggerite")}</h3>
                     <ul className="space-y-4">
                       {activities.map((act: string, i: number) => (
                         <li key={i} className="flex gap-4 p-4 bg-white border rounded-xl shadow-sm">
@@ -304,17 +305,17 @@ function LessonViewer({ content }: { content: any }) {
             onClick={() => setCurrentSection(prev => Math.max(-1, prev - 1))}
             disabled={currentSection === -1}
           >
-            <ChevronLeft className="mr-2 h-4 w-4" /> Precedente
+            <ChevronLeft className="mr-2 h-4 w-4" /> {tl("Precedente")}
           </Button>
           <span className="text-sm text-slate-400 self-center">
-            {currentSection === -1 ? "Introduzione" : currentSection === sections.length ? "Conclusioni" : `${currentSection + 1} / ${sections.length}`}
+            {currentSection === -1 ? tl("Introduzione") : currentSection === sections.length ? tl("Conclusioni") : `${currentSection + 1} / ${sections.length}`}
           </span>
           <Button 
             variant="ghost"
             onClick={() => setCurrentSection(prev => Math.min(sections.length, prev + 1))}
             disabled={currentSection === sections.length}
           >
-            Successiva <ChevronRight className="ml-2 h-4 w-4" />
+            {tl("Successiva")} <ChevronRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -353,7 +354,7 @@ function PresentationViewer({ content }: { content: any }) {
                </>
             ) : (
               <div className="flex items-center justify-center h-full text-slate-400">
-                Nessuna slide disponibile
+                {tl("Nessuna slide disponibile")}
               </div>
             )}
           </div>
@@ -375,7 +376,7 @@ function PresentationViewer({ content }: { content: any }) {
           disabled={currentSlide === 0}
           className="w-32"
         >
-          <ChevronLeft className="mr-2 h-5 w-5" /> Indietro
+          <ChevronLeft className="mr-2 h-5 w-5" /> {tl("Indietro")}
         </Button>
         
         <div className="flex gap-2 overflow-x-auto max-w-md px-2 py-1 scrollbar-hide">
@@ -395,14 +396,14 @@ function PresentationViewer({ content }: { content: any }) {
           disabled={currentSlide === slides.length - 1}
           className="w-32 bg-indigo-600 hover:bg-indigo-700"
         >
-          Avanti <ChevronRight className="ml-2 h-5 w-5" />
+          {tl("Avanti")} <ChevronRight className="ml-2 h-5 w-5" />
         </Button>
       </div>
       
       {/* Speaker Notes */}
       {slides[currentSlide]?.speaker_notes && (
         <div className="bg-yellow-50 border-t border-yellow-100 p-3 text-center text-sm text-yellow-800">
-          <span className="font-bold mr-2">Note Relatore:</span>
+          <span className="font-bold mr-2">{tl("Note Relatore:")}</span>
           {slides[currentSlide].speaker_notes}
         </div>
       )}
@@ -433,7 +434,7 @@ function GenericViewer({ content, type }: { content: any, type: string }) {
                      {i === q.correctIndex && <Check className="h-3 w-3" />}
                    </div>
                    {opt}
-                   {i === q.correctIndex && <span className="ml-auto text-xs font-bold text-green-600 uppercase tracking-wider">Risposta Corretta</span>}
+                   {i === q.correctIndex && <span className="ml-auto text-xs font-bold text-green-600 uppercase tracking-wider">{tl("Risposta Corretta")}</span>}
                 </div>
               ))}
             </div>
@@ -467,21 +468,21 @@ function LessonFormEditor({ content, onChange }: { content: any; onChange: (c: a
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
-        <h3 className="font-semibold text-slate-900 border-b pb-2">Informazioni Generali</h3>
+        <h3 className="font-semibold text-slate-900 border-b pb-2">{tl("Informazioni Generali")}</h3>
         <div className="space-y-4">
            <div>
-             <label className="text-sm font-medium text-slate-700 mb-1 block">Titolo</label>
+             <label className="text-sm font-medium text-slate-700 mb-1 block">{tl("Titolo")}</label>
              <Input value={content.title} onChange={(e) => updateField('title', e.target.value)} />
            </div>
            <div>
-             <label className="text-sm font-medium text-slate-700 mb-1 block">Descrizione</label>
+             <label className="text-sm font-medium text-slate-700 mb-1 block">{tl("Descrizione")}</label>
              <Textarea value={content.description} onChange={(e) => updateField('description', e.target.value)} rows={2} />
            </div>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
-        <h3 className="font-semibold text-slate-900 border-b pb-2">Sezioni Lezione</h3>
+        <h3 className="font-semibold text-slate-900 border-b pb-2">{tl("Sezioni Lezione")}</h3>
         <div className="space-y-6">
           {(content.sections || []).map((section: any, idx: number) => (
             <div key={idx} className="p-4 bg-slate-50 border rounded-xl relative group">
@@ -499,7 +500,7 @@ function LessonFormEditor({ content, onChange }: { content: any; onChange: (c: a
                      {idx + 1}
                    </div>
                    <div className="flex-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Titolo Capitolo</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">{tl("Titolo Capitolo")}</label>
                       <Input 
                         value={section.title} 
                         onChange={(e) => updateSection(idx, 'title', e.target.value)} 
@@ -508,7 +509,7 @@ function LessonFormEditor({ content, onChange }: { content: any; onChange: (c: a
                    </div>
                 </div>
                 <div>
-                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Contenuto (Markdown)</label>
+                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">{tl("Contenuto (Markdown)")}</label>
                    <Textarea 
                      value={section.content} 
                      onChange={(e) => updateSection(idx, 'content', e.target.value)} 
@@ -519,8 +520,8 @@ function LessonFormEditor({ content, onChange }: { content: any; onChange: (c: a
               </div>
             </div>
           ))}
-          <Button variant="outline" className="w-full border-dashed" onClick={() => addArrayItem('sections', { title: 'Nuova Sezione', content: '' })}>
-            <Plus className="h-4 w-4 mr-2" /> Aggiungi Sezione
+          <Button variant="outline" className="w-full border-dashed" onClick={() => addArrayItem('sections', { title: tl("Nuova Sezione"), content: '' })}>
+            <Plus className="h-4 w-4 mr-2" /> {tl("Aggiungi Sezione")}
           </Button>
         </div>
       </div>
@@ -539,20 +540,20 @@ function PresentationFormEditor({ content, onChange }: { content: any; onChange:
     updateField('slides', newSlides)
   }
   
-  const addSlide = () => updateField('slides', [...(content.slides || []), { title: 'Nuova Slide', content: '- Punto 1\n- Punto 2' }])
+  const addSlide = () => updateField('slides', [...(content.slides || []), { title: tl("Nuova Slide"), content: '- Punto 1\n- Punto 2' }])
   const removeSlide = (index: number) => updateField('slides', (content.slides || []).filter((_: any, i: number) => i !== index))
 
   return (
     <div className="space-y-8 animate-in fade-in">
        <div className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
-        <h3 className="font-semibold text-slate-900 border-b pb-2">Dettagli Presentazione</h3>
+        <h3 className="font-semibold text-slate-900 border-b pb-2">{tl("Dettagli Presentazione")}</h3>
         <div className="space-y-4">
            <div>
-             <label className="text-sm font-medium text-slate-700 mb-1 block">Titolo</label>
+             <label className="text-sm font-medium text-slate-700 mb-1 block">{tl("Titolo")}</label>
              <Input value={content.title} onChange={(e) => updateField('title', e.target.value)} />
            </div>
            <div>
-             <label className="text-sm font-medium text-slate-700 mb-1 block">Descrizione</label>
+             <label className="text-sm font-medium text-slate-700 mb-1 block">{tl("Descrizione")}</label>
              <Textarea value={content.description} onChange={(e) => updateField('description', e.target.value)} rows={2} />
            </div>
         </div>
@@ -573,27 +574,27 @@ function PresentationFormEditor({ content, onChange }: { content: any; onChange:
                 <Input 
                   value={slide.title} 
                   onChange={(e) => updateSlide(idx, 'title', e.target.value)} 
-                  placeholder="Titolo Slide"
+                  placeholder={tl("Titolo Slide")}
                   className="font-semibold"
                 />
                 <Textarea 
                   value={slide.content} 
                   onChange={(e) => updateSlide(idx, 'content', e.target.value)} 
                   rows={4}
-                  placeholder="- Punto elenco..."
+                  placeholder={tl("- Punto elenco...")}
                   className="font-mono text-sm"
                 />
                 <Input 
                    value={slide.speaker_notes || ''}
                    onChange={(e) => updateSlide(idx, 'speaker_notes', e.target.value)}
-                   placeholder="Note per il relatore (opzionali)"
+                   placeholder={tl("Note per il relatore (opzionali)")}
                    className="text-xs bg-yellow-50 border-yellow-200"
                 />
              </div>
           </div>
         ))}
          <Button variant="outline" className="w-full border-dashed h-16" onClick={addSlide}>
-            <Plus className="h-5 w-5 mr-2" /> Aggiungi Nuova Slide
+            <Plus className="h-5 w-5 mr-2" /> {tl("Aggiungi Nuova Slide")}
           </Button>
       </div>
     </div>
@@ -605,16 +606,16 @@ function QuizFormEditor({ content, onChange }: { content: any; onChange: (c: any
     
     return (
         <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
-            <h3 className="font-bold">Editor Quiz (Parziale)</h3>
+            <h3 className="font-bold">{tl("Editor Quiz (Parziale)")}</h3>
             <div>
-                <label className="text-sm font-medium text-yellow-900 block mb-1">Titolo</label>
+                <label className="text-sm font-medium text-yellow-900 block mb-1">{tl("Titolo")}</label>
                 <Input 
                     value={content.title} 
                     onChange={(e) => updateField('title', e.target.value)} 
                     className="bg-white border-yellow-300"
                 />
             </div>
-            <p className="text-sm">L'editor completo per le domande è in arrivo.</p>
+            <p className="text-sm">{tl("L'editor completo per le domande è in arrivo.")}</p>
         </div>
     )
 }
@@ -624,16 +625,16 @@ function ExerciseFormEditor({ content, onChange }: { content: any; onChange: (c:
 
     return (
         <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
-             <h3 className="font-bold">Editor Esercizio (Parziale)</h3>
+             <h3 className="font-bold">{tl("Editor Esercizio (Parziale)")}</h3>
              <div>
-                <label className="text-sm font-medium text-yellow-900 block mb-1">Titolo</label>
+                <label className="text-sm font-medium text-yellow-900 block mb-1">{tl("Titolo")}</label>
                 <Input 
                     value={content.title} 
                     onChange={(e) => updateField('title', e.target.value)} 
                     className="bg-white border-yellow-300"
                 />
             </div>
-             <p className="text-sm">L'editor visuale completo per gli esercizi è in arrivo.</p>
+             <p className="text-sm">{tl("L'editor visuale completo per gli esercizi è in arrivo.")}</p>
         </div>
     )
 }

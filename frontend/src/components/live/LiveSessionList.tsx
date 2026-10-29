@@ -5,6 +5,7 @@ import {
   Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown,
   type LucideIcon,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export interface LiveSessionItem {
   id: string
@@ -32,34 +33,34 @@ interface Theme { match: RegExp; icon: IconType; color: string; label: string }
 
 // First matching rule wins: it picks an emblematic icon and colour from what the session is about.
 const THEMES: Theme[] = [
-  { match: /dna|cellul|genetic|biolog|evoluz|organism|batter|virus/i, icon: Dna, color: PALETTE.teal, label: 'Biologia' },
-  { match: /anatom|corpo umano|cuore|salute|medic|benessere/i, icon: Heart, color: PALETTE.pink, label: 'Salute' },
-  { match: /microscop|laboratorio|esperiment|scienz/i, icon: Microscope, color: PALETTE.teal, label: 'Laboratorio' },
-  { match: /chimic|element|molecol|tavola periodica|reazion/i, icon: FlaskConical, color: PALETTE.violet, label: 'Chimica' },
-  { match: /fisic|energia|forza|elettric|magnet|atomo|quantistic/i, icon: Atom, color: PALETTE.blue, label: 'Fisica' },
-  { match: /matemat|algebra|geometr|frazion|equazion|statistic|calcol/i, icon: Calculator, color: PALETTE.amber, label: 'Matematica' },
-  { match: /egitt|piramid|faraon/i, icon: Pyramid, color: PALETTE.amber, label: 'Antico Egitto' },
-  { match: /stori|medioev|roman|antic|guerra|rinascim|rivoluzion|impero|archivio/i, icon: Landmark, color: PALETTE.amber, label: 'Storia' },
-  { match: /montagn|vulcan|terremot|geolog/i, icon: Mountain, color: PALETTE.teal, label: 'Terra' },
-  { match: /geograf|continent|mappa|paes|territor|mondo/i, icon: Globe, color: PALETTE.blue, label: 'Geografia' },
-  { match: /acqua|mare|ocean|fium|idric/i, icon: Droplets, color: PALETTE.blue, label: 'Acqua' },
-  { match: /ambient|ecolog|sostenib|natura|pianta|foresta|biodivers|clima/i, icon: Leaf, color: PALETTE.teal, label: 'Ambiente' },
-  { match: /spazio|pianet|galass|astro|universo|razzo|luna\b|sole\b/i, icon: Rocket, color: PALETTE.indigo, label: 'Spazio' },
-  { match: /intelligenza artificiale|machine learning|chatbot|prompt|\bai\b|neural|llm/i, icon: Brain, color: PALETTE.violet, label: 'Intelligenza artificiale' },
-  { match: /codice|coding|program|algoritm|python|javascript|informatic|software|app\b|digital/i, icon: Code2, color: PALETTE.indigo, label: 'Informatica' },
-  { match: /robot|elettronic|micro:?bit|arduino|sensor|hardware/i, icon: Cpu, color: PALETTE.blue, label: 'Tecnologia' },
-  { match: /sicurezza|privacy|cyber|difesa|protezion/i, icon: Shield, color: PALETTE.indigo, label: 'Sicurezza' },
-  { match: /citt[àa]|urban|resilien|architett|edific|territorio/i, icon: Building2, color: PALETTE.blue, label: 'Città' },
-  { match: /business|impresa|canvas|startup|marketing|mercato|idea|innovaz|progett|management|project/i, icon: Lightbulb, color: PALETTE.amber, label: 'Innovazione' },
-  { match: /diritt|legge|costituz|cittadinanz|etica|giustizia|regole/i, icon: Scale, color: PALETTE.indigo, label: 'Cittadinanza' },
-  { match: /ingles|english|francese|spagnol|tedesco|lingua|lingue/i, icon: Languages, color: PALETTE.pink, label: 'Lingue' },
-  { match: /italiano|letteratur|poesi|grammatic|racconto|scrittura|romanzo|libro|lettura/i, icon: BookOpen, color: PALETTE.pink, label: 'Letteratura' },
-  { match: /music|canzone|ritmo|strument/i, icon: Music, color: PALETTE.pink, label: 'Musica' },
-  { match: /arte|pittur|disegn|creativ|design|color|illustraz/i, icon: Palette, color: PALETTE.pink, label: 'Arte' },
+  { match: /dna|cellul|genetic|biolog|evoluz|organism|batter|virus/i, icon: Dna, color: PALETTE.teal, label: tl("Biologia") },
+  { match: /anatom|corpo umano|cuore|salute|medic|benessere/i, icon: Heart, color: PALETTE.pink, label: tl("Salute") },
+  { match: /microscop|laboratorio|esperiment|scienz/i, icon: Microscope, color: PALETTE.teal, label: tl("Laboratorio") },
+  { match: /chimic|element|molecol|tavola periodica|reazion/i, icon: FlaskConical, color: PALETTE.violet, label: tl("Chimica") },
+  { match: /fisic|energia|forza|elettric|magnet|atomo|quantistic/i, icon: Atom, color: PALETTE.blue, label: tl("Fisica") },
+  { match: /matemat|algebra|geometr|frazion|equazion|statistic|calcol/i, icon: Calculator, color: PALETTE.amber, label: tl("Matematica") },
+  { match: /egitt|piramid|faraon/i, icon: Pyramid, color: PALETTE.amber, label: tl("Antico Egitto") },
+  { match: /stori|medioev|roman|antic|guerra|rinascim|rivoluzion|impero|archivio/i, icon: Landmark, color: PALETTE.amber, label: tl("Storia") },
+  { match: /montagn|vulcan|terremot|geolog/i, icon: Mountain, color: PALETTE.teal, label: tl("Terra") },
+  { match: /geograf|continent|mappa|paes|territor|mondo/i, icon: Globe, color: PALETTE.blue, label: tl("Geografia") },
+  { match: /acqua|mare|ocean|fium|idric/i, icon: Droplets, color: PALETTE.blue, label: tl("Acqua") },
+  { match: /ambient|ecolog|sostenib|natura|pianta|foresta|biodivers|clima/i, icon: Leaf, color: PALETTE.teal, label: tl("Ambiente") },
+  { match: /spazio|pianet|galass|astro|universo|razzo|luna\b|sole\b/i, icon: Rocket, color: PALETTE.indigo, label: tl("Spazio") },
+  { match: /intelligenza artificiale|machine learning|chatbot|prompt|\bai\b|neural|llm/i, icon: Brain, color: PALETTE.violet, label: tl("Intelligenza artificiale") },
+  { match: /codice|coding|program|algoritm|python|javascript|informatic|software|app\b|digital/i, icon: Code2, color: PALETTE.indigo, label: tl("Informatica") },
+  { match: /robot|elettronic|micro:?bit|arduino|sensor|hardware/i, icon: Cpu, color: PALETTE.blue, label: tl("Tecnologia") },
+  { match: /sicurezza|privacy|cyber|difesa|protezion/i, icon: Shield, color: PALETTE.indigo, label: tl("Sicurezza") },
+  { match: /citt[àa]|urban|resilien|architett|edific|territorio/i, icon: Building2, color: PALETTE.blue, label: tl("Città") },
+  { match: /business|impresa|canvas|startup|marketing|mercato|idea|innovaz|progett|management|project/i, icon: Lightbulb, color: PALETTE.amber, label: tl("Innovazione") },
+  { match: /diritt|legge|costituz|cittadinanz|etica|giustizia|regole/i, icon: Scale, color: PALETTE.indigo, label: tl("Cittadinanza") },
+  { match: /ingles|english|francese|spagnol|tedesco|lingua|lingue/i, icon: Languages, color: PALETTE.pink, label: tl("Lingue") },
+  { match: /italiano|letteratur|poesi|grammatic|racconto|scrittura|romanzo|libro|lettura/i, icon: BookOpen, color: PALETTE.pink, label: tl("Letteratura") },
+  { match: /music|canzone|ritmo|strument/i, icon: Music, color: PALETTE.pink, label: tl("Musica") },
+  { match: /arte|pittur|disegn|creativ|design|color|illustraz/i, icon: Palette, color: PALETTE.pink, label: tl("Arte") },
   { match: /sport|olimpi|gara|campion|movimento/i, icon: Trophy, color: PALETTE.amber, label: 'Sport' },
-  { match: /viaggio|esplora|avventur|mistero|indagine|caccia/i, icon: Compass, color: PALETTE.teal, label: 'Esplorazione' },
-  { match: /formazione|training|trainer|didattic|lezione|corso|webinar/i, icon: Sparkles, color: PALETTE.violet, label: 'Formazione' },
-  { match: /gioco|quiz|sfida|puzzle|enigm/i, icon: Puzzle, color: PALETTE.violet, label: 'Gioco' },
+  { match: /viaggio|esplora|avventur|mistero|indagine|caccia/i, icon: Compass, color: PALETTE.teal, label: tl("Esplorazione") },
+  { match: /formazione|training|trainer|didattic|lezione|corso|webinar/i, icon: Sparkles, color: PALETTE.violet, label: tl("Formazione") },
+  { match: /gioco|quiz|sfida|puzzle|enigm/i, icon: Puzzle, color: PALETTE.violet, label: tl("Gioco") },
 ]
 
 function hash(text: string) {
@@ -87,7 +88,7 @@ export function sessionEmblem(item: LiveSessionItem): { Icon: IconType; color: s
   if (theme) return { Icon: theme.icon, color, label: theme.label }
   return item.interaction_type === 'escape_room'
     ? { Icon: KeyRound, color, label: 'Escape Room' }
-    : { Icon: hash(title) % 2 ? ListChecks : BarChart3, color, label: 'Quiz' }
+    : { Icon: hash(title) % 2 ? ListChecks : BarChart3, color, label: tl("Quiz") }
 }
 
 function Emblem({ item, size }: { item: LiveSessionItem; size: 'large' | 'tile' }) {
@@ -121,16 +122,16 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
     return () => window.removeEventListener('mousedown', close)
   }, [open])
   const entries: Array<{ label: string; icon: IconType; run: () => void; danger?: boolean; hidden?: boolean }> = [
-    { label: 'Link pubblico', icon: Share2, run: () => actions.onShare(item), hidden: item.status === 'CLOSED' },
-    { label: 'Modifica', icon: Pencil, run: () => actions.onEdit(item), hidden: item.status !== 'DRAFT' },
+    { label: tl("Link pubblico"), icon: Share2, run: () => actions.onShare(item), hidden: item.status === 'CLOSED' },
+    { label: tl("Modifica"), icon: Pencil, run: () => actions.onEdit(item), hidden: item.status !== 'DRAFT' },
     { label: 'Report', icon: FileBarChart2, run: () => actions.onOpen(item), hidden: item.status === 'DRAFT' || item.status === 'CLOSED' },
-    { label: isOpenLobby(item) ? 'Chiudi lobby' : 'Concludi per tutti', icon: Square, run: () => actions.onEnd(item), danger: true, hidden: !isPending(item) },
-    { label: 'Duplica', icon: Copy, run: () => actions.onDuplicate(item) },
-    { label: 'Elimina', icon: Trash2, run: () => actions.onDelete(item), danger: true, hidden: item.status === 'ACTIVE' },
+    { label: isOpenLobby(item) ? tl("Chiudi lobby") : tl("Concludi per tutti"), icon: Square, run: () => actions.onEnd(item), danger: true, hidden: !isPending(item) },
+    { label: tl("Duplica"), icon: Copy, run: () => actions.onDuplicate(item) },
+    { label: tl("Elimina"), icon: Trash2, run: () => actions.onDelete(item), danger: true, hidden: item.status === 'ACTIVE' },
   ]
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-label="Altre azioni" aria-expanded={open}
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-label={tl("Altre azioni")} aria-expanded={open}
         className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
         <MoreHorizontal className="h-5 w-5" />
       </button>
@@ -162,13 +163,13 @@ function Card({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
         <Emblem item={item} size="large" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600"><TypeIcon className="h-3 w-3" />{escape ? 'Escape Room' : 'Quiz'}</span>
+            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600"><TypeIcon className="h-3 w-3" />{escape ? 'Escape Room' : tl("Quiz")}</span>
             <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${active ? 'bg-emerald-500 text-white' : lobby ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? 'In corso' : lobby ? 'Lobby aperta' : 'Bozza'}
+              {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? tl("In corso") : lobby ? tl("Lobby aperta") : tl("Bozza")}
             </span>
           </div>
           {item.status === 'DRAFT'
-            ? <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900"><button type="button" onClick={() => actions.onEdit(item)} title="Modifica prima di avviare" className="text-left underline-offset-2 hover:text-[var(--app-accent,#7c3aed)] hover:underline">{item.title}</button></h3>
+            ? <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900"><button type="button" onClick={() => actions.onEdit(item)} title={tl("Modifica prima di avviare")} className="text-left underline-offset-2 hover:text-[var(--app-accent,#7c3aed)] hover:underline">{item.title}</button></h3>
             : <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900" title={item.title}>{item.title}</h3>}
           <p className="mt-0.5 text-xs text-slate-500">{unit(item)} <span className="px-1 text-slate-300">·</span> {date(item.created_at)}</p>
         </div>
@@ -176,7 +177,7 @@ function Card({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
       <div className="mt-auto flex items-center gap-2">
         <button type="button" onClick={() => actions.onOpen(item)}
           className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${active ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-[var(--app-accent,#7c3aed)] text-white hover:opacity-90'}`}>
-          {active ? <><Radio className="h-4 w-4" /> Pannello live</> : <><Play className="h-4 w-4" /> Avvia</>}
+          {active ? <><Radio className="h-4 w-4" /> {tl("Pannello live")}</> : <><Play className="h-4 w-4" /> {tl("Avvia")}</>}
         </button>
         <ItemMenu item={item} actions={actions} />
       </div>
@@ -191,7 +192,7 @@ function ArchiveRow({ item, actions }: { item: LiveSessionItem; actions: Actions
       <Emblem item={item} size="tile" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-slate-900" title={item.title}>{item.title}</p>
-        <p className="truncate text-xs text-slate-500">{item.interaction_type === 'escape_room' ? 'Escape Room' : 'Quiz'} · {label} · {unit(item)} · {date(item.created_at)}</p>
+        <p className="truncate text-xs text-slate-500">{item.interaction_type === 'escape_room' ? 'Escape Room' : tl("Quiz")} · {label} · {unit(item)} · {date(item.created_at)}</p>
       </div>
       <button type="button" onClick={() => actions.onOpen(item)} className="hidden h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-200/70 sm:flex">
         <FileBarChart2 className="h-3.5 w-3.5" /> Report
@@ -236,17 +237,17 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
   const archive = visible.filter((i) => i.status === 'CLOSED')
   const archiveShown = showAllArchive || archive.length <= 8 ? archive : archive.slice(0, 8)
 
-  const chips: Array<[StatusFilter, string]> = [['all', 'Tutte'], ['ACTIVE', 'In corso'], ['DRAFT', 'Bozze'], ['CLOSED', 'Archivio']]
+  const chips: Array<[StatusFilter, string]> = [['all', tl("Tutte")], ['ACTIVE', tl("In corso")], ['DRAFT', tl("Bozze")], ['CLOSED', tl("Archivio")]]
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-2">
         <label className="ui-search flex h-10 min-w-[12rem] flex-1 items-center gap-2 px-3 sm:max-w-xs">
           <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca per titolo o argomento" aria-label="Cerca sessioni"
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tl("Cerca per titolo o argomento")} aria-label={tl("Cerca sessioni")}
             className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400" />
         </label>
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtra per stato">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tl("Filtra per stato")}>
           {chips.map(([id, label]) => (
             <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
               className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${status === id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
@@ -255,11 +256,11 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-          <select value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label="Filtra per tipo" className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
-            <option value="all">Tutti i tipi</option><option value="slides">Quiz e sondaggi</option><option value="escape_room">Escape Room</option>
+          <select value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label={tl("Filtra per tipo")} className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
+            <option value="all">{tl("Tutti i tipi")}</option><option value="slides">{tl("Quiz e sondaggi")}</option><option value="escape_room">Escape Room</option>
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Ordina" className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
-            <option value="recent">Più recenti</option><option value="oldest">Più vecchie</option><option value="name">Nome A–Z</option>
+          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label={tl("Ordina")} className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
+            <option value="recent">{tl("Più recenti")}</option><option value="oldest">{tl("Più vecchie")}</option><option value="name">{tl("Nome A–Z")}</option>
           </select>
         </div>
       </div>
@@ -268,36 +269,36 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
         <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white"><Radio className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-amber-900">{pending.length === 1 ? '1 sessione è ancora attiva' : `${pending.length} sessioni sono ancora attive`}: gli studenti della classe la vedono.</p>
+            <p className="text-sm font-bold text-amber-900">{pending.length === 1 ? tl("1 sessione è ancora attiva") : tl("{0} sessioni sono ancora attive", pending.length)}{tl(": gli studenti della classe la vedono.")}</p>
             <p className="truncate text-xs text-amber-800/80">{pending.map(i => i.title).join(' · ')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {pending.map(item => (
               <button key={item.id} type="button" onClick={() => actions.onEnd(item)} className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">
-                <Square className="h-3.5 w-3.5" />{isOpenLobby(item) ? 'Chiudi lobby' : 'Concludi'}{pending.length > 1 ? ` «${item.title.length > 18 ? item.title.slice(0, 18) + '…' : item.title}»` : ''}
+                <Square className="h-3.5 w-3.5" />{isOpenLobby(item) ? tl("Chiudi lobby") : tl("Concludi")}{pending.length > 1 ? ` «${item.title.length > 18 ? item.title.slice(0, 18) + '…' : item.title}»` : ''}
               </button>
             ))}
           </div>
         </div>
       )}
       {active.length > 0 && (
-        <Section title="In corso" hint="Sessioni live attive adesso" count={active.length} tone="emerald">
+        <Section title={tl("In corso")} hint={tl("Sessioni live attive adesso")} count={active.length} tone="emerald">
           <Grid>{active.map((item) => <Card key={item.id} item={item} actions={actions} />)}</Grid>
         </Section>
       )}
       {drafts.length > 0 && (
-        <Section title="Da preparare" hint="Controlla i contenuti e avvia quando sei pronto" count={drafts.length} tone="violet">
+        <Section title={tl("Da preparare")} hint={tl("Controlla i contenuti e avvia quando sei pronto")} count={drafts.length} tone="violet">
           <Grid>{drafts.map((item) => <Card key={item.id} item={item} actions={actions} />)}</Grid>
         </Section>
       )}
       {archive.length > 0 && (
-        <Section title="Archivio" hint="Sessioni concluse: report e riutilizzo" count={archive.length} tone="slate">
+        <Section title={tl("Archivio")} hint={tl("Sessioni concluse: report e riutilizzo")} count={archive.length} tone="slate">
           <div className="ui-card divide-y divide-slate-100/60 p-1.5">
             {archiveShown.map((item) => <ArchiveRow key={item.id} item={item} actions={actions} />)}
           </div>
           {archive.length > 8 && (
             <button type="button" onClick={() => setShowAllArchive((value) => !value)} className="mx-auto mt-3 flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold text-slate-500 transition hover:bg-slate-100">
-              {showAllArchive ? 'Mostra meno' : `Mostra tutte (${archive.length})`}<ChevronDown className={`h-3.5 w-3.5 transition ${showAllArchive ? 'rotate-180' : ''}`} />
+              {showAllArchive ? tl("Mostra meno") : tl("Mostra tutte ({0})", archive.length)}<ChevronDown className={`h-3.5 w-3.5 transition ${showAllArchive ? 'rotate-180' : ''}`} />
             </button>
           )}
         </Section>
@@ -305,8 +306,8 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
       {visible.length === 0 && (
         <div className="rounded-2xl border-2 border-dashed border-slate-200 py-14 text-center text-slate-400">
           <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
-          <p className="text-sm font-medium text-slate-600">Nessuna sessione corrisponde ai filtri</p>
-          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">Azzera i filtri</button>
+          <p className="text-sm font-medium text-slate-600">{tl("Nessuna sessione corrisponde ai filtri")}</p>
+          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import { Eye, EyeOff, Copy, Check, KeyRound, Loader2 } from '@/components/icons'
 import api from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { LogoMark } from '@/components/LogoMark'
+import { tl } from '@/i18n/tl'
 
 interface ActivationInfo {
   first_name: string
@@ -207,7 +208,7 @@ export default function ActivatePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label>{tl("Email")}</Label>
               <div className="p-3 bg-muted rounded-md font-mono text-sm">
                 {info?.email}
               </div>

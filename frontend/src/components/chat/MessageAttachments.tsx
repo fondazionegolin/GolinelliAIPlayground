@@ -1,6 +1,7 @@
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon } from '@/components/icons'
 import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
 import type { MessageAttachment } from '@/lib/chatAttachments'
+import { tl } from '@/i18n/tl'
 
 function iconFor(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
@@ -34,7 +35,7 @@ export function MessageAttachments({ attachments, className = '' }: { attachment
         if (att.url) {
           return (
             <div key={i} title={att.name} className="w-28 overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm">
-              <img src={att.url} alt={`Anteprima di ${att.name}`} className="h-32 w-full bg-slate-100 object-contain" />
+              <img src={att.url} alt={tl("Anteprima di {0}", att.name)} className="h-32 w-full bg-slate-100 object-contain" />
               <div className="flex items-center gap-1.5 px-2 py-1.5 text-slate-700">
                 <Icon className="h-4 w-4 shrink-0 text-slate-500" />
                 <span className="truncate text-[11px] font-semibold">{att.name}</span>

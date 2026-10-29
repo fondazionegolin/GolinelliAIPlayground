@@ -43,7 +43,7 @@ STUDENT_CONSENTS = [
 DEPLOYER_AGREEMENT = {
     "key": "deployer_agreement",
     "title": "Accordo di adozione e responsabilità del Dirigente (deployer)",
-    "version": "2026-10",
+    "version": "2026-10-27",  # allineato all'informativa privacy v2.0 del 26/10/2026
     "source_url": "/legal/deployer-agreement",
     "accept_label": "Accetto in qualità di Dirigente/legale rappresentante",
 }
@@ -51,7 +51,7 @@ DEPLOYER_AGREEMENT = {
 TEACHER_USE_DECLARATION = {
     "key": "teacher_use_declaration",
     "title": "Dichiarazione d'uso del docente",
-    "version": "2026-10",
+    "version": "2026-10-27",  # allineata all'informativa privacy v2.0 del 26/10/2026
     "source_url": "/legal/teacher-declaration",
     "accept_label": "Dichiaro di aver letto e accetto le condizioni d'uso come docente",
 }

@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Search, X } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
+import { tl } from '@/i18n/tl'
 
 export interface SearchPillProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
@@ -11,7 +12,7 @@ export interface SearchPillProps
 }
 
 export const SearchPill = React.forwardRef<HTMLInputElement, SearchPillProps>(
-  ({ className, value, onValueChange, onClear, placeholder = 'Cerca…', ...props }, ref) => (
+  ({ className, value, onValueChange, onClear, placeholder = tl("Cerca…"), ...props }, ref) => (
     <div
       className={cn(
         'ui-search flex h-11 min-w-0 items-center gap-2 px-3 text-[var(--text-primary)]',
@@ -33,7 +34,7 @@ export const SearchPill = React.forwardRef<HTMLInputElement, SearchPillProps>(
           type="button"
           onClick={() => (onClear ? onClear() : onValueChange(''))}
           className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-white/70 hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)]"
-          aria-label="Cancella ricerca"
+          aria-label={tl("Cancella ricerca")}
         >
           <X className="h-3.5 w-3.5" />
         </button>

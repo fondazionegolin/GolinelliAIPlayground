@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import { X, GripHorizontal } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface WidgetShellProps {
   children: ReactNode
@@ -32,7 +33,7 @@ export default function WidgetShell({ children, onDelete, widgetType: _widgetTyp
         <button
           className="absolute top-1 right-1 w-5 h-5 rounded-md bg-black/30 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/widget:opacity-100 transition-opacity z-10 hover:bg-red-500/70"
           onClick={e => { e.stopPropagation(); onDelete() }}
-          title="Rimuovi widget"
+          title={tl("Rimuovi widget")}
         >
           <X className="h-3 w-3 text-white" />
         </button>

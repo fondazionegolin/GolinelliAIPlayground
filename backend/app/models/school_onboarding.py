@@ -1,8 +1,8 @@
 """Registro pubblico delle scuole italiane (MIM) e inviti di onboarding istituto."""
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
 
@@ -58,5 +58,18 @@ class SchoolOnboardingInvite(Base):
     opened_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     email_sent_at = Column(DateTime(timezone=True), nullable=True)
+    # Consegna e lettura dell'e-mail: SENT | FAILED (NULL = mai tentato); la lettura è stimata da un pixel.
+    email_status = Column(String(16), nullable=True)
+    email_error = Column(Text, nullable=True)
+    email_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    email_opened_at = Column(DateTime(timezone=True), nullable=True)
+    last_opened_at = Column(DateTime(timezone=True), nullable=True)
+    open_count = Column(Integer, nullable=False, default=0, server_default="0")
+    # Organizzazione fuori dal registro MIM (inserita a mano dall'admin o dal dirigente).
+    organization_name = Column(String(255), nullable=True)
+    organization_comune = Column(String(128), nullable=True)
+    organization_province = Column(String(64), nullable=True)
+    # Avanzamento sulla pagina d'invito: documenti spuntati ma non ancora confermati.
+    progress = Column(JSONB, nullable=False, default=dict, server_default="{}")
 
     __table_args__ = (Index("ix_school_invites_tenant_status", "tenant_id", "status"),)

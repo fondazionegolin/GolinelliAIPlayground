@@ -15,7 +15,7 @@ from app.models.visual_comprehension import VisualComprehensionSession
 from app.services.credit_service import credit_service
 from app.services.storage_service import storage_service
 from app.services.visual_comprehension import normalize_image
-from app.services.visual_dialogue import Inventory, converse
+from app.services.visual_dialogue import Inventory, StudentNote, converse
 from app.services.visual_selection import Selection
 from app.services.visual_blackboard import compose_blackboard
 from app.services.visual_review import review_drawing
@@ -104,7 +104,16 @@ async def usage_callback(admin):
     return track
 
 
-async def send_message(admin, session_id, request_id, revision, content, selection: Selection | None = None):
+def with_notes(dialogue: dict | None, notes: list[StudentNote] | None) -> dict:
+    """The student's canvas notes live in the dialogue state, beside (not inside) what the tutor writes."""
+    dialogue = dict(dialogue or {})
+    if notes is not None:
+        dialogue["student_notes"] = [n.model_dump() for n in notes]
+    return dialogue
+
+
+async def send_message(admin, session_id, request_id, revision, content, selection: Selection | None = None,
+                       notes: list[StudentNote] | None = None):
     # Idempotency is checked before optimistic concurrency: a lost response can be retried safely.
     async with AsyncSessionLocal() as db:
         s = await owned(db, session_id, admin.id, lock=True)
@@ -133,6 +142,7 @@ async def send_message(admin, session_id, request_id, revision, content, selecti
         selection_id = f"selezione-{sum(1 for m in s.messages if m.get('selection'))}"
         s.active_request_id = request_id
         s.request_started_at = utcnow()
+        s.dialogue = with_notes(s.dialogue, notes)
         s.draft = ""
         s.revision += 1
         image_key, inventory, dialogue, messages = s.image_key, s.inventory, s.dialogue or {}, list(s.messages)
@@ -142,7 +152,8 @@ async def send_message(admin, session_id, request_id, revision, content, selecti
         raw = await asyncio.to_thread(storage_service.download_file, image_key)
         image = "data:image/png;base64," + base64.b64encode(raw).decode()
         new_inventory, new_dialogue, reply = await converse(image, inventory, dialogue, messages, track,
-                                                            selection=selection, selection_id=selection_id)
+                                                            selection=selection, selection_id=selection_id,
+                                                            notes=dialogue.get("student_notes"))
         async with AsyncSessionLocal() as db:
             s = await owned(db, session_id, admin.id, lock=True)
             if s.active_request_id != request_id:
@@ -151,7 +162,8 @@ async def send_message(admin, session_id, request_id, revision, content, selecti
             s.messages = [*s.messages, {"id": str(uuid.uuid4()), "request_id": str(request_id), "role": "assistant",
                 **reply, "status": "sent", "created_at": utcnow().isoformat()}]
             s.inventory = new_inventory.model_dump()
-            s.dialogue = new_dialogue
+            # Notes may have been edited while the tutor was thinking: the latest ones are kept, not the tutor's copy.
+            s.dialogue = {**new_dialogue, "student_notes": (s.dialogue or {}).get("student_notes", [])}
             s.active_request_id = None
             s.request_started_at = None
             s.revision += 1

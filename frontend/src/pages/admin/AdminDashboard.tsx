@@ -25,21 +25,23 @@ import StudentsPage from './StudentsPage'
 import CreditsHubPage from './CreditsHubPage'
 import { useSocket } from '@/hooks/useSocket'
 import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
+import './admin.css'
+import { tl } from '@/i18n/tl'
 
 const navItems = [
-  { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
-  { path: '/admin/schools', label: 'Scuole', icon: Building2, exact: false },
-  { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
-  { path: '/admin/licenses', label: 'Licenze', icon: FileCheck2, exact: false },
-  { path: '/admin/sessions', label: 'Sessioni', icon: Activity, exact: false },
-  { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
-  { path: '/admin/students', label: 'Studenti', icon: Users, exact: false },
-  { path: '/admin/credits', label: 'Crediti', icon: CreditCard, exact: false },
-  { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
-  { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
+  { path: '/admin', label: tl("Panoramica"), icon: LayoutDashboard, exact: true },
+  { path: '/admin/schools', label: tl("Scuole"), icon: Building2, exact: false },
+  { path: '/admin/teachers', label: tl("Docenti"), icon: GraduationCap, exact: false },
+  { path: '/admin/licenses', label: tl("Licenze"), icon: FileCheck2, exact: false },
+  { path: '/admin/sessions', label: tl("Sessioni"), icon: Activity, exact: false },
+  { path: '/admin/classes', label: tl("Classi"), icon: School, exact: false },
+  { path: '/admin/students', label: tl("Studenti"), icon: Users, exact: false },
+  { path: '/admin/credits', label: tl("Crediti"), icon: CreditCard, exact: false },
+  { path: '/admin/costs', label: tl("Costi"), icon: BarChart3, exact: false },
+  { path: '/admin/email', label: tl("Email"), icon: Mail, exact: false },
   { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
   { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
-  { path: '/admin/models', label: 'Modelli', icon: Bot, exact: false },
+  { path: '/admin/models', label: tl("Modelli"), icon: Bot, exact: false },
   { path: '/admin/chatbots', label: 'Chatbot', icon: Bot, exact: false },
   { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
@@ -53,11 +55,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const mutation = useMutation({
     mutationFn: () => adminApi.changePassword(current, next),
     onSuccess: () => {
-      toast({ title: 'Password aggiornata' })
+      toast({ title: tl("Password aggiornata") })
       onClose()
     },
     onError: (e: any) => {
-      toast({ title: 'Errore', description: e?.response?.data?.detail || 'Impossibile cambiare la password', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: e?.response?.data?.detail || tl("Impossibile cambiare la password"), variant: 'destructive' })
     },
   })
 
@@ -72,7 +74,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-slate-100">
               <KeyRound className="h-4 w-4 text-slate-600" />
             </div>
-            <h2 className="text-sm font-bold text-slate-900">Cambia password admin</h2>
+            <h2 className="text-sm font-bold text-slate-900">{tl("Cambia password admin")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-600 transition-colors">
             <X className="h-4 w-4" />
@@ -80,9 +82,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="px-6 py-5 space-y-4">
           {[
-            { label: 'Password attuale', value: current, set: setCurrent, placeholder: '••••••••' },
-            { label: 'Nuova password', value: next, set: setNext, placeholder: 'min. 8 caratteri' },
-            { label: 'Conferma nuova password', value: confirm, set: setConfirm, placeholder: '••••••••' },
+            { label: tl("Password attuale"), value: current, set: setCurrent, placeholder: '••••••••' },
+            { label: tl("Nuova password"), value: next, set: setNext, placeholder: tl("min. 8 caratteri") },
+            { label: tl("Conferma nuova password"), value: confirm, set: setConfirm, placeholder: '••••••••' },
           ].map(({ label, value, set, placeholder }) => (
             <div key={label}>
               <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
@@ -96,7 +98,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           {next && confirm && next !== confirm && (
-            <p className="text-xs text-red-500">Le password non corrispondono</p>
+            <p className="text-xs text-red-500">{tl("Le password non corrispondono")}</p>
           )}
           <button
             onClick={() => mutation.mutate()}
@@ -104,7 +106,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900"
           >
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Aggiorna password
+            {tl("Aggiorna password")}
           </button>
         </div>
       </div>
@@ -172,19 +174,19 @@ export default function AdminDashboard() {
               surface="outline"
               size="default"
               onClick={() => setMobileSidebarOpen(true)}
-              title="Apri menu admin"
+              title={tl("Apri menu admin")}
             >
               <Menu className="h-4 w-4" />
             </IconButton>
             <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-auto" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-950">Pannello admin</p>
+              <p className="truncate text-sm font-semibold text-slate-950">{tl("Pannello admin")}</p>
               <p className="text-[11px] text-slate-500">Golinelli.ai</p>
             </div>
           </header>
 
           <main className="w-full flex-1 bg-[#eef1f5] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-            <div className="mx-auto w-full max-w-[1500px]">
+            <div className="admin-shell mx-auto w-full max-w-[1500px] space-y-0">
               <Routes>
                 <Route index element={<AdminOverviewPage />} />
                 <Route path="schools" element={<SchoolsPage />} />
@@ -253,7 +255,7 @@ function AdminSidebar({
           type="button"
           onClick={() => onNavigate('/admin')}
           className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left ${expanded ? '' : 'justify-center'}`}
-          title="Pannello admin"
+          title={tl("Pannello admin")}
         >
           <img src="/logo_new.png" alt="Golinelli.ai" className={`${expanded ? 'h-8 w-auto' : 'h-8 w-8 object-contain'} shrink-0`} />
           {expanded && (
@@ -264,7 +266,7 @@ function AdminSidebar({
                 </span>
                 <span className="rounded-full border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">ADMIN</span>
               </div>
-              <p className="truncate text-[11px] text-slate-400">Centro di controllo</p>
+              <p className="truncate text-[11px] text-slate-400">{tl("Centro di controllo")}</p>
             </div>
           )}
         </button>
@@ -273,7 +275,7 @@ function AdminSidebar({
           surface="ghost"
           size="sm"
           onClick={onToggleExpanded}
-          title={mobile ? 'Chiudi menu' : expanded ? 'Mostra solo icone' : 'Mostra titoli'}
+          title={mobile ? tl("Chiudi menu") : expanded ? tl("Mostra solo icone") : tl("Mostra titoli")}
           className={expanded ? '' : 'hidden'}
         >
           {mobile ? <X className="h-4 w-4" /> : expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
@@ -287,7 +289,7 @@ function AdminSidebar({
             surface="outline"
             size="default"
             onClick={onToggleExpanded}
-            title="Mostra titoli"
+            title={tl("Mostra titoli")}
           >
             <PanelLeftOpen className="h-4 w-4" />
           </IconButton>
@@ -322,7 +324,7 @@ function AdminSidebar({
               {item.path === '/admin/credits' && creditsBadgeTotal > 0 && (
                 <span
                   className={`relative ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${(creditsBadge?.exhausted ?? 0) > 0 ? 'bg-red-500' : 'bg-amber-500'} ${expanded ? '' : 'absolute right-1 top-1 !ml-0 h-4 min-w-4 px-1 text-[9px]'}`}
-                  title="Crediti in esaurimento o richieste da autorizzare"
+                  title={tl("Crediti in esaurimento o richieste da autorizzare")}
                 >
                   {creditsBadgeTotal}
                 </span>
@@ -337,19 +339,19 @@ function AdminSidebar({
           <SidebarAction
             expanded={expanded}
             icon={BookOpen}
-            label="Pannello docente"
+            label={tl("Pannello docente")}
             onClick={() => onNavigate('/teacher')}
           />
           <SidebarAction
             expanded={expanded}
             icon={KeyRound}
-            label="Cambia password"
+            label={tl("Cambia password")}
             onClick={onShowChangePassword}
           />
           <SidebarAction
             expanded={expanded}
             icon={LogOut}
-            label="Esci"
+            label={tl("Esci")}
             onClick={onLogout}
             danger
           />

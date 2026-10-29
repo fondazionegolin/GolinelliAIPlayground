@@ -3,6 +3,7 @@ import { FileText, Video } from '@/components/icons'
 import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
 import { mediaKind, youtubeVideo } from '@/lib/media'
 import { llmApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 const URL_RE = /https?:\/\/[^\s<>()"']+/gi
 const metadataCache = new Map<string, LinkMetadata>()
@@ -43,7 +44,7 @@ function LinkCard({ url }: { url: string }) {
   const isYoutube = Boolean(youtubeVideo(url))
   const videoId = youtubeVideo(url)?.id
   const thumbnail = metadata?.image_url || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : undefined)
-  let domain = 'Pagina web'
+  let domain = tl("Pagina web")
   try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { /* URL remains linkable. */ }
 
   if (isYoutube || mediaKind(url) === 'video') return <VideoPreview src={url} title={metadata?.title || (isYoutube ? 'Video YouTube' : 'Video')} poster={thumbnail} />

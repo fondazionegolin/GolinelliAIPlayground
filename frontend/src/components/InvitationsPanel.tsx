@@ -5,6 +5,7 @@ import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { useSearchParams } from 'react-router-dom'
+import { tl } from '@/i18n/tl'
 
 interface TeacherInfo {
   id: string
@@ -80,12 +81,12 @@ export function InvitationsPanel() {
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({
-        title: accept ? 'Invito accettato' : 'Invito rifiutato',
-        description: accept ? 'Ora hai accesso alla classe' : 'Hai rifiutato l\'invito',
+        title: accept ? tl("Invito accettato") : tl("Invito rifiutato"),
+        description: accept ? tl("Ora hai accesso alla classe") : tl("Hai rifiutato l'invito"),
       })
     },
     onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nella risposta all\'invito' })
+      toast({ variant: 'destructive', title: tl("Errore nella risposta all'invito") })
     },
   })
 
@@ -97,11 +98,11 @@ export function InvitationsPanel() {
       queryClient.invalidateQueries({ queryKey: ['teacher-schools'] })
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({
-        title: accept ? 'Invito accettato' : 'Invito rifiutato',
-        description: accept ? 'Ora appartieni al nuovo istituto' : "Hai rifiutato l'invito all'istituto",
+        title: accept ? tl("Invito accettato") : tl("Invito rifiutato"),
+        description: accept ? tl("Ora appartieni al nuovo istituto") : tl("Hai rifiutato l'invito all'istituto"),
       })
     },
-    onError: () => toast({ variant: 'destructive', title: "Errore nella risposta all'invito" }),
+    onError: () => toast({ variant: 'destructive', title: tl("Errore nella risposta all'invito") }),
   })
 
   const respondToSessionMutation = useMutation({
@@ -110,12 +111,12 @@ export function InvitationsPanel() {
     onSuccess: (_, { accept }) => {
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
       toast({
-        title: accept ? 'Invito accettato' : 'Invito rifiutato',
-        description: accept ? 'Ora hai accesso alla sessione' : 'Hai rifiutato l\'invito',
+        title: accept ? tl("Invito accettato") : tl("Invito rifiutato"),
+        description: accept ? tl("Ora hai accesso alla sessione") : tl("Hai rifiutato l'invito"),
       })
     },
     onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nella risposta all\'invito' })
+      toast({ variant: 'destructive', title: tl("Errore nella risposta all'invito") })
     },
   })
 
@@ -148,9 +149,9 @@ export function InvitationsPanel() {
     const diffHours = Math.floor(diffMins / 60)
     const diffDays = Math.floor(diffHours / 24)
 
-    if (diffMins < 60) return `${diffMins} min fa`
-    if (diffHours < 24) return `${diffHours} ore fa`
-    if (diffDays < 7) return `${diffDays} giorni fa`
+    if (diffMins < 60) return tl("{0} min fa", diffMins)
+    if (diffHours < 24) return tl("{0} ore fa", diffHours)
+    if (diffDays < 7) return tl("{0} giorni fa", diffDays)
     return date.toLocaleDateString('it-IT')
   }
 
@@ -160,7 +161,7 @@ export function InvitationsPanel() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-lg hover:bg-cyan-100 transition-colors"
-        aria-label="Notifiche inviti"
+        aria-label={tl("Notifiche inviti")}
       >
         <Bell className="h-5 w-5 text-slate-600" />
         {pendingCount > 0 && (
@@ -175,9 +176,9 @@ export function InvitationsPanel() {
         <div className="isolate absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:origin-top">
           {/* Header */}
           <div className="border-b border-slate-200 bg-gradient-to-r from-violet-50 to-purple-50 px-5 py-4">
-            <h3 className="font-bold text-slate-800">Inviti Ricevuti</h3>
+            <h3 className="font-bold text-slate-800">{tl("Inviti Ricevuti")}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {pendingCount > 0 ? `${pendingCount} inviti in attesa` : 'Nessun invito in attesa'}
+              {pendingCount > 0 ? tl("{0} inviti in attesa", pendingCount) : tl("Nessun invito in attesa")}
             </p>
           </div>
 
@@ -192,9 +193,9 @@ export function InvitationsPanel() {
                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                   <Bell className="h-8 w-8 text-slate-400" />
                 </div>
-                <p className="text-slate-500 text-sm">Nessun invito in attesa</p>
+                <p className="text-slate-500 text-sm">{tl("Nessun invito in attesa")}</p>
                 <p className="text-slate-400 text-xs mt-1">
-                  Qui vedrai gli inviti a istituti, classi e sessioni
+                  {tl("Qui vedrai gli inviti a istituti, classi e sessioni")}
                 </p>
               </div>
             ) : (
@@ -204,17 +205,17 @@ export function InvitationsPanel() {
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-pink-100 rounded-lg flex-shrink-0"><Building2 className="h-5 w-5 text-pink-700" /></div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-900">Invito all'istituto</p>
+                        <p className="text-sm font-medium text-slate-900">{tl("Invito all'istituto")}</p>
                         <p className="truncate text-sm font-semibold text-pink-700">{inv.school_name}</p>
                         <p className="mt-1 text-xs text-slate-500">{formatDate(inv.created_at)}</p>
                       </div>
                     </div>
                     <div className="ml-11 mt-3 flex gap-2">
                       <Button size="sm" className="h-8 flex-1 bg-slate-900 hover:bg-slate-800" onClick={() => respondToSchoolMutation.mutate({ id: inv.id, accept: true })} disabled={isPending}>
-                        <Check className="mr-1 h-4 w-4" /> Accetta
+                        <Check className="mr-1 h-4 w-4" /> {tl("Accetta")}
                       </Button>
                       <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => respondToSchoolMutation.mutate({ id: inv.id, accept: false })} disabled={isPending}>
-                        <X className="mr-1 h-4 w-4" /> Rifiuta
+                        <X className="mr-1 h-4 w-4" /> {tl("Rifiuta")}
                       </Button>
                     </div>
                   </div>
@@ -228,7 +229,7 @@ export function InvitationsPanel() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900">
-                          Invito alla classe
+                          {tl("Invito alla classe")}
                         </p>
                         <p className="text-sm font-semibold text-violet-700 truncate">
                           {inv.class_name}
@@ -246,7 +247,7 @@ export function InvitationsPanel() {
                         disabled={isPending}
                       >
                         <Check className="h-4 w-4 mr-1" />
-                        Accetta
+                        {tl("Accetta")}
                       </Button>
                       <Button
                         size="sm"
@@ -256,7 +257,7 @@ export function InvitationsPanel() {
                         disabled={isPending}
                       >
                         <X className="h-4 w-4 mr-1" />
-                        Rifiuta
+                        {tl("Rifiuta")}
                       </Button>
                     </div>
                   </div>
@@ -271,7 +272,7 @@ export function InvitationsPanel() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900">
-                          Invito alla sessione
+                          {tl("Invito alla sessione")}
                         </p>
                         <p className="text-sm font-semibold text-cyan-700 truncate">
                           {inv.session_title}
@@ -292,7 +293,7 @@ export function InvitationsPanel() {
                         disabled={isPending}
                       >
                         <Check className="h-4 w-4 mr-1" />
-                        Accetta
+                        {tl("Accetta")}
                       </Button>
                       <Button
                         size="sm"
@@ -302,7 +303,7 @@ export function InvitationsPanel() {
                         disabled={isPending}
                       >
                         <X className="h-4 w-4 mr-1" />
-                        Rifiuta
+                        {tl("Rifiuta")}
                       </Button>
                     </div>
                   </div>

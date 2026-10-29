@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { eulerDegFromQuaternion, objectGeometry, objectMatrix, scaleOf, worldBox } from './geometry'
+import { editableEdges, edgeLength, eulerDegFromQuaternion, objectGeometry, objectMatrix, scaleOf, worldBox } from './geometry'
 import { sceneBox } from './sceneOps'
 import type { PrimitiveDef, SceneObject, Vec3 } from './types'
 import { PLATE_SIZE, PRIMITIVES } from './types'
+import { tl } from '@/i18n/tl'
 
 export type ViewName = 'home' | 'top' | 'front' | 'back' | 'left' | 'right' | 'fit'
 
@@ -16,6 +17,10 @@ export interface ViewportApi {
 
 interface Props {
   objects: SceneObject[]
+  edgeMode?: boolean
+  selectedEdge?: string | null
+  onSelectEdge?: (id: string | null) => void
+  onEdgeLength?: (id: string, length: number) => void
   selection?: string[]
   snap?: number
   highlightIds?: string[]
@@ -61,8 +66,8 @@ function labelTexture(text: string, opts: { bg: string; fg: string; w?: number; 
 
 /** Face label → view, in BoxGeometry material order (geometry is rotated to Z-up afterwards). */
 const CUBE_FACES: { label: string; view: ViewName | 'bottom' }[] = [
-  { label: 'DESTRA', view: 'right' },
-  { label: 'SINISTRA', view: 'left' },
+  { label: tl("DESTRA"), view: 'right' },
+  { label: tl("SINISTRA"), view: 'left' },
   { label: 'ALTO', view: 'top' },
   { label: 'BASSO', view: 'bottom' },
   { label: 'FRONTE', view: 'front' },
@@ -115,7 +120,7 @@ function localBox(obj: SceneObject): THREE.Box3 {
 }
 
 export default function SolidModelerViewport({
-  objects, selection = EMPTY, snap = 1, highlightIds, readOnly = false,
+  objects, selection = EMPTY, snap = 1, highlightIds, readOnly = false, edgeMode = false, selectedEdge, onSelectEdge, onEdgeLength,
   onSelect = NOOP, onChange = NOOP, onDropPrimitive = NOOP, onHover, apiRef,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -135,8 +140,8 @@ export default function SolidModelerViewport({
     cubeHover: number
   } | null>(null)
   // Latest props for the imperative event handlers.
-  const live = useRef({ objects, selection, snap, readOnly, onSelect, onChange, onDropPrimitive, onHover, apiRef })
-  live.current = { objects, selection, snap, readOnly, onSelect, onChange, onDropPrimitive, onHover, apiRef }
+  const live = useRef({ objects, selection, snap, readOnly, edgeMode, onSelectEdge, onSelect, onChange, onDropPrimitive, onHover, apiRef })
+  live.current = { objects, selection, snap, readOnly, edgeMode, onSelectEdge, onSelect, onChange, onDropPrimitive, onHover, apiRef }
   const localApi = useRef<ViewportApi | null>(null)
 
   // ── Init ────────────────────────────────────────────────────────────────
@@ -216,8 +221,8 @@ export default function SolidModelerViewport({
     }
     // Oriented to read from the default (front) point of view.
     sideLabel('RETRO', 0, PLATE_SIZE / 2 - 6, 0)
-    sideLabel('DESTRA', PLATE_SIZE / 2 - 6, 0, Math.PI / 2)
-    sideLabel('SINISTRA', -PLATE_SIZE / 2 + 6, 0, Math.PI / 2)
+    sideLabel(tl("DESTRA"), PLATE_SIZE / 2 - 6, 0, Math.PI / 2)
+    sideLabel(tl("SINISTRA"), -PLATE_SIZE / 2 + 6, 0, Math.PI / 2)
 
     // Orientation cube (bottom-right corner, rendered in its own viewport).
     const cubeScene = new THREE.Scene()
@@ -419,7 +424,7 @@ export default function SolidModelerViewport({
     // Draw order = scene order so solids render before translucent holes.
     t.world.children.sort((a, b) => objects.findIndex(o => o.id === a.userData.objectId) - objects.findIndex(o => o.id === b.userData.objectId))
     buildSelectionOverlay()
-  }, [objects, selection, highlightIds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objects, selection, highlightIds, edgeMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function buildSelectionOverlay() {
     const t = three.current
@@ -439,6 +444,7 @@ export default function SolidModelerViewport({
       t.selBoxes.add(helper)
     }
     if (selected.length !== 1) return
+    if (edgeMode) return
     const obj = selected[0]
     const m = objectMatrix(obj)
     const lb = localBox(obj)
@@ -553,7 +559,25 @@ export default function SolidModelerViewport({
       if (live.current.readOnly) return
       setRay(e)
       const { objects: objs, selection: sel } = live.current
-      const handle = sel.length === 1 ? hitHandle() : undefined
+      if (live.current.edgeMode) {
+        const obj = objs.find(o => sel.length === 1 && sel[0] === o.id)
+        if (obj) {
+          const m = objectMatrix(obj)
+          const surface = hitObject()?.distance ?? Infinity
+          let closest: string | null = null
+          let best = Infinity
+          for (const edge of editableEdges(obj)) {
+            const a = edge.a.clone().applyMatrix4(m), b = edge.b.clone().applyMatrix4(m)
+            const rayPoint = new THREE.Vector3(), edgePoint = new THREE.Vector3()
+            raycaster.ray.distanceSqToSegment(a, b, rayPoint, edgePoint)
+            const screen = edgePoint.clone().project(t.camera)
+            const pixels = Math.hypot((screen.x - ndc.x) * el.clientWidth / 2, (screen.y - ndc.y) * el.clientHeight / 2)
+            if (pixels < 10 && pixels < best && t.camera.position.distanceTo(edgePoint) <= surface + 1) { closest = edge.id; best = pixels }
+          }
+          if (closest) { live.current.onSelectEdge?.(closest); e.stopImmediatePropagation(); return }
+        }
+      }
+      const handle = !live.current.edgeMode && sel.length === 1 ? hitHandle() : undefined
       const base: DragState = {
         mode: 'none', startObjects: objs, startPoint: new THREE.Vector3(), recorded: false, moved: false,
         downX: e.clientX, downY: e.clientY, additive: e.shiftKey || e.ctrlKey || e.metaKey, hitId: null,
@@ -714,7 +738,7 @@ export default function SolidModelerViewport({
         const qd = new THREE.Quaternion().setFromAxisAngle(axisVec, ang)
         const q0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(...obj.rotation.map(v => v * Math.PI / 180) as Vec3, 'XYZ'))
         const pos = new THREE.Vector3(...obj.position).sub(drag.pivot).applyQuaternion(qd).add(drag.pivot)
-        live.current.onHover?.(`Rotazione ${Math.round((ang * 180) / Math.PI)}°`)
+        live.current.onHover?.(tl("Rotazione {0}°", Math.round((ang * 180) / Math.PI)))
         replace({ ...obj, rotation: eulerDegFromQuaternion(qd.multiply(q0)), position: [round2(pos.x), round2(pos.y), round2(pos.z)] })
       }
     }
@@ -763,5 +787,39 @@ export default function SolidModelerViewport({
     }
   }, [])
 
-  return <div ref={hostRef} className="absolute inset-0" />
+  const quoteRef = useRef<HTMLDivElement>(null)
+  const edgeObject = selection.length === 1 ? objects.find(o => o.id === selection[0]) : undefined
+  const activeEdge = edgeMode && selectedEdge && edgeObject && editableEdges(edgeObject).find(e => e.id === selectedEdge)
+  useEffect(() => {
+    const t = three.current
+    if (!t || !edgeMode || !edgeObject) return
+    const group = new THREE.Group()
+    const m = objectMatrix(edgeObject)
+    for (const edge of editableEdges(edgeObject)) {
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([edge.a.clone().applyMatrix4(m), edge.b.clone().applyMatrix4(m)]), new THREE.LineBasicMaterial({ color: edge.id === selectedEdge ? '#f97316' : '#334155', depthTest: true }))
+      group.add(line)
+    }
+    t.selBoxes.add(group)
+    let frame = 0
+    const update = () => {
+      if (quoteRef.current && activeEdge) {
+        const point = activeEdge.a.clone().add(activeEdge.b).multiplyScalar(0.5).applyMatrix4(m).project(t.camera)
+        quoteRef.current.style.left = `${(point.x + 1) * t.renderer.domElement.clientWidth / 2}px`
+        quoteRef.current.style.top = `${(1 - point.y) * t.renderer.domElement.clientHeight / 2}px`
+        quoteRef.current.style.display = point.z > 1 ? 'none' : 'block'
+      }
+      frame = requestAnimationFrame(update)
+    }
+    update()
+    return () => { cancelAnimationFrame(frame); t.selBoxes.remove(group); group.traverse(o => { if (o instanceof THREE.Line) { o.geometry.dispose(); (o.material as THREE.Material).dispose() } }) }
+  }, [objects, selection, edgeMode, selectedEdge, highlightIds])
+
+  return <>
+    <div ref={hostRef} className="absolute inset-0" />
+    {edgeMode && activeEdge && edgeObject && <div ref={quoteRef} className="absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border-2 border-orange-400 bg-white p-1 shadow-lg">
+      <label className="flex items-center gap-1 text-xs font-bold text-slate-700">
+        <input key={`${edgeObject.id}:${activeEdge.id}:${edgeLength(edgeObject, activeEdge)}`} aria-label={tl("Lunghezza dello spigolo")} type="number" min="0.1" step="0.1" defaultValue={Number(edgeLength(edgeObject, activeEdge).toFixed(2))} className="w-20 rounded border p-1" onBlur={e => { if (e.target.value.trim()) onEdgeLength?.(activeEdge.id, Number(e.target.value)) }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} /> mm
+      </label>
+    </div>}
+  </>
 }

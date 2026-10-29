@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText, User, Calendar, MessageSquare, ChevronDown, ChevronUp, Loader2, Bot } from '@/components/icons'
 import { teacherbotsApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotReportsPanelProps {
   teacherbotId: string
@@ -52,7 +53,7 @@ function MessageTranscript({ teacherbotId, conversationId }: { teacherbotId: str
   }
 
   if (!messages || messages.length === 0) {
-    return <p className="text-xs text-slate-400 py-2">Nessun messaggio registrato.</p>
+    return <p className="text-xs text-slate-400 py-2">{tl("Nessun messaggio registrato.")}</p>
   }
 
   return (
@@ -141,8 +142,8 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
           size="icon"
           onClick={onBack}
           className="h-9 w-9 shrink-0 rounded-xl text-slate-600"
-          title="Indietro"
-          aria-label="Indietro"
+          title={tl("Indietro")}
+          aria-label={tl("Indietro")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -151,9 +152,9 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
             <FileText className="h-5 w-5 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate font-bold text-slate-800">Storico: {teacherbot?.name}</h2>
+            <h2 className="truncate font-bold text-slate-800">{tl("Storico:")} {teacherbot?.name}</h2>
             <p className="truncate text-xs text-slate-500">
-              {reports?.length ?? 0} conversazioni · {withReport} con report
+              {reports?.length ?? 0} {tl("conversazioni ·")} {withReport} {tl("con report")}
             </p>
           </div>
         </div>
@@ -191,7 +192,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                     {hasReport(report) ? (
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">Report</span>
                     ) : (
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">Solo chat</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">{tl("Solo chat")}</span>
                     )}
                     <span className="flex items-center gap-0.5">
                       <MessageSquare className="h-3 w-3" />
@@ -221,7 +222,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                             expandedView === 'report' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          Report AI
+                          {tl("Report AI")}
                         </button>
                         <button
                           onClick={() => setExpandedView('transcript')}
@@ -229,7 +230,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                             expandedView === 'transcript' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          Trascrizione
+                          {tl("Trascrizione")}
                         </button>
                       </div>
                     )}
@@ -241,7 +242,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                           <div>
                             <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-2 text-sm">
                               <span className="w-2 h-2 rounded-full bg-[#181b1e]"></span>
-                              Sintesi
+                              {tl("Sintesi")}
                             </h4>
                             <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200">
                               {report.summary}
@@ -252,7 +253,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                           <div>
                             <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-2 text-sm">
                               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                              Argomenti discussi
+                              {tl("Argomenti discussi")}
                             </h4>
                             <div className="flex flex-wrap gap-2">
                               {report.topics.map((topic, i) => (
@@ -267,7 +268,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                           <div>
                             <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-2 text-sm">
                               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                              Osservazioni
+                              {tl("Osservazioni")}
                             </h4>
                             <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200">
                               {report.observations}
@@ -278,7 +279,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                           <div>
                             <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-2 text-sm">
                               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                              Suggerimenti
+                              {tl("Suggerimenti")}
                             </h4>
                             <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200">
                               {report.suggestions}
@@ -287,7 +288,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                         )}
                         {report.report_generated_at && (
                           <div className="pt-2 border-t border-slate-200 text-xs text-slate-400">
-                            Report generato il {formatDate(report.report_generated_at)}
+                            {tl("Report generato il")} {formatDate(report.report_generated_at)}
                           </div>
                         )}
                       </div>
@@ -298,7 +299,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                       <div>
                         <h4 className="font-semibold text-slate-700 mb-3 flex items-center gap-2 text-sm">
                           <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                          Trascrizione conversazione
+                          {tl("Trascrizione conversazione")}
                         </h4>
                         <MessageTranscript
                           teacherbotId={teacherbotId}
@@ -316,9 +317,9 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
               <FileText className="h-8 w-8 text-slate-400" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-2">Nessuna conversazione</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">{tl("Nessuna conversazione")}</h3>
             <p className="text-sm text-slate-500 max-w-md">
-              Le conversazioni degli studenti con questo teacherbot appariranno qui.
+              {tl("Le conversazioni degli studenti con questo teacherbot appariranno qui.")}
             </p>
           </div>
         )}

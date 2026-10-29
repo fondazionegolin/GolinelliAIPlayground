@@ -1,14 +1,17 @@
+import { tl } from '@/i18n/tl'
 // Scene model shared with the backend agent (backend/app/services/solid_modeler_agent.py).
 // Units: mm, Z up, work plate = XY plane at z=0. Every primitive fills its `size`
 // box centred on `position`; rotation is Euler XYZ in degrees.
 
 export type PrimitiveKind =
   | 'box' | 'cylinder' | 'sphere' | 'cone' | 'pyramid' | 'hemisphere'
-  | 'wedge' | 'torus' | 'tube' | 'star' | 'text'
+  | 'polyhedron' | 'wedge' | 'torus' | 'tube' | 'star' | 'text'
 
 export type Vec3 = [number, number, number]
 
 export interface PrimitiveParams {
+  faces?: number
+  edgeFillets?: Record<string, number>
   sides?: number
   points?: number
   radius?: number
@@ -52,24 +55,25 @@ export interface PrimitiveDef {
 }
 
 export const PRIMITIVES: PrimitiveDef[] = [
-  { kind: 'box', label: 'Cubo', size: [20, 20, 20], color: '#e8453c' },
-  { kind: 'cylinder', label: 'Cilindro', size: [20, 20, 20], color: '#f59e0b', params: { sides: 32 } },
-  { kind: 'sphere', label: 'Sfera', size: [20, 20, 20], color: '#0ea5e9' },
-  { kind: 'cone', label: 'Cono', size: [20, 20, 20], color: '#a855f7', params: { sides: 32, topRatio: 0 } },
-  { kind: 'pyramid', label: 'Piramide', size: [20, 20, 20], color: '#facc15' },
-  { kind: 'hemisphere', label: 'Cupola', size: [20, 20, 10], color: '#ec4899' },
-  { kind: 'wedge', label: 'Cuneo', size: [20, 20, 20], color: '#22c55e' },
-  { kind: 'torus', label: 'Toro', size: [30, 30, 6], color: '#6366f1', params: { thickness: 0.2 } },
-  { kind: 'tube', label: 'Tubo', size: [20, 20, 20], color: '#f97316', params: { wall: 0.12 } },
-  { kind: 'star', label: 'Stella', size: [30, 30, 6], color: '#eab308', params: { points: 5, inner: 0.5 } },
-  { kind: 'text', label: 'Testo', size: [40, 12, 5], color: '#0f766e', params: { text: 'Ciao' } },
-  { kind: 'box', label: 'Foro cubo', size: [20, 20, 20], color: '#a3a3a3', hole: true },
-  { kind: 'cylinder', label: 'Foro cilindro', size: [20, 20, 20], color: '#a3a3a3', hole: true, params: { sides: 32 } },
+  { kind: 'box', label: tl("Cubo"), size: [20, 20, 20], color: '#e8453c' },
+  { kind: 'cylinder', label: tl("Cilindro"), size: [20, 20, 20], color: '#f59e0b', params: { sides: 32 } },
+  { kind: 'sphere', label: tl("Sfera"), size: [20, 20, 20], color: '#0ea5e9' },
+  { kind: 'cone', label: tl("Cono"), size: [20, 20, 20], color: '#a855f7', params: { sides: 32, topRatio: 0 } },
+  { kind: 'polyhedron', label: tl("Poliedro"), size: [20, 20, 20], color: '#14b8a6', params: { faces: 7 } },
+  { kind: 'pyramid', label: tl("Piramide"), size: [20, 20, 20], color: '#facc15' },
+  { kind: 'hemisphere', label: tl("Cupola"), size: [20, 20, 10], color: '#ec4899' },
+  { kind: 'wedge', label: tl("Cuneo"), size: [20, 20, 20], color: '#22c55e' },
+  { kind: 'torus', label: tl("Toro"), size: [30, 30, 6], color: '#6366f1', params: { thickness: 0.2 } },
+  { kind: 'tube', label: tl("Tubo"), size: [20, 20, 20], color: '#f97316', params: { wall: 0.12 } },
+  { kind: 'star', label: tl("Stella"), size: [30, 30, 6], color: '#eab308', params: { points: 5, inner: 0.5 } },
+  { kind: 'text', label: 'Testo', size: [40, 12, 5], color: '#0f766e', params: { text: tl("Ciao") } },
+  { kind: 'box', label: tl("Foro cubo"), size: [20, 20, 20], color: '#a3a3a3', hole: true },
+  { kind: 'cylinder', label: tl("Foro cilindro"), size: [20, 20, 20], color: '#a3a3a3', hole: true, params: { sides: 32 } },
 ]
 
 export const KIND_LABEL: Record<PrimitiveKind | 'group', string> = {
-  box: 'Cubo', cylinder: 'Cilindro', sphere: 'Sfera', cone: 'Cono', pyramid: 'Piramide',
-  hemisphere: 'Cupola', wedge: 'Cuneo', torus: 'Toro', tube: 'Tubo', star: 'Stella', text: 'Testo', group: 'Gruppo',
+  polyhedron: tl("Poliedro"), box: tl("Cubo"), cylinder: tl("Cilindro"), sphere: tl("Sfera"), cone: tl("Cono"), pyramid: tl("Piramide"),
+  hemisphere: tl("Cupola"), wedge: tl("Cuneo"), torus: tl("Toro"), tube: tl("Tubo"), star: tl("Stella"), text: 'Testo', group: tl("Gruppo"),
 }
 
 export const COLOR_SWATCHES = [

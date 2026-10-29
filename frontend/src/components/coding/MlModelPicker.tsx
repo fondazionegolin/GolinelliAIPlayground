@@ -5,6 +5,7 @@ import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
 import { MODE_LABEL, modeOfEngine } from '@/lib/mlFeatures'
 import { prepareModel } from '@/lib/mlModelPrep'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 export const ML_MODELS_PATH = 'ml-models.md'
 
@@ -12,13 +13,13 @@ export const ML_MODELS_PATH = 'ml-models.md'
 export function buildMlModelsMarkdown(projects: MLLabProjectSummary[]): string {
   const list = projects.map((p) => {
     const mode = modeOfEngine(p.engine)
-    const noun = mode === 'hand' ? 'mano' : mode === 'pose' ? 'corpo' : mode === 'face' ? 'espressione del viso' : 'immagine'
+    const noun = mode === 'hand' ? 'mano' : mode === 'pose' ? 'corpo' : mode === 'face' ? tl("espressione del viso") : tl("immagine")
     return `- **${p.name}** · tipo: ${MODE_LABEL[mode]} (riconosce ${noun}) · id: ${p.id} · classi: ${p.classes.map((c) => `«${c.name}»`).join(', ')}`
   }).join('\n')
   const first = projects[0]
   const firstMode = first ? modeOfEngine(first.engine) : 'hand'
-  const sampleLabel = first?.classes[0]?.name ?? 'Classe 1'
-  const sampleName = first?.name ?? 'Nome del modello'
+  const sampleLabel = first?.classes[0]?.name ?? tl("Classe 1")
+  const sampleName = first?.name ?? tl("Nome del modello")
   return `# Modelli ML collegati (Lab ML)
 
 Questo progetto usa modelli di riconoscimento addestrati dall'utente nel Lab ML. Sono **VINCOLANTI**: se l'utente chiede di reagire a pose, gesti o immagini, usa QUESTI modelli tramite \`window.GolinelliML\`.
@@ -84,20 +85,20 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Modelli ML del progetto">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={tl("Modelli ML del progetto")}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-white/10">
           <div className="flex gap-3">
             <span className="ds-squircle flex h-11 w-11 shrink-0 items-center justify-center text-white" style={{ background: '#7b69c9' }}><Brain className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Modelli ML del progetto</h2>
-              <p className="mt-0.5 text-xs leading-5 text-slate-500">Scegli i modelli del Lab ML (immagini, pose, gesti delle mani) che l'app può usare. L'IA saprà come richiamarli e li troverai in <code>ml-models.md</code>.</p>
+              <h2 className="text-lg font-bold text-slate-900">{tl("Modelli ML del progetto")}</h2>
+              <p className="mt-0.5 text-xs leading-5 text-slate-500">{tl("Scegli i modelli del Lab ML (immagini, pose, gesti delle mani) che l'app può usare. L'IA saprà come richiamarli e li troverai in")} <code>ml-models.md</code>.</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-5">
           {query.isLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}
-          {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non hai ancora progetti nel Lab ML. Creane uno, addestralo con qualche esempio e poi torna qui.</p>}
+          {!query.isLoading && projects.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">{tl("Non hai ancora progetti nel Lab ML. Creane uno, addestralo con qualche esempio e poi torna qui.")}</p>}
           {projects.map((project) => {
             const mode = modeOfEngine(project.engine)
             const usable = true // projects without a stored model are prepared when attached
@@ -108,7 +109,7 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
                 <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${checked ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300'}`}>{checked && <Check className="h-4 w-4" />}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold text-slate-900">{project.name}</span>
-                  <span className="block truncate text-xs text-slate-500">{MODE_LABEL[mode]} · {project.classes.map((c) => c.name).join(', ')}{project.has_model === false ? ' · verrà preparato' : ''}</span>
+                  <span className="block truncate text-xs text-slate-500">{MODE_LABEL[mode]} · {project.classes.map((c) => c.name).join(', ')}{project.has_model === false ? tl(" · verrà preparato") : ''}</span>
                 </span>
                 {project.accuracy !== null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10">~{Math.round(project.accuracy * 100)}%</span>}
               </button>
@@ -118,15 +119,15 @@ export default function MlModelPicker({ attachedIds, onApply, onClose }: { attac
         <div className="flex items-center justify-between gap-3 border-t border-slate-100 p-5 dark:border-white/10">
           <span className={`text-xs ${error ? 'text-rose-600' : 'text-slate-400'}`}>{error ?? `${selected.size} selezionati`}</span>
           <div className="flex gap-2">
-            <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+            <Button tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
             <Button tone="accent" surface="solid" disabled={applying} onClick={async () => {
               const chosen = projects.filter((p) => selected.has(p.id))
               setApplying(true); setError(null)
               try { for (const project of chosen.filter((p) => p.has_model === false)) await prepareModel(project.id) }
-              catch (err: any) { setError(err?.message || 'Preparazione del modello non riuscita.'); setApplying(false); return }
+              catch (err: any) { setError(err?.message || tl("Preparazione del modello non riuscita.")); setApplying(false); return }
               setApplying(false)
               onApply(chosen)
-            }}>{applying ? 'Preparo i modelli…' : selected.size === 0 ? 'Scollega tutti' : 'Collega al progetto'}</Button>
+            }}>{applying ? tl("Preparo i modelli…") : selected.size === 0 ? tl("Scollega tutti") : tl("Collega al progetto")}</Button>
           </div>
         </div>
       </div>

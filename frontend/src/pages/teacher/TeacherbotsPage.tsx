@@ -16,6 +16,7 @@ import {
   Bot, Plus, Settings, Eye, Trash2, FileText, Loader2, Wand2, Link2, Share2,
   LayoutGrid, List, X, Search, Sparkles, Globe, PencilLine, MessagesSquare,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 const ChatbotModule = lazy(() => import('@/pages/student/ChatbotModule'))
 
@@ -67,10 +68,10 @@ const getIconColor = (color: string) => {
 }
 
 const STATUS_META: Record<string, { label: string; badge: string }> = {
-  published: { label: 'Pubblicato', badge: 'bg-emerald-100 text-emerald-800 shadow-[var(--ds-shadow-1)]' },
-  testing: { label: 'In test', badge: 'bg-amber-100 text-amber-800 shadow-[var(--ds-shadow-1)]' },
-  draft: { label: 'Bozza', badge: 'bg-slate-100 text-slate-600 shadow-[var(--ds-shadow-1)]' },
-  archived: { label: 'Archiviato', badge: 'bg-slate-100 text-slate-500 shadow-[var(--ds-shadow-1)]' },
+  published: { label: tl("Pubblicato"), badge: 'bg-emerald-100 text-emerald-800 shadow-[var(--ds-shadow-1)]' },
+  testing: { label: tl("In test"), badge: 'bg-amber-100 text-amber-800 shadow-[var(--ds-shadow-1)]' },
+  draft: { label: tl("Bozza"), badge: 'bg-slate-100 text-slate-600 shadow-[var(--ds-shadow-1)]' },
+  archived: { label: tl("Archiviato"), badge: 'bg-slate-100 text-slate-500 shadow-[var(--ds-shadow-1)]' },
 }
 
 function statusMeta(status: string) {
@@ -107,15 +108,15 @@ export default function TeacherbotsPage() {
     mutationFn: (id: string) => teacherbotsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
-      toast({ title: 'Teacherbot eliminato' })
+      toast({ title: tl("Teacherbot eliminato") })
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile eliminare il teacherbot', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile eliminare il teacherbot"), variant: 'destructive' })
     },
   })
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Eliminare il teacherbot "${name}"? Questa azione non può essere annullata.`)) {
+    if (confirm(tl("Eliminare il teacherbot \"{0}\"? Questa azione non può essere annullata.", name))) {
       deleteMutation.mutate(id)
     }
   }
@@ -147,14 +148,14 @@ export default function TeacherbotsPage() {
       <button
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setFormTarget(bot.id) }}
-        title="Configura"
+        title={tl("Configura")}
       >
         <Settings className="h-3.5 w-3.5" />
       </button>
       <button
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setTestTarget(bot.id) }}
-        title="Testa"
+        title={tl("Testa")}
       >
         <Eye className="h-3.5 w-3.5" />
       </button>
@@ -170,21 +171,21 @@ export default function TeacherbotsPage() {
       <button
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setShareBot({ id: bot.id, name: bot.name }) }}
-        title="Condividi con classe o studenti"
+        title={tl("Condividi con classe o studenti")}
       >
         <Share2 className="h-3.5 w-3.5" />
       </button>
       <button
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors md:h-7 md:w-7 md:rounded-lg ${getIconColor(bot.color)}`}
         onClick={(e) => { e.stopPropagation(); setShareLinksBot({ id: bot.id, name: bot.name }) }}
-        title="Link pubblico (fuori piattaforma)"
+        title={tl("Link pubblico (fuori piattaforma)")}
       >
         <Link2 className="h-3.5 w-3.5" />
       </button>
       <button
         className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 md:h-7 md:w-7 md:rounded-lg"
         onClick={(e) => { e.stopPropagation(); handleDelete(bot.id, bot.name) }}
-        title="Elimina"
+        title={tl("Elimina")}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
@@ -211,7 +212,7 @@ export default function TeacherbotsPage() {
           </div>
           <p className="mt-4 line-clamp-1 text-base font-extrabold leading-tight text-slate-950">{bot.name}</p>
           <p className="mt-1.5 hidden line-clamp-1 text-xs leading-5 text-slate-600 md:block md:line-clamp-2">
-            {bot.synopsis || 'Nessuna descrizione'}
+            {bot.synopsis || tl("Nessuna descrizione")}
           </p>
         </div>
 
@@ -219,7 +220,7 @@ export default function TeacherbotsPage() {
           <div className="mt-4 hidden items-center justify-between gap-3 border-t border-slate-200/70 pt-3 text-xs text-slate-500 md:flex">
             <span className="flex items-center gap-1">
               <MessagesSquare className="h-3 w-3" />
-              {bot.conversation_count} conversazioni
+              {bot.conversation_count} {tl("conversazioni")}
             </span>
             <span className="truncate">{updatedLabel}</span>
           </div>
@@ -248,7 +249,7 @@ export default function TeacherbotsPage() {
               {status.label}
             </span>
           </div>
-          <p className="truncate text-xs text-slate-600">{bot.synopsis || 'Nessuna descrizione'}</p>
+          <p className="truncate text-xs text-slate-600">{bot.synopsis || tl("Nessuna descrizione")}</p>
         </div>
         <div className="hidden shrink-0 items-center gap-3 text-xs text-slate-500 sm:flex">
           <span className="flex items-center gap-1"><MessagesSquare className="h-3 w-3" />{bot.conversation_count}</span>
@@ -290,16 +291,14 @@ export default function TeacherbotsPage() {
               {t('navbar.nav_teacherbots', 'Teacherbot')}
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
-              Crea, condividi, osserva
+              {tl("Crea, condividi, osserva")}
             </h2>
             <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
-              Un teacherbot è un assistente AI personalizzato: gli dai un nome, una personalità e istruzioni (system prompt),
-              e opzionalmente una base di conoscenza. Condividilo con un'intera classe, con singoli studenti, oppure genera
-              un link pubblico utilizzabile anche fuori dalla piattaforma.
+              {tl("Un teacherbot è un assistente AI personalizzato: gli dai un nome, una personalità e istruzioni (system prompt), e opzionalmente una base di conoscenza. Condividilo con un'intera classe, con singoli studenti, oppure genera un link pubblico utilizzabile anche fuori dalla piattaforma.")}
             </p>
             <Button size="lg" className="mt-6 min-h-12 w-full rounded-2xl sm:w-auto" onClick={() => setFormTarget('create')}>
               <Plus className="h-4 w-4 mr-2" />
-              Nuovo teacherbot
+              {tl("Nuovo teacherbot")}
             </Button>
           </div>
         </section>
@@ -318,14 +317,14 @@ export default function TeacherbotsPage() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cerca teacherbot..."
+                  placeholder={tl("Cerca teacherbot...")}
                   className="ui-search h-11 w-full py-2 pl-10 pr-10 text-base placeholder:text-slate-400 focus:outline-none md:text-sm"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                    title="Pulisci ricerca"
+                    title={tl("Pulisci ricerca")}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -335,14 +334,14 @@ export default function TeacherbotsPage() {
                 <button
                   onClick={() => setDisplay('grid')}
                   className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-8 md:w-8 ${display === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:bg-white/70'}`}
-                  title="Griglia"
+                  title={tl("Griglia")}
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setDisplay('list')}
                   className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors md:h-8 md:w-8 ${display === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:bg-white/70'}`}
-                  title="Elenco"
+                  title={tl("Elenco")}
                 >
                   <List className="h-4 w-4" />
                 </button>
@@ -359,24 +358,24 @@ export default function TeacherbotsPage() {
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-indigo-50 ring-1 ring-indigo-100">
                 <Sparkles className="h-8 w-8 text-indigo-500" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Nessun teacherbot</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">{tl("Nessun teacherbot")}</h3>
               <p className="text-sm text-slate-500 mb-6 max-w-md">
-                Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.
+                {tl("Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.")}
               </p>
               <Button onClick={() => setFormTarget('create')}>
                 <Plus className="h-4 w-4 mr-2" />
-                Crea il tuo primo teacherbot
+                {tl("Crea il tuo primo teacherbot")}
               </Button>
             </div>
           ) : visibleCount === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-16 text-center">
               <Search className="mx-auto h-8 w-8 text-slate-200 mb-3" />
-              <p className="text-sm font-semibold text-slate-700">Nessun teacherbot corrisponde a &quot;{search}&quot;</p>
+              <p className="text-sm font-semibold text-slate-700">{tl("Nessun teacherbot corrisponde a \"")}{search}&quot;</p>
             </div>
           ) : (
             <>
-              {renderSection('Pubblicati', <Globe className="h-4 w-4 text-emerald-600" />, filtered.published)}
-              {renderSection('Bozze e in lavorazione', <PencilLine className="h-4 w-4 text-slate-500" />, filtered.other)}
+              {renderSection(tl("Pubblicati"), <Globe className="h-4 w-4 text-emerald-600" />, filtered.published)}
+              {renderSection(tl("Bozze e in lavorazione"), <PencilLine className="h-4 w-4 text-slate-500" />, filtered.other)}
             </>
           )}
         </div>
@@ -400,7 +399,7 @@ export default function TeacherbotsPage() {
         <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm md:p-5">
           <div className="my-3 flex h-[min(94vh,1040px)] w-full max-w-[720px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl md:my-5">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <span className="text-xs font-semibold text-slate-500">Anteprima studente</span>
+              <span className="text-xs font-semibold text-slate-500">{tl("Anteprima studente")}</span>
               <button onClick={() => setTestTarget(null)} className="rounded-lg p-1.5 hover:bg-slate-100">
                 <X className="h-4 w-4 text-slate-500" />
               </button>

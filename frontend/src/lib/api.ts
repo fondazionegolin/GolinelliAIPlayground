@@ -235,6 +235,10 @@ export const codingApi = {
   aiVision: (data: { image: string; prompt?: string }) => api.post('/coding/ai/vision', data),
   interview: (data: { title?: string; prompt?: string }) =>
     api.post('/coding/ai/interview', data),
+  interviewChat: (data: { title?: string; prompt: string; messages: { role: 'user' | 'assistant'; content: string }[] }) =>
+    api.post('/coding/ai/interview-chat', data),
+  spec: (data: { title?: string; prompt: string; messages?: { role: 'user' | 'assistant'; content: string }[] }) =>
+    api.post('/coding/ai/spec', data, { timeout: 180000 }),
   uiReview: (projectId: string, data: { files?: { path: string; content: string; language?: string }[] }) =>
     api.post(`/coding/projects/${projectId}/ui-review`, data),
   createVersion: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
@@ -572,7 +576,59 @@ export interface SchoolInvite {
   completed_at: string | null
   email_sent_at: string | null
   email_sent?: boolean
+  /** Furthest step reached: created → e-mail sent/failed → read → link opened → partial acceptance → completed. */
+  stage: InviteStage
+  email_status: 'SENT' | 'FAILED' | null
+  email_error: string | null
+  email_attempts: number
+  email_opened_at: string | null
+  last_opened_at: string | null
+  open_count: number
+  accepted: string[]
+  progress_at: string | null
+  organization: { name: string; comune: string | null; province: string | null } | null
+  registry_verified: boolean
 }
+
+export type InviteStage = 'CREATED' | 'EMAIL_SENT' | 'EMAIL_FAILED' | 'EMAIL_READ' | 'LINK_OPENED' | 'PARTIAL' | 'COMPLETED' | 'EXPIRED' | 'REVOKED'
+
+export interface AcceptedDocument {
+  key: string; title: string; required_version: string; accepted_version: string | null; accepted_at: string | null; current: boolean
+}
+
+export interface InviteEmailDelivery {
+  status: 'SENT' | 'FAILED' | null; error: string | null; attempts: number; sent_at: string | null; opened_at: string | null; expires_at: string | null
+}
+
+/** A principal or a teacher of a school, as the admin follows them. */
+export interface SchoolPerson {
+  id: string; first_name: string | null; last_name: string | null; email: string
+  state: 'INVITED' | 'EXPIRED' | 'TERMS_PENDING' | 'ACTIVE' | 'DEACTIVATED'
+  invited_at: string | null; activated_at: string | null; last_login_at: string | null; deactivated_at: string | null
+  invite_email: InviteEmailDelivery | null
+  documents: AcceptedDocument[]; documents_complete: boolean
+  /** Teacher of another tenant added to the school (not invited by its principal). */
+  member?: boolean
+  classes: number; sessions: number; students: number; students_active_7d: number; last_activity_at: string | null
+  credits_month: number; credits_total: number
+}
+
+export interface SchoolOverview {
+  id: string; name: string; status: string; created_at: string | null
+  mechanographic_code: string | null; registry_verified: boolean; max_teachers: number; monthly_credit_pool: number
+  registry: { kind: string; comune: string | null; province: string | null; region: string | null; address: string | null; email: string | null; pec: string | null; website: string | null } | null
+  organization: { name: string; comune: string | null; province: string | null } | null
+  invite: Omit<SchoolInvite, 'tenant_id' | 'tenant_name' | 'mechanographic_code' | 'link' | 'organization' | 'registry_verified' | 'email_sent'> | null
+  invites_count: number
+  principal: SchoolPerson | null
+  teachers: SchoolPerson[]
+  stats: {
+    teachers_total: number; teachers_active: number; teachers_pending: number; classes: number; sessions: number
+    students: number; students_active_7d: number; credits_month: number; credits_total: number; last_activity_at: string | null
+  }
+}
+
+export interface EmailHealth { ok: boolean; error: string | null; checked_at: string; sender: string; host: string }
 
 export const schoolOnboardingAdminApi = {
   searchRegistry: (q: string, params?: { province?: string; kind?: string }) =>
@@ -595,9 +651,14 @@ export const schoolOnboardingAdminApi = {
     label?: string
     expires_in_days?: number
     send_email?: boolean
+    organization_name?: string
+    organization_comune?: string
+    organization_province?: string
   }) => api.post<SchoolInvite>('/admin/school-onboarding/invites', data),
   revokeInvite: (id: string) => api.post(`/admin/school-onboarding/invites/${id}/revoke`),
-  resendInvite: (id: string) => api.post<{ email_sent: boolean }>(`/admin/school-onboarding/invites/${id}/resend`),
+  resendInvite: (id: string) => api.post<{ email_sent: boolean; email_error: string | null }>(`/admin/school-onboarding/invites/${id}/resend`),
+  schools: () => api.get<SchoolOverview[]>('/admin/school-onboarding/schools'),
+  emailHealth: (refresh = false) => api.get<EmailHealth>('/admin/school-onboarding/email-health', { params: refresh ? { refresh: true } : {} }),
 }
 
 // ── Pagina d'invito del dirigente (pubblica) ─────────────────────────────
@@ -622,12 +683,16 @@ export const schoolInviteApi = {
       max_teachers: number
       documents: LegalDocInfo[]
       expires_at: string
+      organization: { name: string; comune: string | null; province: string | null } | null
+      accepted: string[]
     }>(`/school-onboarding/invites/${token}`),
+  progress: (token: string, accepted: string[]) => api.post(`/school-onboarding/invites/${token}/progress`, { accepted }),
   searchRegistry: (token: string, q: string) =>
     api.get<RegistrySchool[]>(`/school-onboarding/invites/${token}/registry-search`, { params: { q } }),
   complete: (token: string, data: {
     first_name: string; last_name: string; email: string; password: string
     mechanographic_code?: string; accepted_documents: string[]
+    organization_name?: string; organization_comune?: string; organization_province?: string
   }) => api.post<{ access_token: string; user_id: string; role: 'TEACHER'; tenant_id: string; redirect: string }>(
     `/school-onboarding/invites/${token}/complete`, data),
   document: (key: string, params?: { school_name?: string; code?: string }) =>
@@ -635,15 +700,7 @@ export const schoolInviteApi = {
 }
 
 // ── Pannello dirigente ────────────────────────────────────────────────────
-export interface OwnerTeacher {
-  id: string
-  email: string
-  first_name: string | null
-  last_name: string | null
-  state: 'INVITED' | 'TERMS_PENDING' | 'ACTIVE' | 'DEACTIVATED'
-  invited_at: string | null
-  last_login_at: string | null
-}
+export type OwnerTeacher = SchoolPerson
 
 export interface OwnerPanel {
   school: {
@@ -662,8 +719,8 @@ export const schoolOwnerApi = {
   status: () => api.get<{ is_school_owner: boolean }>('/school-owner/status'),
   panel: () => api.get<OwnerPanel>('/school-owner/panel'),
   inviteTeacher: (data: { email: string; first_name: string; last_name: string }) =>
-    api.post<{ teacher_id: string; email_sent: boolean; link: string | null }>('/school-owner/teachers', data),
-  resend: (teacherId: string) => api.post<{ email_sent: boolean }>(`/school-owner/teachers/${teacherId}/resend`),
+    api.post<{ teacher_id: string; email_sent: boolean; email_error: string | null; link: string | null }>('/school-owner/teachers', data),
+  resend: (teacherId: string) => api.post<{ email_sent: boolean; email_error: string | null; link: string | null }>(`/school-owner/teachers/${teacherId}/resend`),
   remove: (teacherId: string) => api.delete(`/school-owner/teachers/${teacherId}`),
   familyNotice: () => api.get<{ title: string; html: string }>('/school-owner/family-notice'),
 }
@@ -1565,6 +1622,17 @@ export const creditsApi = {
     teacher_id?: string | null
     class_id?: string | null
   }) => api.put('/credits/admin/limits', data),
+  /** Azzera i consumi e riparte da oggi (nuova decorrenza); opzionalmente nuovo cap e bundle azzerati. */
+  adminResetLimit: (data: {
+    cap_credits?: number | null
+    clear_bonus?: boolean
+    note?: string
+    limit_id?: string | null
+    level?: string
+    tenant_id?: string | null
+    teacher_id?: string | null
+    class_id?: string | null
+  }) => api.post('/credits/admin/limits/reset', data),
   adminForceBundle: (data: {
     credits: number
     note?: string
@@ -2044,6 +2112,8 @@ export interface SolidModelReadonly {
   scene: unknown[]
   author: string
   updated_at: string
+  /** GLB snapshot matching the saved scene (public link only), for Scene Viewer / Quick Look. */
+  ar_glb_url?: string | null
 }
 
 export const solidModelerApi = {
@@ -2057,6 +2127,8 @@ export const solidModelerApi = {
   classes: () => api.get<{ id: string; name: string; school_grade: string | null }[]>('/solid-modeler/classes'),
   share: (id: string, data: { class_ids?: string[]; public_enabled?: boolean; regenerate_token?: boolean }) =>
     api.put<SolidModelSummary>(`/solid-modeler/models/${id}/share`, data),
+  uploadAr: (id: string, glb: Blob) =>
+    api.put<{ ar_ready: boolean; bytes: number }>(`/solid-modeler/models/${id}/ar`, glb, { headers: { 'Content-Type': 'model/gltf-binary' } }),
   getPublic: (token: string) => api.get<SolidModelReadonly>(`/solid-modeler/public/${token}`),
   studentList: () => api.get<{ id: string; name: string; thumbnail: string | null; object_count: number; updated_at: string }[]>('/solid-modeler/student/models'),
   studentGet: (id: string) => api.get<SolidModelReadonly>(`/solid-modeler/student/models/${id}`),

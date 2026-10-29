@@ -23,6 +23,7 @@ export type SandpackRuntimeError = {
 }
 
 import { buildMlStub, ML_RUNTIME_VERSION, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
+import { tl } from '@/i18n/tl'
 
 type Props = {
   /** React/Vite projects: a file tree bundled by Sandpack's react-ts template. Ignored when
@@ -445,7 +446,7 @@ function ErrorReporter({
         reportedReady.current = false
         onErrors?.([
           {
-            message: message.message || message.title || 'Errore di compilazione.',
+            message: message.message || message.title || tl("Errore di compilazione."),
             path: message.path,
             line: message.line,
             column: message.column,

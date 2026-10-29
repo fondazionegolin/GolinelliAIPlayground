@@ -14,6 +14,7 @@ import DesktopSwitcher from '@/components/desktop/DesktopSwitcher'
 import DesktopWidgetContent from '@/components/desktop/DesktopWidgetContent'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useWindowSize } from '@/hooks/useWindowSize'
+import { tl } from '@/i18n/tl'
 
 function useContainerWidth() {
   const { width } = useWindowSize()
@@ -369,7 +370,7 @@ export default function DesktopPage({
             onClick={() => setShowWallpaper(true)}
           >
             <Palette className="h-3.5 w-3.5" />
-            Sfondo
+            {tl("Sfondo")}
           </button>
           <button
             className="flex items-center gap-1.5 h-7 px-3 rounded-full transition-colors text-xs text-white font-medium shadow-sm"
@@ -432,7 +433,7 @@ export default function DesktopPage({
         {activeDesktop?.widgets.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
             <div className="text-white/10 text-6xl select-none">✦</div>
-            <p className="text-sm text-white/20">Aggiungi widget con il pulsante in alto, o trascina contenuti dalla chat</p>
+            <p className="text-sm text-white/20">{tl("Aggiungi widget con il pulsante in alto, o trascina contenuti dalla chat")}</p>
           </div>
         )}
       </div>

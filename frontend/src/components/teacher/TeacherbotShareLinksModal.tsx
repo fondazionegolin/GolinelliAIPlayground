@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { X, Plus, Copy, Trash2, ArrowLeft, Loader2, Link2, Bot, User, QrCode, Download } from '@/components/icons'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotShareLinksModalProps {
   teacherbotId: string
@@ -70,13 +71,13 @@ function LinkQr({ url, name }: { url: string; name: string }) {
   if (!dataUrl) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
   return (
     <div className="flex flex-col items-center gap-3">
-      <img src={dataUrl} alt={`QR code per ${name}`} className="h-64 w-64 rounded-xl border border-slate-200" />
+      <img src={dataUrl} alt={tl("QR code per {0}", name)} className="h-64 w-64 rounded-xl border border-slate-200" />
       <a
         href={dataUrl}
         download={`qr-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'chatbot'}.png`}
         className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
       >
-        <Download className="h-3.5 w-3.5" /> Scarica PNG
+        <Download className="h-3.5 w-3.5" /> {tl("Scarica PNG")}
       </a>
     </div>
   )
@@ -119,7 +120,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['teacherbot-share-links', teacherbotId] })
-      toast({ title: 'Link creato' })
+      toast({ title: tl("Link creato") })
       setLabel('')
       setAccessCode(generateAccessCode())
       setExpiresAt(defaultExpiryLocal())
@@ -128,7 +129,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
       setView('qr')
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile creare il link', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile creare il link"), variant: 'destructive' })
     },
   })
 
@@ -136,7 +137,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
     mutationFn: (linkId: string) => teacherbotsApi.revokeShareLink(teacherbotId, linkId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teacherbot-share-links', teacherbotId] })
-      toast({ title: 'Link revocato' })
+      toast({ title: tl("Link revocato") })
     },
   })
 
@@ -146,9 +147,9 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
   const copyLink = async (token: string) => {
     try {
       await navigator.clipboard.writeText(linkUrl(token))
-      toast({ title: 'Link copiato' })
+      toast({ title: tl("Link copiato") })
     } catch {
-      toast({ title: 'Errore', description: 'Impossibile copiare il link', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile copiare il link"), variant: 'destructive' })
     }
   }
 
@@ -170,10 +171,10 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
             )}
             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <Link2 className="h-4 w-4" />
-              {view === 'list' && `Link pubblici — ${teacherbotName}`}
-              {view === 'create' && 'Nuovo link'}
-              {view === 'conversations' && `Conversazioni — ${selectedLink?.label || linkUrl(selectedLink?.token || '')}`}
-              {view === 'messages' && 'Conversazione'}
+              {view === 'list' && tl("Link pubblici — {0}", teacherbotName)}
+              {view === 'create' && tl("Nuovo link")}
+              {view === 'conversations' && tl("Conversazioni — {0}", selectedLink?.label || linkUrl(selectedLink?.token || ''))}
+              {view === 'messages' && tl("Conversazione")}
               {view === 'qr' && `QR code — ${qrLink?.label || teacherbotName}`}
             </h3>
           </div>
@@ -186,7 +187,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
           {view === 'list' && (
             <>
               <p className="text-sm text-slate-600 mb-4">
-                Chi apre il link deve inserire il codice di accesso. Il link smette di funzionare dopo la scadenza.
+                {tl("Chi apre il link deve inserire il codice di accesso. Il link smette di funzionare dopo la scadenza.")}
               </p>
               {linksQuery.isLoading ? (
                 <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
@@ -200,19 +201,19 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                         <div className="flex items-center justify-between gap-2 mb-1">
                           <span className="font-medium text-slate-800 truncate">{link.label || 'Link senza nome'}</span>
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {!link.is_active ? 'Revocato' : expired ? 'Scaduto' : 'Attivo'}
+                            {!link.is_active ? 'Revocato' : expired ? tl("Scaduto") : tl("Attivo")}
                           </span>
                         </div>
                         <div className="text-xs text-slate-500 mb-2">
                           Codice: <span className="font-mono font-semibold text-slate-700">{link.access_code}</span>
-                          {' · '}Scade il {new Date(link.expires_at).toLocaleString()}
+                          {' · '}{tl("Scade il")} {new Date(link.expires_at).toLocaleString()}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
                             onClick={() => copyLink(link.token)}
                             className="text-xs flex items-center gap-1 text-slate-600 hover:text-slate-900"
                           >
-                            <Copy className="h-3 w-3" /> Copia link
+                            <Copy className="h-3 w-3" /> {tl("Copia link")}
                           </button>
                           {active && (
                             <button
@@ -226,14 +227,14 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                             onClick={() => { setSelectedLink(link); setView('conversations') }}
                             className="text-xs flex items-center gap-1 text-slate-600 hover:text-slate-900"
                           >
-                            <User className="h-3 w-3" /> Conversazioni
+                            <User className="h-3 w-3" /> {tl("Conversazioni")}
                           </button>
                           {link.is_active && (
                             <button
                               onClick={() => revokeMutation.mutate(link.id)}
                               className="text-xs flex items-center gap-1 text-red-600 hover:text-red-800 ml-auto"
                             >
-                              <Trash2 className="h-3 w-3" /> Revoca
+                              <Trash2 className="h-3 w-3" /> {tl("Revoca")}
                             </button>
                           )}
                         </div>
@@ -242,10 +243,10 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                   })}
                 </div>
               ) : (
-                <p className="text-center text-sm text-slate-400 py-6">Nessun link creato per questo teacherbot.</p>
+                <p className="text-center text-sm text-slate-400 py-6">{tl("Nessun link creato per questo teacherbot.")}</p>
               )}
-              <Button onClick={() => setView('create')} className="w-full bg-[#181b1e] hover:bg-[#0f1113]">
-                <Plus className="h-4 w-4 mr-2" /> Crea link
+              <Button tone="accent" surface="solid" fullWidth onClick={() => setView('create')}>
+                <Plus className="h-4 w-4 mr-2" /> {tl("Crea link")}
               </Button>
             </>
           )}
@@ -255,7 +256,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
               <LinkQr url={qrUrl(qrLink)} name={qrLink.label || teacherbotName} />
               <label className="flex items-start gap-2 text-xs text-slate-600">
                 <input type="checkbox" checked={qrWithCode} onChange={(e) => setQrWithCode(e.target.checked)} className="mt-0.5" />
-                <span>Includi il codice di accesso nel QR: chi lo inquadra entra direttamente nella chat. Se lo togli, dovrà digitare il codice <b className="font-mono">{qrLink.access_code}</b>.</span>
+                <span>{tl("Includi il codice di accesso nel QR: chi lo inquadra entra direttamente nella chat. Se lo togli, dovrà digitare il codice")} <b className="font-mono">{qrLink.access_code}</b>.</span>
               </label>
               <p className="break-all rounded-lg bg-slate-50 p-2 font-mono text-[11px] text-slate-500">{qrUrl(qrLink)}</p>
             </div>
@@ -264,17 +265,17 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
           {view === 'create' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nome (opzionale)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{tl("Nome (opzionale)")}</label>
                 <input
                   type="text"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Es. Classe 3B — verifica"
+                  placeholder={tl("Es. Classe 3B — verifica")}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Scadenza</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{tl("Scadenza")}</label>
                 <input
                   type="datetime-local"
                   value={expiresAt}
@@ -283,7 +284,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Codice di accesso</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{tl("Codice di accesso")}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -293,19 +294,20 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                     className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm font-mono tracking-wider focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                   />
                   <Button type="button" variant="outline" onClick={() => setAccessCode(generateAccessCode())}>
-                    Rigenera
+                    {tl("Rigenera")}
                   </Button>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Generato automaticamente, puoi modificarlo.</p>
+                <p className="text-xs text-slate-400 mt-1">{tl("Generato automaticamente, puoi modificarlo.")}</p>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="ghost" onClick={() => setView('list')}>Annulla</Button>
+                <Button variant="ghost" onClick={() => setView('list')}>{tl("Annulla")}</Button>
                 <Button
                   onClick={() => createMutation.mutate()}
                   disabled={!expiresAt || !accessCode.trim() || createMutation.isPending}
-                  className="bg-[#181b1e] hover:bg-[#0f1113]"
+                  tone="accent"
+                  surface="solid"
                 >
-                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Crea link'}
+                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : tl("Crea link")}
                 </Button>
               </div>
             </div>
@@ -328,7 +330,7 @@ export default function TeacherbotShareLinksModal({ teacherbotId, teacherbotName
                 ))}
               </div>
             ) : (
-              <p className="text-center text-sm text-slate-400 py-6">Nessuna conversazione ancora.</p>
+              <p className="text-center text-sm text-slate-400 py-6">{tl("Nessuna conversazione ancora.")}</p>
             )
           )}
 

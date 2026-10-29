@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 interface StudentChatbot { key: string; name: string; description: string; enabled: boolean }
 
@@ -17,9 +18,9 @@ export default function AdminChatbotsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-student-chatbots'] })
       queryClient.invalidateQueries({ queryKey: ['chatbot-profiles'] })
-      toast({ title: 'Chatbot studenti aggiornati' })
+      toast({ title: tl("Chatbot studenti aggiornati") })
     },
-    onError: (e: any) => toast({ title: 'Errore', description: e?.response?.data?.detail || 'Salvataggio non riuscito', variant: 'destructive' }),
+    onError: (e: any) => toast({ title: tl("Errore"), description: e?.response?.data?.detail || tl("Salvataggio non riuscito"), variant: 'destructive' }),
   })
 
   const profiles = data?.profiles ?? []
@@ -27,7 +28,7 @@ export default function AdminChatbotsPage() {
   const toggle = (p: StudentChatbot) => {
     const next = p.enabled ? enabledKeys.filter((k) => k !== p.key) : [...enabledKeys, p.key]
     if (next.length === 0) {
-      toast({ title: 'Serve almeno un chatbot', description: 'Lascia attivo almeno un chatbot generalista.', variant: 'destructive' })
+      toast({ title: tl("Serve almeno un chatbot"), description: tl("Lascia attivo almeno un chatbot generalista."), variant: 'destructive' })
       return
     }
     save.mutate(next)
@@ -36,10 +37,9 @@ export default function AdminChatbotsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-[#1a1a2e]">Chatbot studenti</h1>
+        <h1 className="text-2xl font-black text-[#1a1a2e]">{tl("Chatbot studenti")}</h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Scegli quali chatbot predefiniti trovano gli studenti in Spazio AI. Di base c'è un solo assistente generalista (Tutor AI):
-          i chatbot specializzati o personalizzati vanno creati dai docenti nella sezione Teacherbot. Le conversazioni già avviate restano consultabili.
+          {tl("Scegli quali chatbot predefiniti trovano gli studenti in Spazio AI. Di base c'è un solo assistente generalista (Tutor AI): i chatbot specializzati o personalizzati vanno creati dai docenti nella sezione Teacherbot. Le conversazioni già avviate restano consultabili.")}
         </p>
       </div>
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">

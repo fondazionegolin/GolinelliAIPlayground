@@ -10,6 +10,7 @@ import {
   Clock, Users, CheckCircle2, Zap, CloudLightning,
   ListChecks, MessageSquare, ThumbsUp, BarChart2, ArrowRight, Sparkles, Trophy,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ── Types ──
 
@@ -65,7 +66,7 @@ const SLIDE_SUBMIT: Record<SlideType, string> = {
 }
 
 const SLIDE_LABEL: Record<SlideType, string> = {
-  mcq: 'Risposta multipla', wordwall: 'Word Wall', opinion: 'Opinione libera', feedback: 'Feedback rapido',
+  mcq: tl("Risposta multipla"), wordwall: 'Word Wall', opinion: tl("Opinione libera"), feedback: tl("Feedback rapido"),
 }
 
 const SLIDE_ICON: Record<SlideType, React.ElementType> = {
@@ -165,7 +166,7 @@ function WordwallInput({ maxWords, value, onChange, disabled }: {
             value={current}
             onChange={e => setCurrent(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-            placeholder={`Parola ${value.length + 1} di ${maxWords}...`}
+            placeholder={tl("Parola {0} di {1}...", value.length + 1, maxWords)}
             className="flex-1 rounded-xl border-slate-200 focus:border-amber-400 focus:ring-amber-200"
           />
           <button
@@ -173,11 +174,11 @@ function WordwallInput({ maxWords, value, onChange, disabled }: {
             disabled={!current.trim()}
             className="px-4 py-2 rounded-xl bg-amber-100 text-amber-700 font-semibold text-sm hover:bg-amber-200 transition-colors disabled:opacity-50"
           >
-            + Aggiungi
+            {tl("+ Aggiungi")}
           </button>
         </div>
       )}
-      <p className="text-xs text-slate-400 text-center">{value.length} / {maxWords} parole · Invio per aggiungere</p>
+      <p className="text-xs text-slate-400 text-center">{value.length} / {maxWords} {tl("parole · Invio per aggiungere")}</p>
     </div>
   )
 }
@@ -188,11 +189,11 @@ function FeedbackInput({ selected, onSelect, disabled }: {
   disabled: boolean
 }) {
   const opts = [
-    { key: 'positive' as const, emoji: '😊', label: 'Positivo',
+    { key: 'positive' as const, emoji: '😊', label: tl("Positivo"),
       active: 'bg-emerald-500 border-emerald-500 text-white shadow-xl shadow-emerald-200' },
-    { key: 'neutral'  as const, emoji: '😐', label: 'Neutro',
+    { key: 'neutral'  as const, emoji: '😐', label: tl("Neutro"),
       active: 'bg-amber-400 border-amber-400 text-white shadow-xl shadow-amber-200' },
-    { key: 'negative' as const, emoji: '😞', label: 'Negativo',
+    { key: 'negative' as const, emoji: '😞', label: tl("Negativo"),
       active: 'bg-red-500 border-red-500 text-white shadow-xl shadow-red-200' },
   ]
   return (
@@ -349,16 +350,16 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
 
     let response: object
     if (slide.type === 'mcq') {
-      if (mcqSelected === null) { toast({ title: 'Seleziona una risposta', variant: 'destructive' }); return }
+      if (mcqSelected === null) { toast({ title: tl("Seleziona una risposta"), variant: 'destructive' }); return }
       response = { selected_option: mcqSelected }
     } else if (slide.type === 'wordwall') {
-      if (words.length === 0) { toast({ title: 'Aggiungi almeno una parola', variant: 'destructive' }); return }
+      if (words.length === 0) { toast({ title: tl("Aggiungi almeno una parola"), variant: 'destructive' }); return }
       response = { words }
     } else if (slide.type === 'opinion') {
-      if (!opinionText.trim()) { toast({ title: 'Scrivi la tua opinione', variant: 'destructive' }); return }
+      if (!opinionText.trim()) { toast({ title: tl("Scrivi la tua opinione"), variant: 'destructive' }); return }
       response = { text: opinionText.trim() }
     } else if (slide.type === 'feedback') {
-      if (!sentiment) { toast({ title: 'Seleziona un feedback', variant: 'destructive' }); return }
+      if (!sentiment) { toast({ title: tl("Seleziona un feedback"), variant: 'destructive' }); return }
       response = { sentiment }
     } else return
 
@@ -370,7 +371,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
       })
       setAnswered(true)
     } catch {
-      toast({ title: 'Errore nell\'invio', variant: 'destructive' })
+      toast({ title: tl("Errore nell'invio"), variant: 'destructive' })
     }
   }
 
@@ -415,8 +416,8 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                 <div className="relative rounded-3xl bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 px-8 py-6 text-center text-white shadow-2xl shadow-orange-500/30">
                   {Array.from({ length: 12 }, (_, index) => <motion.span key={index} initial={{ opacity: 1, x: 0, y: 0, rotate: 0 }} animate={{ opacity: 0, x: Math.cos(index * Math.PI / 6) * 130, y: Math.sin(index * Math.PI / 6) * 130, rotate: 180 }} transition={{ duration: 1.2, delay: 0.08 }} className="absolute left-1/2 top-1/2 text-lg">{index % 2 ? '✦' : '●'}</motion.span>)}
                   <Trophy className="mx-auto h-9 w-9" />
-                  <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-white/80">Nuova sfida</p>
-                  <p className="text-2xl font-black">Livello {advanceCue}</p>
+                  <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-white/80">{tl("Nuova sfida")}</p>
+                  <p className="text-2xl font-black">{tl("Livello")} {advanceCue}</p>
                 </div>
               </motion.div>
             )}
@@ -499,7 +500,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                         <Textarea
                           value={opinionText}
                           onChange={e => setOpinionText(e.target.value)}
-                          placeholder="Scrivi la tua risposta in una frase..."
+                          placeholder={tl("Scrivi la tua risposta in una frase...")}
                           rows={3}
                           className="resize-none rounded-2xl border-slate-200 focus:border-emerald-400 focus:ring-emerald-200 text-base"
                         />
@@ -511,7 +512,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                         onClick={submit}
                         className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-white text-lg bg-gradient-to-r shadow-xl transition-all duration-200 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] ${submitGrad}`}
                       >
-                        Invia risposta <ArrowRight className="h-5 w-5" />
+                        {tl("Invia risposta")} <ArrowRight className="h-5 w-5" />
                       </button>
                     </div>
                   )}
@@ -539,11 +540,11 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                         )}
                         <div className="text-center">
                           <p className="text-lg font-bold text-slate-800">
-                            {isClosed ? 'Sessione terminata!' : answered ? 'Risposta inviata!' : 'Tempo scaduto'}
+                            {isClosed ? tl("Sessione terminata!") : answered ? tl("Risposta inviata!") : tl("Tempo scaduto")}
                           </p>
-                          {answered && !isClosed && <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-amber-600"><Sparkles className="h-4 w-4" /> +1 partecipazione</motion.p>}
+                          {answered && !isClosed && <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-amber-600"><Sparkles className="h-4 w-4" /> {tl("+1 partecipazione")}</motion.p>}
                           {isClosed && (
-                            <p className="text-sm text-slate-500 mt-0.5">Ottimo lavoro! 👏</p>
+                            <p className="text-sm text-slate-500 mt-0.5">{tl("Ottimo lavoro! 👏")}</p>
                           )}
                         </div>
                       </div>
@@ -555,18 +556,18 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                             slide.correct_option === mcqSelected ? (
                               <div className="flex items-center gap-2 text-emerald-700">
                                 <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                                <span><strong>Risposta corretta!</strong> {(slide.options || [])[mcqSelected]}</span>
+                                <span><strong>{tl("Risposta corretta!")}</strong> {(slide.options || [])[mcqSelected]}</span>
                               </div>
                             ) : (
                               <div className="text-slate-600">
-                                <span className="text-red-500 font-medium">✗ La tua risposta:</span> {(slide.options || [])[mcqSelected]}
+                                <span className="text-red-500 font-medium">{tl("✗ La tua risposta:")}</span> {(slide.options || [])[mcqSelected]}
                                 <br />
-                                <span className="text-emerald-600 font-medium">✓ Risposta corretta:</span> {(slide.options || [])[slide.correct_option!]}
+                                <span className="text-emerald-600 font-medium">{tl("✓ Risposta corretta:")}</span> {(slide.options || [])[slide.correct_option!]}
                               </div>
                             )
                           ) : (
                             <div className="text-indigo-700">
-                              <span className="font-medium">La tua risposta:</span> {(slide.options || [])[mcqSelected]}
+                              <span className="font-medium">{tl("La tua risposta:")}</span> {(slide.options || [])[mcqSelected]}
                             </div>
                           )}
                         </div>
@@ -578,7 +579,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                           <Users className="h-4 w-4 text-slate-400 flex-shrink-0" />
                           <span className="text-sm text-slate-600 flex-1">
                             <span className="font-bold text-slate-800">{responseCount}</span>
-                            {totalStudents > 0 && <span className="text-slate-400"> di {totalStudents}</span>} hanno risposto
+                            {totalStudents > 0 && <span className="text-slate-400"> {tl("di")} {totalStudents}</span>} {tl("hanno risposto")}
                           </span>
                           {totalStudents > 0 && (
                             <div className="w-20 h-2 rounded-full bg-slate-200 overflow-hidden">
@@ -594,13 +595,13 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
                       {(allAnswered || isClosed) && !isClosed && (
                         <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
                           <BarChart2 className="h-4 w-4" />
-                          <span>In attesa della prossima slide...</span>
+                          <span>{tl("In attesa della prossima slide...")}</span>
                         </div>
                       )}
 
                       {!allAnswered && !isClosed && (
                         <p className="text-center text-xs text-slate-400">
-                          In attesa che tutti rispondano...
+                          {tl("In attesa che tutti rispondano...")}
                         </p>
                       )}
                     </motion.div>
@@ -609,7 +610,7 @@ export default function LiveInteractionStudentOverlay({ sessionId, interactionId
               ) : (
                 <div className="text-center py-8 text-slate-400">
                   <Zap className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">In attesa della prossima domanda...</p>
+                  <p className="font-medium">{tl("In attesa della prossima domanda...")}</p>
                 </div>
               )}
             </div>

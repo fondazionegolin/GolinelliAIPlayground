@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { tl } from '@/i18n/tl'
 
 interface NoteConfig {
   text?: string
@@ -45,7 +46,7 @@ export default function NoteWidget({ config, onConfigChange, readOnly = false }:
       <textarea
         className="flex-1 w-full resize-none p-4 font-medium bg-transparent outline-none placeholder:opacity-40"
         style={{ color: textColor, fontSize: config.font_size ? `${config.font_size}px` : '16px' }}
-        placeholder={readOnly ? '' : "Scrivi una nota..."}
+        placeholder={readOnly ? '' : tl("Scrivi una nota...")}
         value={text}
         readOnly={readOnly}
         onChange={e => handleChange(e.target.value)}

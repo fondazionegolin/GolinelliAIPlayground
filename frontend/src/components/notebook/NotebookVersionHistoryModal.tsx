@@ -20,6 +20,7 @@ import {
   type NotebookVersionSummary,
 } from '@/lib/api'
 import type { Cell, NotebookDetail } from './types'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   notebookId: string
@@ -30,10 +31,10 @@ interface Props {
 }
 
 const SOURCE_META: Record<NotebookVersionSource, { icon: typeof Save; label: string; labelEn: string; tint: string }> = {
-  manual: { icon: Save, label: 'Manuale', labelEn: 'Manual', tint: 'text-[var(--logo-blue-strong)]' },
-  ai: { icon: Sparkles, label: 'Proposta AI', labelEn: 'AI proposal', tint: 'text-[var(--logo-violet-strong)]' },
-  auto: { icon: Clock, label: 'Automatico', labelEn: 'Auto', tint: 'text-slate-400' },
-  rollback: { icon: RotateCcw, label: 'Ripristino', labelEn: 'Restore', tint: 'text-amber-500' },
+  manual: { icon: Save, label: tl("Manuale"), labelEn: 'Manual', tint: 'text-[var(--logo-blue-strong)]' },
+  ai: { icon: Sparkles, label: tl("Proposta AI"), labelEn: tl("AI proposal"), tint: 'text-[var(--logo-violet-strong)]' },
+  auto: { icon: Clock, label: tl("Automatico"), labelEn: 'Auto', tint: 'text-slate-400' },
+  rollback: { icon: RotateCcw, label: tl("Ripristino"), labelEn: 'Restore', tint: 'text-amber-500' },
 }
 
 export default function NotebookVersionHistoryModal({ notebookId, open, onOpenChange, onRestored, isEnglish = false }: Props) {

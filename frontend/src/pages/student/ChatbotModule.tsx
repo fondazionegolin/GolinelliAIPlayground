@@ -55,6 +55,7 @@ import { guardAttachment } from '@/components/privacy/AttachmentPrivacyGuard'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
+import { tl } from '@/i18n/tl'
 
 // Deterministic colour per nickname so each collaborator is visually distinct.
 const COLLAB_NAME_COLORS = ['#e3004a', '#7b69c9', '#1278bd', '#0d9488', '#d97706', '#9333ea', '#0891b2']
@@ -142,24 +143,24 @@ interface ChatbotModuleProps {
 // shared luminous material surface from the design system.
 const CHATBOT_CARD_STYLES = {
   violet: {
-    card: 'student-ai-card student-ai-card--violet',
+    card: "student-ai-card student-ai-card--violet",
     icon: 'student-ai-card-icon bg-violet-50 text-violet-700',
-    badge: 'student-ai-card-badge bg-violet-50/80 text-violet-700',
+    badge: "student-ai-card-badge bg-violet-50/80 text-violet-700",
   },
   amber: {
-    card: 'student-ai-card student-ai-card--amber',
+    card: "student-ai-card student-ai-card--amber",
     icon: 'student-ai-card-icon bg-amber-50 text-amber-700',
-    badge: 'student-ai-card-badge bg-amber-50/80 text-amber-700',
+    badge: "student-ai-card-badge bg-amber-50/80 text-amber-700",
   },
   emerald: {
-    card: 'student-ai-card student-ai-card--emerald',
+    card: "student-ai-card student-ai-card--emerald",
     icon: 'student-ai-card-icon bg-emerald-50 text-emerald-700',
-    badge: 'student-ai-card-badge bg-emerald-50/80 text-emerald-700',
+    badge: "student-ai-card-badge bg-emerald-50/80 text-emerald-700",
   },
   rose: {
-    card: 'student-ai-card student-ai-card--rose',
+    card: "student-ai-card student-ai-card--rose",
     icon: 'student-ai-card-icon bg-rose-50 text-rose-700',
-    badge: 'student-ai-card-badge bg-rose-50/80 text-rose-700',
+    badge: "student-ai-card-badge bg-rose-50/80 text-rose-700",
   },
 } as const
 
@@ -803,19 +804,19 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
   const paletteGroups = useMemo(() => ([
     {
-      label: 'Toni di grigio',
+      label: tl("Toni di grigio"),
       colors: ['#fafafa', '#f5f5f5', '#e5e5e5', '#d4d4d4', '#a3a3a3'],
     },
     {
-      label: 'Toni di azzurro',
+      label: tl("Toni di azzurro"),
       colors: ['#eff6ff', '#dbeafe', '#bfdbfe', '#93c5fd', '#60a5fa'],
     },
     {
-      label: 'Toni di verde',
+      label: tl("Toni di verde"),
       colors: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#34d399'],
     },
     {
-      label: 'Toni di viola',
+      label: tl("Toni di viola"),
       colors: ['#f5f3ff', '#ede9fe', '#ddd6fe', '#c4b5fd', '#a78bfa'],
     },
   ]), [])
@@ -1059,7 +1060,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       const units = Array.isArray(parsed?.units)
         ? parsed.units.map((unit: any, index: number) => ({
             id: `unit-${index + 1}`,
-            title: String(unit?.title || `Unità ${index + 1}`),
+            title: String(unit?.title || tl("Unità {0}", index + 1)),
             summary: String(unit?.summary || ''),
             explanation: String(unit?.explanation || ''),
             keyPoints: Array.isArray(unit?.keyPoints)
@@ -1296,7 +1297,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               ))
               queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
             } else if (data.type === 'error') {
-              throw new Error(data.message || 'Errore stream')
+              throw new Error(data.message || tl("Errore stream"))
             }
           }
         }
@@ -1309,7 +1310,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       console.error('Student stream error:', err)
       setMessages(prev => prev.map(m =>
         m.id === assistantId
-          ? { ...m, content: `Mi dispiace, si è verificato un errore durante la generazione della risposta.` }
+          ? { ...m, content: tl("Mi dispiace, si è verificato un errore durante la generazione della risposta.") }
           : m
       ))
     } finally {
@@ -1587,7 +1588,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       return res.data
     },
     onSuccess: (data) => {
-      const fullContent = data.content || data.assistant_message || 'Risposta ricevuta'
+      const fullContent = data.content || data.assistant_message || tl("Risposta ricevuta")
       const messageId = data.id || Date.now().toString()
       const hasBase64Image = fullContent.includes('data:image') && fullContent.includes('base64')
 
@@ -1629,7 +1630,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `Mi dispiace, si è verificato un errore: ${e.response?.data?.detail || e.message}. Controlla la console per i dettagli.`,
+        content: tl("Mi dispiace, si è verificato un errore: {0}. Controlla la console per i dettagli.", e.response?.data?.detail || e.message),
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -1714,7 +1715,7 @@ REGOLE IMPORTANTI:
         setMessages(prev => [...prev, assistantMessage])
         queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
       } else {
-        throw new Error('Nessuna immagine ricevuta dal server')
+        throw new Error(tl("Nessuna immagine ricevuta dal server"))
       }
     } catch (err: any) {
       if (isAbortLikeError(err)) return
@@ -1722,7 +1723,7 @@ REGOLE IMPORTANTI:
       const errMessage: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: `Mi dispiace, si è verificato un errore nella generazione: ${err.response?.data?.detail || err.message}`,
+        content: tl("Mi dispiace, si è verificato un errore nella generazione: {0}", err.response?.data?.detail || err.message),
         timestamp: new Date(),
       }
       setMessages(prev => [...prev, errMessage])
@@ -1940,7 +1941,7 @@ REGOLE IMPORTANTI:
           if (!type) return
           const at = artifacts.findIndex(a => a.type === type)
           if (at >= 0) artifacts.splice(at, 1)
-          artifacts.push({ type, detail: `${messages.length - idx} messaggi fa` })
+          artifacts.push({ type, detail: tl("{0} messaggi fa", messages.length - idx) })
         })
         const { data } = await llmApi.decideTool(
           text, ['image', 'quiz', 'dataset'], artifacts,
@@ -2250,7 +2251,7 @@ REGOLE IMPORTANTI:
       setEscapeRoomState(response.data)
       await refetchTeacherbotConversations()
     } catch (error: any) {
-      setEscapeRoomError(error?.response?.data?.detail || 'Impossibile inizializzare l’escape room.')
+      setEscapeRoomError(error?.response?.data?.detail || tl("Impossibile inizializzare l’escape room."))
     } finally {
       setEscapeRoomLoading(false)
     }
@@ -2265,7 +2266,7 @@ REGOLE IMPORTANTI:
       setEscapeRoomState(response.data)
       if (response.data.status === 'completed') await refetchTeacherbotConversations()
     } catch (error: any) {
-      setEscapeRoomError(error?.response?.data?.detail || 'Il terminale non ha accettato il comando.')
+      setEscapeRoomError(error?.response?.data?.detail || tl("Il terminale non ha accettato il comando."))
     } finally {
       setEscapeRoomLoading(false)
     }
@@ -2551,9 +2552,9 @@ REGOLE IMPORTANTI:
     return (
       <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-neutral-50))' }}>
         {/* Tab nav */}
-        <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label="Sezioni Tutor AI">
+        <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label={tl("Sezioni Tutor AI")}>
           {([
-            { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3.5 w-3.5" /> },
+            { key: 'assistants' as const, label: tl("Assistenti AI"), icon: <Bot className="h-3.5 w-3.5" /> },
             { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3.5 w-3.5" />, badge: availableTeacherbots.length },
             { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3.5 w-3.5" />, badge: studentbotsData.length },
             { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3.5 w-3.5" /> },
@@ -2600,7 +2601,7 @@ REGOLE IMPORTANTI:
             availableTeacherbots.length === 0 ? (
               <div className="text-center py-16">
                 <Wand2 className="h-8 w-8 text-indigo-200 mx-auto mb-3" />
-                <p className="text-sm text-slate-400 font-medium">Nessun teacherbot disponibile</p>
+                <p className="text-sm text-slate-400 font-medium">{tl("Nessun teacherbot disponibile")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
@@ -2631,8 +2632,8 @@ REGOLE IMPORTANTI:
                 className="mobile-card-standard flex flex-col overflow-hidden rounded-[26px] border border-violet-200 bg-violet-50 p-4 text-left shadow-[0_12px_30px_rgba(23,23,23,0.08)]"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-violet-100 text-violet-700"><Plus className="h-6 w-6" /></div>
-                <div className="mt-auto text-base font-extrabold leading-tight text-violet-900">Crea bot</div>
-                <div className="mt-1 line-clamp-2 text-[11px] font-medium text-violet-700/75">Personalità, istruzioni e allegati</div>
+                <div className="mt-auto text-base font-extrabold leading-tight text-violet-900">{tl("Crea bot")}</div>
+                <div className="mt-1 line-clamp-2 text-[11px] font-medium text-violet-700/75">{tl("Personalità, istruzioni e allegati")}</div>
               </motion.button>
               {studentbotsData.map((bot) => {
                 const available = availableStudentbots.find((item) => item.id === bot.id)
@@ -2645,24 +2646,24 @@ REGOLE IMPORTANTI:
                     >
                       <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-slate-100 text-slate-700"><Bot className="h-6 w-6" /></div>
                       <div className="mt-auto line-clamp-2 pr-9 text-base font-extrabold leading-tight text-slate-900">{bot.name}</div>
-                      <div className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{bot.synopsis || 'Il tuo assistente AI personalizzato'}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{bot.synopsis || tl("Il tuo assistente AI personalizzato")}</div>
                     </button>
                     <div className="absolute right-2 top-2 flex flex-col gap-1.5">
                       <button
                         type="button"
                         onClick={() => setStudentbotEditorTarget(bot.id)}
                         className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm"
-                        title="Configura"
-                        aria-label="Configura studentbot"
+                        title={tl("Configura")}
+                        aria-label={tl("Configura studentbot")}
                       >
                         <Settings className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }}
+                        onClick={() => { if (window.confirm(tl("Eliminare lo Studentbot “{0}”?", bot.name))) deleteStudentbotMutation.mutate(bot.id) }}
                         className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-rose-500 shadow-sm"
-                        title="Elimina"
-                        aria-label="Elimina studentbot"
+                        title={tl("Elimina")}
+                        aria-label={tl("Elimina studentbot")}
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -2683,13 +2684,13 @@ REGOLE IMPORTANTI:
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.14)' }}><Plus className="h-4 w-4 text-violet-700" /></div>
                   <div>
-                    <h3 className="text-sm font-bold text-violet-800">Nuova microlezione</h3>
-                    <p className="text-[11px] text-slate-600">Scegli un argomento</p>
+                    <h3 className="text-sm font-bold text-violet-800">{tl("Nuova microlezione")}</h3>
+                    <p className="text-[11px] text-slate-600">{tl("Scegli un argomento")}</p>
                   </div>
                 </div>
               </motion.button>
               {learningSessions.length === 0 ? (
-                <div className="text-center py-10"><BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-400">Nessuna lezione ancora</p></div>
+                <div className="text-center py-10"><BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-400">{tl("Nessuna lezione ancora")}</p></div>
               ) : learningSessions.map(session => (
                 <motion.div key={session.id} whileTap={{ scale: 0.99 }} onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
                   className="p-3 rounded-xl bg-white border border-slate-100 cursor-pointer shadow-sm group"
@@ -2700,7 +2701,7 @@ REGOLE IMPORTANTI:
                       <p className="text-xs font-semibold text-slate-800 truncate">{session.topic}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{session.lesson}</p>
                       {expandingLearningSessionId === session.id && (
-                        <p className="text-[10px] font-medium text-violet-600 mt-1">Sto espandendo la lezione...</p>
+                        <p className="text-[10px] font-medium text-violet-600 mt-1">{tl("Sto espandendo la lezione...")}</p>
                       )}
                     </div>
                   </div>
@@ -2718,7 +2719,7 @@ REGOLE IMPORTANTI:
                     key={activeRagSession.id}
                     theme={accentTheme}
                     onBack={() => setMainTab('assistants')}
-                    backLabel="Spazio AI"
+                    backLabel={tl("Spazio AI")}
                     session={activeRagSession}
                     onSessionUpdate={() => setRagSessions(getRagSessions())}
                     onNewSession={() => {
@@ -2745,20 +2746,20 @@ REGOLE IMPORTANTI:
             <div className="bg-white rounded-t-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center"><BookOpen className="h-5 w-5 text-violet-600" /></div>
-                <div><h3 className="text-base font-bold text-slate-800">Oggi Imparo</h3><p className="text-xs text-slate-400">Genera una microlezione</p></div>
+                <div><h3 className="text-base font-bold text-slate-800">{tl("Oggi Imparo")}</h3><p className="text-xs text-slate-400">{tl("Genera una microlezione")}</p></div>
               </div>
               <input autoFocus type="text" value={newLessonTopic} onChange={e => setNewLessonTopic(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleGenerateLesson(); if (e.key === 'Escape') setShowNewLessonDialog(false) }}
-                placeholder="Es: La fotosintesi, La Seconda Guerra Mondiale..."
+                placeholder={tl("Es: La fotosintesi, La Seconda Guerra Mondiale...")}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 mb-4"
               />
               <div className="flex gap-2 justify-end">
-                <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">Annulla</button>
+                <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">{tl("Annulla")}</button>
                 <button onClick={handleGenerateLesson} disabled={!newLessonTopic.trim() || generatingLesson}
                   className="px-4 py-2 text-sm font-semibold border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Genera
+                  {tl("Genera")}
                 </button>
               </div>
             </div>
@@ -2874,7 +2875,7 @@ REGOLE IMPORTANTI:
           conversationId: conversation.id,
           kind: 'teacherbot',
           title: bot.name,
-          description: conversation.title || bot.synopsis || bot.description || 'Teacherbot recente',
+          description: conversation.title || bot.synopsis || bot.description || tl("Teacherbot recente"),
           tone: 'amber',
           icon: <Wand2 className="h-4 w-4" />,
         })
@@ -3063,13 +3064,13 @@ REGOLE IMPORTANTI:
                 size="icon"
                 className="h-9 w-9 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] hover:bg-[image:var(--selection-active-bg-hover)]"
                 onClick={() => setShowActionMenu((prev) => !prev)}
-                title="Strumenti chatbot"
+                title={tl("Strumenti chatbot")}
               >
                 <Plus className="h-4 w-4" />
               </Button>
               {showActionMenu && (
                 <div className="absolute bottom-full left-0 z-40 mb-2 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Strumenti</div>
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Strumenti")}</div>
                   <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
                     <VoiceRecorder
                       onInsertText={(text) => {
@@ -3078,7 +3079,7 @@ REGOLE IMPORTANTI:
                         setTimeout(() => inputRef.current?.focus(), 50)
                       }}
                     />
-                    <span className="text-xs font-medium text-slate-600">Dettatura vocale</span>
+                    <span className="text-xs font-medium text-slate-600">{tl("Dettatura vocale")}</span>
                   </div>
                   <button
                     type="button"
@@ -3089,7 +3090,7 @@ REGOLE IMPORTANTI:
                     className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                   >
                     <Paperclip className="h-3.5 w-3.5" />
-                    Allegati
+                    {tl("Allegati")}
                   </button>
                   {activeSharedRoom && (
                     <button
@@ -3102,14 +3103,14 @@ REGOLE IMPORTANTI:
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
                     >
                       <AtSign className="h-3.5 w-3.5" />
-                      Menzione privata
+                      {tl("Menzione privata")}
                     </button>
                   )}
                   <div className="my-1 h-px bg-slate-100" />
                   {([
-                    { mode: 'normal' as const, label: 'Chat', icon: <MessageSquare className="h-3.5 w-3.5" /> },
-                    { mode: 'image' as const, label: 'Immagine', icon: <ImageIcon className="h-3.5 w-3.5" /> },
-                    { mode: 'quiz' as const, label: 'Quiz', icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
+                    { mode: 'normal' as const, label: tl("Chat"), icon: <MessageSquare className="h-3.5 w-3.5" /> },
+                    { mode: 'image' as const, label: tl("Immagine"), icon: <ImageIcon className="h-3.5 w-3.5" /> },
+                    { mode: 'quiz' as const, label: tl("Quiz"), icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
                     { mode: 'dataset' as const, label: 'Dataset', icon: <Database className="h-3.5 w-3.5" /> },
                   ] as const).map(({ mode, label, icon }) => (
                     <button
@@ -3136,7 +3137,7 @@ REGOLE IMPORTANTI:
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
               className="inline-flex h-9 items-center gap-1 rounded-full bg-transparent pl-0.5 pr-1.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-100"
-              title="Modalità attiva: cambia"
+              title={tl("Modalità attiva: cambia")}
             >
               <span
                 className={`rounded-full px-3 py-1.5 text-xs font-bold ${
@@ -3149,16 +3150,16 @@ REGOLE IMPORTANTI:
                         : 'bg-emerald-600 text-white'
                 }`}
               >
-                {chatMode === 'normal' ? 'Chat' : chatMode === 'image' ? 'Immagine' : chatMode === 'quiz' ? 'Quiz' : 'Dataset'}
+                {chatMode === 'normal' ? tl("Chat") : chatMode === 'image' ? tl("Immagine") : chatMode === 'quiz' ? tl("Quiz") : 'Dataset'}
               </span>
               <ChevronDown className={`h-3.5 w-3.5 text-slate-700 transition-transform ${showChatModeMenu ? 'rotate-180' : ''}`} />
             </button>
             {showChatModeMenu && (
 	              <div className="absolute bottom-full left-0 z-50 mb-2 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
                 {([
-                  { mode: 'normal' as const, label: 'Chat', icon: null },
-                  { mode: 'image' as const, label: 'Immagine', icon: <ImageIcon className="h-3.5 w-3.5" /> },
-                  { mode: 'quiz' as const, label: 'Quiz', icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
+                  { mode: 'normal' as const, label: tl("Chat"), icon: null },
+                  { mode: 'image' as const, label: tl("Immagine"), icon: <ImageIcon className="h-3.5 w-3.5" /> },
+                  { mode: 'quiz' as const, label: tl("Quiz"), icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
                   { mode: 'dataset' as const, label: 'Dataset', icon: <Database className="h-3.5 w-3.5" /> },
                 ] as const).map(({ mode, label, icon }) => {
                   const isSelected = chatMode === mode
@@ -3276,7 +3277,7 @@ REGOLE IMPORTANTI:
                 }
               }}
               onPaste={handleInputPaste}
-              placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? 'Descrivi l\'immagine da generare...' : chatMode === 'quiz' ? 'Di cosa vuoi un quiz?' : chatMode === 'dataset' ? 'Descrivi il dataset da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
+              placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? tl("Descrivi l'immagine da generare...") : chatMode === 'quiz' ? tl("Di cosa vuoi un quiz?") : chatMode === 'dataset' ? tl("Descrivi il dataset da generare...") : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : tl("Scrivi un messaggio...")))}
               disabled={isGeneratingResponse}
               className="w-full resize-none bg-transparent px-1 py-2 text-[16px] leading-7 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
@@ -3317,7 +3318,7 @@ REGOLE IMPORTANTI:
       {(chatMode === 'image') && (
         <div className="flex items-center justify-center gap-4 mt-2 pb-3 flex-wrap animate-in fade-in slide-in-from-bottom-1 duration-150">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Modello:</span>
+            <span className="text-xs text-slate-400">{tl("Modello:")}</span>
             <div className={`flex items-center rounded-xl p-0.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
               {([
                 { id: 'dall-e' as const, label: 'DALL-E 3' },
@@ -3334,16 +3335,16 @@ REGOLE IMPORTANTI:
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Formato:</span>
+            <span className="text-xs text-slate-400">{tl("Formato:")}</span>
             <select
               value={imageSize}
               onChange={(e) => setImageSize(e.target.value)}
               className="rounded-xl border border-slate-200/80 bg-white/90 px-2 py-1 text-xs text-slate-600 shadow-sm focus:ring-1 focus:ring-slate-300"
             >
-              <option value="1024x1024">1:1 Quadrato</option>
-              <option value="1024x768">4:3 Orizzontale</option>
-              <option value="768x1024">3:4 Verticale</option>
-              <option value="1280x720">16:9 Panorama</option>
+              <option value="1024x1024">{tl("1:1 Quadrato")}</option>
+              <option value="1024x768">{tl("4:3 Orizzontale")}</option>
+              <option value="768x1024">{tl("3:4 Verticale")}</option>
+              <option value="1280x720">{tl("16:9 Panorama")}</option>
               <option value="720x1280">9:16 Portrait</option>
             </select>
           </div>
@@ -3366,7 +3367,7 @@ REGOLE IMPORTANTI:
         {navCollapsed && mainTab === 'rag' ? (
           /* Collapsed strip */
           <div className="flex flex-col items-center gap-3 p-2 pt-3 h-full">
-            <button onClick={() => setNavCollapsed(false)} title="Espandi sidebar"
+            <button onClick={() => setNavCollapsed(false)} title={tl("Espandi sidebar")}
               className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
               <ChevronRight className="h-4 w-4 text-slate-500" />
             </button>
@@ -3390,10 +3391,10 @@ REGOLE IMPORTANTI:
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
-              <h2 className="mt-0.5 text-base font-semibold text-slate-900">Spazio AI</h2>
+              <h2 className="mt-0.5 text-base font-semibold text-slate-900">{tl("Spazio AI")}</h2>
             </div>
             {mainTab === 'rag' && (
-              <button onClick={() => setNavCollapsed(true)} title="Comprimi sidebar"
+              <button onClick={() => setNavCollapsed(true)} title={tl("Comprimi sidebar")}
                 className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -3403,10 +3404,10 @@ REGOLE IMPORTANTI:
 
         <nav className="px-3 py-3 space-y-1 flex-1 overflow-y-auto">
           {[
-            { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: filteredProfiles.length, note: 'Tutor, quiz e strumenti' },
-            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: filteredTeacherbots.length, note: 'Dal tuo docente' },
-            { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: filteredLearningSessions.length, note: 'Microlezioni' },
-            { key: 'rag' as const, label: 'RAG', icon: Database, badge: undefined, note: 'Documenti & citazioni' },
+            { key: 'assistants' as const, label: tl("Assistenti AI"), icon: Bot, badge: filteredProfiles.length, note: tl("Tutor, quiz e strumenti") },
+            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: filteredTeacherbots.length, note: tl("Dal tuo docente") },
+            { key: 'learning' as const, label: tl("Oggi Imparo"), icon: BookOpen, badge: filteredLearningSessions.length, note: tl("Microlezioni") },
+            { key: 'rag' as const, label: 'RAG', icon: Database, badge: undefined, note: tl("Documenti & citazioni") },
           ].map(({ key, label, icon: Icon, badge, note }) => {
             const active = mainTab === key
             const isExpanded = expandedSection === key
@@ -3485,7 +3486,7 @@ REGOLE IMPORTANTI:
                 {isExpanded && key === 'teacherbots' && (
                   <div className="relative mt-1 ml-3 space-y-0.5">
                     {filteredTeacherbots.length === 0 ? (
-                      <p className="ml-[26px] px-3 py-2 text-xs text-slate-400">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessun teacherbot disponibile'}</p>
+                      <p className="ml-[26px] px-3 py-2 text-xs text-slate-400">{normalizedChatbotSearch ? tl("Nessun risultato") : tl("Nessun teacherbot disponibile")}</p>
                     ) : filteredTeacherbots.map((bot, i) => {
                       const isActive = selectedTeacherbot?.id === bot.id
                       return (
@@ -3522,7 +3523,7 @@ REGOLE IMPORTANTI:
                           className="ml-[26px] flex w-[calc(100%-26px)] items-center gap-1.5 rounded-[14px] px-3 py-2 text-left text-[13px] font-semibold text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700 [&_svg]:h-3.5 [&_svg]:w-3.5"
                         >
                           <Plus />
-                          Nuova sessione
+                          {tl("Nuova sessione")}
                         </button>
                       </div>
                       {ragList.map((ragSession, i) => {
@@ -3559,7 +3560,7 @@ REGOLE IMPORTANTI:
                           className="ml-[26px] flex w-[calc(100%-26px)] items-center gap-1.5 rounded-[14px] px-3 py-2 text-left text-[13px] font-semibold text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700 [&_svg]:h-3.5 [&_svg]:w-3.5"
                         >
                           <Plus />
-                          Nuova microlezione
+                          {tl("Nuova microlezione")}
                         </button>
                       </div>
                       {lessonList.map((session, i) => {
@@ -3587,11 +3588,11 @@ REGOLE IMPORTANTI:
 	        <div className="border-t border-slate-200/70 bg-white/45 px-3 py-3 backdrop-blur-sm">
           <div className="grid grid-cols-2 gap-1.5">
 	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Chat</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">{tl("Chat")}</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{conversations.length}</div>
             </div>
 	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Lezioni</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">{tl("Lezioni")}</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{learningSessions.length}</div>
             </div>
           </div>
@@ -3608,10 +3609,10 @@ REGOLE IMPORTANTI:
 	                <div className="border-b border-slate-200/70 bg-white/60 p-3 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Conversazioni della vista attiva</p>
+                      <h4 className="font-semibold text-sm text-slate-700">{tl("Cronologia")}</h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{tl("Conversazioni della vista attiva")}</p>
                     </div>
-                    <SidebarCollapseButton onClick={() => setShowHistory(false)} label="Comprimi cronologia" />
+                    <SidebarCollapseButton onClick={() => setShowHistory(false)} label={tl("Comprimi cronologia")} />
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -3620,7 +3621,7 @@ REGOLE IMPORTANTI:
                     className="flex w-full items-center gap-2 rounded-[var(--selection-radius)] border-0 bg-[image:var(--selection-active-bg)] px-3 py-2 text-left text-sm font-bold text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] transition-colors hover:bg-[var(--ds-control-hover)]"
                   >
                     <Sparkles className="h-4 w-4" />
-                    Nuova chat
+                    {tl("Nuova chat")}
                   </button>
                   {mainTab === 'rag' ? (
                     ragSessions.map((ragSession) => (
@@ -3636,17 +3637,17 @@ REGOLE IMPORTANTI:
                       >
                         <div className="truncate font-medium text-slate-800">{ragSession.name}</div>
                         <div className="mt-0.5 truncate text-[11px] text-slate-400">
-                          {ragSession.messages.filter((message) => message.role === 'user').pop()?.content || 'Sessione RAG'}
+                          {ragSession.messages.filter((message) => message.role === 'user').pop()?.content || tl("Sessione RAG")}
                         </div>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm('Eliminare questa sessione RAG?')) {
+                            if (confirm(tl("Eliminare questa sessione RAG?"))) {
                               handleDeleteRagSession(ragSession.id)
                             }
                           }}
                           className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Elimina sessione RAG"
+                          title={tl("Elimina sessione RAG")}
                         >
                           <Trash2 className="h-3 w-3 text-red-500" />
                         </button>
@@ -3681,7 +3682,7 @@ REGOLE IMPORTANTI:
                             </div>
                           ) : null
                         })()}
-                        <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
+                        <div className="truncate font-medium pr-6">{conv.title || tl("Conversazione")}</div>
                         <div className="text-xs text-slate-400">
                           {new Date(conv.updated_at).toLocaleDateString('it-IT', {
                             day: 'numeric',
@@ -3693,7 +3694,7 @@ REGOLE IMPORTANTI:
                         <button
                           onClick={async (e) => {
                             e.stopPropagation()
-                            if (confirm('Eliminare questa conversazione?')) {
+                            if (confirm(tl("Eliminare questa conversazione?"))) {
                               await handleDeleteConversation(conv.id)
                             }
                           }}
@@ -3707,7 +3708,7 @@ REGOLE IMPORTANTI:
                   {(mainTab === 'rag' ? ragSessions.length === 0 : conversations.filter(c => selectedTeacherbot
                     ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
                     : c.profile_key === selectedProfile).length === 0) && (
-                      <p className="text-xs text-slate-400 text-center py-4">Nessuna conversazione precedente</p>
+                      <p className="text-xs text-slate-400 text-center py-4">{tl("Nessuna conversazione precedente")}</p>
                     )}
                 </div>
                 {conversations.filter(c => selectedTeacherbot
@@ -3716,7 +3717,7 @@ REGOLE IMPORTANTI:
                     <div className="border-t border-slate-200 bg-white/60 p-2">
                       <button
                         onClick={async () => {
-                          if (confirm('Eliminare tutta la cronologia?')) {
+                          if (confirm(tl("Eliminare tutta la cronologia?"))) {
                             await llmApi.deleteAllConversations(sessionId)
                             refetchConversations()
                             handleNewChat()
@@ -3725,7 +3726,7 @@ REGOLE IMPORTANTI:
                         className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
                       >
                         <Trash2 className="h-3 w-3" />
-                        Elimina tutta la cronologia
+                        {tl("Elimina tutta la cronologia")}
                       </button>
                     </div>
                   )}
@@ -3733,10 +3734,10 @@ REGOLE IMPORTANTI:
             ) : (
               <SidebarRail
                 bare
-                expandLabel="Espandi cronologia"
+                expandLabel={tl("Espandi cronologia")}
                 onExpand={() => setShowHistory(true)}
                 onCreate={handleStartNewConversation}
-                createLabel="Nuova chat"
+                createLabel={tl("Nuova chat")}
                 items={mainTab === 'rag'
                   ? ragSessions.map((ragSession) => ({
                     id: ragSession.id,
@@ -3751,7 +3752,7 @@ REGOLE IMPORTANTI:
                       : c.profile_key === selectedProfile)
                     .map((conv) => ({
                       id: conv.id,
-                      title: conv.title || 'Conversazione',
+                      title: conv.title || tl("Conversazione"),
                       icon: <MessageSquare className="h-4 w-4" />,
                       selected: conversationId === conv.id,
                       onClick: () => loadConversation(conv.id),
@@ -3840,7 +3841,7 @@ REGOLE IMPORTANTI:
           files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
         >
-          <DropOverlay active={dropActive} label="Rilascia per allegare" hint="Il file verrà aggiunto al messaggio" />
+          <DropOverlay active={dropActive} label={tl("Rilascia per allegare")} hint={tl("Il file verrà aggiunto al messaggio")} />
           {!sidebarMode && !isMobile && !isTeacherPreview && (() => {
             const tutorKey = (profiles.find((p) => p.key === 'tutor') ?? profiles[0])?.key
             const topTab: 'tutor' | 'teacherbots' | 'studentbots' | 'rag' =
@@ -3856,13 +3857,13 @@ REGOLE IMPORTANTI:
               setLibrarySection(section)
             }
             const tabs = [
-              { key: 'tutor' as const, label: 'Tutor AI', icon: GraduationCap, count: null as number | null, onClick: () => { if (tutorKey && topTab !== 'tutor') { setStudentbotEditorTarget(null); void handleSelectProfile(tutorKey) } } },
+              { key: 'tutor' as const, label: tl("Tutor AI"), icon: GraduationCap, count: null as number | null, onClick: () => { if (tutorKey && topTab !== 'tutor') { setStudentbotEditorTarget(null); void handleSelectProfile(tutorKey) } } },
               { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, count: availableTeacherbots.length, onClick: () => void openLibrary('teacherbots') },
               { key: 'studentbots' as const, label: 'Studentbot', icon: Sparkles, count: availableStudentbots.length, onClick: () => void openLibrary('studentbots') },
               { key: 'rag' as const, label: 'RAG', icon: Database, count: ragSessions.length, onClick: () => void openLibrary('rag') },
             ]
             return (
-              <div className="flex shrink-0 items-center gap-2 border-b border-slate-200/70 px-4 py-2.5" role="tablist" aria-label="Spazio AI">
+              <div className="flex shrink-0 items-center gap-2 border-b border-slate-200/70 px-4 py-2.5" role="tablist" aria-label={tl("Spazio AI")}>
                 {tabs.map(({ key, label, icon: Icon, count, onClick }) => (
                   <button
                     key={key}
@@ -3888,7 +3889,7 @@ REGOLE IMPORTANTI:
                     key={activeRagSession.id}
                     theme={accentTheme}
                     onBack={() => setMainTab('assistants')}
-                    backLabel="Spazio AI"
+                    backLabel={tl("Spazio AI")}
                     session={activeRagSession}
                     onSessionUpdate={() => setRagSessions(getRagSessions())}
                     onNewSession={() => {
@@ -3928,7 +3929,7 @@ REGOLE IMPORTANTI:
                     className={isDockArmed
                       ? 'dock-armed-glow absolute right-4 top-4 rounded-xl border border-emerald-300 text-white shadow-sm'
                       : 'ds-control absolute right-4 top-4 rounded-xl text-slate-500 hover:text-slate-700'}
-                    title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                    title={sidebarMode ? tl("Chiudi chatbot") : isDockArmed ? tl("Andrà in sidebar al prossimo cambio pagina") : tl("Apri in sidebar")}
                   >
                     {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
                   </Button>
@@ -3936,16 +3937,16 @@ REGOLE IMPORTANTI:
                 <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
                   <div className="mx-auto max-w-3xl text-center">
                     <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
-                    <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Spazio AI</h2>
+                    <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{tl("Spazio AI")}</h2>
                     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                      Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.
+                      {tl("Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.")}
                     </p>
                     <label className="ui-search mx-auto mt-6 flex max-w-xl items-center gap-2 px-4 py-2.5">
                       <Search className="h-4 w-4 shrink-0 text-slate-400" />
                       <input
                         value={chatbotSearch}
                         onChange={(event) => setChatbotSearch(event.target.value)}
-                        placeholder="Cerca chatbot o messaggi..."
+                        placeholder={tl("Cerca chatbot o messaggi...")}
                         className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
                       />
                       {chatbotSearch && (
@@ -3953,7 +3954,7 @@ REGOLE IMPORTANTI:
                           type="button"
                           onClick={() => setChatbotSearch('')}
                           className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                          aria-label="Cancella ricerca"
+                          aria-label={tl("Cancella ricerca")}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -3966,10 +3967,10 @@ REGOLE IMPORTANTI:
               <div className="student-ai-library-body min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
                 <div className="mx-auto w-full max-w-6xl">
                   <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <h3 className="text-sm font-black text-slate-700">{librarySection === 'studentbots' ? 'I tuoi Studentbot' : librarySection === 'rag' ? 'Sessioni RAG' : 'Teacherbot del docente'}</h3>
-                    <div className="ui-segment flex shrink-0 items-center rounded-xl p-0.5" role="group" aria-label="Vista Spazio AI">
-                      <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title="Vista griglia" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="h-4 w-4" /></button>
-                      <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title="Vista elenco" className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
+                    <h3 className="text-sm font-black text-slate-700">{librarySection === 'studentbots' ? tl("I tuoi Studentbot") : librarySection === 'rag' ? tl("Sessioni RAG") : tl("Teacherbot del docente")}</h3>
+                    <div className="ui-segment flex shrink-0 items-center rounded-xl p-0.5" role="group" aria-label={tl("Vista Spazio AI")}>
+                      <button type="button" onClick={() => setLibraryViewMode('grid')} aria-pressed={libraryViewMode === 'grid'} title={tl("Vista griglia")} className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'grid' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title={tl("Vista elenco")} className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
                     </div>
                   </div>
                   {librarySection === 'favorites' && (
@@ -3977,14 +3978,14 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
                         <Sparkles className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Preferiti</h3>
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">{tl("Preferiti")}</h3>
                         <span className="text-xs font-bold opacity-75">{filteredFavoriteChatbotItems.length}</span>
                       </div>
-                      <span className="hidden text-xs text-slate-400 sm:inline">Chatbot usati di recente</span>
+                      <span className="hidden text-xs text-slate-400 sm:inline">{tl("Chatbot usati di recente")}</span>
                     </div>
                     {filteredFavoriteChatbotItems.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">
-                        {normalizedChatbotSearch ? 'Nessun preferito corrisponde alla ricerca.' : 'I chatbot usati di recente appariranno qui.'}
+                        {normalizedChatbotSearch ? tl("Nessun preferito corrisponde alla ricerca.") : tl("I chatbot usati di recente appariranno qui.")}
                       </div>
                     ) : (
                       <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
@@ -4007,7 +4008,7 @@ REGOLE IMPORTANTI:
                                 {item.icon}
                               </div>
                               <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
-                                {item.kind === 'teacherbot' ? 'Teacherbot' : 'Didattico'}
+                                {item.kind === 'teacherbot' ? 'Teacherbot' : tl("Didattico")}
                               </span>
                               <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{item.title}</p>
                               <p title={libraryViewMode === 'list' ? item.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{item.description}</p>
@@ -4024,13 +4025,13 @@ REGOLE IMPORTANTI:
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-violet-700">
                         <GraduationCap className="h-4 w-4" />
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Chatbot Didattici</h3>
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">{tl("Chatbot Didattici")}</h3>
                         <span className="text-xs font-bold opacity-75">{filteredProfiles.length}</span>
                       </div>
-                      <span className="hidden text-xs text-slate-400 sm:inline">Assistenti AI per studio, quiz e strumenti</span>
+                      <span className="hidden text-xs text-slate-400 sm:inline">{tl("Assistenti AI per studio, quiz e strumenti")}</span>
                     </div>
                     {filteredProfiles.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">Nessun chatbot didattico trovato.</div>
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">{tl("Nessun chatbot didattico trovato.")}</div>
                     ) : (
                       <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                         {filteredProfiles.map((profile) => {
@@ -4047,7 +4048,7 @@ REGOLE IMPORTANTI:
                                 {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
                               </div>
                               <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
-                                {usage > 0 ? usage : 'Nuovo'}
+                                {usage > 0 ? usage : tl("Nuovo")}
                               </span>
                               <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{profile.name}</p>
                               <p title={libraryViewMode === 'list' ? profile.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{profile.description}</p>
@@ -4067,11 +4068,11 @@ REGOLE IMPORTANTI:
                         <h3 className="text-xs font-extrabold uppercase tracking-wide">Teacherbot</h3>
                         <span className="text-xs font-bold opacity-75">{filteredTeacherbots.length}</span>
                       </div>
-                      <span className="hidden text-xs text-slate-400 sm:inline">Assistenti pubblicati dal docente</span>
+                      <span className="hidden text-xs text-slate-400 sm:inline">{tl("Assistenti pubblicati dal docente")}</span>
                     </div>
                     {filteredTeacherbots.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">
-                        {normalizedChatbotSearch ? 'Nessun teacherbot trovato.' : 'Quando il docente pubblica un teacherbot, comparirà qui.'}
+                        {normalizedChatbotSearch ? tl("Nessun teacherbot trovato.") : tl("Quando il docente pubblica un teacherbot, comparirà qui.")}
                       </div>
                     ) : (
                       <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
@@ -4087,9 +4088,9 @@ REGOLE IMPORTANTI:
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
                               </div>
-                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>Docente</span>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>{tl("Docente")}</span>
                               <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{bot.name}</p>
-                              <p title={libraryViewMode === 'list' ? (bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.') : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
+                              <p title={libraryViewMode === 'list' ? (bot.synopsis || bot.description || tl("Assistente personalizzato per la sessione.")) : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{bot.synopsis || bot.description || tl("Assistente personalizzato per la sessione.")}</p>
                             </motion.button>
                           )
                         })}
@@ -4106,7 +4107,7 @@ REGOLE IMPORTANTI:
                         <h3 className="text-xs font-extrabold uppercase tracking-wide">Studentbot</h3>
                         <span className="text-xs font-bold opacity-75">{filteredStudentbots.length}</span>
                       </div>
-                      <span className="hidden text-xs text-slate-400 sm:inline">I tuoi assistenti AI privati e personalizzati</span>
+                      <span className="hidden text-xs text-slate-400 sm:inline">{tl("I tuoi assistenti AI privati e personalizzati")}</span>
                     </div>
                     <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                       <motion.button
@@ -4115,23 +4116,23 @@ REGOLE IMPORTANTI:
                         className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Plus className="h-5 w-5" /></div>
-                        <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>Nuovo</span>
-                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>Crea il tuo bot personalizzato</p>
-                        <p className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>Scegli personalità, istruzioni e allegati.</p>
+                        <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>{tl("Nuovo")}</span>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{tl("Crea il tuo bot personalizzato")}</p>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{tl("Scegli personalità, istruzioni e allegati.")}</p>
                       </motion.button>
                       {studentbotsLoading && <div className="flex min-h-[112px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-sky-500" /></div>}
                       {filteredStudentbots.map((bot) => {
                         const available = availableStudentbots.find((item) => item.id === bot.id)
                         return (
                           <div key={bot.id} className={`group relative overflow-hidden border text-left shadow-sm ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
-                            <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={`Apri ${bot.name}`} />
+                            <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={tl("Apri {0}", bot.name)} />
                             <div className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm pointer-events-none ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Sparkles className="h-5 w-5" /></div>
                             <span className={`${libraryViewMode === 'grid' ? 'absolute right-3 top-3' : 'col-start-3 row-span-2 row-start-1 self-center'} z-20 flex gap-1`}>
-                              <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-sky-700 shadow-sm">Configura</button>
-                              <button type="button" onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">Elimina</button>
+                              <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-sky-700 shadow-sm">{tl("Configura")}</button>
+                              <button type="button" onClick={() => { if (window.confirm(tl("Eliminare lo Studentbot “{0}”?", bot.name))) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">{tl("Elimina")}</button>
                             </span>
                             <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-2 pr-28' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950 pointer-events-none`}>{bot.name}</p>
-                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500 pointer-events-none`}>{bot.synopsis || 'Il tuo assistente AI personalizzato'}</p>
+                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500 pointer-events-none`}>{bot.synopsis || tl("Il tuo assistente AI personalizzato")}</p>
                           </div>
                         )
                       })}
@@ -4147,7 +4148,7 @@ REGOLE IMPORTANTI:
                         <h3 className="text-xs font-extrabold uppercase tracking-wide">RAG</h3>
                         <span className="text-xs font-bold opacity-75">{filteredRagSessions.length}</span>
                       </div>
-                      <span className="hidden text-xs text-slate-400 sm:inline">Documenti, citazioni e sessioni salvate</span>
+                      <span className="hidden text-xs text-slate-400 sm:inline">{tl("Documenti, citazioni e sessioni salvate")}</span>
                     </div>
                     <div className={libraryViewMode === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
                       <motion.button
@@ -4158,8 +4159,8 @@ REGOLE IMPORTANTI:
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                           <Plus className="h-5 w-5" />
                         </div>
-                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>Nuova sessione RAG</p>
-                        <p title={libraryViewMode === 'list' ? 'Interroga documenti e fonti caricate.' : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>Interroga documenti e fonti caricate.</p>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{tl("Nuova sessione RAG")}</p>
+                        <p title={libraryViewMode === 'list' ? tl("Interroga documenti e fonti caricate.") : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{tl("Interroga documenti e fonti caricate.")}</p>
                       </motion.button>
                       {filteredRagSessions.slice(0, 7).map((ragSession) => (
                         <motion.button
@@ -4172,11 +4173,11 @@ REGOLE IMPORTANTI:
                             <Database className="h-5 w-5" />
                           </div>
                           <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>
-                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} msg` : 'Pronta'}
+                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} msg` : tl("Pronta")}
                           </span>
                           <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{ragSession.name}</p>
-                          <p title={libraryViewMode === 'list' ? (ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta') : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>
-                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta'}
+                          <p title={libraryViewMode === 'list' ? (ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : tl("Sessione pronta")) : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>
+                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : tl("Sessione pronta")}
                           </p>
                         </motion.button>
                       ))}
@@ -4212,8 +4213,8 @@ REGOLE IMPORTANTI:
                   </h3>
                   <p className="hidden truncate text-xs font-medium text-slate-500 lg:block">
                     {learningMode
-                      ? 'Tutor contestualizzato sulla microlezione selezionata'
-                      : (selectedTeacherbot ? 'Assistente pubblicato dal docente' : (effectiveSelectedModel?.name || 'Modello AI'))}
+                      ? tl("Tutor contestualizzato sulla microlezione selezionata")
+                      : (selectedTeacherbot ? tl("Assistente pubblicato dal docente") : (effectiveSelectedModel?.name || tl("Modello AI")))}
                   </p>
                 </div>
                 {!sidebarMode && (
@@ -4222,7 +4223,7 @@ REGOLE IMPORTANTI:
                     <input
                       value={chatbotSearch}
                       onChange={(event) => setChatbotSearch(event.target.value)}
-                      placeholder="Cerca nella chat..."
+                      placeholder={tl("Cerca nella chat...")}
                       className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
                     />
                     {chatbotSearch && (
@@ -4230,7 +4231,7 @@ REGOLE IMPORTANTI:
                         type="button"
                         onClick={() => setChatbotSearch('')}
                         className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        aria-label="Cancella ricerca chat"
+                        aria-label={tl("Cancella ricerca chat")}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -4245,7 +4246,7 @@ REGOLE IMPORTANTI:
                       onClick={returnToChatbotLibrary}
                       className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform hover:-translate-y-0.5"
                       style={activeBotSoftStyle}
-                      title="Torna ai chatbot"
+                      title={tl("Torna ai chatbot")}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -4258,7 +4259,7 @@ REGOLE IMPORTANTI:
                           onClick={onExpand}
                           className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform hover:-translate-y-0.5"
                           style={activeBotSoftStyle}
-                          title="Espandi a schermo intero"
+                          title={tl("Espandi a schermo intero")}
                         >
                           <PanelRightOpen className="h-4 w-4" />
                         </button>
@@ -4268,7 +4269,7 @@ REGOLE IMPORTANTI:
                           type="button"
                           onClick={onClose}
                           className="app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)]"
-                          title="Chiudi chatbot"
+                          title={tl("Chiudi chatbot")}
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -4281,7 +4282,7 @@ REGOLE IMPORTANTI:
                       className={isDockArmed
                         ? 'dock-armed-glow flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-white shadow-sm'
                         : 'app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)]'}
-                      title={isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                      title={isDockArmed ? tl("Andrà in sidebar al prossimo cambio pagina") : tl("Apri in sidebar")}
                     >
                       <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />
                     </button>
@@ -4369,7 +4370,7 @@ REGOLE IMPORTANTI:
                           ))}
                         </div>
                         <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                          <span>Palette ridotta</span>
+                          <span>{tl("Palette ridotta")}</span>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
@@ -4386,7 +4387,7 @@ REGOLE IMPORTANTI:
                                 }}
                                 className="text-slate-500 hover:text-slate-700"
                               >
-                                Usa default
+                                {tl("Usa default")}
                               </button>
                             )}
                             <button
@@ -4413,7 +4414,7 @@ REGOLE IMPORTANTI:
                         ? "flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
                         : "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold shadow-sm transition-transform hover:-translate-y-0.5"}
                       style={activeBotSoftStyle}
-                      title="Seleziona modello"
+                      title={tl("Seleziona modello")}
                     >
                       {effectiveSelectedModel?.provider === 'openai' ? (
                         <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3.5 w-3.5 object-contain" />
@@ -4424,12 +4425,12 @@ REGOLE IMPORTANTI:
                       ) : (
                         <Bot className="h-3.5 w-3.5" />
                       )}
-                      <span className={sidebarMode ? 'sr-only' : ''}>{effectiveSelectedModel?.name || 'Modello AI'}</span>
+                      <span className={sidebarMode ? 'sr-only' : ''}>{effectiveSelectedModel?.name || tl("Modello AI")}</span>
                       <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                     </button>
                     {showModelMenu && (
                       <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-40 py-1">
-                        <div className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-b border-slate-100">Seleziona modello</div>
+                        <div className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-b border-slate-100">{tl("Seleziona modello")}</div>
                         {availableModels.map((m) => {
                           const selected = modelKey(effectiveSelectedModel) === modelKey(m)
                           const isDefault = defaultModelKey === modelKey(m)
@@ -4473,7 +4474,7 @@ REGOLE IMPORTANTI:
                             onClick={() => handleChangeModel(null)}
                             className="text-xs text-slate-500 hover:text-slate-700"
                           >
-                            Usa modello predefinito sessione
+                            {tl("Usa modello predefinito sessione")}
                           </button>
                         </div>
                       </div>
@@ -4566,8 +4567,8 @@ REGOLE IMPORTANTI:
             <div className="flex h-full min-h-[280px] items-center justify-center text-center">
               <div>
                 <Search className="mx-auto h-8 w-8 text-slate-300" />
-                <p className={`mt-3 text-sm font-semibold ${chatBgIsDark ? 'text-white' : 'text-slate-700'}`}>Nessun messaggio trovato</p>
-                <p className={`mt-1 text-xs ${chatBgIsDark ? 'text-white/60' : 'text-slate-400'}`}>Cancella la ricerca per tornare alla chat completa.</p>
+                <p className={`mt-3 text-sm font-semibold ${chatBgIsDark ? 'text-white' : 'text-slate-700'}`}>{tl("Nessun messaggio trovato")}</p>
+                <p className={`mt-1 text-xs ${chatBgIsDark ? 'text-white/60' : 'text-slate-400'}`}>{tl("Cancella la ricerca per tornare alla chat completa.")}</p>
               </div>
             </div>
           ) : (
@@ -4576,8 +4577,8 @@ REGOLE IMPORTANTI:
               const isOwnUser = message.role === 'user' && !isPeerUser
               const nameColor = collabNameColor(message.senderNickname || '')
               const senderLabel = message.role === 'assistant'
-                ? (selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name || 'Assistente')
-                : isPeerUser ? (message.senderNickname || 'Compagno') : (uiLanguage === 'en' ? 'You' : 'Tu')
+                ? (selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name || tl("Assistente"))
+                : isPeerUser ? (message.senderNickname || tl("Compagno")) : (uiLanguage === 'en' ? 'You' : 'Tu')
               return (
               <div key={message.id} className={`flex gap-3 ${isOwnUser ? 'flex-row-reverse' : ''}`}>
                 <div className="flex w-8 shrink-0 flex-col items-center">
@@ -4611,8 +4612,7 @@ REGOLE IMPORTANTI:
                   <div
                     className={`chat-markdown px-4 py-3 text-[16px] leading-7 shadow-sm transition-all ${isOwnUser
                       ? 'rounded-2xl rounded-tr-none border'
-                      : 'rounded-2xl rounded-tl-none border border-slate-200 bg-white text-slate-700'
-                      } ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
+                      : 'rounded-2xl rounded-tl-none border border-slate-200 bg-white text-slate-700'} ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
                     style={isOwnUser ? activeBotSoftStyle : undefined}
                   >
                     {message.role === 'assistant' ? (
@@ -4680,7 +4680,7 @@ REGOLE IMPORTANTI:
 	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#737373' }}></span>
 	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#737373' }}></span>
                   </div>
-                  <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>Sto pensando...</span>
+                  <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{tl("Sto pensando...")}</span>
                 </div>
               </div>
             </div>
@@ -4742,8 +4742,8 @@ REGOLE IMPORTANTI:
                 <BookOpen className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-800">Oggi Imparo</h3>
-                <p className="text-xs text-slate-400">Genera una microlezione su un argomento</p>
+                <h3 className="text-base font-bold text-slate-800">{tl("Oggi Imparo")}</h3>
+                <p className="text-xs text-slate-400">{tl("Genera una microlezione su un argomento")}</p>
               </div>
             </div>
             <input
@@ -4752,16 +4752,16 @@ REGOLE IMPORTANTI:
               value={newLessonTopic}
               onChange={e => setNewLessonTopic(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleGenerateLesson(); if (e.key === 'Escape') setShowNewLessonDialog(false) }}
-              placeholder="Es: La fotosintesi, La Seconda Guerra Mondiale..."
+              placeholder={tl("Es: La fotosintesi, La Seconda Guerra Mondiale...")}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 mb-4"
             />
-            <p className="text-xs text-slate-400 mb-4">Dopo la microlezione potrai aprire il tutor contestualizzato e verificare la comprensione con il chatbot.</p>
+            <p className="text-xs text-slate-400 mb-4">{tl("Dopo la microlezione potrai aprire il tutor contestualizzato e verificare la comprensione con il chatbot.")}</p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }}
                 className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
               >
-                Annulla
+                {tl("Annulla")}
               </button>
               <button
                 onClick={handleGenerateLesson}
@@ -4769,7 +4769,7 @@ REGOLE IMPORTANTI:
                 className="px-4 py-2 text-sm font-semibold border border-transparent bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
               >
                 {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Genera lezione
+                {tl("Genera lezione")}
               </button>
             </div>
           </div>
@@ -4911,8 +4911,8 @@ function SessionSelector({ sessions, onSelect, darkMode = false }: { sessions: a
       <div className={`px-4 py-2 border-b flex items-center justify-between ${
         darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
       }`}>
-        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>Seleziona Sessione</span>
-        <span className="text-[10px] text-slate-400">{sessions.length} sessioni attive</span>
+        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tl("Seleziona Sessione")}</span>
+        <span className="text-[10px] text-slate-400">{sessions.length} {tl("sessioni attive")}</span>
       </div>
       <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
         {sessions.map(s => (
@@ -5018,8 +5018,8 @@ function StudentSelector({ students, onSelect, darkMode = false }: { students: a
       <div className={`px-4 py-2 border-b flex items-center justify-between ${
         darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
       }`}>
-        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>Seleziona Studenti</span>
-        <span className="text-[10px] text-slate-400">{students.length} studenti</span>
+        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tl("Seleziona Studenti")}</span>
+        <span className="text-[10px] text-slate-400">{students.length} {tl("studenti")}</span>
       </div>
       <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
         {students.map(s => (
@@ -5050,7 +5050,7 @@ function StudentSelector({ students, onSelect, darkMode = false }: { students: a
           className={`text-xs ${darkMode ? 'bg-sky-600 hover:bg-sky-700 text-white' : 'bg-sky-600 hover:bg-sky-700 text-white'}`}
           onClick={() => onSelect(selected)}
         >
-          Seleziona ({selected.length})
+          {tl("Seleziona (")}{selected.length})
         </Button>
       </div>
     </div>
@@ -5073,10 +5073,10 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
       <div className={`flex items-center gap-2 ${darkMode ? 'text-white' : 'text-fuchsia-600'}`}>
         <Loader2 className="h-5 w-5 animate-spin" />
         <span className="font-medium">
-            {generationType === 'quiz' && 'Generazione quiz in corso...'}
-            {generationType === 'image' && 'Generazione immagine in corso...'}
-            {generationType === 'csv' && 'Generazione dataset in corso...'}
-            {!generationType && 'Elaborazione in corso...'}
+            {generationType === 'quiz' && tl("Generazione quiz in corso...")}
+            {generationType === 'image' && tl("Generazione immagine in corso...")}
+            {generationType === 'csv' && tl("Generazione dataset in corso...")}
+            {!generationType && tl("Elaborazione in corso...")}
           </span>
         </div>
       <div className={`w-full max-w-xs rounded-full h-2 overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-gray-200'}`}>
@@ -5132,12 +5132,12 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
               >
                 <img
                   src={src}
-                  alt={alt || 'Immagine generata'}
+                  alt={alt || tl("Immagine generata")}
                   className="max-w-full h-auto rounded-lg shadow-md"
                   {...props}
                 />
                 <div className="absolute bottom-2 left-2 bg-fuchsia-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  Trascina nella chat di classe
+                  {tl("Trascina nella chat di classe")}
                 </div>
                 <button
                   onClick={(e) => {
@@ -5171,9 +5171,9 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
               e.dataTransfer.setData('application/x-chatbot-image', imageData)
               e.dataTransfer.effectAllowed = 'copy'
             }}>
-              <img src={imgSrc} alt="Immagine generata" className="max-w-full h-auto rounded-lg shadow-md" style={{ maxHeight: '400px' }} loading="lazy" />
+              <img src={imgSrc} alt={tl("Immagine generata")} className="max-w-full h-auto rounded-lg shadow-md" style={{ maxHeight: '400px' }} loading="lazy" />
               <div className="absolute bottom-2 left-2 bg-fuchsia-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                Trascina nella chat di classe
+                {tl("Trascina nella chat di classe")}
               </div>
               <button onClick={() => {
                 const link = document.createElement('a')
@@ -5198,11 +5198,11 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
             <span className="text-sm font-medium text-purple-700 flex items-center gap-2">
               <Database className="h-4 w-4" />
               Dataset CSV ({csv.split('\n').length - 1} righe)
-              <span className="text-xs text-purple-400">• Trascinabile</span>
+              <span className="text-xs text-purple-400">{tl("• Trascinabile")}</span>
             </span>
             <Button size="sm" variant="outline" className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100" onClick={() => downloadCsv(csv)}>
               <Download className="h-3 w-3 mr-1" />
-              Scarica CSV
+              {tl("Scarica CSV")}
             </Button>
           </div>
           <pre className="bg-slate-900 text-slate-100 p-3 text-xs font-mono overflow-x-auto max-h-48">
@@ -5241,7 +5241,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
           sessions={sessionSelector} 
           onSelect={(id) => {
             const session = sessionSelector.find(s => s.id === id);
-            onInput?.(`Parlami della sessione: ${session?.title} (${id})`);
+            onInput?.(tl("Parlami della sessione: {0} ({1})", session?.title, id));
           }} 
           darkMode={darkMode}
         />
@@ -5254,7 +5254,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
               .filter(s => selectedIds.includes(s.id))
               .map(s => s.nickname)
               .join(', ');
-            onInput?.(`Analizza questi studenti: ${names}`);
+            onInput?.(tl("Analizza questi studenti: {0}", names));
           }} 
           darkMode={darkMode}
         />
@@ -5267,7 +5267,7 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
   const [showHint, setShowHint] = useState(false)
 
   const difficultyLabel: Record<string, string> = {
-    easy: 'Facile', medium: 'Medio', hard: 'Difficile'
+    easy: tl("Facile"), medium: tl("Medio"), hard: tl("Difficile")
   }
   const difficultyColor: Record<string, string> = {
     easy: 'bg-green-100 text-green-700', medium: 'bg-amber-100 text-amber-700', hard: 'bg-red-100 text-red-700'
@@ -5284,7 +5284,7 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
       </div>
       <p className="text-sm text-slate-600 mb-3">{exercise.description}</p>
       <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
-        <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Istruzioni</p>
+        <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">{tl("Istruzioni")}</p>
         <div className="chat-markdown prose prose-sm max-w-none text-slate-700">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownCodeComponents(false)}>
             {exercise.instructions}
@@ -5293,7 +5293,7 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
       </div>
       {exercise.examples && exercise.examples.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Esempi</p>
+          <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">{tl("Esempi")}</p>
           <ul className="space-y-1">
             {exercise.examples.map((ex, i) => (
               <li key={i} className="text-sm bg-white rounded-lg px-3 py-2 shadow-sm text-slate-700">
@@ -5309,7 +5309,7 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
             onClick={() => setShowHint(h => !h)}
             className="text-xs text-amber-600 hover:text-amber-700 font-medium underline"
           >
-            {showHint ? 'Nascondi suggerimento' : '💡 Mostra suggerimento'}
+            {showHint ? tl("Nascondi suggerimento") : tl("💡 Mostra suggerimento")}
           </button>
           {showHint && (
             <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
@@ -5409,7 +5409,7 @@ function parseContentBlocks(content: string): {
           topic: String(parsed.topic),
           units: parsed.units.map((unit: any, index: number) => ({
             id: String(unit?.id || `unit-${index + 1}`),
-            title: String(unit?.title || `Unità ${index + 1}`),
+            title: String(unit?.title || tl("Unità {0}", index + 1)),
             summary: String(unit?.summary || ''),
             explanation: String(unit?.explanation || ''),
             keyPoints: Array.isArray(unit?.keyPoints)
@@ -5495,7 +5495,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
       return `${idx + 1}${letter}`
     }).join(', ')
 
-    onSubmitAnswers(`Le mie risposte: ${answerText}`)
+    onSubmitAnswers(tl("Le mie risposte: {0}", answerText))
   }
 
   const score = quiz.questions.reduce((acc, q, idx) => {
@@ -5546,8 +5546,8 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                     <button key={optIndex} onClick={() => handleSelect(qIndex, optIndex)} disabled={submitted} className={buttonClass}>
                       <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)})</span>
                       {option}
-                      {submitted && isCorrectOption && <span className="ml-2 text-green-600 font-bold">[Corretto]</span>}
-                      {submitted && isSelected && !isCorrectOption && <span className="ml-2 text-red-600 font-bold">[Errato]</span>}
+                      {submitted && isCorrectOption && <span className="ml-2 text-green-600 font-bold">{tl("[Corretto]")}</span>}
+                      {submitted && isSelected && !isCorrectOption && <span className="ml-2 text-red-600 font-bold">{tl("[Errato]")}</span>}
                     </button>
                   )
                 })}
@@ -5555,7 +5555,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-sm ${isCorrect ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'}`}>
-                  <strong>{isCorrect ? 'Corretto!' : 'Spiegazione:'}</strong> {q.explanation}
+                  <strong>{isCorrect ? tl("Corretto!") : tl("Spiegazione:")}</strong> {q.explanation}
                 </div>
               )}
             </div>
@@ -5573,7 +5573,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
             }`}
           style={allAnswered ? { backgroundColor: '#c026d3' } : undefined}
         >
-          {allAnswered ? 'Verifica Risposte' : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
+          {allAnswered ? tl("Verifica Risposte") : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
         </button>
       ) : (
         <div className="mt-4 p-4 bg-white rounded-xl shadow-sm text-center">
@@ -5581,7 +5581,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
             {score}/{quiz.questions.length}
           </p>
           <p className="text-slate-600">
-            {score === quiz.questions.length ? 'Perfetto!' : score >= quiz.questions.length / 2 ? 'Buon lavoro!' : 'Continua a studiare!'}
+            {score === quiz.questions.length ? tl("Perfetto!") : score >= quiz.questions.length / 2 ? tl("Buon lavoro!") : tl("Continua a studiare!")}
           </p>
         </div>
       )}

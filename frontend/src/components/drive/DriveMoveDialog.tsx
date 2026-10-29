@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronRight, Folder, HardDrive, Loader2 } from '@/components/icons'
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/design'
 import type { DriveFolderNode } from './driveTypes'
+import { tl } from '@/i18n/tl'
 
 /** Folder picker for "Sposta in…". Folders being moved (and their subtrees) are not valid targets. */
 export function DriveMoveDialog({
@@ -51,7 +52,7 @@ export function DriveMoveDialog({
             type="button"
             className={`flex h-7 w-6 items-center justify-center text-slate-400 ${hasKids ? '' : 'invisible'}`}
             onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(folder.id) : next.add(folder.id); return next })}
-            aria-label={open ? 'Comprimi' : 'Espandi'}
+            aria-label={open ? tl("Comprimi") : tl("Espandi")}
           >
             <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
           </button>
@@ -73,7 +74,7 @@ export function DriveMoveDialog({
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent size="sm">
         <DialogHeader>
-          <DialogTitle>Sposta {movingIds.length > 1 ? `${movingIds.length} elementi` : 'elemento'} in…</DialogTitle>
+          <DialogTitle>{tl("Sposta")} {movingIds.length > 1 ? `${movingIds.length} elementi` : 'elemento'} in…</DialogTitle>
         </DialogHeader>
         <DialogBody>
           <div className="max-h-[50vh] overflow-y-auto rounded-xl bg-slate-50/60 p-1.5">
@@ -82,15 +83,15 @@ export function DriveMoveDialog({
               onClick={() => setTarget(null)}
               className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-semibold text-slate-700 ${target === null ? 'ds-selected' : 'hover:bg-slate-50'}`}
             >
-              <HardDrive className="h-4 w-4 text-slate-500" /> Il mio drive
+              <HardDrive className="h-4 w-4 text-slate-500" /> {tl("Il mio drive")}
             </button>
             {renderLevel(null, 0)}
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
           <Button type="button" tone="accent" surface="solid" disabled={busy} onClick={() => void confirm(target)}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Sposta qui
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} {tl("Sposta qui")}
           </Button>
         </DialogFooter>
       </DialogContent>

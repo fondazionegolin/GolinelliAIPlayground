@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { tl } from '@/i18n/tl'
 
 interface ClockConfig {
   style?: 'digital' | 'analog'
@@ -52,7 +53,7 @@ export default function ClockWidget({ config, onConfigChange }: ClockWidgetProps
       <button
         onClick={toggleMode}
         className="absolute top-2 right-2 w-6 h-6 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center opacity-0 group-hover/clock:opacity-100 transition-opacity text-white/40 hover:text-white/70 text-xs font-mono"
-        title={mode === 'digital' ? 'Passa ad analogico' : 'Passa a digitale'}
+        title={mode === 'digital' ? tl("Passa ad analogico") : tl("Passa a digitale")}
       >
         {mode === 'digital' ? '◔' : '0:0'}
       </button>

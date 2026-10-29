@@ -1,4 +1,5 @@
 import { AlertCircle, Gamepad2 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   source: string
@@ -347,7 +348,7 @@ export default function NotebookGame2DPreview({
       <div className="relative h-[calc(100%-49px)]">
         <iframe
           key={previewNonce}
-          title="Anteprima Game 2D"
+          title={tl("Anteprima Game 2D")}
           srcDoc={buildPreviewDoc(source)}
           sandbox="allow-scripts"
           className="h-full w-full border-0 bg-slate-950"
@@ -360,7 +361,7 @@ export default function NotebookGame2DPreview({
           <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-500/30 bg-red-950/85 px-4 py-3 text-sm text-red-100 backdrop-blur">
             <div className="mb-1 flex items-center gap-2 text-red-200">
               <AlertCircle className="h-4 w-4" />
-              Errore nel runner Game 2D
+              {tl("Errore nel runner Game 2D")}
             </div>
             <p className="font-mono text-xs leading-relaxed text-red-50">{runtimeError}</p>
           </div>

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { Plus, Building2 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface Tenant {
   id: string
@@ -38,10 +39,10 @@ export default function TenantsPage() {
       setShowForm(false)
       setName('')
       setSlug('')
-      toast({ title: 'Tenant creato con successo' })
+      toast({ title: tl("Tenant creato con successo") })
     },
     onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nella creazione' })
+      toast({ variant: 'destructive', title: tl("Errore nella creazione") })
     },
   })
 
@@ -53,23 +54,23 @@ export default function TenantsPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Gestione Tenant</h2>
+        <h2 className="text-2xl font-bold">{tl("Gestione Tenant")}</h2>
         <Button onClick={() => setShowForm(!showForm)}>
           <Plus className="h-4 w-4 mr-2" />
-          Nuovo Tenant
+          {tl("Nuovo Tenant")}
         </Button>
       </div>
 
       {showForm && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Crea nuovo Tenant</CardTitle>
+            <CardTitle>{tl("Crea nuovo Tenant")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nome Scuola</Label>
+                  <Label htmlFor="name">{tl("Nome Scuola")}</Label>
                   <Input
                     id="name"
                     value={name}
@@ -79,7 +80,7 @@ export default function TenantsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="slug">Slug (identificativo)</Label>
+                  <Label htmlFor="slug">{tl("Slug (identificativo)")}</Label>
                   <Input
                     id="slug"
                     value={slug}
@@ -91,10 +92,10 @@ export default function TenantsPage() {
               </div>
               <div className="flex gap-2">
                 <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creazione...' : 'Crea Tenant'}
+                  {createMutation.isPending ? tl("Creazione...") : tl("Crea Tenant")}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
-                  Annulla
+                  {tl("Annulla")}
                 </Button>
               </div>
             </form>
@@ -103,7 +104,7 @@ export default function TenantsPage() {
       )}
 
       {isLoading ? (
-        <p>Caricamento...</p>
+        <p>{tl("Caricamento...")}</p>
       ) : (
         <div className="grid gap-4">
           {tenants?.map((tenant) => (

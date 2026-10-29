@@ -9,6 +9,7 @@ import { Lens, NumberLineWidget, calibratedPlot, extraPath, isCalibratedPlot, la
 import { buildTimeline, type Timing } from './drawingTimeline'
 import { arrowHead, bentPath, curlyBrace, rectExit, smoothPath } from './ink'
 import { colorHint, inkMask, type RGB } from './inkMask'
+import { tl } from '@/i18n/tl'
 
 
 /** Left-to-right reveal, one line after the other, like handwriting. */
@@ -23,8 +24,11 @@ function Reveal({ id, box, lines, timing, children }: { id: string; box: Frame; 
   </g>
 }
 
-/** Written results (digits, formulas, curves) stay, faded, after their step; pointers and highlights belong to one step only. */
-const PERSISTENT = new Set(['text', 'number', 'formula', 'plot', 'numberline', 'area_model'])
+/**
+ * The board grows like a teacher's: marks of earlier steps stay. Pointers (highlights, labels, arrows) fade once their
+ * step is over, so the current step stands out; constructions (figures, strokes, writing) stay at full strength.
+ */
+const POINTERS = new Set(['highlight', 'callout', 'lens', 'connector', 'arrow'])
 /** A figure the steps build on (an area model) stays fully visible: only its parts appear step by step. */
 const SCAFFOLD = new Set(['area_model'])
 const MinFont = createContext(0)
@@ -60,7 +64,7 @@ function PlotWidget({ data, prefix, aspect = .7 }: { data: PlotData; prefix: str
   const zeroX = px(Math.min(data.x_max, Math.max(data.x_min, 0)))
   const zeroY = py(Math.min(data.y_max, Math.max(data.y_min, 0)))
   const label = (value: number) => Math.abs(value) < 1e-9 ? '0' : Number(value.toPrecision(3)).toString()
-  return <svg viewBox={`0 0 1000 ${H}`} width="100%" height="100%" overflow="hidden" aria-label="Grafico cartesiano">
+  return <svg viewBox={`0 0 1000 ${H}`} width="100%" height="100%" overflow="hidden" aria-label={tl("Grafico cartesiano")}>
     <defs><clipPath id={`${prefix}-plot-clip`}><rect x={left} y={top} width={width} height={height} /></clipPath><marker id={`${prefix}-axis`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z" fill={INKS.ink} /></marker></defs>
     {Array.from({ length: 6 }, (_, i) => {
       const x = left + i * width / 5, y = top + i * height / 5
@@ -88,7 +92,7 @@ function PlotWidget({ data, prefix, aspect = .7 }: { data: PlotData; prefix: str
 
 function DiagramWidget({ data, prefix, color }: { data: DiagramData; prefix: string; color: string }) {
   const bounds = (id: string) => boxInFrame(data.nodes.find(n => n.id === id)!.box, { x: 0, y: 0, width: 1000, height: 700 })
-  return <svg viewBox="0 0 1000 700" width="100%" height="100%" overflow="hidden" aria-label="Diagramma con nodi e collegamenti">
+  return <svg viewBox="0 0 1000 700" width="100%" height="100%" overflow="hidden" aria-label={tl("Diagramma con nodi e collegamenti")}>
     <defs><marker id={`${prefix}-edge`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill={color} /></marker></defs>
     {data.edges.map((edge, i) => {
       const [a, b] = edgePoints(bounds(edge.source), bounds(edge.target))
@@ -105,7 +109,7 @@ function FretboardWidget({ data, color }: { data: FretboardData; color: string }
   const left = 145, right = 855, top = 210, bottom = 980
   const x = (i: number) => left + i * (right - left) / 5
   const fretHeight = (bottom - top) / data.visible_frets
-  return <svg viewBox="0 0 1000 1170" width="100%" height="100%" overflow="hidden" aria-label={`Diagramma di chitarra: ${data.label}`}>
+  return <svg viewBox="0 0 1000 1170" width="100%" height="100%" overflow="hidden" aria-label={tl("Diagramma di chitarra: {0}", data.label)}>
     <WrappedText text={data.label} box={{ x: 30, y: 20, width: 940, height: 90 }} size={64} color={color} center />
     {Array.from({ length: data.visible_frets + 1 }, (_, i) => <path key={i} d={`M${left} ${top + i * fretHeight}H${right}`} stroke={INKS.ink} strokeWidth={i === 0 && data.start_fret === 1 ? 12 : 3} />)}
     {data.frets.map((fret, i) => <g key={i}>
@@ -118,15 +122,15 @@ function FretboardWidget({ data, color }: { data: FretboardData; color: string }
       </>}
     </g>)}
     {Array.from({ length: data.visible_frets }, (_, i) => <text key={i} x="70" y={top + (i + .5) * fretHeight + 10} textAnchor="middle" fill="#788498" fontSize="30">{data.start_fret + i}</text>)}
-    <text x="500" y="1150" textAnchor="middle" fontSize="28" fill="#788498">Dita: 1 indice · 2 medio · 3 anulare · 4 mignolo</text>
+    <text x="500" y="1150" textAnchor="middle" fontSize="28" fill="#788498">{tl("Dita: 1 indice · 2 medio · 3 anulare · 4 mignolo")}</text>
   </svg>
 }
 
 function RhythmWidget({ data, color }: { data: RhythmData; color: string }) {
   const total = data.events.reduce((sum, e) => sum + e.beats, 0), left = 65, length = 870
   let time = 0
-  return <svg viewBox="0 0 1000 520" width="100%" height="100%" overflow="hidden" aria-label="Note e conteggio ritmico">
-    <text x="65" y="60" fontSize="34" fill={INKS.ink}>{data.beats_per_bar}/{data.beat_unit} · durata e conteggio</text>
+  return <svg viewBox="0 0 1000 520" width="100%" height="100%" overflow="hidden" aria-label={tl("Note e conteggio ritmico")}>
+    <text x="65" y="60" fontSize="34" fill={INKS.ink}>{data.beats_per_bar}/{data.beat_unit} {tl("· durata e conteggio")}</text>
     <path d={`M${left} 345H${left + length}`} stroke={INKS.ink} strokeWidth="3" />
     {Array.from({ length: Math.ceil(total) + 1 }, (_, i) => <g key={i}>
       <path d={`M${left + i * length / total} 330V365`} stroke={i % data.beats_per_bar === 0 ? color : '#929dab'} strokeWidth={i % data.beats_per_bar === 0 ? 4 : 2} />
@@ -233,13 +237,13 @@ function PlotControls({ mark, area, font, values, onParam, appear }: {
   return <motion.g {...appear}>
     <foreignObject {...area}>
       <div className="vc-canvas-explorer" style={{ fontSize: font }} onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
-        <div className="vc-cx-head"><strong>{plot.formula || 'Parametri'}</strong>
-          {values && <button type="button" onClick={() => onParam(mark.id, '*', null)}>Ripristina</button>}</div>
+        <div className="vc-cx-head"><strong>{plot.formula || tl("Parametri")}</strong>
+          {values && <button type="button" onClick={() => onParam(mark.id, '*', null)}>{tl("Ripristina")}</button>}</div>
         {shown.map(i => <div key={i} className="vc-cx-live">{liveFormula(live[i])}</div>)}
         {sliders.map(s => {
           const key = sliderKey(s), value = values?.[key] ?? sliderDefault(plot, s)
           return <label key={key} className="vc-cx-row"><span>{s.label}</span>
-            <input type="range" min={s.min} max={s.max} step={s.step} value={value} aria-label={`Parametro ${s.label}`}
+            <input type="range" min={s.min} max={s.max} step={s.step} value={value} aria-label={tl("Parametro {0}", s.label)}
               onChange={e => onParam(mark.id, key, Number(e.target.value))} />
             <output>{fmt(value)}</output></label>
         })}
@@ -342,7 +346,7 @@ export default function BlackboardDrawing({ scene, layout, regions, visibleStep,
       <filter id={`${prefix}-feather`} x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation={unit * .012} /></filter>
       <filter id={`${prefix}-glow`} x="-20%" y="-20%" width="140%" height="140%"><feMorphology operator="dilate" radius={unit * .0025} /><feGaussianBlur stdDeviation={unit * .004} /></filter>
     </defs>
-    {scene.elements.filter(m => m.kind !== 'spotlight' && (!stepwise || m.step === visibleStep || (m.step < visibleStep && PERSISTENT.has(m.kind)))).map(m => {
+    {scene.elements.filter(m => m.kind !== 'spotlight' && (!stepwise || m.carried || m.step <= visibleStep)).map(m => {
       const f = frame(m), b = bounds(m), color = INKS[m.color], textColor = TEXT_INKS[m.color], size = geometry.fontSize(m)
       const stroke = Math.max(f.width, unit * .6) * m.stroke_width / 100
       const points = geometry.markPoints(m)
@@ -402,7 +406,7 @@ export default function BlackboardDrawing({ scene, layout, regions, visibleStep,
       const region = m.from_region_id ? geometry.regionRect(m.from_region_id) : null
       const explorer = m.kind === 'plot' && m.box && m.plot?.sliders?.length && onParam && !snapshot ? explorerLayout(b, f, m.plot, f !== layout.image) : null
       return <g key={m.id} transform={shift ? `translate(${shift.x} ${shift.y})` : undefined} data-drawing-kind={m.kind} data-drawing-id={m.id}
-        opacity={stepwise && m.step < visibleStep && !SCAFFOLD.has(m.kind) ? .38 : 1}>
+        opacity={m.carried || (stepwise && m.step < visibleStep) ? (POINTERS.has(m.kind) ? .35 : m.carried && !SCAFFOLD.has(m.kind) ? .8 : 1) : 1}>
         <title>{m.text || m.fretboard?.label || m.id}</title>
         {m.kind === 'highlight' && (() => {
           const regionInfo = m.from_region_id ? regions.find(r => r.id === m.from_region_id) : undefined
@@ -449,7 +453,7 @@ export default function BlackboardDrawing({ scene, layout, regions, visibleStep,
           </>
         })()}
         {explorer && <PlotControls mark={m} area={explorer.controls} font={explorer.font} values={params?.[m.id]} onParam={onParam!} appear={appear} />}
-        {m.kind === 'area_model' && m.area_model && <AreaModelFigure data={m.area_model} box={b} step={visibleStep} stepwise={stepwise} markStep={m.step}
+        {m.kind === 'area_model' && m.area_model && <AreaModelFigure data={m.area_model} box={b} step={visibleStep} stepwise={stepwise && !m.carried} markStep={m.step}
           animating={playing} delay={timing?.delay ?? .2} />}
         {['plot', 'diagram', 'fretboard', 'rhythm'].includes(m.kind) && m.box && <motion.svg {...(explorer?.plot ?? b)} overflow="hidden" {...appear}>
           {m.kind === 'plot' && m.plot && <PlotWidget data={withParams(m.plot, params?.[m.id])} prefix={`${prefix}-${m.id}`}

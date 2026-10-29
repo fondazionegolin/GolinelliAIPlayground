@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Sparkles, X, Check, Loader2, Zap, Expand } from '@/components/icons'
 import { teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotPromptOptimizerProps {
     selectedText: string
@@ -68,9 +69,9 @@ export function TeacherbotPromptOptimizer({
             })
             const msg = (response.data?.prompt || '').trim()
             if (msg) setResult(msg)
-            else setError('Nessuna risposta ricevuta')
+            else setError(tl("Nessuna risposta ricevuta"))
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Errore durante la generazione')
+            setError(err.response?.data?.detail || tl("Errore durante la generazione"))
         } finally {
             setIsLoading(false)
         }
@@ -102,7 +103,7 @@ export function TeacherbotPromptOptimizer({
                 {!result && (
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                         <p className="text-xs text-slate-500 font-medium mb-1">
-                            {isExpand ? 'Regola da espandere:' : 'Testo selezionato:'}
+                            {isExpand ? tl("Regola da espandere:") : tl("Testo selezionato:")}
                         </p>
                         <p className="text-sm text-slate-700 italic line-clamp-3">"{selectedText}"</p>
                     </div>
@@ -110,7 +111,7 @@ export function TeacherbotPromptOptimizer({
 
                 {isExpand && !result && !isLoading && (
                     <p className="text-xs text-slate-500 text-center">
-                        L'AI trasformerà questa istruzione in 4-6 regole comportamentali concrete e specifiche.
+                        {tl("L'AI trasformerà questa istruzione in 4-6 regole comportamentali concrete e specifiche.")}
                     </p>
                 )}
 
@@ -121,7 +122,7 @@ export function TeacherbotPromptOptimizer({
                         className={`w-full text-white gap-2 ${isExpand ? 'bg-indigo-700 hover:bg-indigo-800' : 'bg-[#181b1e] hover:bg-[#0f1113]'}`}
                     >
                         {isExpand ? <Expand className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
-                        {isExpand ? 'Genera Regole' : 'Espandi System Prompt'}
+                        {isExpand ? tl("Genera Regole") : tl("Espandi System Prompt")}
                     </Button>
                 )}
 
@@ -130,7 +131,7 @@ export function TeacherbotPromptOptimizer({
                     <div className="py-8 flex flex-col items-center justify-center gap-3">
                         <Loader2 className={`h-8 w-8 animate-spin ${isExpand ? 'text-indigo-600' : 'text-neutral-900'}`} />
                         <p className="text-sm text-slate-600 font-medium">
-                            {isExpand ? 'Generazione regole in corso...' : "L'AI sta scrivendo il prompt migliore..."}
+                            {isExpand ? tl("Generazione regole in corso...") : tl("L'AI sta scrivendo il prompt migliore...")}
                         </p>
                     </div>
                 )}
@@ -139,7 +140,7 @@ export function TeacherbotPromptOptimizer({
                 {error && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
                         {error}
-                        <Button variant="link" onClick={() => setError(null)} className="h-auto p-0 ml-2">Riprova</Button>
+                        <Button variant="link" onClick={() => setError(null)} className="h-auto p-0 ml-2">{tl("Riprova")}</Button>
                     </div>
                 )}
 
@@ -148,20 +149,20 @@ export function TeacherbotPromptOptimizer({
                     <div className="flex flex-col gap-3 flex-1 overflow-hidden">
                         <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-slate-800">
-                                {isExpand ? 'Regole generate:' : 'Proposta AI:'}
+                                {isExpand ? tl("Regole generate:") : tl("Proposta AI:")}
                             </span>
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-y-auto min-h-[120px] max-h-64">
                             <p className="text-xs font-mono whitespace-pre-wrap text-slate-700">{result}</p>
                         </div>
                         <div className="flex gap-2 shrink-0">
-                            <Button variant="outline" onClick={() => setResult(null)} className="flex-1">Indietro</Button>
+                            <Button variant="outline" onClick={() => setResult(null)} className="flex-1">{tl("Indietro")}</Button>
                             <Button
                                 onClick={() => { onApply(result); onClose() }}
                                 className={`flex-1 text-white gap-2 ${isExpand ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'}`}
                             >
                                 <Check className="h-4 w-4" />
-                                Applica
+                                {tl("Applica")}
                             </Button>
                         </div>
                     </div>

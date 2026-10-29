@@ -1,5 +1,6 @@
 import { FileSpreadsheet, FileText, Globe2, MonitorPlay, PenTool, type LucideIcon } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
+import { tl } from '@/i18n/tl'
 
 export type DocumentKind = 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'
 
@@ -14,12 +15,12 @@ type ParsedForKind = {
 }
 
 const KIND_META: Record<DocumentKind, { icon: LucideIcon; it: string; en: string; badge: string; soft: string }> = {
-  document: { icon: FileText, it: 'Documento', en: 'Document', badge: 'bg-emerald-600 text-white', soft: 'bg-emerald-50 text-emerald-600' },
-  presentation: { icon: MonitorPlay, it: 'Presentazione', en: 'Presentation', badge: 'bg-indigo-600 text-white', soft: 'bg-indigo-50 text-indigo-600' },
-  sheet: { icon: FileSpreadsheet, it: 'Tabella', en: 'Table', badge: 'bg-sky-600 text-white', soft: 'bg-sky-50 text-sky-600' },
-  canvas: { icon: PenTool, it: 'Lavagna', en: 'Board', badge: 'bg-amber-500 text-white', soft: 'bg-amber-50 text-amber-600' },
+  document: { icon: FileText, it: tl("Documento"), en: 'Document', badge: 'bg-emerald-600 text-white', soft: 'bg-emerald-50 text-emerald-600' },
+  presentation: { icon: MonitorPlay, it: tl("Presentazione"), en: 'Presentation', badge: 'bg-indigo-600 text-white', soft: 'bg-indigo-50 text-indigo-600' },
+  sheet: { icon: FileSpreadsheet, it: tl("Tabella"), en: 'Table', badge: 'bg-sky-600 text-white', soft: 'bg-sky-50 text-sky-600' },
+  canvas: { icon: PenTool, it: tl("Lavagna"), en: 'Board', badge: 'bg-amber-500 text-white', soft: 'bg-amber-50 text-amber-600' },
   pdf: { icon: FileText, it: 'PDF', en: 'PDF', badge: 'bg-rose-600 text-white', soft: 'bg-rose-50 text-rose-600' },
-  web: { icon: Globe2, it: 'Pagina web', en: 'Web page', badge: 'bg-fuchsia-600 text-white', soft: 'bg-fuchsia-50 text-fuchsia-600' },
+  web: { icon: Globe2, it: tl("Pagina web"), en: 'Web page', badge: 'bg-fuchsia-600 text-white', soft: 'bg-fuchsia-50 text-fuchsia-600' },
 }
 
 /** Resolves what a stored document really is from its content, falling back to the declared type. */

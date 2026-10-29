@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { teacherApi, chatApi } from '@/lib/api'
 import ChatSidebar from '@/components/ChatSidebar'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
+import { tl } from '@/i18n/tl'
 
 interface Session {
   id: string
@@ -62,7 +63,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
 
   const handleClearChat = async () => {
     if (!selectedSessionId) return
-    if (confirm('Sei sicuro di voler cancellare tutti i messaggi della chat pubblica di questa sessione?')) {
+    if (confirm(tl("Sei sicuro di voler cancellare tutti i messaggi della chat pubblica di questa sessione?"))) {
       try {
         await chatApi.clearSessionMessages(selectedSessionId)
         // Force refresh by toggling session selection or via ChatSidebar prop if available
@@ -73,7 +74,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
         setTimeout(() => setSelectedSessionId(current), 100)
       } catch (e) {
         console.error("Failed to clear chat", e)
-        alert('Errore durante la cancellazione della chat')
+        alert(tl("Errore durante la cancellazione della chat"))
       }
     }
   }
@@ -96,14 +97,14 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
             </div>
             <div className="flex-1 min-w-0">
               <label className="text-xs font-bold text-neutral-900 uppercase tracking-wide block mb-1">
-                Chat sessione
+                {tl("Chat sessione")}
               </label>
               <select
                 value={selectedSessionId || ''}
                 onChange={(e) => handleSessionChange(e.target.value)}
                 className="w-full bg-white border border-[#181b1e]/20 rounded-md py-1.5 px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#181b1e]/20 cursor-pointer"
               >
-                <option value="" disabled>Seleziona una sessione...</option>
+                <option value="" disabled>{tl("Seleziona una sessione...")}</option>
                 {sessions.map(s => (
                   <option key={s.id} value={s.id}>
                     {s.class_name ? `${s.class_name} - ` : ''}{s.title}
@@ -114,7 +115,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
           </div>
           <div className="flex gap-1 ml-2 shrink-0">
             {selectedSessionId && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 hover:text-red-600" onClick={handleClearChat} title="Svuota chat">
+              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 hover:text-red-600" onClick={handleClearChat} title={tl("Svuota chat")}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
@@ -143,8 +144,8 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                 <MessageSquare className="h-8 w-8 text-slate-300" />
               </div>
-              <h3 className="font-semibold text-slate-600 mb-1">Nessuna sessione selezionata</h3>
-              <p className="text-sm">Seleziona una sessione per visualizzare la chat di classe e le chat private.</p>
+              <h3 className="font-semibold text-slate-600 mb-1">{tl("Nessuna sessione selezionata")}</h3>
+              <p className="text-sm">{tl("Seleziona una sessione per visualizzare la chat di classe e le chat private.")}</p>
             </div>
           )}
         </div>

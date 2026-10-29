@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 export const DOCUMENT_IMPORT_ACCEPT = '.pdf,.ppt,.pptx,.doc,.docx,.md,.xls,.xlsx,.csv'
 
 export const DOCUMENT_IMPORT_EXTENSIONS = new Set(['pdf', 'ppt', 'pptx', 'doc', 'docx', 'md', 'xls', 'xlsx', 'csv'])
@@ -23,7 +24,7 @@ export function isSupportedDocumentFile(file: File): boolean {
 }
 
 export function downloadExportedDocument(blob: Blob, title: string, extension: string): void {
-  const safeTitle = title.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'Documento'
+  const safeTitle = title.replace(/[\\/:*?"<>|]+/g, '_').trim() || tl("Documento")
   const url = URL.createObjectURL(blob)
   const anchor = window.document.createElement('a')
   anchor.href = url

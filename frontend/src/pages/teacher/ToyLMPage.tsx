@@ -30,6 +30,7 @@ import ToyLMEmbeddingPanel, { type ToyLMEmbeddingPayload } from '@/components/to
 import ToyLMCorpusPicker, { type ToyLMCorpusSelection } from '@/components/toy-lm/ToyLMCorpusPicker'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,39 +98,39 @@ const DEFAULT_PARAMS: HyperParams = {
 
 const PARAM_HELP: Record<string, { title: string; explanation: string; effect: string }> = {
   'Seq len': {
-    title: 'Lunghezza della sequenza',
-    explanation: 'Indica quante parole o caratteri il modello osserva insieme per provare a prevedere quello successivo.',
-    effect: 'Un valore più alto offre più contesto, ma richiede più memoria e rende il training più lento.',
+    title: tl("Lunghezza della sequenza"),
+    explanation: tl("Indica quante parole o caratteri il modello osserva insieme per provare a prevedere quello successivo."),
+    effect: tl("Un valore più alto offre più contesto, ma richiede più memoria e rende il training più lento."),
   },
   'Batch size': {
-    title: 'Dimensione del gruppo',
-    explanation: 'È il numero di esempi che il modello studia prima di aggiornare ciò che ha imparato.',
-    effect: 'Gruppi grandi rendono gli aggiornamenti più regolari, ma consumano più memoria. Per iniziare, il valore predefinito va bene.',
+    title: tl("Dimensione del gruppo"),
+    explanation: tl("È il numero di esempi che il modello studia prima di aggiornare ciò che ha imparato."),
+    effect: tl("Gruppi grandi rendono gli aggiornamenti più regolari, ma consumano più memoria. Per iniziare, il valore predefinito va bene."),
   },
   'Embed dim': {
-    title: 'Dimensione delle rappresentazioni',
-    explanation: 'Ogni parola o carattere viene trasformato in una lista di numeri. Questo valore decide quanto è ricca quella rappresentazione.',
-    effect: 'Valori più alti possono cogliere più sfumature, ma aumentano dimensione e tempo di allenamento del modello.',
+    title: tl("Dimensione delle rappresentazioni"),
+    explanation: tl("Ogni parola o carattere viene trasformato in una lista di numeri. Questo valore decide quanto è ricca quella rappresentazione."),
+    effect: tl("Valori più alti possono cogliere più sfumature, ma aumentano dimensione e tempo di allenamento del modello."),
   },
   'Hidden size': {
-    title: 'Capacità della memoria interna',
-    explanation: 'Indica quanto spazio ha il modello per ricordare schemi e collegamenti incontrati nel testo.',
-    effect: 'Più capacità può aiutare con testi complessi, ma rallenta il training e può far memorizzare troppo un corpus piccolo.',
+    title: tl("Capacità della memoria interna"),
+    explanation: tl("Indica quanto spazio ha il modello per ricordare schemi e collegamenti incontrati nel testo."),
+    effect: tl("Più capacità può aiutare con testi complessi, ma rallenta il training e può far memorizzare troppo un corpus piccolo."),
   },
   'Num layers': {
-    title: 'Numero di livelli',
-    explanation: 'I livelli elaborano il testo uno dopo l’altro, costruendo rappresentazioni progressivamente più complesse.',
-    effect: 'Più livelli aumentano la capacità del modello, ma anche tempi, memoria richiesta e rischio di imparare il testo a memoria.',
+    title: tl("Numero di livelli"),
+    explanation: tl("I livelli elaborano il testo uno dopo l’altro, costruendo rappresentazioni progressivamente più complesse."),
+    effect: tl("Più livelli aumentano la capacità del modello, ma anche tempi, memoria richiesta e rischio di imparare il testo a memoria."),
   },
   'Epoche': {
-    title: 'Passaggi sul testo',
-    explanation: 'Un’epoca è un giro completo su tutto il materiale caricato. Il modello rilegge il corpus una volta per ogni epoca.',
-    effect: 'Con poche epoche può imparare poco; con troppe può memorizzare il testo invece di generalizzare.',
+    title: tl("Passaggi sul testo"),
+    explanation: tl("Un’epoca è un giro completo su tutto il materiale caricato. Il modello rilegge il corpus una volta per ogni epoca."),
+    effect: tl("Con poche epoche può imparare poco; con troppe può memorizzare il testo invece di generalizzare."),
   },
   'Learning rate': {
-    title: 'Velocità di apprendimento',
-    explanation: 'Determina quanto il modello modifica le proprie regole interne dopo ogni errore.',
-    effect: 'Un valore alto impara rapidamente ma può essere instabile; uno basso è più prudente ma richiede più tempo.',
+    title: tl("Velocità di apprendimento"),
+    explanation: tl("Determina quanto il modello modifica le proprie regole interne dopo ogni errore."),
+    effect: tl("Un valore alto impara rapidamente ma può essere instabile; uno basso è più prudente ma richiede più tempo."),
   },
 }
 
@@ -172,7 +173,7 @@ export default function ToyLMPage() {
   const renameCancelRef = useRef(false)
 
   // New job form
-  const [newJobName, setNewJobName] = useState('Modello 1')
+  const [newJobName, setNewJobName] = useState(tl("Modello 1"))
   const [corpus, setCorpus] = useState<ToyLMCorpusSelection | null>(null)
   const [isLoadingCorpus, setIsLoadingCorpus] = useState(false)
   const newCorpus = corpus?.text ?? ''
@@ -221,7 +222,7 @@ export default function ToyLMPage() {
         return data[0]?.id ?? null
       })
     } catch (e) {
-      setStatusMsg('Errore caricamento jobs: ' + (e as Error).message)
+      setStatusMsg(tl("Errore caricamento jobs: ") + (e as Error).message)
     } finally {
       setIsLoadingJobs(false)
     }
@@ -288,9 +289,9 @@ export default function ToyLMPage() {
         setIsStreaming(false)
         es.close()
         loadJobs()
-        if (type === 'error') setStatusMsg('Errore training: ' + String(event.message ?? ''))
+        if (type === 'error') setStatusMsg(tl("Errore training: ") + String(event.message ?? ''))
       } else if (type === 'queued') {
-        setStatusMsg(`In coda — posizione ${event.queuePosition}`)
+        setStatusMsg(tl("In coda — posizione {0}", event.queuePosition))
         setIsStreaming(false)
         es.close()
       }
@@ -318,21 +319,21 @@ export default function ToyLMPage() {
   // ── Create new job ────────────────────────────────────────────────────────
 
   const handleCreateJob = useCallback(async () => {
-    if (!newCorpus.trim()) { setStatusMsg('Scegli un testo prima di creare il modello'); return }
+    if (!newCorpus.trim()) { setStatusMsg(tl("Scegli un testo prima di creare il modello")); return }
     setIsWorking(true)
     try {
       const job: Job = await apiFetch('/jobs', {
         method: 'POST',
-        body: JSON.stringify({ name: newJobName.trim() || 'Modello senza nome', corpus: newCorpus, hyperparams: params }),
+        body: JSON.stringify({ name: newJobName.trim() || tl("Modello senza nome"), corpus: newCorpus, hyperparams: params }),
       })
       setJobs(prev => [job, ...prev])
       setSelectedJobId(job.id)
       setParams(job.hyperparams)
       setCorpus(null)
       setShowCreate(false)
-      setStatusMsg(`Modello "${job.name}" creato: ${job.vocabSize.toLocaleString('it-IT')} token nel vocabolario. Premi “Avvia training” per iniziare il pretraining.`)
+      setStatusMsg(tl("Modello \"{0}\" creato: {1} token nel vocabolario. Premi “Avvia training” per iniziare il pretraining.", job.name, job.vocabSize.toLocaleString('it-IT')))
     } catch (e) {
-      setStatusMsg('Errore creazione job: ' + (e as Error).message)
+      setStatusMsg(tl("Errore creazione job: ") + (e as Error).message)
     } finally {
       setIsWorking(false)
     }
@@ -346,13 +347,13 @@ export default function ToyLMPage() {
     setIsPausedLocally(false)
     try {
       const res = await apiFetch(`/jobs/${selectedJobId}/start`, { method: 'POST' })
-      setStatusMsg(res.message ?? 'Avviato')
+      setStatusMsg(res.message ?? tl("Avviato"))
       await loadJobs()
       if (res.queuePosition === 0) {
         connectSSE(selectedJobId)
       }
     } catch (e) {
-      setStatusMsg('Errore: ' + (e as Error).message)
+      setStatusMsg(tl("Errore: ") + (e as Error).message)
     } finally {
       setIsWorking(false)
     }
@@ -362,14 +363,14 @@ export default function ToyLMPage() {
     if (!selectedJobId) return
     await apiFetch(`/jobs/${selectedJobId}/pause`, { method: 'POST' }).catch(() => {})
     setIsPausedLocally(true)
-    setStatusMsg('Training in pausa…')
+    setStatusMsg(tl("Training in pausa…"))
   }, [selectedJobId])
 
   const handleResume = useCallback(async () => {
     if (!selectedJobId) return
     await apiFetch(`/jobs/${selectedJobId}/resume`, { method: 'POST' }).catch(() => {})
     setIsPausedLocally(false)
-    setStatusMsg('Training ripreso')
+    setStatusMsg(tl("Training ripreso"))
   }, [selectedJobId])
 
   const handleStop = useCallback(async () => {
@@ -378,7 +379,7 @@ export default function ToyLMPage() {
     setIsStreaming(false)
     setIsPausedLocally(false)
     await apiFetch(`/jobs/${selectedJobId}/stop`, { method: 'POST' }).catch(() => {})
-    setStatusMsg('Training fermato — checkpoint salvato')
+    setStatusMsg(tl("Training fermato — checkpoint salvato"))
     await loadJobs()
   }, [selectedJobId, loadJobs])
 
@@ -432,7 +433,7 @@ export default function ToyLMPage() {
     try {
       await apiFetch(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify({ name: trimmed }) })
     } catch (e) {
-      setStatusMsg('Errore rinomina: ' + (e as Error).message)
+      setStatusMsg(tl("Errore rinomina: ") + (e as Error).message)
       loadJobs()
     }
   }, [jobs, loadJobs])
@@ -444,13 +445,13 @@ export default function ToyLMPage() {
 
   const handleDeleteJob = useCallback(async (jobId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Eliminare questo job e il suo checkpoint?')) return
+    if (!confirm(tl("Eliminare questo job e il suo checkpoint?"))) return
     try {
       await apiFetch(`/jobs/${jobId}`, { method: 'DELETE' })
       setJobs(prev => prev.filter(j => j.id !== jobId))
       if (selectedJobId === jobId) setSelectedJobId(null)
     } catch (err) {
-      setStatusMsg('Errore eliminazione: ' + (err as Error).message)
+      setStatusMsg(tl("Errore eliminazione: ") + (err as Error).message)
     }
   }, [selectedJobId])
 
@@ -499,7 +500,7 @@ export default function ToyLMPage() {
         await loadShareSessions(firstClass.id)
       }
     } catch (err) {
-      setShareStatus('Errore caricamento classi: ' + (err as Error).message)
+      setShareStatus(tl("Errore caricamento classi: ") + (err as Error).message)
     } finally {
       setIsLoadingShareTargets(false)
     }
@@ -512,7 +513,7 @@ export default function ToyLMPage() {
     try {
       await loadShareSessions(classId)
     } catch (err) {
-      setShareStatus('Errore caricamento sessioni: ' + (err as Error).message)
+      setShareStatus(tl("Errore caricamento sessioni: ") + (err as Error).message)
     } finally {
       setIsLoadingShareTargets(false)
     }
@@ -527,10 +528,10 @@ export default function ToyLMPage() {
         method: 'POST',
         body: JSON.stringify({ session_id: shareSessionId }),
       })
-      setShareStatus('Modello condiviso nella chat di classe.')
-      setStatusMsg('Modello condiviso nella chat di classe.')
+      setShareStatus(tl("Modello condiviso nella chat di classe."))
+      setStatusMsg(tl("Modello condiviso nella chat di classe."))
     } catch (err) {
-      setShareStatus('Errore condivisione: ' + (err as Error).message)
+      setShareStatus(tl("Errore condivisione: ") + (err as Error).message)
     } finally {
       setIsSharing(false)
     }
@@ -575,10 +576,10 @@ export default function ToyLMPage() {
         <SidebarRail
           className="hidden md:flex"
           label="ToyGPT"
-          expandLabel="Espandi elenco modelli"
+          expandLabel={tl("Espandi elenco modelli")}
           onExpand={() => setSidebarCollapsed(false)}
           onCreate={() => { setSidebarCollapsed(false); openCreate() }}
-          createLabel="Nuovo modello"
+          createLabel={tl("Nuovo modello")}
           items={jobs.map(job => ({
             id: job.id,
             title: job.name,
@@ -595,31 +596,31 @@ export default function ToyLMPage() {
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-black leading-tight">ToyGPT</p>
-            <p className="text-[10px] text-[var(--text-muted)]">Crea un modello linguistico da zero</p>
+            <p className="text-[10px] text-[var(--text-muted)]">{tl("Crea un modello linguistico da zero")}</p>
           </div>
           <span className="ml-auto hidden md:block">
-            <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label="Comprimi elenco modelli" />
+            <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label={tl("Comprimi elenco modelli")} />
           </span>
         </div>
 
         <div className="px-3 pt-3">
           <Button tone="accent" surface={showCreate ? 'soft' : 'solid'} density="compact" fullWidth onClick={openCreate}>
-            <Plus className="h-3.5 w-3.5" /> Nuovo modello
+            <Plus className="h-3.5 w-3.5" /> {tl("Nuovo modello")}
           </Button>
         </div>
 
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Modelli</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{tl("Modelli")}</span>
           <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">
-            {isLoadingJobs ? 'Caricamento…' : jobs.length}
+            {isLoadingJobs ? tl("Caricamento…") : jobs.length}
           </span>
         </div>
 
             <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3 overscroll-contain">
           {isLoadingJobs && jobs.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-[var(--text-muted)]">Caricamento…</p>
+            <p className="px-2 py-6 text-center text-xs text-[var(--text-muted)]">{tl("Caricamento…")}</p>
           ) : jobs.length === 0 ? (
-            <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">Nessun modello creato.</p>
+            <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">{tl("Nessun modello creato.")}</p>
           ) : (
             jobs.map(job => {
               const selected = selectedJobId === job.id
@@ -664,7 +665,7 @@ export default function ToyLMPage() {
                       <button
                         onClick={e => handleDeleteJob(job.id, e)}
                         className="flex h-10 w-10 items-center justify-center rounded-xl text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500 md:h-auto md:w-auto md:rounded-md md:p-1"
-                        title="Elimina"
+                        title={tl("Elimina")}
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -683,7 +684,7 @@ export default function ToyLMPage() {
         {/* Top bar */}
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 backdrop-blur-md md:px-5 md:py-2.5">
           <h1 className="truncate text-sm font-black tracking-tight">
-            {showCreate ? 'Nuovo modello' : selectedJob ? selectedJob.name : 'ToyGPT'}
+            {showCreate ? tl("Nuovo modello") : selectedJob ? selectedJob.name : 'ToyGPT'}
           </h1>
           {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
           <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -691,7 +692,7 @@ export default function ToyLMPage() {
               <>
                 <Button tone="neutral" surface="outline" density="compact" disabled={!canGenerate} onClick={openShareDialog}>
                   <Share2 className="h-3.5 w-3.5" />
-                  Condividi
+                  {tl("Condividi")}
                 </Button>
                 <StatusPill job={selectedJob} isRunning={isRunning} isQueued={isQueued} currentEpoch={currentEpoch} />
               </>
@@ -712,9 +713,9 @@ export default function ToyLMPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FlaskConical className="h-4 w-4 text-[var(--logo-violet)]" />
-                  <span className="text-sm font-black">Nuovo modello</span>
+                  <span className="text-sm font-black">{tl("Nuovo modello")}</span>
                 </div>
-                <button onClick={() => setShowCreate(false)} className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title="Annulla">
+                <button onClick={() => setShowCreate(false)} className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title={tl("Annulla")}>
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -722,30 +723,30 @@ export default function ToyLMPage() {
               <ToyLMIntroduction />
 
               <div>
-                <FieldLabel>Nome del modello</FieldLabel>
+                <FieldLabel>{tl("Nome del modello")}</FieldLabel>
                 <Input
                   value={newJobName}
-                  aria-label="Nome del modello"
+                  aria-label={tl("Nome del modello")}
                   maxLength={120}
                   onChange={e => setNewJobName(e.target.value)}
-                  placeholder="es. Modello italiano, LM Shakespeare…"
+                  placeholder={tl("es. Modello italiano, LM Shakespeare…")}
                 />
               </div>
 
               <ToyLMCorpusPicker value={corpus} onChange={setCorpus} onBusyChange={setIsLoadingCorpus} />
 
               <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] p-4">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">2. Scegli quanto allenarlo</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">{tl("2. Scegli quanto allenarlo")}</h3>
                 <ParamSlider label="Epoche" value={params.totalEpochs} min={1} max={100} step={1} onChange={v => setParams(p => ({ ...p, totalEpochs: v }))} />
-                <p className="text-xs leading-5 text-[var(--text-secondary)]">Un’epoca è una lettura completa del testo. Inizia con 20: più passaggi possono aiutare, ma possono anche portare a imparare il brano a memoria.</p>
-                <p className="text-[11px] leading-5 text-[var(--text-muted)]">La rete lavora su parole e punteggiatura. Le altre impostazioni sono già pronte per questo esperimento.</p>
+                <p className="text-xs leading-5 text-[var(--text-secondary)]">{tl("Un’epoca è una lettura completa del testo. Inizia con 20: più passaggi possono aiutare, ma possono anche portare a imparare il brano a memoria.")}</p>
+                <p className="text-[11px] leading-5 text-[var(--text-muted)]">{tl("La rete lavora su parole e punteggiatura. Le altre impostazioni sono già pronte per questo esperimento.")}</p>
               </div>
 
               <Button tone="accent" surface="solid" fullWidth disabled={!newCorpus.trim() || isWorking || isLoadingCorpus} onClick={handleCreateJob}>
                 {isWorking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {isWorking ? 'Creazione in corso…' : 'Crea modello'}
+                {isWorking ? tl("Creazione in corso…") : tl("Crea modello")}
               </Button>
-              <p className="text-center text-[11px] text-[var(--text-muted)]">Nel passaggio successivo potrai avviare il training e seguirne i progressi.</p>
+              <p className="text-center text-[11px] text-[var(--text-muted)]">{tl("Nel passaggio successivo potrai avviare il training e seguirne i progressi.")}</p>
             </Card>
 
           /* ── Selected job dashboard ── */
@@ -763,24 +764,24 @@ export default function ToyLMPage() {
                     {!isRunning && !isQueued && (
                       <Button tone="accent" surface="solid" density="compact" disabled={!canStart || isWorking} onClick={handleStart}>
                         <Play className="h-3.5 w-3.5" />
-                        {selectedJob.savedEpoch > 0 ? `Riprendi · epoch ${selectedJob.savedEpoch}` : 'Avvia training'}
+                        {selectedJob.savedEpoch > 0 ? tl("Riprendi · epoch {0}", selectedJob.savedEpoch) : tl("Avvia training")}
                       </Button>
                     )}
                     {isRunning && (isPausedLocally ? (
-                      <Button tone="accent" surface="solid" density="compact" onClick={handleResume}><Play className="h-3.5 w-3.5" /> Riprendi</Button>
+                      <Button tone="accent" surface="solid" density="compact" onClick={handleResume}><Play className="h-3.5 w-3.5" /> {tl("Riprendi")}</Button>
                     ) : (
-                      <Button tone="neutral" surface="outline" density="compact" onClick={handlePause}><Pause className="h-3.5 w-3.5" /> Pausa</Button>
+                      <Button tone="neutral" surface="outline" density="compact" onClick={handlePause}><Pause className="h-3.5 w-3.5" /> {tl("Pausa")}</Button>
                     ))}
                     {isRunning && (
                       <Button tone="danger" surface="outline" density="compact" onClick={handleStop}><Square className="h-3.5 w-3.5" /> Stop</Button>
                     )}
                     {isQueued && (
-                      <Button tone="danger" surface="outline" density="compact" onClick={handleStop}><Square className="h-3.5 w-3.5" /> Rimuovi</Button>
+                      <Button tone="danger" surface="outline" density="compact" onClick={handleStop}><Square className="h-3.5 w-3.5" /> {tl("Rimuovi")}</Button>
                     )}
                     {isRunning && (isStreaming ? (
-                      <Button tone="neutral" surface="ghost" density="compact" onClick={() => { sseRef.current?.close(); setIsStreaming(false) }}>Disconnetti</Button>
+                      <Button tone="neutral" surface="ghost" density="compact" onClick={() => { sseRef.current?.close(); setIsStreaming(false) }}>{tl("Disconnetti")}</Button>
                     ) : (
-                      <Button tone="accent" surface="ghost" density="compact" onClick={() => connectSSE(selectedJobId!)}>Riconnetti</Button>
+                      <Button tone="accent" surface="ghost" density="compact" onClick={() => connectSSE(selectedJobId!)}>{tl("Riconnetti")}</Button>
                     ))}
                   </div>
                 </div>
@@ -794,8 +795,8 @@ export default function ToyLMPage() {
 
                 <div>
                   <div className="mb-1 flex justify-between text-[11px] text-[var(--text-muted)]">
-                    <span>{progress}% completato</span>
-                    <span>{selectedJob.savedEpoch}/{params.totalEpochs} epoch salvate</span>
+                    <span>{progress}{tl("% completato")}</span>
+                    <span>{selectedJob.savedEpoch}/{params.totalEpochs} {tl("epoch salvate")}</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--logo-violet-10)]">
                     <div className="h-full rounded-full bg-[var(--logo-violet)] transition-all duration-700" style={{ width: `${progress}%` }} />
@@ -804,11 +805,11 @@ export default function ToyLMPage() {
 
                 {isQueued && (
                   <div className="rounded-xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-3 py-2 text-xs text-[var(--logo-blue-strong)]">
-                    In coda per la GPU — posizione {selectedJob.queuePosition}. Il training partirà automaticamente.
+                    {tl("In coda per la GPU — posizione")} {selectedJob.queuePosition}{tl(". Il training partirà automaticamente.")}
                   </div>
                 )}
                 {selectedJob.errorMessage && (
-                  <div className="rounded-xl border border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] px-3 py-2 text-xs text-[var(--logo-pink)]">Errore: {selectedJob.errorMessage}</div>
+                  <div className="rounded-xl border border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] px-3 py-2 text-xs text-[var(--logo-pink)]">{tl("Errore:")} {selectedJob.errorMessage}</div>
                 )}
               </Card>
 
@@ -822,7 +823,7 @@ export default function ToyLMPage() {
                 <ToyLMEmbeddingPanel
                   key={`embeddings-${selectedJob.id}`}
                   canLoad={!!canGenerate}
-                  unavailableMessage="Completa almeno una epoch (o metti in pausa) prima di esplorare gli embedding."
+                  unavailableMessage={tl("Completa almeno una epoch (o metti in pausa) prima di esplorare gli embedding.")}
                   loadEmbeddings={loadSelectedJobEmbeddings}
                 />
               </Card>
@@ -832,25 +833,25 @@ export default function ToyLMPage() {
 
                 <Card className={`space-y-3 rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES.slate}`}>
                   <div>
-                    <SubLabel>Architettura</SubLabel>
+                    <SubLabel>{tl("Architettura")}</SubLabel>
                     <div className="mt-2 space-y-1 font-mono text-[11px]">
-                      <ArchRow label="Tokenizzazione" val={tokenModeLabel(selectedJob.tokenMode ?? params.tokenMode)} />
+                      <ArchRow label={tl("Tokenizzazione")} val={tokenModeLabel(selectedJob.tokenMode ?? params.tokenMode)} />
                       <ArchRow label="Vocab" val={`${selectedJob.vocabSize} token`} />
                       <ArchRow label="Embedding" val={`${selectedJob.vocabSize} → ${params.embedDim}`} />
                       <ArchRow label={`LSTM ×${params.numLayers}`} val={`→ ${params.hiddenSize}`} />
                       <ArchRow label="Dense" val={`→ ${selectedJob.vocabSize}`} />
                       <div className="mt-1.5 border-t border-[var(--border-subtle)] pt-1.5 font-bold text-[var(--logo-violet)]">
-                        {selectedJob.paramCount.toLocaleString()} parametri totali
+                        {selectedJob.paramCount.toLocaleString()} {tl("parametri totali")}
                       </div>
                     </div>
                   </div>
                   <div className="border-t border-[var(--border-subtle)] pt-3">
-                    <SubLabel>Iperparametri {isRunning && <span className="text-amber-500">· bloccati</span>}</SubLabel>
+                    <SubLabel>{tl("Iperparametri")} {isRunning && <span className="text-amber-500">{tl("· bloccati")}</span>}</SubLabel>
                     <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-2.5">
                       <ParamSlider label="Epoche" value={params.totalEpochs} min={1} max={100} step={1} disabled={isRunning} onChange={v => handleParamsChange({...params, totalEpochs: v})} />
                       <ParamSlider label="Batch size" value={params.batchSize} min={16} max={256} step={16} disabled={isRunning} onChange={v => handleParamsChange({...params, batchSize: v})} />
                       <ParamSlider label="Learning rate" value={params.learningRate} min={0.0001} max={0.01} step={0.0001} disabled={isRunning} onChange={v => handleParamsChange({...params, learningRate: v})} displayFn={v => v.toFixed(4)} />
-                      <ParamSlider label="Log ogni N batch" value={params.metricEvery} min={5} max={100} step={5} disabled={isRunning} onChange={v => handleParamsChange({...params, metricEvery: v})} />
+                      <ParamSlider label={tl("Log ogni N batch")} value={params.metricEvery} min={5} max={100} step={5} disabled={isRunning} onChange={v => handleParamsChange({...params, metricEvery: v})} />
                     </div>
                   </div>
                 </Card>
@@ -859,7 +860,7 @@ export default function ToyLMPage() {
                   <ToyLMInferencePanel
                     key={selectedJob.id}
                     canGenerate={!!canGenerate}
-                    unavailableMessage="Completa almeno una epoch (o metti in pausa) prima di generare."
+                    unavailableMessage={tl("Completa almeno una epoch (o metti in pausa) prima di generare.")}
                     onGenerate={generateSelectedJob}
                   />
                 </Card>
@@ -875,21 +876,21 @@ export default function ToyLMPage() {
                       <Network className="h-5 w-5" />
                     </span>
                     <div>
-                      <h2 className="text-base font-black text-[var(--text-primary)]">Costruisci il tuo piccolo modello linguistico</h2>
-                      <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">Un esperimento di pretraining: una piccola rete neurale, un solo testo, tutto da imparare.</p>
+                      <h2 className="text-base font-black text-[var(--text-primary)]">{tl("Costruisci il tuo piccolo modello linguistico")}</h2>
+                      <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">{tl("Un esperimento di pretraining: una piccola rete neurale, un solo testo, tutto da imparare.")}</p>
                     </div>
                   </div>
                   <Button tone="accent" surface="solid" density="compact" onClick={openCreate}>
-                    <Plus className="h-3.5 w-3.5" /> Crea modello
+                    <Plus className="h-3.5 w-3.5" /> {tl("Crea modello")}
                   </Button>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center" aria-label="Flusso di funzionamento di una rete LSTM">
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center" aria-label={tl("Flusso di funzionamento di una rete LSTM")}>
                   {[
-                    ['1', 'Testo', 'Il corpus di partenza'],
-                    ['2', 'Token', 'Parole o caratteri'],
-                    ['3', 'Memoria LSTM', 'Conserva il contesto'],
-                    ['4', 'Previsione', 'Propone il token seguente'],
+                    ['1', 'Testo', tl("Il corpus di partenza")],
+                    ['2', 'Token', tl("Parole o caratteri")],
+                    ['3', tl("Memoria LSTM"), tl("Conserva il contesto")],
+                    ['4', tl("Previsione"), tl("Propone il token seguente")],
                   ].map(([step, title, detail], index) => (
                     <div key={title} className="contents">
                       {index > 0 && <ArrowRight className="hidden h-4 w-4 text-[var(--logo-violet)] sm:block" aria-hidden="true" />}
@@ -907,8 +908,8 @@ export default function ToyLMPage() {
                 <ToyLMIntroduction />
 
                 <div className="grid gap-3 border-t border-[var(--border-subtle)] pt-4 text-xs leading-5 text-[var(--text-secondary)] sm:grid-cols-2">
-                  <p><strong className="text-[var(--text-primary)]">A cosa serve:</strong> capire in modo concreto tokenizzazione, addestramento e generazione del testo.</p>
-                  <p><strong className="text-[var(--text-primary)]">Cosa puoi osservare:</strong> loss, perplexity, architettura e qualità delle previsioni durante le epoche.</p>
+                  <p><strong className="text-[var(--text-primary)]">{tl("A cosa serve:")}</strong> {tl("capire in modo concreto tokenizzazione, addestramento e generazione del testo.")}</p>
+                  <p><strong className="text-[var(--text-primary)]">{tl("Cosa puoi osservare:")}</strong> {tl("loss, perplexity, architettura e qualità delle previsioni durante le epoche.")}</p>
                 </div>
               </div>
             </Card>
@@ -921,24 +922,24 @@ export default function ToyLMPage() {
           <div className="w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <p className="text-base font-black text-[var(--text-primary)]">Condividi modello</p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">Pubblica "{selectedJob.name}" nella chat di classe.</p>
+                <p className="text-base font-black text-[var(--text-primary)]">{tl("Condividi modello")}</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">{tl("Pubblica \"")}{selectedJob.name}{tl("\" nella chat di classe.")}</p>
               </div>
-              <button onClick={() => setShareOpen(false)} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title="Chiudi">
+              <button onClick={() => setShareOpen(false)} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]" title={tl("Chiudi")}>
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <FieldLabel>Classe</FieldLabel>
+                <FieldLabel>{tl("Classe")}</FieldLabel>
                 <select
                   value={shareClassId}
                   disabled={isLoadingShareTargets}
                   onChange={e => void handleShareClassChange(e.target.value)}
                   className="w-full rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
                 >
-                  <option value="">Seleziona una classe</option>
+                  <option value="">{tl("Seleziona una classe")}</option>
                   {shareClasses.map(cls => (
                     <option key={cls.id} value={cls.id}>{cls.name}</option>
                   ))}
@@ -946,14 +947,14 @@ export default function ToyLMPage() {
               </div>
 
               <div>
-                <FieldLabel>Chat di sessione</FieldLabel>
+                <FieldLabel>{tl("Chat di sessione")}</FieldLabel>
                 <select
                   value={shareSessionId}
                   disabled={isLoadingShareTargets || !shareClassId}
                   onChange={e => setShareSessionId(e.target.value)}
                   className="w-full rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
                 >
-                  <option value="">Seleziona una sessione</option>
+                  <option value="">{tl("Seleziona una sessione")}</option>
                   {shareSessions.map(session => (
                     <option key={session.id} value={session.id}>
                       {session.title}{session.status ? ` · ${session.status}` : ''}
@@ -969,10 +970,10 @@ export default function ToyLMPage() {
               )}
 
               <div className="flex items-center justify-end gap-2 pt-2">
-                <Button tone="neutral" surface="ghost" onClick={() => setShareOpen(false)}>Chiudi</Button>
+                <Button tone="neutral" surface="ghost" onClick={() => setShareOpen(false)}>{tl("Chiudi")}</Button>
                 <Button tone="accent" surface="solid" disabled={!shareSessionId || isSharing || isLoadingShareTargets} onClick={handlePublishSharedModel}>
                   {isSharing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                  Condividi
+                  {tl("Condividi")}
                 </Button>
               </div>
             </div>
@@ -988,10 +989,10 @@ export default function ToyLMPage() {
 function ToyLMIntroduction() {
   return (
     <div className="space-y-2 rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] p-4">
-      <p className="text-xs font-black text-[var(--logo-violet-strong)]">Pretraining da zero, su un solo testo</p>
-      <p className="text-xs leading-5 text-[var(--text-secondary)]">Partiamo da una piccola rete neurale LSTM con pesi casuali, senza conoscenze già apprese. Rileggendo un unico testo (il corpus), impara a prevedere la parola successiva: questo è il suo pretraining.</p>
-      <p className="text-xs leading-5 text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">Un esperimento didattico, non un LLM come ChatGPT.</strong> Il modello imita gli schemi del brano: non viene addestrato a conversare o a seguire istruzioni.</p>
-      <p className="border-t border-[var(--logo-violet-22)] pt-2 text-[11px] leading-5 text-[var(--text-muted)]"><strong>Cosa aspettarsi:</strong> frasi anche incoerenti, ripetizioni e passaggi memorizzati. Un solo testo limita il vocabolario e la capacità di generalizzare; una loss più bassa non garantisce contenuti sensati o corretti.</p>
+      <p className="text-xs font-black text-[var(--logo-violet-strong)]">{tl("Pretraining da zero, su un solo testo")}</p>
+      <p className="text-xs leading-5 text-[var(--text-secondary)]">{tl("Partiamo da una piccola rete neurale LSTM con pesi casuali, senza conoscenze già apprese. Rileggendo un unico testo (il corpus), impara a prevedere la parola successiva: questo è il suo pretraining.")}</p>
+      <p className="text-xs leading-5 text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">{tl("Un esperimento didattico, non un LLM come ChatGPT.")}</strong> {tl("Il modello imita gli schemi del brano: non viene addestrato a conversare o a seguire istruzioni.")}</p>
+      <p className="border-t border-[var(--logo-violet-22)] pt-2 text-[11px] leading-5 text-[var(--text-muted)]"><strong>{tl("Cosa aspettarsi:")}</strong> {tl("frasi anche incoerenti, ripetizioni e passaggi memorizzati. Un solo testo limita il vocabolario e la capacità di generalizzare; una loss più bassa non garantisce contenuti sensati o corretti.")}</p>
     </div>
   )
 }
@@ -1015,10 +1016,10 @@ function StatusPill({ job, isRunning, isQueued, currentEpoch }: {
   job: Job; isRunning: boolean; isQueued: boolean; currentEpoch: number
 }) {
   const { cls, text } =
-    isRunning ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: `in training · epoch ${currentEpoch}` } :
-    isQueued ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: `in coda · pos. ${job.queuePosition}` } :
-    job.status === 'completed' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'completato' } :
-    job.status === 'paused' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'in pausa' } :
+    isRunning ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: tl("in training · epoch {0}", currentEpoch) } :
+    isQueued ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[var(--logo-blue-strong)]', text: tl("in coda · pos. {0}", job.queuePosition) } :
+    job.status === 'completed' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: tl("completato") } :
+    job.status === 'paused' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: tl("in pausa") } :
     { cls: 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)]', text: job.status }
   return (
     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${cls} ${isRunning ? 'animate-pulse' : ''}`}>
@@ -1081,7 +1082,7 @@ function ChartPanel({ title, dataKey, data, color, height = 190, tone = 'slate' 
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex items-center justify-center text-sm text-[var(--text-muted)]" style={{ height }}>Grafico disponibile durante il training</div>
+          <div className="flex items-center justify-center text-sm text-[var(--text-muted)]" style={{ height }}>{tl("Grafico disponibile durante il training")}</div>
         )}
       </div>
     </Card>
@@ -1107,7 +1108,7 @@ function ParamSlider({
               type="button"
               onClick={() => setHelpOpen((open) => !open)}
               className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--logo-violet)] transition hover:bg-[var(--logo-violet-10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]"
-              aria-label={`Spiega ${label}`}
+              aria-label={tl("Spiega {0}", label)}
               aria-expanded={helpOpen}
             >
               <HelpCircle className="h-3.5 w-3.5" />
@@ -1116,7 +1117,7 @@ function ParamSlider({
           {helpOpen && help && (
             <div
               role="dialog"
-              aria-label={`Spiegazione: ${help.title}`}
+              aria-label={tl("Spiegazione: {0}", help.title)}
               className="absolute left-0 top-6 z-40 w-[min(300px,calc(100vw-3rem))] rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--surface-base)] p-3 text-left shadow-[var(--shadow-xl)]"
             >
               <div className="flex items-start justify-between gap-3">
@@ -1125,14 +1126,14 @@ function ParamSlider({
                   type="button"
                   onClick={() => setHelpOpen(false)}
                   className="-mr-1 -mt-1 rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
-                  aria-label="Chiudi spiegazione"
+                  aria-label={tl("Chiudi spiegazione")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-secondary)]">{help.explanation}</p>
               <p className="mt-2 rounded-xl bg-[var(--logo-violet-10)] px-2.5 py-2 text-[11px] leading-4 text-[var(--logo-violet-strong)]">
-                <strong>In pratica:</strong> {help.effect}
+                <strong>{tl("In pratica:")}</strong> {help.effect}
               </p>
             </div>
           )}

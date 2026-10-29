@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { MessageSquarePlus, X, Send, Loader2, CheckCircle, Image as ImageIcon } from '@/components/icons'
 import { feedbackApi } from '@/lib/api'
 import { useDraggableFloating } from '@/hooks/useDraggableFloating'
+import { tl } from '@/i18n/tl'
 
 // Collect up to N recent console errors captured since page load
 const capturedErrors: string[] = []
@@ -169,8 +170,8 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
               : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
           }`}
           style={{ left: position.x, top: position.y }}
-          title="Segnala un problema · trascina in alto o in basso"
-          aria-label="Apri feedback"
+          title={tl("Segnala un problema · trascina in alto o in basso")}
+          aria-label={tl("Apri feedback")}
         >
           {open ? <X className="h-5 w-5" /> : <MessageSquarePlus className="h-5 w-5" />}
         </button>
@@ -185,14 +186,14 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
               <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: '#e85c8d' }} />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold text-slate-900 leading-tight">Segnala un problema</h2>
-              <p className="text-[11px] text-slate-400">Descrivi il comportamento inatteso</p>
+              <h2 className="text-sm font-bold text-slate-900 leading-tight">{tl("Segnala un problema")}</h2>
+              <p className="text-[11px] text-slate-400">{tl("Descrivi il comportamento inatteso")}</p>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              aria-label="Chiudi"
+              aria-label={tl("Chiudi")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -202,8 +203,8 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
           {status === 'success' ? (
             <div className="flex flex-col items-center justify-center py-8 gap-2">
               <CheckCircle className="h-10 w-10 text-green-500" />
-              <p className="text-sm font-semibold text-slate-800">Grazie per il feedback!</p>
-              <p className="text-xs text-slate-400">La segnalazione è stata inviata.</p>
+              <p className="text-sm font-semibold text-slate-800">{tl("Grazie per il feedback!")}</p>
+              <p className="text-xs text-slate-400">{tl("La segnalazione è stata inviata.")}</p>
             </div>
           ) : (
             <div className="p-4 space-y-3">
@@ -213,7 +214,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
                 onChange={e => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="Descrivi cosa è successo... (Ctrl+Invio per inviare)"
+                placeholder={tl("Descrivi cosa è successo... (Ctrl+Invio per inviare)")}
                 rows={4}
                 className="w-full text-sm text-slate-800 placeholder:text-slate-300 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300 transition-all"
                 disabled={status === 'loading'}
@@ -222,7 +223,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
               {/* Screenshot preview */}
               {screenshot && (
                 <div className="relative rounded-lg overflow-hidden border border-slate-200">
-                  <img src={screenshot} alt="Screenshot allegato" className="w-full object-cover max-h-32" />
+                  <img src={screenshot} alt={tl("Screenshot allegato")} className="w-full object-cover max-h-32" />
                   <button
                     onClick={() => setScreenshot(null)}
                     className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
@@ -235,17 +236,17 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
               {!screenshot && (
                 <p className="text-[10px] text-slate-300 flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
-                  Incolla uno screenshot con Ctrl+V
+                  {tl("Incolla uno screenshot con Ctrl+V")}
                 </p>
               )}
 
               {status === 'error' && (
-                <p className="text-xs text-red-500">Errore nell'invio. Riprova.</p>
+                <p className="text-xs text-red-500">{tl("Errore nell'invio. Riprova.")}</p>
               )}
 
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] text-slate-300">
-                  Raccoglie automaticamente info tecniche e log del browser
+                  {tl("Raccoglie automaticamente info tecniche e log del browser")}
                 </p>
                 <button
                   onClick={handleSubmit}
@@ -258,7 +259,7 @@ export function FloatingHelper({ hideTrigger = true, open: controlledOpen, onOpe
                   ) : (
                     <Send className="h-3.5 w-3.5" />
                   )}
-                  Invia
+                  {tl("Invia")}
                 </button>
               </div>
             </div>

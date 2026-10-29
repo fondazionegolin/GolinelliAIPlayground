@@ -18,6 +18,7 @@ import {
 } from '@/components/icons'
 import LiveSessionList, { isOpenLobby } from '@/components/live/LiveSessionList'
 import EndSessionDialog from '@/components/live/EndSessionDialog'
+import { tl } from '@/i18n/tl'
 
 // ── Types ──
 
@@ -108,7 +109,7 @@ function normalizeEscapeDraft(raw: Record<string, unknown>): EscapeRoomDraft {
         accepted_answers: Array.isArray(challenge.accepted_answers) ? challenge.accepted_answers.map(String) : [''],
         explanation: String(challenge.explanation || ''),
         achievement: {
-          name: String(achievement.name || 'Oggetto misterioso'),
+          name: String(achievement.name || tl("Oggetto misterioso")),
           icon: String(achievement.icon || 'key'),
           description: String(achievement.description || ''),
         },
@@ -118,10 +119,10 @@ function normalizeEscapeDraft(raw: Record<string, unknown>): EscapeRoomDraft {
 }
 
 const SLIDE_LABELS: Record<SlideType, string> = {
-  mcq: 'Risposta multipla',
+  mcq: tl("Risposta multipla"),
   wordwall: 'Word Wall',
-  opinion: 'Opinione libera',
-  feedback: 'Feedback rapido',
+  opinion: tl("Opinione libera"),
+  feedback: tl("Feedback rapido"),
 }
 
 const SLIDE_ICONS: Record<SlideType, React.ElementType> = {
@@ -177,7 +178,7 @@ function ReferenceDocUploader({
 
   const handleFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      toast({ title: 'Sono supportati solo file PDF', variant: 'destructive' })
+      toast({ title: tl("Sono supportati solo file PDF"), variant: 'destructive' })
       return
     }
     setUploading(true)
@@ -191,7 +192,7 @@ function ReferenceDocUploader({
         pageCount: res.data.page_count,
       })
     } catch {
-      toast({ title: 'Errore nel caricamento del PDF', variant: 'destructive' })
+      toast({ title: tl("Errore nel caricamento del PDF"), variant: 'destructive' })
     } finally {
       setUploading(false)
     }
@@ -199,7 +200,7 @@ function ReferenceDocUploader({
 
   return (
     <div>
-      <label className="text-xs font-medium text-slate-600 mb-1 block">Documento di riferimento (opzionale)</label>
+      <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Documento di riferimento (opzionale)")}</label>
       {!value ? (
         <>
           <input
@@ -219,10 +220,10 @@ function ReferenceDocUploader({
             disabled={uploading}
           >
             {uploading
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Estraggo testo...</>
-              : <><FileUp className="h-3.5 w-3.5" /> Carica PDF</>}
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Estraggo testo...")}</>
+              : <><FileUp className="h-3.5 w-3.5" /> {tl("Carica PDF")}</>}
           </Button>
-          <p className="text-[11px] text-slate-400 mt-1">L'AI ancorerà le proposte al contenuto del documento caricato.</p>
+          <p className="text-[11px] text-slate-400 mt-1">{tl("L'AI ancorerà le proposte al contenuto del documento caricato.")}</p>
         </>
       ) : (
         <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
@@ -249,15 +250,15 @@ const TUTORIAL_STEPS = [
     grad: 'from-indigo-500 to-purple-600',
     ring: 'ring-indigo-400/40',
     glow: 'shadow-indigo-500/25',
-    title: 'Crea le slide',
-    desc: 'Componi la tua sessione aggiungendo slide di 4 tipi: risposta multipla, word wall, opinione libera e feedback rapido. Ogni slide ha un timer personalizzabile.',
+    title: tl("Crea le slide"),
+    desc: tl("Componi la tua sessione aggiungendo slide di 4 tipi: risposta multipla, word wall, opinione libera e feedback rapido. Ogni slide ha un timer personalizzabile."),
     visual: () => (
       <div className="space-y-2">
         {[
-          { label: 'Risposta multipla', color: 'bg-indigo-400', text: 'bg-indigo-100 text-indigo-700' },
+          { label: tl("Risposta multipla"), color: 'bg-indigo-400', text: 'bg-indigo-100 text-indigo-700' },
           { label: 'Word Wall',         color: 'bg-amber-400',  text: 'bg-amber-100 text-amber-700' },
-          { label: 'Opinione libera',   color: 'bg-emerald-400',text: 'bg-emerald-100 text-emerald-700' },
-          { label: 'Feedback rapido',   color: 'bg-rose-400',   text: 'bg-rose-100 text-rose-700' },
+          { label: tl("Opinione libera"),   color: 'bg-emerald-400',text: 'bg-emerald-100 text-emerald-700' },
+          { label: tl("Feedback rapido"),   color: 'bg-rose-400',   text: 'bg-rose-100 text-rose-700' },
         ].map((item, i) => (
           <motion.div
             key={item.label}
@@ -284,8 +285,8 @@ const TUTORIAL_STEPS = [
     grad: 'from-emerald-500 to-teal-600',
     ring: 'ring-emerald-400/40',
     glow: 'shadow-emerald-500/25',
-    title: 'Avvia in classe',
-    desc: 'Con un click gli studenti connessi alla sessione vedono automaticamente la prima slide sul loro dispositivo — nessun codice da inserire.',
+    title: tl("Avvia in classe"),
+    desc: tl("Con un click gli studenti connessi alla sessione vedono automaticamente la prima slide sul loro dispositivo — nessun codice da inserire."),
     visual: () => (
       <div className="flex items-center gap-4">
         {/* Teacher */}
@@ -293,14 +294,14 @@ const TUTORIAL_STEPS = [
           <div className="w-14 h-10 bg-white/15 rounded-xl flex items-center justify-center">
             <div className="w-9 h-6 bg-indigo-400/60 rounded-md" />
           </div>
-          <span className="text-xs text-white/50">Docente</span>
+          <span className="text-xs text-white/50">{tl("Docente")}</span>
           <motion.div
             animate={{ scale: [1, 1.08, 1] }}
             transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
             className="flex items-center gap-1 bg-emerald-500/80 rounded-lg px-2 py-1"
           >
             <Play className="h-3 w-3 text-white" />
-            <span className="text-xs text-white font-bold">Avvia</span>
+            <span className="text-xs text-white font-bold">{tl("Avvia")}</span>
           </motion.div>
         </div>
 
@@ -346,8 +347,8 @@ const TUTORIAL_STEPS = [
     grad: 'from-amber-400 to-orange-500',
     ring: 'ring-amber-400/40',
     glow: 'shadow-amber-500/25',
-    title: 'Controlla live',
-    desc: 'Dal pannello docente vedi le risposte aggiornarsi in tempo reale. Avanza slide per slide e monitora quanti studenti hanno risposto.',
+    title: tl("Controlla live"),
+    desc: tl("Dal pannello docente vedi le risposte aggiornarsi in tempo reale. Avanza slide per slide e monitora quanti studenti hanno risposto."),
     visual: () => {
       const bars = [
         { label: 'A', pct: 58, color: 'bg-indigo-400' },
@@ -363,7 +364,7 @@ const TUTORIAL_STEPS = [
               transition={{ repeat: Infinity, duration: 1.2 }}
               className="w-2 h-2 rounded-full bg-emerald-400"
             />
-            <span className="text-xs text-white/60 font-medium">18 di 24 hanno risposto</span>
+            <span className="text-xs text-white/60 font-medium">{tl("18 di 24 hanno risposto")}</span>
           </div>
           {bars.map((bar, i) => (
             <div key={bar.label} className="flex items-center gap-2">
@@ -389,7 +390,7 @@ const TUTORIAL_STEPS = [
     grad: 'from-rose-500 to-pink-600',
     ring: 'ring-rose-400/40',
     glow: 'shadow-rose-500/25',
-    title: 'Leggi il report',
+    title: tl("Leggi il report"),
     desc: 'A sessione conclusa trovi il report completo: grafici, word cloud, risposte testuali, classifica e tutti i dati esportati in JSON.',
     visual: () => (
       <div className="space-y-3">
@@ -399,13 +400,13 @@ const TUTORIAL_STEPS = [
           className="flex items-center gap-2 bg-emerald-500/20 rounded-xl px-3 py-2"
         >
           <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-          <span className="text-sm text-white/90 font-semibold">Sessione completata!</span>
+          <span className="text-sm text-white/90 font-semibold">{tl("Sessione completata!")}</span>
         </motion.div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
-            { v: '24', l: 'studenti' },
+            { v: '24', l: tl("studenti") },
             { v: '4',  l: 'slide' },
-            { v: '96', l: 'risposte' },
+            { v: '96', l: tl("risposte") },
           ].map(({ v, l }, i) => (
             <motion.div
               key={l}
@@ -474,14 +475,14 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
       <button
         onClick={onDismiss}
         className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-colors"
-        title="Chiudi tutorial"
+        title={tl("Chiudi tutorial")}
       >
         <X className="h-4 w-4" />
       </button>
       <button
         onClick={() => setPaused(prev => !prev)}
         className="absolute top-4 right-14 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-colors"
-        title={paused ? 'Riprendi tutorial' : 'Ferma tutorial'}
+        title={paused ? tl("Riprendi tutorial") : tl("Ferma tutorial")}
       >
         {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
       </button>
@@ -493,10 +494,10 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
           <span className="text-xs font-semibold text-indigo-400 uppercase tracking-widest">Tutorial</span>
         </div>
         <h2 className="text-2xl font-black text-white leading-tight">
-          Come funziona<br />Live Interaction
+          {tl("Come funziona")}<br />Live Interaction
         </h2>
         <p className="text-white/50 text-sm mt-1">
-          Coinvolgi la classe con domande interattive in tempo reale
+          {tl("Coinvolgi la classe con domande interattive in tempo reale")}
         </p>
       </div>
 
@@ -586,7 +587,7 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
           onClick={onDismiss}
           className="flex items-center gap-2 bg-white text-slate-800 font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-slate-100 transition-colors shadow-lg"
         >
-          Ho capito, inizia! →
+          {tl("Ho capito, inizia! →")}
         </button>
       </div>
     </div>
@@ -608,10 +609,10 @@ function AiAssistButton({ onAssist, assisting, disabled }: AssistProps & { disab
       onClick={onAssist}
       disabled={assisting || disabled}
       className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed"
-      title="Completa con l'aiuto dell'AI"
+      title={tl("Completa con l'aiuto dell'AI")}
     >
       {assisting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-      {assisting ? 'Genero...' : 'Aiuto AI'}
+      {assisting ? tl("Genero...") : tl("Aiuto AI")}
     </button>
   )
 }
@@ -639,8 +640,8 @@ function McqOptionRow({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          aria-label={`Trascina per riordinare l'opzione ${index + 1}`}
-          title="Trascina per cambiare posizione"
+          aria-label={tl("Trascina per riordinare l'opzione {0}", index + 1)}
+          title={tl("Trascina per cambiare posizione")}
           onPointerDown={event => { event.stopPropagation(); dragControls.start(event) }}
           className="flex h-6 w-5 flex-shrink-0 touch-none items-center justify-center text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 rounded active:cursor-grabbing"
           style={{ cursor: 'grab' }}
@@ -651,12 +652,12 @@ function McqOptionRow({
           type="button"
           onClick={onToggleCorrect}
           className={`w-6 h-6 rounded-full border-2 flex-shrink-0 transition-colors ${isCorrect ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}
-          title="Segna come risposta corretta"
+          title={tl("Segna come risposta corretta")}
         />
         <Input
           value={item.value}
           onChange={e => onChange(e.target.value)}
-          placeholder={`Opzione ${String.fromCharCode(65 + index)}`}
+          placeholder={tl("Opzione {0}", String.fromCharCode(65 + index))}
           className="flex-1 h-8 text-sm"
         />
         {canDelete && (
@@ -691,19 +692,19 @@ function McqEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onC
     <div className="space-y-3">
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-xs font-medium text-slate-600 block">Domanda</label>
+          <label className="text-xs font-medium text-slate-600 block">{tl("Domanda")}</label>
           <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.question || '').trim()} />
         </div>
         <Textarea
           value={slide.question || ''}
           onChange={e => onChange({ ...slide, question: e.target.value })}
-          placeholder="Scrivi la domanda..."
+          placeholder={tl("Scrivi la domanda...")}
           className="resize-none"
           rows={2}
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-slate-600 mb-1 block">Opzioni di risposta</label>
+        <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Opzioni di risposta")}</label>
         <Reorder.Group axis="y" values={items} onReorder={newItems => applyOptions(newItems, correctKey)} className="space-y-1.5">
           {items.map((item, i) => (
             <McqOptionRow
@@ -724,7 +725,7 @@ function McqEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onC
             onClick={() => applyOptions([...items, { key: makeKey(), value: '' }], correctKey)}
             className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
           >
-            <Plus className="h-3 w-3" /> Aggiungi opzione
+            <Plus className="h-3 w-3" /> {tl("Aggiungi opzione")}
           </button>
         )}
       </div>
@@ -735,7 +736,7 @@ function McqEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onC
           onChange={e => onChange({ ...slide, show_ranking: e.target.checked })}
           className="rounded"
         />
-        Mostra classifica velocità
+        {tl("Mostra classifica velocità")}
       </label>
     </div>
   )
@@ -752,13 +753,13 @@ function WordwallEditor({ slide, onChange, onAssist, assisting }: { slide: Slide
         <Textarea
           value={slide.prompt || ''}
           onChange={e => onChange({ ...slide, prompt: e.target.value })}
-          placeholder="Scrivi una parola che ti viene in mente quando pensi a..."
+          placeholder={tl("Scrivi una parola che ti viene in mente quando pensi a...")}
           className="resize-none"
           rows={2}
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-slate-600 mb-1 block">Parole max per studente</label>
+        <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Parole max per studente")}</label>
         <Input
           type="number" min={1} max={10}
           value={slide.max_words || 3}
@@ -780,7 +781,7 @@ function OpinionEditor({ slide, onChange, onAssist, assisting }: { slide: Slide;
       <Textarea
         value={slide.prompt || ''}
         onChange={e => onChange({ ...slide, prompt: e.target.value })}
-        placeholder="In una frase, cosa pensi di..."
+        placeholder={tl("In una frase, cosa pensi di...")}
         className="resize-none"
         rows={2}
       />
@@ -792,13 +793,13 @@ function FeedbackEditor({ slide, onChange, onAssist, assisting }: { slide: Slide
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs font-medium text-slate-600 block">Domanda</label>
+        <label className="text-xs font-medium text-slate-600 block">{tl("Domanda")}</label>
         <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.prompt || '').trim()} />
       </div>
       <Textarea
         value={slide.prompt || ''}
         onChange={e => onChange({ ...slide, prompt: e.target.value })}
-        placeholder="Come hai trovato l'attività?"
+        placeholder={tl("Come hai trovato l'attività?")}
         className="resize-none"
         rows={2}
       />
@@ -835,8 +836,8 @@ function SlideCard({
       >
         <button
           type="button"
-          aria-label={`Trascina per riordinare la slide ${index + 1}`}
-          title="Trascina per cambiare posizione"
+          aria-label={tl("Trascina per riordinare la slide {0}", index + 1)}
+          title={tl("Trascina per cambiare posizione")}
           onPointerDown={(event) => {
             event.stopPropagation()
             dragControls.start(event)
@@ -887,15 +888,15 @@ function SlideCard({
             {slide.type === 'opinion'  && <OpinionEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
             {slide.type === 'feedback' && <FeedbackEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Tempo massimo (secondi)</label>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Tempo massimo (secondi)")}</label>
               <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                 <button
                   type="button"
                   onClick={() => onChange({ ...slide, max_seconds: Math.max(10, slide.max_seconds - 5) })}
                   disabled={slide.max_seconds <= 10}
                   className="flex w-9 items-center justify-center border-r border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
-                  aria-label="Riduci il tempo massimo di 5 secondi"
-                  title="Riduci di 5 secondi"
+                  aria-label={tl("Riduci il tempo massimo di 5 secondi")}
+                  title={tl("Riduci di 5 secondi")}
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </button>
@@ -912,15 +913,15 @@ function SlideCard({
                     }
                   }}
                   className="h-full w-16 rounded-none border-0 px-2 text-center text-sm shadow-none focus-visible:ring-0"
-                  aria-label="Tempo massimo in secondi"
+                  aria-label={tl("Tempo massimo in secondi")}
                 />
                 <button
                   type="button"
                   onClick={() => onChange({ ...slide, max_seconds: Math.min(600, slide.max_seconds + 5) })}
                   disabled={slide.max_seconds >= 600}
                   className="flex w-9 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
-                  aria-label="Aumenta il tempo massimo di 5 secondi"
-                  title="Aumenta di 5 secondi"
+                  aria-label={tl("Aumenta il tempo massimo di 5 secondi")}
+                  title={tl("Aumenta di 5 secondi")}
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
@@ -977,11 +978,11 @@ function InteractionEditor({
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', sessionId] })
-      toast({ title: 'Salvato!' })
+      toast({ title: tl("Salvato!") })
       onSaved()
       if (!interactionId) navigate(`/teacher/live-interaction/${res.data.id}/control`)
     },
-    onError: () => toast({ title: 'Errore durante il salvataggio', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore durante il salvataggio"), variant: 'destructive' }),
   })
 
   const addSlide = (type: SlideType) => {
@@ -1007,22 +1008,22 @@ function InteractionEditor({
       })
       updateSlide(i, { ...item.slide, ...res.data })
     } catch {
-      toast({ title: "Errore durante l'aiuto AI", variant: 'destructive' })
+      toast({ title: tl("Errore durante l'aiuto AI"), variant: 'destructive' })
     } finally {
       setAssistingKey(null)
     }
   }
 
-  if (isLoading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>
+  if (isLoading) return <div className="p-8 text-center text-slate-400">{tl("Caricamento...")}</div>
 
   return (
     <div className="space-y-6">
       <div>
-        <label className="text-sm font-medium text-slate-700 mb-1 block">Titolo sessione</label>
+        <label className="text-sm font-medium text-slate-700 mb-1 block">{tl("Titolo sessione")}</label>
         <Input
           value={title}
           onChange={e => setTitle(e.target.value)}
-          placeholder="Es. Quiz di storia dell'arte"
+          placeholder={tl("Es. Quiz di storia dell'arte")}
           className="text-base"
         />
       </div>
@@ -1030,8 +1031,8 @@ function InteractionEditor({
       <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
 
       <div className="flex items-center justify-between gap-3 rounded-2xl bg-violet-50/60 px-4 py-3">
-        <p className="text-sm text-slate-600"><strong>{slides.length}</strong> {slides.length === 1 ? 'slide' : 'slide'} · puoi modificarle, aggiungerne o far rifare il set all’AI.</p>
-        <Button tone="accent" surface="outline" density="compact" onClick={() => setShowRegen(true)}><Sparkles className="h-4 w-4" /> {slides.length ? 'Rigenera con AI' : 'Genera con AI'}</Button>
+        <p className="text-sm text-slate-600"><strong>{slides.length}</strong> {slides.length === 1 ? 'slide' : 'slide'} {tl("· puoi modificarle, aggiungerne o far rifare il set all’AI.")}</p>
+        <Button tone="accent" surface="outline" density="compact" onClick={() => setShowRegen(true)}><Sparkles className="h-4 w-4" /> {slides.length ? tl("Rigenera con AI") : tl("Genera con AI")}</Button>
       </div>
       {showRegen && (
         <StructureAssistModal
@@ -1072,7 +1073,7 @@ function InteractionEditor({
           onClick={() => setShowTypeMenu(v => !v)}
           className="w-full border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-600"
         >
-          <Plus className="h-4 w-4 mr-2" /> Aggiungi slide
+          <Plus className="h-4 w-4 mr-2" /> {tl("Aggiungi slide")}
         </Button>
         {showTypeMenu && (
           <div className="absolute bottom-full mb-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
@@ -1093,13 +1094,13 @@ function InteractionEditor({
       </div>
 
       <div className="flex justify-end gap-3">
-        <Button tone="neutral" surface="ghost" onClick={onCancel}>Annulla</Button>
+        <Button tone="neutral" surface="ghost" onClick={onCancel}>{tl("Annulla")}</Button>
         <Button
           tone="accent" surface="solid"
           onClick={() => saveMutation.mutate()}
           disabled={!title.trim() || slides.length === 0 || saveMutation.isPending}
         >
-          {saveMutation.isPending ? 'Salvataggio...' : interactionId ? 'Salva modifiche' : 'Salva e vai al pannello →'}
+          {saveMutation.isPending ? tl("Salvataggio...") : interactionId ? tl("Salva modifiche") : tl("Salva e vai al pannello →")}
         </Button>
       </div>
       </div>
@@ -1137,7 +1138,7 @@ function StructureAssistModal({
       })
       onGenerated(res.data, mode)
     } catch {
-      toast({ title: 'Errore durante la generazione', variant: 'destructive' })
+      toast({ title: tl("Errore durante la generazione"), variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -1149,7 +1150,7 @@ function StructureAssistModal({
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-indigo-600" />
-            <h2 className="text-lg font-bold text-slate-800">Suggerisci struttura con AI</h2>
+            <h2 className="text-lg font-bold text-slate-800">{tl("Suggerisci struttura con AI")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -1158,18 +1159,18 @@ function StructureAssistModal({
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Argomento della sessione</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Argomento della sessione")}</label>
             <Textarea
               value={topic}
               onChange={e => setTopic(e.target.value)}
-              placeholder="Es. La Rivoluzione Francese, i verbi irregolari inglesi, il ciclo dell'acqua..."
+              placeholder={tl("Es. La Rivoluzione Francese, i verbi irregolari inglesi, il ciclo dell'acqua...")}
               className="resize-none"
               rows={3}
               autoFocus
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">Numero di slide</label>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">{tl("Numero di slide")}</label>
             <Input
               type="number" min={1} max={15}
               value={numSlides}
@@ -1179,20 +1180,20 @@ function StructureAssistModal({
           </div>
           {previousSlides && previousSlides.length > 0 && (
             <div className="flex gap-2 text-sm">
-              <button type="button" onClick={() => setMode('replace')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'replace' ? 'ui-segment-active' : 'ds-control'}`}>Sostituisci le slide attuali</button>
-              <button type="button" onClick={() => setMode('append')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'append' ? 'ui-segment-active' : 'ds-control'}`}>Aggiungi in fondo</button>
+              <button type="button" onClick={() => setMode('replace')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'replace' ? 'ui-segment-active' : 'ds-control'}`}>{tl("Sostituisci le slide attuali")}</button>
+              <button type="button" onClick={() => setMode('append')} className={`flex-1 rounded-xl px-3 py-2 font-semibold ${mode === 'append' ? 'ui-segment-active' : 'ds-control'}`}>{tl("Aggiungi in fondo")}</button>
             </div>
           )}
           <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
           <p className="text-xs text-slate-400">
-            L'AI proporrà titolo e sequenza di slide (tipi variati) tenendo conto delle altre sessioni live già svolte in questa classe{reference ? ' e del documento caricato' : ''}. Potrai modificare tutto prima di salvare.
+            {tl("L'AI proporrà titolo e sequenza di slide (tipi variati) tenendo conto delle altre sessioni live già svolte in questa classe")}{reference ? tl(" e del documento caricato") : ''}{tl(". Potrai modificare tutto prima di salvare.")}
           </p>
         </div>
 
         <div className="flex justify-end gap-3 p-6 border-t border-slate-100">
-          <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
           <Button tone="accent" surface="solid" onClick={handleGenerate} disabled={!topic.trim() || loading}>
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Genero...</> : <><Sparkles className="h-4 w-4" /> Genera struttura</>}
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> {tl("Genero...")}</> : <><Sparkles className="h-4 w-4" /> {tl("Genera struttura")}</>}
           </Button>
         </div>
       </div>
@@ -1210,22 +1211,22 @@ function NewSessionModal({
 }) {
   const choices = [
     {
-      title: 'Crea manualmente',
-      description: 'Componi il quiz slide per slide e scegli ogni interazione.',
+      title: tl("Crea manualmente"),
+      description: tl("Componi il quiz slide per slide e scegli ogni interazione."),
       icon: LayoutTemplate,
       tone: 'bg-sky-50 text-sky-700 ring-sky-100',
       action: onManual,
     },
     {
-      title: 'Suggerisci struttura AI',
-      description: 'Parti da un argomento o da un PDF e modifica la proposta.',
+      title: tl("Suggerisci struttura AI"),
+      description: tl("Parti da un argomento o da un PDF e modifica la proposta."),
       icon: Sparkles,
       tone: 'bg-violet-50 text-violet-700 ring-violet-100',
       action: onAi,
     },
     {
       title: 'Escape Room',
-      description: 'Trasforma un Teacherbot in una sfida narrativa a indizi.',
+      description: tl("Trasforma un Teacherbot in una sfida narrativa a indizi."),
       icon: LockKeyhole,
       tone: 'bg-amber-50 text-amber-700 ring-amber-100',
       action: onEscape,
@@ -1237,11 +1238,11 @@ function NewSessionModal({
       <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 text-center">
           <div className="flex-1 pl-8">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">Nuova sessione</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Come vuoi iniziare?</h2>
-            <p className="mt-1 text-sm text-slate-500">Ogni percorso crea una bozza modificabile prima della pubblicazione.</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">{tl("Nuova sessione")}</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Come vuoi iniziare?")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{tl("Ogni percorso crea una bozza modificabile prima della pubblicazione.")}</p>
           </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-6 space-y-3">
           {choices.map(({ title, description, icon: Icon, tone, action }) => (
@@ -1283,7 +1284,7 @@ function DuplicateForAudienceModal({
         // The session the activity already lives in is always offered (even if paused): duplicating in place is a normal use.
         return sessions
           .filter(session => session.status === 'active' || session.id === currentSessionId)
-          .map(session => ({ id: session.id, title: session.title || session.name || 'Sessione', className: classroom.name, status: session.status }))
+          .map(session => ({ id: session.id, title: session.title || session.name || tl("Sessione"), className: classroom.name, status: session.status }))
       }))
       const all = groups.flat()
       return [...all.filter(a => a.id === currentSessionId), ...all.filter(a => a.id !== currentSessionId)]
@@ -1299,10 +1300,10 @@ function DuplicateForAudienceModal({
     }),
     onSuccess: () => {
       onDuplicated(targetSessionId)
-      toast({ title: 'Sessione duplicata come nuova bozza' })
+      toast({ title: tl("Sessione duplicata come nuova bozza") })
       onClose()
     },
-    onError: () => toast({ title: 'Non è stato possibile duplicare il quiz', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Non è stato possibile duplicare il quiz"), variant: 'destructive' }),
   })
 
   return (
@@ -1310,27 +1311,27 @@ function DuplicateForAudienceModal({
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">Duplica sessione</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Duplica “{item.title}”</h2>
-            <p className="mt-1 text-sm text-slate-500">Contenuti e impostazioni verranno copiati in una nuova bozza, senza risposte o risultati precedenti.</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">{tl("Duplica sessione")}</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Duplica “")}{item.title}”</h2>
+            <p className="mt-1 text-sm text-slate-500">{tl("Contenuti e impostazioni verranno copiati in una nuova bozza, senza risposte o risultati precedenti.")}</p>
           </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-5 max-h-64 space-y-2 overflow-y-auto">
           {isLoading && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-violet-600" /></div>}
           {!isLoading && audiences.map(audience => (
             <button key={audience.id} type="button" onClick={() => setTargetSessionId(audience.id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${targetSessionId === audience.id ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-100' : 'border-slate-200 hover:border-violet-200'}`}>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><UsersRound className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}{audience.id === currentSessionId && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-700">Questa sessione</span>}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
+              <span className="min-w-0 flex-1"><span className="block break-words font-semibold text-slate-900">{audience.title}{audience.id === currentSessionId && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-700">{tl("Questa sessione")}</span>}</span><span className="mt-0.5 block break-words text-xs text-slate-500">{audience.className}</span></span>
             </button>
           ))}
-          {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono sessioni disponibili.</p>}
+          {!isLoading && audiences.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">{tl("Non ci sono sessioni disponibili.")}</p>}
         </div>
         <div className="mt-6 flex items-center justify-center gap-3">
-          <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
           <Button tone="accent" surface="solid" onClick={() => duplicate.mutate()} disabled={!targetSessionId || duplicate.isPending}>
             {duplicate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            {duplicate.isPending ? 'Duplicazione…' : 'Crea bozza'}
+            {duplicate.isPending ? tl("Duplicazione…") : tl("Crea bozza")}
           </Button>
         </div>
       </div>
@@ -1365,37 +1366,37 @@ function EscapeRoomDraftEditor({
       <div className="mt-5 flex-1 space-y-5 overflow-y-auto border-y border-slate-100 px-6 py-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-bold text-slate-600">Titolo</label>
-            <Input value={draft.title} onChange={event => onChange({ ...draft, title: event.target.value })} placeholder="Titolo dell’escape room" />
+            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Titolo")}</label>
+            <Input value={draft.title} onChange={event => onChange({ ...draft, title: event.target.value })} placeholder={tl("Titolo dell’escape room")} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-600">Introduzione narrativa</label>
-            <Textarea rows={4} value={draft.narrative_intro} onChange={event => onChange({ ...draft, narrative_intro: event.target.value })} placeholder="L’ambientazione che accoglie gli studenti…" />
+            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Introduzione narrativa")}</label>
+            <Textarea rows={4} value={draft.narrative_intro} onChange={event => onChange({ ...draft, narrative_intro: event.target.value })} placeholder={tl("L’ambientazione che accoglie gli studenti…")} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-600">Missione</label>
-            <Textarea rows={4} value={draft.mission} onChange={event => onChange({ ...draft, mission: event.target.value })} placeholder="L’obiettivo da completare…" />
+            <label className="mb-1 block text-xs font-bold text-slate-600">{tl("Missione")}</label>
+            <Textarea rows={4} value={draft.mission} onChange={event => onChange({ ...draft, mission: event.target.value })} placeholder={tl("L’obiettivo da completare…")} />
           </div>
         </div>
 
         {onRegenerate && (
           <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
-            <p className="text-sm font-bold text-violet-900">Rifai gli indizi con l’AI</p>
-            <p className="mt-0.5 text-xs text-slate-500">Genera un nuovo set (diverso dall’attuale) con il numero di indizi che preferisci. Potrai ancora modificarlo.</p>
+            <p className="text-sm font-bold text-violet-900">{tl("Rifai gli indizi con l’AI")}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{tl("Genera un nuovo set (diverso dall’attuale) con il numero di indizi che preferisci. Potrai ancora modificarlo.")}</p>
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Numero di indizi</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">{tl("Numero di indizi")}</label>
                 <Input type="number" min={1} max={10} value={regenCount} onChange={event => setRegenCount(Math.min(10, Math.max(1, parseInt(event.target.value) || 5)))} className="h-9 w-24" />
               </div>
               <div className="min-w-[200px] flex-1">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Indicazioni (facoltative)</label>
-                <Input value={regenInstructions} onChange={event => setRegenInstructions(event.target.value)} placeholder="Es. più difficili, focus sul Rinascimento…" className="h-9" />
+                <label className="mb-1 block text-xs font-medium text-slate-600">{tl("Indicazioni (facoltative)")}</label>
+                <Input value={regenInstructions} onChange={event => setRegenInstructions(event.target.value)} placeholder={tl("Es. più difficili, focus sul Rinascimento…")} className="h-9" />
               </div>
               <Button tone="accent" surface="solid" disabled={regenerating} onClick={() => {
-                if (!draft.challenges.length || confirm('Gli indizi attuali verranno sostituiti da un nuovo set. Continuare?')) onRegenerate({ count: regenCount, instructions: regenInstructions })
+                if (!draft.challenges.length || confirm(tl("Gli indizi attuali verranno sostituiti da un nuovo set. Continuare?"))) onRegenerate({ count: regenCount, instructions: regenInstructions })
               }}>
                 {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {regenerating ? 'Genero…' : 'Rigenera set'}
+                {regenerating ? tl("Genero…") : tl("Rigenera set")}
               </Button>
             </div>
           </div>
@@ -1403,11 +1404,11 @@ function EscapeRoomDraftEditor({
 
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-slate-900">Indizi e ricompense · {draft.challenges.length}</h3>
-            <p className="text-xs text-slate-500">Puoi cambiare testi, soluzioni accettate e oggetti conquistati.</p>
+            <h3 className="font-bold text-slate-900">{tl("Indizi e ricompense ·")} {draft.challenges.length}</h3>
+            <p className="text-xs text-slate-500">{tl("Puoi cambiare testi, soluzioni accettate e oggetti conquistati.")}</p>
           </div>
           <Button tone="neutral" surface="outline" density="compact" onClick={() => onChange({ ...draft, challenges: [...draft.challenges, emptyEscapeChallenge()] })}>
-            <Plus className="h-3.5 w-3.5" /> Aggiungi indizio
+            <Plus className="h-3.5 w-3.5" /> {tl("Aggiungi indizio")}
           </Button>
         </div>
 
@@ -1416,33 +1417,33 @@ function EscapeRoomDraftEditor({
             <section key={challenge.key} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <span className="flex h-7 items-center rounded-full bg-violet-100 px-3 text-xs font-black text-violet-700">INDIZIO {index + 1}</span>
-                <button type="button" disabled={draft.challenges.length === 1} onClick={() => onChange({ ...draft, challenges: draft.challenges.filter((_, current) => current !== index) })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label={`Elimina indizio ${index + 1}`}><Trash2 className="h-4 w-4" /></button>
+                <button type="button" disabled={draft.challenges.length === 1} onClick={() => onChange({ ...draft, challenges: draft.challenges.filter((_, current) => current !== index) })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30" aria-label={tl("Elimina indizio {0}", index + 1)}><Trash2 className="h-4 w-4" /></button>
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Affermazione (con un dato alterato, oppure vera)</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">{tl("Affermazione (con un dato alterato, oppure vera)")}</label>
                   <Textarea rows={3} value={challenge.false_statement} onChange={event => updateChallenge(index, { false_statement: event.target.value })} />
                 </div>
-                <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={challenge.is_true} onChange={event => updateChallenge(index, { is_true: event.target.checked })} className="h-4 w-4 rounded border-slate-300" /> L’affermazione è interamente vera <span className="text-xs text-slate-400">(lo studente deve scrivere «è vero»)</span></label>
+                <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={challenge.is_true} onChange={event => updateChallenge(index, { is_true: event.target.checked })} className="h-4 w-4 rounded border-slate-300" /> {tl("L’affermazione è interamente vera")} <span className="text-xs text-slate-400">{tl("(lo studente deve scrivere «è vero»)")}</span></label>
                 {!challenge.is_true && <div>
-                  <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">Soluzioni accettate</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-bold text-violet-600 hover:text-violet-800">+ Variante</button></div>
+                  <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-600">{tl("Soluzioni accettate")}</label><button type="button" onClick={() => updateChallenge(index, { accepted_answers: [...challenge.accepted_answers, ''] })} className="text-xs font-bold text-violet-600 hover:text-violet-800">{tl("+ Variante")}</button></div>
                   <div className="space-y-2">
                     {challenge.accepted_answers.map((answer, answerIndex) => (
                       <div key={answerIndex} className="flex gap-2">
-                        <Input value={answer} onChange={event => updateChallenge(index, { accepted_answers: challenge.accepted_answers.map((current, i) => i === answerIndex ? event.target.value : current) })} placeholder={answerIndex ? 'Variante equivalente' : 'Risposta corretta'} />
+                        <Input value={answer} onChange={event => updateChallenge(index, { accepted_answers: challenge.accepted_answers.map((current, i) => i === answerIndex ? event.target.value : current) })} placeholder={answerIndex ? tl("Variante equivalente") : tl("Risposta corretta")} />
                         {challenge.accepted_answers.length > 1 && <button type="button" onClick={() => updateChallenge(index, { accepted_answers: challenge.accepted_answers.filter((_, i) => i !== answerIndex) })} className="text-slate-400 hover:text-rose-600"><X className="h-4 w-4" /></button>}
                       </div>
                     ))}
                   </div>
                 </div>}
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Spiegazione dopo la risposta</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">{tl("Spiegazione dopo la risposta")}</label>
                   <Textarea rows={2} value={challenge.explanation} onChange={event => updateChallenge(index, { explanation: event.target.value })} />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_1.5fr]">
-                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Icona</label><div className="flex flex-wrap gap-1">{ACHIEVEMENT_ICON_KEYS.map(key => <button key={key} type="button" onClick={() => updateChallenge(index, { achievement: { ...challenge.achievement, icon: key } })} className={`rounded-xl p-0.5 ${challenge.achievement.icon === key ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-100'}`}><AchievementIcon icon={key} size={26} /></button>)}</div></div>
-                  <div><label className="mb-1 block text-xs font-medium text-slate-600">Ricompensa</label><Input value={challenge.achievement.name} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, name: event.target.value } })} /></div>
-                  <div className="col-span-2 sm:col-span-1"><label className="mb-1 block text-xs font-medium text-slate-600">Effetto narrativo</label><Input value={challenge.achievement.description} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, description: event.target.value } })} /></div>
+                  <div><label className="mb-1 block text-xs font-medium text-slate-600">{tl("Icona")}</label><div className="flex flex-wrap gap-1">{ACHIEVEMENT_ICON_KEYS.map(key => <button key={key} type="button" onClick={() => updateChallenge(index, { achievement: { ...challenge.achievement, icon: key } })} className={`rounded-xl p-0.5 ${challenge.achievement.icon === key ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-100'}`}><AchievementIcon icon={key} size={26} /></button>)}</div></div>
+                  <div><label className="mb-1 block text-xs font-medium text-slate-600">{tl("Ricompensa")}</label><Input value={challenge.achievement.name} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, name: event.target.value } })} /></div>
+                  <div className="col-span-2 sm:col-span-1"><label className="mb-1 block text-xs font-medium text-slate-600">{tl("Effetto narrativo")}</label><Input value={challenge.achievement.description} onChange={event => updateChallenge(index, { achievement: { ...challenge.achievement, description: event.target.value } })} /></div>
                 </div>
               </div>
             </section>
@@ -1450,10 +1451,10 @@ function EscapeRoomDraftEditor({
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 p-6">
-        {onBack ? <Button tone="neutral" surface="ghost" onClick={onBack}>← Cambia Teacherbot</Button> : <span />}
+        {onBack ? <Button tone="neutral" surface="ghost" onClick={onBack}>{tl("← Cambia Teacherbot")}</Button> : <span />}
         <Button tone="accent" surface="solid" disabled={!valid || publishing} onClick={onPublish}>
           {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockKeyhole className="h-4 w-4" />}
-          {publishing ? (publishLabel ? 'Salvataggio…' : 'Pubblicazione…') : `${publishLabel || 'Pubblica Escape room'} · ${draft.challenges.length} indizi`}
+          {publishing ? (publishLabel ? tl("Salvataggio…") : tl("Pubblicazione…")) : tl("{0} · {1} indizi", publishLabel || 'Pubblica Escape room', draft.challenges.length)}
         </Button>
       </div>
     </>
@@ -1501,7 +1502,7 @@ export function EscapeRoomEditDialog({ interactionId, onClose, onSaved }: {
       const next = normalizeEscapeDraft(response.data)
       return prev ? { ...next, title: prev.title, narrative_intro: prev.narrative_intro || next.narrative_intro, mission: prev.mission || next.mission } : next
     }),
-    onError: errorToast('Impossibile rigenerare gli indizi'),
+    onError: errorToast(tl("Impossibile rigenerare gli indizi")),
   })
 
   const save = useMutation({
@@ -1514,11 +1515,11 @@ export function EscapeRoomEditDialog({ interactionId, onClose, onSaved }: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions'] })
       queryClient.invalidateQueries({ queryKey: ['live-interaction', interactionId] })
-      toast({ title: 'Escape Room aggiornata' })
+      toast({ title: tl("Escape Room aggiornata") })
       onSaved?.()
       onClose()
     },
-    onError: errorToast('Impossibile salvare le modifiche'),
+    onError: errorToast(tl("Impossibile salvare le modifiche")),
   })
 
   return (
@@ -1527,20 +1528,20 @@ export function EscapeRoomEditDialog({ interactionId, onClose, onSaved }: {
         <div className="flex items-start justify-between gap-4">
           <div className="px-6 pt-6">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Modifica escape room</h2>
-            <p className="mt-1 text-sm text-slate-500">Fino all’avvio puoi cambiare testi, numero di indizi e rigenerare il set.</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Modifica escape room")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{tl("Fino all’avvio puoi cambiare testi, numero di indizi e rigenerare il set.")}</p>
           </div>
-          <button onClick={onClose} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label="Chiudi"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
         </div>
         {!draft ? (
-          <div className="flex items-center justify-center gap-2 p-16 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /> Caricamento…</div>
+          <div className="flex items-center justify-center gap-2 p-16 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /> {tl("Caricamento…")}</div>
         ) : (
           <EscapeRoomDraftEditor
             draft={draft}
             onChange={setDraft}
             onPublish={() => save.mutate()}
             publishing={save.isPending}
-            publishLabel="Salva modifiche"
+            publishLabel={tl("Salva modifiche")}
             onRegenerate={options => regenerate.mutate(options)}
             regenerating={regenerate.isPending}
           />
@@ -1605,7 +1606,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
     }),
     onError: (error: unknown) => {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast({ title: detail || 'Impossibile preparare l’escape room', variant: 'destructive' })
+      toast({ title: detail || tl("Impossibile preparare l’escape room"), variant: 'destructive' })
     },
   })
 
@@ -1623,11 +1624,11 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       setShowEscapeModal(false)
       setSelectedEscapeBot('')
       setEscapeDraft(null)
-      toast({ title: 'Escape Room pubblicata in Live' })
+      toast({ title: tl("Escape Room pubblicata in Live") })
     },
     onError: (error: unknown) => {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast({ title: detail || 'Impossibile pubblicare il Teacherbot', variant: 'destructive' })
+      toast({ title: detail || tl("Impossibile pubblicare il Teacherbot"), variant: 'destructive' })
     },
   })
 
@@ -1636,25 +1637,25 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', activeSessionId] })
       setEndTarget(null)
-      toast({ title: 'Sessione chiusa per tutti' })
+      toast({ title: tl("Sessione chiusa per tutti") })
     },
-    onError: () => toast({ title: 'Impossibile chiudere la sessione', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Impossibile chiudere la sessione"), variant: 'destructive' }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => liveInteractionApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', activeSessionId] })
-      toast({ title: 'Eliminato' })
+      toast({ title: tl("Eliminato") })
     },
-    onError: () => toast({ title: 'Errore durante l\'eliminazione', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore durante l'eliminazione"), variant: 'destructive' }),
   })
 
   if (creating || editingId !== null) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <h2 className="text-xl font-bold text-slate-800 mb-6">
-          {editingId ? 'Modifica sessione live' : 'Nuova sessione live'}
+          {editingId ? tl("Modifica sessione live") : tl("Nuova sessione live")}
         </h2>
         <InteractionEditor
           sessionId={activeSessionId!}
@@ -1679,21 +1680,21 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             <button
               onClick={() => setShowTutorial(v => !v)}
               className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
-              title={showTutorial ? 'Nascondi il tutorial' : 'Come funziona: mostra il tutorial'}
-              aria-label={showTutorial ? 'Nascondi il tutorial' : 'Mostra il tutorial'}
+              title={showTutorial ? tl("Nascondi il tutorial") : tl("Come funziona: mostra il tutorial")}
+              aria-label={showTutorial ? tl("Nascondi il tutorial") : tl("Mostra il tutorial")}
               aria-pressed={showTutorial}
             >
               <HelpCircle className="h-4 w-4" />
             </button>
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            {storedSession ? `Sessione: ${storedSession.name}` : 'Seleziona una sessione dalla navbar'}
+            {storedSession ? tl("Sessione: {0}", storedSession.name) : tl("Seleziona una sessione dalla navbar")}
           </p>
         </div>
         {activeSessionId && (
           <div className="flex sm:justify-end">
             <Button className="w-full justify-center sm:w-auto" tone="accent" surface="solid" onClick={() => setShowNewSessionModal(true)}>
-              <Plus className="h-4 w-4" /> Nuova sessione
+              <Plus className="h-4 w-4" /> {tl("Nuova sessione")}
             </Button>
           </div>
         )}
@@ -1726,8 +1727,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             <div className="flex items-start justify-between gap-4">
               <div className="px-6 pt-6">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">Live Escape Room</p>
-                <h2 className="mt-1 text-xl font-bold text-slate-900">{escapeDraft ? 'Personalizza il quiz' : 'Scegli un Teacherbot'}</h2>
-                <p className="mt-1 text-sm text-slate-500">{escapeDraft ? 'Rivedi ogni testo, soluzione e premio prima di pubblicare.' : 'Genera una bozza modificabile: nulla sarà pubblicato senza la tua conferma.'}</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">{escapeDraft ? tl("Personalizza il quiz") : tl("Scegli un Teacherbot")}</h2>
+                <p className="mt-1 text-sm text-slate-500">{escapeDraft ? tl("Rivedi ogni testo, soluzione e premio prima di pubblicare.") : tl("Genera una bozza modificabile: nulla sarà pubblicato senza la tua conferma.")}</p>
               </div>
               <button onClick={() => { setShowEscapeModal(false); setEscapeDraft(null) }} className="mr-5 mt-5 rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
@@ -1737,19 +1738,19 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                   {escapeBots.map(bot => (
                     <button key={bot.id} onClick={() => setSelectedEscapeBot(bot.id)} className={`flex w-full items-start gap-3 rounded-2xl border-0 p-4 text-left transition ${selectedEscapeBot === bot.id ? 'ui-segment-active' : 'ds-control'}`}>
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
-                      <span><span className="block font-semibold text-slate-800">{bot.name}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{bot.synopsis || 'Teacherbot configurato in modalità Escape Room'}</span></span>
+                      <span><span className="block font-semibold text-slate-800">{bot.name}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{bot.synopsis || tl("Teacherbot configurato in modalità Escape Room")}</span></span>
                     </button>
                   ))}
-                  {escapeBots.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Non ci sono Teacherbot con modalità Escape Room attiva.</p>}
+                  {escapeBots.length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">{tl("Non ci sono Teacherbot con modalità Escape Room attiva.")}</p>}
                 </div>
                 <div className="p-6">
                   <div className="mb-4 flex items-center gap-3">
-                    <label className="text-sm font-medium text-slate-700" htmlFor="escape-steps">Numero di indizi</label>
+                    <label className="text-sm font-medium text-slate-700" htmlFor="escape-steps">{tl("Numero di indizi")}</label>
                     <Input id="escape-steps" type="number" min={1} max={10} value={escapeStepCount} onChange={event => setEscapeStepCount(Math.min(10, Math.max(1, parseInt(event.target.value) || 5)))} className="h-9 w-24" />
                   </div>
                   <Button className="w-full" tone="accent" surface="solid" disabled={!selectedEscapeBot || previewEscapeMutation.isPending} onClick={() => previewEscapeMutation.mutate(undefined)}>
                     {previewEscapeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {previewEscapeMutation.isPending ? 'Genero la bozza…' : 'Genera quiz modificabile'}
+                    {previewEscapeMutation.isPending ? tl("Genero la bozza…") : tl("Genera quiz modificabile")}
                   </Button>
                 </div>
               </>
@@ -1790,19 +1791,19 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {!activeSessionId && (
         <div className="text-center py-16 text-slate-400">
           <CloudLightning className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p>Seleziona una sessione attiva dalla navbar per gestire le sessioni live.</p>
+          <p>{tl("Seleziona una sessione attiva dalla navbar per gestire le sessioni live.")}</p>
         </div>
       )}
 
       {activeSessionId && isLoading && (
-        <div className="text-center py-12 text-slate-400">Caricamento...</div>
+        <div className="text-center py-12 text-slate-400">{tl("Caricamento...")}</div>
       )}
 
       {activeSessionId && !isLoading && interactions?.length === 0 && (
         <div className="text-center py-16 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
           <CloudLightning className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p className="font-medium text-slate-600 mb-1">Nessuna sessione live ancora</p>
-          <p className="text-sm">Crea la prima sessione live per questa classe!</p>
+          <p className="font-medium text-slate-600 mb-1">{tl("Nessuna sessione live ancora")}</p>
+          <p className="text-sm">{tl("Crea la prima sessione live per questa classe!")}</p>
         </div>
       )}
 
@@ -1815,7 +1816,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
           onEdit={item => item.interaction_type === 'escape_room' ? setEditingEscapeId(item.id) : setEditingId(item.id)}
           onDuplicate={item => setDuplicateTarget(item as LiveInteractionItem)}
           onEnd={item => setEndTarget(item as LiveInteractionItem)}
-          onDelete={item => { if (confirm('Eliminare questa sessione e tutte le risposte?')) deleteMutation.mutate(item.id) }}
+          onDelete={item => { if (confirm(tl("Eliminare questa sessione e tutte le risposte?"))) deleteMutation.mutate(item.id) }}
         />
       )}
       {endTarget && <EndSessionDialog title={endTarget.title} kind={endTarget.interaction_type} lobby={isOpenLobby(endTarget)} pending={endMutation.isPending} onConfirm={() => endMutation.mutate(endTarget)} onCancel={() => setEndTarget(null)} />}

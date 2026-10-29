@@ -1,5 +1,6 @@
 import { CalendarRange, Plus } from '@/components/icons'
 import type { BoardSprint } from './BoardSprintsDialog'
+import { tl } from '@/i18n/tl'
 
 type TimelineCard = {
   id: string
@@ -53,7 +54,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
       key: sprint.id,
       code: sprintCode[sprint.id],
       title: sprint.name,
-      dates: formatSprintDates(sprint) || 'Date da definire',
+      dates: formatSprintDates(sprint) || tl("Date da definire"),
       goal: sprint.goal,
       status: sprintStatus(sprint),
       cards: sortCards(cards.filter((card) => card.sprint_id === sprint.id)),
@@ -61,17 +62,17 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
   ]
   const unplanned = cards.filter((card) => card.card_type !== 'epic' && !(card.sprint_id && sprintIds.has(card.sprint_id)))
   if (unplanned.length) {
-    lanes.push({ key: 'none', code: '—', title: 'Senza sprint', dates: 'Da pianificare', goal: '', status: 'unscheduled', cards: sortCards(unplanned) })
+    lanes.push({ key: 'none', code: '—', title: tl("Senza sprint"), dates: tl("Da pianificare"), goal: '', status: 'unscheduled', cards: sortCards(unplanned) })
   }
 
   if (!lanes.length) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500">
         <CalendarRange className="h-8 w-8 text-slate-300" />
-        Nessun task da mostrare sulla timeline.
+        {tl("Nessun task da mostrare sulla timeline.")}
         {canManage && (
           <button type="button" onClick={onManageSprints} className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-bold text-slate-600 hover:border-slate-400">
-            <Plus className="h-4 w-4" /> Crea sprint
+            <Plus className="h-4 w-4" /> {tl("Crea sprint")}
           </button>
         )}
       </div>
@@ -94,7 +95,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
                 <div className="flex items-center gap-2">
                   <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${lane.status === 'current' ? 'bg-violet-600 text-white' : 'bg-slate-800 text-white'}`}>{lane.code}</span>
                   <span className="text-xs font-bold text-slate-500">{lane.dates}</span>
-                  {lane.status === 'current' && <span className="text-[10px] font-bold text-violet-600">in corso</span>}
+                  {lane.status === 'current' && <span className="text-[10px] font-bold text-violet-600">{tl("in corso")}</span>}
                 </div>
                 <h3 className="mt-1 truncate text-sm font-black text-slate-900" title={lane.title}>{lane.title}</h3>
                 {lane.goal && <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-slate-500">{lane.goal}</p>}
@@ -107,7 +108,7 @@ export default function BoardTimeline({ sprints, sprintCode, cards, columns, can
                 </div>
               </div>
               <ul className="ds-panel flex-1 space-y-0.5 rounded-[var(--ds-radius-panel)] p-1.5">
-                {lane.cards.length === 0 && <li className="px-2 py-3 text-center text-[11px] text-slate-300">Nessun task</li>}
+                {lane.cards.length === 0 && <li className="px-2 py-3 text-center text-[11px] text-slate-300">{tl("Nessun task")}</li>}
                 {lane.cards.map((card) => {
                   const column = columnById[card.column_id]
                   const isDone = card.column_id === doneColumnId

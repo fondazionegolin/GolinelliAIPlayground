@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 export type ReportTemplateId =
   | 'dashboard_classe'
   | 'apprendimenti'
@@ -174,7 +175,7 @@ export function parseReportPayload(raw: string): ReportPayload | null {
     })) : [],
     charts: Array.isArray(obj.charts) ? obj.charts.slice(0, 4).map((chart, idx) => ({
       id: chart.id || `chart_${idx + 1}`,
-      title: chart.title || `Grafico ${idx + 1}`,
+      title: chart.title || tl("Grafico {0}", idx + 1),
       type: chart.type || 'bar',
       labels: Array.isArray(chart.labels) ? chart.labels.slice(0, 12) : [],
       values: Array.isArray(chart.values) ? chart.values.slice(0, 12).map((v) => Number(v) || 0) : [],
@@ -182,7 +183,7 @@ export function parseReportPayload(raw: string): ReportPayload | null {
       description: chart.description,
     })) : [],
     leaderboard: Array.isArray(obj.leaderboard) ? obj.leaderboard.slice(0, 10).map((row) => ({
-      name: row.name || 'Elemento',
+      name: row.name || tl("Elemento"),
       score: row.score,
       detail: row.detail,
       badge: row.badge,
@@ -191,7 +192,7 @@ export function parseReportPayload(raw: string): ReportPayload | null {
     risks: Array.isArray(obj.risks) ? obj.risks.slice(0, 8).map(String) : [],
     recommendations: Array.isArray(obj.recommendations) ? obj.recommendations.slice(0, 8).map(String) : [],
     tables: Array.isArray(obj.tables) ? obj.tables.slice(0, 3).map((table) => ({
-      title: table.title || 'Tabella',
+      title: table.title || tl("Tabella"),
       columns: Array.isArray(table.columns) ? table.columns.slice(0, 6).map(String) : [],
       rows: Array.isArray(table.rows) ? table.rows.slice(0, 12).map((row) => Array.isArray(row) ? row.slice(0, 6).map(String) : []) : [],
     })) : [],
@@ -208,31 +209,31 @@ export function parseBrochurePayload(raw: string): BrochurePayload | null {
     title: obj.title,
     subtitle: obj.subtitle || obj.title,
     palette: Array.isArray(obj.palette) ? obj.palette.slice(0, 5).map(String) : [],
-    heroBadge: obj.heroBadge || 'Brochure AI',
+    heroBadge: obj.heroBadge || tl("Brochure AI"),
     heroAccent: obj.heroAccent || '',
     heroDescription: obj.heroDescription,
-    ctaPrimary: obj.ctaPrimary || 'Scopri di più',
-    ctaSecondary: obj.ctaSecondary || 'Approfondisci',
-    overviewTitle: obj.overviewTitle || 'Panoramica',
+    ctaPrimary: obj.ctaPrimary || tl("Scopri di più"),
+    ctaSecondary: obj.ctaSecondary || tl("Approfondisci"),
+    overviewTitle: obj.overviewTitle || tl("Panoramica"),
     overviewLead: obj.overviewLead || '',
     keyPoints: Array.isArray(obj.keyPoints) ? obj.keyPoints.slice(0, 6).map(String) : [],
     features: Array.isArray(obj.features) ? obj.features.slice(0, 6).map((feature) => ({
       icon: feature.icon || '✨',
-      title: feature.title || 'Elemento',
+      title: feature.title || tl("Elemento"),
       description: feature.description || '',
     })) : [],
     benefits: Array.isArray(obj.benefits) ? obj.benefits.slice(0, 8).map(String) : [],
     steps: Array.isArray(obj.steps) ? obj.steps.slice(0, 5).map(String) : [],
     stats: Array.isArray(obj.stats) ? obj.stats.slice(0, 4).map((stat) => ({
       value: stat.value || 'n.d.',
-      label: stat.label || 'Indicatore',
+      label: stat.label || tl("Indicatore"),
       description: stat.description,
     })) : [],
     faq: Array.isArray(obj.faq) ? obj.faq.slice(0, 6).map((entry) => ({
-      question: entry.question || 'Domanda',
+      question: entry.question || tl("Domanda"),
       answer: entry.answer || '',
     })) : [],
-    closingTitle: obj.closingTitle || 'Prossimi passi',
+    closingTitle: obj.closingTitle || tl("Prossimi passi"),
     closingText: obj.closingText || '',
     closingQuote: obj.closingQuote || '',
     closingAuthor: obj.closingAuthor || '',
@@ -250,11 +251,11 @@ export function parseDispensaPayload(raw: string): DispensaPayload | null {
     objectives: Array.isArray(obj.objectives) ? obj.objectives.slice(0, 8).map(String) : [],
     sections: obj.sections.slice(0, 8).map((section, index) => ({
       id: section.id || `s${index + 1}`,
-      title: section.title || `Sezione ${index + 1}`,
+      title: section.title || tl("Sezione {0}", index + 1),
       intro: section.intro || '',
       blocks: Array.isArray(section.blocks) ? section.blocks.slice(0, 4).map((block) => ({
         kind: ['definition', 'theorem', 'example', 'warning', 'note'].includes(block.kind || '') ? block.kind as DispensaBlock['kind'] : 'note',
-        title: block.title || 'Approfondimento',
+        title: block.title || tl("Approfondimento"),
         content: block.content || '',
       })) : [],
       bulletPoints: Array.isArray(section.bulletPoints) ? section.bulletPoints.slice(0, 8).map(String) : [],
@@ -267,7 +268,7 @@ export function parseDispensaPayload(raw: string): DispensaPayload | null {
         : undefined,
     })),
     exercises: Array.isArray(obj.exercises) ? obj.exercises.slice(0, 6).map((exercise) => ({
-      title: exercise.title || 'Esercizio',
+      title: exercise.title || tl("Esercizio"),
       prompt: exercise.prompt || '',
       solution: exercise.solution,
     })) : [],
@@ -312,7 +313,7 @@ function latexTable(table: DispensaTable | undefined): string {
   ].join('\n')
 }
 
-export function buildDispensaLatex(payloadOrRaw: string, fallbackTitle = 'Dispensa', authorName = 'Docente'): string | null {
+export function buildDispensaLatex(payloadOrRaw: string, fallbackTitle = tl("Dispensa"), authorName = tl("Docente")): string | null {
   const payload = typeof payloadOrRaw === 'string' ? parseDispensaPayload(payloadOrRaw) : null
   if (!payload) return null
 
@@ -347,7 +348,7 @@ export function buildDispensaLatex(payloadOrRaw: string, fallbackTitle = 'Dispen
 
   const exercises = payload.exercises && payload.exercises.length > 0
     ? [
-        '\\section*{Esercizi}',
+        tl("\\section*{Esercizi}"),
         ...payload.exercises.map((exercise) => [
           `\\begin{exercisebox}{${escapeLatex(exercise.title)}}`,
           latexParagraphs(exercise.prompt),
@@ -432,7 +433,7 @@ ${references}
 \end{document}`
 }
 
-export function buildBrochureLatex(payloadOrRaw: string, fallbackTitle = 'Brochure', authorName = 'Docente'): string | null {
+export function buildBrochureLatex(payloadOrRaw: string, fallbackTitle = 'Brochure', authorName = tl("Docente")): string | null {
   const payload = typeof payloadOrRaw === 'string' ? parseBrochurePayload(payloadOrRaw) : null
   if (!payload) return null
 

@@ -39,7 +39,7 @@ export function NavSectionArt({ path, className = '' }: { path: string; classNam
         height={320}
         decoding="async"
         draggable={false}
-        className="h-full w-full object-contain"
+        className="h-full w-full scale-[0.8] object-contain"
       />
     </span>
   )

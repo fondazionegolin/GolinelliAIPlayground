@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { ColorPicker } from '@/components/ui/ColorPicker'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +9,7 @@ import {
   RectangleHorizontal, Triangle, Undo2, Redo2, Maximize, Minimize,
   LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,11 +165,11 @@ const TEMPLATES = [
       }
       const wwwPostits: CanvasItem[] = [90, 260, 430].map((y) => ({
         id: mkId(), type: 'postit', x: 80, y, w: 480, h: 110,
-        text: 'Scrivi qui...', color: '#dcfce7', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: wwwId,
+        text: tl("Scrivi qui..."), color: '#dcfce7', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: wwwId,
       }))
       const ebiPostits: CanvasItem[] = [90, 260, 430].map((y) => ({
         id: mkId(), type: 'postit', x: 680, y, w: 480, h: 110,
-        text: 'Scrivi qui...', color: '#ffedd5', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: ebiId,
+        text: tl("Scrivi qui..."), color: '#ffedd5', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: ebiId,
       }))
       return { type: 'canvas_v1', items: [title, www, ebi, ...wwwPostits, ...ebiPostits] }
     },
@@ -179,9 +181,9 @@ const TEMPLATES = [
     emoji: '📚',
     create(): CanvasDoc {
       const cols = [
-        { x: 40, text: '🔵 Conosco già', color: '#3ea9f4', postColor: '#dbeafe' },
-        { x: 460, text: '🟡 Voglio sapere', color: '#ca8a04', postColor: '#fef9c3' },
-        { x: 880, text: '🟢 Ho imparato', color: '#16a34a', postColor: '#dcfce7' },
+        { x: 40, text: tl("🔵 Conosco già"), color: '#3ea9f4', postColor: '#dbeafe' },
+        { x: 460, text: tl("🟡 Voglio sapere"), color: '#ca8a04', postColor: '#fef9c3' },
+        { x: 880, text: tl("🟢 Ho imparato"), color: '#16a34a', postColor: '#dcfce7' },
       ]
       const items: CanvasItem[] = cols.flatMap(({ x, text, color, postColor }) => {
         const fId = mkId()
@@ -205,10 +207,10 @@ const TEMPLATES = [
     emoji: '📊',
     create(): CanvasDoc {
       const quads = [
-        { x: 40, y: 40, text: '💪 Punti di forza', color: '#16a34a', postColor: '#dcfce7' },
-        { x: 520, y: 40, text: '⚠️ Debolezze', color: '#dc2626', postColor: '#fee2e2' },
-        { x: 40, y: 440, text: '🌟 Opportunità', color: '#3ea9f4', postColor: '#dbeafe' },
-        { x: 520, y: 440, text: '⚡ Minacce', color: '#ea580c', postColor: '#ffedd5' },
+        { x: 40, y: 40, text: tl("💪 Punti di forza"), color: '#16a34a', postColor: '#dcfce7' },
+        { x: 520, y: 40, text: tl("⚠️ Debolezze"), color: '#dc2626', postColor: '#fee2e2' },
+        { x: 40, y: 440, text: tl("🌟 Opportunità"), color: '#3ea9f4', postColor: '#dbeafe' },
+        { x: 520, y: 440, text: tl("⚡ Minacce"), color: '#ea580c', postColor: '#ffedd5' },
       ]
       const items: CanvasItem[] = quads.flatMap(({ x, y, text, color, postColor }) => {
         const fId = mkId()
@@ -248,9 +250,9 @@ const TEMPLATES = [
     emoji: '🌹',
     create(): CanvasDoc {
       const cols = [
-        { x: 40, text: '🌹 Rosa (positivo)', color: '#e11d48', postColor: '#fce7f3' },
-        { x: 460, text: '🌱 Bocciolo (potenziale)', color: '#16a34a', postColor: '#dcfce7' },
-        { x: 880, text: '🌵 Spina (difficoltà)', color: '#78350f', postColor: '#fef3c7' },
+        { x: 40, text: tl("🌹 Rosa (positivo)"), color: '#e11d48', postColor: '#fce7f3' },
+        { x: 460, text: tl("🌱 Bocciolo (potenziale)"), color: '#16a34a', postColor: '#dcfce7' },
+        { x: 880, text: tl("🌵 Spina (difficoltà)"), color: '#78350f', postColor: '#fef3c7' },
       ]
       const items: CanvasItem[] = cols.flatMap(({ x, text, color, postColor }) => {
         const fId = mkId()
@@ -429,7 +431,7 @@ export function CollaborativeCanvas({
   onContentChange,
   readOnly = false,
 }: CollaborativeCanvasProps) {
-  const collaborationNameRef = useRef((canvasName || title || 'Lavagna collaborativa').trim())
+  const collaborationNameRef = useRef((canvasName || title || tl("Lavagna collaborativa")).trim())
   const [collaborationKey, setCollaborationKey] = useState(() => collaborationNameRef.current.toLocaleLowerCase().trim().replace(/\s+/g, ' ').slice(0, 240))
   // Refs
   const containerRef = useRef<HTMLDivElement>(null)
@@ -915,7 +917,7 @@ export function CollaborativeCanvas({
         ...prev,
         [userId]: {
           userId,
-          label: String(payload?.label || (payload?.user_type === 'teacher' ? 'Docente' : 'Studente')),
+          label: String(payload?.label || (payload?.user_type === 'teacher' ? tl("Docente") : tl("Studente"))),
           color: collaboratorColor(userId),
           x,
           y,
@@ -1763,10 +1765,10 @@ export function CollaborativeCanvas({
   // ─── Drop handler ─────────────────────────────────────────────────────────
 
   const uploadImage = async (file: File): Promise<string> => {
-    if (!sessionId) throw new Error('Sessione richiesta per caricare immagini')
+    if (!sessionId) throw new Error(tl("Sessione richiesta per caricare immagini"))
     const res = await chatApi.uploadFiles(sessionId, [file])
     const url = res.data?.urls?.[0]
-    if (!url) throw new Error('Upload immagine non riuscito')
+    if (!url) throw new Error(tl("Upload immagine non riuscito"))
     return String(url)
   }
 
@@ -1887,7 +1889,7 @@ export function CollaborativeCanvas({
           value={title}
           onChange={(e) => onTitleChange?.(e.target.value)}
           className="h-7 w-52 border-transparent text-sm shadow-none focus:border-slate-300"
-          placeholder="Titolo lavagna"
+          placeholder={tl("Titolo lavagna")}
           disabled={!canEdit}
         />
 
@@ -1896,7 +1898,7 @@ export function CollaborativeCanvas({
         {/* Undo / Redo */}
         <button
           type="button"
-          title="Annulla (Ctrl+Z)"
+          title={tl("Annulla (Ctrl+Z)")}
           onClick={undo}
           disabled={historyIndex <= 0}
           className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
@@ -1905,7 +1907,7 @@ export function CollaborativeCanvas({
         </button>
         <button
           type="button"
-          title="Ripristina (Ctrl+Y)"
+          title={tl("Ripristina (Ctrl+Y)")}
           onClick={redo}
           disabled={historyIndex >= historyRef.current.length - 1}
           className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
@@ -1918,7 +1920,7 @@ export function CollaborativeCanvas({
         {sessionId && (
           <div
             className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${socketConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}
-            title={socketConnected ? 'Collaborazione in tempo reale attiva' : 'Riconnessione in corso; le modifiche restano salvate localmente'}
+            title={socketConnected ? tl("Collaborazione in tempo reale attiva") : tl("Riconnessione in corso; le modifiche restano salvate localmente")}
           >
             <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             {socketConnected ? `Live${Object.keys(remoteCursors).length ? ` · ${Object.keys(remoteCursors).length + 1}` : ''}` : 'Offline'}
@@ -1930,7 +1932,7 @@ export function CollaborativeCanvas({
           <button type="button" onClick={zoomOut} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">−</button>
           <span className="w-12 text-center text-xs text-slate-600 tabular-nums">{Math.round(zoom * 100)}%</span>
           <button type="button" onClick={zoomIn} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">+</button>
-          <button type="button" onClick={fitToScreen} title="Adatta alla schermata" className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-white">
+          <button type="button" onClick={fitToScreen} title={tl("Adatta alla schermata")} className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-white">
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -1946,7 +1948,7 @@ export function CollaborativeCanvas({
             {/* Inline student write toggle — always visible for teacher */}
             <button
               type="button"
-              title={studentsCanWrite ? 'Studenti possono modificare — clicca per disabilitare' : 'Clicca per permettere agli studenti di modificare'}
+              title={studentsCanWrite ? tl("Studenti possono modificare — clicca per disabilitare") : tl("Clicca per permettere agli studenti di modificare")}
               onClick={toggleStudentsCanWrite}
               className={`flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-all ${
                 studentsCanWrite
@@ -1955,7 +1957,7 @@ export function CollaborativeCanvas({
               }`}
             >
               <Users className="h-3.5 w-3.5" />
-              <span>Modifiche studenti: {studentsCanWrite ? 'ON' : 'OFF'}</span>
+              <span>{tl("Modifiche studenti:")} {studentsCanWrite ? 'ON' : 'OFF'}</span>
               <span
                 className={`flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
               >
@@ -1968,7 +1970,7 @@ export function CollaborativeCanvas({
         {/* Fullscreen */}
         <button
           type="button"
-          title={isFullscreen ? 'Esci da schermo intero' : 'Schermo intero'}
+          title={isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")}
           onClick={() => setIsFullscreen((v) => !v)}
           className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
         >
@@ -1981,43 +1983,43 @@ export function CollaborativeCanvas({
         {selectedItem ? (<>
           {isShape(selectedItem) && (
             <>
-              <span className="text-slate-500">Forma</span>
+              <span className="text-slate-500">{tl("Forma")}</span>
               <div className="flex items-center gap-1">
                 <span className="text-slate-400">Fill</span>
-                <Input type="color" value={selectedItem.fill} onChange={(e) => updateItem(selectedItem.id, { fill: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+                <ColorPicker value={selectedItem.fill} onChange={(color) => updateItem(selectedItem.id, { fill: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Riempimento")} />
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-slate-400">Bordo</span>
-                <Input type="color" value={selectedItem.stroke} onChange={(e) => updateItem(selectedItem.id, { stroke: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+                <span className="text-slate-400">{tl("Bordo")}</span>
+                <ColorPicker value={selectedItem.stroke} onChange={(color) => updateItem(selectedItem.id, { stroke: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Bordo")} />
               </div>
               <label className="flex items-center gap-1 text-slate-400">
-                Spessore
+                {tl("Spessore")}
                 <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2.5} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2.5))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
               </label>
               <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'solid' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>
-                Bordo a mano
+                {tl("Bordo a mano")}
               </button>
             </>
           )}
           {isFrame(selectedItem) && (
             <>
               <span className="text-slate-500">Frame</span>
-              <label className="flex items-center gap-1 text-slate-400">Sfondo <Input type="color" value={(selectedItem.backgroundColor || '#ffffff').slice(0, 7)} onChange={(e) => updateItem(selectedItem.id, { backgroundColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
-              <label className="flex items-center gap-1 text-slate-400">Bordo <Input type="color" value={selectedItem.color} onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
-              <label className="flex items-center gap-1 text-slate-400">Spessore <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
-              <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'dashed' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>Bordo a mano</button>
+              <label className="flex items-center gap-1 text-slate-400">{tl("Sfondo")} <ColorPicker value={(selectedItem.backgroundColor || '#ffffff').slice(0, 7)} onChange={(color) => updateItem(selectedItem.id, { backgroundColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
+              <label className="flex items-center gap-1 text-slate-400">{tl("Bordo")} <ColorPicker value={selectedItem.color} onChange={(color) => updateItem(selectedItem.id, { color: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
+              <label className="flex items-center gap-1 text-slate-400">{tl("Spessore")} <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'dashed' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>{tl("Bordo a mano")}</button>
             </>
           )}
           {isConnector(selectedItem) && (
             <>
-              <span className="text-slate-500">Connettore</span>
-              <Input type="color" value={selectedItem.color} onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit} />
+              <span className="text-slate-500">{tl("Connettore")}</span>
+              <ColorPicker value={selectedItem.color} onChange={(color) => updateItem(selectedItem.id, { color: color })} disabled={!canEdit} title={tl("Colore")} />
               <Input type="number" min={1} max={8} value={selectedItem.width} onChange={(e) => updateItem(selectedItem.id, { width: Math.max(1, Math.min(8, Number(e.target.value || 2))) })} className="h-6 w-12 border-slate-200 px-1" disabled={!canEdit} />
             </>
           )}
           {selectedTextStyle && isTextEditable(selectedItem) && (
             <>
-              <span className="text-slate-500">Testo</span>
+              <span className="text-slate-500">{tl("Testo")}</span>
               <select className="h-6 rounded border border-slate-200 bg-white px-1 text-xs" value={selectedTextStyle.fontFamily} onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontFamily: e.target.value } })} disabled={!canEdit || isLockedByOther(selectedItem.id)}>
                 <option value="Inter, system-ui, sans-serif">Inter</option>
                 <option value="Arial, sans-serif">Arial</option>
@@ -2028,7 +2030,7 @@ export function CollaborativeCanvas({
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' } })} className={`h-6 w-6 rounded border text-xs font-bold ${selectedTextStyle.fontWeight === '600' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>B</button>
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' } })} className={`h-6 w-6 rounded border text-xs italic ${selectedTextStyle.fontStyle === 'italic' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>I</button>
               {selectedItem.type === 'shape' && (
-                <label className="flex items-center gap-1 text-slate-400">Colore <Input type="color" value={selectedItem.textColor || '#171717'} onChange={(e) => updateItem(selectedItem.id, { textColor: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+                <label className="flex items-center gap-1 text-slate-400">{tl("Colore")} <ColorPicker value={selectedItem.textColor || '#171717'} onChange={(color) => updateItem(selectedItem.id, { textColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
               )}
               {selectedItem.type === 'postit' && (
                 <div className="flex gap-1">
@@ -2041,11 +2043,11 @@ export function CollaborativeCanvas({
           )}
           {canEdit && (
             <button type="button" onClick={deleteSelected} className="ml-auto flex h-6 items-center gap-1 rounded px-2 text-red-500 hover:bg-red-50">
-              <Trash2 className="h-3.5 w-3.5" /> Elimina
+              <Trash2 className="h-3.5 w-3.5" /> {tl("Elimina")}
             </button>
           )}
         </>) : (
-          <span className="text-[11px] text-slate-400 select-none">Seleziona un elemento per vedere le proprietà</span>
+          <span className="text-[11px] text-slate-400 select-none">{tl("Seleziona un elemento per vedere le proprietà")}</span>
         )}
       </div>
 
@@ -2054,20 +2056,20 @@ export function CollaborativeCanvas({
         {/* Left tool panel */}
         {canEdit && (
           <div className="flex w-11 shrink-0 flex-col items-center gap-0.5 border-r border-slate-200 bg-white py-2">
-            <ToolButton activeTool={tool} t="select" icon={MousePointer} label="Seleziona (V)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="hand" icon={Move} label="Muovi canvas (H)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="select" icon={MousePointer} label={tl("Seleziona (V)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="hand" icon={Move} label={tl("Muovi canvas (H)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="postit" icon={StickyNote} label="Post-it — trascina per dimensionare (P)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="frame" icon={Frame} label="Frame — trascina per dimensionare (F)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="text" icon={Type} label="Testo (T)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="postit" icon={StickyNote} label={tl("Post-it — trascina per dimensionare (P)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="frame" icon={Frame} label={tl("Frame — trascina per dimensionare (F)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="text" icon={Type} label={tl("Testo (T)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label="Rettangolo — trascina per dimensionare (R)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label="Triangolo — trascina per dimensionare" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label={tl("Rettangolo — trascina per dimensionare (R)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label={tl("Triangolo — trascina per dimensionare")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label="Connettore — trascina da un punto di ancoraggio (C)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="pen" icon={Pencil} label="Penna libera (D)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label={tl("Connettore — trascina da un punto di ancoraggio (C)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="pen" icon={Pencil} label={tl("Penna libera (D)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <button type="button" title="Elimina selezionato (Del)" onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
+            <button type="button" title={tl("Elimina selezionato (Del)")} onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
               <Eraser className="h-4 w-4" />
             </button>
 
@@ -2075,8 +2077,8 @@ export function CollaborativeCanvas({
             {tool === 'pen' && (
               <>
                 <div className="my-0.5 h-px w-7 bg-slate-200" />
-                <Input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Colore penna" />
-                <Input type="number" min={1} max={14} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value || 3))} className="h-7 w-9 border-slate-200 px-1 text-center text-xs" title="Spessore" />
+                <ColorPicker value={strokeColor} onChange={(color) => setStrokeColor(color)} title={tl("Colore penna")} />
+                <Input type="number" min={1} max={14} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value || 3))} className="h-7 w-9 border-slate-200 px-1 text-center text-xs" title={tl("Spessore")} />
               </>
             )}
 
@@ -2094,8 +2096,8 @@ export function CollaborativeCanvas({
             {(tool === 'roundedRect' || tool === 'triangle') && (
               <>
                 <div className="my-0.5 h-px w-7 bg-slate-200" />
-                <Input type="color" value={newShapeFill} onChange={(e) => setNewShapeFill(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Riempimento" />
-                <Input type="color" value={newShapeStroke} onChange={(e) => setNewShapeStroke(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Bordo" />
+                <ColorPicker value={newShapeFill} onChange={(color) => setNewShapeFill(color)} title={tl("Riempimento")} />
+                <ColorPicker value={newShapeStroke} onChange={(color) => setNewShapeStroke(color)} title={tl("Bordo")} />
               </>
             )}
           </div>
@@ -2294,7 +2296,7 @@ export function CollaborativeCanvas({
                       <textarea
                         ref={(element) => { textEditorRefs.current[item.id] = element }}
                         value={item.text || ''}
-                        aria-label="Testo della figura"
+                        aria-label={tl("Testo della figura")}
                         onFocus={() => { beginInteraction(); emitLock(item.id) }}
                         onBlur={() => { emitUnlock(item.id); endInteraction() }}
                         onChange={(e) => updateItem(item.id, { text: e.target.value })}
@@ -2374,7 +2376,7 @@ export function CollaborativeCanvas({
                         draggingRef.current = null
                         resizingRef.current = { id: item.id, startX: e.clientX, startY: e.clientY, startW: item.w, startH: item.h }
                       }}
-                      title="Ridimensiona"
+                      title={tl("Ridimensiona")}
                     />
                   )}
 
@@ -2386,12 +2388,12 @@ export function CollaborativeCanvas({
                           type="button"
                           onClick={(e) => { e.stopPropagation(); forceUnlockItem(item.id) }}
                           className="rounded bg-amber-600/80 px-2 py-0.5 text-xs text-white hover:bg-amber-700/90"
-                          title="Forza sblocco"
+                          title={tl("Forza sblocco")}
                         >
-                          🔒 Sblocca
+                          {tl("🔒 Sblocca")}
                         </button>
                       ) : (
-                        <span className="pointer-events-none rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-white">In uso</span>
+                        <span className="pointer-events-none rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-white">{tl("In uso")}</span>
                       )}
                     </div>
                   )}
@@ -2405,7 +2407,7 @@ export function CollaborativeCanvas({
             <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/80">
               <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
                 <ImagePlus className="h-4 w-4" />
-                Rilascia immagini o file CSV/XLSX
+                {tl("Rilascia immagini o file CSV/XLSX")}
                 <Table className="h-4 w-4" />
               </div>
             </div>
@@ -2414,7 +2416,7 @@ export function CollaborativeCanvas({
           {/* Connector hint */}
           {tool === 'connector' && connectorDrag && (
             <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-slate-800/80 px-3 py-1 text-xs text-white">
-              Trascina verso un punto di connessione
+              {tl("Trascina verso un punto di connessione")}
             </div>
           )}
 
@@ -2422,19 +2424,19 @@ export function CollaborativeCanvas({
           {role === 'student' && !canEdit && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-1.5 text-xs text-slate-500 shadow-md backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-              Solo visualizzazione · il docente non ha ancora abilitato le modifiche
+              {tl("Solo visualizzazione · il docente non ha ancora abilitato le modifiche")}
             </div>
           )}
           {role === 'student' && canEdit && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-green-200 bg-green-50/95 px-4 py-1.5 text-xs text-green-700 shadow-md backdrop-blur-sm">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
-              Modifica abilitata dal docente
+              {tl("Modifica abilitata dal docente")}
             </div>
           )}
 
           {/* Connection status + zoom HUD */}
           <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
-            <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-amber-400'}`} title={socketConnected ? 'Connesso in tempo reale' : 'Modalità polling'} />
+            <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-amber-400'}`} title={socketConnected ? tl("Connesso in tempo reale") : tl("Modalità polling")} />
             <span className="text-xs text-slate-400">{Math.round(zoom * 100)}%</span>
           </div>
         </div>
@@ -2451,38 +2453,38 @@ export function CollaborativeCanvas({
         >
           {contextMenu.itemId ? (
             <>
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Livello Z</div>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Livello Z")}</div>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'front'); closeContextMenu() }}>
-                <span className="text-slate-400">⬆⬆</span> Porta in primo piano
+                <span className="text-slate-400">⬆⬆</span> {tl("Porta in primo piano")}
               </button>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'forward'); closeContextMenu() }}>
-                <span className="text-slate-400">⬆</span> Porta avanti
+                <span className="text-slate-400">⬆</span> {tl("Porta avanti")}
               </button>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'backward'); closeContextMenu() }}>
-                <span className="text-slate-400">⬇</span> Manda indietro
+                <span className="text-slate-400">⬇</span> {tl("Manda indietro")}
               </button>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'back'); closeContextMenu() }}>
-                <span className="text-slate-400">⬇⬇</span> Manda in secondo piano
+                <span className="text-slate-400">⬇⬇</span> {tl("Manda in secondo piano")}
               </button>
               <div className="mx-2 my-1 h-px bg-slate-100" />
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Azioni</div>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Azioni")}</div>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { duplicateItem(contextMenu.itemId!); closeContextMenu() }}>
-                <span className="text-slate-400">⧉</span> Duplica
+                <span className="text-slate-400">⧉</span> {tl("Duplica")}
               </button>
               {isLockedByOther(contextMenu.itemId) && role === 'teacher' && (
                 <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50" onClick={() => { forceUnlockItem(contextMenu.itemId!); closeContextMenu() }}>
-                  <span>🔓</span> Forza sblocco
+                  <span>🔓</span> {tl("Forza sblocco")}
                 </button>
               )}
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50" onClick={() => { deleteItems([contextMenu.itemId!]); closeContextMenu() }}>
-                <Trash2 className="h-3 w-3" /> Elimina
+                <Trash2 className="h-3 w-3" /> {tl("Elimina")}
               </button>
             </>
           ) : (
             <>
               <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Canvas</div>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { fitToScreen(); closeContextMenu() }}>
-                <Maximize2 className="h-3.5 w-3.5 text-slate-400" /> Adatta alla schermata
+                <Maximize2 className="h-3.5 w-3.5 text-slate-400" /> {tl("Adatta alla schermata")}
               </button>
               {role === 'teacher' && (
                 <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { setShowTemplates(true); closeContextMenu() }}>
@@ -2503,8 +2505,8 @@ export function CollaborativeCanvas({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowTemplates(false)}>
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="border-b px-5 py-4">
-              <h2 className="text-base font-semibold text-slate-800">Scegli un template</h2>
-              <p className="text-sm text-slate-500">Il contenuto attuale della lavagna sarà sostituito.</p>
+              <h2 className="text-base font-semibold text-slate-800">{tl("Scegli un template")}</h2>
+              <p className="text-sm text-slate-500">{tl("Il contenuto attuale della lavagna sarà sostituito.")}</p>
             </div>
             <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
               {/* Blank */}
@@ -2514,8 +2516,8 @@ export function CollaborativeCanvas({
                 className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-4 text-center transition-colors hover:border-slate-400 hover:bg-slate-50"
               >
                 <span className="text-2xl">📄</span>
-                <span className="text-sm font-medium text-slate-700">Lavagna vuota</span>
-                <span className="text-xs text-slate-400">Inizia da zero</span>
+                <span className="text-sm font-medium text-slate-700">{tl("Lavagna vuota")}</span>
+                <span className="text-xs text-slate-400">{tl("Inizia da zero")}</span>
               </button>
               {TEMPLATES.map((tpl) => (
                 <button
@@ -2531,7 +2533,7 @@ export function CollaborativeCanvas({
               ))}
             </div>
             <div className="border-t px-5 py-3 text-right">
-              <Button variant="ghost" size="sm" onClick={() => setShowTemplates(false)}>Annulla</Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowTemplates(false)}>{tl("Annulla")}</Button>
             </div>
           </div>
         </div>

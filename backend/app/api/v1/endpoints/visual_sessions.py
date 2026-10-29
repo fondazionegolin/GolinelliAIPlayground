@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.visual_comprehension import VisualComprehensionSession
 from app.services import visual_sessions as sessions
 from app.services.storage_service import storage_service
+from app.services.visual_dialogue import MAX_NOTES, StudentNote
 from app.services.visual_selection import Selection
 
 router = APIRouter()
@@ -30,6 +31,7 @@ class UpdateSession(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     draft: str | None = Field(default=None, max_length=4000)
     revision: int | None = Field(default=None, ge=0)
+    notes: list[StudentNote] | None = Field(default=None, max_length=MAX_NOTES)
 
     @field_validator("title", mode="before")
     @classmethod
@@ -43,6 +45,7 @@ class SendMessage(BaseModel):
     revision: int = Field(ge=0)
     content: str = Field(min_length=1, max_length=4000)
     selection: Selection | None = None
+    notes: list[StudentNote] | None = Field(default=None, max_length=MAX_NOTES)
 
 
 class ReviewDrawing(BaseModel):
@@ -102,6 +105,8 @@ async def update_session(session_id: uuid.UUID, body: UpdateSession, admin: Admi
             s.title = body.title
         if body.draft is not None:
             s.draft = body.draft
+        if body.notes is not None:
+            s.dialogue = sessions.with_notes(s.dialogue, body.notes)
         await db.commit()
         await db.refresh(s)
         return sessions.serialize(s)
@@ -124,7 +129,7 @@ async def delete_session(session_id: uuid.UUID, admin: Admin):
 
 @router.post("/{session_id}/messages")
 async def send_message(session_id: uuid.UUID, body: SendMessage, admin: Admin):
-    return await sessions.send_message(admin, session_id, body.request_id, body.revision, body.content, body.selection)
+    return await sessions.send_message(admin, session_id, body.request_id, body.revision, body.content, body.selection, body.notes)
 
 
 @router.post("/{session_id}/messages/{message_id}/review")

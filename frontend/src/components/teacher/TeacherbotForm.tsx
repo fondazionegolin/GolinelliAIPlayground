@@ -21,17 +21,18 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
+import { tl } from '@/i18n/tl'
 
 type TabKey = 'info' | 'style' | 'options' | 'inquiry' | 'prompt' | 'kb'
 type BotMode = 'chat' | 'escape_room' | 'inquiry'
 
 const TABS: { key: TabKey; label: string; icon: typeof Info }[] = [
-  { key: 'info', label: 'Informazioni base', icon: Info },
-  { key: 'style', label: 'Stile', icon: Palette },
-  { key: 'options', label: 'Opzioni', icon: SlidersHorizontal },
-  { key: 'inquiry', label: 'Caso investigativo', icon: Search },
+  { key: 'info', label: tl("Informazioni base"), icon: Info },
+  { key: 'style', label: tl("Stile"), icon: Palette },
+  { key: 'options', label: tl("Opzioni"), icon: SlidersHorizontal },
+  { key: 'inquiry', label: tl("Caso investigativo"), icon: Search },
   { key: 'prompt', label: 'System prompt', icon: Terminal },
-  { key: 'kb', label: 'Allegati', icon: Database },
+  { key: 'kb', label: tl("Allegati"), icon: Database },
 ]
 
 interface TeacherbotFormProps {
@@ -64,15 +65,15 @@ interface FormData {
 const COLORS = ['indigo', 'blue', 'green', 'purple', 'pink', 'orange', 'teal', 'cyan', 'red']
 
 const COLOR_META: Record<string, { label: string; hex: string; soft: string; border: string }> = {
-  indigo: { label: 'Grafite', hex: '#181b1e', soft: '#f3f4f6', border: '#d1d5db' },
-  blue: { label: 'Blu', hex: '#3b82f6', soft: '#eff6ff', border: '#bfdbfe' },
-  green: { label: 'Verde', hex: '#22c55e', soft: '#f0fdf4', border: '#bbf7d0' },
-  purple: { label: 'Viola', hex: '#a855f7', soft: '#faf5ff', border: '#e9d5ff' },
-  pink: { label: 'Rosa', hex: '#ec4899', soft: '#fdf2f8', border: '#fbcfe8' },
-  orange: { label: 'Arancio', hex: '#f97316', soft: '#fff7ed', border: '#fed7aa' },
+  indigo: { label: tl("Grafite"), hex: '#181b1e', soft: '#f3f4f6', border: '#d1d5db' },
+  blue: { label: tl("Blu"), hex: '#3b82f6', soft: '#eff6ff', border: '#bfdbfe' },
+  green: { label: tl("Verde"), hex: '#22c55e', soft: '#f0fdf4', border: '#bbf7d0' },
+  purple: { label: tl("Viola"), hex: '#a855f7', soft: '#faf5ff', border: '#e9d5ff' },
+  pink: { label: tl("Rosa"), hex: '#ec4899', soft: '#fdf2f8', border: '#fbcfe8' },
+  orange: { label: tl("Arancio"), hex: '#f97316', soft: '#fff7ed', border: '#fed7aa' },
   teal: { label: 'Teal', hex: '#14b8a6', soft: '#f0fdfa', border: '#99f6e4' },
-  cyan: { label: 'Ciano', hex: '#06b6d4', soft: '#ecfeff', border: '#a5f3fc' },
-  red: { label: 'Rosso', hex: '#ef4444', soft: '#fef2f2', border: '#fecaca' },
+  cyan: { label: tl("Ciano"), hex: '#06b6d4', soft: '#ecfeff', border: '#a5f3fc' },
+  red: { label: tl("Rosso"), hex: '#ef4444', soft: '#fef2f2', border: '#fecaca' },
 }
 
 const colorMeta = (color: string) => COLOR_META[color] || COLOR_META.indigo
@@ -95,11 +96,11 @@ interface KnowledgeBaseSectionProps {
 }
 
 const EMBED_STEPS = [
-  { label: 'Estrazione testo dal documento…' },
-  { label: 'Analisi struttura e contenuto…' },
-  { label: 'Divisione in blocchi semantici…' },
-  { label: 'Generazione embedding vettoriali…' },
-  { label: 'Indicizzazione nella knowledge base…' },
+  { label: tl("Estrazione testo dal documento…") },
+  { label: tl("Analisi struttura e contenuto…") },
+  { label: tl("Divisione in blocchi semantici…") },
+  { label: tl("Generazione embedding vettoriali…") },
+  { label: tl("Indicizzazione nella knowledge base…") },
 ]
 
 function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange, variant = 'teacherbot' }: KnowledgeBaseSectionProps) {
@@ -125,7 +126,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
     mutationFn: (docId: string) => (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).deleteKbDocument(teacherbotId!, docId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`${variant}-kb`, teacherbotId] })
-      toast({ title: 'Documento rimosso dalla knowledge base' })
+      toast({ title: tl("Documento rimosso dalla knowledge base") })
     },
   })
 
@@ -157,7 +158,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         setEmbedResult({ filename: file.name, chunk_count: lastChunkCount })
       } catch (e: any) {
         toast({
-          title: 'Errore caricamento',
+          title: tl("Errore caricamento"),
           description: e.response?.data?.detail || file.name,
           variant: 'destructive',
         })
@@ -180,10 +181,10 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
   }[s] || 'text-slate-500 bg-slate-100')
 
   const statusLabel = (s: string) => ({
-    ready: 'Pronto',
-    processing: 'Elaborazione…',
-    queued: 'In coda',
-    failed: 'Errore',
+    ready: tl("Pronto"),
+    processing: tl("Elaborazione…"),
+    queued: tl("In coda"),
+    failed: tl("Errore"),
   }[s] || s)
 
   const getExt = (filename: string) => filename.split('.').pop()?.toLowerCase() || ''
@@ -194,13 +195,12 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
             <Database className="h-4 w-4 text-indigo-600" />
-            Allegati
+            {tl("Allegati")}
           </h3>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
-            I documenti caricati qui condizionano fortemente il comportamento del bot: le sue risposte saranno vincolate
-            a questi contenuti, non solo ispirate. {teacherbotId
-              ? 'Vengono indicizzati subito e restano prioritari rispetto alla conoscenza generale del modello.'
-              : 'Verranno caricati e indicizzati automaticamente al salvataggio.'}
+            {tl("I documenti caricati qui condizionano fortemente il comportamento del bot: le sue risposte saranno vincolate a questi contenuti, non solo ispirate.")} {teacherbotId
+              ? tl("Vengono indicizzati subito e restano prioritari rispetto alla conoscenza generale del modello.")
+              : tl("Verranno caricati e indicizzati automaticamente al salvataggio.")}
           </p>
         </div>
         <div>
@@ -221,7 +221,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             className="whitespace-nowrap"
           >
             {uploading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
-            {uploading ? 'Elaborazione…' : 'Aggiungi documento'}
+            {uploading ? tl("Elaborazione…") : tl("Aggiungi documento")}
           </Button>
         </div>
       </div>
@@ -231,7 +231,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
           <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
             <Layers className="h-3.5 w-3.5" />
-            Pipeline di indicizzazione in corso…
+            {tl("Pipeline di indicizzazione in corso…")}
           </p>
           <div className="space-y-2">
             {EMBED_STEPS.map((step, i) => (
@@ -263,16 +263,16 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
           <div className="flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="h-4 w-4" />
-            <span className="text-sm font-semibold">Indicizzazione completata: {embedResult.filename}</span>
+            <span className="text-sm font-semibold">{tl("Indicizzazione completata:")} {embedResult.filename}</span>
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
               <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">blocchi semantici</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{tl("blocchi semantici")}</p>
             </div>
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
               <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">vettori embedding</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{tl("vettori embedding")}</p>
             </div>
             <div className="bg-white rounded-xl p-3 border border-emerald-100">
               <p className="text-2xl font-bold text-indigo-600">1536</p>
@@ -280,7 +280,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             </div>
           </div>
           <p className="text-xs text-emerald-700">
-            Il bot utilizzerà questi {embedResult.chunk_count} blocchi come contesto per rispondere con precisione alle domande degli studenti.
+            {tl("Il bot utilizzerà questi")} {embedResult.chunk_count} {tl("blocchi come contesto per rispondere con precisione alle domande degli studenti.")}
           </p>
         </div>
       )}
@@ -292,7 +292,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-100">
               {DOC_TYPE_ICON[getExt(file.name)] || <FileText className="h-4 w-4 text-slate-400" />}
               <span className="flex-1 text-sm text-slate-700 truncate">{file.name}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-indigo-600 bg-indigo-100">In attesa</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-indigo-600 bg-indigo-100">{tl("In attesa")}</span>
               <button type="button" onClick={() => removePending(idx)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -305,15 +305,15 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       {!teacherbotId && (!pendingFiles || pendingFiles.length === 0) && (
         <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
-          <p>Nessun documento aggiunto</p>
-          <p className="text-xs mt-1">Opzionale — puoi aggiungerne anche dopo il salvataggio</p>
+          <p>{tl("Nessun documento aggiunto")}</p>
+          <p className="text-xs mt-1">{tl("Opzionale — puoi aggiungerne anche dopo il salvataggio")}</p>
         </div>
       )}
 
       {/* Saved bot: loading */}
       {teacherbotId && isLoading && (
         <div className="flex items-center justify-center py-6 text-slate-400 text-sm">
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />Caricamento…
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />{tl("Caricamento…")}
         </div>
       )}
 
@@ -321,8 +321,8 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       {teacherbotId && !isLoading && (!docs || docs.length === 0) && (
         <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
-          <p>Nessun documento nella knowledge base</p>
-          <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot con recupero contestuale</p>
+          <p>{tl("Nessun documento nella knowledge base")}</p>
+          <p className="text-xs mt-1">{tl("I documenti caricati guidano le risposte del bot con recupero contestuale")}</p>
         </div>
       )}
 
@@ -358,7 +358,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
           className="flex w-full items-center gap-2 px-4 py-2.5 text-left bg-slate-50 hover:bg-slate-100 transition-colors"
         >
           <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-          <span className="text-xs font-semibold text-slate-600 flex-1">Come funziona la Knowledge Base RAG?</span>
+          <span className="text-xs font-semibold text-slate-600 flex-1">{tl("Come funziona la Knowledge Base RAG?")}</span>
           {explainerOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
         </button>
         {explainerOpen && (
@@ -366,25 +366,25 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             <div className="flex gap-3 items-start">
               <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">1</div>
               <div>
-                <strong>Chunking semantico:</strong> il documento viene diviso in blocchi di ~1000 caratteri rispettando le frasi complete. Ogni blocco è un'unità di conoscenza autonoma.
+                <strong>{tl("Chunking semantico:")}</strong> {tl("il documento viene diviso in blocchi di ~1000 caratteri rispettando le frasi complete. Ogni blocco è un'unità di conoscenza autonoma.")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
               <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">2</div>
               <div>
-                <strong>Embedding vettoriale:</strong> ogni blocco viene trasformato in un vettore di 1536 numeri tramite il modello <code className="bg-slate-100 px-1 rounded">text-embedding-3-small</code>. Il vettore codifica il <em>significato</em> del testo, non solo le parole.
+                <strong>{tl("Embedding vettoriale:")}</strong> {tl("ogni blocco viene trasformato in un vettore di 1536 numeri tramite il modello")} <code className="bg-slate-100 px-1 rounded">text-embedding-3-small</code>{tl(". Il vettore codifica il")} <em>significato</em> {tl("del testo, non solo le parole.")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
               <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">3</div>
               <div>
-                <strong>Ricerca per coseno:</strong> quando uno studente fa una domanda, anche essa viene trasformata in vettore e vengono trovati i blocchi più simili usando la <em>distanza del coseno</em> tra vettori (pgvector).
+                <strong>{tl("Ricerca per coseno:")}</strong> {tl("quando uno studente fa una domanda, anche essa viene trasformata in vettore e vengono trovati i blocchi più simili usando la")} <em>{tl("distanza del coseno")}</em> {tl("tra vettori (pgvector).")}
               </div>
             </div>
             <div className="flex gap-3 items-start">
               <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">4</div>
               <div>
-                <strong>Generazione aumentata:</strong> i top-5 blocchi vengono passati all'LLM come contesto. Il modello risponde <em>solo</em> basandosi su queste fonti, riducendo drasticamente le allucinazioni.
+                <strong>{tl("Generazione aumentata:")}</strong> {tl("i top-5 blocchi vengono passati all'LLM come contesto. Il modello risponde")} <em>solo</em> {tl("basandosi su queste fonti, riducendo drasticamente le allucinazioni.")}
               </div>
             </div>
           </div>
@@ -483,7 +483,7 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: response.data.content }])
     },
     onError: () => {
-      toast({ title: 'Errore', description: `Impossibile testare lo ${variant === 'studentbot' ? 'studentbot' : 'teacherbot'}`, variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile testare lo {0}", variant === 'studentbot' ? 'studentbot' : 'teacherbot'), variant: 'destructive' })
     },
   })
 
@@ -505,14 +505,14 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || (variant === 'studentbot' ? 'Studentbot' : 'Teacherbot')}</div>
-          <div className="text-[11px] text-slate-500">Anteprima chat</div>
+          <div className="text-[11px] text-slate-500">{tl("Anteprima chat")}</div>
         </div>
       </div>
       {teacherbotId && (
         <button
           type="button"
           onClick={handleReset}
-          title="Ricomincia la chat"
+          title={tl("Ricomincia la chat")}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/70"
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -527,9 +527,9 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
         {header}
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
           <Bot className="h-8 w-8 text-slate-300" />
-          <p className="text-sm font-medium text-slate-500">Salva il teacherbot per provarlo dal vivo</p>
+          <p className="text-sm font-medium text-slate-500">{tl("Salva il teacherbot per provarlo dal vivo")}</p>
           <p className="max-w-[220px] text-xs text-slate-400">
-            Dopo il primo salvataggio potrai chattare qui con l'IA per testare le impostazioni.
+            {tl("Dopo il primo salvataggio potrai chattare qui con l'IA per testare le impostazioni.")}
           </p>
         </div>
       </section>
@@ -544,7 +544,7 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-slate-400">
             <Bot className="h-8 w-8 text-slate-300" />
-            <p className="text-xs">Scrivi un messaggio per provare il bot</p>
+            <p className="text-xs">{tl("Scrivi un messaggio per provare il bot")}</p>
           </div>
         )}
         {messages.map((msg) => (
@@ -583,7 +583,7 @@ function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend() } }}
-          placeholder="Scrivi un messaggio di test..."
+          placeholder={tl("Scrivi un messaggio di test...")}
           disabled={testMutation.isPending}
           className="h-9 flex-1 rounded-full border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         />
@@ -768,13 +768,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
       const cfg = formData.inquiry_config
       const problems: string[] = []
       const multiCast = (cfg?.suspects.length ?? 0) > 1
-      if (!cfg?.truth.trim()) problems.push('la verità segreta')
-      if (!cfg?.correct_answer.trim() || (!multiCast && !cfg.final_question.trim())) problems.push(multiCast ? 'la soluzione' : 'domanda finale e risposta corretta')
-      if (cfg?.suspects.some((sp) => !sp.name.trim())) problems.push('il nome di ogni sospettato')
-      if (multiCast && !cfg?.suspects.some((sp) => sp.is_culprit)) problems.push('quale sospettato è il colpevole')
-      if (!cfg?.clues.length || cfg.clues.some((c) => !c.text.trim())) problems.push('almeno un indizio (tutti compilati)')
+      if (!cfg?.truth.trim()) problems.push(tl("la verità segreta"))
+      if (!cfg?.correct_answer.trim() || (!multiCast && !cfg.final_question.trim())) problems.push(multiCast ? tl("la soluzione") : tl("domanda finale e risposta corretta"))
+      if (cfg?.suspects.some((sp) => !sp.name.trim())) problems.push(tl("il nome di ogni sospettato"))
+      if (multiCast && !cfg?.suspects.some((sp) => sp.is_culprit)) problems.push(tl("quale sospettato è il colpevole"))
+      if (!cfg?.clues.length || cfg.clues.some((c) => !c.text.trim())) problems.push(tl("almeno un indizio (tutti compilati)"))
       if (problems.length) {
-        toast({ title: t('common.error'), description: `Inquiry: mancano ${problems.join(', ')}.`, variant: 'destructive' })
+        toast({ title: t('common.error'), description: tl("Inquiry: mancano {0}.", problems.join(', ')), variant: 'destructive' })
         return
       }
     }
@@ -786,7 +786,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
       payload.is_proactive = false
       payload.enable_reporting = false
       if (!payload.system_prompt.trim()) {
-        payload.system_prompt = `Intervista investigativa: ${payload.inquiry_config?.case_title || payload.name}`
+        payload.system_prompt = tl("Intervista investigativa: {0}", payload.inquiry_config?.case_title || payload.name)
       }
     }
     saveMutation.mutate(payload)
@@ -852,11 +852,11 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xl font-bold tracking-tight text-slate-950">
             {isStudentbot
-              ? (isEditing ? 'Modifica Studentbot' : 'Nuovo Studentbot')
+              ? (isEditing ? tl("Modifica Studentbot") : tl("Nuovo Studentbot"))
               : (isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot'))}
           </h2>
           <p className="hidden text-xs text-slate-500 sm:block">
-            {formData.name.trim() || (isStudentbot ? 'Il tuo assistente AI personalizzato' : 'Configurazione assistente docente')}
+            {formData.name.trim() || (isStudentbot ? tl("Il tuo assistente AI personalizzato") : tl("Configurazione assistente docente"))}
           </p>
         </div>
         {isEditing && !isStudentbot && (
@@ -868,7 +868,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
               className="whitespace-nowrap border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100"
             >
               <Share2 className="h-4 w-4 mr-2" />
-              {activePublications.length > 0 ? `Condiviso · ${activePublications.length}` : 'Condividi'}
+              {activePublications.length > 0 ? tl("Condiviso · {0}", activePublications.length) : tl("Condividi")}
             </Button>
             <Button
               type="button"
@@ -877,7 +877,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
               className="whitespace-nowrap border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100"
             >
               <Link2 className="h-4 w-4 mr-2" />
-              {activeShareLinks.length > 0 ? `Link attivo · ${activeShareLinks.length}` : 'Link pubblico'}
+              {activeShareLinks.length > 0 ? tl("Link attivo · {0}", activeShareLinks.length) : tl("Link pubblico")}
             </Button>
           </div>
         )}
@@ -885,7 +885,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
       {isEditing && !isStudentbot && activePublications.length > 0 && (
         <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-4 py-2 md:px-5">
-          <span className="text-xs font-semibold text-slate-400">Condiviso con:</span>
+          <span className="text-xs font-semibold text-slate-400">{tl("Condiviso con:")}</span>
           {activePublications.map((pub) => (
             <span
               key={pub.id}
@@ -936,13 +936,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                 <h3 className="mb-4 text-base font-bold text-slate-950">{t('teacherbot.basic_info')}</h3>
 
                 <div>
-                  <FieldLabel required>Nome</FieldLabel>
+                  <FieldLabel required>{tl("Nome")}</FieldLabel>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                    placeholder="es. Tutor di Matematica"
+                    placeholder={tl("es. Tutor di Matematica")}
                     maxLength={100}
                   />
                 </div>
@@ -965,7 +965,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                     value={formData.synopsis}
                     onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
                     className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                    placeholder="es. Assistente per esercizi di algebra"
+                    placeholder={tl("es. Assistente per esercizi di algebra")}
                     maxLength={255}
                   />
                 </div>
@@ -974,7 +974,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
               {activeTab === 'style' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-4 text-base font-bold text-slate-950">Stile</h3>
+                <h3 className="mb-4 text-base font-bold text-slate-950">{tl("Stile")}</h3>
 
                 <div>
                   <FieldLabel>{t('teacherbot.color_label')}</FieldLabel>
@@ -1003,7 +1003,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                 </div>
 
                 <div className="mt-4">
-                  <FieldLabel>Icona</FieldLabel>
+                  <FieldLabel>{tl("Icona")}</FieldLabel>
                   <TeacherbotIconPicker
                     value={formData.icon}
                     onChange={(icon) => setFormData({ ...formData, icon })}
@@ -1021,9 +1021,9 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                 {!isStudentbot && (
                   <div className="mb-4 grid gap-2 sm:grid-cols-3">
                     {([
-                      { key: 'chat', title: 'Chat', desc: 'Conversazione libera con il tuo prompt, allegati e voce opzionale.', Icon: MessageSquare },
-                      { key: 'escape_room', title: 'Escape room', desc: 'Terminale a tappe al posto della chat libera.', Icon: DoorClosed },
-                      { key: 'inquiry', title: 'Inquiry', desc: 'Interrogatorio vocale di uno o più sospettati che sanno ma non vogliono svelare.', Icon: Search },
+                      { key: 'chat', title: tl("Chat"), desc: tl("Conversazione libera con il tuo prompt, allegati e voce opzionale."), Icon: MessageSquare },
+                      { key: 'escape_room', title: 'Escape room', desc: tl("Terminale a tappe al posto della chat libera."), Icon: DoorClosed },
+                      { key: 'inquiry', title: 'Inquiry', desc: tl("Interrogatorio vocale di uno o più sospettati che sanno ma non vogliono svelare."), Icon: Search },
                     ] as const).map(({ key, title, desc, Icon }) => {
                       const active = mode === key
                       return (
@@ -1074,16 +1074,16 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
                 {mode === 'escape_room' && (
                   <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
-                    <p className="font-bold">Come configurarla nel system prompt</p>
-                    <p className="mt-1">Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5” (default 5, massimo 10). Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.</p>
-                    <p className="mt-2 text-emerald-800/80">Messaggio iniziale e voce live non sono disponibili: l'escape room sostituisce la chat libera.</p>
+                    <p className="font-bold">{tl("Come configurarla nel system prompt")}</p>
+                    <p className="mt-1">{tl("Indica il contesto didattico, il livello degli studenti e una frase come “Numero di indizi: 5” (default 5, massimo 10). Il sistema creerà fatti plausibili con un solo dato falsificato per tappa.")}</p>
+                    <p className="mt-2 text-emerald-800/80">{tl("Messaggio iniziale e voce live non sono disponibili: l'escape room sostituisce la chat libera.")}</p>
                   </div>
                 )}
 
                 {mode === 'inquiry' && (
                   <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
-                    <p className="font-bold">Interrogatorio investigativo</p>
-                    <p className="mt-1">Personaggi, indizi, verità e domanda finale si configurano nella scheda <b>Caso investigativo</b>. La voce live è attiva automaticamente; system prompt, allegati e messaggio iniziale non servono. Le interviste svolte e le trascrizioni si consultano da quella scheda dopo il salvataggio.</p>
+                    <p className="font-bold">{tl("Interrogatorio investigativo")}</p>
+                    <p className="mt-1">{tl("Personaggi, indizi, verità e domanda finale si configurano nella scheda")} <b>{tl("Caso investigativo")}</b>{tl(". La voce live è attiva automaticamente; system prompt, allegati e messaggio iniziale non servono. Le interviste svolte e le trascrizioni si consultano da quella scheda dopo il salvataggio.")}</p>
                   </div>
                 )}
 
@@ -1111,7 +1111,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
 
               {activeTab === 'inquiry' && mode === 'inquiry' && formData.inquiry_config && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-3 text-base font-bold text-slate-950">Caso investigativo</h3>
+                <h3 className="mb-3 text-base font-bold text-slate-950">{tl("Caso investigativo")}</h3>
                 <InquiryConfigEditor
                   value={formData.inquiry_config}
                   onChange={(next) => setFormData({ ...formData, inquiry_config: next })}
@@ -1136,9 +1136,9 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
                       {formData.system_prompt.trim().length}
                     </span>
                     {!isStudentbot && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => setOptimizeOpen(true)} className="gap-1.5" title="Ottimizza il prompt con l'AI">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setOptimizeOpen(true)} className="gap-1.5" title={tl("Ottimizza il prompt con l'AI")}>
                         <Wand2 className="h-4 w-4 text-indigo-600" />
-                        Ottimizza
+                        {tl("Ottimizza")}
                       </Button>
                     )}
                   </div>
@@ -1219,7 +1219,7 @@ Il tuo obiettivo è:
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {isEditing ? t('teacherbot.save_changes') : (isStudentbot ? 'Crea Studentbot' : t('teacherbot.create_btn'))}
+            {isEditing ? t('teacherbot.save_changes') : (isStudentbot ? tl("Crea Studentbot") : t('teacherbot.create_btn'))}
           </Button>
         </div>
       </form>

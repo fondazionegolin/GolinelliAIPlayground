@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 export interface Entity { id: string; name: string; kind: string; description: string; sheet_key?: string; sheet_ver?: number }
 export interface Shot {
   n: number; title: string; narration: string; visual: string; motion: string; entities: string[]
@@ -27,9 +28,9 @@ export const STYLE_SWATCH: Record<string, string> = {
 }
 
 export const STATUS_LABEL: Record<string, string> = {
-  draft: 'Bozza', scripting: 'Scrivo la sceneggiatura', script_ready: 'Sceneggiatura pronta',
-  storyboarding: 'Genero lo storyboard', storyboard_ready: 'Storyboard pronto', rendering: 'Montaggio',
-  done: 'Completato', failed: 'Errore',
+  draft: tl("Bozza"), scripting: tl("Scrivo la sceneggiatura"), script_ready: tl("Sceneggiatura pronta"),
+  storyboarding: tl("Genero lo storyboard"), storyboard_ready: tl("Storyboard pronto"), rendering: tl("Montaggio"),
+  done: tl("Completato"), failed: tl("Errore"),
 }
 
 export const isBusy = (p?: Project) => !!p && (p.running || ['storyboarding', 'rendering', 'scripting'].includes(p.status))

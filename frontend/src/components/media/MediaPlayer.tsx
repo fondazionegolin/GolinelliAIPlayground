@@ -5,6 +5,7 @@ import api, { getApiAuthHeaders } from '@/lib/api'
 import { Select } from '@/design'
 import { safeMediaUrl, youtubeVideo } from '@/lib/media'
 import './media-player.css'
+import { tl } from '@/i18n/tl'
 
 type VideoSource = { src: string; title: string; blob?: Blob; poster?: string }
 type PlayerContext = { openVideo: (source: VideoSource) => void }
@@ -17,14 +18,14 @@ function useMediaSource(src: string) {
     let active = true
     let objectUrl: string | undefined
     setResolved(null)
-    if (!safeMediaUrl(src)) { setResolved({ url: '', error: 'Indirizzo multimediale non valido.' }); return }
+    if (!safeMediaUrl(src)) { setResolved({ url: '', error: tl("Indirizzo multimediale non valido.") }); return }
     const u = new URL(src, window.location.origin)
     if (u.origin === window.location.origin && u.pathname.startsWith('/api/v1/') && Object.keys(getApiAuthHeaders()).length) {
       api.get<Blob>(u.pathname.slice('/api/v1'.length) + u.search, { responseType: 'blob' }).then(({ data }) => {
         if (!active) return
         objectUrl = URL.createObjectURL(data)
         setResolved({ url: objectUrl, blob: data })
-      }).catch(() => { if (active) setResolved({ url: '', error: 'File non disponibile o accesso scaduto.' }) })
+      }).catch(() => { if (active) setResolved({ url: '', error: tl("File non disponibile o accesso scaduto.") }) })
     } else setResolved({ url: src })
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [src])
@@ -89,13 +90,13 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       if (document.fullscreenElement) await document.exitFullscreen()
       else if (host.current?.requestFullscreen) await host.current.requestFullscreen()
       else (video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null)?.webkitEnterFullscreen?.()
-    } catch { setError('Lo schermo intero non è disponibile in questo browser.') }
+    } catch { setError(tl("Lo schermo intero non è disponibile in questo browser.")) }
   }
   const nativePip = async () => {
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture()
       else await video.current?.requestPictureInPicture()
-    } catch { setError('PiP non disponibile. Puoi usare la finestra flottante della piattaforma.') }
+    } catch { setError(tl("PiP non disponibile. Puoi usare la finestra flottante della piattaforma.")) }
   }
   const toggleFloating = () => {
     setPosition({ x: Math.max(12, window.innerWidth - 432), y: Math.max(12, window.innerHeight - 320) })
@@ -121,17 +122,17 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
             setPosition({ x: Math.max(0, Math.min(window.innerWidth - box.width, event.clientX - drag.current.x)), y: Math.max(0, Math.min(window.innerHeight - box.height, event.clientY - drag.current.y)) })
           }} onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}>
           <p className="min-w-0 flex-1 truncate text-xs font-semibold">{source.title}</p>
-          <button type="button" onClick={toggleFloating} className="rounded-lg p-2 hover:bg-white/15" aria-label={floating ? 'Espandi player' : 'Finestra flottante'}>{floating ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}</button>
-          {!youtube && document.pictureInPictureEnabled && <button type="button" onClick={() => void nativePip()} className="rounded-lg p-2 hover:bg-white/15" aria-label="PiP di sistema"><PictureInPicture2 className="h-4 w-4" /></button>}
-          <button type="button" onClick={() => void fullScreen()} className="rounded-lg p-2 hover:bg-white/15" aria-label="Schermo intero"><Maximize2 className="h-4 w-4" /></button>
-          <button ref={closeButton} type="button" onClick={close} className="rounded-lg p-2 hover:bg-white/15" aria-label="Chiudi player"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={toggleFloating} className="rounded-lg p-2 hover:bg-white/15" aria-label={floating ? tl("Espandi player") : tl("Finestra flottante")}>{floating ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}</button>
+          {!youtube && document.pictureInPictureEnabled && <button type="button" onClick={() => void nativePip()} className="rounded-lg p-2 hover:bg-white/15" aria-label={tl("PiP di sistema")}><PictureInPicture2 className="h-4 w-4" /></button>}
+          <button type="button" onClick={() => void fullScreen()} className="rounded-lg p-2 hover:bg-white/15" aria-label={tl("Schermo intero")}><Maximize2 className="h-4 w-4" /></button>
+          <button ref={closeButton} type="button" onClick={close} className="rounded-lg p-2 hover:bg-white/15" aria-label={tl("Chiudi player")}><X className="h-4 w-4" /></button>
         </header>
         <div className="flex aspect-video min-h-0 items-center justify-center bg-black [&:fullscreen]:flex-1">
           {youtube ? <iframe key={source.src} src={embed} title={source.title} className="h-full min-h-[200px] w-full" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
-            : <video key={source.src} ref={video} src={source.src} poster={source.poster} controls autoPlay playsInline className="h-full max-h-[75dvh] w-full object-contain" onError={() => setError('Questo video non è riproducibile: controlla il formato o il collegamento.')} />}
+            : <video key={source.src} ref={video} src={source.src} poster={source.poster} controls autoPlay playsInline className="h-full max-h-[75dvh] w-full object-contain" onError={() => setError(tl("Questo video non è riproducibile: controlla il formato o il collegamento."))} />}
         </div>
         {error && <p role="alert" className="px-3 py-2 text-xs text-amber-200">{error}</p>}
-        {youtube && <a href={source.src} target="_blank" rel="noreferrer" className="block px-3 py-2 text-xs text-white/70 underline">Apri su YouTube</a>}
+        {youtube && <a href={source.src} target="_blank" rel="noreferrer" className="block px-3 py-2 text-xs text-white/70 underline">{tl("Apri su YouTube")}</a>}
       </div>
     </>, document.body)}
   </Context.Provider>
@@ -143,7 +144,7 @@ export function VideoPreview({ src, title, poster, blob }: VideoSource) {
   const youtube = youtubeVideo(src)
   if (media?.error) return <p role="alert" className="text-xs text-red-600">{media.error}</p>
   return <button type="button" disabled={!media?.url} onClick={() => media?.url && context?.openVideo({ src: media.url, title, poster, blob: blob || media.blob })}
-    aria-label={`Riproduci ${title}`} className="group relative block w-72 max-w-full overflow-hidden rounded-xl border border-black/10 bg-slate-950 text-left text-white shadow-sm disabled:opacity-50">
+    aria-label={tl("Riproduci {0}", title)} className="group relative block w-72 max-w-full overflow-hidden rounded-xl border border-black/10 bg-slate-950 text-left text-white shadow-sm disabled:opacity-50">
     {poster || youtube ? <img src={poster || `https://img.youtube.com/vi/${youtube!.id}/hqdefault.jpg`} alt="" className="aspect-video w-full object-cover opacity-80" />
       : <video src={media?.url} preload="metadata" muted playsInline className="pointer-events-none aspect-video w-full object-cover opacity-70" />}
     <span className="absolute left-1/2 top-[40%] flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg transition group-hover:scale-110"><Play className="h-6 w-6" /></span>
@@ -165,15 +166,15 @@ export function AudioPlayer({ src, title }: { src: string; title: string }) {
   }, [src])
   return <div className="w-80 max-w-full rounded-xl border border-black/10 bg-white p-3 text-slate-800">
     <p className="mb-2 truncate text-xs font-semibold">{title}</p>
-    {media?.error || error ? <p role="alert" className="text-xs text-red-600">{media?.error || 'Audio non disponibile o formato non supportato.'}</p>
+    {media?.error || error ? <p role="alert" className="text-xs text-red-600">{media?.error || tl("Audio non disponibile o formato non supportato.")}</p>
       : <>
         <audio ref={audio} src={media?.url} controls preload="metadata" className="w-full" aria-label={title}
           onLoadedMetadata={event => { event.currentTarget.playbackRate = playbackRate }}
           onRateChange={event => setPlaybackRate(event.currentTarget.playbackRate)}
           onError={() => setError(true)} />
         <div className="mt-2 flex items-center justify-between gap-3">
-          <label htmlFor={speedId} className="text-xs font-semibold">Velocità di ascolto</label>
-          <div className="w-24 shrink-0"><Select id={speedId} aria-label={`Velocità di riproduzione di ${title}`} density="compact" value={playbackRate}
+          <label htmlFor={speedId} className="text-xs font-semibold">{tl("Velocità di ascolto")}</label>
+          <div className="w-24 shrink-0"><Select id={speedId} aria-label={tl("Velocità di riproduzione di {0}", title)} density="compact" value={playbackRate}
             onChange={event => {
               const rate = Number(event.target.value)
               setPlaybackRate(rate)

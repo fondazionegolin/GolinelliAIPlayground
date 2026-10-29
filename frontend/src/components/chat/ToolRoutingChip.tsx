@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Compass, ChevronDown } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export interface ToolRouting {
   tool: string
@@ -12,19 +13,19 @@ export interface ToolRouting {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
-  chat: 'Chat',
-  image: 'Immagine',
-  presentation: 'Presentazione',
+  chat: tl("Chat"),
+  image: tl("Immagine"),
+  presentation: tl("Presentazione"),
   brochure: 'Brochure',
-  dispensa: 'Dispensa',
+  dispensa: tl("Dispensa"),
   podcast: 'Podcast',
-  html_page: 'Pagina interattiva',
-  quiz: 'Quiz',
-  exercise: 'Esercizio',
+  html_page: tl("Pagina interattiva"),
+  quiz: tl("Quiz"),
+  exercise: tl("Esercizio"),
   dataset: 'Dataset',
 }
 
-export const ACTION_LABELS: Record<string, string> = { chat: 'Conversazione', create: 'Crea', edit: 'Modifica', ask_about: 'Domanda su' }
+export const ACTION_LABELS: Record<string, string> = { chat: tl("Conversazione"), create: tl("Crea"), edit: tl("Modifica"), ask_about: tl("Domanda su") }
 
 const label = (tool: string) => TOOL_LABELS[tool] ?? tool
 const pct = (value: number) => `${Math.round(value * 100)}%`
@@ -41,21 +42,21 @@ export function ToolRoutingChip({ routing, dark = false }: { routing: ToolRoutin
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}
-        title="Come ho capito la richiesta"
+        title={tl("Come ho capito la richiesta")}
       >
         <Compass className="h-3 w-3" />
         {notRouted
-          ? `Chat · ${label(routing.top)} solo ${pct(routing.confidence)}, non abbastanza sicuro`
+          ? tl("Chat · {0} solo {1}, non abbastanza sicuro", label(routing.top), pct(routing.confidence))
           : routing.tool === 'chat'
-            ? `Conversazione · sicurezza ${pct(routing.confidence)}`
-            : `${ACTION_LABELS[routing.action] ?? ''} ${label(routing.tool)} · sicurezza ${pct(routing.confidence)}`}
+            ? tl("Conversazione · sicurezza {0}", pct(routing.confidence))
+            : tl("{0} {1} · sicurezza {2}", ACTION_LABELS[routing.action] ?? '', label(routing.tool), pct(routing.confidence))}
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && routing.alternatives.length > 0 && (
         <div className={`w-56 space-y-1 rounded-xl border p-2 ${tone}`}>
           {routing.actionAlternatives && routing.actionAlternatives.length > 0 && (
             <>
-              <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Azione</div>
+              <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">{tl("Azione")}</div>
               {routing.actionAlternatives.map((alt) => (
                 <div key={`a-${alt.tool}`} className="flex items-center gap-2 text-[10px]">
                   <span className="w-24 shrink-0 truncate">{ACTION_LABELS[alt.tool] ?? alt.tool}</span>
@@ -65,7 +66,7 @@ export function ToolRoutingChip({ routing, dark = false }: { routing: ToolRoutin
                   <span className="w-8 shrink-0 text-right tabular-nums">{pct(alt.probability)}</span>
                 </div>
               ))}
-              <div className="pt-1 text-[9px] font-semibold uppercase tracking-wide opacity-70">Contenuto</div>
+              <div className="pt-1 text-[9px] font-semibold uppercase tracking-wide opacity-70">{tl("Contenuto")}</div>
             </>
           )}
           {routing.alternatives.map((alt) => (

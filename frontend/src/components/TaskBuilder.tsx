@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { 
   Plus, Trash2, Check, X, ClipboardList, FileText, MessageSquare, BookOpen
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface QuizQuestion {
   id: string
@@ -187,7 +188,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">{mode === 'edit' ? 'Modifica Bozza' : 'Crea Nuovo Compito'}</CardTitle>
+        <CardTitle className="text-lg">{mode === 'edit' ? tl("Modifica Bozza") : tl("Crea Nuovo Compito")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Task Type Selection */}
@@ -199,7 +200,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             onClick={() => setTaskType('quiz')}
           >
             <ClipboardList className="h-4 w-4 mr-1" />
-            Quiz
+            {tl("Quiz")}
           </Button>
           <Button
             type="button"
@@ -208,7 +209,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             onClick={() => setTaskType('exercise')}
           >
             <FileText className="h-4 w-4 mr-1" />
-            Esercizio
+            {tl("Esercizio")}
           </Button>
           <Button
             type="button"
@@ -217,7 +218,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             onClick={() => setTaskType('discussion')}
           >
             <MessageSquare className="h-4 w-4 mr-1" />
-            Discussione
+            {tl("Discussione")}
           </Button>
           <Button
             type="button"
@@ -226,34 +227,34 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             onClick={() => setTaskType('lesson')}
           >
             <BookOpen className="h-4 w-4 mr-1" />
-            Lezione
+            {tl("Lezione")}
           </Button>
         </div>}
 
         {/* Title */}
         <div>
-          <label className="text-sm font-medium mb-1 block">Titolo</label>
+          <label className="text-sm font-medium mb-1 block">{tl("Titolo")}</label>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Es: Quiz sui complementi"
+            placeholder={tl("Es: Quiz sui complementi")}
             className="focus:!border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-violet)] focus:ring-offset-2 focus-visible:!border-[var(--logo-violet)] focus-visible:!ring-[var(--logo-violet)]"
           />
         </div>
 
         {/* Description */}
         <div>
-          <label className="text-sm font-medium mb-1 block">Descrizione (opzionale)</label>
+          <label className="text-sm font-medium mb-1 block">{tl("Descrizione (opzionale)")}</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Istruzioni per gli studenti..."
+            placeholder={tl("Istruzioni per gli studenti...")}
             className="min-h-[60px] w-full rounded-md border p-2 text-sm focus:!border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-violet)] focus:ring-offset-2 focus-visible:!border-[var(--logo-violet)] focus-visible:!ring-[var(--logo-violet)]"
           />
         </div>
 
         <div>
-          <label className="text-sm font-medium mb-1 block">Scadenza (opzionale)</label>
+          <label className="text-sm font-medium mb-1 block">{tl("Scadenza (opzionale)")}</label>
           <Input
             type="datetime-local"
             value={dueAt}
@@ -261,7 +262,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             className="h-11"
           />
           <p className="mt-1 text-xs text-gray-500">
-            La scadenza viene mostrata agli studenti e resta modificabile dal docente.
+            {tl("La scadenza viene mostrata agli studenti e resta modificabile dal docente.")}
           </p>
         </div>
 
@@ -269,10 +270,10 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
         {taskType === 'quiz' && (
           <div className="space-y-4 border-t pt-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium">Domande</h4>
+              <h4 className="font-medium">{tl("Domande")}</h4>
               <Button type="button" size="sm" variant="outline" onClick={addQuestion}>
                 <Plus className="h-4 w-4 mr-1" />
-                Aggiungi
+                {tl("Aggiungi")}
               </Button>
             </div>
 
@@ -285,7 +286,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
                   <Input
                     value={q.question}
                     onChange={(e) => updateQuestion(q.id, 'question', e.target.value)}
-                    placeholder="Scrivi la domanda..."
+                    placeholder={tl("Scrivi la domanda...")}
                     className="flex-1"
                   />
                   {questions.length > 1 && (
@@ -302,7 +303,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
 
                 <div className="pl-6 space-y-2">
                   <p className="text-xs text-gray-500">
-                    Opzioni (clicca ✓ per la risposta corretta):
+                    {tl("Opzioni (clicca ✓ per la risposta corretta):")}
                   </p>
                   {q.options.map((opt, optIndex) => (
                     <div key={optIndex} className="flex items-center gap-2">
@@ -320,7 +321,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
                       <Input
                         value={opt}
                         onChange={(e) => updateOption(q.id, optIndex, e.target.value)}
-                        placeholder={`Opzione ${optIndex + 1}`}
+                        placeholder={tl("Opzione {0}", optIndex + 1)}
                         className="flex-1"
                       />
                     </div>
@@ -336,36 +337,36 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
           <div className="space-y-3 border-t pt-4">
             <div>
               <label className="text-sm font-medium mb-1 block">
-                Testo dell'esercizio
+                {tl("Testo dell'esercizio")}
               </label>
               <textarea
                 value={exerciseText}
                 onChange={(e) => setExerciseText(e.target.value)}
-                placeholder="Es: Correggi la seguente frase e individua il complemento predicativo del soggetto: 'Il bambino sembra felice.'"
+                placeholder={tl("Es: Correggi la seguente frase e individua il complemento predicativo del soggetto: 'Il bambino sembra felice.'")}
                 className="w-full p-2 border rounded-md text-sm min-h-[100px]"
               />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">
-                Suggerimento (opzionale)
+                {tl("Suggerimento (opzionale)")}
               </label>
               <Input
                 value={exerciseHint}
                 onChange={(e) => setExerciseHint(e.target.value)}
-                placeholder="Es: Il complemento predicativo si riferisce al soggetto..."
+                placeholder={tl("Es: Il complemento predicativo si riferisce al soggetto...")}
               />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">
-                Esempi (opzionali)
+                {tl("Esempi (opzionali)")}
               </label>
               <textarea
                 value={exerciseExamples}
                 onChange={(e) => setExerciseExamples(e.target.value)}
-                placeholder="Inserisci un esempio per riga"
+                placeholder={tl("Inserisci un esempio per riga")}
                 className="w-full p-2 border rounded-md text-sm min-h-[90px]"
               />
-              <p className="mt-1 text-xs text-gray-500">Un esempio per riga.</p>
+              <p className="mt-1 text-xs text-gray-500">{tl("Un esempio per riga.")}</p>
             </div>
           </div>
         )}
@@ -373,11 +374,11 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
         {/* Discussion Builder */}
         {taskType === 'discussion' && (
           <div className="space-y-2 border-t pt-4">
-            <label className="text-sm font-medium block">Argomento della discussione</label>
+            <label className="text-sm font-medium block">{tl("Argomento della discussione")}</label>
             <textarea
               value={discussionTopic}
               onChange={(e) => setDiscussionTopic(e.target.value)}
-              placeholder="Scrivi la domanda o l'argomento da discutere..."
+              placeholder={tl("Scrivi la domanda o l'argomento da discutere...")}
               className="w-full p-2 border rounded-md text-sm min-h-[100px]"
             />
           </div>
@@ -388,28 +389,28 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
           <div className="space-y-3 border-t pt-4">
             <div>
               <label className="text-sm font-medium mb-1 block">
-                Contenuto della lezione (supporta Markdown e immagini)
+                {tl("Contenuto della lezione (supporta Markdown e immagini)")}
               </label>
               <textarea
                 value={lessonContent}
                 onChange={(e) => setLessonContent(e.target.value)}
-                placeholder="Scrivi il contenuto della lezione...&#10;&#10;Puoi usare Markdown per formattare il testo:&#10;- **grassetto** per evidenziare&#10;- *corsivo* per enfasi&#10;- # Titoli&#10;- Elenchi puntati&#10;- ![descrizione](url) per immagini"
+                placeholder={tl("Scrivi il contenuto della lezione...&#10;&#10;Puoi usare Markdown per formattare il testo:&#10;- **grassetto** per evidenziare&#10;- *corsivo* per enfasi&#10;- # Titoli&#10;- Elenchi puntati&#10;- ![descrizione](url) per immagini")}
                 className="w-full p-2 border rounded-md text-sm min-h-[200px] font-mono"
               />
             </div>
             <p className="text-xs text-gray-500">
-              💡 Suggerimento: Puoi generare lezioni complete usando il chatbot Supporto Docente e poi pubblicarle qui.
+              {tl("💡 Suggerimento: Puoi generare lezioni complete usando il chatbot Supporto Docente e poi pubblicarle qui.")}
             </p>
           </div>
         )}
 
         {!['quiz', 'exercise', 'discussion', 'lesson'].includes(taskType) && (
           <div className="space-y-2 border-t pt-4">
-            <label className="text-sm font-medium block">Contenuto</label>
+            <label className="text-sm font-medium block">{tl("Contenuto")}</label>
             <textarea
               value={genericContent}
               onChange={(e) => setGenericContent(e.target.value)}
-              placeholder="Modifica il contenuto del compito..."
+              placeholder={tl("Modifica il contenuto del compito...")}
               className="w-full p-2 border rounded-md text-sm min-h-[160px]"
             />
           </div>
@@ -423,8 +424,8 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             className="flex-1"
           >
             {isLoading
-              ? mode === 'edit' ? 'Salvataggio...' : 'Creazione...'
-              : mode === 'edit' ? 'Salva modifiche' : 'Crea Compito'}
+              ? mode === 'edit' ? tl("Salvataggio...") : tl("Creazione...")
+              : mode === 'edit' ? tl("Salva modifiche") : tl("Crea Compito")}
           </Button>
           <Button variant="outline" onClick={onCancel}>
             <X className="h-4 w-4" />

@@ -482,7 +482,8 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
         strike="line-through" in str(block_style.get("textDecoration") or "").lower(),
         color=_hex(str(block_style.get("color") or "")) or "000000",
         size_px=float(block_style.get("fontSize") or 18),
-        font=str(block_style.get("fontFamily")) if block_style.get("fontFamily") else None,
+        # A CSS stack ("Georgia, 'Times New Roman', serif") is not a PowerPoint typeface name.
+        font=str(block_style.get("fontFamily")).split(",")[0].strip().strip("'\"") or None if block_style.get("fontFamily") else None,
     )
     block_align = CSS_TO_ALIGN.get(str(block_style.get("textAlign") or "left"), PP_ALIGN.LEFT)
     line_height = block_style.get("lineHeight")

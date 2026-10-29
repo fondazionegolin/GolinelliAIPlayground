@@ -5,6 +5,7 @@ import { CheckCircle2, ExternalLink, FileCheck2, Loader2, LockKeyhole, Scale, Sh
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 type LegalDocument = {
   key: string
@@ -67,8 +68,8 @@ export function LegalConsentGate() {
     },
     onError: (error: any) => {
       toast({
-        title: 'Accettazione non registrata',
-        description: error?.response?.data?.detail || 'Riprova tra qualche secondo.',
+        title: tl("Accettazione non registrata"),
+        description: error?.response?.data?.detail || tl("Riprova tra qualche secondo."),
         variant: 'destructive',
       })
     },
@@ -90,10 +91,10 @@ export function LegalConsentGate() {
                 <LockKeyhole className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Accettazione obbligatoria</p>
-                <h2 className="text-lg font-bold text-slate-950">Documenti di licenza e privacy</h2>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Accettazione obbligatoria")}</p>
+                <h2 className="text-lg font-bold text-slate-950">{tl("Documenti di licenza e privacy")}</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Completa i {data.required_documents.length} passaggi per accedere all'area docente.
+                  {tl("Completa i")} {data.required_documents.length} {tl("passaggi per accedere all'area docente.")}
                 </p>
               </div>
             </div>
@@ -141,7 +142,7 @@ export function LegalConsentGate() {
                         {doc.title}
                       </p>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Versione {formatVersion(doc.version)}</p>
+                    <p className="mt-1 text-xs text-slate-500">{tl("Versione")} {formatVersion(doc.version)}</p>
                   </div>
                 )
               })}
@@ -157,7 +158,7 @@ export function LegalConsentGate() {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-base font-bold text-slate-950">{activeDocument.title}</h3>
-                    <p className="text-xs text-slate-500">Passaggio {activeIndex + 1} di {data.required_documents.length} · versione {formatVersion(activeDocument.version)}</p>
+                    <p className="text-xs text-slate-500">{tl("Passaggio")} {activeIndex + 1} {tl("di")} {data.required_documents.length} {tl("· versione")} {formatVersion(activeDocument.version)}</p>
                   </div>
                 </div>
                 <a
@@ -166,7 +167,7 @@ export function LegalConsentGate() {
                   rel="noreferrer"
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 >
-                  Apri <ExternalLink className="h-3.5 w-3.5" />
+                  {tl("Apri")} <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>
             </div>
@@ -175,7 +176,7 @@ export function LegalConsentGate() {
               {isLoading ? (
                 <div className="flex h-full items-center justify-center text-slate-500">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Caricamento documenti
+                  {tl("Caricamento documenti")}
                 </div>
               ) : (
                 <iframe title={activeDocument.title} src={viewerSrc} className="h-full min-h-[42vh] w-full bg-white" />
@@ -184,7 +185,7 @@ export function LegalConsentGate() {
 
             <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs leading-relaxed text-slate-500">
-                Il click registra data, versione del documento e dati tecnici essenziali per audit.
+                {tl("Il click registra data, versione del documento e dati tecnici essenziali per audit.")}
               </p>
               <button
                 type="button"

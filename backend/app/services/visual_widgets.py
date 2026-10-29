@@ -1,4 +1,5 @@
-"""Interactive objects the tutor puts on the board: an explorable graph or an exercise the student solves by writing.
+"""Interactive objects the tutor puts on the board: an explorable graph, an exercise the student solves by writing,
+or a 3D solid the student orbits and unfolds into its net.
 
 They are written by the tutor in the same answer as its message (so "here is the graph" always comes with the graph),
 checked here with the safe math language, and kept in the session so they stay on the canvas independently of the
@@ -98,7 +99,33 @@ class Exercise(DataModel):
         return self
 
 
-Widget = Explorer | Exercise  # `kind` tells them apart; a plain union keeps the schema usable for structured outputs
+SHAPES = ("cube", "cuboid", "tetrahedron", "octahedron", "dodecahedron", "icosahedron", "prism", "pyramid", "cylinder", "cone", "sphere")
+
+
+class Solid(DataModel):
+    kind: Literal["solid"] = Field(json_schema_extra={"type": "string"})
+    title: str = Field(min_length=1, max_length=80)
+    shape: Literal[SHAPES] = Field(description="Solido da costruire. prism/pyramid: base poligonale regolare con `sides` lati")
+    sides: int = Field(default=4, ge=3, le=12, description="prism/pyramid: numero di lati della base")
+    a: float = Field(default=1, gt=0, le=1e4, description="cube: spigolo; cuboid: larghezza; prism/pyramid: lato di base; "
+                     "cylinder/cone/sphere: raggio; solidi platonici: spigolo")
+    b: float = Field(default=1, gt=0, le=1e4, description="cuboid: profondità")
+    c: float = Field(default=1, gt=0, le=1e4, description="cuboid/prism/pyramid/cylinder/cone: altezza")
+    labels: bool = Field(default=False, description="Lettere sui vertici (A, B, C…), utili se il problema nomina i vertici")
+    unfold: bool = Field(default=False, description="true se lo studente chiede lo sviluppo piano: la card parte animando l'apertura")
+    note: str = Field(default="", max_length=300, description="Cosa osservare (1 frase), senza dare la soluzione")
+
+    @model_validator(mode="after")
+    def proportions(self):
+        sizes = [v for v in (self.a, self.b, self.c)]
+        if max(sizes) / min(sizes) > 40:
+            raise ValueError("Misure del solido troppo sproporzionate per essere lette: usa valori in scala")
+        if self.shape == "sphere":
+            self.unfold = False  # a sphere has no net
+        return self
+
+
+Widget = Explorer | Exercise | Solid  # `kind` tells them apart; a plain union keeps the schema usable for structured outputs
 
 
 def with_ids(widgets: list) -> list[dict]:
@@ -106,5 +133,10 @@ def with_ids(widgets: list) -> list[dict]:
 
 
 def keep_latest(previous: list[dict], new: list[dict]) -> list[dict]:
-    """The board keeps the most recent interactive objects (newest last), independent of the drawings' steps."""
-    return [*previous, *new][-MAX_WIDGETS:]
+    """The board keeps the most recent interactive objects (newest last), independent of the drawings' steps.
+
+    A new model of the same solid (e.g. asked again to see its net) replaces the old card instead of stacking a twin.
+    """
+    solids = {w["shape"] for w in new if w.get("kind") == "solid"}
+    kept = [w for w in previous if not (w.get("kind") == "solid" and w.get("shape") in solids)]
+    return [*kept, *new][-MAX_WIDGETS:]

@@ -7,6 +7,8 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.error_translation import localized_http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.router import api_router
 from app.api.v1.endpoints.coding import public_router as coding_public_router
 from app.realtime.gateway import socket_app
@@ -56,6 +58,7 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
     lifespan=lifespan,
 )
+app.add_exception_handler(StarletteHTTPException, localized_http_exception_handler)
 
 class ResponseLengthMiddleware:
     """Expose the X-Response-Length header (concise | extended | in_depth) to prompt builders via a ContextVar."""

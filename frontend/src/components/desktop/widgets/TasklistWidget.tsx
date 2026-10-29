@@ -1,5 +1,6 @@
 import { useState, useRef, KeyboardEvent } from 'react'
 import { Plus, CheckSquare2, Square } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface TaskItem {
   text: string
@@ -78,7 +79,7 @@ export default function TasklistWidget({ config, onConfigChange, readOnly = fals
           value={newText}
           onChange={e => setNewText(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={readOnly ? '' : "Aggiungi un'attività..."}
+          placeholder={readOnly ? '' : tl("Aggiungi un'attività...")}
           readOnly={readOnly}
           className="flex-1 bg-transparent text-sm text-white/70 placeholder:text-white/25 outline-none"
         />

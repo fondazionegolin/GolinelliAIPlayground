@@ -1,6 +1,7 @@
 import { getApiAuthHeaders } from '@/lib/api'
 import { readEventStream } from '@/lib/backgroundJobs'
 import { agenticApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 export type AssistantQuestion = { question: string; suggestions: string[] }
 export type AssistantIntake = { understanding: string; assumptions: string[]; questions: AssistantQuestion[]; mode: 'data' | 'chatbot' }
@@ -60,17 +61,17 @@ async function streamAssistant<T>(url: string, body: unknown, onStatus: (message
   if (!response.ok) {
     let detail = ''
     try { detail = (await response.json())?.detail } catch { /* not JSON */ }
-    throw new Error(typeof detail === 'string' && detail ? detail : `Richiesta non riuscita (${response.status})`)
+    throw new Error(typeof detail === 'string' && detail ? detail : tl("Richiesta non riuscita ({0})", response.status))
   }
   let result: T | null = null
   let failure = ''
   await readEventStream(response, 'sse', (event) => {
     if (event.type === 'status') onStatus(String(event.message || ''))
     else if (event.type === 'result') { result = event as unknown as T; return true }
-    else if (event.type === 'error') { failure = String(event.message || 'Errore dell’assistente'); return true }
+    else if (event.type === 'error') { failure = String(event.message || tl("Errore dell’assistente")); return true }
   })
   if (failure) throw new Error(failure)
-  if (!result) throw new Error('La connessione si è interrotta prima della fine: riprova.')
+  if (!result) throw new Error(tl("La connessione si è interrotta prima della fine: riprova."))
   return result
 }
 

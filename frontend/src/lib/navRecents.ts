@@ -1,4 +1,5 @@
 import { agenticApi, boardsApi, codingApi, liveInteractionApi, notebooksApi, teacherApi, teacherbotsApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 /** One quick-access entry shown on the right of a navbar submenu row. */
 export interface NavRecent {
@@ -32,7 +33,7 @@ export function relativeTime(iso?: string | null): string {
   if (!Number.isFinite(diff)) return ''
   const minutes = Math.round(diff / 60000)
   if (minutes < 1) return 'ora'
-  if (minutes < 60) return `${minutes} min fa`
+  if (minutes < 60) return tl("{0} min fa", minutes)
   const hours = Math.round(minutes / 60)
   if (hours < 24) return `${hours} h fa`
   const days = Math.round(hours / 24)
@@ -40,8 +41,8 @@ export function relativeTime(iso?: string | null): string {
   return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
-const DOC_TYPE_LABEL: Record<string, string> = { presentation: 'Presentazione', sheet: 'Tabella', canvas: 'Lavagna', document: 'Documento' }
-const NOTEBOOK_TYPE_LABEL: Record<string, string> = { python: 'Python', p5js: 'p5.js', strudel: 'Strudel', game2d: 'Gioco 2D', microbit: 'micro:bit', circuitplayground: 'Circuit Playground' }
+const DOC_TYPE_LABEL: Record<string, string> = { presentation: tl("Presentazione"), sheet: tl("Tabella"), canvas: tl("Lavagna"), document: tl("Documento") }
+const NOTEBOOK_TYPE_LABEL: Record<string, string> = { python: 'Python', p5js: 'p5.js', strudel: 'Strudel', game2d: tl("Gioco 2D"), microbit: 'micro:bit', circuitplayground: 'Circuit Playground' }
 
 export const navRecentFetchers = {
   documents: async (): Promise<NavRecent[]> => {
@@ -54,8 +55,8 @@ export const navRecentFetchers = {
       .filter((row) => (seen.has(row.id) ? false : (seen.add(row.id), true)))
       .map((row) => ({
         id: row.id,
-        title: row.title || 'Senza titolo',
-        meta: DOC_TYPE_LABEL[row.doc_type] || 'Documento',
+        title: row.title || tl("Senza titolo"),
+        meta: DOC_TYPE_LABEL[row.doc_type] || tl("Documento"),
         at: at(row),
         to: `/teacher/documents?open=${row.id}`,
       }))
@@ -65,7 +66,7 @@ export const navRecentFetchers = {
     newest((await teacherbotsApi.list()).data as Row[]).map((row) => ({
       id: row.id,
       title: row.name,
-      meta: row.status === 'published' ? 'Pubblicato' : row.status === 'testing' ? 'In test' : 'Bozza',
+      meta: row.status === 'published' ? tl("Pubblicato") : row.status === 'testing' ? tl("In test") : tl("Bozza"),
       at: at(row),
       to: `/teacher/teacherbots?edit=${row.id}`,
     })),
@@ -73,7 +74,7 @@ export const navRecentFetchers = {
   notebooks: async (): Promise<NavRecent[]> =>
     newest((await notebooksApi.list()).data as Row[]).map((row) => ({
       id: row.id,
-      title: row.title || 'Senza titolo',
+      title: row.title || tl("Senza titolo"),
       meta: NOTEBOOK_TYPE_LABEL[row.project_type] || 'Notebook',
       at: at(row),
       to: `/teacher/notebooks/notebook/${row.id}`,
@@ -83,7 +84,7 @@ export const navRecentFetchers = {
     if (!sessionId) return []
     return newest((await codingApi.listProjects(sessionId)).data as Row[]).map((row) => ({
       id: row.id,
-      title: row.title || 'Senza titolo',
+      title: row.title || tl("Senza titolo"),
       meta: row.owner_display_name || undefined,
       at: at(row),
       to: `/teacher/coding?project=${row.id}`,
@@ -98,9 +99,9 @@ export const navRecentFetchers = {
     return [...rows].sort((a, b) => Number(pending(b)) - Number(pending(a)) || time(b) - time(a)).map((row) => ({
       id: row.id,
       title: row.title,
-      meta: row.interaction_type === 'escape_room' ? 'Escape room' : 'Quiz',
+      meta: row.interaction_type === 'escape_room' ? 'Escape room' : tl("Quiz"),
       at: at(row),
-      badge: row.status === 'ACTIVE' ? 'In corso' : pending(row) ? 'Lobby aperta' : undefined,
+      badge: row.status === 'ACTIVE' ? tl("In corso") : pending(row) ? tl("Lobby aperta") : undefined,
       to: `/teacher/live-interaction/${row.id}/control`,
     }))
   },

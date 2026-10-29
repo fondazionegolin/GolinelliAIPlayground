@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, FileText, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 export interface QuizAnswer {
   question_index: number
@@ -68,11 +69,11 @@ const getNotificationIcon = (type: string) => {
 }
 
 const ALERT_TYPE_LABELS: Record<string, string> = {
-  vulgar: 'Volgare',
-  sexual: 'Sessuale',
-  offensive: 'Offensivo',
-  threatening: 'Minaccioso',
-  pii_detected: 'Dati personali',
+  vulgar: tl("Volgare"),
+  sexual: tl("Sessuale"),
+  offensive: tl("Offensivo"),
+  threatening: tl("Minaccioso"),
+  pii_detected: tl("Dati personali"),
 }
 
 const formatTime = (timestamp: string) => {
@@ -160,7 +161,7 @@ export default function TeacherNotifications({
         <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-[var(--ds-radius-panel)]">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 shadow-[0_1px_0_rgba(120,120,124,0.12)]">
-            <span className="text-sm font-medium text-gray-700">Notifiche ({notifications.length})</span>
+            <span className="text-sm font-medium text-gray-700">{tl("Notifiche (")}{notifications.length})</span>
             {notifications.length > 0 && (
               <Button
                 variant="ghost"
@@ -169,7 +170,7 @@ export default function TeacherNotifications({
                 onClick={onClearAll}
               >
                 <X className="h-3 w-3 mr-1" />
-                Pulisci
+                {tl("Pulisci")}
               </Button>
             )}
           </div>
@@ -181,7 +182,7 @@ export default function TeacherNotifications({
           >
             {notifications.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-6">
-                Nessuna notifica
+                {tl("Nessuna notifica")}
               </p>
             ) : (
               <div className="p-1 space-y-1">
@@ -231,7 +232,7 @@ export default function TeacherNotifications({
 
                           {notification.session_name && (
                             <p className="text-gray-400 text-[10px] mt-0.5">
-                              📍 {notification.class_name || 'Classe'} - {notification.session_name}
+                              📍 {notification.class_name || tl("Classe")} - {notification.session_name}
                             </p>
                           )}
                           {notification.preview && !hasQuizDetails && (
@@ -254,32 +255,32 @@ export default function TeacherNotifications({
                               notification.alertStatus === 'accepted' ? 'bg-green-100 text-green-700' :
                               'bg-gray-100 text-gray-600'
                             }`}>
-                              {notification.alertStatus === 'blocked' ? '🚫 Bloccato' :
-                               notification.alertStatus === 'accepted' ? 'Accettato' :
-                               '👁 Visto'}
+                              {notification.alertStatus === 'blocked' ? tl("🚫 Bloccato") :
+                               notification.alertStatus === 'accepted' ? tl("Accettato") :
+                               tl("👁 Visto")}
                             </span>
                           ) : (
                             <>
                               <button
                                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'acknowledged') }}
-                                title="Segna come visto"
+                                title={tl("Segna come visto")}
                               >
-                                <Eye className="h-2.5 w-2.5" /> Visto
+                                <Eye className="h-2.5 w-2.5" /> {tl("Visto")}
                               </button>
                               <button
                                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-green-100 hover:bg-green-200 text-green-700 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'accepted') }}
-                                title="Accetta e ignora"
+                                title={tl("Accetta e ignora")}
                               >
-                                <Check className="h-2.5 w-2.5" /> Accetta
+                                <Check className="h-2.5 w-2.5" /> {tl("Accetta")}
                               </button>
                               <button
                                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-red-100 hover:bg-red-200 text-red-700 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'blocked') }}
-                                title="Blocca studente"
+                                title={tl("Blocca studente")}
                               >
-                                <Ban className="h-2.5 w-2.5" /> Blocca
+                                <Ban className="h-2.5 w-2.5" /> {tl("Blocca")}
                               </button>
                             </>
                           )}
@@ -291,7 +292,7 @@ export default function TeacherNotifications({
                         <div className="mt-2 pl-5 space-y-1.5 border-t pt-2">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-semibold text-gray-600">
-                              Risultato: {notification.quiz_score?.correct || 0}/{notification.quiz_score?.total || notification.quiz_answers.length}
+                              {tl("Risultato:")} {notification.quiz_score?.correct || 0}/{notification.quiz_score?.total || notification.quiz_answers.length}
                             </span>
                           </div>
                           {notification.quiz_answers.map((answer, idx) => (
@@ -308,11 +309,11 @@ export default function TeacherNotifications({
                               </div>
                               <div className="pl-3.5">
                                 <p className={answer.is_correct ? 'text-green-600' : 'text-red-600'}>
-                                  <span className="font-medium">Risposta:</span> {answer.student_answer}
+                                  <span className="font-medium">{tl("Risposta:")}</span> {answer.student_answer}
                                 </p>
                                 {!answer.is_correct && (
                                   <p className="text-green-600">
-                                    <span className="font-medium">Corretta:</span> {answer.correct_answer}
+                                    <span className="font-medium">{tl("Corretta:")}</span> {answer.correct_answer}
                                   </p>
                                 )}
                               </div>

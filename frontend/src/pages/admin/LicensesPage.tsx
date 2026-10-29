@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, Clock, Loader2, Search, ShieldCheck } from '@/components/icons'
 import { adminApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 type LegalDocument = {
   key: string
@@ -45,7 +46,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function teacherName(item: LegalConsentItem) {
-  return [item.teacher.first_name, item.teacher.last_name].filter(Boolean).join(' ') || item.teacher.email || 'Docente'
+  return [item.teacher.first_name, item.teacher.last_name].filter(Boolean).join(' ') || item.teacher.email || tl("Docente")
 }
 
 export default function LicensesPage() {
@@ -83,18 +84,18 @@ export default function LicensesPage() {
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Licenze
+            {tl("Licenze")}
           </div>
-          <h1 className="text-2xl font-black text-slate-950">Consensi licenza docenti</h1>
+          <h1 className="text-2xl font-black text-slate-950">{tl("Consensi licenza docenti")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Stato delle accettazioni obbligatorie per Termini e licenza, AI Act DPIA e Privacy DPA.
+            {tl("Stato delle accettazioni obbligatorie per Termini e licenza, AI Act DPIA e Privacy DPA.")}
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Metric label="Docenti" value={items.length} />
-          <Metric label="Licenza accettata" value={licenseAcceptedCount} />
-          <Metric label="Completati" value={completeCount} />
+          <Metric label={tl("Docenti")} value={items.length} />
+          <Metric label={tl("Licenza accettata")} value={licenseAcceptedCount} />
+          <Metric label={tl("Completati")} value={completeCount} />
         </div>
       </div>
 
@@ -104,7 +105,7 @@ export default function LicensesPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Cerca docente, email o istituto"
+            placeholder={tl("Cerca docente, email o istituto")}
             className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
           />
         </div>
@@ -115,7 +116,7 @@ export default function LicensesPage() {
             onChange={(event) => setOnlyLicenseAccepted(event.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
           />
-          Solo licenza accettata
+          {tl("Solo licenza accettata")}
         </label>
       </div>
 
@@ -123,17 +124,17 @@ export default function LicensesPage() {
         {isLoading ? (
           <div className="flex h-48 items-center justify-center text-sm text-slate-500">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Caricamento consensi
+            {tl("Caricamento consensi")}
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">Nessun docente trovato</div>
+          <div className="py-12 text-center text-sm text-slate-400">{tl("Nessun docente trovato")}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-bold">Docente</th>
-                  <th className="px-4 py-3 font-bold">Ultimo accesso</th>
+                  <th className="px-4 py-3 font-bold">{tl("Docente")}</th>
+                  <th className="px-4 py-3 font-bold">{tl("Ultimo accesso")}</th>
                   {(data?.required_documents || []).map((doc) => (
                     <th key={doc.key} className="px-4 py-3 font-bold">{doc.title}</th>
                   ))}
@@ -179,14 +180,14 @@ function StatusPill({ acceptedAt }: { acceptedAt?: string | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        Accettato
+        {tl("Accettato")}
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
       <Clock className="h-3.5 w-3.5" />
-      In attesa
+      {tl("In attesa")}
     </span>
   )
 }

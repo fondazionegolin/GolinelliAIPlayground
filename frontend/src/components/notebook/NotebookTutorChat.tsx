@@ -8,6 +8,7 @@ import { markdownCodeComponents } from '@/components/CodeBlock'
 import { notebooksApi } from '@/lib/api'
 import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
 import type { NotebookCodeProposal, NotebookProjectType, NotebookTutorMessage } from './types'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   notebookId: string
@@ -114,7 +115,7 @@ export default function NotebookTutorChat({
       const history = Array.isArray(res.data.history) ? res.data.history as NotebookTutorMessage[] : null
       setMessages(history ?? [...newMessages, { role: 'assistant', content: res.data.response }])
     } catch {
-      setMessages([...newMessages, { role: 'assistant', content: 'Errore nella risposta del tutor. Riprova.' }])
+      setMessages([...newMessages, { role: 'assistant', content: tl("Errore nella risposta del tutor. Riprova.") }])
     } finally {
       setLoading(false)
     }
@@ -160,7 +161,7 @@ export default function NotebookTutorChat({
         <div
           onMouseDown={handleDragStart}
           className="flex shrink-0 cursor-grab items-center justify-center border-b border-slate-100 bg-slate-50 py-1.5 active:cursor-grabbing"
-          title="Trascina per spostare"
+          title={tl("Trascina per spostare")}
         >
           <GripHorizontal className="h-3.5 w-3.5 text-slate-300" />
         </div>
@@ -172,16 +173,16 @@ export default function NotebookTutorChat({
           <GraduationCap className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900">Tutor socratico {projectLabel(projectType)}</p>
+          <p className="text-sm font-semibold text-slate-900">{tl("Tutor socratico")} {projectLabel(projectType)}</p>
           <p className="truncate text-[10px] text-slate-500">
-            {isFloating ? 'Supporto AI' : notebookTitle}
+            {isFloating ? tl("Supporto AI") : notebookTitle}
           </p>
         </div>
         {onOpenVersions && (
           <button
             onClick={onOpenVersions}
             className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            title="Cronologia versioni / rollback"
+            title={tl("Cronologia versioni / rollback")}
           >
             <History className="h-4 w-4" />
           </button>
@@ -189,7 +190,7 @@ export default function NotebookTutorChat({
         <button
           onClick={() => setCollapsed((v) => !v)}
           className="text-slate-500 transition-colors hover:text-slate-900"
-          title={collapsed ? 'Espandi tutor' : 'Nascondi tutor'}
+          title={collapsed ? tl("Espandi tutor") : tl("Nascondi tutor")}
         >
           {collapsed ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </button>
@@ -201,11 +202,11 @@ export default function NotebookTutorChat({
           {currentCellSource && (
             <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-1.5">
               <p className="truncate font-mono text-[10px] text-slate-500">
-                Cella corrente: <span className="text-emerald-700">{currentCellSource.split('\n')[0].slice(0, 70)}</span>
+                {tl("Cella corrente:")} <span className="text-emerald-700">{currentCellSource.split('\n')[0].slice(0, 70)}</span>
               </p>
               {pendingProposals.length > 0 && (
                 <p className="mt-1 text-[10px] text-amber-600">
-                  {pendingProposals.length} proposta/e in attesa di approvazione: posso spiegarti il perché.
+                  {pendingProposals.length} {tl("proposta/e in attesa di approvazione: posso spiegarti il perché.")}
                 </p>
               )}
             </div>
@@ -217,25 +218,25 @@ export default function NotebookTutorChat({
                 <Bot className="h-10 w-10 text-slate-300" />
                 <div>
                   <p className="text-sm font-medium text-slate-700">Tutor {projectLabel(projectType)}</p>
-                  <p className="mt-1 text-xs">Ti aiuto a leggere errori, capire le proposte e ragionare passo per passo senza sostituire il tuo codice.</p>
+                  <p className="mt-1 text-xs">{tl("Ti aiuto a leggere errori, capire le proposte e ragionare passo per passo senza sostituire il tuo codice.")}</p>
                 </div>
                 <div className="mt-2 grid w-full grid-cols-1 gap-1.5">
                   {(projectType === 'python'
                     ? [
-                      'Perché questa proposta migliora il codice?',
-                      'Che cosa ho sbagliato in questa funzione?',
-                      'Mostrami il ragionamento dietro la correzione',
+                      tl("Perché questa proposta migliora il codice?"),
+                      tl("Che cosa ho sbagliato in questa funzione?"),
+                      tl("Mostrami il ragionamento dietro la correzione"),
                     ]
                     : projectType === 'game2d'
                       ? [
                         'Come devo strutturare il JSON del livello?',
-                        'Perché il runner non carica questa entità?',
-                        'Come posso aggiungere un nemico senza scrivere JavaScript?',
+                        tl("Perché il runner non carica questa entità?"),
+                        tl("Come posso aggiungere un nemico senza scrivere JavaScript?"),
                       ]
                       : [
-                        'Perché questa modifica migliora lo sketch?',
-                        'Che ruolo ha setup() in questo caso?',
-                        'Come posso evitare questo errore di canvas?',
+                        tl("Perché questa modifica migliora lo sketch?"),
+                        tl("Che ruolo ha setup() in questo caso?"),
+                        tl("Come posso evitare questo errore di canvas?"),
                       ]).map((suggestion) => (
                     <button
                       key={suggestion}
@@ -297,7 +298,7 @@ export default function NotebookTutorChat({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Chiedi al tutor perché una proposta è utile o cosa non ti è chiaro"
+                placeholder={tl("Chiedi al tutor perché una proposta è utile o cosa non ti è chiaro")}
                 rows={2}
                 className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-700 outline-none placeholder:text-slate-400"
               />
@@ -310,7 +311,7 @@ export default function NotebookTutorChat({
               </button>
             </div>
             <p className="mt-1 text-center text-[10px] text-slate-400">
-              Supporto didattico: spiega, non sostituisce il ragionamento dello studente.
+              {tl("Supporto didattico: spiega, non sostituisce il ragionamento dello studente.")}
             </p>
           </div>
         </>
@@ -318,7 +319,7 @@ export default function NotebookTutorChat({
 
       {collapsed && variant === 'docked' && (
         <div className="px-4 py-2 text-xs text-slate-500">
-          Tutor nascosto. Usa la freccia per riaprirlo.
+          {tl("Tutor nascosto. Usa la freccia per riaprirlo.")}
         </div>
       )}
     </div>

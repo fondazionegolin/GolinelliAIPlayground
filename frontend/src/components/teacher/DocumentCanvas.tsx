@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { chatApi } from '@/lib/api'
 import type { ResearchAgent, ResearchRound } from '@/components/teacher/ResearchPanel'
 import { buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
+import { tl } from '@/i18n/tl'
 
 // Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
 const TOOLBAR_PILL = 'ui-control-label inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
@@ -148,7 +149,7 @@ function buildDispensaHtml(sections: string, docTitle: string, authorName?: stri
   // Extract TITLE/SUBTITLE comment from sections
   const titleMatch = sections.match(/<!--\s*TITLE:\s*([^|]+?)\s*\|\s*SUBTITLE:\s*([^-]+?)\s*-->/)
   const title = titleMatch ? titleMatch[1].trim() : docTitle
-  const subtitle = titleMatch ? titleMatch[2].trim() : 'Dispensa generata con Claude AI'
+  const subtitle = titleMatch ? titleMatch[2].trim() : tl("Dispensa generata con Claude AI")
   // Strip that comment from content
   const cleanSections = sections.replace(/<!--\s*TITLE:[^>]*?-->/i, '').trim()
 
@@ -217,11 +218,11 @@ function buildDispensaHtmlFromPayload(raw: string, docTitle: string, authorName?
     : ''
 
   const blockMeta = {
-    definition: { className: 'definition-box', label: '📘 Definizione' },
-    theorem: { className: 'theorem-box', label: '📐 Teorema' },
-    example: { className: 'example-box', label: '💡 Esempio' },
-    warning: { className: 'warning-box', label: '⚠️ Attenzione' },
-    note: { className: 'note-box', label: '📝 Nota' },
+    definition: { className: 'definition-box', label: tl("📘 Definizione") },
+    theorem: { className: 'theorem-box', label: tl("📐 Teorema") },
+    example: { className: 'example-box', label: tl("💡 Esempio") },
+    warning: { className: 'warning-box', label: tl("⚠️ Attenzione") },
+    note: { className: 'note-box', label: tl("📝 Nota") },
   } as const
 
   const sections = payload.sections.map((section, index) => `
@@ -603,8 +604,8 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     if (doc.type === 'report') {
       return buildReportHtml(doc.content, doc.title || 'Report')
     } else {
-      return buildDispensaHtmlFromPayload(doc.content, doc.title || 'Dispensa', authorName)
-        || buildDispensaHtml(extractSections(doc.content), doc.title || 'Dispensa', authorName)
+      return buildDispensaHtmlFromPayload(doc.content, doc.title || tl("Dispensa"), authorName)
+        || buildDispensaHtml(extractSections(doc.content), doc.title || tl("Dispensa"), authorName)
     }
   }, [authorName, doc])
 
@@ -652,7 +653,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
 
       const uploadRes = await chatApi.uploadFiles(sessionId, [file])
       const urls: string[] = uploadRes.data?.urls || []
-      if (urls.length === 0) throw new Error('Upload fallito')
+      if (urls.length === 0) throw new Error(tl("Upload fallito"))
 
       const attachments = urls.map((url, i) => ({
         type: 'file',
@@ -660,20 +661,20 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         filename: i === 0 ? filename : url.split('/').pop() || 'file',
       }))
 
-      const label = doc.type === 'brochure' ? '📄 Brochure' : doc.type === 'report' ? '📊 Report interattivo' : doc.type === 'html_page' ? '🎮 Pagina Interattiva' : '📑 Dispensa'
+      const label = doc.type === 'brochure' ? '📄 Brochure' : doc.type === 'report' ? tl("📊 Report interattivo") : doc.type === 'html_page' ? tl("🎮 Pagina Interattiva") : tl("📑 Dispensa")
       const text = `${label}: **${doc.title || 'Documento generato con AI'}** (v${doc.version})`
       await chatApi.sendSessionMessage(sessionId, text, attachments)
       setSharedSessionIds(prev => new Set([...prev, sessionId]))
       toast({
-        title: 'Documento pubblicato',
-        description: `Condiviso con ${targetSession?.title || 'la classe'}.`,
+        title: tl("Documento pubblicato"),
+        description: tl("Condiviso con {0}.", targetSession?.title || 'la classe'),
         className: 'border-emerald-200 bg-emerald-50 text-emerald-950 shadow-lg shadow-emerald-950/10',
       })
     } catch (e) {
       console.error('Share failed', e)
       toast({
-        title: 'Pubblicazione fallita',
-        description: 'Non sono riuscito a inviare il documento nella chat di classe.',
+        title: tl("Pubblicazione fallita"),
+        description: tl("Non sono riuscito a inviare il documento nella chat di classe."),
         variant: 'destructive',
         className: 'shadow-lg',
       })
@@ -698,7 +699,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         className="flex items-center gap-2 px-4 py-3 bg-white border-b border-slate-200 shrink-0"
         draggable
         onDragStart={handleDragStart}
-        title="Trascina nella chat di classe per condividere"
+        title={tl("Trascina nella chat di classe per condividere")}
         style={{ cursor: 'grab' }}
       >
         <GripVertical className="h-4 w-4 text-slate-300 flex-shrink-0" />
@@ -709,14 +710,14 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-800 truncate">
-                {doc.title || (isReport ? 'Report interattivo' : isDispensa ? 'Dispensa' : 'Brochure')}
+                {doc.title || (isReport ? tl("Report interattivo") : isDispensa ? tl("Dispensa") : 'Brochure')}
               </span>
               <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-mono shrink-0">
                 v{doc.version}
               </span>
             </div>
             <div className="text-[10px] text-slate-400">
-              {isReport ? 'Dashboard HTML interattiva' : (isDispensa ? 'Dispensa HTML interattiva' : 'Brochure HTML interattiva')}
+              {isReport ? tl("Dashboard HTML interattiva") : (isDispensa ? tl("Dispensa HTML interattiva") : tl("Brochure HTML interattiva"))}
             </div>
           </div>
         </div>
@@ -726,7 +727,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
             onClick={() => setShowSource(v => !v)}
             className={`${TOOLBAR_PILL} ${showSource ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
           >
-            {showSource ? 'Anteprima' : 'Sorgente'}
+            {showSource ? 'Anteprima' : tl("Sorgente")}
           </button>
 
           {sessions.length > 0 && (
@@ -735,12 +736,12 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
                 onClick={() => setShowShareMenu(v => !v)}
                 className={`${TOOLBAR_PILL} ${showShareMenu ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
               >
-                <Share2 className="h-3.5 w-3.5" />Condividi
+                <Share2 className="h-3.5 w-3.5" />{tl("Condividi")}
               </button>
               {showShareMenu && (
                 <div className="absolute right-0 top-full mt-1 w-60 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                    Invia nella chat di classe
+                    {tl("Invia nella chat di classe")}
                   </div>
                   {sessions.map(s => {
                     const isSending = sharingSessionId === s.id
@@ -785,14 +786,14 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
             srcDoc={renderedHtml}
             sandbox="allow-same-origin allow-scripts"
             className="w-full h-full border-0 bg-white"
-            title={isReport ? 'Report Preview' : (isDispensa ? 'Dispensa HTML Preview' : 'Brochure HTML Preview')}
+            title={isReport ? 'Report Preview' : (isDispensa ? tl("Dispensa HTML Preview") : 'Brochure HTML Preview')}
           />
         )}
       </div>
 
       <div className="px-4 py-2 bg-white border-t border-slate-100 shrink-0">
         <p className="text-[10px] text-slate-400 text-center">
-          Trascina l'intestazione nella chat di classe per condividere · Continua la chat per modifiche
+          {tl("Trascina l'intestazione nella chat di classe per condividere · Continua la chat per modifiche")}
         </p>
       </div>
     </div>

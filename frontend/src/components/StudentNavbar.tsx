@@ -22,6 +22,7 @@ import { openFeedback } from '@/components/FloatingHelper'
 import { ThemeToggleMenuItem } from './ThemeToggleMenuItem'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
+import { tl } from '@/i18n/tl'
 
 interface StudentProfile {
   id?: string
@@ -287,7 +288,7 @@ export function StudentNavbar({
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { key: 'boards', label: 'Board', icon: KanbanSquare },
     { key: 'models3d', label: '3D Lab', icon: Box },
-    { key: 'models3d_ai', label: 'AI 3D', icon: MushroomIcon },
+    { key: 'models3d_ai', label: tl("AI 3D"), icon: MushroomIcon },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'files'])
@@ -346,7 +347,7 @@ export function StudentNavbar({
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
                   className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
-                  aria-label="Scopri le novità della versione beta"
+                  aria-label={tl("Scopri le novità della versione beta")}
                 >
                   BETA
                 </button>
@@ -535,7 +536,7 @@ export function StudentNavbar({
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
                     >
                       <FileText className="h-4 w-4" />
-                      Informativa privacy
+                      {tl("Informativa privacy")}
                     </button>
                     <button
                       onClick={() => {
@@ -545,7 +546,7 @@ export function StudentNavbar({
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
                     >
                       <FileText className="h-4 w-4" />
-                      Termini e condizioni
+                      {tl("Termini e condizioni")}
                     </button>
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button

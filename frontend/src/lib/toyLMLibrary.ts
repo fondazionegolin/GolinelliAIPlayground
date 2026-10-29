@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 export const MAX_CORPUS_BYTES = 50 * 1024 * 1024
 
 export interface ToyLMCorpusSelection {
@@ -39,7 +40,7 @@ export async function libraryFetch<T>(path: string, signal: AbortSignal): Promis
   const response = await fetch(`/api/v1/toy-lm/library/books${path}`, { credentials: 'include', signal })
   if (!response.ok) {
     const error = await response.json().catch(() => null)
-    throw new Error(typeof error?.detail === 'string' ? error.detail : 'Biblioteca non disponibile. Riprova tra poco.')
+    throw new Error(typeof error?.detail === 'string' ? error.detail : tl("Biblioteca non disponibile. Riprova tra poco."))
   }
   return response.json()
 }
@@ -48,10 +49,10 @@ export async function importLibraryBook(bookId: number, signal: AbortSignal, onP
   const response = await fetch(`/api/v1/toy-lm/library/books/${bookId}/stream`, { credentials: 'include', signal })
   if (!response.ok) {
     const error = await response.json().catch(() => null)
-    throw new Error(typeof error?.detail === 'string' ? error.detail : 'Impossibile avviare il download. Riprova.')
+    throw new Error(typeof error?.detail === 'string' ? error.detail : tl("Impossibile avviare il download. Riprova."))
   }
   if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
-    throw new Error('Il servizio di download non ha restituito un flusso valido. Riprova tra poco.')
+    throw new Error(tl("Il servizio di download non ha restituito un flusso valido. Riprova tra poco."))
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -63,11 +64,11 @@ export async function importLibraryBook(bookId: number, signal: AbortSignal, onP
     try {
       event = JSON.parse(data) as ImportEvent
     } catch {
-      throw new Error('Il download si è interrotto durante il trasferimento del testo. Riprova: nessun estratto è stato importato.')
+      throw new Error(tl("Il download si è interrotto durante il trasferimento del testo. Riprova: nessun estratto è stato importato."))
     }
     if (event.type === 'error') throw new Error(event.message)
     if (event.type === 'complete') {
-      if (!event.book.text.trim() || event.book.truncated) throw new Error('Il libro ricevuto è incompleto. Nessun estratto è stato importato.')
+      if (!event.book.text.trim() || event.book.truncated) throw new Error(tl("Il libro ricevuto è incompleto. Nessun estratto è stato importato."))
       return event.book
     }
     onProgress(event)
@@ -89,7 +90,7 @@ export async function importLibraryBook(bookId: number, signal: AbortSignal, onP
       const result = consumeFrame(buffer)
       if (result) return result
     }
-    throw new Error('Il collegamento si è interrotto prima della fine del libro. Riprova il download.')
+    throw new Error(tl("Il collegamento si è interrotto prima della fine del libro. Riprova il download."))
   } finally {
     await reader.cancel().catch(() => {})
     reader.releaseLock()

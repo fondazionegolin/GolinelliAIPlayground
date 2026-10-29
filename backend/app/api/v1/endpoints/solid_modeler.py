@@ -4,6 +4,7 @@ Teachers own and edit projects; students own their own projects when the session
 enables the `models3d` module. Teacher models shared with a class are readable by its
 students and, when enabled, by anyone holding the public link.
 """
+import hashlib
 import json
 import logging
 import secrets
@@ -11,8 +12,8 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -251,6 +252,7 @@ async def run_modeler_agent(
 
 MAX_SCENE_BYTES = 2_000_000
 MAX_THUMBNAIL_BYTES = 400_000
+MAX_AR_GLB_BYTES = 15_000_000
 
 
 class ModelSaveRequest(BaseModel):
@@ -263,6 +265,10 @@ class ModelShareRequest(BaseModel):
     class_ids: Optional[list[uuid.UUID]] = None
     public_enabled: Optional[bool] = None
     regenerate_token: bool = False
+
+
+def scene_hash(scene: Any) -> str:
+    return hashlib.sha256(json.dumps(scene or [], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _iso(dt: Optional[datetime]) -> Optional[str]:
@@ -405,11 +411,14 @@ async def list_share_classes(
 async def share_model(
     model_id: uuid.UUID,
     body: ModelShareRequest,
-    teacher: Annotated[User, Depends(get_current_teacher)],
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    model = await _own_model(db, model_id, StudentOrTeacher(teacher=teacher))
+    model = await _own_model(db, model_id, actor)
     if body.class_ids is not None:
+        if actor.is_student:
+            raise HTTPException(status_code=403, detail="Solo i docenti possono condividere con le classi")
+        teacher = actor.teacher
         allowed = {c.id for c in await _teacher_class_rows(db, teacher)}
         invalid = [str(cid) for cid in body.class_ids if cid not in allowed]
         if invalid:
@@ -422,6 +431,26 @@ async def share_model(
     await db.commit()
     await db.refresh(model)
     return _summary(model)
+
+
+@router.put("/models/{model_id}/ar")
+async def upload_ar_model(
+    model_id: uuid.UUID,
+    request: Request,
+    actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Store the GLB the editor built from the saved scene, served to phones on the public link."""
+    model = await _own_model(db, model_id, actor)
+    data = await request.body()
+    if len(data) > MAX_AR_GLB_BYTES:
+        raise HTTPException(status_code=413, detail="Modello troppo pesante per la realtà aumentata")
+    if len(data) < 20 or data[:4] != b"glTF":
+        raise HTTPException(status_code=400, detail="File GLB non valido")
+    model.ar_glb = data
+    model.ar_scene_hash = scene_hash(model.scene)
+    await db.commit()
+    return {"ar_ready": True, "bytes": len(data)}
 
 
 # ── Read-only access: public link and students of shared classes ─────────
@@ -450,7 +479,25 @@ async def get_public_model(token: str, db: Annotated[AsyncSession, Depends(get_d
         "scene": model.scene or [],
         "author": await _owner_name(db, model),
         "updated_at": _iso(model.updated_at),
+        # GLB snapshot still matching the saved scene: phones can open it in Scene Viewer / Quick Look.
+        "ar_glb_url": f"/api/v1/solid-modeler/public/{token}/model.glb?v={model.ar_scene_hash[:12]}"
+        if model.ar_scene_hash and model.ar_scene_hash == scene_hash(model.scene) else None,
     }
+
+
+@router.get("/public/{token}/model.glb")
+async def get_public_model_glb(token: str, db: Annotated[AsyncSession, Depends(get_db)]):
+    row = (await db.execute(
+        select(SolidModel.ar_glb, SolidModel.ar_scene_hash, SolidModel.scene)
+        .where(SolidModel.public_token == token, SolidModel.public_enabled.is_(True))
+    )).one_or_none()
+    if not row or not row.ar_glb or row.ar_scene_hash != scene_hash(row.scene):
+        raise HTTPException(status_code=404, detail="Modello AR non disponibile")
+    return Response(
+        content=row.ar_glb,
+        media_type="model/gltf-binary",
+        headers={"Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*"},
+    )
 
 
 async def _student_class_id(db: AsyncSession, student: SessionStudent) -> Optional[str]:

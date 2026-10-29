@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -33,25 +34,30 @@ def effective_cap(limit: CreditLimit) -> float:
     return float(limit.amount_cap or 0.0) + max(float(limit.bonus_credits or 0.0), 0.0)
 
 
+def add_month(moment: datetime) -> datetime:
+    """Stesso giorno del mese successivo (clamp a fine mese: 31 gen -> 28 feb)."""
+    year, month = (moment.year + 1, 1) if moment.month == 12 else (moment.year, moment.month + 1)
+    return moment.replace(year=year, month=month, day=min(moment.day, calendar.monthrange(year, month)[1]))
+
+
 def reset_if_due(limit: CreditLimit, now: datetime) -> bool:
-    """Reset mensile pigro. I bundle non scadono: si consuma prima il cap ordinario,
-    solo l'eccedenza intacca il bundle, il residuo viene riportato."""
+    """Reset mensile pigro, con decorrenza dalla data di attivazione (non dal 1° del mese):
+    il ciclo successivo parte dalla scadenza precedente, quindi il giorno resta lo stesso.
+    I bundle non scadono: si consuma prima il cap ordinario, solo l'eccedenza intacca il bundle,
+    il residuo viene riportato."""
     if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:
         overflow = max(float(limit.current_usage or 0.0) - float(limit.amount_cap or 0.0), 0.0)
         limit.bonus_credits = max(float(limit.bonus_credits or 0.0) - overflow, 0.0)
         limit.current_usage = 0.0
-        limit.period_start = now
-        limit.period_end = _next_month_start(now)
+        start = limit.period_end
+        end = add_month(start)
+        while end <= now:  # servizio fermo per più mesi: salta ai cicli scaduti
+            start, end = end, add_month(end)
+        limit.period_start = start
+        limit.period_end = end
         limit.last_updated = now
         return True
     return False
-
-
-def _next_month_start(now: datetime) -> datetime:
-    try:
-        return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    except ValueError:
-        return now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 class CreditService:
@@ -106,7 +112,7 @@ class CreditService:
             amount_cap=amount_cap,
             current_usage=0.0,
             period_start=now,
-            period_end=_next_month_start(now),
+            period_end=add_month(now),
             reset_frequency="MONTHLY",
         )
 
@@ -541,6 +547,50 @@ class CreditService:
         return {"title": level, "subtitle": tenant_name or ""}
 
     # ── Admin: set / bundle ─────────────────────────────────────────────────
+
+    async def restart_cycle(
+        self,
+        db: AsyncSession,
+        limit: CreditLimit,
+        *,
+        admin_id=None,
+        new_cap: Optional[float] = None,
+        clear_bonus: bool = False,
+        note: Optional[str] = None,
+    ) -> CreditLimit:
+        """Azzera i consumi e fa ripartire il ciclo mensile da oggi (la data diventa la nuova decorrenza)."""
+        now = datetime.now(timezone.utc)
+        used_before = float(limit.current_usage or 0.0)
+        if new_cap is not None:
+            limit.amount_cap = new_cap
+        if clear_bonus:
+            limit.bonus_credits = 0.0
+        limit.current_usage = 0.0
+        limit.period_start = now
+        limit.period_end = add_month(now)
+        limit.reset_frequency = "MONTHLY"
+        limit.last_updated = now
+        db.add(limit)
+        db.add(CreditTransaction(
+            tenant_id=limit.tenant_id,
+            transaction_type=CreditTransactionType.ALLOCATION,
+            cost=0.0,
+            teacher_id=limit.teacher_id,
+            class_id=limit.class_id,
+            usage_details={
+                "service": "Reset crediti",
+                "credits_cleared": to_credits(used_before),
+                "limit_id": str(limit.id),
+                "limit_level": limit.level.value if hasattr(limit.level, "value") else str(limit.level),
+                "admin_id": str(admin_id) if admin_id else None,
+                "new_cap_credits": to_credits(new_cap) if new_cap is not None else None,
+                "bonus_cleared": clear_bonus,
+                "note": note,
+            },
+        ))
+        await db.flush()
+        await self.sync_alert(db, limit)
+        return limit
 
     async def add_bundle(
         self,

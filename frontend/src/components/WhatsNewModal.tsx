@@ -3,6 +3,7 @@ import { Sparkles, Wand2, Wrench, X } from '@/components/icons'
 
 import { platformApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 interface ChangelogItem {
   category: 'new' | 'improved' | 'fixed'
@@ -22,17 +23,17 @@ interface ChangelogRelease {
 
 const CATEGORY_META = {
   new: {
-    label: 'Nuovo',
+    label: tl("Nuovo"),
     icon: Sparkles,
     badgeClass: 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200',
   },
   improved: {
-    label: 'Migliorato',
+    label: tl("Migliorato"),
     icon: Wand2,
     badgeClass: 'bg-sky-100 text-sky-700 border border-sky-200',
   },
   fixed: {
-    label: 'Corretto',
+    label: tl("Corretto"),
     icon: Wrench,
     badgeClass: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
   },
@@ -56,8 +57,8 @@ export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Changelog piattaforma</h2>
-              <p className="mt-1 text-sm text-slate-500">Novità, miglioramenti e correzioni visibili da studenti e docenti tramite il badge beta.</p>
+              <h2 className="text-lg font-semibold text-slate-900">{tl("Changelog piattaforma")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{tl("Novità, miglioramenti e correzioni visibili da studenti e docenti tramite il badge beta.")}</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
@@ -68,11 +69,11 @@ export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {isLoading ? (
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-              Caricamento changelog…
+              {tl("Caricamento changelog…")}
             </div>
           ) : releases.length === 0 ? (
             <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-              Nessuna release pubblicata al momento.
+              {tl("Nessuna release pubblicata al momento.")}
             </div>
           ) : (
             <div className="space-y-5">
@@ -130,7 +131,7 @@ export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex justify-end border-t border-slate-100 px-6 py-4">
           <Button onClick={onClose} className="bg-[#181b1e] hover:bg-[#0f1113] text-white">
-            Chiudi
+            {tl("Chiudi")}
           </Button>
         </div>
       </div>

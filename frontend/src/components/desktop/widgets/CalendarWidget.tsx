@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface CalendarConfig {
   notes?: Record<string, string>
@@ -12,7 +13,7 @@ interface CalendarWidgetProps {
 }
 
 const DAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D']
-const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
+const MONTHS = [tl("Gennaio"),tl("Febbraio"),tl("Marzo"),tl("Aprile"),tl("Maggio"),tl("Giugno"),tl("Luglio"),tl("Agosto"),tl("Settembre"),tl("Ottobre"),tl("Novembre"),tl("Dicembre")]
 
 export default function CalendarWidget({ config, onConfigChange, readOnly = false }: CalendarWidgetProps) {
   const today = new Date()

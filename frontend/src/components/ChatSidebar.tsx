@@ -23,6 +23,7 @@ import TuringTestPanel from '@/components/TuringTestPanel'
 import { DropOverlay } from '@/components/ui/DropOverlay'
 import { SessionFilesExplorer } from '@/components/SessionFilesExplorer'
 import { DRIVE_ITEM_MIME, filesFromUniversalDrag, setFileDrag } from '@/lib/dragFiles'
+import { tl } from '@/i18n/tl'
 
 export type { ChatMessage }
 
@@ -333,7 +334,7 @@ export default function ChatSidebar({
     const optimizedFiles = await optimizeImagesForUpload(files)
     const response = await chatApi.uploadFiles(sessionId, optimizedFiles)
     const uploadedUrls: string[] = response.data?.urls || []
-    if (uploadedUrls.length !== optimizedFiles.length) throw new Error('Caricamento degli allegati non completato')
+    if (uploadedUrls.length !== optimizedFiles.length) throw new Error(tl("Caricamento degli allegati non completato"))
     const filenameMap: Record<string, string> = {}
     uploadedUrls.forEach((url, index) => {
       filenameMap[url] = originalNames[index] || url.split('/').pop() || 'file'
@@ -383,7 +384,7 @@ export default function ChatSidebar({
       if (activeTab === 'private' && activePrivateChat) {
         // Send private message
         if (messageText || uploadedUrls.length > 0) {
-          sendPrivateMessage(activePrivateChat, messageText || '📎 Allegato', uploadedUrls, filenameMap)
+          sendPrivateMessage(activePrivateChat, messageText || tl("📎 Allegato"), uploadedUrls, filenameMap)
         }
       } else {
         // Send public message
@@ -391,7 +392,7 @@ export default function ChatSidebar({
           const replyId = replyingTo?.id
           const replyPrev = replyingTo ? `${replyingTo.sender_name || 'Utente'}: ${replyingTo.text.slice(0, 80)}` : undefined
           setReplyingTo(null)
-          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap, replyId, replyPrev)
+          await sendPublicMessage(messageText || tl("📎 Allegato"), uploadedUrls, filenameMap, replyId, replyPrev)
         }
       }
     } catch (e) {
@@ -447,7 +448,7 @@ export default function ChatSidebar({
         let fileUrl = data.url as string
         fileUrl = await resolveDownloadUrl(fileUrl)
         const res = await fetch(fileUrl)
-        if (!res.ok) throw new Error('File non disponibile per la condivisione')
+        if (!res.ok) throw new Error(tl("File non disponibile per la condivisione"))
         const blob = await res.blob()
         const fileObj = new globalThis.File([blob], data.filename || 'file', {
           type: data.mime_type || blob.type || 'application/octet-stream'
@@ -736,7 +737,7 @@ export default function ChatSidebar({
               className="mt-3 w-full py-2 border border-transparent bg-[image:var(--selection-active-bg)] hover:bg-[image:var(--selection-active-bg-hover)] text-[var(--selection-active-text)] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <Wand2 className="h-3.5 w-3.5" />
-              Prova ora
+              {tl("Prova ora")}
             </button>
           </div>
         )
@@ -789,7 +790,7 @@ export default function ChatSidebar({
             e.preventDefault()
             return
           }
-          const payload = JSON.stringify({ text: msg.text, sender_name: msg.sender_name || 'Utente' })
+          const payload = JSON.stringify({ text: msg.text, sender_name: msg.sender_name || tl("Utente") })
           e.dataTransfer.setData('desktop/note', payload)
           e.dataTransfer.effectAllowed = 'copy'
         }}
@@ -815,9 +816,9 @@ export default function ChatSidebar({
         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
           <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-500">
             {msg.sender_is_class_owner && (
-              <GraduationCap className="h-3 w-3 text-violet-600" aria-label="Docente proprietario della classe" />
+              <GraduationCap className="h-3 w-3 text-violet-600" aria-label={tl("Docente proprietario della classe")} />
             )}
-            {msg.sender_name || (isMe ? currentUserName : 'Utente')}
+            {msg.sender_name || (isMe ? currentUserName : tl("Utente"))}
           </span>
           <div className={`
             px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
@@ -833,7 +834,7 @@ export default function ChatSidebar({
               e.stopPropagation()
               void copyMessageText(content)
             }}
-            title="Doppio click per copiare il testo"
+            title={tl("Doppio click per copiare il testo")}
             style={messageAccentTheme ? {
               backgroundColor: `${messageAccentTheme.accent}15`, // 15 is ~8% opacity for ethereal look
               borderColor: `${messageAccentTheme.accent}40`, // 40 is ~25% opacity for outline
@@ -872,15 +873,15 @@ export default function ChatSidebar({
                         <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">ToyGPT condiviso</p>
-                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello ToyGPT'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">{tl("ToyGPT condiviso")}</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || tl("Modello ToyGPT")}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                          {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} parametri · vocab {att.vocab_size ?? 0}
+                          {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} {tl("parametri · vocab")} {att.vocab_size ?? 0}
                         </p>
                       </div>
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-700">
-                      Prova modello
+                      {tl("Prova modello")}
                     </span>
                   </button>
                 ))}
@@ -908,15 +909,15 @@ export default function ChatSidebar({
                         <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Vibe Lab</p>
-                        <p className="truncate text-xs font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">{tl("Progetto Vibe Lab")}</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.title || tl("Mini app condivisa")}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                          {att.file_count ?? 0} file · {att.total_lines ?? 0} righe
+                          {att.file_count ?? 0} {tl("file ·")} {att.total_lines ?? 0} righe
                         </p>
                       </div>
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-sky-700">
-                      Apri nel Vibe Lab
+                      {tl("Apri nel Vibe Lab")}
                     </span>
                   </button>
                 ))}
@@ -945,13 +946,13 @@ export default function ChatSidebar({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[10px] font-black uppercase tracking-wide text-[var(--logo-violet-strong)]">Commit Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">
-                          {att.contributor_name || 'Studente'} ha inviato una proposta
+                          {att.contributor_name || tl("Studente")} {tl("ha inviato una proposta")}
                         </p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">{att.status || 'pending'}</p>
                       </div>
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] px-2 py-1.5 text-xs font-semibold text-[var(--logo-violet-strong)] transition-colors hover:bg-[rgba(123,105,201,0.22)]">
-                      Apri commit
+                      {tl("Apri commit")}
                     </span>
                   </button>
                 ))}
@@ -979,13 +980,13 @@ export default function ChatSidebar({
                   >
                     <img
                       src={att.url}
-                      alt={att.filename || 'Immagine allegata'}
+                      alt={att.filename || tl("Immagine allegata")}
                       className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
                       loading="lazy"
                     />
                     <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-slate-950/70 px-2 py-1 text-white backdrop-blur-sm">
                       <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate text-[10px] font-semibold">{att.filename || 'Immagine'}</span>
+                      <span className="truncate text-[10px] font-semibold">{att.filename || tl("Immagine")}</span>
                     </div>
                   </div>
                 ))}
@@ -1015,7 +1016,7 @@ export default function ChatSidebar({
                       e.stopPropagation()
                       setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })
                     }}
-                    title="Apri allegato"
+                    title={tl("Apri allegato")}
                     className="class-chat-attachment group/att flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-white"
                     style={messageAccentTheme ? {
                       borderColor: `${messageAccentTheme.accent}55`,
@@ -1028,7 +1029,7 @@ export default function ChatSidebar({
                     >
                       <Paperclip className="h-3 w-3" />
                     </span>
-                    <span className="min-w-0 flex-1 break-words leading-snug [overflow-wrap:anywhere]">{att.filename || 'Allegato'}</span>
+                    <span className="min-w-0 flex-1 break-words leading-snug [overflow-wrap:anywhere]">{att.filename || tl("Allegato")}</span>
                     <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover/att:opacity-90" />
                   </button>
                 ))}
@@ -1138,16 +1139,16 @@ export default function ChatSidebar({
                     />
                   ) : (
                     <AvatarFallback className="bg-[var(--app-accent-soft)] text-xs font-black text-[var(--app-accent-text)]">
-                      {(currentChat?.peerName || 'Chat').substring(0, 2).toUpperCase()}
+                      {(currentChat?.peerName || tl("Chat")).substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   )}
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-slate-800">
-                    {currentChat?.peerName || 'Chat privata'}
+                    {currentChat?.peerName || tl("Chat privata")}
                   </p>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    Chat privata
+                    {tl("Chat privata")}
                   </p>
                 </div>
               </div>
@@ -1233,7 +1234,7 @@ export default function ChatSidebar({
             }}
           >
             <ChevronDown className="h-3.5 w-3.5" />
-            {unreadWhileScrolled > 0 ? `${unreadWhileScrolled} nuovi messaggi` : 'Scorri in basso'}
+            {unreadWhileScrolled > 0 ? tl("{0} nuovi messaggi", unreadWhileScrolled) : tl("Scorri in basso")}
           </button>
         )}
       </div>
@@ -1444,7 +1445,7 @@ export default function ChatSidebar({
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
-              title="Allega file"
+              title={tl("Allega file")}
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -1462,7 +1463,7 @@ export default function ChatSidebar({
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
               }}
               onPaste={handleInputPaste}
-              placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
+              placeholder={activeTab === 'private' ? tl("Messaggio privato...") : tl("Scrivi un messaggio...")}
               className="border-none bg-transparent focus-visible:ring-0 focus:outline-none resize-none text-sm px-2 py-2 leading-6 flex-1 shadow-none"
             />
             <Button
@@ -1480,7 +1481,7 @@ export default function ChatSidebar({
         </div>
       )}
 
-      <DropOverlay active={dragActive && activeTab !== 'files'} label={t('chat_sidebar.drop_files_here')} hint="Il file sarà condiviso con la classe" />
+      <DropOverlay active={dragActive && activeTab !== 'files'} label={t('chat_sidebar.drop_files_here')} hint={tl("Il file sarà condiviso con la classe")} />
 
       {/* File Viewer Modal */}
       <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />
@@ -1494,7 +1495,7 @@ export default function ChatSidebar({
                   <Brain className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello ToyGPT'}</p>
+                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || tl("Modello ToyGPT")}</p>
                   <p className="text-xs text-slate-500">
                     {activeToyLMModel.saved_epoch ?? 0} epoch · {Number(activeToyLMModel.param_count || 0).toLocaleString()} parametri
                   </p>
@@ -1503,7 +1504,7 @@ export default function ChatSidebar({
               <button
                 onClick={() => setActiveToyLMModel(null)}
                 className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white hover:text-slate-700"
-                title="Chiudi"
+                title={tl("Chiudi")}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1512,7 +1513,7 @@ export default function ChatSidebar({
               <ToyLMInferencePanel
                 key={activeToyLMModel.job_id}
                 canGenerate
-                unavailableMessage="Modello non disponibile."
+                unavailableMessage={tl("Modello non disponibile.")}
                 onGenerate={generateSharedToyLMText}
               />
             </div>

@@ -41,7 +41,7 @@ export function buildTimeline(scene: DrawingScene, g: SceneGeometry, step: numbe
   const timings = new Map<string, Timing>()
   const x: number[] = [], y: number[] = [], at: number[] = []
   let clock = .2
-  for (const m of scene.elements.filter(e => e.step === step)) {
+  for (const m of scene.elements.filter(e => e.step === step && !e.carried)) {
     if (m.kind === 'spotlight') { timings.set(m.id, { delay: clock, duration: .5 }); clock += .5; continue }  // a light change, not a pen stroke
     const duration = markDuration(m, g)
     const [start, end] = penRoute(m, g, shifts.get(m.id))

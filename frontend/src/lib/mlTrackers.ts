@@ -5,6 +5,7 @@
  */
 import { assetUrl } from './mlAssets'
 import { detectFacesFallback, fallbackFeatures, loadFaceFallback } from './mlFaceFallback'
+import { tl } from '@/i18n/tl'
 
 /** Tells the Vibe Lab host page what really went wrong (the generated app often hides the error behind a friendly message). */
 function reportVisionError(context: string, error: unknown) {
@@ -48,7 +49,7 @@ function fileset() {
 async function createLandmarker(kind: TrackerKind, options: TrackerOptions) {
   if (!hasWebGL()) {
     if (kind === 'face') { await loadFaceFallback(); return 'fallback' as const }
-    throw new Error('WebGL non è disponibile in questo browser: il riconoscimento di mani e corpo ne ha bisogno. Attiva l’accelerazione hardware / WebGL (Firefox: about:config → webgl.disabled = false) o usa Chrome/Edge.')
+    throw new Error(tl("WebGL non è disponibile in questo browser: il riconoscimento di mani e corpo ne ha bisogno. Attiva l’accelerazione hardware / WebGL (Firefox: about:config → webgl.disabled = false) o usa Chrome/Edge."))
   }
   const vision = await import('@mediapipe/tasks-vision')
   const files = await fileset()
@@ -147,7 +148,7 @@ export class Tracker {
   constructor(readonly kind: TrackerKind, options: TrackerOptions) {
     this.max = Math.max(1, Math.min(options.maxResults ?? (kind === 'hand' ? 2 : 1), 6))
     this.ready = createLandmarker(kind, options)
-    this.ready.catch((error) => reportVisionError('caricamento del modello ' + kind, error))
+    this.ready.catch((error) => reportVisionError(tl("caricamento del modello ") + kind, error))
   }
   /** Resolves once the model is loaded. */
   warmUp() { return this.ready.then(() => this) }
@@ -181,7 +182,7 @@ export class Tracker {
     } catch (error) {
       // WebGL context lost / refused after the model loaded: faces can still be tracked on the CPU engine.
       if (this.kind === 'face' && isGlError(error)) {
-        reportVisionError('MediaPipe senza WebGL, passo al motore CPU', error)
+        reportVisionError(tl("MediaPipe senza WebGL, passo al motore CPU"), error)
         this.useFallback = true
         await loadFaceFallback()
         return this.detect(input)
@@ -230,7 +231,7 @@ export class Tracker {
           failures = 0
         } catch (error) {
           failures += 1
-          if (failures === 5) reportVisionError('analisi dei fotogrammi', error)
+          if (failures === 5) reportVisionError(tl("analisi dei fotogrammi"), error)
         }
       }
       if (!stopped) requestAnimationFrame(loop)
@@ -243,7 +244,7 @@ export class Tracker {
 }
 
 export async function createTracker(kind: TrackerKind, options: TrackerOptions = {}): Promise<Tracker> {
-  if (kind !== 'face' && kind !== 'hand' && kind !== 'pose') throw new Error('Tipo di tracker non valido: usa "face", "hand" o "pose".')
+  if (kind !== 'face' && kind !== 'hand' && kind !== 'pose') throw new Error(tl("Tipo di tracker non valido: usa \"face\", \"hand\" o \"pose\"."))
   const tracker = new Tracker(kind, options)
   await tracker.warmUp()
   return tracker

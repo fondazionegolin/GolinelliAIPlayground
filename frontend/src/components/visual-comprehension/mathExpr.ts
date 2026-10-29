@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 /**
  * A small, safe math language for the interactive board: what a student types ("y = 3x^2 - 5", "x²/9 − y²/16 = 1")
  * is parsed into a tree and evaluated by this code only — never by `eval`. It also recognises what kind of curve an
@@ -48,7 +49,7 @@ function tokenize(text: string): Token[] {
       i += word.length; continue
     }
     if ('+-*/^()='.includes(c)) { out.push({ k: 'op', v: c }); i++; continue }
-    throw new MathError(`Simbolo non riconosciuto: «${c}»`)
+    throw new MathError(tl("Simbolo non riconosciuto: «{0}»", c))
   }
   return out
 }
@@ -56,7 +57,7 @@ function tokenize(text: string): Token[] {
 /** Parses an expression (no "="). */
 export function parse(text: string): Node {
   const tokens = tokenize(text)
-  if (tokens.some(t => t.k === 'op' && t.v === '=')) throw new MathError('Qui va un\'espressione, senza «=»')
+  if (tokens.some(t => t.k === 'op' && t.v === '=')) throw new MathError(tl("Qui va un'espressione, senza «=»"))
   let i = 0
   const peek = () => tokens[i], next = () => tokens[i++]
   const isOp = (v: string) => peek()?.k === 'op' && peek().v === v
@@ -86,20 +87,20 @@ export function parse(text: string): Node {
   }
   function atom(): Node {
     const t = next()
-    if (!t) throw new MathError('L\'espressione è incompleta')
+    if (!t) throw new MathError(tl("L'espressione è incompleta"))
     if (t.k === 'num') return { t: 'num', v: t.v }
     if (t.k === 'id') {
       if ((FUNCTIONS as readonly string[]).includes(t.v)) {
-        if (isOp('(')) { next(); const a = expr(); if (!isOp(')')) throw new MathError(`Manca una «)» dopo ${t.v}`); next(); return { t: 'call', fn: t.v, a } }
+        if (isOp('(')) { next(); const a = expr(); if (!isOp(')')) throw new MathError(tl("Manca una «)» dopo {0}", t.v)); next(); return { t: 'call', fn: t.v, a } }
         return { t: 'call', fn: t.v, a: power() }  // sin x
       }
       return t.v === 'pi' ? { t: 'num', v: Math.PI } : t.v === 'e' ? { t: 'num', v: Math.E } : { t: 'var', name: t.v }
     }
-    if (t.v === '(') { const a = expr(); if (!isOp(')')) throw new MathError('Manca una parentesi «)»'); next(); return a }
-    throw new MathError(`«${t.v}» fuori posto`)
+    if (t.v === '(') { const a = expr(); if (!isOp(')')) throw new MathError(tl("Manca una parentesi «)»")); next(); return a }
+    throw new MathError(tl("«{0}» fuori posto", t.v))
   }
   const tree = expr()
-  if (i < tokens.length) throw new MathError(`«${(tokens[i] as { v: unknown }).v}» fuori posto`)
+  if (i < tokens.length) throw new MathError(tl("«{0}» fuori posto", (tokens[i] as { v: unknown }).v))
   return tree
 }
 
@@ -113,7 +114,7 @@ export function variables(n: Node, out = new Set<string>()): Set<string> {
 export function evaluate(n: Node, env: Record<string, number>): number {
   switch (n.t) {
     case 'num': return n.v
-    case 'var': { const v = env[n.name]; if (v === undefined) throw new MathError(`Non so quanto vale «${n.name}»`); return v }
+    case 'var': { const v = env[n.name]; if (v === undefined) throw new MathError(tl("Non so quanto vale «{0}»", n.name)); return v }
     case 'neg': return -evaluate(n.a, env)
     case 'call': {
       const a = evaluate(n.a, env)
@@ -132,12 +133,12 @@ export type Equation = { text: string; f: Node; explicit: Node | null }
 
 export function parseEquation(text: string): Equation {
   const sides = normalise(text).split('=')
-  if (sides.length > 2) throw new MathError('Usa un solo «=»')
+  if (sides.length > 2) throw new MathError(tl("Usa un solo «=»"))
   if (sides.length === 1 || !sides[0].trim()) {
     const rhs = parse(sides[sides.length - 1])
     return { text, f: { t: 'bin', op: '-', a: { t: 'var', name: 'y' }, b: rhs }, explicit: variables(rhs).has('y') ? null : rhs }
   }
-  if (!sides[1].trim()) throw new MathError('Manca il secondo membro dopo «=»')
+  if (!sides[1].trim()) throw new MathError(tl("Manca il secondo membro dopo «=»"))
   const left = parse(sides[0]), right = parse(sides[1])
   const explicit = left.t === 'var' && left.name === 'y' && !variables(right).has('y') ? right
     : right.t === 'var' && right.name === 'y' && !variables(left).has('y') ? left : null
@@ -195,10 +196,10 @@ export type Family = 'retta' | 'parabola' | 'circonferenza' | 'ellisse' | 'iperb
 export type Shape = { family: Family; article: string; facts: string[]; poly: Poly | null }
 
 const ARTICLES: Record<Family, string> = {
-  retta: 'una retta', parabola: 'una parabola', circonferenza: 'una circonferenza', ellisse: 'un\'ellisse', iperbole: 'un\'iperbole',
-  'coppia di rette': 'una coppia di rette', punto: 'un punto', 'nessuna curva': 'nessuna curva', sinusoide: 'una sinusoide',
-  esponenziale: 'un\'esponenziale', logaritmo: 'un logaritmo', radice: 'una radice', 'valore assoluto': 'un valore assoluto',
-  polinomio: 'un polinomio', costante: 'una retta orizzontale', curva: 'una curva',
+  retta: tl("una retta"), parabola: tl("una parabola"), circonferenza: tl("una circonferenza"), ellisse: tl("un'ellisse"), iperbole: tl("un'iperbole"),
+  'coppia di rette': tl("una coppia di rette"), punto: tl("un punto"), 'nessuna curva': 'nessuna curva', sinusoide: tl("una sinusoide"),
+  esponenziale: tl("un'esponenziale"), logaritmo: tl("un logaritmo"), radice: tl("una radice"), 'valore assoluto': tl("un valore assoluto"),
+  polinomio: tl("un polinomio"), costante: tl("una retta orizzontale"), curva: tl("una curva"),
 }
 
 function calls(n: Node, out = new Set<string>()): Set<string> {
@@ -224,24 +225,24 @@ export function classify(eq: Equation, env: Record<string, number> = {}): Shape 
   const deg = degree(p)
   if (deg === 0) return make('nessuna curva')
   if (deg === 1) {
-    if (Math.abs(c(0, 1)) < 1e-9) return make('retta', [`verticale, x = ${fmt(-c(0, 0) / c(1, 0))}`])
+    if (Math.abs(c(0, 1)) < 1e-9) return make('retta', [tl("verticale, x = {0}", fmt(-c(0, 0) / c(1, 0)))])
     const m = -c(1, 0) / c(0, 1), q = -c(0, 0) / c(0, 1)
-    return Math.abs(m) < 1e-9 ? make('costante', [`y = ${fmt(q)}`]) : make('retta', [`pendenza ${fmt(m)}`, `incontra l'asse y in ${fmt(q)}`])
+    return Math.abs(m) < 1e-9 ? make('costante', [`y = ${fmt(q)}`]) : make('retta', [`pendenza ${fmt(m)}`, tl("incontra l'asse y in {0}", fmt(q))])
   }
-  if (deg > 2) return make(eq.explicit ? 'polinomio' : 'curva', [`di grado ${deg}`])
+  if (deg > 2) return make(eq.explicit ? 'polinomio' : 'curva', [tl("di grado {0}", deg)])
   const A = c(2, 0), B = c(1, 1), C = c(0, 2), D = c(1, 0), E = c(0, 1), F = c(0, 0)
   const disc = B * B - 4 * A * C
   if (Math.abs(disc) < 1e-9) {
     const facts = Math.abs(C) < 1e-9 && Math.abs(B) < 1e-9 && Math.abs(E) > 1e-9
-      ? [`asse verticale`, `vertice in (${fmt(-D / (2 * A))}; ${fmt(-(F - D * D / (4 * A)) / E)})`]
-      : Math.abs(A) < 1e-9 && Math.abs(B) < 1e-9 && Math.abs(D) > 1e-9 ? ['asse orizzontale'] : []
+      ? [tl("asse verticale"), tl("vertice in ({0}; {1})", fmt(-D / (2 * A)), fmt(-(F - D * D / (4 * A)) / E))]
+      : Math.abs(A) < 1e-9 && Math.abs(B) < 1e-9 && Math.abs(D) > 1e-9 ? [tl("asse orizzontale")] : []
     return make('parabola', facts)
   }
   // Centre the conic (no rotation handled in the facts, the family is still exact).
   const det = 4 * A * C - B * B
   const x0 = (B * E - 2 * C * D) / det, y0 = (B * D - 2 * A * E) / det
   const k = A * x0 * x0 + B * x0 * y0 + C * y0 * y0 + D * x0 + E * y0 + F
-  const centre = Math.abs(x0) > 1e-9 || Math.abs(y0) > 1e-9 ? [`centro in (${fmt(x0)}; ${fmt(y0)})`] : []
+  const centre = Math.abs(x0) > 1e-9 || Math.abs(y0) > 1e-9 ? [tl("centro in ({0}; {1})", fmt(x0), fmt(y0))] : []
   if (disc < 0) {
     if (Math.abs(k) < 1e-12 || -k / A < 0) return make(Math.abs(k) < 1e-12 ? 'punto' : 'nessuna curva')
     if (Math.abs(A - C) < 1e-9 && Math.abs(B) < 1e-9) return make('circonferenza', [...centre, `raggio ${fmt(Math.sqrt(-k / A))}`])
@@ -251,8 +252,8 @@ export function classify(eq: Equation, env: Record<string, number> = {}): Shape 
   const facts = [...centre]
   if (Math.abs(B) < 1e-9) {
     // a·(x−x0)² + c·(y−y0)² = −k: the branches cut the axis whose coefficient has the sign of −k.
-    if (-k / A > 0) facts.push(`rami a sinistra e a destra`, `vertici in x = ${fmt(x0 - Math.sqrt(-k / A))} e x = ${fmt(x0 + Math.sqrt(-k / A))}`)
-    else facts.push(`rami in alto e in basso`, `vertici in y = ${fmt(y0 - Math.sqrt(-k / C))} e y = ${fmt(y0 + Math.sqrt(-k / C))}`)
+    if (-k / A > 0) facts.push(tl("rami a sinistra e a destra"), tl("vertici in x = {0} e x = {1}", fmt(x0 - Math.sqrt(-k / A)), fmt(x0 + Math.sqrt(-k / A))))
+    else facts.push(tl("rami in alto e in basso"), tl("vertici in y = {0} e y = {1}", fmt(y0 - Math.sqrt(-k / C)), fmt(y0 + Math.sqrt(-k / C))))
   } else facts.push('ruotata')
   return make('iperbole', facts)
 }
@@ -286,14 +287,14 @@ const safe = (f: () => number) => { try { const v = f(); return Number.isFinite(
 export function judge(attempt: Equation, target: Equation, envAttempt: Record<string, number> = {}, envTarget: Record<string, number> = {}):
   { correct: boolean; message: string; drawn: Shape; wanted: Shape } {
   const drawn = classify(attempt, envAttempt), wanted = classify(target, envTarget)
-  if (sameCurve(attempt, target, envAttempt, envTarget)) return { correct: true, message: `Esatto: è proprio ${wanted.article}${wanted.facts.length ? ` (${wanted.facts.join(', ')})` : ''}.`, drawn, wanted }
+  if (sameCurve(attempt, target, envAttempt, envTarget)) return { correct: true, message: tl("Esatto: è proprio {0}{1}.", wanted.article, wanted.facts.length ? ` (${wanted.facts.join(', ')})` : ''), drawn, wanted }
   if (drawn.family !== wanted.family) {
-    return { correct: false, message: `Attenzione: stai disegnando ${drawn.article}${drawn.facts.length ? ` (${drawn.facts.join(', ')})` : ''}, non ${wanted.article}.`, drawn, wanted }
+    return { correct: false, message: tl("Attenzione: stai disegnando {0}{1}, non {2}.", drawn.article, drawn.facts.length ? ` (${drawn.facts.join(', ')})` : '', wanted.article), drawn, wanted }
   }
   const diff = drawn.facts.filter(f => !wanted.facts.includes(f))
   const want = wanted.facts.filter(f => !drawn.facts.includes(f))
-  if (diff.length && want.length) return { correct: false, message: `È ${drawn.article}, ma ${diff.join(', ')}; quella da trovare: ${want.join(', ')}.`, drawn, wanted }
-  return { correct: false, message: `È ${drawn.article}, ma non coincide ancora con quella da trovare: confronta i punti in cui le due curve tagliano gli assi.`, drawn, wanted }
+  if (diff.length && want.length) return { correct: false, message: tl("È {0}, ma {1}; quella da trovare: {2}.", drawn.article, diff.join(', '), want.join(', ')), drawn, wanted }
+  return { correct: false, message: tl("È {0}, ma non coincide ancora con quella da trovare: confronta i punti in cui le due curve tagliano gli assi.", drawn.article), drawn, wanted }
 }
 
 /** Points of F(x, y) = 0 inside the window, as polyline segments (marching squares on a grid). */

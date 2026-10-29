@@ -12,6 +12,7 @@ import {
   Play, SkipForward, Square, Users, Clock, CheckCircle2,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, Zap, ArrowLeft, Trophy,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ── Types ──
 
@@ -68,7 +69,7 @@ const SLIDE_GRAD: Record<SlideType, string> = {
 }
 
 const SLIDE_LABEL: Record<SlideType, string> = {
-  mcq: 'Risposta multipla', wordwall: 'Word Wall', opinion: 'Opinione libera', feedback: 'Feedback rapido',
+  mcq: tl("Risposta multipla"), wordwall: 'Word Wall', opinion: tl("Opinione libera"), feedback: tl("Feedback rapido"),
 }
 
 const SLIDE_ICON: Record<SlideType, React.ElementType> = {
@@ -136,7 +137,7 @@ function McqBars({ responses, options, correctOption }: {
   const total = responses.length || 1
   const counts = options.map((opt, i) => ({
     label: String.fromCharCode(65 + i),
-    name: opt || `Opzione ${String.fromCharCode(65 + i)}`,
+    name: opt || tl("Opzione {0}", String.fromCharCode(65 + i)),
     value: responses.filter(r => r.response.selected_option === i).length,
     isCorrect: correctOption !== null && correctOption !== undefined && correctOption === i,
     color: (correctOption !== null && correctOption !== undefined)
@@ -144,7 +145,7 @@ function McqBars({ responses, options, correctOption }: {
       : MCQ_COLORS[i % MCQ_COLORS.length],
   }))
   if (responses.length === 0) {
-    return <p className="text-sm text-slate-400 py-4 text-center">In attesa delle risposte...</p>
+    return <p className="text-sm text-slate-400 py-4 text-center">{tl("In attesa delle risposte...")}</p>
   }
   return (
     <div className="space-y-3">
@@ -206,7 +207,7 @@ function SlideLeaderboard({ responses, slide }: { responses: ResponseItem[]; sli
     return (
       <div className="text-center py-5 text-slate-400 text-sm">
         <Trophy className="h-8 w-8 mx-auto mb-2 opacity-25" />
-        Nessuna risposta ricevuta
+        {tl("Nessuna risposta ricevuta")}
       </div>
     )
   }
@@ -228,7 +229,7 @@ function SlideLeaderboard({ responses, slide }: { responses: ResponseItem[]; sli
           <span className="font-semibold text-slate-800 flex-1 truncate">{r.student_nickname}</span>
           {hasCorrectAnswer && (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
-              {isCorrect ? 'Corretta' : 'Errata'}
+              {isCorrect ? tl("Corretta") : tl("Errata")}
             </span>
           )}
           <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">
@@ -238,7 +239,7 @@ function SlideLeaderboard({ responses, slide }: { responses: ResponseItem[]; sli
         )
       })}
       <p className="text-xs text-slate-400 text-center pt-1">
-        Nickname reali della sessione · {responses.length} {responses.length === 1 ? 'partecipante' : 'partecipanti'}
+        {tl("Nickname reali della sessione ·")} {responses.length} {responses.length === 1 ? tl("partecipante") : tl("partecipanti")}
       </p>
     </div>
   )
@@ -254,7 +255,7 @@ function WordwallCloud({ responses }: { responses: ResponseItem[] }) {
   })
   const data = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 24)
   const maxCount = data[0]?.[1] || 1
-  if (data.length === 0) return <p className="text-sm text-slate-400 py-4 text-center">In attesa delle parole...</p>
+  if (data.length === 0) return <p className="text-sm text-slate-400 py-4 text-center">{tl("In attesa delle parole...")}</p>
   return (
     <div className="flex flex-wrap gap-2.5 py-2">
       {data.map(([word, count], i) => (
@@ -275,7 +276,7 @@ function WordwallCloud({ responses }: { responses: ResponseItem[] }) {
 }
 
 function OpinionBubbles({ responses }: { responses: ResponseItem[] }) {
-  if (responses.length === 0) return <p className="text-sm text-slate-400 py-4 text-center">In attesa delle opinioni...</p>
+  if (responses.length === 0) return <p className="text-sm text-slate-400 py-4 text-center">{tl("In attesa delle opinioni...")}</p>
   return (
     <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
       {responses.map((r, i) => (
@@ -301,9 +302,9 @@ function FeedbackBars({ responses }: { responses: ResponseItem[] }) {
   }
   const total = responses.length || 1
   const items = [
-    { key: 'positive' as const, emoji: '😊', label: 'Positivo', color: 'bg-emerald-500' },
-    { key: 'neutral'  as const, emoji: '😐', label: 'Neutro',   color: 'bg-amber-400' },
-    { key: 'negative' as const, emoji: '😞', label: 'Negativo', color: 'bg-red-400' },
+    { key: 'positive' as const, emoji: '😊', label: tl("Positivo"), color: 'bg-emerald-500' },
+    { key: 'neutral'  as const, emoji: '😐', label: tl("Neutro"),   color: 'bg-amber-400' },
+    { key: 'negative' as const, emoji: '😞', label: tl("Negativo"), color: 'bg-red-400' },
   ]
   return (
     <div className="space-y-5">
@@ -331,7 +332,7 @@ function FeedbackBars({ responses }: { responses: ResponseItem[] }) {
         )
       })}
       {responses.length === 0 && (
-        <p className="text-sm text-slate-400 text-center py-2">In attesa dei feedback...</p>
+        <p className="text-sm text-slate-400 text-center py-2">{tl("In attesa dei feedback...")}</p>
       )}
     </div>
   )
@@ -372,9 +373,9 @@ function SlideChart({ slide, responses, isComplete }: { slide: Slide; responses:
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-amber-500" />
-              <h4 className="text-sm font-bold text-slate-700">Classifica della slide</h4>
+              <h4 className="text-sm font-bold text-slate-700">{tl("Classifica della slide")}</h4>
             </div>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Slide conclusa</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">{tl("Slide conclusa")}</span>
           </div>
           <SlideLeaderboard responses={responses} slide={slide} />
         </motion.div>
@@ -450,7 +451,7 @@ export default function LiveInteractionControlPage() {
       if (data.live_interaction_id !== interactionId) return
       setAnswerCount({ count: data.response_count, total: data.total_students })
       refetchResults()
-      if (data.all_answered) toast({ title: '✓ Tutti gli studenti hanno risposto!' })
+      if (data.all_answered) toast({ title: tl("✓ Tutti gli studenti hanno risposto!") })
     })
 
     return () => { socket.disconnect(); socketRef.current = null }
@@ -475,7 +476,7 @@ export default function LiveInteractionControlPage() {
       setAnswerCount(prev => ({ count: 0, total: prev?.total || 0 }))
       refetchResults()
     },
-    onError: () => toast({ title: 'Errore nell\'avvio', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore nell'avvio"), variant: 'destructive' }),
   })
 
   const nextMutation = useMutation({
@@ -499,7 +500,7 @@ export default function LiveInteractionControlPage() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast({ title: msg || 'Errore durante l\'avanzamento', variant: 'destructive' })
+      toast({ title: msg || tl("Errore durante l'avanzamento"), variant: 'destructive' })
     },
   })
 
@@ -511,7 +512,7 @@ export default function LiveInteractionControlPage() {
       refetchResults()
       queryClient.invalidateQueries({ queryKey: ['live-interactions'] })
     },
-    onError: () => toast({ title: 'Errore', variant: 'destructive' }),
+    onError: () => toast({ title: tl("Errore"), variant: 'destructive' }),
   })
 
   // ── Derived state ──
@@ -537,16 +538,16 @@ export default function LiveInteractionControlPage() {
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-full">
-      <div className="text-slate-400">Caricamento...</div>
+      <div className="text-slate-400">{tl("Caricamento...")}</div>
     </div>
   )
 
   if (!interaction) return (
     <div className="flex items-center justify-center h-full">
       <div className="text-center">
-        <p className="text-slate-500 mb-4">Sessione non trovata.</p>
+        <p className="text-slate-500 mb-4">{tl("Sessione non trovata.")}</p>
         <button onClick={() => navigate('/teacher/live-interaction')} className="text-indigo-600 hover:underline text-sm">
-          ← Torna alla lista
+          {tl("← Torna alla lista")}
         </button>
       </div>
     </div>
@@ -568,7 +569,7 @@ export default function LiveInteractionControlPage() {
           onClick={() => navigate('/teacher/live-interaction')}
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors flex-shrink-0"
         >
-          <ArrowLeft className="h-4 w-4" /> Lista
+          <ArrowLeft className="h-4 w-4" /> {tl("Lista")}
         </button>
         <h1 className="flex-1 text-xl font-bold text-slate-800 truncate">{interaction.title}</h1>
         {isActive && (
@@ -578,11 +579,11 @@ export default function LiveInteractionControlPage() {
         )}
         {isClosed && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-sm font-medium flex-shrink-0">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Completata
+            <CheckCircle2 className="h-3.5 w-3.5" /> {tl("Completata")}
           </span>
         )}
         {isDraft && (
-          <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium flex-shrink-0">Bozza</span>
+          <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium flex-shrink-0">{tl("Bozza")}</span>
         )}
       </div>
 
@@ -595,9 +596,9 @@ export default function LiveInteractionControlPage() {
             <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-6 shadow-inner">
               <Play className="h-12 w-12 text-white" />
             </div>
-            <h2 className="text-3xl font-black mb-3">Pronto per iniziare?</h2>
+            <h2 className="text-3xl font-black mb-3">{tl("Pronto per iniziare?")}</h2>
             <p className="text-white/70 mb-8 text-base max-w-sm mx-auto">
-              {totalSlides} {totalSlides === 1 ? 'domanda' : 'domande'} · Gli studenti vedranno la prima slide non appena premi Avvia
+              {totalSlides} {totalSlides === 1 ? tl("domanda") : tl("domande")} {tl("· Gli studenti vedranno la prima slide non appena premi Avvia")}
             </p>
             <button
               onClick={() => startMutation.mutate()}
@@ -605,7 +606,7 @@ export default function LiveInteractionControlPage() {
               className="inline-flex items-center gap-3 bg-white text-indigo-700 font-bold px-10 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:bg-indigo-50 transition-all duration-200 disabled:opacity-60 text-lg"
             >
               <Play className="h-6 w-6" />
-              {startMutation.isPending ? 'Avvio in corso...' : 'Avvia sessione live'}
+              {startMutation.isPending ? tl("Avvio in corso...") : tl("Avvia sessione live")}
             </button>
           </div>
         </div>
@@ -646,7 +647,7 @@ export default function LiveInteractionControlPage() {
                 )}
                 {currentSlide.type === 'feedback' && (
                   <div className="mt-4 flex gap-3">
-                    {[{ e: '😊', l: 'Positivo' }, { e: '😐', l: 'Neutro' }, { e: '😞', l: 'Negativo' }].map(({ e, l }) => (
+                    {[{ e: '😊', l: tl("Positivo") }, { e: '😐', l: tl("Neutro") }, { e: '😞', l: tl("Negativo") }].map(({ e, l }) => (
                       <div key={l} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-600">
                         <span>{e}</span> {l}
                       </div>
@@ -659,7 +660,7 @@ export default function LiveInteractionControlPage() {
             {/* Live chart */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 px-6 py-5">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-sm font-bold text-slate-700">Risposte in tempo reale</h3>
+                <h3 className="text-sm font-bold text-slate-700">{tl("Risposte in tempo reale")}</h3>
                 <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live
                 </span>
@@ -683,7 +684,7 @@ export default function LiveInteractionControlPage() {
                     urgent={timerUrgent}
                   />
                   <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
-                    <Clock className="h-3 w-3" /> Tempo
+                    <Clock className="h-3 w-3" /> {tl("Tempo")}
                   </div>
                 </div>
                 <div className="flex flex-col items-center gap-2">
@@ -695,10 +696,10 @@ export default function LiveInteractionControlPage() {
                     success={allAnswered}
                   />
                   <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
-                    <Users className="h-3 w-3" /> Risposte
+                    <Users className="h-3 w-3" /> {tl("Risposte")}
                   </div>
                   {allAnswered && (
-                    <span className="text-xs text-emerald-600 font-bold -mt-1">Tutti pronti! ✓</span>
+                    <span className="text-xs text-emerald-600 font-bold -mt-1">{tl("Tutti pronti! ✓")}</span>
                   )}
                 </div>
               </div>
@@ -716,14 +717,14 @@ export default function LiveInteractionControlPage() {
                 }`}
               >
                 {isLastSlide ? <CheckCircle2 className="h-5 w-5" /> : <SkipForward className="h-5 w-5" />}
-                {nextMutation.isPending ? 'Avanzamento...' : isLastSlide ? 'Termina sessione' : 'Prossima slide →'}
+                {nextMutation.isPending ? tl("Avanzamento...") : isLastSlide ? tl("Termina sessione") : tl("Prossima slide →")}
               </button>
               <button
                 onClick={() => setConfirmEnd(true)}
                 disabled={endMutation.isPending}
                 className="w-full flex items-center justify-center gap-2 font-medium py-2.5 rounded-xl border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all duration-200 disabled:opacity-60 text-sm"
               >
-                <Square className="h-4 w-4" /> Termina ora
+                <Square className="h-4 w-4" /> {tl("Termina ora")}
               </button>
             </div>
           </div>
@@ -744,9 +745,9 @@ export default function LiveInteractionControlPage() {
             <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="h-9 w-9 text-white" />
             </div>
-            <h2 className="text-2xl font-black mb-1">Sessione completata!</h2>
+            <h2 className="text-2xl font-black mb-1">{tl("Sessione completata!")}</h2>
             <p className="text-white/80 text-sm">
-              {results?.results?.length || totalSlides} slide · {totalStudents} studenti partecipanti
+              {results?.results?.length || totalSlides} slide · {totalStudents} {tl("studenti partecipanti")}
             </p>
           </div>
 
@@ -762,7 +763,7 @@ export default function LiveInteractionControlPage() {
                   <SIcon className="h-4 w-4 text-white/80" />
                   <span className="text-white/90 text-sm font-semibold">{SLIDE_LABEL[type]}</span>
                   <span className="ml-auto text-white/80 text-sm font-bold">
-                    {slideResult.responses.length} {slideResult.responses.length === 1 ? 'risposta' : 'risposte'}
+                    {slideResult.responses.length} {slideResult.responses.length === 1 ? tl("risposta") : tl("risposte")}
                   </span>
                 </div>
                 <div className="px-6 py-5">
@@ -776,7 +777,7 @@ export default function LiveInteractionControlPage() {
           {(!results || results.results.length === 0) && (
             <div className="text-center py-16 text-slate-400">
               <Zap className="h-14 w-14 mx-auto mb-4 opacity-15" />
-              <p className="text-sm">Nessuna risposta raccolta.</p>
+              <p className="text-sm">{tl("Nessuna risposta raccolta.")}</p>
             </div>
           )}
         </div>

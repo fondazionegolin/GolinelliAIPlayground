@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { Loader2, Sparkles } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export type FloatingPoint = { x: number; y: number }
 export const LAUNCHER_SIZE = 48
@@ -62,8 +63,8 @@ type Props = {
 /** Always-on-canvas assistant button: drag it anywhere (it snaps to the grid), click to open or close the panel. */
 export function AssistantLauncher({ pos, open, working, dragging, onPointerDown, onToggle }: Props) {
   return <button
-    type="button" aria-label={open ? 'Nascondi assistente workflow' : 'Apri assistente workflow (Ctrl/Cmd+J)'} aria-expanded={open}
-    title="Assistente workflow · trascinalo dove vuoi · Ctrl/Cmd+J"
+    type="button" aria-label={open ? tl("Nascondi assistente workflow") : tl("Apri assistente workflow (Ctrl/Cmd+J)")} aria-expanded={open}
+    title={tl("Assistente workflow · trascinalo dove vuoi · Ctrl/Cmd+J")}
     onPointerDown={onPointerDown}
     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle() } }}
     className={`absolute z-[35] flex touch-none select-none items-center justify-center rounded-full text-white shadow-xl ring-2 ring-white transition-[box-shadow,background-color] ${open ? 'bg-violet-700' : 'bg-violet-600 hover:bg-violet-700'} ${dragging ? 'cursor-grabbing shadow-2xl' : 'cursor-grab'}`}

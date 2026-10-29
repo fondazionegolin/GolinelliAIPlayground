@@ -19,6 +19,7 @@ import BoardShareDialog from './BoardShareDialog'
 import BoardLabelsDialog, { type BoardLabel } from './BoardLabelsDialog'
 import BoardSprintsDialog, { type BoardSprint } from './BoardSprintsDialog'
 import BoardTimeline, { formatSprintDates, sprintStatus } from './BoardTimeline'
+import { tl } from '@/i18n/tl'
 
 type BoardColumn = { id: string; label: string; hint: string; color: string }
 type Member = { kind: 'teacher' | 'student'; id: string; name: string }
@@ -83,14 +84,14 @@ type BoardPatch = {
 
 const TASK_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#737373']
 const PRIORITY_STYLE: Record<Priority, { label: string; className: string }> = {
-  alta: { label: 'Alta', className: 'bg-red-50 text-red-700' },
-  media: { label: 'Media', className: 'bg-amber-50 text-amber-700' },
-  bassa: { label: 'Bassa', className: 'bg-slate-100 text-slate-600' },
+  alta: { label: tl("Alta"), className: 'bg-red-50 text-red-700' },
+  media: { label: tl("Media"), className: 'bg-amber-50 text-amber-700' },
+  bassa: { label: tl("Bassa"), className: 'bg-slate-100 text-slate-600' },
 }
 const CARD_TYPE_LABEL: Record<CardType, string> = { epic: 'Epic', story: 'Story', task: 'Task' }
 const FRAMEWORKS = [
-  { id: 'kanban', label: 'Kanban', hint: 'Task operativi in un flusso continuo' },
-  { id: 'scrum', label: 'Scrum / Agile', hint: 'Epic, user story, story point e sprint' },
+  { id: 'kanban', label: 'Kanban', hint: tl("Task operativi in un flusso continuo") },
+  { id: 'scrum', label: 'Scrum / Agile', hint: tl("Epic, user story, story point e sprint") },
 ] as const
 const BACKLOG_FILE_ACCEPT = '.pdf,.docx,.pptx,.txt,.md'
 
@@ -225,7 +226,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
 
   const createBoard = useMutation({
     mutationFn: () => boardsApi.create({
-      title: title.trim() || 'Nuova board',
+      title: title.trim() || tl("Nuova board"),
       session_id: sessionId,
       template_key: templateKey,
       visibility: shareOnCreate ? 'session_shared' : 'private',
@@ -239,7 +240,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       setSelectedId(created.id)
       queryClient.invalidateQueries({ queryKey: ['boards'] })
       queryClient.setQueryData(['board', created.id], created)
-      toast({ title: 'Board creata' })
+      toast({ title: tl("Board creata") })
     },
   })
 
@@ -270,9 +271,9 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
         await queryClient.invalidateQueries({ queryKey: ['boards'] })
         setSelectedId(String(job.result.board_id))
         setShowCreateForm(false)
-        toast({ title: 'Backlog generato', description: `${job.result.cards ?? 0} task in “${job.result.title ?? 'nuova board'}”.` })
+        toast({ title: tl("Backlog generato"), description: tl("{0} task in “{1}”.", job.result.cards ?? 0, job.result.title ?? 'nuova board') })
       } else if (job.status !== 'succeeded') {
-        toast({ title: 'Generazione non riuscita', description: job.error || 'Riprova tra poco.', variant: 'destructive' })
+        toast({ title: tl("Generazione non riuscita"), description: job.error || tl("Riprova tra poco."), variant: 'destructive' })
       }
     } catch {
       // Network hiccup: the job keeps running server-side and the navbar indicator tracks it.
@@ -310,7 +311,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       void followBacklogJob(res.data.job_id)
     },
     onError: (error: any) => {
-      toast({ title: 'Generazione non riuscita', description: error?.response?.data?.detail || 'Riprova tra poco.', variant: 'destructive' })
+      toast({ title: tl("Generazione non riuscita"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' })
     },
   })
 
@@ -322,7 +323,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       if (selectedId === boardId || board?.id === boardId) {
         setSelectedId(boards.find((item) => item.id !== boardId)?.id || null)
       }
-      toast({ title: 'Board eliminata' })
+      toast({ title: tl("Board eliminata") })
     },
   })
 
@@ -341,8 +342,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     },
     onError: (error: any) => {
       toast({
-        title: 'Impossibile creare il task',
-        description: error?.response?.data?.detail || 'Non hai i permessi per modificare questa board.',
+        title: tl("Impossibile creare il task"),
+        description: error?.response?.data?.detail || tl("Non hai i permessi per modificare questa board."),
         variant: 'destructive',
       })
     },
@@ -363,12 +364,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       setEditingCardId(null)
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards'] })
-      toast({ title: 'Task aggiornato' })
+      toast({ title: tl("Task aggiornato") })
     },
     onError: (error: any) => {
       toast({
-        title: 'Impossibile modificare il task',
-        description: error?.response?.data?.detail || 'Riprova tra poco.',
+        title: tl("Impossibile modificare il task"),
+        description: error?.response?.data?.detail || tl("Riprova tra poco."),
         variant: 'destructive',
       })
     },
@@ -380,12 +381,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       setEditingCardId(null)
       queryClient.invalidateQueries({ queryKey: ['board', board!.id] })
       queryClient.invalidateQueries({ queryKey: ['boards'] })
-      toast({ title: 'Task eliminato' })
+      toast({ title: tl("Task eliminato") })
     },
     onError: (error: any) => {
       toast({
-        title: 'Impossibile eliminare il task',
-        description: error?.response?.data?.detail || 'Riprova tra poco.',
+        title: tl("Impossibile eliminare il task"),
+        description: error?.response?.data?.detail || tl("Riprova tra poco."),
         variant: 'destructive',
       })
     },
@@ -409,7 +410,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
     if (!board?.can_manage || columns.length >= 12) return
     const column: BoardColumn = {
       id: `col_${Date.now().toString(36)}`,
-      label: 'Nuova colonna',
+      label: tl("Nuova colonna"),
       hint: '',
       color: TASK_COLORS[columns.length % TASK_COLORS.length],
     }
@@ -501,10 +502,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       {!isMobile && sidebarCollapsed && (
         <SidebarRail
           label="Board"
-          expandLabel="Espandi elenco board"
+          expandLabel={tl("Espandi elenco board")}
           onExpand={() => toggleSidebar(false)}
           onCreate={() => { toggleSidebar(false); setShowCreateForm(true) }}
-          createLabel="Nuova board"
+          createLabel={tl("Nuova board")}
           items={boards.map((item) => ({
             id: item.id,
             title: item.title,
@@ -516,12 +517,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       )}
       {(isMobile ? !board : !sidebarCollapsed) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
-          eyebrow={isStudent ? 'Spazio studente' : 'Pannello docente'}
+          eyebrow={isStudent ? tl("Spazio studente") : tl("Pannello docente")}
           title="Board"
-          description={isMobile ? '' : (isStudent ? 'Board personali e condivise in un unico explorer.' : 'Crea e condividi board nella sessione attiva.')}
+          description={isMobile ? '' : (isStudent ? tl("Board personali e condivise in un unico explorer.") : tl("Crea e condividi board nella sessione attiva."))}
           action={(
             <div className="flex shrink-0 items-center gap-1.5">
-            {!isMobile && <SidebarCollapseButton onClick={() => toggleSidebar(true)} label="Comprimi elenco board" />}
+            {!isMobile && <SidebarCollapseButton onClick={() => toggleSidebar(true)} label={tl("Comprimi elenco board")} />}
             <Button
               type="button"
               onClick={() => setShowCreateForm((value) => !value)}
@@ -529,8 +530,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               tone="accent"
               surface="solid"
               className="h-9 w-9 shrink-0 rounded-full p-0"
-              title="Nuova board"
-              aria-label="Nuova board"
+              title={tl("Nuova board")}
+              aria-label={tl("Nuova board")}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -538,12 +539,12 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           )}
           searchValue={boardListSearch}
           onSearchChange={setBoardListSearch}
-          searchPlaceholder="Cerca board..."
-          clearSearchLabel="Cancella ricerca board"
+          searchPlaceholder={tl("Cerca board...")}
+          clearSearchLabel={tl("Cancella ricerca board")}
         />
         {showCreateForm && <div className="space-y-2 border-b border-slate-200/80 px-5 py-4">
-          <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="tablist" aria-label="Tipo di board">
-            {([['ai', 'Con AI'], ['blank', 'Vuota']] as const).map(([mode, label]) => (
+          <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="tablist" aria-label={tl("Tipo di board")}>
+            {([['ai', tl("Con AI")], ['blank', tl("Vuota")]] as const).map(([mode, label]) => (
               <button
                 key={mode}
                 type="button"
@@ -556,7 +557,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               </button>
             ))}
           </div>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={createMode === 'ai' ? 'Titolo (facoltativo)' : 'Titolo board'} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={createMode === 'ai' ? tl("Titolo (facoltativo)") : tl("Titolo board")} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
           {createMode === 'ai' ? (
             <>
               <label className="block text-[11px] font-bold text-slate-500">
@@ -570,14 +571,14 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 rows={4}
-                placeholder="Descrivi il progetto: obiettivo, destinatari, vincoli, scadenze…"
+                placeholder={tl("Descrivi il progetto: obiettivo, destinatari, vincoli, scadenze…")}
                 className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 hover:border-slate-400">
                 <FileUp className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{aiFile ? aiFile.name : 'Carica un file di progetto (PDF, DOCX, PPTX, TXT, MD)'}</span>
+                <span className="min-w-0 flex-1 truncate">{aiFile ? aiFile.name : tl("Carica un file di progetto (PDF, DOCX, PPTX, TXT, MD)")}</span>
                 {aiFile && (
-                  <button type="button" onClick={(e) => { e.preventDefault(); setAiFile(null) }} className="rounded p-0.5 text-slate-400 hover:text-slate-700" aria-label="Rimuovi file">
+                  <button type="button" onClick={(e) => { e.preventDefault(); setAiFile(null) }} className="rounded p-0.5 text-slate-400 hover:text-slate-700" aria-label={tl("Rimuovi file")}>
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
@@ -589,7 +590,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 onClick={() => generateBoard.mutate()}
                 className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> Genero il backlog…</> : <><Sparkles className="h-4 w-4" /> Genera backlog</>}
+                {generateBoard.isPending || backlogJob ? <><Loader2 className="h-4 w-4 animate-spin" /> {tl("Genero il backlog…")}</> : <><Sparkles className="h-4 w-4" /> {tl("Genera backlog")}</>}
               </button>
               {backlogJob && (
                 <div className="space-y-1">
@@ -597,7 +598,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     <div className="h-full rounded-full bg-[image:var(--selection-active-bg)] transition-[width] duration-700" style={{ width: `${Math.round((backlogJob.progress_display ?? 0.1) * 100)}%` }} />
                   </div>
                   <p className="text-center text-[11px] text-slate-400">
-                    {backlogJob.progress_label || 'Analisi del progetto…'} Puoi cambiare pagina: la generazione continua in background.
+                    {backlogJob.progress_label || tl("Analisi del progetto…")} {tl("Puoi cambiare pagina: la generazione continua in background.")}
                   </p>
                 </div>
               )}
@@ -609,27 +610,27 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   {templates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
                 </select>
                 <button disabled={(isStudent && !sessionId) || createBoard.isPending} onClick={() => createBoard.mutate()} className="inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
-                  <Plus className="h-4 w-4" /> Crea
+                  <Plus className="h-4 w-4" /> {tl("Crea")}
                 </button>
               </div>
               {sessionId && (
                 <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
                   <input type="checkbox" checked={shareOnCreate} onChange={(e) => setShareOnCreate(e.target.checked)} />
-                  condividi con la classe
+                  {tl("condividi con la classe")}
                 </label>
               )}
             </>
           )}
           {!isStudent && (
             <p className="text-[11px] leading-4 text-slate-400">
-              {sessionId ? 'La board sarà collegata alla sessione attiva.' : 'Nessuna sessione attiva: potrai condividerla con altri docenti e collegarla a una sessione in seguito.'}
+              {sessionId ? tl("La board sarà collegata alla sessione attiva.") : tl("Nessuna sessione attiva: potrai condividerla con altri docenti e collegarla a una sessione in seguito.")}
             </p>
           )}
         </div>}
         <WorkspaceExplorerList>
-          {isLoading ? <p className="p-3 text-sm text-slate-400">Caricamento...</p> : filteredBoards.length === 0 ? (
+          {isLoading ? <p className="p-3 text-sm text-slate-400">{tl("Caricamento...")}</p> : filteredBoards.length === 0 ? (
             <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
-              {boardListSearch ? `Nessuna board corrisponde a “${boardListSearch}”.` : 'Nessuna board disponibile.'}
+              {boardListSearch ? tl("Nessuna board corrisponde a “{0}”.", boardListSearch) : tl("Nessuna board disponibile.")}
             </p>
           ) : <div className="space-y-2">{filteredBoards.map((item) => (
             <WorkspaceExplorerItem
@@ -637,7 +638,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               icon={<KanbanSquare className="h-4 w-4" />}
               title={item.title}
               subtitle={isMobile ? undefined : [
-                item.created_by_display_name ? `Creata da ${item.created_by_display_name}` : null,
+                item.created_by_display_name ? tl("Creata da {0}", item.created_by_display_name) : null,
                 !isStudent && item.session_title ? item.session_title : null,
               ].filter(Boolean).join(' · ') || undefined}
               selected={board?.id === item.id}
@@ -646,7 +647,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 <WorkspaceExplorerBadge>
                   <span className="inline-flex items-center gap-1">
                     {item.shared_with_me ? <Users className="h-3 w-3" /> : item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                    {item.shared_with_me ? 'Condivisa con te' : item.visibility === 'session_shared' ? 'Condivisa' : 'Privata'}
+                    {item.shared_with_me ? tl("Condivisa con te") : item.visibility === 'session_shared' ? tl("Condivisa") : tl("Privata")}
                   </span>
                 </WorkspaceExplorerBadge>
               )}
@@ -654,10 +655,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Eliminare la board "${item.title}"?`)) deleteBoard.mutate(item.id)
+                    if (window.confirm(tl("Eliminare la board \"{0}\"?", item.title))) deleteBoard.mutate(item.id)
                   }}
                   className="flex w-10 items-center justify-center border-l border-white/70 text-slate-400 hover:bg-red-50/80 hover:text-red-600"
-                  aria-label={`Elimina ${item.title}`}
+                  aria-label={tl("Elimina {0}", item.title)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -668,16 +669,16 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       </WorkspaceExplorerSidebar>}
       {(!isMobile || board) && <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!board ? (
-          <div className="flex h-full items-center justify-center text-sm text-slate-500">Crea una board per iniziare.</div>
+          <div className="flex h-full items-center justify-center text-sm text-slate-500">{tl("Crea una board per iniziare.")}</div>
         ) : (
           <>
             <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-1.5 md:flex md:flex-wrap md:justify-between md:gap-2 md:px-4 md:py-2">
               <div className="flex min-w-0 items-center gap-2">
-                {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Torna alle board"><ArrowLeft className="h-5 w-5" /></button>}
+                {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Torna alle board")}><ArrowLeft className="h-5 w-5" /></button>}
                 <h2 className="truncate text-lg font-bold">{board.title}</h2>
               </div>
               <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
-                <div className="inline-flex h-11 shrink-0 items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:h-9" role="tablist" aria-label="Vista">
+                <div className="inline-flex h-11 shrink-0 items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:h-9" role="tablist" aria-label={tl("Vista")}>
                   {([['board', 'Board', KanbanSquare], ['timeline', 'Timeline', GanttChartSquare]] as const).map(([mode, label, Icon]) => (
                     <button
                       key={mode}
@@ -693,24 +694,24 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 </div>
                 <label className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white pl-2.5 pr-1 text-xs font-bold text-slate-600 md:h-9">
                   <CalendarRange className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                  <span className="sr-only">Filtra per sprint</span>
+                  <span className="sr-only">{tl("Filtra per sprint")}</span>
                   <select
                     value={activeSprintFilter || ''}
                     onChange={(event) => setSprintFilter(event.target.value || null)}
                     className="h-full max-w-[180px] bg-transparent pr-1 text-xs font-bold text-slate-700 outline-none"
                   >
-                    <option value="">Tutti gli sprint</option>
+                    <option value="">{tl("Tutti gli sprint")}</option>
                     {sprints.map((sprint) => (
                       <option key={sprint.id} value={sprint.id}>{sprintCode[sprint.id]} · {sprint.name}{sprintStats[sprint.id] ? ` (${sprintStats[sprint.id].count})` : ''}</option>
                     ))}
-                    <option value="none">Senza sprint{sprintStats.none ? ` (${sprintStats.none.count})` : ''}</option>
+                    <option value="none">{tl("Senza sprint")}{sprintStats.none ? ` (${sprintStats.none.count})` : ''}</option>
                   </select>
                 </label>
                 <SearchPill
                   value={searchQuery}
                   onValueChange={setSearchQuery}
-                  placeholder="Cerca task"
-                  aria-label="Cerca nelle task della board"
+                  placeholder={tl("Cerca task")}
+                  aria-label={tl("Cerca nelle task della board")}
                   className="min-w-0 flex-1 sm:w-[260px] sm:flex-none"
                 />
                 {board.me && (
@@ -720,36 +721,36 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     aria-pressed={mineOnly}
                     className={`inline-flex h-11 items-center gap-1 rounded-xl border px-3 text-xs font-bold md:h-9 ${mineOnly ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
-                    <UserRound className="h-4 w-4" /> I miei task
+                    <UserRound className="h-4 w-4" /> {tl("I miei task")}
                   </button>
                 )}
                 {(labels.length > 0 || board.can_manage) && (
                   <div className="group relative">
-                    <button type="button" onClick={() => setLabelsMenuOpen((open) => !open)} aria-expanded={labelsMenuOpen} aria-label="Filtra per etichetta" className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 hover:bg-slate-50 md:h-9 md:w-9 ${labelFilter ? 'border-slate-500 bg-slate-100' : 'border-slate-200'}`} title="Etichette">
+                    <button type="button" onClick={() => setLabelsMenuOpen((open) => !open)} aria-expanded={labelsMenuOpen} aria-label={tl("Filtra per etichetta")} className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 hover:bg-slate-50 md:h-9 md:w-9 ${labelFilter ? 'border-slate-500 bg-slate-100' : 'border-slate-200'}`} title={tl("Etichette")}>
                       <Tags className="h-4 w-4" />
                     </button>
                     <div className={`${labelsMenuOpen ? 'block' : 'hidden group-hover:block group-focus-within:block'} absolute right-0 top-full z-30 min-w-44 pt-1`}>
-                      <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" role="group" aria-label="Etichette">
+                      <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg" role="group" aria-label={tl("Etichette")}>
                         {labels.map((label) => (
                           <button key={label.id} type="button" aria-pressed={labelFilter === label.id} onClick={() => { setLabelFilter(labelFilter === label.id ? null : label.id); setLabelsMenuOpen(false) }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100 ${labelFilter === label.id ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: label.color }} />{label.name}
                           </button>
                         ))}
-                        {board.can_manage && <button type="button" onClick={() => { setLabelsMenuOpen(false); setLabelsOpen(true) }} className="w-full rounded-lg border-t border-slate-100 px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100">Gestisci etichette</button>}
+                        {board.can_manage && <button type="button" onClick={() => { setLabelsMenuOpen(false); setLabelsOpen(true) }} className="w-full rounded-lg border-t border-slate-100 px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100">{tl("Gestisci etichette")}</button>}
                       </div>
                     </div>
                   </div>
                 )}
                 {board.can_manage && (
-                  <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3" title="Condividi">
+                  <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-11 w-11 items-center justify-center gap-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 md:h-9 md:w-auto md:px-3" title={tl("Condividi")}>
                     {board.visibility === 'session_shared' ? <Share2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                    <span className="hidden md:inline">Condividi</span>
+                    <span className="hidden md:inline">{tl("Condividi")}</span>
                   </button>
                 )}
               </div>
               {(sprints.length > 0 || board.can_manage) && (
                 <div className="col-span-2 w-full">
-                  <div className="flex w-full items-stretch gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Sprint e date">
+                  <div className="flex w-full items-stretch gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label={tl("Sprint e date")}>
                     {sprints.map((sprint) => {
                       const active = activeSprintFilter === sprint.id
                       const status = sprintStatus(sprint)
@@ -764,21 +765,21 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         >
                           <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${active ? 'bg-white/15' : status === 'current' ? 'bg-violet-600 text-white' : 'bg-white text-slate-700'}`}>{sprintCode[sprint.id]}</span>
                           <span className="text-[11px] font-bold leading-4">
-                            {formatSprintDates(sprint) || 'Date da definire'}
-                            {status === 'current' && <span className={`ml-1 ${active ? 'text-white/70' : 'text-violet-600'}`}>· in corso</span>}
+                            {formatSprintDates(sprint) || tl("Date da definire")}
+                            {status === 'current' && <span className={`ml-1 ${active ? 'text-white/70' : 'text-violet-600'}`}>{tl("· in corso")}</span>}
                           </span>
                         </button>
                       )
                     })}
-                    {sprints.length === 0 && <span className="self-center text-[11px] text-slate-400">Nessuno sprint pianificato.</span>}
+                    {sprints.length === 0 && <span className="self-center text-[11px] text-slate-400">{tl("Nessuno sprint pianificato.")}</span>}
                     {board.can_manage && (
                       <button type="button" onClick={() => setSprintsOpen(true)} className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:border-slate-400 hover:text-slate-800">
-                        {sprints.length ? <><Edit2 className="h-3 w-3" /> Gestisci sprint</> : <><Plus className="h-3 w-3" /> Crea sprint</>}
+                        {sprints.length ? <><Edit2 className="h-3 w-3" /> {tl("Gestisci sprint")}</> : <><Plus className="h-3 w-3" /> {tl("Crea sprint")}</>}
                       </button>
                     )}
                   </div>
                   {activeSprintFilter && activeSprintFilter !== 'none' && sprintById[activeSprintFilter]?.goal && (
-                    <p className="mt-1 truncate text-xs text-slate-500"><span className="font-bold text-slate-700">Obiettivo {sprintCode[activeSprintFilter]}:</span> {sprintById[activeSprintFilter].goal}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500"><span className="font-bold text-slate-700">{tl("Obiettivo")} {sprintCode[activeSprintFilter]}:</span> {sprintById[activeSprintFilter].goal}</p>
                   )}
                 </div>
               )}
@@ -794,7 +795,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                 onOpenCard={(id) => { setOpenCardId(id); setEditingCardId(null) }}
               />
             ) : <>
-            {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label="Colonne board">
+            {isMobile && <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2" aria-label={tl("Colonne board")}>
               {columns.map((column) => <button key={column.id} type="button" onClick={() => setMobileColumnId(column.id)} className={`min-h-11 shrink-0 rounded-full px-4 text-xs font-black ${activeMobileColumnId === column.id ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-slate-100 text-slate-600'}`}>{column.label} <span className="opacity-60">{(grouped[column.id] || []).length}</span></button>)}
               {board.can_manage && (
                 <button
@@ -802,9 +803,9 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   onClick={addColumn}
                   disabled={columns.length >= 12 || updateBoard.isPending}
                   className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-40"
-                  aria-label="Nuova colonna"
+                  aria-label={tl("Nuova colonna")}
                 >
-                  <Plus className="h-4 w-4" /> Nuova colonna
+                  <Plus className="h-4 w-4" /> {tl("Nuova colonna")}
                 </button>
               )}
             </nav>}
@@ -887,7 +888,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                               }
                             }}
                             className="h-7 w-full rounded-md border border-slate-300 px-2 text-xs font-black uppercase tracking-wide outline-none focus:ring-2 focus:ring-slate-300"
-                            aria-label={`Rinomina ${column.label}`}
+                            aria-label={tl("Rinomina {0}", column.label)}
                           />
                         </div>
                       ) : (
@@ -902,8 +903,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           type="button"
                           onClick={() => { cancelColumnEdit.current = false; setEditingColumnId(column.id); setEditingColumnLabel(column.label) }}
                             className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-white/70 hover:text-slate-800 md:h-7 md:w-7 md:rounded-md"
-                          title="Rinomina colonna"
-                          aria-label={`Rinomina ${column.label}`}
+                          title={tl("Rinomina colonna")}
+                          aria-label={tl("Rinomina {0}", column.label)}
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
@@ -912,8 +913,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                             type="button"
                             onClick={() => setColumnToDelete({ columnId: column.id, targetId: columns.find((item) => item.id !== column.id)!.id })}
                             className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-white/70 hover:text-red-600 md:h-7 md:w-7 md:rounded-md"
-                            title="Elimina colonna"
-                            aria-label={`Elimina ${column.label}`}
+                            title={tl("Elimina colonna")}
+                            aria-label={tl("Elimina {0}", column.label)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -928,8 +929,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           setInlineDraft({ ...emptyDraft(), sprintId: activeSprintFilter && activeSprintFilter !== 'none' ? activeSprintFilter : '' })
                         }}
                         className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 opacity-100 shadow-[var(--ds-shadow-1)] transition hover:border-slate-400 hover:text-slate-900 md:h-7 md:w-7 md:rounded-full md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                        aria-label={`Crea un task in ${column.label}`}
-                        title={`Crea un task in ${column.label}`}
+                        aria-label={tl("Crea un task in {0}", column.label)}
+                        title={tl("Crea un task in {0}", column.label)}
                       >
                         <Plus className="h-4 w-4" />
                       </button>
@@ -939,7 +940,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     {inlineColumnId === column.id && (
                       <div className="ui-card w-full shrink-0 p-3">
                         <CardForm
-                          heading="Nuovo task"
+                          heading={tl("Nuovo task")}
                           draft={inlineDraft}
                           onChange={setInlineDraft}
                           labels={labels}
@@ -947,7 +948,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                           sprints={sprints}
                           showPoints={isScrum}
                           pending={createCard.isPending}
-                          submitLabel={createCard.isPending ? 'Creazione…' : 'Crea task'}
+                          submitLabel={createCard.isPending ? tl("Creazione…") : tl("Crea task")}
                           onCancel={() => setInlineColumnId(null)}
                           onSubmit={() => createCard.mutate({ draft: inlineDraft, columnId: column.id })}
                         />
@@ -958,7 +959,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                         key={card.id}
                         role="button"
                         tabIndex={0}
-                        aria-label={`Apri ${card.title}`}
+                        aria-label={tl("Apri {0}", card.title)}
                         onClick={() => { setOpenCardId(card.id); setEditingCardId(null) }}
                         onKeyDown={(event) => {
                           if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
@@ -1015,7 +1016,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                     {(grouped[column.id] || []).length === 0 && (
                       <div className={`flex min-w-[180px] flex-1 items-center justify-center text-xs ${draggingCardId ? 'font-bold text-sky-600' : 'text-slate-300'}`}>
                         <LayoutTemplate className="mr-1 h-3 w-3" />
-                        {draggingCardId ? 'Rilascia qui' : searchQuery ? 'Nessun risultato' : 'Nessun task'}
+                        {draggingCardId ? tl("Rilascia qui") : searchQuery ? tl("Nessun risultato") : tl("Nessun task")}
                       </div>
                     )}
                   </div>
@@ -1027,10 +1028,10 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
                   onClick={addColumn}
                   disabled={columns.length >= 12 || updateBoard.isPending}
                   className="flex min-h-[72px] w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white/60 text-sm font-bold text-slate-500 transition hover:border-slate-400 hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 lg:h-full lg:min-h-0 lg:w-[90px]"
-                  title={columns.length >= 12 ? 'Numero massimo di colonne raggiunto' : 'Nuova colonna'}
+                  title={columns.length >= 12 ? tl("Numero massimo di colonne raggiunto") : tl("Nuova colonna")}
                 >
                   <Plus className="h-5 w-5" />
-                  <span className="lg:sr-only">Nuova colonna</span>
+                  <span className="lg:sr-only">{tl("Nuova colonna")}</span>
                 </button>
               )}
             </div>
@@ -1057,7 +1058,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               sprints={sprints}
               showPoints={isScrum || openCard.card_type === 'story'}
               pending={updateCard.isPending}
-              submitLabel={updateCard.isPending ? 'Salvataggio…' : 'Salva'}
+              submitLabel={updateCard.isPending ? tl("Salvataggio…") : tl("Salva")}
               onCancel={() => setEditingCardId(null)}
               onSubmit={() => updateCard.mutate({ cardId: openCard.id, draft: editDraft })}
             />
@@ -1065,7 +1066,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           onEdit={() => startEditingCard(openCard)}
           onMove={(columnId) => moveCard.mutate({ cardId: openCard.id, columnId })}
           onDelete={() => {
-            if (window.confirm(`Eliminare il task "${openCard.title}"?`)) {
+            if (window.confirm(tl("Eliminare il task \"{0}\"?", openCard.title))) {
               deleteCard.mutate(openCard.id, { onSuccess: () => setOpenCardId(null) })
             }
           }}
@@ -1081,7 +1082,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           isStudent={isStudent}
           onClose={() => setShareOpen(false)}
           onBoardPatch={(patch) => updateBoard.mutate(patch, {
-            onError: (error: any) => toast({ title: 'Modifica non salvata', description: error?.response?.data?.detail || 'Riprova tra poco.', variant: 'destructive' }),
+            onError: (error: any) => toast({ title: tl("Modifica non salvata"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' }),
           })}
           boardPatchPending={updateBoard.isPending}
         />
@@ -1095,7 +1096,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           onClose={() => setSprintsOpen(false)}
           onSave={(next, automatic) => updateBoard.mutate({ sprints: next, auto_sprint_weekly: automatic }, {
             onSuccess: () => setSprintsOpen(false),
-            onError: (error: any) => toast({ title: 'Sprint non salvati', description: error?.response?.data?.detail || 'Riprova tra poco.', variant: 'destructive' }),
+            onError: (error: any) => toast({ title: tl("Sprint non salvati"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' }),
           })}
         />
       )}
@@ -1117,17 +1118,17 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="delete-column-title">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id="delete-column-title" className="text-lg font-black text-slate-900">Elimina colonna</h3>
+                <h3 id="delete-column-title" className="text-lg font-black text-slate-900">{tl("Elimina colonna")}</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  I task di “{columns.find((column) => column.id === columnToDelete.columnId)?.label}” devono essere spostati prima dell’eliminazione.
+                  {tl("I task di “")}{columns.find((column) => column.id === columnToDelete.columnId)?.label}{tl("” devono essere spostati prima dell’eliminazione.")}
                 </p>
               </div>
-              <button type="button" onClick={() => setColumnToDelete(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+              <button type="button" onClick={() => setColumnToDelete(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
                 <X className="h-5 w-5" />
               </button>
             </div>
             <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-              Sposta i task in
+              {tl("Sposta i task in")}
               <select
                 autoFocus
                 value={columnToDelete.targetId}
@@ -1140,9 +1141,9 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
               </select>
             </label>
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setColumnToDelete(null)} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">Annulla</button>
+              <button type="button" onClick={() => setColumnToDelete(null)} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
               <button type="button" disabled={updateBoard.isPending} onClick={confirmDeleteColumn} className="h-10 rounded-lg bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {updateBoard.isPending ? 'Eliminazione…' : 'Sposta ed elimina'}
+                {updateBoard.isPending ? tl("Eliminazione…") : tl("Sposta ed elimina")}
               </button>
             </div>
           </div>
@@ -1160,7 +1161,7 @@ function ColorPicker({ value, onChange, compact = false }: { value: string; onCh
         type="button"
         onClick={(event) => { event.stopPropagation(); setOpen((current) => !current) }}
         className={`${compact ? 'h-6 w-6' : 'h-9 w-9'} inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm`}
-        title="Colore task"
+        title={tl("Colore task")}
       >
         {compact ? <span className="h-3 w-3 rounded-full" style={{ backgroundColor: value }} /> : <Palette className="h-4 w-4" style={{ color: value }} />}
       </button>
@@ -1211,22 +1212,22 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
       {heading && (
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-black text-slate-700">{heading}</p>
-          <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Annulla">
+          <button type="button" onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Annulla")}>
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
       <label className={fieldLabel}>
-        Titolo
-        <input autoFocus required value={draft.title} onChange={(e) => set({ title: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }} placeholder="Cosa bisogna fare?" className={`${inputClass} h-8`} />
+        {tl("Titolo")}
+        <input autoFocus required value={draft.title} onChange={(e) => set({ title: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }} placeholder={tl("Cosa bisogna fare?")} className={`${inputClass} h-8`} />
       </label>
       <label className={fieldLabel}>
-        Descrizione <span className="font-normal normal-case">(facoltativa)</span>
-        <textarea value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder="Aggiungi indicazioni" rows={3} className={`${inputClass} resize-none py-1.5`} />
+        {tl("Descrizione")} <span className="font-normal normal-case">(facoltativa)</span>
+        <textarea value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={tl("Aggiungi indicazioni")} rows={3} className={`${inputClass} resize-none py-1.5`} />
       </label>
       {labels.length > 0 && (
         <div>
-          <p className={fieldLabel}>Etichette</p>
+          <p className={fieldLabel}>{tl("Etichette")}</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {labels.map((label) => {
               const active = draft.labels.includes(label.id)
@@ -1248,26 +1249,26 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
       )}
       <div className="flex gap-2">
         <label className={`${fieldLabel} flex-1`}>
-          Priorità
+          {tl("Priorità")}
           <select value={draft.priority} onChange={(e) => set({ priority: e.target.value as Priority | '' })} className={`${inputClass} h-8 bg-white`}>
             <option value="">—</option>
-            <option value="alta">Alta</option>
-            <option value="media">Media</option>
-            <option value="bassa">Bassa</option>
+            <option value="alta">{tl("Alta")}</option>
+            <option value="media">{tl("Media")}</option>
+            <option value="bassa">{tl("Bassa")}</option>
           </select>
         </label>
         {sprints.length > 0 && (
           <label className={`${fieldLabel} flex-1`}>
             Sprint
             <select value={draft.sprintId} onChange={(e) => set({ sprintId: e.target.value })} className={`${inputClass} h-8 bg-white`}>
-              <option value="">Nessuno</option>
+              <option value="">{tl("Nessuno")}</option>
               {sprints.map((sprint, index) => <option key={sprint.id} value={sprint.id}>S{index + 1} · {sprint.name}</option>)}
             </select>
           </label>
         )}
         {showPoints && (
           <label className={`${fieldLabel} w-20`}>
-            Punti
+            {tl("Punti")}
             <input type="number" min={1} max={100} value={draft.storyPoints} onChange={(e) => set({ storyPoints: e.target.value })} className={`${inputClass} h-8`} />
           </label>
         )}
@@ -1275,8 +1276,8 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
       {members.length > 0 && (
         <div>
           <button type="button" onClick={() => setShowPeople((value) => !value)} className={`${fieldLabel} flex w-full items-center justify-between`}>
-            <span>Assegnatari{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</span>
-            <span className="font-normal normal-case text-slate-400">{showPeople ? 'chiudi' : 'modifica'}</span>
+            <span>{tl("Assegnatari")}{draft.assignees.length ? ` · ${draft.assignees.length}` : ''}</span>
+            <span className="font-normal normal-case text-slate-400">{showPeople ? tl("chiudi") : tl("modifica")}</span>
           </button>
           {!showPeople && draft.assignees.length > 0 && (
             <p className="mt-1 truncate text-xs text-slate-600">{draft.assignees.map((a) => a.name).join(', ')}</p>
@@ -1295,7 +1296,7 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
                     })}
                   />
                   <span className="min-w-0 flex-1 truncate font-bold">{member.name}</span>
-                  <span className="text-[10px] text-slate-400">{member.kind === 'teacher' ? 'docente' : 'studente'}</span>
+                  <span className="text-[10px] text-slate-400">{member.kind === 'teacher' ? tl("docente") : tl("studente")}</span>
                 </label>
               ))}
             </div>
@@ -1305,7 +1306,7 @@ function CardForm({ heading, draft, onChange, labels, members, sprints, showPoin
       <div className="flex items-center justify-between gap-2 pt-1">
         <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
         <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-bold text-slate-500 hover:bg-slate-100">Annulla</button>
+          <button type="button" onClick={onCancel} className="h-8 rounded-md px-2 text-xs font-bold text-slate-500 hover:bg-slate-100">{tl("Annulla")}</button>
           <button disabled={!draft.title.trim() || pending} className="inline-flex h-8 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40">
             <Check className="h-3.5 w-3.5" /> {submitLabel}
           </button>
@@ -1385,7 +1386,7 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
               </button>
             )}
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1398,29 +1399,29 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
                   {cardLabels.map((label) => (
                     <span key={label.id} className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: `${label.color}1f`, color: label.color }}>{label.name}</span>
                   ))}
-                  {card.priority && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${PRIORITY_STYLE[card.priority].className}`}>Priorità {PRIORITY_STYLE[card.priority].label.toLowerCase()}</span>}
+                  {card.priority && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${PRIORITY_STYLE[card.priority].className}`}>{tl("Priorità")} {PRIORITY_STYLE[card.priority].label.toLowerCase()}</span>}
                   {card.story_points ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{card.story_points} story point</span> : null}
                 </div>
               )}
               <section>
-                <h4 className={sectionTitle}>Descrizione</h4>
+                <h4 className={sectionTitle}>{tl("Descrizione")}</h4>
                 {card.description
                   ? <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-700">{card.description}</p>
-                  : <p className="mt-1.5 text-sm text-slate-400">Nessuna descrizione.</p>}
+                  : <p className="mt-1.5 text-sm text-slate-400">{tl("Nessuna descrizione.")}</p>}
               </section>
               <section>
-                <h4 className={sectionTitle}>Assegnatari</h4>
+                <h4 className={sectionTitle}>{tl("Assegnatari")}</h4>
                 {(card.assignees || []).length ? (
                   <ul className="mt-1.5 flex flex-wrap gap-1.5">
                     {(card.assignees || []).map((person) => (
                       <li key={`${person.kind}-${person.id}`} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2.5 text-xs font-bold text-slate-700">
                         <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-black ${person.kind === 'teacher' ? 'bg-slate-800 text-white' : 'bg-teal-100 text-teal-800'}`}>{initials(person.name)}</span>
                         {person.name}
-                        <span className="font-normal text-slate-400">{person.kind === 'teacher' ? 'docente' : 'studente'}</span>
+                        <span className="font-normal text-slate-400">{person.kind === 'teacher' ? tl("docente") : tl("studente")}</span>
                       </li>
                     ))}
                   </ul>
-                ) : <p className="mt-1.5 text-sm text-slate-400">Nessuno assegnato.</p>}
+                ) : <p className="mt-1.5 text-sm text-slate-400">{tl("Nessuno assegnato.")}</p>}
               </section>
               {children.length > 0 && (
                 <section>
@@ -1440,15 +1441,15 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
               )}
               {canEdit && columns.length > 1 && (
                 <label className="block">
-                  <span className={sectionTitle}>Sposta in</span>
+                  <span className={sectionTitle}>{tl("Sposta in")}</span>
                   <select value={card.column_id} onChange={(event) => onMove(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
                     {columns.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
                 </label>
               )}
               <p className="text-[11px] text-slate-400">
-                {card.created_by_display_name && `Creato da ${card.created_by_display_name}`}
-                {card.last_actor_display_name && ` · ultima modifica ${card.last_actor_display_name}`}
+                {card.created_by_display_name && tl("Creato da {0}", card.created_by_display_name)}
+                {card.last_actor_display_name && tl(" · ultima modifica {0}", card.last_actor_display_name)}
               </p>
             </div>
           )}
@@ -1457,10 +1458,10 @@ function CardDetailModal({ card, columns, labelById, sprint, sprintLabel, cards,
         {canEdit && !editing && (
           <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-4">
             <button type="button" disabled={deletePending} onClick={onDelete} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
-              <Trash2 className="h-4 w-4" /> Elimina
+              <Trash2 className="h-4 w-4" /> {tl("Elimina")}
             </button>
             <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)]">
-              <Edit2 className="h-4 w-4" /> Modifica
+              <Edit2 className="h-4 w-4" /> {tl("Modifica")}
             </button>
           </div>
         )}

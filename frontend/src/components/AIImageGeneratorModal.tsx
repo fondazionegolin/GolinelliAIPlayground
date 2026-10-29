@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2, X, Sparkles, Image as ImageIcon } from '@/components/icons'
 import { Button } from './ui/button'
 import { llmApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface AIImageGeneratorModalProps {
   isOpen: boolean
@@ -34,11 +35,11 @@ export function AIImageGeneratorModal({
       if (imageUrl) {
         setGeneratedImage(imageUrl)
       } else {
-        setError('Nessuna immagine generata')
+        setError(tl("Nessuna immagine generata"))
       }
     } catch (err: any) {
       console.error('Image generation error:', err)
-      setError(err.response?.data?.detail || 'Errore durante la generazione')
+      setError(err.response?.data?.detail || tl("Errore durante la generazione"))
     } finally {
       setIsLoading(false)
     }
@@ -74,7 +75,7 @@ export function AIImageGeneratorModal({
         <div className="bg-gradient-to-r from-violet-500 to-indigo-500 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 text-white">
             <ImageIcon className="h-5 w-5" />
-            <span className="font-semibold">Aggiungi Immagine</span>
+            <span className="font-semibold">{tl("Aggiungi Immagine")}</span>
           </div>
           <button
             onClick={handleClose}
@@ -94,7 +95,7 @@ export function AIImageGeneratorModal({
               onClick={handleUrlInsert}
             >
               <ImageIcon className="h-4 w-4" />
-              Inserisci da URL
+              {tl("Inserisci da URL")}
             </Button>
           </div>
 
@@ -103,7 +104,7 @@ export function AIImageGeneratorModal({
               <div className="w-full border-t border-slate-200"></div>
             </div>
             <div className="relative flex justify-center">
-              <span className="bg-white px-3 text-sm text-slate-500">oppure genera con AI</span>
+              <span className="bg-white px-3 text-sm text-slate-500">{tl("oppure genera con AI")}</span>
             </div>
           </div>
 
@@ -111,12 +112,12 @@ export function AIImageGeneratorModal({
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Descrivi l'immagine da generare
+                {tl("Descrivi l'immagine da generare")}
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Es: Un grafico che mostra la fotosintesi clorofilliana, stile educativo..."
+                placeholder={tl("Es: Un grafico che mostra la fotosintesi clorofilliana, stile educativo...")}
                 className="w-full h-24 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                 disabled={isLoading}
               />
@@ -148,12 +149,12 @@ export function AIImageGeneratorModal({
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generazione...
+                      {tl("Generazione...")}
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4 mr-2" />
-                      Genera Immagine
+                      {tl("Genera Immagine")}
                     </>
                   )}
                 </Button>
@@ -164,13 +165,13 @@ export function AIImageGeneratorModal({
                     onClick={() => setGeneratedImage(null)}
                     className="flex-1"
                   >
-                    Rigenera
+                    {tl("Rigenera")}
                   </Button>
                   <Button
                     onClick={handleApply}
                     className="flex-1 bg-violet-600 hover:bg-violet-700"
                   >
-                    Usa Immagine
+                    {tl("Usa Immagine")}
                   </Button>
                 </>
               )}

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Pencil, Clock } from '@/components/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { calendarApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface CalendarEvent {
   id: string
@@ -19,7 +20,7 @@ interface WeeklyCalendarConfig {
   session_name?: string
 }
 
-const DAY_LABELS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
+const DAY_LABELS = [tl("Lun"), tl("Mar"), tl("Mer"), tl("Gio"), tl("Ven"), tl("Sab"), tl("Dom")]
 const EVENT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6']
 
 function getMonday(d: Date): Date {
@@ -163,7 +164,7 @@ export default function WeeklyCalendarWidget({
   if (!sessionId) {
     return (
       <div className="h-full flex items-center justify-center text-[13px] text-white/30 text-center p-4">
-        Nessuna sessione collegata.<br />Aggiungi dal pannello sessione attiva.
+        {tl("Nessuna sessione collegata.")}<br />{tl("Aggiungi dal pannello sessione attiva.")}
       </div>
     )
   }
@@ -197,7 +198,7 @@ export default function WeeklyCalendarWidget({
               className="text-[11px] text-white/40 hover:text-white/70 px-1 transition-colors"
               onClick={() => setWeekOffset(0)}
             >
-              oggi
+              {tl("oggi")}
             </button>
           )}
           <button
@@ -235,7 +236,7 @@ export default function WeeklyCalendarWidget({
                   <button
                     className="w-5 h-5 rounded flex items-center justify-center bg-white/0 hover:bg-white/20 transition-all opacity-50 hover:opacity-100"
                     onClick={() => openAdd(ymd)}
-                    title={`Aggiungi evento ${formatDayLabel(day)}`}
+                    title={tl("Aggiungi evento {0}", formatDayLabel(day))}
                   >
                     <Plus className="h-3 w-3 text-white" />
                   </button>
@@ -280,7 +281,7 @@ export default function WeeklyCalendarWidget({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-white/70">
-                {formMode.type === 'add' ? `Nuovo evento — ${formDateLabel}` : `Modifica — ${formDateLabel}`}
+                {formMode.type === 'add' ? tl("Nuovo evento — {0}", formDateLabel) : tl("Modifica — {0}", formDateLabel)}
               </span>
               <button onClick={closeForm}><X className="h-3.5 w-3.5 text-white/40" /></button>
             </div>
@@ -290,14 +291,14 @@ export default function WeeklyCalendarWidget({
               onChange={e => setFormTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') submitForm(); if (e.key === 'Escape') closeForm() }}
               className="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-white/40"
-              placeholder="Titolo evento"
+              placeholder={tl("Titolo evento")}
             />
             <div className="flex gap-2">
               <input
                 value={formDesc}
                 onChange={e => setFormDesc(e.target.value)}
                 className="flex-1 bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/30 outline-none"
-                placeholder="Descrizione (opzionale)"
+                placeholder={tl("Descrizione (opzionale)")}
               />
               <div className="relative flex items-center">
                 <Clock className="h-3 w-3 text-white/40 absolute left-2 pointer-events-none" />
@@ -325,7 +326,7 @@ export default function WeeklyCalendarWidget({
                   onClick={() => { deleteEvent.mutate(formMode.event.id); closeForm() }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs hover:bg-red-500/30 transition-colors"
                 >
-                  <Trash2 className="h-3 w-3" />Elimina
+                  <Trash2 className="h-3 w-3" />{tl("Elimina")}
                 </button>
               )}
               <button
@@ -333,7 +334,7 @@ export default function WeeklyCalendarWidget({
                 disabled={!formTitle.trim()}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-white/80 text-xs hover:bg-white/20 transition-colors disabled:opacity-40"
               >
-                {formMode.type === 'add' ? <><Plus className="h-3 w-3" />Aggiungi</> : <><Pencil className="h-3 w-3" />Salva</>}
+                {formMode.type === 'add' ? <><Plus className="h-3 w-3" />{tl("Aggiungi")}</> : <><Pencil className="h-3 w-3" />{tl("Salva")}</>}
               </button>
             </div>
           </div>

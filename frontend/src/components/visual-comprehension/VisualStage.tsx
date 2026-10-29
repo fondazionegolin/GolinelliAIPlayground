@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { COLORS, type LabWidget, type SourceImage, type Region, type Overlay, type Selection } from './types'
+import { COLORS, type LabWidget, type SourceImage, type Region, type Overlay, type Selection, type StudentNote } from './types'
 import { LabCards, labLayout } from './LabWidgets'
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, Eye, EyeOff, Play, Pause, ChevronLeft, ChevronRight, Expand, ImageIcon, Loader2, Hand, Lasso, Square, Pencil, Brush, MessageCircle } from '@/components/icons'
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, Eye, EyeOff, Play, Pause, ChevronLeft, ChevronRight, Expand, ImageIcon, Loader2, Hand, Lasso, Square, Pencil, Brush, MessageCircle, StickyNote, X } from '@/components/icons'
 import BlackboardDrawing from './BlackboardDrawing'
 import CanvasWorld from './CanvasWorld'
 import { boxInFrame, getDrawingLayout, type DrawingLayout, type DrawingScene, type Frame } from './blackboard'
 import { refineScene, type Refinement } from './sceneLint'
+import { tl } from '@/i18n/tl'
 
 type Camera = { x: number; y: number; w: number; h: number }
 
@@ -18,7 +19,7 @@ function focusRect(scene: DrawingScene, review: Refinement, layout: DrawingLayou
   if (asked && layout.frames[asked]) return layout.frames[asked]
   const region = asked ? g.regionRect(asked) : null
   if (region) return region
-  const marks = scene.elements.filter(m => asked ? m.id === asked : m.step === step)
+  const marks = scene.elements.filter(m => asked ? m.id === asked : m.step === step && !m.carried)
   const rects = marks.map(m => m.kind === 'spotlight' && m.from_region_id ? g.regionRect(m.from_region_id) : g.bounds(m)).filter((r): r is Frame => !!r)
   if (!rects.length) return null
   const x = Math.min(...rects.map(r => r.x)), y = Math.min(...rects.map(r => r.y))
@@ -27,15 +28,17 @@ function focusRect(scene: DrawingScene, review: Refinement, layout: DrawingLayou
 
 const ease = (t: number) => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
 
-type Tool = 'pan' | Selection['shape']
+type Tool = 'pan' | Selection['shape'] | 'note'
 const MARK = '#ff2bd6'
 const BRUSH = 2.8  // % of the image width
 const TOOLS: Array<{ tool: Tool; label: string }> = [
-  { tool: 'pan', label: 'Sposta e ingrandisci' }, { tool: 'rect', label: 'Seleziona con un rettangolo' }, { tool: 'lasso', label: 'Seleziona a mano libera (lazo)' },
-  { tool: 'scribble', label: 'Scarabocchia sulla parte' }, { tool: 'brush', label: 'Colora la zona con il pennello' },
+  { tool: 'pan', label: tl("Sposta e ingrandisci") }, { tool: 'rect', label: tl("Seleziona con un rettangolo") }, { tool: 'lasso', label: tl("Seleziona a mano libera (lazo)") },
+  { tool: 'scribble', label: tl("Scarabocchia sulla parte") }, { tool: 'brush', label: tl("Colora la zona con il pennello") },
+  { tool: 'note', label: tl("Scrivi una tua idea sul canvas") },
 ]
 
-const toolIcon = (tool: Tool) => tool === 'pan' ? <Hand /> : tool === 'rect' ? <Square /> : tool === 'lasso' ? <Lasso /> : tool === 'scribble' ? <Pencil /> : <Brush />
+const toolIcon = (tool: Tool) => tool === 'pan' ? <Hand /> : tool === 'rect' ? <Square /> : tool === 'lasso' ? <Lasso /> : tool === 'scribble' ? <Pencil />
+  : tool === 'note' ? <StickyNote /> : <Brush />
 
 /** Keeps freehand paths small enough to send: at most `max` points, evenly sampled. */
 function thin(points: Array<[number, number]>, max = 600): Array<[number, number]> {
@@ -45,11 +48,13 @@ function thin(points: Array<[number, number]>, max = 600): Array<[number, number
 }
 
 export default function VisualStage({ image, regions, overlays: activeOverlays, focusKey, drawing, reviewing = false, selection = null, onSelect, onAskStep,
-  widgets = [], focusWidget = null, onAskLab }: {
+  widgets = [], focusWidget = null, onAskLab, notes = [], onNotes, onAskNotes }: {
   image: SourceImage; regions: Region[]; overlays: Overlay[]; focusKey: string; drawing?: DrawingScene; reviewing?: boolean
   selection?: Selection | null; onSelect?: (selection: Selection | null) => void; onAskStep?: (title: string, selection: Selection | null) => void
   /** Interactive cards of the session (the Lab), and a request to fly to one of them. */
   widgets?: LabWidget[]; focusWidget?: { id: string; nonce: number } | null; onAskLab?: (text: string) => void
+  /** The student's notes on the canvas (intuitions, deductions, results), and how to change them or have them read. */
+  notes?: StudentNote[]; onNotes?: (notes: StudentNote[]) => void; onAskNotes?: () => void
 }) {
   const root = useRef<HTMLDivElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
@@ -198,19 +203,34 @@ export default function VisualStage({ image, regions, overlays: activeOverlays, 
     const wx = cam.x + (clientX - r.left) / size.width * cam.w, wy = cam.y + (clientY - r.top) / size.height * cam.h
     return [Math.min(100, Math.max(0, (wx - img.x) / img.width * 100)), Math.min(100, Math.max(0, (wy - img.y) / img.height * 100))]
   }
+  // Notes sit anywhere on the canvas; their position is kept in % of the image so it survives boards being added.
+  const [editing, setEditing] = useState<string | null>(null)
+  const toImageFree = (clientX: number, clientY: number): [number, number] => {
+    const r = viewport.current!.getBoundingClientRect(), cam = cameraRef.current, img = layout.image
+    const wx = cam.x + (clientX - r.left) / size.width * cam.w, wy = cam.y + (clientY - r.top) / size.height * cam.h
+    return [Math.min(600, Math.max(-500, (wx - img.x) / img.width * 100)), Math.min(600, Math.max(-500, (wy - img.y) / img.height * 100))]
+  }
+  const placeNote = (clientX: number, clientY: number) => {
+    if (!onNotes || notes.length >= 40) return
+    const [x, y] = toImageFree(clientX, clientY)
+    const id = `n${Date.now().toString(36)}`
+    onNotes([...notes.filter(n => n.text.trim()), { id, x, y, text: '' }])
+    setEditing(id)
+  }
   const finishStroke = (points: Array<[number, number]>) => {
     setStroke(null)
-    if (tool === 'pan' || points.length < 2) return
+    if (tool === 'pan' || tool === 'note' || points.length < 2) return
     const pad = tool === 'brush' ? BRUSH / 2 : tool === 'scribble' ? .6 : 0
     const xs = points.map(p => p[0]), ys = points.map(p => p[1])
     const x0 = Math.max(0, Math.min(...xs) - pad), y0 = Math.max(0, Math.min(...ys) - pad * image.width / image.height)
     const x1 = Math.min(100, Math.max(...xs) + pad), y1 = Math.min(100, Math.max(...ys) + pad * image.width / image.height)
     if (x1 - x0 < .8 && y1 - y0 < .8) return  // a click, not a marking
     const box = { x: x0, y: y0, width: Math.max(.5, x1 - x0), height: Math.max(.5, y1 - y0) }
-    onSelect?.({ shape: tool, box, points: tool === 'rect' ? [] : thin(points), brush: tool === 'brush' ? BRUSH : 0 })
+    onSelect?.({ shape: tool as Selection['shape'], box, points: tool === 'rect' ? [] : thin(points), brush: tool === 'brush' ? BRUSH : 0 })
   }
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return
+    if (tool === 'note') { placeNote(e.clientX, e.clientY); return }
     e.currentTarget.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (tool !== 'pan' && pointers.current.size === 1) setStroke([toImage(e.clientX, e.clientY)])
@@ -267,19 +287,19 @@ export default function VisualStage({ image, regions, overlays: activeOverlays, 
   const dot = worldSize / 48
 
   return <div ref={root} className="vc-visual-stack">
-    <div className="vc-canvas-toolbar"><div className="vc-tools" role="toolbar" aria-label="Strumenti di selezione">
+    <div className="vc-canvas-toolbar"><div className="vc-tools" role="toolbar" aria-label={tl("Strumenti di selezione")}>
       {TOOLS.map(t => <button key={t.tool} aria-label={t.label} title={t.label} aria-pressed={tool === t.tool} className={tool === t.tool ? 'vc-tool-on' : ''}
         onClick={() => setTool(t.tool)}>{toolIcon(t.tool)}</button>)}
-      {selection && <button className="vc-clear-selection" onClick={() => onSelect?.(null)}>Togli selezione</button>}
+      {selection && <button className="vc-clear-selection" onClick={() => onSelect?.(null)}>{tl("Togli selezione")}</button>}
     </div><div>
-      <button aria-label={showOverlays ? 'Nascondi disegno' : 'Mostra disegno'} aria-pressed={showOverlays} onClick={() => setShowOverlays(v => !v)}>{showOverlays ? <Eye /> : <EyeOff />}</button>
-      <button aria-label="Inquadra l'immagine" onClick={() => { takeControl(); flyTo(fit(layout.image, .04), 600) }}><ImageIcon /></button>
-      <button aria-label="Adatta tutto" onClick={() => { userMoved.current = false; flyTo(fit(world), 600) }}><Expand /></button>
-      {lab.area && <button className="vc-lab-button" aria-label="Vai al Laboratorio" onClick={() => { takeControl(); setTourFolded(true); flyTo(fit(lab.area!, .04), 700) }}>Laboratorio</button>}
-      <button aria-label="Riduci" onClick={() => { takeControl(); zoomAt(1.25, size.width / 2, size.height / 2) }}><ZoomOut /></button>
-      <button className="vc-fit" aria-label="Adatta tutto" onClick={() => { userMoved.current = false; flyTo(fit(world), 600) }}>{zoomPercent}%</button>
-      <button aria-label="Ingrandisci" onClick={() => { takeControl(); zoomAt(.8, size.width / 2, size.height / 2) }}><ZoomIn /></button>
-      <button disabled={!document.fullscreenEnabled} aria-label={fullscreen ? 'Esci da schermo intero' : 'Canvas a schermo intero'} onClick={() => {
+      <button aria-label={showOverlays ? tl("Nascondi disegno") : tl("Mostra disegno")} aria-pressed={showOverlays} onClick={() => setShowOverlays(v => !v)}>{showOverlays ? <Eye /> : <EyeOff />}</button>
+      <button aria-label={tl("Inquadra l'immagine")} onClick={() => { takeControl(); flyTo(fit(layout.image, .04), 600) }}><ImageIcon /></button>
+      <button aria-label={tl("Adatta tutto")} onClick={() => { userMoved.current = false; flyTo(fit(world), 600) }}><Expand /></button>
+      {lab.area && <button className="vc-lab-button" aria-label={tl("Vai al Laboratorio")} onClick={() => { takeControl(); setTourFolded(true); flyTo(fit(lab.area!, .04), 700) }}>{tl("Laboratorio")}</button>}
+      <button aria-label={tl("Riduci")} onClick={() => { takeControl(); zoomAt(1.25, size.width / 2, size.height / 2) }}><ZoomOut /></button>
+      <button className="vc-fit" aria-label={tl("Adatta tutto")} onClick={() => { userMoved.current = false; flyTo(fit(world), 600) }}>{zoomPercent}%</button>
+      <button aria-label={tl("Ingrandisci")} onClick={() => { takeControl(); zoomAt(.8, size.width / 2, size.height / 2) }}><ZoomIn /></button>
+      <button disabled={!document.fullscreenEnabled} aria-label={fullscreen ? tl("Esci da schermo intero") : tl("Canvas a schermo intero")} onClick={() => {
         const operation = fullscreen ? document.exitFullscreen() : root.current?.requestFullscreen()
         operation?.catch(() => undefined)
       }}>{fullscreen ? <Minimize2 /> : <Maximize2 />}</button>
@@ -287,7 +307,7 @@ export default function VisualStage({ image, regions, overlays: activeOverlays, 
     <div ref={viewport} className={`vc-canvas-viewport vc-infinite ${tool !== 'pan' ? 'vc-marking' : ''}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onDoubleClick={() => { userMoved.current = false; flyTo(fit(world), 600) }}>
       <svg viewBox={`${camera.x} ${camera.y} ${camera.w} ${camera.h}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
-        className="vc-source-svg" role="img" aria-label={`Immagine: ${image.name}`}>
+        className="vc-source-svg" role="img" aria-label={tl("Immagine: {0}", image.name)}>
         <defs>
           <pattern id={`${id}-dots`} width={dot} height={dot} patternUnits="userSpaceOnUse"><circle cx={dot / 2} cy={dot / 2} r={dot * .055} fill="#c3c8d4" /></pattern>
         </defs>
@@ -299,36 +319,43 @@ export default function VisualStage({ image, regions, overlays: activeOverlays, 
           image={image} review={review} onStepDone={playing ? onStepDone : undefined} params={params} onParam={onParam} />}
         <LabCards lab={lab} unit={worldSize} onAsk={onAskLab} />
         <SelectionMark selection={selection} stroke={stroke} tool={tool} frame={layout.image} />
+        <NoteCards notes={notes} frame={layout.image} unit={worldSize} editing={editing} onEdit={setEditing}
+          onChange={(id, text) => onNotes?.(notes.map(n => n.id === id ? { ...n, text } : n))}
+          onDone={id => { setEditing(null); onNotes?.(notes.filter(n => n.id !== id || n.text.trim())) }}
+          onDelete={id => { setEditing(null); onNotes?.(notes.filter(n => n.id !== id)) }} />
       </svg>
-      {tool !== 'pan' && !selection && !stroke && <div className="vc-marking-hint" role="status">{tool === 'rect' ? 'Trascina un rettangolo' : tool === 'lasso' ? 'Disegna un contorno chiuso' : tool === 'scribble' ? 'Scarabocchia sopra la parte' : 'Colora la zona che ti interessa'} sull’immagine</div>}
-      {reviewing && <div className="vc-reviewing" role="status"><Loader2 className="animate-spin" />Revisione grafica in corso…</div>}
+      {tool === 'note' && !editing && <div className="vc-marking-hint" role="status">{tl("Tocca dove vuoi scrivere la tua idea: un dato, una deduzione, un risultato")}</div>}
+      {tool !== 'pan' && tool !== 'note' && !selection && !stroke && <div className="vc-marking-hint" role="status">{tool === 'rect' ? tl("Trascina un rettangolo") : tool === 'lasso' ? tl("Disegna un contorno chiuso") : tool === 'scribble' ? tl("Scarabocchia sopra la parte") : tl("Colora la zona che ti interessa")} {tl("sull’immagine")}</div>}
+      {onAskNotes && notes.some(n => n.text.trim()) && !editing && <button className="vc-notes-ask" onPointerDown={e => e.stopPropagation()} onClick={onAskNotes}>
+        <StickyNote />{tl("Fai leggere le mie idee al tutor (")}{notes.filter(n => n.text.trim()).length})</button>}
+      {reviewing && <div className="vc-reviewing" role="status"><Loader2 className="animate-spin" />{tl("Revisione grafica in corso…")}</div>}
     </div>
     {drawing && showOverlays && !reviewing && tourFolded && <button className="vc-tour-pill" onClick={() => setTourFolded(false)}>
-      <Play />Percorso · {lastStep + 1} {lastStep ? 'passi' : 'passo'}</button>}
+      <Play />{tl("Percorso ·")} {lastStep + 1} {lastStep ? 'passi' : 'passo'}</button>}
     {drawing && showOverlays && !reviewing && !tourFolded && (() => {
       const overview = drawingStep > lastStep, current = Math.min(drawingStep, lastStep)
       const note = drawing.notes?.[current]
       return <div className="vc-step-card" aria-live="polite">
         <div className="vc-step-head">
-          <span className="vc-step-count">{overview ? 'Panoramica' : `Passo ${current + 1} di ${lastStep + 1}`}</span>
-          <div className="vc-step-dots">{drawing.steps.map((title, i) => <button key={i} aria-label={`Passo ${i + 1}: ${title}`} title={title}
+          <span className="vc-step-count">{overview ? tl("Panoramica") : tl("Passo {0} di {1}", current + 1, lastStep + 1)}</span>
+          <div className="vc-step-dots">{drawing.steps.map((title, i) => <button key={i} aria-label={tl("Passo {0}: {1}", i + 1, title)} title={title}
             className={!overview && i === current ? 'vc-dot-on' : i < current && !overview ? 'vc-dot-done' : ''} onClick={() => goTo(i)} />)}</div>
-          <button className="vc-step-auto" aria-label="Riduci il percorso" title="Riduci" onClick={() => setTourFolded(true)}><Minimize2 /></button>
-          <button className="vc-step-auto" aria-label={playing ? 'Ferma la guida automatica' : 'Guida automatica'} title={playing ? 'Ferma' : 'Guida automatica'}
+          <button className="vc-step-auto" aria-label={tl("Riduci il percorso")} title={tl("Riduci")} onClick={() => setTourFolded(true)}><Minimize2 /></button>
+          <button className="vc-step-auto" aria-label={playing ? tl("Ferma la guida automatica") : tl("Guida automatica")} title={playing ? tl("Ferma") : tl("Guida automatica")}
             onClick={() => { if (playing) setPlaying(false); else play() }}>{playing ? <Pause /> : <Play />}</button>
         </div>
         <h3>{overview ? drawing.title : drawing.steps[current]}</h3>
         {!overview && note && <p>{note}</p>}
         <div className="vc-step-actions">
-          <button disabled={!overview && current === 0} onClick={() => goTo(overview ? lastStep : current - 1)}><ChevronLeft />Indietro</button>
-          {!overview && onAskStep && <button onClick={askThisStep}><MessageCircle />Chiedi su questo</button>}
-          {!overview && <button className="vc-step-ghost" onClick={() => goTo(lastStep + 1)}>Vedi tutto</button>}
-          {overview ? <button className="vc-step-next" onClick={() => goTo(0)}>Dal primo passo</button>
-            : <button className="vc-step-next" onClick={() => goTo(current + 1)}>{current < lastStep ? <>Avanti<ChevronRight /></> : 'Fine'}</button>}
+          <button disabled={!overview && current === 0} onClick={() => goTo(overview ? lastStep : current - 1)}><ChevronLeft />{tl("Indietro")}</button>
+          {!overview && onAskStep && <button onClick={askThisStep}><MessageCircle />{tl("Chiedi su questo")}</button>}
+          {!overview && <button className="vc-step-ghost" onClick={() => goTo(lastStep + 1)}>{tl("Vedi tutto")}</button>}
+          {overview ? <button className="vc-step-next" onClick={() => goTo(0)}>{tl("Dal primo passo")}</button>
+            : <button className="vc-step-next" onClick={() => goTo(current + 1)}>{current < lastStep ? <>{tl("Avanti")}<ChevronRight /></> : tl("Fine")}</button>}
         </div>
       </div>
     })()}
-    {selected && <div className="vc-canvas-tooltip" role="status"><div><strong>{selected.label}</strong>{selected.confidence === 'low' && <span> · Lettura incerta</span>}<p>{selected.text}</p></div><button aria-label="Chiudi dettaglio" onClick={() => setSelected(null)}>×</button></div>}
+    {selected && <div className="vc-canvas-tooltip" role="status"><div><strong>{selected.label}</strong>{selected.confidence === 'low' && <span> {tl("· Lettura incerta")}</span>}<p>{selected.text}</p></div><button aria-label={tl("Chiudi dettaglio")} onClick={() => setSelected(null)}>×</button></div>}
   </div>
 }
 
@@ -374,6 +401,34 @@ function ClassicOverlays({ overlays, regions, layout, focusKey, onSelect }: {
       </g>
     })}
   </motion.g>
+}
+
+/**
+ * The student's notes: small cards on the canvas, edited in place. Pointer events stay inside so typing never pans.
+ * Enter saves, Shift+Enter starts a new line, Escape leaves (an empty note disappears).
+ */
+function NoteCards({ notes, frame, unit, editing, onEdit, onChange, onDone, onDelete }: {
+  notes: StudentNote[]; frame: Frame; unit: number; editing: string | null; onEdit: (id: string) => void
+  onChange: (id: string, text: string) => void; onDone: (id: string) => void; onDelete: (id: string) => void
+}) {
+  const width = unit * .2, font = unit * .016
+  return <g className="vc-notes">{notes.map((n, i) => {
+    const x = frame.x + n.x / 100 * frame.width, y = frame.y + n.y / 100 * frame.height
+    const lines = Math.max(2, Math.ceil(n.text.length / 26) + (n.text.match(/\n/g)?.length ?? 0))
+    const height = font * (2.6 + Math.min(10, lines) * 1.35)
+    const open = editing === n.id
+    return <foreignObject key={n.id} x={x} y={y} width={width} height={open ? Math.max(height, font * 9) : height} overflow="visible">
+      <div className={`vc-note ${open ? 'vc-note-open' : ''}`} style={{ fontSize: font }} onPointerDown={e => e.stopPropagation()}
+        onDoubleClick={e => e.stopPropagation()} onClick={() => { if (!open) onEdit(n.id) }}>
+        <div className="vc-note-head"><span>{tl("La mia idea")} {i + 1}</span>
+          <button type="button" aria-label={tl("Elimina la nota")} onClick={e => { e.stopPropagation(); onDelete(n.id) }}><X /></button></div>
+        {open ? <textarea autoFocus value={n.text} maxLength={400} placeholder={tl("Scrivi qui: cosa noti, cosa deduci, il tuo risultato…")}
+          aria-label={tl("Testo della nota")} onChange={e => onChange(n.id, e.target.value)} onBlur={() => onDone(n.id)}
+          onKeyDown={e => { if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Escape') { e.preventDefault(); onDone(n.id) } }} />
+          : <p>{n.text}</p>}
+      </div>
+    </foreignObject>
+  })}</g>
 }
 
 /** The student's marking (saved or in progress), in magenta so it never looks like part of the tutor's drawing. */

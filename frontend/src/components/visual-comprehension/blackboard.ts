@@ -39,6 +39,8 @@ export type DrawingMark = {
   numberline?: NumberLineData | null; area_model?: AreaModelData | null; anchors?: string[]; target?: string | null; radius?: number; count?: number
   // v3: curved arrows and soft strokes
   bend?: number; sharp?: boolean; ink?: boolean
+  /** Kept from the previous turn's drawing: on the board from the start, never animated again. */
+  carried?: boolean
 }
 export type Board = { id: string; side: 'right' | 'left' | 'below' | 'above'; width: number; height: number; title: string }
 export type CameraFocus = { step: number; target: string }

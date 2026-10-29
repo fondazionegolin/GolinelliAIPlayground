@@ -14,6 +14,7 @@ import rehypeKatex from 'rehype-katex'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { tl } from '@/i18n/tl'
 
 interface Message {
   id: string
@@ -195,7 +196,7 @@ export function ChatConversationView({
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-slate-900 text-sm truncate">{profileName}</h3>
           {isLoading && (
-            <p className="text-[11px] text-slate-500">Sta scrivendo...</p>
+            <p className="text-[11px] text-slate-500">{tl("Sta scrivendo...")}</p>
           )}
         </div>
         {onMinimize && (
@@ -207,7 +208,7 @@ export function ChatConversationView({
               onMinimize()
             }}
             className="h-8 w-8 p-0 rounded-xl"
-            title="Riduci a icona"
+            title={tl("Riduci a icona")}
           >
             <Minimize2 className="h-4 w-4 text-slate-700" />
           </Button>
@@ -233,9 +234,9 @@ export function ChatConversationView({
                 <Bot className="h-6 w-6 text-white" />
               )}
             </div>
-            <h3 className="font-bold text-base text-slate-900 mb-1.5">Sono {profileName}</h3>
+            <h3 className="font-bold text-base text-slate-900 mb-1.5">{tl("Sono")} {profileName}</h3>
             <p className="text-slate-600 text-sm max-w-xs mx-auto mb-4">
-              Come posso aiutarti oggi?
+              {tl("Come posso aiutarti oggi?")}
             </p>
             {suggestedPrompts.length > 0 && (
               <div className="flex flex-wrap gap-2 justify-center max-w-sm mx-auto">
@@ -286,7 +287,7 @@ export function ChatConversationView({
                   <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
-                <span className="text-sm text-slate-400">Sto pensando...</span>
+                <span className="text-sm text-slate-400">{tl("Sto pensando...")}</span>
               </div>
             </div>
           </div>
@@ -382,7 +383,7 @@ export function ChatConversationView({
                 handleSend()
               }
             }}
-            placeholder={attachedFiles.length > 0 ? "Aggiungi una descrizione..." : "Scrivi un messaggio..."}
+            placeholder={attachedFiles.length > 0 ? tl("Aggiungi una descrizione...") : tl("Scrivi un messaggio...")}
             disabled={isLoading}
             className="min-h-11 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-[16px] leading-7 text-slate-900 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
           />

@@ -1,18 +1,10 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
-import { AITextAssistPanel } from './AITextAssistPanel'
 import { SlideTextBlock } from './SlideTextBlock'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'
 import { moveBlockLayer, normalizeLayerOrder, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
-
-interface TextSelectionState {
-  blockId: string
-  text: string
-  position: { x: number; y: number }
-  from: number
-  to: number
-}
+import { tl } from '@/i18n/tl'
 
 /** Rotates a screen-space delta by `angleDeg` into the block's local (unrotated) coordinate space,
  * so the existing per-handle resize math (defined in that local space) keeps working unchanged. */
@@ -98,6 +90,10 @@ interface SlideEditorProps {
   onChange: (blocks: SlideBlock[]) => void
   selectedBlockId: string | null
   onSelectBlock: (id: string | null) => void
+  /** Multi-selection (Shift/Ctrl/Cmd+click, or drag a selection box on empty space / the locked
+   * background). When omitted the editor behaves as single-selection. */
+  selectedBlockIds?: string[]
+  onSelectBlocks?: (ids: string[]) => void
   scale?: number
   readOnly?: boolean
   /** Slide canvas dimensions (unrotated, unscaled) — used for grid/guide snap against slide bounds. */
@@ -115,6 +111,8 @@ export function SlideEditor({
   onChange,
   selectedBlockId,
   onSelectBlock,
+  selectedBlockIds,
+  onSelectBlocks,
   scale = 1,
   readOnly = false,
   slideWidth,
@@ -135,10 +133,16 @@ export function SlideEditor({
     pivotX?: number
     pivotY?: number
     initialBlock: SlideBlock | null
+    /** Starting positions of every selected block moved together with the dragged one. */
+    group?: { id: string; x: number; y: number }[]
   } | null>(null)
+  // Text block in text-editing mode (entered by double-click); otherwise a click selects and drags it.
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
+  const [marquee, setMarquee] = useState<{ startX: number; startY: number; x: number; y: number; pointerId: number; additive: boolean; base: string[] } | null>(null)
 
-  const [textSelection, setTextSelection] = useState<TextSelectionState | null>(null)
   const blockEditors = useRef<Map<string, Editor>>(new Map())
+  // A move drag starts only past a small threshold, so a click or double-click never nudges/snaps the block.
+  const dragMovedRef = useRef(false)
   const blockWrapperRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [activeGuides, setActiveGuides] = useState<GuideLine[]>([])
   const [contextMenu, setContextMenu] = useState<{
@@ -151,6 +155,123 @@ export function SlideEditor({
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const selectedBlock = selectedBlockId ? blocks.find(block => block.id === selectedBlockId) || null : null
+  const selection = selectedBlockIds && selectedBlockIds.length > 0 ? selectedBlockIds : (selectedBlockId ? [selectedBlockId] : [])
+  const select = useCallback((ids: string[]) => {
+    onSelectBlocks?.(ids)
+    onSelectBlock(ids.length ? ids[ids.length - 1] : null)
+  }, [onSelectBlock, onSelectBlocks])
+
+  // A text editor stays the toolbar's target while its block stays selected, so a range selected in
+  // the text survives clicking a toolbar control (which blurs the editor).
+  const activeEditorBlockRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (editingBlockId && (selection.length !== 1 || selection[0] !== editingBlockId)) setEditingBlockId(null)
+    if (activeEditorBlockRef.current && (selection.length !== 1 || selection[0] !== activeEditorBlockRef.current)) {
+      activeEditorBlockRef.current = null
+      onActiveTextEditorChange?.(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection.join('|')])
+  // Leaving text editing hands the toolbar back to whole-block formatting.
+  useEffect(() => {
+    if (!editingBlockId && activeEditorBlockRef.current) {
+      activeEditorBlockRef.current = null
+      onActiveTextEditorChange?.(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingBlockId])
+
+  const startEditing = (blockId: string, clientX: number, clientY: number) => {
+    setEditingBlockId(blockId)
+    // Wait for the block to become editable and hit-testable, then put the caret where the user clicked.
+    requestAnimationFrame(() => {
+      const editor = blockEditors.current.get(blockId)
+      if (!editor) return
+      const pos = editor.view.posAtCoords({ left: clientX, top: clientY })?.pos
+      editor.commands.focus(pos ?? 'end')
+    })
+  }
+
+  const canvasPoint = (clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    return { x: rect ? (clientX - rect.left) / scale : 0, y: rect ? (clientY - rect.top) / scale : 0 }
+  }
+  const startMarquee = (e: React.PointerEvent) => {
+    if (readOnly || !onSelectBlocks) return false
+    const point = canvasPoint(e.clientX, e.clientY)
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey
+    setMarquee({ startX: point.x, startY: point.y, x: point.x, y: point.y, pointerId: e.pointerId, additive, base: additive ? selection : [] })
+    return true
+  }
+
+  useEffect(() => {
+    if (!marquee) return
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== marquee.pointerId) return
+      const point = canvasPoint(e.clientX, e.clientY)
+      setMarquee(current => current ? { ...current, x: point.x, y: point.y } : current)
+    }
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== marquee.pointerId) return
+      const left = Math.min(marquee.startX, marquee.x), right = Math.max(marquee.startX, marquee.x)
+      const top = Math.min(marquee.startY, marquee.y), bottom = Math.max(marquee.startY, marquee.y)
+      if (right - left > 4 || bottom - top > 4) {
+        const hit = blocks
+          .filter(b => !b.hidden && !b.locked && b.x < right && b.x + b.width > left && b.y < bottom && b.y + Math.max(b.height, 1) > top)
+          .map(b => b.id)
+        select(Array.from(new Set([...marquee.base, ...hit])))
+      }
+      setMarquee(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marquee, blocks, select])
+
+  // Keyboard: Delete/Backspace removes, arrows nudge (Shift = 10px), Escape deselects — never while
+  // typing in a text block or a form field.
+  useEffect(() => {
+    if (readOnly) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (event.key === 'Escape' && editingBlockId && target?.isContentEditable) {
+        // First Escape leaves text editing (block stays selected), the next one deselects.
+        target.blur()
+        setEditingBlockId(null)
+        return
+      }
+      if (!target || target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      if (selection.length === 0) return
+      const editable = blocks.filter(b => selection.includes(b.id) && !b.locked)
+      if (event.key === 'Escape') { select([]); return }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && editable.length) {
+        event.preventDefault()
+        const ids = new Set(editable.map(b => b.id))
+        onChange(normalizeLayerOrder(blocks.filter(b => !ids.has(b.id))))
+        select([])
+        return
+      }
+      const step = event.shiftKey ? 10 : 1
+      const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key]
+      if (delta && editable.length) {
+        event.preventDefault()
+        const ids = new Set(editable.map(b => b.id))
+        onChange(blocks.map(b => ids.has(b.id) ? {
+          ...b,
+          x: slideWidth ? Math.min(Math.max(0, b.x + delta[0]), Math.max(0, slideWidth - b.width)) : b.x + delta[0],
+          y: slideHeight ? Math.min(Math.max(0, b.y + delta[1]), Math.max(0, slideHeight - b.height)) : b.y + delta[1],
+        } : b))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [readOnly, selection, blocks, onChange, select, slideWidth, slideHeight, editingBlockId])
   const orderedBlocks = blocks
     .map((block, index) => ({ block, index }))
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
@@ -160,7 +281,8 @@ export function SlideEditor({
   const handleCanvasClick = (e: React.PointerEvent) => {
     setContextMenu(null)
     if (e.target === canvasRef.current) {
-      onSelectBlock(null)
+      if (!(e.shiftKey || e.metaKey || e.ctrlKey)) select([])
+      startMarquee(e)
     }
   }
 
@@ -215,8 +337,8 @@ export function SlideEditor({
     const rect = canvasRef.current?.getBoundingClientRect()
     const canvasX = rect ? (e.clientX - rect.left) / scale : 0
     const canvasY = rect ? (e.clientY - rect.top) / scale : 0
-    if (blockId) onSelectBlock(blockId)
-    else onSelectBlock(null)
+    if (blockId) { if (!selection.includes(blockId)) select([blockId]) }
+    else select([])
     setContextMenu({ x: e.clientX, y: e.clientY, canvasX, canvasY, blockId })
   }
 
@@ -231,6 +353,10 @@ export function SlideEditor({
       if (!dragState || !dragState.initialBlock) return
       if (e.pointerId !== dragState.pointerId) return
       e.preventDefault()
+      if (dragState.isDragging && !dragMovedRef.current) {
+        if (Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY) < 3) return
+        dragMovedRef.current = true
+      }
 
       // Adjust delta by scale to ensure smooth movement regardless of zoom
       const deltaX = (e.clientX - dragState.startX) / scale
@@ -241,10 +367,29 @@ export function SlideEditor({
       if (dragState.isDragging && slideWidth && slideHeight) {
         const init = dragState.initialBlock!
         const proposed = { x: init.x + deltaX, y: init.y + deltaY, width: init.width, height: init.height }
-        const others = blocks.filter(b => b.id !== init.id)
+        const others = blocks.filter(b => b.id !== init.id && !(dragState.group || []).some(item => item.id === b.id))
         const snap = computeSnap(proposed, others, { width: slideWidth, height: slideHeight }, snapOptions)
         dragSnap = { x: snap.x, y: snap.y }
         setActiveGuides(snap.guides)
+      }
+
+      if (dragState.isDragging && dragState.group && dragState.group.length > 1) {
+        const init = dragState.initialBlock!
+        const dx = (dragSnap ? dragSnap.x : init.x + deltaX) - init.x
+        const dy = (dragSnap ? dragSnap.y : init.y + deltaY) - init.y
+        const starts = new Map(dragState.group.map(item => [item.id, item]))
+        onChange(blocks.map(b => {
+          const start = starts.get(b.id)
+          if (!start) return b
+          const x = start.x + dx
+          const y = start.y + dy
+          return {
+            ...b,
+            x: slideWidth ? Math.min(Math.max(0, x), Math.max(0, slideWidth - b.width)) : x,
+            y: slideHeight ? Math.min(Math.max(0, y), Math.max(0, slideHeight - b.height)) : y,
+          }
+        }))
+        return
       }
 
       const newBlocks = blocks.map(b => {
@@ -343,48 +488,6 @@ export function SlideEditor({
     }
   }, [dragState, blocks, onChange, scale, slideWidth, slideHeight, snapOptions])
 
-  // Track the focused block's selection range (drives both the toolbar's range-aware
-  // formatting and the AI text-assist popup), replacing the old textarea selectionStart/End.
-  const handleBlockSelectionChange = useCallback((blockId: string) => {
-    if (readOnly) return
-    const editor = blockEditors.current.get(blockId)
-    if (!editor) return
-    const { from, to } = editor.state.selection
-    const selectedText = editor.state.doc.textBetween(from, to, ' ')
-
-    if (selectedText && selectedText.trim().length > 3) {
-      const rect = blockWrapperRefs.current.get(blockId)?.getBoundingClientRect()
-      if (!rect) return
-      const viewportHeight = window.innerHeight
-      const panelHeight = 320 // Approximate panel height
-
-      // Position panel above the block if there's not enough space below
-      let yPos = rect.top - panelHeight - 10
-      if (yPos < 80) {
-        yPos = Math.min(rect.bottom + 10, viewportHeight - panelHeight - 20)
-      }
-
-      setTextSelection({
-        blockId,
-        text: selectedText.trim(),
-        position: { x: rect.left + rect.width / 2 - 140, y: yPos },
-        from,
-        to,
-      })
-    } else {
-      setTextSelection(null)
-    }
-  }, [readOnly])
-
-  // Apply AI-generated text to the block's current selection range
-  const handleApplyAIText = useCallback((newText: string) => {
-    if (!textSelection) return
-    const editor = blockEditors.current.get(textSelection.blockId)
-    if (!editor) return
-    editor.chain().focus().deleteRange({ from: textSelection.from, to: textSelection.to }).insertContent(newText).run()
-    setTextSelection(null)
-  }, [textSelection])
-
   // Handle file drop for images
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -434,7 +537,7 @@ export function SlideEditor({
     >
       {!blocks.length && !readOnly && (
         <div className="absolute inset-0 flex items-center justify-center text-slate-300 pointer-events-none select-none">
-          <p>Trascina immagini qui o usa la barra strumenti</p>
+          <p>{tl("Trascina immagini qui o usa la barra strumenti")}</p>
         </div>
       )}
 
@@ -445,15 +548,17 @@ export function SlideEditor({
             if (el) blockWrapperRefs.current.set(block.id, el)
             else blockWrapperRefs.current.delete(block.id)
           }}
-          className={`absolute group ${selectedBlockId === block.id ? 'ring-2 ring-blue-500' : 'hover:ring-1 hover:ring-slate-300'}`}
+          className={`absolute group ${selection.includes(block.id) || readOnly ? '' : 'hover:ring-1 hover:ring-slate-300'}`}
           style={{
             left: block.x,
             top: block.y,
             width: block.width,
             height: block.height,
-            zIndex: selectedBlockId === block.id ? 1000 : block.zIndex ?? index,
-            cursor: block.locked ? 'default' : dragState?.isDragging ? 'grabbing' : 'grab',
-            touchAction: readOnly || block.locked || block.type === 'text' ? undefined : 'none',
+            // Selecting never changes paint order (a selected full-slide background used to jump on top
+            // and hide everything): the selection frame and handles live in a separate overlay below.
+            zIndex: block.zIndex ?? index,
+            cursor: block.locked ? 'default' : dragState?.isDragging ? 'grabbing' : selection.includes(block.id) ? 'move' : 'grab',
+            touchAction: readOnly || block.locked || editingBlockId === block.id ? undefined : 'none',
             transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
             transformOrigin: 'center center',
             ...(block.type === 'text' || block.type === 'image'
@@ -471,20 +576,42 @@ export function SlideEditor({
                 : {}),
           }}
           onContextMenu={(e) => openContextMenu(e, block.id)}
+          onDoubleClick={(e) => {
+            if (readOnly || block.locked || block.type !== 'text' || e.shiftKey || e.metaKey || e.ctrlKey) return
+            e.stopPropagation()
+            select([block.id])
+            startEditing(block.id, e.clientX, e.clientY)
+          }}
           onPointerDown={(e) => {
             if (readOnly) return
             e.stopPropagation()
-            onSelectBlock(block.id)
-            if (block.locked) return
+            const additive = e.shiftKey || e.metaKey || e.ctrlKey
+            if (additive && onSelectBlocks) {
+              // Toggle in/out of the multi-selection; no drag.
+              e.preventDefault()
+              select(selection.includes(block.id) ? selection.filter(id => id !== block.id) : [...selection.filter(id => id !== block.id), block.id])
+              return
+            }
+            if (block.locked) {
+              // A locked block (e.g. the slide background) is selected on click; dragging from it draws a selection box.
+              select([block.id])
+              startMarquee(e)
+              return
+            }
+            const inGroup = selection.length > 1 && selection.includes(block.id)
+            if (!inGroup) select([block.id])
             e.preventDefault()
             e.currentTarget.setPointerCapture(e.pointerId)
+            const groupIds = inGroup ? selection : [block.id]
+            dragMovedRef.current = false
             setDragState({
               isDragging: true,
               isResizing: false,
               startX: e.clientX,
               startY: e.clientY,
               pointerId: e.pointerId,
-              initialBlock: block
+              initialBlock: block,
+              group: blocks.filter(b => groupIds.includes(b.id) && !b.locked).map(b => ({ id: b.id, x: b.x, y: b.y })),
             })
           }}
         >
@@ -498,16 +625,17 @@ export function SlideEditor({
             <SlideTextBlock
               block={block}
               readOnly={readOnly}
+              editing={editingBlockId === block.id}
               onChange={(html) => {
                 const newBlocks = blocks.map(b => b.id === block.id ? { ...b, content: html } : b)
                 onChange(newBlocks)
               }}
-              onSelectBlock={() => onSelectBlock(block.id)}
+              onSelectBlock={() => { if (!(selection.length > 1 && selection.includes(block.id))) select([block.id]) }}
               onEditorCreate={(editor) => blockEditors.current.set(block.id, editor)}
               onEditorDestroy={() => blockEditors.current.delete(block.id)}
-              onSelectionChange={() => handleBlockSelectionChange(block.id)}
-              onEditorFocus={(editor) => onActiveTextEditorChange?.(editor)}
-              onEditorBlur={() => onActiveTextEditorChange?.(null)}
+              onSelectionChange={() => undefined}
+              onEditorFocus={(editor) => { activeEditorBlockRef.current = block.id; onActiveTextEditorChange?.(editor) }}
+              onEditorBlur={() => undefined}
               onOverflowFontFit={(fontSize) => {
                 const newBlocks = blocks.map(b => b.id === block.id && b.type === 'text' ? { ...b, style: { ...b.style, fontSize } } : b)
                 onChange(newBlocks)
@@ -532,13 +660,30 @@ export function SlideEditor({
             </svg>
           ) : null /* rectangle/ellipse appearance is fully handled by the wrapper's own style above */}
 
-          {/* Resize Handles (only when selected and unlocked) */}
-          {selectedBlockId === block.id && !readOnly && !block.locked && (
+        </div>
+      ))}
+
+      {/* Selection overlay: frame + handles above every block, without touching the block's own layer. */}
+      {!readOnly && paintBlocks.filter(({ block }) => selection.includes(block.id)).map(({ block }) => (
+        <div
+          key={`selection-${block.id}`}
+          className="pointer-events-none absolute ring-2 ring-blue-500"
+          style={{
+            left: block.x,
+            top: block.y,
+            width: block.width,
+            height: block.height,
+            zIndex: 1000,
+            transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
+            transformOrigin: 'center center',
+          }}
+        >
+          {!block.locked && selection.length === 1 && (
             <>
               {(block.type === 'line' ? ['nw', 'se'] : ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']).map((handle) => (
                 <div
                   key={handle}
-                  className="absolute h-4 w-4 touch-none rounded-full border border-blue-500 bg-white z-20 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+                  className="pointer-events-auto absolute h-4 w-4 touch-none rounded-full border border-blue-500 bg-white z-20 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
                   style={{
                     top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%',
                     left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%',
@@ -564,9 +709,9 @@ export function SlideEditor({
 
               {/* Rotation handle — pivots around the block's own center, captured on mousedown. */}
               <div
-                className="absolute flex h-5 w-5 touch-none -translate-x-1/2 items-center justify-center rounded-full border border-blue-500 bg-white z-20 cursor-alias [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:w-7"
+                className="pointer-events-auto absolute flex h-5 w-5 touch-none -translate-x-1/2 items-center justify-center rounded-full border border-blue-500 bg-white z-20 cursor-alias [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:w-7"
                 style={{ top: -28, left: '50%' }}
-                title="Trascina per ruotare (Shift per scattare a 15°)"
+                title={tl("Trascina per ruotare (Shift per scattare a 15°)")}
                 onPointerDown={(e) => {
                   e.stopPropagation()
                   e.preventDefault()
@@ -605,14 +750,15 @@ export function SlideEditor({
         />
       ))}
 
-      {/* AI Text Assist Panel */}
-      {textSelection && !readOnly && (
-        <AITextAssistPanel
-          selectedText={textSelection.text}
-          position={textSelection.position}
-          onClose={() => setTextSelection(null)}
-          onApply={handleApplyAIText}
-          context="Slide di presentazione"
+      {marquee && (
+        <div
+          className="pointer-events-none absolute z-[1001] border border-blue-500 bg-blue-500/10"
+          style={{
+            left: Math.min(marquee.startX, marquee.x),
+            top: Math.min(marquee.startY, marquee.y),
+            width: Math.abs(marquee.x - marquee.startX),
+            height: Math.abs(marquee.y - marquee.startY),
+          }}
         />
       )}
 
@@ -623,31 +769,31 @@ export function SlideEditor({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <ContextMenuButton icon={<Type className="h-4 w-4" />} label="Aggiungi testo" onClick={() => runContextAction(() => onContextAddBlock?.('text', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
-          <ContextMenuButton icon={<Layers className="h-4 w-4" />} label="Aggiungi rettangolo" onClick={() => runContextAction(() => onContextAddBlock?.('rectangle', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
-          <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label="Aggiungi ellisse" onClick={() => runContextAction(() => onContextAddBlock?.('ellipse', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
-          <ContextMenuButton icon={<ImageIcon className="h-4 w-4" />} label="Aggiungi immagine" onClick={() => runContextAction(() => onContextAddBlock?.('image', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
+          <ContextMenuButton icon={<Type className="h-4 w-4" />} label={tl("Aggiungi testo")} onClick={() => runContextAction(() => onContextAddBlock?.('text', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
+          <ContextMenuButton icon={<Layers className="h-4 w-4" />} label={tl("Aggiungi rettangolo")} onClick={() => runContextAction(() => onContextAddBlock?.('rectangle', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
+          <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label={tl("Aggiungi ellisse")} onClick={() => runContextAction(() => onContextAddBlock?.('ellipse', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
+          <ContextMenuButton icon={<ImageIcon className="h-4 w-4" />} label={tl("Aggiungi immagine")} onClick={() => runContextAction(() => onContextAddBlock?.('image', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
           {contextMenu.blockId && (
             <>
               <div className="my-1 border-t border-slate-100" />
-              <ContextMenuButton icon={<Copy className="h-4 w-4" />} label="Duplica oggetto" onClick={() => runContextAction(() => duplicateBlock(contextMenu.blockId!))} />
-              <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label="Porta davanti" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'front'))} />
-              <ContextMenuButton icon={<Layers className="h-4 w-4" />} label="Porta dietro" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'back'))} />
-              <ContextMenuButton icon={<MoveUp className="h-4 w-4" />} label="Avanza livello" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'forward'))} />
-              <ContextMenuButton icon={<MoveDown className="h-4 w-4" />} label="Arretra livello" onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'backward'))} />
+              <ContextMenuButton icon={<Copy className="h-4 w-4" />} label={tl("Duplica oggetto")} onClick={() => runContextAction(() => duplicateBlock(contextMenu.blockId!))} />
+              <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label={tl("Porta davanti")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'front'))} />
+              <ContextMenuButton icon={<Layers className="h-4 w-4" />} label={tl("Porta dietro")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'back'))} />
+              <ContextMenuButton icon={<MoveUp className="h-4 w-4" />} label={tl("Avanza livello")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'forward'))} />
+              <ContextMenuButton icon={<MoveDown className="h-4 w-4" />} label={tl("Arretra livello")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'backward'))} />
               <div className="my-1 border-t border-slate-100" />
               <ContextMenuButton
                 icon={blocks.find(b => b.id === contextMenu.blockId)?.locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                label={blocks.find(b => b.id === contextMenu.blockId)?.locked ? 'Sblocca oggetto' : 'Blocca oggetto'}
+                label={blocks.find(b => b.id === contextMenu.blockId)?.locked ? tl("Sblocca oggetto") : tl("Blocca oggetto")}
                 onClick={() => runContextAction(() => toggleLock(contextMenu.blockId!))}
               />
-              <ContextMenuButton icon={<EyeOff className="h-4 w-4" />} label="Nascondi oggetto" onClick={() => runContextAction(() => toggleHidden(contextMenu.blockId!))} />
-              <ContextMenuButton icon={<Trash2 className="h-4 w-4" />} label="Elimina oggetto" danger onClick={() => runContextAction(() => deleteBlock(contextMenu.blockId!))} />
+              <ContextMenuButton icon={<EyeOff className="h-4 w-4" />} label={tl("Nascondi oggetto")} onClick={() => runContextAction(() => toggleHidden(contextMenu.blockId!))} />
+              <ContextMenuButton icon={<Trash2 className="h-4 w-4" />} label={tl("Elimina oggetto")} danger onClick={() => runContextAction(() => deleteBlock(contextMenu.blockId!))} />
             </>
           )}
           {selectedBlock && (
             <div className="border-t border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-              Livello {(selectedBlock.zIndex ?? blocks.findIndex(b => b.id === selectedBlock.id)) + 1} / {blocks.length}
+              {tl("Livello")} {(selectedBlock.zIndex ?? blocks.findIndex(b => b.id === selectedBlock.id)) + 1} / {blocks.length}
             </div>
           )}
         </div>

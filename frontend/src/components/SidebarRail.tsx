@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from '@/components/icons'
 import { Button } from '@/design'
+import { tl } from '@/i18n/tl'
 
 /** Collapsed/expanded state for a page sidebar, remembered per device under `storageKey`. */
 export function useSidebarCollapsed(storageKey: string): [boolean, (collapsed: boolean) => void] {
@@ -19,7 +20,7 @@ const railButtonClass =
   'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-[var(--ds-control-hover)] hover:text-slate-800'
 
 /** Header button that collapses an expanded sidebar into its rail. */
-export function SidebarCollapseButton({ onClick, label = 'Comprimi pannello', side = 'left' }: {
+export function SidebarCollapseButton({ onClick, label = tl("Comprimi pannello"), side = 'left' }: {
   onClick: () => void
   label?: string
   side?: 'left' | 'right'
@@ -50,8 +51,8 @@ export function SidebarRail({
   items = [],
   onExpand,
   onCreate,
-  createLabel = 'Nuovo',
-  expandLabel = 'Espandi pannello',
+  createLabel = tl("Nuovo"),
+  expandLabel = tl("Espandi pannello"),
   label,
   side = 'left',
   className = '',

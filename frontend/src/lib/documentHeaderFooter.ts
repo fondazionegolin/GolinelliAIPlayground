@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 /** Page header / footer of a text document (saved as content.headerFooter, honoured by DOCX/PDF export). */
 export type BandAlign = 'left' | 'center' | 'right'
 export type BandItemType = 'logo' | 'text' | 'page'
@@ -114,19 +115,19 @@ export const bandHasContent = (band: HeaderFooterBand) => band.enabled && band.i
 /** Reads an image file and returns a compact data URL (max 480×160 px box, PNG when it has transparency, else JPEG). */
 export function imageFileToLogoDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) { reject(new Error('Seleziona un file immagine')); return }
+    if (!file.type.startsWith('image/')) { reject(new Error(tl("Seleziona un file immagine"))); return }
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Impossibile leggere il file'))
+    reader.onerror = () => reject(new Error(tl("Impossibile leggere il file")))
     reader.onload = () => {
       const image = new Image()
-      image.onerror = () => reject(new Error('Immagine non valida'))
+      image.onerror = () => reject(new Error(tl("Immagine non valida")))
       image.onload = () => {
         const scale = Math.min(1, 480 / image.width, 160 / image.height)
         const canvas = window.document.createElement('canvas')
         canvas.width = Math.max(1, Math.round(image.width * scale))
         canvas.height = Math.max(1, Math.round(image.height * scale))
         const context = canvas.getContext('2d')
-        if (!context) { reject(new Error('Canvas non disponibile')); return }
+        if (!context) { reject(new Error(tl("Canvas non disponibile"))); return }
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
         const keepsAlpha = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml' || file.type === 'image/gif'
         resolve(canvas.toDataURL(keepsAlpha ? 'image/png' : 'image/jpeg', 0.9))

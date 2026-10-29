@@ -62,4 +62,20 @@ describe('scene rendering', () => {
     expect(svg).not.toContain('NaN')
     if (process.env.VC_PREVIEW_DIR) { mkdirSync(process.env.VC_PREVIEW_DIR, { recursive: true }); writeFileSync(join(process.env.VC_PREVIEW_DIR, `${name}.svg`), svg) }
   })
+
+  it('builds up step by step: earlier marks stay, the new turn starts from what was kept', () => {
+    const layout = getDrawingLayout(W, H, triangle)
+    const at = (scene: DrawingScene, step: number) => renderToStaticMarkup(<BlackboardDrawing scene={scene} layout={layout} regions={regions} visibleStep={step}
+      image={{ url, width: W, height: H }} scale={1} />)
+    const second = at(triangle, 2)
+    for (const id of ['hl', 'h', 'ra', 'calc']) expect(second).toContain(`data-drawing-id="${id}"`)
+    expect(at(triangle, 0)).not.toContain('data-drawing-id="calc"')  // later steps wait their turn
+    const next: DrawingScene = { ...triangle, steps: ['Ora tocca a te'], elements: [
+      ...triangle.elements.filter(m => m.step === 1).map(m => ({ ...m, step: 0, carried: true })),
+      mark('ask', 'formula', { text: 'A = ?', box: { x: 62, y: 20, width: 30, height: 10 }, color: 'blue' }),
+    ] }
+    const kept = at(next, 0)
+    expect(kept).toContain('data-drawing-id="h"')
+    expect(kept).toContain('data-drawing-id="ask"')
+  })
 })

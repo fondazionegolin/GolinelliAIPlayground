@@ -3,6 +3,7 @@ import { Loader2 } from '@/components/icons'
 import type { AccentTheme } from '@/design/themes/roleThemes'
 import { teacherRagApi } from '@/lib/api'
 import { createRagSession, teacherRagSessionStore, type RagSession } from '@/lib/ragSessions'
+import { tl } from '@/i18n/tl'
 
 const RagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 
@@ -57,7 +58,7 @@ export default function TeacherRagWorkspaceView({
         theme={theme}
         session={active}
         onBack={onBack}
-        backLabel="Chat"
+        backLabel={tl("Chat")}
         onSessionUpdate={refresh}
         onNewSession={() => {
           const s = { ...createRagSession(), name: 'Nuovo notebook' }

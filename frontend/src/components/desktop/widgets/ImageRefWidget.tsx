@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface ImageRefConfig {
   url?: string
@@ -12,7 +13,7 @@ export default function ImageRefWidget({ config }: { config: ImageRefConfig }) {
   if (!config.url) {
     return (
       <div className="h-full flex items-center justify-center">
-        <span className="text-xs text-white/30">Nessuna immagine</span>
+        <span className="text-xs text-white/30">{tl("Nessuna immagine")}</span>
       </div>
     )
   }
@@ -25,7 +26,7 @@ export default function ImageRefWidget({ config }: { config: ImageRefConfig }) {
       >
         <img
           src={config.url}
-          alt={config.filename ?? 'Immagine'}
+          alt={config.filename ?? tl("Immagine")}
           className="w-full h-full object-cover"
           draggable={false}
         />
@@ -44,7 +45,7 @@ export default function ImageRefWidget({ config }: { config: ImageRefConfig }) {
           </button>
           <img
             src={config.url}
-            alt={config.filename ?? 'Immagine'}
+            alt={config.filename ?? tl("Immagine")}
             className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
             onClick={e => e.stopPropagation()}
           />

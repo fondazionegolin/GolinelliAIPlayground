@@ -9,6 +9,7 @@ from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
 from app.api.v1.endpoints import drive
 from app.api.v1.endpoints import platform_api
+from app.api.v1.endpoints import presentation_studio
 
 api_router = APIRouter()
 api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"])
@@ -29,6 +30,7 @@ api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])
 api_router.include_router(student.router, prefix="/student", tags=["student"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
+api_router.include_router(presentation_studio.router, prefix="/presentation-studio", tags=["presentation-studio"])
 api_router.include_router(deep_research.router, prefix="/llm/teacher/deep-research", tags=["deep-research"])
 api_router.include_router(inquiry.router, prefix="/llm/realtime/inquiry", tags=["inquiry"])
 api_router.include_router(rag.router, prefix="/rag", tags=["rag"])

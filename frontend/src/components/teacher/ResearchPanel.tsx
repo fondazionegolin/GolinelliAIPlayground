@@ -6,6 +6,7 @@ import {
   Pencil, Search, Sparkles, Square, X, AlertCircle,
 } from '@/components/icons'
 import type { GeneratedDoc } from '@/components/teacher/DocumentCanvas'
+import { tl } from '@/i18n/tl'
 
 export type ResearchRole = 'crawler' | 'reader' | 'analyst' | 'writer' | 'editor'
 
@@ -71,9 +72,9 @@ export function applyResearchEvent(run: ResearchRun, event: any): ResearchRun {
 
 const ROLE_META: Record<ResearchRole, { label: string; Icon: typeof Search }> = {
   crawler: { label: 'Crawler', Icon: Search },
-  reader: { label: 'Lettore', Icon: Globe },
-  analyst: { label: 'Analista', Icon: Brain },
-  writer: { label: 'Autore', Icon: Pencil },
+  reader: { label: tl("Lettore"), Icon: Globe },
+  analyst: { label: tl("Analista"), Icon: Brain },
+  writer: { label: tl("Autore"), Icon: Pencil },
   editor: { label: 'Editor', Icon: Layers },
 }
 
@@ -124,12 +125,12 @@ function ActivityTab({ run }: { run: ResearchRun }) {
   const running = run.agents.filter((a) => a.status === 'running').length
 
   if (run.agents.length === 0) {
-    return <p className="p-6 text-center text-xs text-slate-500">Nessuna attività registrata per questa ricerca.</p>
+    return <p className="p-6 text-center text-xs text-slate-500">{tl("Nessuna attività registrata per questa ricerca.")}</p>
   }
   return (
     <div className="space-y-3 p-4">
       <div className="grid grid-cols-3 gap-2 text-center">
-        {[['Agent', run.agents.length], ['Attivi', running], ['Fonti', run.sources || '—']].map(([name, value]) => (
+        {[['Agent', run.agents.length], [tl("Attivi"), running], [tl("Fonti"), run.sources || '—']].map(([name, value]) => (
           <div key={name as string} className="ds-control rounded-[var(--ds-radius-control)] px-2 py-2">
             <div className="text-base font-extrabold text-slate-800">{value}</div>
             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{name}</div>
@@ -140,7 +141,7 @@ function ActivityTab({ run }: { run: ResearchRun }) {
         <div className="flex flex-wrap gap-1.5">
           {run.rounds.map((r) => (
             <span key={r.round} className="ds-control rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-              Giro {r.round}{r.status === 'done' && r.novelty !== undefined ? ` · novità ${Math.round(r.novelty * 100)}%` : ' · in corso'}{r.saturated ? ' · esaurito' : ''}
+              {tl("Giro")} {r.round}{r.status === 'done' && r.novelty !== undefined ? tl(" · novità {0}%", Math.round(r.novelty * 100)) : tl(" · in corso")}{r.saturated ? ' · esaurito' : ''}
             </span>
           ))}
         </div>
@@ -187,11 +188,11 @@ function DocumentTab({ doc, onChange }: { doc: GeneratedDoc; onChange: (content:
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1.5 px-4 py-2">
-        <button type="button" className={`${pill} ${editing ? '' : 'ds-selected'}`} onClick={() => setEditing(false)}><Eye className="h-3 w-3" />Anteprima</button>
-        <button type="button" className={`${pill} ${editing ? 'ds-selected' : ''}`} onClick={() => setEditing(true)}><Pencil className="h-3 w-3" />Modifica</button>
+        <button type="button" className={`${pill} ${editing ? '' : 'ds-selected'}`} onClick={() => setEditing(false)}><Eye className="h-3 w-3" />{tl("Anteprima")}</button>
+        <button type="button" className={`${pill} ${editing ? 'ds-selected' : ''}`} onClick={() => setEditing(true)}><Pencil className="h-3 w-3" />{tl("Modifica")}</button>
         <span className="flex-1" />
         <button type="button" className={pill} onClick={() => { navigator.clipboard?.writeText(draft); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }}>
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied ? 'Copiato' : 'Copia'}
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied ? tl("Copiato") : tl("Copia")}
         </button>
         <button type="button" className={pill} onClick={download}><Download className="h-3 w-3" />.md</button>
       </div>
@@ -244,24 +245,24 @@ export default function ResearchPanel({ doc, run, onClose, onStop, onDocChange }
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-extrabold text-slate-800">{doc?.title || 'Deep Research'}</h2>
           <p className="truncate text-[11px] text-slate-500">
-            {running ? (view.statusText || 'Ricerca in corso…') : view.status === 'error' ? 'Ricerca interrotta' : doc ? `v${doc.version} · ${doc.sources?.length ?? 0} fonti` : 'In attesa'}
+            {running ? (view.statusText || tl("Ricerca in corso…")) : view.status === 'error' ? tl("Ricerca interrotta") : doc ? tl("v{0} · {1} fonti", doc.version, doc.sources?.length ?? 0) : tl("In attesa")}
           </p>
         </div>
         {running && (
           <button type="button" onClick={onStop} className="ds-control inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-rose-600 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">
-            <Square className="h-3 w-3" />Ferma
+            <Square className="h-3 w-3" />{tl("Ferma")}
           </button>
         )}
-        <button type="button" onClick={onClose} aria-label="Chiudi" className="ds-control flex h-8 w-8 items-center justify-center rounded-full text-slate-500 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">
+        <button type="button" onClick={onClose} aria-label={tl("Chiudi")} className="ds-control flex h-8 w-8 items-center justify-center rounded-full text-slate-500 outline-none focus-visible:shadow-[var(--ds-shadow-focus)]">
           <X className="h-4 w-4" />
         </button>
       </div>
       <div className="flex gap-2 px-4 py-2">
         <button type="button" className={tabClass(tab === 'activity')} onClick={() => setTab('activity')}>
-          <Layers className="h-3.5 w-3.5" />Attività{view.agents.length ? ` (${view.agents.length})` : ''}
+          <Layers className="h-3.5 w-3.5" />{tl("Attività")}{view.agents.length ? ` (${view.agents.length})` : ''}
         </button>
         <button type="button" className={tabClass(tab === 'document')} onClick={() => setTab('document')} disabled={!doc}>
-          <FileText className="h-3.5 w-3.5" />Documento
+          <FileText className="h-3.5 w-3.5" />{tl("Documento")}
         </button>
         {doc?.sources?.length ? (
           <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><BookOpen className="h-3 w-3" />{doc.sources.length}</span>

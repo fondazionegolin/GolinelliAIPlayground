@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { SUPPORTED_LANGUAGES, LANG_STORAGE_KEY, type LangCode } from '@/i18n/i18n'
+import i18nInstance, { SUPPORTED_LANGUAGES, LANG_STORAGE_KEY, getStoredLanguage, type LangCode } from '@/i18n/i18n'
 
 // ── Flat rectangular flag SVGs ────────────────────────────────────────────────
 
@@ -39,15 +39,19 @@ interface LanguageSwitcherProps {
   className?: string
 }
 
+/** Inline strings (tl) and module-level labels are resolved when rendered/imported, so a full
+ * reload is the only way to switch every menu and sub-section at once, with no half-translated UI. */
+function switchLanguage(next: LangCode) {
+  if (getStoredLanguage() === next && i18nInstance.language === next) return
+  localStorage.setItem(LANG_STORAGE_KEY, next)
+  void i18nInstance.changeLanguage(next).finally(() => window.location.reload())
+}
+
 export function LanguageSwitcher({ variant = 'row', className = '' }: LanguageSwitcherProps) {
   const { i18n } = useTranslation()
   const current = i18n.language as LangCode
 
-  const toggle = () => {
-    const next: LangCode = current === 'it' ? 'en' : 'it'
-    i18n.changeLanguage(next)
-    localStorage.setItem(LANG_STORAGE_KEY, next)
-  }
+  const toggle = () => switchLanguage(current === 'it' ? 'en' : 'it')
 
   if (variant === 'row') {
     const lang = SUPPORTED_LANGUAGES.find(l => l.code === current) ?? SUPPORTED_LANGUAGES[0]
@@ -72,10 +76,7 @@ export function LanguageSwitcher({ variant = 'row', className = '' }: LanguageSw
       {SUPPORTED_LANGUAGES.map(lang => (
         <button
           key={lang.code}
-          onClick={() => {
-            i18n.changeLanguage(lang.code)
-            localStorage.setItem(LANG_STORAGE_KEY, lang.code)
-          }}
+          onClick={() => switchLanguage(lang.code)}
           title={lang.label}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
             current === lang.code

@@ -23,6 +23,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { tl } from '@/i18n/tl'
 
 export type SheetChartType = 'line' | 'bar' | 'scatter' | 'pie'
 
@@ -67,16 +68,16 @@ type StatFunction = 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'ST
 type SmartDirection = 'row' | 'column'
 
 const FORMULA_FUNCTIONS: Array<{ name: StatFunction | 'IF' | 'ROUND' | 'COUNTA'; label: string; hint: string }> = [
-  { name: 'SUM', label: 'Somma', hint: 'Somma i valori' },
-  { name: 'AVERAGE', label: 'Media', hint: 'Calcola la media' },
-  { name: 'MIN', label: 'Minimo', hint: 'Trova il valore minimo' },
-  { name: 'MAX', label: 'Massimo', hint: 'Trova il valore massimo' },
-  { name: 'COUNT', label: 'Conta numeri', hint: 'Conta le celle numeriche' },
-  { name: 'MEDIAN', label: 'Mediana', hint: 'Calcola la mediana' },
-  { name: 'STDEV.S', label: 'Deviazione std.', hint: 'Deviazione standard campionaria' },
-  { name: 'IF', label: 'Se', hint: 'Applica una condizione' },
-  { name: 'ROUND', label: 'Arrotonda', hint: 'Arrotonda un valore' },
-  { name: 'COUNTA', label: 'Conta valori', hint: 'Conta le celle non vuote' },
+  { name: 'SUM', label: tl("Somma"), hint: tl("Somma i valori") },
+  { name: 'AVERAGE', label: tl("Media"), hint: tl("Calcola la media") },
+  { name: 'MIN', label: tl("Minimo"), hint: tl("Trova il valore minimo") },
+  { name: 'MAX', label: tl("Massimo"), hint: tl("Trova il valore massimo") },
+  { name: 'COUNT', label: tl("Conta numeri"), hint: tl("Conta le celle numeriche") },
+  { name: 'MEDIAN', label: tl("Mediana"), hint: tl("Calcola la mediana") },
+  { name: 'STDEV.S', label: tl("Deviazione std."), hint: tl("Deviazione standard campionaria") },
+  { name: 'IF', label: 'Se', hint: tl("Applica una condizione") },
+  { name: 'ROUND', label: tl("Arrotonda"), hint: tl("Arrotonda un valore") },
+  { name: 'COUNTA', label: tl("Conta valori"), hint: tl("Conta le celle non vuote") },
 ]
 
 function IconTool({ label, onClick, disabled = false, active = false, children }: { label: string; onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
@@ -409,10 +410,10 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       if (!jsonBlock) throw new Error('Nessun JSON in risposta')
       const parsed = JSON.parse(jsonBlock[0])
       const values = parsed?.values
-      if (!Array.isArray(values) || values.length !== matrix.length) throw new Error('Dimensioni risposta non valide')
+      if (!Array.isArray(values) || values.length !== matrix.length) throw new Error(tl("Dimensioni risposta non valide"))
       for (let i = 0; i < values.length; i += 1) {
         if (!Array.isArray(values[i]) || values[i].length !== matrix[i].length) {
-          throw new Error('Dimensioni risposta non valide')
+          throw new Error(tl("Dimensioni risposta non valide"))
         }
       }
 
@@ -423,11 +424,11 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         }
       }
       onDataChange(next)
-      toast({ title: 'Riempimento AI completato' })
+      toast({ title: tl("Riempimento AI completato") })
     } catch (error) {
       console.error('AI fill failed', error)
       applyNaturalFill()
-      toast({ title: 'Fallback locale applicato', description: 'Risposta AI non disponibile, ho usato il riempimento guidato.' })
+      toast({ title: tl("Fallback locale applicato"), description: tl("Risposta AI non disponibile, ho usato il riempimento guidato.") })
     } finally {
       setAiFillLoading(false)
     }
@@ -538,14 +539,14 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const exportCsv = () => {
     const sheet = XLSX.utils.aoa_to_sheet(evaluatedData)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
+    XLSX.utils.book_append_sheet(wb, sheet, tl("Tabelle"))
     XLSX.writeFile(wb, 'tabelle.csv', { bookType: 'csv' })
   }
 
   const exportXlsx = () => {
     const sheet = gridToWorksheet(normalizedData, { columnWidths, rowHeights })
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
+    XLSX.utils.book_append_sheet(wb, sheet, tl("Tabelle"))
     XLSX.writeFile(wb, 'tabelle.xlsx')
   }
 
@@ -644,9 +645,9 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     if (!text) return
     try {
       await navigator.clipboard.writeText(text)
-      toast({ title: 'Celle copiate' })
+      toast({ title: tl("Celle copiate") })
     } catch {
-      toast({ title: 'Copia con Ctrl/Cmd+C', description: 'Il browser non ha concesso l’accesso diretto agli appunti.' })
+      toast({ title: tl("Copia con Ctrl/Cmd+C"), description: tl("Il browser non ha concesso l’accesso diretto agli appunti.") })
     }
   }
 
@@ -664,7 +665,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
   const pasteSelection = async () => {
     try { pasteText(await navigator.clipboard.readText()) }
-    catch { toast({ title: 'Incolla con Ctrl/Cmd+V', description: 'Il browser non ha concesso l’accesso diretto agli appunti.' }) }
+    catch { toast({ title: tl("Incolla con Ctrl/Cmd+V"), description: tl("Il browser non ha concesso l’accesso diretto agli appunti.") }) }
   }
 
   const handleGridCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
@@ -727,11 +728,11 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     if (!normalizedSelection) return
     const operand = Number(operationValue.replace(',', '.'))
     if (!Number.isFinite(operand)) {
-      toast({ title: 'Inserisci un numero valido', variant: 'destructive' })
+      toast({ title: tl("Inserisci un numero valido"), variant: 'destructive' })
       return
     }
     if (operation === '/' && operand === 0) {
-      toast({ title: 'Non è possibile dividere per zero', variant: 'destructive' })
+      toast({ title: tl("Non è possibile dividere per zero"), variant: 'destructive' })
       return
     }
     const next = normalizedData.map(row => [...row])
@@ -745,7 +746,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       }
     }
     if (!changed) {
-      toast({ title: 'Nessun numero nella selezione', description: 'Seleziona una o più celle numeriche.', variant: 'destructive' })
+      toast({ title: tl("Nessun numero nella selezione"), description: tl("Seleziona una o più celle numeriche."), variant: 'destructive' })
       return
     }
     onDataChange(next)
@@ -766,7 +767,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         targetCol += 1
       }
       if (targetCol >= MAX_COLS) {
-        toast({ title: 'Nessuno spazio per il risultato', variant: 'destructive' })
+        toast({ title: tl("Nessuno spazio per il risultato"), variant: 'destructive' })
         return
       }
       next = normalizeGrid(next, next.length, Math.max(next[0]?.length || 0, targetCol + 1))
@@ -787,7 +788,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         targetRow += 1
       }
       if (targetRow >= MAX_ROWS) {
-        toast({ title: 'Nessuno spazio per il risultato', variant: 'destructive' })
+        toast({ title: tl("Nessuno spazio per il risultato"), variant: 'destructive' })
         return
       }
       next = normalizeGrid(next, Math.max(next.length, targetRow + 1), next[0]?.length || MIN_COLS)
@@ -810,7 +811,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     setSelectionRange({ startRow: first.row, endRow: last.row, startCol: first.col, endCol: last.col })
     setSelectionMode('cell')
     toast({
-      title: 'Formula inserita',
+      title: tl("Formula inserita"),
       description: `${fn} · ${direction === 'row' ? 'risultato a destra' : 'risultato sotto'} (${targets.length} ${targets.length === 1 ? 'formula' : 'formule'})`,
     })
   }
@@ -847,7 +848,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     if (useFirstRowAsHeader && selectedRowsForCharts.length > 0) {
       return selectedRowsForCharts[0].slice(normalizedSelection.startCol, normalizedSelection.endCol + 1)
     }
-    return Array.from({ length: normalizedSelection.endCol - normalizedSelection.startCol + 1 }, (_, idx) => `Colonna ${columnName(normalizedSelection.startCol + idx)}`)
+    return Array.from({ length: normalizedSelection.endCol - normalizedSelection.startCol + 1 }, (_, idx) => tl("Colonna {0}", columnName(normalizedSelection.startCol + idx)))
   }, [normalizedSelection, selectedRowsForCharts, useFirstRowAsHeader])
 
   const selectedColumnOptions = useMemo(() => {
@@ -855,7 +856,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     const out: Array<{ index: number; label: string }> = []
     for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
       const rel = col - normalizedSelection.startCol
-      const header = selectedHeaderRow[rel] || `Colonna ${columnName(col)}`
+      const header = selectedHeaderRow[rel] || tl("Colonna {0}", columnName(col))
       out.push({ index: col, label: `${columnName(col)} - ${header}` })
     }
     return out
@@ -914,7 +915,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       yCol,
       type: scatterWithRegression ? 'scatter' : chartConfig.type,
       showRegression: scatterWithRegression ? true : chartConfig.showRegression,
-      title: chartConfig.title || `Grafico ${selectedRangeLabel}`,
+      title: chartConfig.title || tl("Grafico {0}", selectedRangeLabel),
     })
     setActiveContextMenu('chart')
   }
@@ -923,30 +924,30 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     <div className="flex h-full min-h-[640px] flex-col gap-3" onCopy={handleGridCopy} onPaste={handleGridPaste}>
       <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
-          <IconTool label="Importa CSV/XLSX" onClick={() => fileInputRef.current?.click()}><FileUp className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Importa CSV/XLSX")} onClick={() => fileInputRef.current?.click()}><FileUp className="h-4 w-4" /></IconTool>
           <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await importSheet(file); event.target.value = '' }} />
-          <IconTool label="Esporta CSV" onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
-          <IconTool label="Esporta XLSX" onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">X</span></span></IconTool>
+          <IconTool label={tl("Esporta CSV")} onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label={tl("Esporta XLSX")} onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">X</span></span></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <IconTool label={selectionMode === 'row' ? 'Inserisci riga dopo la selezione' : 'Aggiungi riga'} onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
-          <IconTool label={selectionMode === 'column' ? 'Inserisci colonna dopo la selezione' : 'Aggiungi colonna'} onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
-          <IconTool label="Elimina riga selezionata" onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
-          <IconTool label="Elimina colonna selezionata" onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
-          <IconTool label="Pulisci tutta la tabella" onClick={clearSheet}><Eraser className="h-4 w-4" /></IconTool>
+          <IconTool label={selectionMode === 'row' ? tl("Inserisci riga dopo la selezione") : tl("Aggiungi riga")} onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
+          <IconTool label={selectionMode === 'column' ? tl("Inserisci colonna dopo la selezione") : tl("Aggiungi colonna")} onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label={tl("Elimina riga selezionata")} onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
+          <IconTool label={tl("Elimina colonna selezionata")} onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label={tl("Pulisci tutta la tabella")} onClick={clearSheet}><Eraser className="h-4 w-4" /></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <IconTool label="Copia selezione" onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="h-4 w-4" /></IconTool>
-          <IconTool label="Incolla" onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="h-4 w-4" /></IconTool>
-          <IconTool label="Separa testo in colonne" onClick={splitSelection} disabled={!normalizedSelection}><Scissors className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Copia selezione")} onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Incolla")} onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Separa testo in colonne")} onClick={splitSelection} disabled={!normalizedSelection}><Scissors className="h-4 w-4" /></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <IconTool label="Crea grafico dalla selezione" onClick={() => openChartFromSelection(false)} active={activeContextMenu === 'chart'}><BarChart3 className="h-4 w-4" /></IconTool>
-          <IconTool label="Regressione lineare" onClick={() => openChartFromSelection(true)} active={activeContextMenu === 'chart' && chartConfig.type === 'scatter'}><TrendingUp className="h-4 w-4" /></IconTool>
-          <IconTool label="Riempimento guidato o AI" onClick={() => setActiveContextMenu(activeContextMenu === 'fill' ? 'none' : 'fill')} active={activeContextMenu === 'fill'}><Wand2 className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Crea grafico dalla selezione")} onClick={() => openChartFromSelection(false)} active={activeContextMenu === 'chart'}><BarChart3 className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Regressione lineare")} onClick={() => openChartFromSelection(true)} active={activeContextMenu === 'chart' && chartConfig.type === 'scatter'}><TrendingUp className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Riempimento guidato o AI")} onClick={() => setActiveContextMenu(activeContextMenu === 'fill' ? 'none' : 'fill')} active={activeContextMenu === 'fill'}><Wand2 className="h-4 w-4" /></IconTool>
           <span className="ml-auto rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">
             {selectionMode === 'column' && normalizedSelection
-              ? `Colonna ${columnName(normalizedSelection.startCol)}`
+              ? tl("Colonna {0}", columnName(normalizedSelection.startCol))
               : selectionMode === 'row' && normalizedSelection
-                ? `Riga ${normalizedSelection.startRow + 1}`
-                : selectionMode === 'all' ? 'Tutta la tabella' : selectedRangeLabel}
+                ? tl("Riga {0}", normalizedSelection.startRow + 1)
+                : selectionMode === 'all' ? tl("Tutta la tabella") : selectedRangeLabel}
           </span>
         </div>
 
@@ -963,8 +964,8 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                   completeFormula(formulaCompletions[0].name)
                 }
               }}
-              placeholder="Valore oppure =FUNZIONE(A1:B5)"
-              aria-label="Barra della formula"
+              placeholder={tl("Valore oppure =FUNZIONE(A1:B5)")}
+              aria-label={tl("Barra della formula")}
               className="h-8 w-full font-mono text-sm"
             />
             {formulaCompletions.length > 0 && (
@@ -986,28 +987,28 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           </div>
           <select className="h-8 max-w-32 rounded-md border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontFamily: event.target.value })} defaultValue="Arial"><option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>monospace</option></select>
           <select className="h-8 w-16 rounded-md border border-slate-200 bg-white px-1 text-xs" onChange={event => applyStyle({ fontSize: Number(event.target.value) })} defaultValue="14">{[10, 12, 14, 16, 18, 20, 24].map(size => <option key={size} value={size}>{size}</option>)}</select>
-          <IconTool label="Grassetto" active={selectedStyle.fontWeight === 'bold'} onClick={() => applyStyle({ fontWeight: selectedStyle.fontWeight === 'bold' ? 'normal' : 'bold' })}><Bold className="h-4 w-4" /></IconTool>
-          <IconTool label="Corsivo" active={selectedStyle.fontStyle === 'italic'} onClick={() => applyStyle({ fontStyle: selectedStyle.fontStyle === 'italic' ? 'normal' : 'italic' })}><Italic className="h-4 w-4" /></IconTool>
-          <IconTool label="Allinea a sinistra" active={selectedStyle.textAlign === 'left'} onClick={() => applyStyle({ textAlign: 'left' })}><AlignLeft className="h-4 w-4" /></IconTool>
-          <IconTool label="Centra" active={selectedStyle.textAlign === 'center'} onClick={() => applyStyle({ textAlign: 'center' })}><AlignCenter className="h-4 w-4" /></IconTool>
-          <IconTool label="Allinea a destra" active={selectedStyle.textAlign === 'right'} onClick={() => applyStyle({ textAlign: 'right' })}><AlignRight className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Grassetto")} active={selectedStyle.fontWeight === 'bold'} onClick={() => applyStyle({ fontWeight: selectedStyle.fontWeight === 'bold' ? 'normal' : 'bold' })}><Bold className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Corsivo")} active={selectedStyle.fontStyle === 'italic'} onClick={() => applyStyle({ fontStyle: selectedStyle.fontStyle === 'italic' ? 'normal' : 'italic' })}><Italic className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Allinea a sinistra")} active={selectedStyle.textAlign === 'left'} onClick={() => applyStyle({ textAlign: 'left' })}><AlignLeft className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Centra")} active={selectedStyle.textAlign === 'center'} onClick={() => applyStyle({ textAlign: 'center' })}><AlignCenter className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Allinea a destra")} active={selectedStyle.textAlign === 'right'} onClick={() => applyStyle({ textAlign: 'right' })}><AlignRight className="h-4 w-4" /></IconTool>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
-          <span className="text-[11px] font-semibold text-slate-500">Calcola sulle celle</span>
+          <span className="text-[11px] font-semibold text-slate-500">{tl("Calcola sulle celle")}</span>
           <select value={operation} onChange={event => setOperation(event.target.value as typeof operation)} className="h-8 w-12 rounded-md border border-slate-200 bg-white px-2 text-xs"><option>+</option><option>-</option><option>*</option><option>/</option></select>
           <Input value={operationValue} onChange={event => setOperationValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') applyNumericOperation() }} className="h-8 w-20 text-xs" inputMode="decimal" />
-          <IconTool label="Applica operazione ai valori selezionati" onClick={applyNumericOperation}><Check className="h-4 w-4" /></IconTool>
+          <IconTool label={tl("Applica operazione ai valori selezionati")} onClick={applyNumericOperation}><Check className="h-4 w-4" /></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <span className="text-[11px] font-semibold text-slate-500">Formula rapida</span>
+          <span className="text-[11px] font-semibold text-slate-500">{tl("Formula rapida")}</span>
           <select value={statFunction} onChange={event => setStatFunction(event.target.value as typeof statFunction)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option>SUM</option><option>AVERAGE</option><option>MIN</option><option>MAX</option><option>COUNT</option><option>MEDIAN</option><option>STDEV.S</option></select>
-          <IconTool label="Inserisci la formula nella posizione suggerita" onClick={() => insertSmartStatistic(statFunction)} disabled={!smartSelection}><Sigma className="h-4 w-4" /></IconTool>
-          {smartSelection && <span className="ml-auto rounded-md bg-cyan-50 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-800">{smartSelection.count} valori · Somma {smartSelection.sum.toLocaleString('it-IT', { maximumFractionDigits: 4 })} · Media {smartSelection.average.toLocaleString('it-IT', { maximumFractionDigits: 4 })}</span>}
+          <IconTool label={tl("Inserisci la formula nella posizione suggerita")} onClick={() => insertSmartStatistic(statFunction)} disabled={!smartSelection}><Sigma className="h-4 w-4" /></IconTool>
+          {smartSelection && <span className="ml-auto rounded-md bg-cyan-50 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-800">{smartSelection.count} {tl("valori · Somma")} {smartSelection.sum.toLocaleString('it-IT', { maximumFractionDigits: 4 })} {tl("· Media")} {smartSelection.average.toLocaleString('it-IT', { maximumFractionDigits: 4 })}</span>}
         </div>
 
         {isMultipleSelection && (
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-2">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800"><Sigma className="h-3.5 w-3.5" /> Operazioni suggerite</span>
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-violet-800"><Sigma className="h-3.5 w-3.5" /> {tl("Operazioni suggerite")}</span>
             {smartSelection ? (
               <>
                 {FORMULA_FUNCTIONS.filter(item => ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT'].includes(item.name)).map(item => (
@@ -1016,17 +1017,17 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                     type="button"
                     onClick={() => insertSmartStatistic(item.name as StatFunction)}
                     className="rounded-md border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-700 shadow-sm transition hover:border-violet-400 hover:bg-violet-100"
-                    title={`${item.hint}; inserisce il risultato ${smartSelection.direction === 'row' ? 'a destra' : 'sotto'} senza includere celle vuote esterne ai dati`}
+                    title={tl("{0}; inserisce il risultato {1} senza includere celle vuote esterne ai dati", item.hint, smartSelection.direction === 'row' ? 'a destra' : 'sotto')}
                   >
                     {item.label}
                   </button>
                 ))}
                 <span className="ml-auto text-[11px] text-violet-700">
-                  Dati rilevati in {rangeToA1(smartSelection.bounds)} · risultato {smartSelection.direction === 'row' ? 'a destra per ogni riga' : 'sotto per ogni colonna'}
+                  {tl("Dati rilevati in")} {rangeToA1(smartSelection.bounds)} {tl("· risultato")} {smartSelection.direction === 'row' ? tl("a destra per ogni riga") : tl("sotto per ogni colonna")}
                 </span>
               </>
             ) : (
-              <span className="text-[11px] text-slate-600">La selezione non contiene valori numerici. Puoi comunque scrivere una formula nella barra fx.</span>
+              <span className="text-[11px] text-slate-600">{tl("La selezione non contiene valori numerici. Puoi comunque scrivere una formula nella barra fx.")}</span>
             )}
           </div>
         )}
@@ -1042,7 +1043,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className={`w-12 border border-slate-200 p-0 text-xs ${selectionMode === 'all' ? 'bg-violet-200 text-violet-800' : 'text-slate-500'}`}>
-                  <button type="button" onClick={selectAll} className="h-full min-h-8 w-full px-2 py-1.5" aria-label="Seleziona tutta la tabella" title="Seleziona tutta la tabella">#</button>
+                  <button type="button" onClick={selectAll} className="h-full min-h-8 w-full px-2 py-1.5" aria-label={tl("Seleziona tutta la tabella")} title={tl("Seleziona tutta la tabella")}>#</button>
                 </th>
                 {normalizedData[0]?.map((_, colIdx) => (
                   <th key={colIdx} className={`relative border border-slate-200 p-0 text-xs font-semibold ${selectionMode === 'column' && normalizedSelection?.startCol === colIdx ? 'bg-violet-200 text-violet-900' : 'text-slate-700'}`} style={{ width: columnWidths[colIdx] }}>
@@ -1050,15 +1051,15 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                       type="button"
                       onClick={() => selectColumn(colIdx)}
                       className="h-full min-h-8 w-full px-2 py-1.5"
-                      aria-label={`Seleziona tutta la colonna ${columnName(colIdx)}`}
-                      title={`Seleziona tutta la colonna ${columnName(colIdx)}`}
+                      aria-label={tl("Seleziona tutta la colonna {0}", columnName(colIdx))}
+                      title={tl("Seleziona tutta la colonna {0}", columnName(colIdx))}
                     >
                       {columnName(colIdx)}
                     </button>
                     {onDimensionsChange && <span
                       role="separator"
                       aria-orientation="vertical"
-                      title="Trascina per ridimensionare la colonna"
+                      title={tl("Trascina per ridimensionare la colonna")}
                       onMouseDown={(event) => startResize('column', colIdx, event)}
                       onDoubleClick={() => onDimensionsChange?.({ columnWidths: columnWidths.map((width, index) => index === colIdx ? 120 : width), rowHeights })}
                       className="absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize hover:bg-indigo-400/50"
@@ -1075,15 +1076,15 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                       type="button"
                       onClick={() => selectRow(rowIdx)}
                       className="h-full min-h-6 w-full px-2"
-                      aria-label={`Seleziona tutta la riga ${rowIdx + 1}`}
-                      title={`Seleziona tutta la riga ${rowIdx + 1}`}
+                      aria-label={tl("Seleziona tutta la riga {0}", rowIdx + 1)}
+                      title={tl("Seleziona tutta la riga {0}", rowIdx + 1)}
                     >
                       {rowIdx + 1}
                     </button>
                     {onDimensionsChange && <span
                       role="separator"
                       aria-orientation="horizontal"
-                      title="Trascina per ridimensionare la riga"
+                      title={tl("Trascina per ridimensionare la riga")}
                       onMouseDown={(event) => startResize('row', rowIdx, event)}
                       onDoubleClick={() => onDimensionsChange?.({ columnWidths, rowHeights: rowHeights.map((height, index) => index === rowIdx ? 36 : height) })}
                       className="absolute -bottom-1 left-0 z-10 h-2 w-full cursor-row-resize hover:bg-indigo-400/50"
@@ -1146,24 +1147,24 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       {normalizedSelection && activeContextMenu !== 'none' && (
         <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-slate-300">{activeContextMenu === 'chart' ? 'Grafico' : 'Riempimento'} · {selectedRangeLabel}</p>
-            <button onClick={() => setActiveContextMenu('none')} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">Chiudi</button>
+            <p className="text-xs font-semibold text-slate-300">{activeContextMenu === 'chart' ? tl("Grafico") : tl("Riempimento")} · {selectedRangeLabel}</p>
+            <button onClick={() => setActiveContextMenu('none')} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">{tl("Chiudi")}</button>
           </div>
 
           {activeContextMenu === 'fill' && (
             <div className="mt-3 border-t border-slate-700 pt-3">
               <div className="mb-2 flex items-center gap-2 text-xs text-slate-300">
                 <Wand2 className="h-3.5 w-3.5" />
-                Suggerimenti: "Riempi con presente", "Da 1 a 100", "Valori casuali tra 10 e 50", "Formula: =A{'{row}'}*2"
+                {tl("Suggerimenti: \"Riempi con presente\", \"Da 1 a 100\", \"Valori casuali tra 10 e 50\", \"Formula: =A")}{'{row}'}*2"
               </div>
               <div className="flex gap-2">
                 <Input
                   value={fillInstruction}
                   onChange={(e) => setFillInstruction(e.target.value)}
-                  placeholder="Descrivi come riempire l'intervallo"
+                  placeholder={tl("Descrivi come riempire l'intervallo")}
                   className="bg-slate-800 text-slate-100 border-slate-600 placeholder:text-slate-400"
                 />
-                <Button onClick={applyNaturalFill} variant="outline" className="border-slate-500 bg-transparent text-white hover:bg-slate-700">Guidato</Button>
+                <Button onClick={applyNaturalFill} variant="outline" className="border-slate-500 bg-transparent text-white hover:bg-slate-700">{tl("Guidato")}</Button>
                 <Button onClick={applyAIFill} className="bg-blue-600 hover:bg-blue-500 text-white" disabled={aiFillLoading}>
                   {aiFillLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'AI'}
                 </Button>
@@ -1175,20 +1176,20 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
             <div className="mt-3 border-t border-slate-700 pt-3">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                 <div>
-                  <label className="mb-1 block text-xs text-slate-300">Tipo grafico</label>
+                  <label className="mb-1 block text-xs text-slate-300">{tl("Tipo grafico")}</label>
                   <select
                     className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
                     value={chartConfig.type}
                     onChange={(e) => onChartConfigChange({ ...chartConfig, type: e.target.value as SheetChartType })}
                   >
-                    <option value="line">Linea</option>
-                    <option value="bar">Barre</option>
+                    <option value="line">{tl("Linea")}</option>
+                    <option value="bar">{tl("Barre")}</option>
                     <option value="scatter">Scatter</option>
-                    <option value="pie">Torta</option>
+                    <option value="pie">{tl("Torta")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-slate-300">Asse X</label>
+                  <label className="mb-1 block text-xs text-slate-300">{tl("Asse X")}</label>
                   <select
                     className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
                     value={chartConfig.xCol}
@@ -1200,7 +1201,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-slate-300">Asse Y</label>
+                  <label className="mb-1 block text-xs text-slate-300">{tl("Asse Y")}</label>
                   <select
                     className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
                     value={chartConfig.yCol}
@@ -1212,7 +1213,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-slate-300">Titolo</label>
+                  <label className="mb-1 block text-xs text-slate-300">{tl("Titolo")}</label>
                   <Input
                     value={chartConfig.title}
                     onChange={(e) => onChartConfigChange({ ...chartConfig, title: e.target.value })}
@@ -1228,7 +1229,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                     checked={useFirstRowAsHeader}
                     onChange={(e) => setUseFirstRowAsHeader(e.target.checked)}
                   />
-                  Usa prima riga come intestazione
+                  {tl("Usa prima riga come intestazione")}
                 </label>
                 {chartConfig.type === 'scatter' && (
                   <label className="flex items-center gap-2">
@@ -1237,7 +1238,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                       checked={chartConfig.showRegression}
                       onChange={(e) => onChartConfigChange({ ...chartConfig, showRegression: e.target.checked })}
                     />
-                    Mostra regressione lineare
+                    {tl("Mostra regressione lineare")}
                   </label>
                 )}
               </div>
@@ -1291,7 +1292,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
               <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-2 text-xs text-slate-200">
                 <div className="mb-1 flex items-center gap-2 font-semibold">
                   <Sigma className="h-3.5 w-3.5" />
-                  Operazioni su Y
+                  {tl("Operazioni su Y")}
                 </div>
                 <div className="grid grid-cols-2 gap-1">
                   <div>COUNT: <strong>{summary.count}</strong></div>

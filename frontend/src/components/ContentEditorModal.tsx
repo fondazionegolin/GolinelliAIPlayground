@@ -120,14 +120,14 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
     if (type === 'quiz') {
       const quiz = editedContent as QuizData
       if (!quiz.title || !quiz.description || quiz.questions.length === 0) {
-        alert('Compila tutti i campi obbligatori')
+        alert(tl("Compila tutti i campi obbligatori"))
         return
       }
     }
     if (type === 'exercise') {
       const exercise = editedContent as ExerciseData
       if (!exercise.title || !exercise.description || !exercise.instructions) {
-        alert('Compila tutti i campi obbligatori')
+        alert(tl("Compila tutti i campi obbligatori"))
         return
       }
     }
@@ -151,10 +151,10 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
         <div className="flex items-center justify-between p-6 border-b">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
-              Modifica {type === 'quiz' ? 'Quiz' : type === 'lesson' ? 'Lezione' : type === 'exercise' ? 'Esercizio' : 'Presentazione'}
+              {tl("Modifica")} {type === 'quiz' ? tl("Quiz") : type === 'lesson' ? tl("Lezione") : type === 'exercise' ? tl("Esercizio") : tl("Presentazione")}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Puoi modificare i contenuti prima di pubblicarli
+              {tl("Puoi modificare i contenuti prima di pubblicarli")}
             </p>
           </div>
           <button
@@ -175,7 +175,7 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            Modulo
+            {tl("Modulo")}
           </button>
           <button
             onClick={() => setViewMode('json')}
@@ -208,7 +208,7 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
               />
               {jsonError && (
                 <div className="mt-2 text-sm text-red-600">
-                  Errore JSON: {jsonError}
+                  {tl("Errore JSON:")} {jsonError}
                 </div>
               )}
             </div>
@@ -221,13 +221,13 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
             variant="outline"
             onClick={onCancel}
           >
-            Annulla
+            {tl("Annulla")}
           </Button>
           <Button
             onClick={handleSave}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
-            Salva modifiche
+            {tl("Salva modifiche")}
           </Button>
         </div>
       </div>
@@ -275,34 +275,34 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
       {/* Basic info */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Titolo Quiz *
+          {tl("Titolo Quiz *")}
         </label>
         <input
           type="text"
           value={content.title}
           onChange={(e) => updateField('title', e.target.value)}
           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          placeholder="Es: Quiz sulle Equazioni di Secondo Grado"
+          placeholder={tl("Es: Quiz sulle Equazioni di Secondo Grado")}
         />
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Descrizione *
+          {tl("Descrizione *")}
         </label>
         <textarea
           value={content.description}
           onChange={(e) => updateField('description', e.target.value)}
           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           rows={2}
-          placeholder="Breve descrizione del quiz"
+          placeholder={tl("Breve descrizione del quiz")}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Tempo limite (minuti)
+            {tl("Tempo limite (minuti)")}
           </label>
           <input
             type="number"
@@ -318,14 +318,14 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
       {/* Questions */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Domande ({content.questions.length})</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{tl("Domande (")}{content.questions.length})</h3>
           <Button
             size="sm"
             onClick={addQuestion}
             className="bg-emerald-600 hover:bg-emerald-700"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Aggiungi domanda
+            {tl("Aggiungi domanda")}
           </Button>
         </div>
 
@@ -333,7 +333,7 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
           {content.questions.map((q, qIndex) => (
             <div key={qIndex} className="border rounded-lg p-4 bg-gray-50">
               <div className="flex items-start justify-between mb-3">
-                <h4 className="font-medium text-gray-900">Domanda {qIndex + 1}</h4>
+                <h4 className="font-medium text-gray-900">{tl("Domanda")} {qIndex + 1}</h4>
                 <button
                   onClick={() => removeQuestion(qIndex)}
                   className="text-red-600 hover:text-red-700"
@@ -345,20 +345,20 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Testo domanda *
+                    {tl("Testo domanda *")}
                   </label>
                   <input
                     type="text"
                     value={q.question}
                     onChange={(e) => updateQuestion(qIndex, 'question', e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg bg-white"
-                    placeholder="Scrivi la domanda..."
+                    placeholder={tl("Scrivi la domanda...")}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Opzioni di risposta *
+                    {tl("Opzioni di risposta *")}
                   </label>
                   <div className="space-y-2">
                     {q.options.map((opt, optIndex) => (
@@ -374,10 +374,10 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
                           value={opt}
                           onChange={(e) => updateOption(qIndex, optIndex, e.target.value)}
                           className="flex-1 px-3 py-2 border rounded-lg bg-white"
-                          placeholder={`Opzione ${optIndex + 1}`}
+                          placeholder={tl("Opzione {0}", optIndex + 1)}
                         />
                         {q.correctIndex === optIndex && (
-                          <span className="text-xs text-green-600 font-medium">✓ Corretta</span>
+                          <span className="text-xs text-green-600 font-medium">{tl("✓ Corretta")}</span>
                         )}
                       </div>
                     ))}
@@ -386,20 +386,20 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Spiegazione
+                    {tl("Spiegazione")}
                   </label>
                   <textarea
                     value={q.explanation || ''}
                     onChange={(e) => updateQuestion(qIndex, 'explanation', e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg bg-white"
                     rows={2}
-                    placeholder="Spiega perché questa è la risposta corretta..."
+                    placeholder={tl("Spiega perché questa è la risposta corretta...")}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Punti
+                    {tl("Punti")}
                   </label>
                   <input
                     type="number"
@@ -447,7 +447,7 @@ function LessonFormEditor({ content, onChange }: { content: LessonData; onChange
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Titolo Lezione *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Titolo Lezione *")}</label>
         <input
           type="text"
           value={content.title}
@@ -457,7 +457,7 @@ function LessonFormEditor({ content, onChange }: { content: LessonData; onChange
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Descrizione *")}</label>
         <textarea
           value={content.description}
           onChange={(e) => updateField('description', e.target.value)}
@@ -467,22 +467,22 @@ function LessonFormEditor({ content, onChange }: { content: LessonData; onChange
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Obiettivi *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Obiettivi *")}</label>
         <textarea
           value={content.objectives.join('\n')}
           onChange={(e) => updateField('objectives', e.target.value.split('\n').filter(Boolean))}
           className="w-full px-3 py-2 border rounded-lg font-mono text-sm"
           rows={4}
-          placeholder="Un obiettivo per riga..."
+          placeholder={tl("Un obiettivo per riga...")}
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Sezioni ({content.sections.length})</h3>
+          <h3 className="text-lg font-semibold">{tl("Sezioni (")}{content.sections.length})</h3>
           <Button size="sm" onClick={addSection} className="bg-emerald-600 hover:bg-emerald-700">
             <Plus className="h-4 w-4 mr-1" />
-            Aggiungi sezione
+            {tl("Aggiungi sezione")}
           </Button>
         </div>
 
@@ -490,7 +490,7 @@ function LessonFormEditor({ content, onChange }: { content: LessonData; onChange
           {content.sections.map((section, index) => (
             <div key={index} className="border rounded-lg p-4 bg-gray-50">
               <div className="flex items-start justify-between mb-3">
-                <h4 className="font-medium">Sezione {index + 1}</h4>
+                <h4 className="font-medium">{tl("Sezione")} {index + 1}</h4>
                 <button onClick={() => removeSection(index)} className="text-red-600">
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -502,21 +502,21 @@ function LessonFormEditor({ content, onChange }: { content: LessonData; onChange
                   value={section.title}
                   onChange={(e) => updateSection(index, 'title', e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg bg-white"
-                  placeholder="Titolo sezione"
+                  placeholder={tl("Titolo sezione")}
                 />
                 <textarea
                   value={section.content}
                   onChange={(e) => updateSection(index, 'content', e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg bg-white"
                   rows={4}
-                  placeholder="Contenuto della sezione..."
+                  placeholder={tl("Contenuto della sezione...")}
                 />
                 <input
                   type="number"
                   value={section.duration_minutes || ''}
                   onChange={(e) => updateSection(index, 'duration_minutes', parseInt(e.target.value) || undefined)}
                   className="w-32 px-3 py-2 border rounded-lg bg-white"
-                  placeholder="Durata (min)"
+                  placeholder={tl("Durata (min)")}
                 />
               </div>
             </div>
@@ -550,7 +550,7 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Titolo *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Titolo *")}</label>
         <input
           type="text"
           value={content.title}
@@ -560,7 +560,7 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Descrizione *")}</label>
         <textarea
           value={content.description}
           onChange={(e) => updateField('description', e.target.value)}
@@ -570,7 +570,7 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Istruzioni *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Istruzioni *")}</label>
         <textarea
           value={content.instructions}
           onChange={(e) => updateField('instructions', e.target.value)}
@@ -580,39 +580,39 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Modalità di risposta</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Modalità di risposta")}</label>
         <select
           value={content.response_mode || 'free_text'}
           onChange={(e) => updateField('response_mode', e.target.value)}
           className="px-3 py-2 border rounded-lg"
         >
-          <option value="free_text">Risposta libera</option>
-          <option value="inline_blanks">Campi direttamente nel testo</option>
+          <option value="free_text">{tl("Risposta libera")}</option>
+          <option value="inline_blanks">{tl("Campi direttamente nel testo")}</option>
         </select>
         {content.response_mode === 'inline_blanks' && (
-          <p className="mt-2 text-xs text-gray-500">Inserisci i vuoti nel testo come [________](#blank-1), usando un numero diverso per ogni campo.</p>
+          <p className="mt-2 text-xs text-gray-500">{tl("Inserisci i vuoti nel testo come [________](#blank-1), usando un numero diverso per ogni campo.")}</p>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Difficoltà</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Difficoltà")}</label>
         <select
           value={content.difficulty || 'medium'}
           onChange={(e) => updateField('difficulty', e.target.value)}
           className="px-3 py-2 border rounded-lg"
         >
-          <option value="easy">Facile</option>
-          <option value="medium">Media</option>
-          <option value="hard">Difficile</option>
+          <option value="easy">{tl("Facile")}</option>
+          <option value="medium">{tl("Media")}</option>
+          <option value="hard">{tl("Difficile")}</option>
         </select>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-medium text-gray-700">Esempi</label>
+          <label className="block text-sm font-medium text-gray-700">{tl("Esempi")}</label>
           <Button size="sm" variant="outline" onClick={addExample}>
             <Plus className="h-4 w-4 mr-1" />
-            Aggiungi esempio
+            {tl("Aggiungi esempio")}
           </Button>
         </div>
         <div className="space-y-2">
@@ -623,12 +623,12 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
                 onChange={(e) => updateExample(index, e.target.value)}
                 className="flex-1 px-3 py-2 border rounded-lg"
                 rows={2}
-                placeholder={`Esempio ${index + 1}`}
+                placeholder={tl("Esempio {0}", index + 1)}
               />
               <button
                 onClick={() => removeExample(index)}
                 className="text-red-600 hover:text-red-700 self-start p-2"
-                aria-label="Rimuovi esempio"
+                aria-label={tl("Rimuovi esempio")}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -638,7 +638,7 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Suggerimento</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Suggerimento")}</label>
         <input
           type="text"
           value={content.hint || ''}
@@ -651,6 +651,7 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
 }
 
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
+import { tl } from '@/i18n/tl'
 
 // Presentation Form Editor
 function PresentationFormEditor({ content, onChange }: { content: PresentationData; onChange: (c: any) => void }) {
@@ -719,24 +720,24 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Titolo Presentazione *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Titolo Presentazione *")}</label>
         <input
           type="text"
           value={content.title}
           onChange={(e) => updateField('title', e.target.value)}
           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          placeholder="Es: Introduzione alle Equazioni"
+          placeholder={tl("Es: Introduzione alle Equazioni")}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("Descrizione *")}</label>
         <textarea
           value={content.description}
           onChange={(e) => updateField('description', e.target.value)}
           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           rows={2}
-          placeholder="Breve descrizione della presentazione"
+          placeholder={tl("Breve descrizione della presentazione")}
         />
       </div>
 
@@ -749,7 +750,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
             className="bg-indigo-600 hover:bg-indigo-700"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Aggiungi slide
+            {tl("Aggiungi slide")}
           </Button>
         </div>
 
@@ -764,7 +765,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
                     value={slide.title}
                     onChange={(e) => updateSlide(index, 'title', e.target.value)}
                     className="flex-1 px-3 py-1.5 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
-                    placeholder="Titolo della slide..."
+                    placeholder={tl("Titolo della slide...")}
                   />
                 </div>
                 <div className="flex items-center gap-1 ml-4">
@@ -772,7 +773,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
                     onClick={() => moveSlide(index, 'up')}
                     disabled={index === 0}
                     className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded disabled:opacity-30"
-                    title="Sposta su"
+                    title={tl("Sposta su")}
                   >
                     ↑
                   </button>
@@ -780,7 +781,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
                     onClick={() => moveSlide(index, 'down')}
                     disabled={index === content.slides.length - 1}
                     className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded disabled:opacity-30"
-                    title="Sposta giù"
+                    title={tl("Sposta giù")}
                   >
                     ↓
                   </button>

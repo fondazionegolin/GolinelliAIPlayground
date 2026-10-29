@@ -27,6 +27,7 @@ import { CreditBalancePill } from './CreditBalancePill'
 import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
+import { tl } from '@/i18n/tl'
 
 interface TeacherProfile {
   firstName: string
@@ -374,17 +375,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   })
 
   const betaItems = [
-    ...(isAdmin ? [{ path: '/teacher/agentic', details: "Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo.", label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
-    ...(isAdmin ? [{ path: '/teacher/video-studio', label: 'Video Studio', description: 'Video didattici da un testo, shot da 5 secondi', icon: Film }] : []),
-    ...(isAdmin ? [{ path: '/teacher/visual-comprehension', label: 'Comprensione visuale', description: 'Esplora immagini e screenshot con un tutor e overlay interattivi', icon: Sparkles }] : []),
+    ...(isAdmin ? [{ path: '/teacher/agentic', details: tl("Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo."), label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
+    ...(isAdmin ? [{ path: '/teacher/video-studio', label: tl("Video Studio"), description: tl("Video didattici da un testo, shot da 5 secondi"), icon: Film }] : []),
+    ...(isAdmin ? [{ path: '/teacher/visual-comprehension', label: tl("Comprensione visuale"), description: tl("Esplora immagini e screenshot con un tutor e overlay interattivi"), icon: Sparkles }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   // Classes row: the session being worked on first, then the other running sessions.
   const sessionRecents: NavRecent[] = [
-    ...(currentSession ? [{ id: currentSession.id, title: currentSession.name, meta: currentSession.className, badge: 'Aperta', to: `/teacher/sessions/${currentSession.id}` }] : []),
+    ...(currentSession ? [{ id: currentSession.id, title: currentSession.name, meta: currentSession.className, badge: tl("Aperta"), to: `/teacher/sessions/${currentSession.id}` }] : []),
     ...activeSessions
       .filter((session) => session.id !== currentSession?.id)
-      .map((session) => ({ id: session.id, title: session.name, meta: `${session.className} · ${session.studentCount ?? 0} studenti`, to: `/teacher/sessions/${session.id}` })),
+      .map((session) => ({ id: session.id, title: session.name, meta: tl("{0} · {1} studenti", session.className, session.studentCount ?? 0), to: `/teacher/sessions/${session.id}` })),
   ]
   const sid = currentSession?.id
   const navClusters: NavCluster[] = [
@@ -392,20 +393,20 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
     ] },
     { id: 'classes', label: t('navbar.nav_classes'), icon: Users, items: [
-      { path: '/teacher/classes', details: "Crea e organizza le tue classi, avvia le sessioni di lavoro con gli studenti, condividi il codice di accesso e gestisci gli inviti dei colleghi.", label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount, recents: { queryKey: ['classes'], limit: 3, entries: sessionRecents } },
-      { path: '/teacher/live-interaction', details: "Lancia quiz, sondaggi, word wall ed escape room in diretta: gli studenti rispondono dal telefono e tu segui risultati e classifica in tempo reale.", label: 'Live', description: t('navbar.desc_live'), icon: Zap, recents: { queryKey: ['live', sid], limit: 3, fetch: navRecentFetchers.live(sid) } },
-      { path: '/teacher/boards', details: "Organizza il lavoro con lavagne Kanban o Scrum condivise con la classe: puoi generare il backlog con l'AI da un prompt o da un file.", label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare, recents: { queryKey: ['boards', sid], limit: 3, fetch: navRecentFetchers.boards(sid) } },
-      ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: 'Istituto', description: 'Docenti e informativa famiglie', icon: Building2 }] : []),
+      { path: '/teacher/classes', details: tl("Crea e organizza le tue classi, avvia le sessioni di lavoro con gli studenti, condividi il codice di accesso e gestisci gli inviti dei colleghi."), label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount, recents: { queryKey: ['classes'], limit: 3, entries: sessionRecents } },
+      { path: '/teacher/live-interaction', details: tl("Lancia quiz, sondaggi, word wall ed escape room in diretta: gli studenti rispondono dal telefono e tu segui risultati e classifica in tempo reale."), label: 'Live', description: t('navbar.desc_live'), icon: Zap, recents: { queryKey: ['live', sid], limit: 3, fetch: navRecentFetchers.live(sid) } },
+      { path: '/teacher/boards', details: tl("Organizza il lavoro con lavagne Kanban o Scrum condivise con la classe: puoi generare il backlog con l'AI da un prompt o da un file."), label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare, recents: { queryKey: ['boards', sid], limit: 3, fetch: navRecentFetchers.boards(sid) } },
+      ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: tl("Istituto"), description: tl("Docenti e informativa famiglie"), icon: Building2 }] : []),
     ] },
     { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
-      { path: '/teacher/documents', details: "Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare.", label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
-      { path: '/teacher/teacherbots', details: "Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room.", label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
-      { path: '/teacher/ai-3d', label: 'AI 3D', description: t('navbar.desc_ai3d'), icon: MushroomIcon },
+      { path: '/teacher/documents', details: tl("Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare."), label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
+      { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
+      { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon },
       { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Box },
     ] },
     { id: 'labs', label: t('navbar.nav_labs'), icon: FlaskConical, items: [
-      { path: '/teacher/coding', details: "Crea app, giochi e pagine web dialogando con l'AI: anteprima in diretta, versioni salvate e condivisione del progetto con la classe.", label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2, recents: { queryKey: ['coding', sid], limit: 1, fetch: navRecentFetchers.coding(sid) } },
-      { path: '/teacher/notebooks', details: "Quaderni di codice con Python, p5.js, micro:bit e altro: esegui il codice nel browser e chiedi aiuto al tutor AI mentre lavori.", label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2, recents: { queryKey: ['notebooks'], limit: 3, fetch: navRecentFetchers.notebooks } },
+      { path: '/teacher/coding', details: tl("Crea app, giochi e pagine web dialogando con l'AI: anteprima in diretta, versioni salvate e condivisione del progetto con la classe."), label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2, recents: { queryKey: ['coding', sid], limit: 1, fetch: navRecentFetchers.coding(sid) } },
+      { path: '/teacher/notebooks', details: tl("Quaderni di codice con Python, p5.js, micro:bit e altro: esegui il codice nel browser e chiedi aiuto al tutor AI mentre lavori."), label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2, recents: { queryKey: ['notebooks'], limit: 3, fetch: navRecentFetchers.notebooks } },
       { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain },
       { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network },
     ] },
@@ -455,7 +456,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   type="button"
                   onClick={(event) => { event.stopPropagation(); setShowWhatsNew(true) }}
                   className="brand-beta-pill absolute -bottom-1 -right-2 rounded-full border-0 px-1.5 py-0.5 text-[6px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)] transition hover:brightness-110"
-                  aria-label="Scopri le novità della versione beta"
+                  aria-label={tl("Scopri le novità della versione beta")}
                 >
                   BETA
                 </button>
@@ -715,7 +716,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
                     >
                       <FileText className="h-4 w-4" />
-                      Informativa privacy
+                      {tl("Informativa privacy")}
                     </button>
                     <button
                       onClick={() => {
@@ -725,7 +726,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
                     >
                       <FileText className="h-4 w-4" />
-                      Termini e condizioni
+                      {tl("Termini e condizioni")}
                     </button>
                     {isAdmin && (
                       <>
@@ -747,7 +748,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
                     >
                       <BookOpen className="h-4 w-4" />
-                      Guida all'uso
+                      {tl("Guida all'uso")}
                     </button>
                     <button
                       onClick={handleLogout}
@@ -1000,7 +1001,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:text-slate-700 transition-colors w-full text-left"
             >
               <KeyRound className="h-3.5 w-3.5" />
-              Cambia password
+              {tl("Cambia password")}
               <span className="ml-auto text-slate-300">{showPasswordSection ? '▲' : '▼'}</span>
             </button>
 
@@ -1010,7 +1011,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   type="password"
                   value={currentPassword}
                   onChange={e => setCurrentPassword(e.target.value)}
-                  placeholder="Password attuale"
+                  placeholder={tl("Password attuale")}
                   required
                   className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]"
                 />
@@ -1018,7 +1019,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   type="password"
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
-                  placeholder="Nuova password (min. 8 caratteri)"
+                  placeholder={tl("Nuova password (min. 8 caratteri)")}
                   required
                   className="ds-control w-full rounded-lg border-0 px-3 py-2 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]"
                 />
@@ -1026,7 +1027,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   type="password"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="Conferma nuova password"
+                  placeholder={tl("Conferma nuova password")}
                   required
                   aria-invalid={Boolean(newPassword && confirmPassword && newPassword !== confirmPassword)}
                   aria-describedby="password-confirmation-error"
@@ -1034,7 +1035,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 />
                 {newPassword && confirmPassword && newPassword !== confirmPassword && (
                   <p id="password-confirmation-error" className="text-xs font-medium text-red-600" role="alert">
-                    Le password non coincidono.
+                    {tl("Le password non coincidono.")}
                   </p>
                 )}
                 <Button
@@ -1045,7 +1046,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   style={{ '--btn-tone': modalAccentTheme.accent } as CSSProperties}
                   onClick={handleChangePassword}
                 >
-                  {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aggiornamento…</> : 'Aggiorna password'}
+                  {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{tl("Aggiornamento…")}</> : tl("Aggiorna password")}
                 </Button>
               </div>
             )}

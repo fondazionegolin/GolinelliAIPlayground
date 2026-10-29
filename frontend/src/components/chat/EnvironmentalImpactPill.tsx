@@ -6,6 +6,7 @@ import {
   type EnvironmentalImpactMetrics,
   type TokenUsageJson,
 } from '@/lib/environmentalImpact'
+import { tl } from '@/i18n/tl'
 
 interface EnvironmentalImpactPillProps {
   darkMode?: boolean
@@ -48,7 +49,7 @@ function TotalsSummary({ totals }: { totals: EnvironmentalImpactMetrics & { inte
     // overflow-hidden clips it; on hover max-w-xs + max-h-14 reveal it.
     <div className="overflow-hidden text-[11px] opacity-0 max-h-0 max-w-0 transition-all duration-200 ease-out group-hover:mt-2 group-hover:max-h-14 group-hover:max-w-xs group-hover:opacity-100 group-focus-within:mt-2 group-focus-within:max-h-14 group-focus-within:max-w-xs group-focus-within:opacity-100">
       <div className="border-t border-current/10 pt-2 whitespace-nowrap">
-        <span className="font-medium">Totale</span>
+        <span className="font-medium">{tl("Totale")}</span>
         <span className="mx-1 opacity-60">•</span>
         <span>{formatMetricValue(totals.water_ml, 'ml')}</span>
         <span className="mx-1 opacity-60">•</span>
@@ -87,14 +88,14 @@ export default function EnvironmentalImpactPill({
           : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-900',
         className,
       ].join(' ')}
-      title="Stima del footprint AI della risposta e totale cumulativo utente"
+      title={tl("Stima del footprint AI della risposta e totale cumulativo utente")}
     >
       {/* gap-2 between the 3 icon groups only — each icon is 24px */}
       <div className="flex items-center gap-2">
         <MetricItem
           icon={<Droplets className="h-3.5 w-3.5" />}
           value={formatMetricValue(requestImpact.water_ml, 'ml')}
-          label={`acqua (${requestImpact.water_drops} gocce)`}
+          label={tl("acqua ({0} gocce)", requestImpact.water_drops)}
         />
         <MetricItem
           icon={<Zap className="h-3.5 w-3.5" />}

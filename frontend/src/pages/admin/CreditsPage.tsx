@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { DollarSign, Mail, Upload, Check, X } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export default function CreditsPage() {
     const queryClient = useQueryClient()
@@ -66,15 +67,15 @@ export default function CreditsPage() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold tracking-tight">Gestione Crediti e Monitoraggio</h2>
+                <h2 className="text-3xl font-bold tracking-tight">{tl("Gestione Crediti e Monitoraggio")}</h2>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-                    <TabsTrigger value="limits">Limiti</TabsTrigger>
-                    <TabsTrigger value="requests">Richieste Crediti</TabsTrigger>
-                    <TabsTrigger value="invitations">Inviti Docenti</TabsTrigger>
+                    <TabsTrigger value="limits">{tl("Limiti")}</TabsTrigger>
+                    <TabsTrigger value="requests">{tl("Richieste Crediti")}</TabsTrigger>
+                    <TabsTrigger value="invitations">{tl("Inviti Docenti")}</TabsTrigger>
                 </TabsList>
 
                 {/* DASHBOARD */}
@@ -82,7 +83,7 @@ export default function CreditsPage() {
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Costo Totale (Mese)</CardTitle>
+                                <CardTitle className="text-sm font-medium">{tl("Costo Totale (Mese)")}</CardTitle>
                                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
@@ -95,7 +96,7 @@ export default function CreditsPage() {
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                         <Card className="col-span-4">
                             <CardHeader>
-                                <CardTitle>Spesa per Provider</CardTitle>
+                                <CardTitle>{tl("Spesa per Provider")}</CardTitle>
                             </CardHeader>
                             <CardContent className="pl-2">
                                 <div className="space-y-2">
@@ -110,7 +111,7 @@ export default function CreditsPage() {
                         </Card>
                         <Card className="col-span-3">
                             <CardHeader>
-                                <CardTitle>Spesa per Modello</CardTitle>
+                                <CardTitle>{tl("Spesa per Modello")}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-2">
@@ -129,18 +130,18 @@ export default function CreditsPage() {
                 {/* LIMITS */}
                 <TabsContent value="limits">
                     <Card>
-                        <CardHeader><CardTitle>Limiti di Spesa</CardTitle><CardDescription>Gestisci i limiti globali e per utente.</CardDescription></CardHeader>
+                        <CardHeader><CardTitle>{tl("Limiti di Spesa")}</CardTitle><CardDescription>{tl("Gestisci i limiti globali e per utente.")}</CardDescription></CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
                                         <tr>
-                                            <th className="px-4 py-2">Livello</th>
-                                            <th className="px-4 py-2">Entità ID</th>
+                                            <th className="px-4 py-2">{tl("Livello")}</th>
+                                            <th className="px-4 py-2">{tl("Entità ID")}</th>
                                             <th className="px-4 py-2">Budget (Cap)</th>
-                                            <th className="px-4 py-2">Usati</th>
+                                            <th className="px-4 py-2">{tl("Usati")}</th>
                                             <th className="px-4 py-2">Reset</th>
-                                            <th className="px-4 py-2">Azioni</th>
+                                            <th className="px-4 py-2">{tl("Azioni")}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -161,7 +162,7 @@ export default function CreditsPage() {
                                                             if (newCap) updateLimitMutation.mutate({ id: limit.id, cap: parseFloat(newCap) })
                                                         }}
                                                     >
-                                                        Modifica
+                                                        {tl("Modifica")}
                                                     </Button>
                                                 </td>
                                             </tr>
@@ -176,18 +177,18 @@ export default function CreditsPage() {
                 {/* REQUESTS */}
                 <TabsContent value="requests">
                     <Card>
-                        <CardHeader><CardTitle>Richieste di Credito</CardTitle></CardHeader>
+                        <CardHeader><CardTitle>{tl("Richieste di Credito")}</CardTitle></CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
                                         <tr>
-                                            <th className="px-4 py-2">Data</th>
-                                            <th className="px-4 py-2">Docente</th>
-                                            <th className="px-4 py-2">Richiesta</th>
-                                            <th className="px-4 py-2">Motivo</th>
-                                            <th className="px-4 py-2">Stato</th>
-                                            <th className="px-4 py-2">Azioni</th>
+                                            <th className="px-4 py-2">{tl("Data")}</th>
+                                            <th className="px-4 py-2">{tl("Docente")}</th>
+                                            <th className="px-4 py-2">{tl("Richiesta")}</th>
+                                            <th className="px-4 py-2">{tl("Motivo")}</th>
+                                            <th className="px-4 py-2">{tl("Stato")}</th>
+                                            <th className="px-4 py-2">{tl("Azioni")}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -227,14 +228,14 @@ export default function CreditsPage() {
                 <TabsContent value="invitations">
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card className="md:col-span-1">
-                            <CardHeader><CardTitle>Invita Docente</CardTitle></CardHeader>
+                            <CardHeader><CardTitle>{tl("Invita Docente")}</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label>Email</Label>
+                                    <Label>{tl("Email")}</Label>
                                     <Input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Nome (Opzionale)</Label>
+                                    <Label>{tl("Nome (Opzionale)")}</Label>
                                     <Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Mario Rossi" />
                                 </div>
                                 <Button
@@ -246,25 +247,25 @@ export default function CreditsPage() {
                                     }}
                                     disabled={!inviteEmail}
                                 >
-                                    <Mail className="mr-2 h-4 w-4" /> Invia Invito
+                                    <Mail className="mr-2 h-4 w-4" /> {tl("Invia Invito")}
                                 </Button>
 
                                 <div className="relative">
                                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-                                    <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Oppure CSV</span></div>
+                                    <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">{tl("Oppure CSV")}</span></div>
                                 </div>
 
                                 <div className="flex items-center justify-center w-full">
                                     <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50">
                                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                                             <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
-                                            <p className="text-sm text-muted-foreground">Carica CSV (email, name...)</p>
+                                            <p className="text-sm text-muted-foreground">{tl("Carica CSV (email, name...)")}</p>
                                         </div>
                                         <input type="file" className="hidden" accept=".csv" onChange={async (e) => {
                                             if (e.target.files?.[0]) {
                                                 await creditsApi.bulkInvite(e.target.files[0])
                                                 queryClient.invalidateQueries({ queryKey: ['credits-invitations'] })
-                                                alert("Caricamento completato")
+                                                alert(tl("Caricamento completato"))
                                             }
                                         }} />
                                     </label>
@@ -273,15 +274,15 @@ export default function CreditsPage() {
                         </Card>
 
                         <Card className="md:col-span-2">
-                            <CardHeader><CardTitle>Inviti Inviati</CardTitle></CardHeader>
+                            <CardHeader><CardTitle>{tl("Inviti Inviati")}</CardTitle></CardHeader>
                             <CardContent>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm text-left">
                                         <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
                                             <tr>
-                                                <th className="px-4 py-2">Email</th>
-                                                <th className="px-4 py-2">Stato</th>
-                                                <th className="px-4 py-2">Inviato il</th>
+                                                <th className="px-4 py-2">{tl("Email")}</th>
+                                                <th className="px-4 py-2">{tl("Stato")}</th>
+                                                <th className="px-4 py-2">{tl("Inviato il")}</th>
                                                 <th className="px-4 py-2">Token</th>
                                             </tr>
                                         </thead>

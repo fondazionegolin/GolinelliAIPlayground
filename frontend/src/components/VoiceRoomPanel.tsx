@@ -19,6 +19,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { voiceApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 type VoiceQueueItem = {
   student_id: string
@@ -155,7 +156,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
         .filter((item) => !roomParticipants.some((participant) => participant.id === item.student_id))
         .map((item) => ({
           id: item.student_id,
-          name: item.nickname || 'Studente',
+          name: item.nickname || tl("Studente"),
           role: 'student' as const,
           local: false,
           active: false,
@@ -166,7 +167,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     { id: 'teacher', name: 'Docente', role: 'teacher' as const, local: isTeacher, active: isActive && activeSpeakerIds.length === 0, queued: false },
     ...activeSpeakers.map((speaker) => ({
       id: speaker.student_id,
-      name: speaker.nickname || 'Studente',
+      name: speaker.nickname || tl("Studente"),
       role: 'student' as const,
       local: speaker.student_id === currentUserId,
       active: true,
@@ -174,7 +175,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     })),
     ...currentVoiceState.queue.map((item) => ({
       id: item.student_id,
-      name: item.nickname || 'Studente',
+      name: item.nickname || tl("Studente"),
       role: 'student' as const,
       local: item.student_id === currentUserId,
       active: false,
@@ -234,7 +235,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     return 'unknown'
   }
 
-  const readParticipantName = (participant: any) => participant?.name || participant?.identity || 'Partecipante'
+  const readParticipantName = (participant: any) => participant?.name || participant?.identity || tl("Partecipante")
 
   const getCameraOptions = useCallback(() => {
     if (videoQuality === 'low') {
@@ -263,7 +264,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       return {
         id: rawId || identity,
         role,
-        name: participant?.name || (role === 'teacher' ? 'Docente' : 'Studente'),
+        name: participant?.name || (role === 'teacher' ? tl("Docente") : tl("Studente")),
         local,
       }
     }
@@ -376,7 +377,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     })
 
     publishingChangeRef.current = next.catch((err) => {
-      setError(err?.message || 'Microfono non accessibile')
+      setError(err?.message || tl("Microfono non accessibile"))
       setIsPublishing(false)
     })
     await publishingChangeRef.current
@@ -408,7 +409,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
         setLocalCameraStream(null)
       }
     } catch (err: any) {
-      setError(err?.message || 'Videocamera non accessibile')
+      setError(err?.message || tl("Videocamera non accessibile"))
     }
   }, [canPublishMedia, getCameraOptions, localCameraEnabled, syncLocalVideoPublication])
 
@@ -426,7 +427,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
         setLocalScreenStream(null)
       }
     } catch (err: any) {
-      setError(err?.message || 'Condivisione schermo non disponibile')
+      setError(err?.message || tl("Condivisione schermo non disponibile"))
     }
   }, [canPublishMedia, screenShareEnabled, syncLocalVideoPublication])
 
@@ -462,7 +463,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       await room.localParticipant.setCameraEnabled(true, capture, publish)
       requestAnimationFrame(() => syncLocalVideoPublication('camera'))
     } catch (err: any) {
-      setError(err?.message || 'Qualità video non aggiornata')
+      setError(err?.message || tl("Qualità video non aggiornata"))
     }
   }, [canPublishMedia, localCameraEnabled, syncLocalVideoPublication])
 
@@ -531,7 +532,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       room.on(RoomEvent.ParticipantDisconnected, () => syncRoomParticipants(room))
 
       room.on(RoomEvent.TrackSubscriptionFailed, (_trackSid: string, _participant: any, err: any) => {
-        setError(err?.message || 'Audio remoto non disponibile')
+        setError(err?.message || tl("Audio remoto non disponibile"))
       })
 
       room.on(RoomEvent.TrackUnsubscribed, (track: any, publication: any) => {
@@ -585,7 +586,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       syncRoomParticipants(room)
       await setLocalPublishing(desiredPublish)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Connessione voce non riuscita')
+      setError(err?.response?.data?.detail || err?.message || tl("Connessione voce non riuscita"))
       await disconnectRoom()
     } finally {
       joiningRef.current = false
@@ -659,14 +660,14 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   const callTiles = [
     ...(localScreenStream ? [{
       id: 'local-screen',
-      participantName: 'Il tuo schermo',
+      participantName: tl("Il tuo schermo"),
       source: 'screen' as const,
       stream: localScreenStream,
       local: true,
     }] : []),
     ...(localCameraStream ? [{
       id: 'local-camera',
-      participantName: 'La tua camera',
+      participantName: tl("La tua camera"),
       source: 'camera' as const,
       stream: localCameraStream,
       local: true,
@@ -681,7 +682,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   const openVideoCallWindow = useCallback(() => {
     const popup = window.open('', `golinelli-videocall-${sessionId}`, 'popup=yes,width=1280,height=820')
     if (!popup) {
-      setError('Il browser ha bloccato la finestra della videocall')
+      setError(tl("Il browser ha bloccato la finestra della videocall"))
       return
     }
 
@@ -787,13 +788,13 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
 
   // ── Status label ─────────────────────────────────────────────────────────
   const statusText = (() => {
-    if (!isConnected) return isConnecting ? 'Connessione...' : connectionStatus || 'Pronto'
-    if (isMuted) return 'Microfono disattivato'
+    if (!isConnected) return isConnecting ? tl("Connessione...") : connectionStatus || tl("Pronto")
+    if (isMuted) return tl("Microfono disattivato")
     if (isPublishing) {
-      if (isTeacher) return activeSpeakerIds.length > 0 ? `${activeSpeakerIds.length} studenti in parola.` : 'Voce docente attiva.'
-      return 'Sei in parola.'
+      if (isTeacher) return activeSpeakerIds.length > 0 ? tl("{0} studenti in parola.", activeSpeakerIds.length) : tl("Voce docente attiva.")
+      return tl("Sei in parola.")
     }
-    return isTeacher || activeSpeakerIds.length === 0 ? 'In ascolto.' : 'Stai ascoltando la classe.'
+    return isTeacher || activeSpeakerIds.length === 0 ? tl("In ascolto.") : tl("Stai ascoltando la classe.")
   })()
 
   return (
@@ -807,16 +808,16 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
             <p
               className="inline-flex rounded-full text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]"
-              aria-label="Chiamata: parla e condividi lo schermo con la tua classe."
+              aria-label={tl("Chiamata: parla e condividi lo schermo con la tua classe.")}
             >
-              Chiamata
+              {tl("Chiamata")}
             </p>
           </div>
           <p className="mt-0.5 text-[10px] leading-tight text-[var(--logo-blue-strong)]/80">
-            Parla e condividi lo schermo con la tua classe
+            {tl("Parla e condividi lo schermo con la tua classe")}
           </p>
           <p className="truncate text-[10px] text-[var(--logo-blue-strong)]/70">
-            {isActive && activeSpeaker ? `${activeSpeaker.nickname || 'Studente'} in parola` : isActive ? statusText : 'Non attiva'}
+            {isActive && activeSpeaker ? tl("{0} in parola", activeSpeaker.nickname || 'Studente') : isActive ? statusText : tl("Non attiva")}
           </p>
         </div>
 
@@ -827,7 +828,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             className={`h-8 rounded-full bg-none px-3 text-xs font-bold shadow-sm ${isActive ? 'bg-white text-red-600 hover:bg-white/90' : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'}`}
           >
             {isActive ? <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
-            {isActive ? 'Chiudi' : 'Avvia'}
+            {isActive ? tl("Chiudi") : tl("Avvia")}
           </Button>
         ) : (
           <Button
@@ -843,7 +844,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             }`}
           >
             {isSpeaker || isQueued ? <X className="mr-1.5 h-3.5 w-3.5" /> : <Hand className="mr-1.5 h-3.5 w-3.5" />}
-            {isSpeaker ? 'Termina' : isQueued ? 'Annulla' : 'Intervieni'}
+            {isSpeaker ? tl("Termina") : isQueued ? tl("Annulla") : tl("Intervieni")}
           </Button>
         )}
       </div>
@@ -861,7 +862,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
           className="flex w-full items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-2 text-left text-[11px] text-amber-700 transition-colors hover:bg-amber-100"
         >
           <VolumeX className="h-3.5 w-3.5 flex-shrink-0" />
-          <span>Tocca qui per abilitare l'audio</span>
+          <span>{tl("Tocca qui per abilitare l'audio")}</span>
         </button>
       )}
 
@@ -869,7 +870,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
         <div className="space-y-2 px-3 py-2">
           <div className="rounded-xl border border-slate-100 bg-white px-2.5 py-2">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Utenti voce</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Utenti voce")}</span>
               <span className="text-[10px] font-semibold text-slate-400">{voiceParticipants.length}</span>
             </div>
             <div className="space-y-1">
@@ -877,7 +878,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                 <div key={participant.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
                   <span className={`h-2 w-2 rounded-full ${participant.role === 'teacher' || participant.active ? 'animate-pulse bg-emerald-500' : participant.queued ? 'bg-amber-400' : 'bg-slate-300'}`} />
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">
-                    {participant.role === 'teacher' ? 'Docente' : participant.name}
+                    {participant.role === 'teacher' ? tl("Docente") : participant.name}
                   </span>
                   {isTeacher && participant.role === 'student' && participant.queued && (
                     <button
@@ -885,7 +886,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                       onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })}
                       className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-700 hover:bg-amber-100"
                     >
-                      Dai parola
+                      {tl("Dai parola")}
                     </button>
                   )}
                   {isTeacher && participant.role === 'student' && participant.active && (
@@ -894,14 +895,14 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                       onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })}
                       className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-700 hover:bg-emerald-100"
                     >
-                      Togli
+                      {tl("Togli")}
                     </button>
                   )}
                   {(!isTeacher || participant.role === 'teacher' || (!participant.queued && !participant.active)) && (
                     <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
                       participant.role === 'teacher' || participant.active ? 'bg-emerald-50 text-emerald-700' : participant.queued ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
                     }`}>
-                      {participant.role === 'teacher' ? 'Docente' : participant.active ? 'Live' : participant.queued ? 'Richiede' : participant.local ? 'Tu' : 'Connesso'}
+                      {participant.role === 'teacher' ? tl("Docente") : participant.active ? 'Live' : participant.queued ? tl("Richiede") : participant.local ? 'Tu' : tl("Connesso")}
                     </span>
                   )}
                 </div>
@@ -939,7 +940,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
               <button
                 type="button"
                 onClick={() => void toggleMute()}
-                title={isMuted ? 'Attiva microfono' : 'Silenzia microfono'}
+                title={isMuted ? tl("Attiva microfono") : tl("Silenzia microfono")}
                 className={`ml-auto flex-shrink-0 rounded-full p-1 transition-colors ${
                   isMuted
                     ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
@@ -983,11 +984,11 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                     }`}
                   >
                     {screenShareEnabled ? <ScreenShareOff className="h-3.5 w-3.5" /> : <ScreenShare className="h-3.5 w-3.5" />}
-                    Schermo
+                    {tl("Schermo")}
                   </button>
 
                   <div className="ml-auto flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-slate-500">Qualità</span>
+                    <span className="text-[10px] font-bold text-slate-500">{tl("Qualità")}</span>
                     <div className="inline-flex h-8 overflow-hidden rounded-full border border-slate-200 bg-white p-0.5">
                       {(['low', 'hi'] as const).map((quality) => (
                         <button
@@ -995,8 +996,8 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                           type="button"
                           onClick={() => void updateVideoQuality(quality)}
                           aria-pressed={videoQuality === quality}
-                          aria-label={quality === 'low' ? 'Qualità video ridotta' : 'Qualità video alta'}
-                          title={quality === 'low' ? 'Qualità video ridotta' : 'Qualità video alta'}
+                          aria-label={quality === 'low' ? tl("Qualità video ridotta") : tl("Qualità video alta")}
+                          title={quality === 'low' ? tl("Qualità video ridotta") : tl("Qualità video alta")}
                           className={`rounded-full px-2.5 text-[10px] font-black uppercase transition-colors ${
                             videoQuality === quality
                               ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]'
@@ -1020,7 +1021,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                     className="inline-flex h-7 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100"
                   >
                     <PictureInPicture2 className="h-3 w-3" />
-                    Finestra
+                    {tl("Finestra")}
                   </button>
                 </div>
               )}
@@ -1038,7 +1039,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                     <div className="flex items-center justify-between gap-2 border-t border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/85">
                       <span className="truncate">{selectedTile.participantName}</span>
                       <span className="rounded-full bg-white/10 px-1.5 py-0.5 uppercase">
-                        {selectedTile.source === 'screen' ? 'Schermo' : 'Video'}
+                        {selectedTile.source === 'screen' ? tl("Schermo") : 'Video'}
                       </span>
                     </div>
                   </button>
@@ -1058,7 +1059,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                           <div className="flex items-center justify-between gap-1 border-t border-white/10 px-1.5 py-1 text-[9px] font-semibold text-white/80">
                             <span className="truncate">{tile.participantName}</span>
                             <span className="rounded-full bg-white/10 px-1 py-0.5 uppercase">
-                          {tile.source === 'screen' ? 'Schermo' : 'Video'}
+                          {tile.source === 'screen' ? tl("Schermo") : 'Video'}
                         </span>
                       </div>
                         </button>

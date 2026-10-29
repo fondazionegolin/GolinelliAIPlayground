@@ -18,6 +18,7 @@ import { useThumbnail } from './useDriveThumbnail'
 import { DrivePreview, downloadDriveItem } from './DrivePreview'
 import { DriveShareDialog } from './DriveShareDialog'
 import { DriveMoveDialog } from './DriveMoveDialog'
+import { tl } from '@/i18n/tl'
 
 const DRAG_MIME = 'application/x-golinelli-drive'
 const UPLOAD_BATCH_BYTES = 150 * 1024 * 1024
@@ -29,7 +30,7 @@ interface UploadJob { id: string; label: string; progress: number; status: 'uplo
 interface PickedFile { file: File; path: string }
 
 const VIEW_LABEL: Record<DriveView, string> = {
-  folder: 'Il mio drive', recent: 'Recenti', starred: 'Speciali', trash: 'Cestino', shared: 'Condivisi con me', search: 'Risultati ricerca',
+  folder: tl("Il mio drive"), recent: tl("Recenti"), starred: tl("Speciali"), trash: tl("Cestino"), shared: tl("Condivisi con me"), search: tl("Risultati ricerca"),
 }
 
 function readStored<T extends string>(key: string, fallback: T): T {
@@ -158,7 +159,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     setSearchParams(params)
   }
 
-  const fail = (title: string) => (err: any) => toast({ variant: 'destructive', title, description: err?.response?.data?.detail || 'Riprova tra poco.' })
+  const fail = (title: string) => (err: any) => toast({ variant: 'destructive', title, description: err?.response?.data?.detail || tl("Riprova tra poco.") })
 
   // ── Actions ──────────────────────────────────────────────────────────────
   const open = (item: DriveItem) => {
@@ -174,41 +175,41 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     if (!targets.length) return
     try {
       await driveApi.trash(targets.map((item) => item.id))
-      toast({ title: targets.length > 1 ? `${targets.length} elementi spostati nel cestino` : `«${targets[0].name}» spostato nel cestino` })
+      toast({ title: targets.length > 1 ? tl("{0} elementi spostati nel cestino", targets.length) : tl("«{0}» spostato nel cestino", targets[0].name) })
       setSelected(new Set())
       refresh()
-    } catch (err) { fail('Eliminazione non riuscita')(err) }
+    } catch (err) { fail(tl("Eliminazione non riuscita"))(err) }
   }
   const doRestore = async (targets: DriveItem[]) => {
-    try { await driveApi.restore(targets.map((item) => item.id)); setSelected(new Set()); refresh() } catch (err) { fail('Ripristino non riuscito')(err) }
+    try { await driveApi.restore(targets.map((item) => item.id)); setSelected(new Set()); refresh() } catch (err) { fail(tl("Ripristino non riuscito"))(err) }
   }
   const doPurge = async (targets: DriveItem[]) => {
-    if (!window.confirm(`Eliminare definitivamente ${targets.length > 1 ? `${targets.length} elementi` : `«${targets[0].name}»`}? L'operazione non si può annullare.`)) return
-    try { await driveApi.purge(targets.map((item) => item.id)); setSelected(new Set()); refresh() } catch (err) { fail('Eliminazione non riuscita')(err) }
+    if (!window.confirm(tl("Eliminare definitivamente {0}? L'operazione non si può annullare.", targets.length > 1 ? `${targets.length} elementi` : `«${targets[0].name}»`))) return
+    try { await driveApi.purge(targets.map((item) => item.id)); setSelected(new Set()); refresh() } catch (err) { fail(tl("Eliminazione non riuscita"))(err) }
   }
   const doEmptyTrash = async () => {
-    if (!window.confirm('Svuotare il cestino? Tutti gli elementi verranno eliminati definitivamente.')) return
-    try { await driveApi.emptyTrash(); refresh() } catch (err) { fail('Operazione non riuscita')(err) }
+    if (!window.confirm(tl("Svuotare il cestino? Tutti gli elementi verranno eliminati definitivamente."))) return
+    try { await driveApi.emptyTrash(); refresh() } catch (err) { fail(tl("Operazione non riuscita"))(err) }
   }
   const doStar = async (targets: DriveItem[], starred: boolean) => {
-    try { await Promise.all(targets.map((item) => driveApi.update(item.id, { starred }))); refresh() } catch (err) { fail('Operazione non riuscita')(err) }
+    try { await Promise.all(targets.map((item) => driveApi.update(item.id, { starred }))); refresh() } catch (err) { fail(tl("Operazione non riuscita"))(err) }
   }
   const doRename = async (item: DriveItem, name: string) => {
     setRenamingId(null)
     const clean = name.trim()
     if (!clean || clean === item.name) return
-    try { await driveApi.update(item.id, { name: clean }); refresh() } catch (err) { fail('Rinomina non riuscita')(err) }
+    try { await driveApi.update(item.id, { name: clean }); refresh() } catch (err) { fail(tl("Rinomina non riuscita"))(err) }
   }
   const doMove = async (ids: string[], parentId: string | null) => {
     const valid = ids.filter((id) => id !== parentId)
     if (!valid.length) return
     try {
       await driveApi.move(valid, parentId)
-      toast({ title: valid.length > 1 ? `${valid.length} elementi spostati` : 'Elemento spostato' })
+      toast({ title: valid.length > 1 ? tl("{0} elementi spostati", valid.length) : tl("Elemento spostato") })
       setSelected(new Set())
       setMoveIds(null)
       refresh()
-    } catch (err) { fail('Spostamento non riuscito')(err) }
+    } catch (err) { fail(tl("Spostamento non riuscito"))(err) }
   }
   const doDownload = async (targets: DriveItem[], format?: string) => {
     try {
@@ -220,14 +221,14 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
         link.click()
         setTimeout(() => URL.revokeObjectURL(url), 2000)
       }
-    } catch (err) { fail('Download non riuscito')(err) }
+    } catch (err) { fail(tl("Download non riuscito"))(err) }
   }
   const createFolder = async (name: string) => {
     try {
       await driveApi.createFolder(name, folderId)
       setNewFolderOpen(false)
       refresh()
-    } catch (err) { fail('Cartella non creata')(err) }
+    } catch (err) { fail(tl("Cartella non creata"))(err) }
   }
 
   // ── Upload ───────────────────────────────────────────────────────────────
@@ -255,7 +256,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
           setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, progress: fraction } : job))))
         setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, progress: 1, status: 'done' } : job)))
       } catch (err: any) {
-        setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, status: 'error', error: err?.response?.data?.detail || 'Caricamento non riuscito' } : job)))
+        setUploads((jobs) => jobs.map((job) => (job.id === id ? { ...job, status: 'error', error: err?.response?.data?.detail || tl("Caricamento non riuscito") } : job)))
       }
       refresh()
     }
@@ -374,10 +375,10 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
 
   // ── Rendering helpers ────────────────────────────────────────────────────
   const breadcrumb = listing.data?.breadcrumb ?? []
-  const sharedLabel = isTeacher ? VIEW_LABEL.shared : 'Condivisi con la classe'
+  const sharedLabel = isTeacher ? VIEW_LABEL.shared : tl("Condivisi con la classe")
   const rootLabel = isTeacher ? (folderId && breadcrumb.length && listing.data?.role !== 'owner' ? sharedLabel : VIEW_LABEL[folderId ? 'folder' : effectiveView]) : sharedLabel
   const rootView: DriveView = isTeacher ? (folderId && listing.data?.role !== 'owner' ? 'shared' : folderId ? 'folder' : effectiveView) : 'shared'
-  const title = debounced && isTeacher ? `Risultati per «${debounced}»` : folderId ? breadcrumb[breadcrumb.length - 1]?.name ?? '' : effectiveView === 'shared' ? sharedLabel : VIEW_LABEL[effectiveView]
+  const title = debounced && isTeacher ? tl("Risultati per «{0}»", debounced) : folderId ? breadcrumb[breadcrumb.length - 1]?.name ?? '' : effectiveView === 'shared' ? sharedLabel : VIEW_LABEL[effectiveView]
 
   const menuActions = (item: DriveItem) => {
     const targets = selected.has(item.id) && selectedItems.length > 1 ? selectedItems : [item]
@@ -388,31 +389,31 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     const owned = targets.every((entry) => entry.role === 'owner')
     if (inTrash) {
       return [
-        { icon: RotateCcw, label: 'Ripristina', run: () => doRestore(targets) },
-        { icon: Trash2, label: 'Elimina definitivamente', danger: true, run: () => doPurge(targets) },
+        { icon: RotateCcw, label: tl("Ripristina"), run: () => doRestore(targets) },
+        { icon: Trash2, label: tl("Elimina definitivamente"), danger: true, run: () => doPurge(targets) },
       ]
     }
     return [
       single && { icon: item.kind === 'folder' ? Folder : Eye, label: item.kind === 'folder' ? 'Apri' : editorPath ? 'Apri' : 'Anteprima', run: () => open(item) },
-      { icon: Download, label: targets.length > 1 || item.kind === 'folder' ? 'Scarica come zip' : 'Scarica', run: () => doDownload(targets) },
+      { icon: Download, label: targets.length > 1 || item.kind === 'folder' ? tl("Scarica come zip") : tl("Scarica"), run: () => doDownload(targets) },
       single && isDoc && { icon: FileUp, label: 'Esporta in PDF', run: () => doDownload(targets, 'pdf') },
       single && isDoc && { icon: FileUp, label: item.source_type === 'presentation' ? 'Esporta in PowerPoint' : 'Esporta in Word', run: () => doDownload(targets, item.source_type === 'presentation' ? 'pptx' : 'docx') },
       'divider',
-      single && isTeacher && owned && { icon: Share2, label: 'Condividi', run: () => setShareItem(item) },
+      single && isTeacher && owned && { icon: Share2, label: tl("Condividi"), run: () => setShareItem(item) },
       single && editableTargets.length === 1 && { icon: Pencil, label: 'Rinomina', hint: 'F2', run: () => setRenamingId(item.id) },
-      isTeacher && owned && editableTargets.length === targets.length && { icon: FolderInput, label: 'Sposta in…', run: () => setMoveIds(targets.map((entry) => entry.id)) },
-      isTeacher && owned && { icon: Star, label: targets.every((entry) => entry.starred) ? 'Rimuovi da Speciali' : 'Aggiungi a Speciali', run: () => doStar(targets, !targets.every((entry) => entry.starred)) },
+      isTeacher && owned && editableTargets.length === targets.length && { icon: FolderInput, label: tl("Sposta in…"), run: () => setMoveIds(targets.map((entry) => entry.id)) },
+      isTeacher && owned && { icon: Star, label: targets.every((entry) => entry.starred) ? tl("Rimuovi da Speciali") : tl("Aggiungi a Speciali"), run: () => doStar(targets, !targets.every((entry) => entry.starred)) },
       editableTargets.length > 0 && 'divider',
-      editableTargets.length > 0 && { icon: Trash2, label: 'Sposta nel cestino', hint: 'Canc', danger: true, run: () => doTrash(editableTargets) },
+      editableTargets.length > 0 && { icon: Trash2, label: tl("Sposta nel cestino"), hint: 'Canc', danger: true, run: () => doTrash(editableTargets) },
     ].filter(Boolean) as Array<'divider' | { icon: typeof Eye; label: string; hint?: string; danger?: boolean; run: () => unknown }>
   }
 
   const renderBadges = (item: DriveItem) => (
     <>
-      {item.starred && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" aria-label="Speciale" />}
-      {item.shared && <Users className="h-3 w-3 shrink-0 text-slate-400" aria-label="Condiviso" />}
-      {item.public && <Globe className="h-3 w-3 shrink-0 text-slate-400" aria-label="Link pubblico" />}
-      {item.kind === 'link' && <Link2 className="h-3 w-3 shrink-0 text-slate-400" aria-label="Collegato alla piattaforma" />}
+      {item.starred && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" aria-label={tl("Speciale")} />}
+      {item.shared && <Users className="h-3 w-3 shrink-0 text-slate-400" aria-label={tl("Condiviso")} />}
+      {item.public && <Globe className="h-3 w-3 shrink-0 text-slate-400" aria-label={tl("Link pubblico")} />}
+      {item.kind === 'link' && <Link2 className="h-3 w-3 shrink-0 text-slate-400" aria-label={tl("Collegato alla piattaforma")} />}
     </>
   )
 
@@ -450,18 +451,18 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
         <aside className="ds-panel hidden w-64 shrink-0 flex-col rounded-[var(--card-radius)] p-3 lg:flex" onClick={(event) => event.stopPropagation()}>
           <div className="relative mb-3">
             <Button type="button" tone="accent" surface="solid" className="w-full justify-start gap-2 rounded-2xl" onClick={(event) => { event.stopPropagation(); setNewMenuOpen((value) => !value) }}>
-              <Plus className="h-4 w-4" /> Nuovo
+              <Plus className="h-4 w-4" /> {tl("Nuovo")}
             </Button>
             {newMenuOpen && (
               <div className="ds-popover rounded-[var(--ds-radius-panel)] absolute left-0 right-0 top-full z-40 mt-2 p-1.5" onClick={(event) => event.stopPropagation()}>
-                <MenuButton icon={FolderPlus} label="Nuova cartella" onClick={() => { setNewMenuOpen(false); setNewFolderOpen(true) }} />
-                <MenuButton icon={Upload} label="Carica file" onClick={() => { setNewMenuOpen(false); fileInputRef.current?.click() }} />
-                <MenuButton icon={FolderUp} label="Carica cartella" onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click() }} />
+                <MenuButton icon={FolderPlus} label={tl("Nuova cartella")} onClick={() => { setNewMenuOpen(false); setNewFolderOpen(true) }} />
+                <MenuButton icon={Upload} label={tl("Carica file")} onClick={() => { setNewMenuOpen(false); fileInputRef.current?.click() }} />
+                <MenuButton icon={FolderUp} label={tl("Carica cartella")} onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click() }} />
               </div>
             )}
           </div>
           <nav className="flex flex-col gap-0.5">
-            {navEntry('folder', <HardDrive className="h-4 w-4" />, 'Il mio drive', null)}
+            {navEntry('folder', <HardDrive className="h-4 w-4" />, tl("Il mio drive"), null)}
           </nav>
           <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
             <FolderTree
@@ -473,17 +474,17 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             />
           </div>
           <nav className="mt-2 flex flex-col gap-0.5 border-t border-slate-100 pt-2">
-            {navEntry('shared', <Users className="h-4 w-4" />, 'Condivisi con me')}
-            {navEntry('recent', <Clock className="h-4 w-4" />, 'Recenti')}
-            {navEntry('starred', <Star className="h-4 w-4" />, 'Speciali')}
-            {navEntry('trash', <Trash2 className="h-4 w-4" />, 'Cestino')}
+            {navEntry('shared', <Users className="h-4 w-4" />, tl("Condivisi con me"))}
+            {navEntry('recent', <Clock className="h-4 w-4" />, tl("Recenti"))}
+            {navEntry('starred', <Star className="h-4 w-4" />, tl("Speciali"))}
+            {navEntry('trash', <Trash2 className="h-4 w-4" />, tl("Cestino"))}
           </nav>
           {usage.data && (
             <div className="mt-3 px-2">
               <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
                 <div className="h-full rounded-full bg-[var(--app-accent)]" style={{ width: `${Math.max(usedPct, 1)}%` }} />
               </div>
-              <p className="mt-1.5 text-[11px] text-slate-500">{formatBytes(usage.data.used_bytes)} di {formatBytes(usage.data.quota_bytes)} utilizzati</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">{formatBytes(usage.data.used_bytes)} {tl("di")} {formatBytes(usage.data.quota_bytes)} utilizzati</p>
             </div>
           )}
         </aside>
@@ -499,7 +500,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
       >
         <header className="flex flex-col gap-3 px-4 pb-2 pt-4 md:px-5" onClick={(event) => event.stopPropagation()}>
           <div className="flex flex-wrap items-center gap-3">
-            <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm" aria-label="Percorso">
+            <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm" aria-label={tl("Percorso")}>
               <button
                 type="button"
                 onClick={() => go({ view: rootView })}
@@ -523,17 +524,17 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
               ))}
             </nav>
             {isTeacher && (
-              <SearchPill value={query} onValueChange={setQuery} placeholder="Cerca nel drive" className="w-full sm:w-72" />
+              <SearchPill value={query} onValueChange={setQuery} placeholder={tl("Cerca nel drive")} className="w-full sm:w-72" />
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {selectedItems.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[var(--app-accent-soft)] px-2 py-1">
-                <button type="button" onClick={() => setSelected(new Set())} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/70" aria-label="Deseleziona">
+                <button type="button" onClick={() => setSelected(new Set())} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/70" aria-label={tl("Deseleziona")}>
                   <X className="h-4 w-4" />
                 </button>
-                <span className="px-1 text-xs font-bold text-slate-700">{selectedItems.length} selezionati</span>
+                <span className="px-1 text-xs font-bold text-slate-700">{selectedItems.length} {tl("selezionati")}</span>
                 {menuActions(selectedItems[0]).filter((action) => action !== 'divider' && !['Apri', 'Anteprima', 'Rinomina', 'Esporta in PDF', 'Esporta in Word', 'Esporta in PowerPoint', "Apri nell'editor"].includes(action.label)).map((action) => {
                   if (action === 'divider') return null
                   const Icon = action.icon
@@ -558,35 +559,35 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             <div className="ml-auto flex items-center gap-1">
               {writable && (
                 <div className="flex items-center gap-1 lg:hidden">
-                  <IconTool icon={FolderPlus} label="Nuova cartella" onClick={() => setNewFolderOpen(true)} />
-                  <IconTool icon={Upload} label="Carica file" onClick={() => fileInputRef.current?.click()} />
+                  <IconTool icon={FolderPlus} label={tl("Nuova cartella")} onClick={() => setNewFolderOpen(true)} />
+                  <IconTool icon={Upload} label={tl("Carica file")} onClick={() => fileInputRef.current?.click()} />
                 </div>
               )}
               {!isTeacher && writable && (
                 <div className="hidden items-center gap-1 lg:flex">
-                  <IconTool icon={FolderPlus} label="Nuova cartella" onClick={() => setNewFolderOpen(true)} />
-                  <IconTool icon={Upload} label="Carica file" onClick={() => fileInputRef.current?.click()} />
+                  <IconTool icon={FolderPlus} label={tl("Nuova cartella")} onClick={() => setNewFolderOpen(true)} />
+                  <IconTool icon={Upload} label={tl("Carica file")} onClick={() => fileInputRef.current?.click()} />
                 </div>
               )}
               {inTrash && (listing.data?.items.length ?? 0) > 0 && (
-                <Button type="button" density="compact" tone="danger" surface="soft" onClick={() => void doEmptyTrash()}>Svuota cestino</Button>
+                <Button type="button" density="compact" tone="danger" surface="soft" onClick={() => void doEmptyTrash()}>{tl("Svuota cestino")}</Button>
               )}
               <div className="relative">
-                <IconTool icon={ArrowDownUp} label="Ordina" onClick={(event) => { event.stopPropagation(); setSortMenuOpen((value) => !value) }} />
+                <IconTool icon={ArrowDownUp} label={tl("Ordina")} onClick={(event) => { event.stopPropagation(); setSortMenuOpen((value) => !value) }} />
                 {sortMenuOpen && (
                   <div className="ds-popover rounded-[var(--ds-radius-panel)] absolute right-0 top-full z-40 mt-2 w-52 p-1.5" onClick={(event) => event.stopPropagation()}>
-                    {([['name', 'Nome'], ['updated', 'Ultima modifica'], ['size', 'Dimensione'], ['type', 'Tipo']] as [SortKey, string][]).map(([key, label]) => (
+                    {([['name', tl("Nome")], ['updated', tl("Ultima modifica")], ['size', tl("Dimensione")], ['type', tl("Tipo")]] as [SortKey, string][]).map(([key, label]) => (
                       <MenuButton key={key} icon={sortKey === key ? Check : undefined} label={label} onClick={() => { setSortKey(key); writeStored('drive:sort', key) }} />
                     ))}
                     <div className="my-1 h-px bg-slate-100" />
-                    <MenuButton icon={sortAsc ? Check : undefined} label="Crescente" onClick={() => { setSortAsc(true); writeStored('drive:asc', '1') }} />
-                    <MenuButton icon={!sortAsc ? Check : undefined} label="Decrescente" onClick={() => { setSortAsc(false); writeStored('drive:asc', '0') }} />
+                    <MenuButton icon={sortAsc ? Check : undefined} label={tl("Crescente")} onClick={() => { setSortAsc(true); writeStored('drive:asc', '1') }} />
+                    <MenuButton icon={!sortAsc ? Check : undefined} label={tl("Decrescente")} onClick={() => { setSortAsc(false); writeStored('drive:asc', '0') }} />
                   </div>
                 )}
               </div>
-              <IconTool icon={layout === 'grid' ? List : LayoutGrid} label={layout === 'grid' ? 'Vista elenco' : 'Vista griglia'}
+              <IconTool icon={layout === 'grid' ? List : LayoutGrid} label={layout === 'grid' ? tl("Vista elenco") : tl("Vista griglia")}
                 onClick={() => { const next = layout === 'grid' ? 'list' : 'grid'; setLayout(next); writeStored('drive:layout', next) }} />
-              <IconTool icon={RefreshCw} label="Aggiorna" spinning={listing.isFetching}
+              <IconTool icon={RefreshCw} label={tl("Aggiorna")} spinning={listing.isFetching}
                 onClick={() => { void driveApi.list({ view: effectiveView, parent_id: folderId, sync: true }).finally(refresh) }} />
             </div>
           </div>
@@ -596,12 +597,12 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
           {listing.isLoading ? (
             <div className="flex h-48 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
           ) : listing.isError ? (
-            <EmptyState icon={X} title="Contenuto non disponibile" text="La cartella non esiste più o non hai accesso." />
+            <EmptyState icon={X} title={tl("Contenuto non disponibile")} text={tl("La cartella non esiste più o non hai accesso.")} />
           ) : items.length === 0 ? (
             <EmptyState
               icon={inTrash ? Trash2 : effectiveView === 'shared' ? Users : effectiveView === 'starred' ? Star : Folder}
-              title={inTrash ? 'Il cestino è vuoto' : effectiveView === 'shared' ? 'Nessun file condiviso' : effectiveView === 'starred' ? 'Nessun elemento speciale' : debounced ? 'Nessun risultato' : filter !== 'all' ? 'Nessun elemento di questo tipo' : 'Questa cartella è vuota'}
-              text={inTrash ? 'Gli elementi eliminati restano qui finché non svuoti il cestino.' : effectiveView === 'shared' ? (isTeacher ? 'Qui trovi ciò che i colleghi condividono con te.' : 'Qui trovi i materiali che il docente condivide con la classe.') : writable ? 'Trascina qui file o cartelle dal computer, oppure usa «Nuovo».' : ''}
+              title={inTrash ? tl("Il cestino è vuoto") : effectiveView === 'shared' ? tl("Nessun file condiviso") : effectiveView === 'starred' ? tl("Nessun elemento speciale") : debounced ? tl("Nessun risultato") : filter !== 'all' ? tl("Nessun elemento di questo tipo") : tl("Questa cartella è vuota")}
+              text={inTrash ? tl("Gli elementi eliminati restano qui finché non svuoti il cestino.") : effectiveView === 'shared' ? (isTeacher ? tl("Qui trovi ciò che i colleghi condividono con te.") : tl("Qui trovi i materiali che il docente condivide con la classe.")) : writable ? tl("Trascina qui file o cartelle dal computer, oppure usa «Nuovo».") : ''}
             />
           ) : layout === 'grid' ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
@@ -614,7 +615,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
           ) : (
             <div role="table" className="text-sm">
               <div role="row" className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_120px] gap-3 bg-[var(--ds-surface)] px-3 py-2 text-[11px] font-black uppercase tracking-wider text-slate-400 md:grid-cols-[minmax(0,1fr)_140px_120px_96px_40px]">
-                <span>Nome</span><span className="hidden md:block">Autore</span><span>Modificato</span><span className="hidden md:block">Dimensione</span><span />
+                <span>{tl("Nome")}</span><span className="hidden md:block">{tl("Autore")}</span><span>{tl("Modificato")}</span><span className="hidden md:block">{tl("Dimensione")}</span><span />
               </div>
               {items.map((item) => (
                 <ListRow key={item.id} item={item} selected={selected.has(item.id)} dropping={dropTarget === item.id} renaming={renamingId === item.id}
@@ -629,7 +630,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
           <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-[var(--card-radius)] border-2 border-dashed border-[var(--app-accent)] bg-[var(--app-accent-soft)]/80">
             <div className="flex flex-col items-center gap-2 text-[var(--app-accent-text)]">
               <Upload className="h-8 w-8" />
-              <p className="text-sm font-bold">Rilascia per caricare in «{folderId ? breadcrumb[breadcrumb.length - 1]?.name : 'Il mio drive'}»</p>
+              <p className="text-sm font-bold">{tl("Rilascia per caricare in «")}{folderId ? breadcrumb[breadcrumb.length - 1]?.name : tl("Il mio drive")}»</p>
             </div>
           </div>
         )}
@@ -743,7 +744,7 @@ function GridCard({ item, selected, dropping, renaming, badges, onRename, onCanc
       className={`group relative flex cursor-default select-none flex-col overflow-hidden rounded-2xl transition-all ${selected ? 'ds-selected' : 'ds-control hover:shadow-[var(--ds-shadow-2)]'} ${dropping ? 'ring-2 ring-[var(--app-accent)]' : ''}`}>
       <div className="relative flex h-28 items-center justify-center overflow-hidden" style={{ background: `color-mix(in srgb, ${tone} 9%, transparent)` }}>
         {url ? <img src={url} alt="" draggable={false} className="h-full w-full object-cover" /> : <ItemIcon item={item} size="lg" />}
-        {item.is_system && <span className="absolute left-2 top-2 rounded-full bg-white/85 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">{item.session_id ? 'Sessione' : item.class_id ? 'Classe' : 'Auto'}</span>}
+        {item.is_system && <span className="absolute left-2 top-2 rounded-full bg-white/85 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">{item.session_id ? tl("Sessione") : item.class_id ? tl("Classe") : 'Auto'}</span>}
       </div>
       <div className="flex items-start gap-2 px-3 py-2.5">
         <ItemIcon item={item} size="sm" />
@@ -753,7 +754,7 @@ function GridCard({ item, selected, dropping, renaming, badges, onRename, onCanc
           )}
           <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500">{badges}<span className="truncate">{sub}</span></p>
         </div>
-        <button type="button" onClick={onMenu} className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 opacity-0 hover:bg-slate-100 group-hover:opacity-100 focus:opacity-100" aria-label="Azioni">
+        <button type="button" onClick={onMenu} className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 opacity-0 hover:bg-slate-100 group-hover:opacity-100 focus:opacity-100" aria-label={tl("Azioni")}>
           <MoreVertical className="h-4 w-4" />
         </button>
       </div>
@@ -770,10 +771,10 @@ function ListRow({ item, selected, dropping, renaming, badges, onRename, onCance
         {renaming ? <InlineRename value={item.name} onCommit={onRename} onCancel={onCancelRename} /> : <span className="truncate font-semibold text-slate-800" title={item.name}>{item.name}</span>}
         <span className="flex shrink-0 items-center gap-1">{badges}</span>
       </span>
-      <span className="hidden truncate text-xs text-slate-500 md:block">{item.created_by_student || (item.role === 'owner' ? 'Tu' : 'Docente')}</span>
+      <span className="hidden truncate text-xs text-slate-500 md:block">{item.created_by_student || (item.role === 'owner' ? 'Tu' : tl("Docente"))}</span>
       <span className="text-xs text-slate-500">{formatDate(item.updated_at)}</span>
       <span className="hidden text-xs text-slate-500 md:block">{item.kind === 'folder' ? `${item.child_count ?? 0} el.` : formatBytes(item.size_bytes)}</span>
-      <button type="button" onClick={onMenu} className="hidden h-7 w-7 items-center justify-center rounded-full text-slate-400 opacity-0 hover:bg-slate-100 group-hover:opacity-100 md:flex" aria-label="Azioni">
+      <button type="button" onClick={onMenu} className="hidden h-7 w-7 items-center justify-center rounded-full text-slate-400 opacity-0 hover:bg-slate-100 group-hover:opacity-100 md:flex" aria-label={tl("Azioni")}>
         <MoreVertical className="h-4 w-4" />
       </button>
     </div>
@@ -814,7 +815,7 @@ function FolderTree({ folders, activeId, dropTarget, onOpen, dropProps }: {
         <div {...dropProps(folder.id)}
           className={`flex items-center rounded-lg pr-2 text-[13px] ${active ? 'ds-selected font-bold text-[var(--selection-text)]' : 'text-slate-600 hover:bg-[var(--ds-control-hover)]'} ${dropTarget === folder.id ? 'ring-2 ring-[var(--app-accent)]' : ''}`}
           style={{ paddingLeft: depth * 14 }}>
-          <button type="button" aria-label={open ? 'Comprimi' : 'Espandi'}
+          <button type="button" aria-label={open ? tl("Comprimi") : tl("Espandi")}
             className={`flex h-7 w-6 shrink-0 items-center justify-center text-slate-400 ${kids.length ? '' : 'invisible'}`}
             onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(folder.id) : next.add(folder.id); return next })}>
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
@@ -836,9 +837,9 @@ function UploadPanel({ jobs, onClose }: { jobs: UploadJob[]; onClose: () => void
   return (
     <div className="ds-popover rounded-[var(--ds-radius-panel)] fixed bottom-4 right-4 z-[60] w-80 overflow-hidden" onClick={(event) => event.stopPropagation()}>
       <div className="flex items-center justify-between bg-slate-50/80 px-4 py-2.5">
-        <p className="text-xs font-bold text-slate-700">{active ? `Caricamento di ${active} ${active === 1 ? 'gruppo' : 'gruppi'}…` : 'Caricamenti completati'}</p>
+        <p className="text-xs font-bold text-slate-700">{active ? tl("Caricamento di {0} {1}…", active, active === 1 ? 'gruppo' : 'gruppi') : tl("Caricamenti completati")}</p>
         {!active && (
-          <button type="button" onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200" aria-label="Chiudi">
+          <button type="button" onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200" aria-label={tl("Chiudi")}>
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -865,7 +866,7 @@ function UploadPanel({ jobs, onClose }: { jobs: UploadJob[]; onClose: () => void
 }
 
 function NewFolderDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => Promise<void> }) {
-  const [name, setName] = useState('Nuova cartella')
+  const [name, setName] = useState(tl("Nuova cartella"))
   const [busy, setBusy] = useState(false)
   const submit = async () => {
     if (!name.trim()) return
@@ -875,16 +876,16 @@ function NewFolderDialog({ onClose, onCreate }: { onClose: () => void; onCreate:
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent size="sm">
-        <DialogHeader><DialogTitle>Nuova cartella</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{tl("Nuova cartella")}</DialogTitle></DialogHeader>
         <DialogBody>
           <input autoFocus value={name} onChange={(event) => setName(event.target.value)} onFocus={(event) => event.target.select()}
             onKeyDown={(event) => { if (event.key === 'Enter') void submit() }}
             className="ds-control h-11 w-full rounded-xl px-3 text-sm outline-none focus:shadow-[var(--ds-shadow-focus)]" />
         </DialogBody>
         <DialogFooter>
-          <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button type="button" tone="neutral" surface="ghost" onClick={onClose}>{tl("Annulla")}</Button>
           <Button type="button" tone="accent" surface="solid" onClick={() => void submit()} disabled={busy || !name.trim()}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Crea
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} {tl("Crea")}
           </Button>
         </DialogFooter>
       </DialogContent>

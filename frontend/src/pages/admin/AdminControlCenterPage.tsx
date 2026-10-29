@@ -18,6 +18,7 @@ import {
   Legend,
 } from 'recharts'
 import { Activity, DollarSign, Zap, Wifi } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 type OverviewData = {
   summary: {
@@ -75,11 +76,11 @@ export default function AdminOverviewPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Panoramica</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Monitor realtime — utenti online, API, costi.</p>
+          <h1 className="text-2xl font-bold text-slate-900">{tl("Panoramica")}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{tl("Monitor realtime — utenti online, API, costi.")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Label htmlFor="period-days" className="text-xs text-slate-500 whitespace-nowrap">Periodo</Label>
+          <Label htmlFor="period-days" className="text-xs text-slate-500 whitespace-nowrap">{tl("Periodo")}</Label>
           <Input
             id="period-days"
             type="number"
@@ -89,37 +90,37 @@ export default function AdminOverviewPage() {
             onChange={(e) => setDays(Math.max(1, Math.min(180, Number(e.target.value || 30))))}
             className="h-8 w-20 text-sm"
           />
-          <span className="text-xs text-slate-500">giorni</span>
+          <span className="text-xs text-slate-500">{tl("giorni")}</span>
         </div>
       </div>
 
       {/* Metric Cards */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard
-          title="Online ora"
+          title={tl("Online ora")}
           value={`${realtime?.online_total || 0}`}
-          hint={`Studenti ${realtime?.online_students || 0} · Docenti ${realtime?.online_teachers || 0}`}
+          hint={tl("Studenti {0} · Docenti {1}", realtime?.online_students || 0, realtime?.online_teachers || 0)}
           icon={Wifi}
           color="sky"
         />
         <MetricCard
-          title="Attivi recenti"
+          title={tl("Attivi recenti")}
           value={`${realtime?.recent_students_2m || 0}`}
-          hint={`Docenti 10min: ${realtime?.recent_active_teachers_10m || 0}`}
+          hint={tl("Docenti 10min: {0}", realtime?.recent_active_teachers_10m || 0)}
           icon={Activity}
           color="emerald"
         />
         <MetricCard
-          title="Chiamate API"
+          title={tl("Chiamate API")}
           value={`${summary?.total_api_calls_period || 0}`}
-          hint={`Ultimi ${summary?.period_days || days} giorni`}
+          hint={tl("Ultimi {0} giorni", summary?.period_days || days)}
           icon={Zap}
           color="violet"
         />
         <MetricCard
-          title="Costo periodo"
+          title={tl("Costo periodo")}
           value={formatCurrency(summary?.total_cost_period || 0)}
-          hint={`Docenti attivi: ${summary?.active_teachers_period || 0}`}
+          hint={tl("Docenti attivi: {0}", summary?.active_teachers_period || 0)}
           icon={DollarSign}
           color="amber"
         />
@@ -129,7 +130,7 @@ export default function AdminOverviewPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Chiamate e costi giornalieri</CardTitle>
+            <CardTitle className="text-sm font-semibold">{tl("Chiamate e costi giornalieri")}</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -165,12 +166,12 @@ export default function AdminOverviewPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Sessioni attive</CardTitle>
-            <CardDescription className="text-xs">Aggiornamento ogni 3s</CardDescription>
+            <CardTitle className="text-sm font-semibold">{tl("Sessioni attive")}</CardTitle>
+            <CardDescription className="text-xs">{tl("Aggiornamento ogni 3s")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1.5 max-h-56 overflow-y-auto">
             {(realtime?.sessions_active || []).length === 0 ? (
-              <p className="text-xs text-slate-400 py-2">Nessuna sessione attiva</p>
+              <p className="text-xs text-slate-400 py-2">{tl("Nessuna sessione attiva")}</p>
             ) : (
               (realtime?.sessions_active || []).map((session) => (
                 <div
@@ -181,7 +182,7 @@ export default function AdminOverviewPage() {
                     {session.session_id.slice(0, 8)}…
                   </span>
                   <Badge className="bg-[#1a1a2e] text-white text-[10px]">
-                    {session.online_students} studenti
+                    {session.online_students} {tl("studenti")}
                   </Badge>
                 </div>
               ))
@@ -193,21 +194,21 @@ export default function AdminOverviewPage() {
       {/* Online Users Table */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Utenti connessi in realtime</CardTitle>
-          <CardDescription className="text-xs">Lista live socket (docenti e studenti)</CardDescription>
+          <CardTitle className="text-sm font-semibold">{tl("Utenti connessi in realtime")}</CardTitle>
+          <CardDescription className="text-xs">{tl("Lista live socket (docenti e studenti)")}</CardDescription>
         </CardHeader>
         <CardContent>
           {(realtime?.users_online || []).length === 0 ? (
-            <p className="text-xs text-slate-400 py-3">Nessun utente connesso</p>
+            <p className="text-xs text-slate-400 py-3">{tl("Nessun utente connesso")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase text-slate-400 border-b border-slate-100">
-                    <th className="pb-2 font-medium">Tipo</th>
-                    <th className="pb-2 font-medium">Nome</th>
-                    <th className="pb-2 font-medium">Email</th>
-                    <th className="pb-2 font-medium">Sessione</th>
+                    <th className="pb-2 font-medium">{tl("Tipo")}</th>
+                    <th className="pb-2 font-medium">{tl("Nome")}</th>
+                    <th className="pb-2 font-medium">{tl("Email")}</th>
+                    <th className="pb-2 font-medium">{tl("Sessione")}</th>
                     <th className="pb-2 font-medium">Socket ID</th>
                   </tr>
                 </thead>
@@ -222,7 +223,7 @@ export default function AdminOverviewPage() {
                               : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {u.type === 'teacher' ? 'docente' : 'studente'}
+                          {u.type === 'teacher' ? tl("docente") : tl("studente")}
                         </span>
                       </td>
                       <td className="py-2 font-medium text-slate-800">{u.name}</td>

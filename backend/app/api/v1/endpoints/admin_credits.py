@@ -373,6 +373,7 @@ def _limit_row(limit: CreditLimit, *, title: str, subtitle: str = "", class_name
         "effective_cap_credits": to_credits(eff) if cap > 0 else None,
         "used_pct": round(used / eff * 100, 1) if eff > 0 else 0.0,
         "state": state,
+        "period_start": limit.period_start,
         "period_end": limit.period_end,
     }
 
@@ -388,6 +389,13 @@ class LimitTarget(BaseModel):
 
 class LimitSetBody(LimitTarget):
     cap_credits: float = Field(..., ge=0)
+
+
+class ResetBody(LimitTarget):
+    """Riparte da oggi: consumi a zero, nuova decorrenza; opzionalmente nuovo cap e bundle azzerati."""
+    cap_credits: Optional[float] = Field(None, ge=0)
+    clear_bonus: bool = False
+    note: Optional[str] = None
 
 
 class BundleBody(LimitTarget):
@@ -689,6 +697,27 @@ async def admin_credit_overview(
         row["class_id"] = str(cls.id)
         class_rows.append(row)
 
+    # Ogni docente di un tenant INDIVIDUAL porta con sé il proprio pool studenti (anche se non ancora creato:
+    # verrà creato al primo salvataggio col default del tenant). Nei tenant SCUOLA gli studenti usano il pool d'istituto.
+    pool_by_teacher = {p["teacher_id"]: p for p in pools if p["teacher_id"]}
+    for row in teacher_rows:
+        owner = teachers.get(uuid.UUID(row["teacher_id"])) if row["teacher_id"] else None
+        tenant = tenants.get(owner.tenant_id) if owner else None
+        if not owner or getattr(tenant, "tenant_type", None) == TenantType.SCHOOL:
+            row["student_pool"] = None
+            continue
+        pool = pool_by_teacher.get(str(owner.id))
+        if pool is None:
+            stub = CreditLimit(
+                tenant_id=owner.tenant_id, level=LimitLevel.STUDENT_POOL, teacher_id=owner.id,
+                amount_cap=float(getattr(tenant, "monthly_credit_pool", 10.0) or 10.0),
+                current_usage=0.0, bonus_credits=0.0, period_end=None,
+            )
+            pool = _limit_row(stub, title=f"Pool studenti · {tname(owner)}", subtitle=tenant.name if tenant else "",
+                              teacher_name=tname(owner), school_name=tenant.name if tenant else None)
+            pool["limit_id"] = None
+        row["student_pool"] = pool
+
     all_rows = schools + pools + teacher_rows + class_rows
     counts = {
         "exhausted": sum(1 for r in all_rows if r["state"] == "exhausted"),
@@ -720,6 +749,23 @@ async def admin_set_limit(
     await db.commit()
     await db.refresh(limit)
     return {"limit_id": str(limit.id), "cap_credits": to_credits(limit.amount_cap)}
+
+
+@router.post("/admin/limits/reset")
+async def admin_reset_limit(
+    body: ResetBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Azzera i consumi di un limite e fa ripartire il ciclo mensile da oggi."""
+    new_cap = from_credits(body.cap_credits) if body.cap_credits is not None else None
+    limit = await _resolve_limit(db, body, create_cap=new_cap)
+    await credit_service.restart_cycle(
+        db, limit, admin_id=admin.id, new_cap=new_cap, clear_bonus=body.clear_bonus, note=body.note,
+    )
+    await db.commit()
+    await db.refresh(limit)
+    return _limit_row(limit, title="")
 
 
 @router.post("/admin/bundle")

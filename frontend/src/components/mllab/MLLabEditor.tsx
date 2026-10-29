@@ -17,6 +17,7 @@ import {
   MAX_CLASSES, MAX_SAMPLES_PER_CLASS, deserializeClasses, emptyClass, serializeClasses, summarize, uid,
   type ClassState, type SampleState,
 } from './types'
+import { tl } from '@/i18n/tl'
 
 const MIN_SAMPLES = 2
 const RECOMMENDED = 10
@@ -75,10 +76,10 @@ function thumbnailOf(canvas: HTMLCanvasElement): string {
 }
 
 function qualityOf(count: number) {
-  if (count < MIN_SAMPLES) return { label: `Servono almeno ${MIN_SAMPLES} esempi`, tone: 'bg-rose-100 text-rose-700' }
-  if (count < 5) return { label: 'Pochi esempi', tone: 'bg-amber-100 text-amber-700' }
-  if (count < RECOMMENDED) return { label: 'Buono, meglio di più', tone: 'bg-sky-100 text-sky-700' }
-  return { label: 'Ottimo', tone: 'bg-emerald-100 text-emerald-700' }
+  if (count < MIN_SAMPLES) return { label: tl("Servono almeno {0} esempi", MIN_SAMPLES), tone: 'bg-rose-100 text-rose-700' }
+  if (count < 5) return { label: tl("Pochi esempi"), tone: 'bg-amber-100 text-amber-700' }
+  if (count < RECOMMENDED) return { label: tl("Buono, meglio di più"), tone: 'bg-sky-100 text-sky-700' }
+  return { label: tl("Ottimo"), tone: 'bg-emerald-100 text-emerald-700' }
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -108,21 +109,21 @@ const ClassCard = memo(function ClassCard(props: ClassCardProps) {
     <article className="ui-card overflow-hidden p-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="ds-squircle h-9 w-9 shrink-0" style={{ background: cls.color }} />
-        <input value={cls.name} onChange={(event) => props.onRename(cls.id, event.target.value)} maxLength={40} aria-label="Nome della classe" className="min-w-[8rem] flex-1 bg-transparent text-base font-bold text-slate-900" />
+        <input value={cls.name} onChange={(event) => props.onRename(cls.id, event.target.value)} maxLength={40} aria-label={tl("Nome della classe")} className="min-w-[8rem] flex-1 bg-transparent text-base font-bold text-slate-900" />
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${quality.tone}`}>{cls.samples.length} · {quality.label}</span>
-        {props.canRemove && <button type="button" onClick={() => props.onRemoveClass(cls.id)} aria-label="Elimina classe" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
+        {props.canRemove && <button type="button" onClick={() => props.onRemoveClass(cls.id)} aria-label={tl("Elimina classe")} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => props.onToggleCapture(cls.id)} disabled={props.recordDisabled && !isCapturing}
           className={`flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-white transition disabled:opacity-40 ${isCapturing ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[var(--app-accent,#7c3aed)] hover:opacity-90'}`}>
-          {isCapturing ? <><Square className="h-4 w-4" /> Ferma</> : <><Camera className="h-4 w-4" /> Registra con la webcam</>}
+          {isCapturing ? <><Square className="h-4 w-4" /> {tl("Ferma")}</> : <><Camera className="h-4 w-4" /> {tl("Registra con la webcam")}</>}
         </button>
         <input ref={input} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { if (event.target.files?.length) props.onUpload(cls.id, event.target.files); event.target.value = '' }} />
         <Button tone="neutral" surface="outline" density="compact" onClick={() => input.current?.click()} disabled={props.uploading || cls.samples.length >= MAX_SAMPLES_PER_CLASS}>
-          {props.uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Carica foto
+          {props.uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} {tl("Carica foto")}
         </Button>
-        {cls.samples.length > 0 && <button type="button" onClick={() => props.onClear(cls.id)} className="text-xs font-semibold text-slate-400 hover:text-red-600">Svuota</button>}
+        {cls.samples.length > 0 && <button type="button" onClick={() => props.onClear(cls.id)} className="text-xs font-semibold text-slate-400 hover:text-red-600">{tl("Svuota")}</button>}
       </div>
 
       {cls.samples.length > 0 && (
@@ -130,12 +131,12 @@ const ClassCard = memo(function ClassCard(props: ClassCardProps) {
           {cls.samples.slice(-40).map((sample) => (
             <div key={sample.id} className="group relative aspect-square overflow-hidden rounded-lg">
               <img src={sample.thumb} alt="" className="h-full w-full object-cover" />
-              <button type="button" onClick={() => props.onRemoveSample(cls.id, sample.id)} aria-label="Rimuovi" className="absolute inset-0 flex items-center justify-center bg-black/55 text-white opacity-0 transition group-hover:opacity-100"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => props.onRemoveSample(cls.id, sample.id)} aria-label={tl("Rimuovi")} className="absolute inset-0 flex items-center justify-center bg-black/55 text-white opacity-0 transition group-hover:opacity-100"><X className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
       )}
-      {cls.samples.length > 40 && <p className="mt-1.5 text-[11px] text-slate-400">Mostro le ultime 40 di {cls.samples.length}.</p>}
+      {cls.samples.length > 40 && <p className="mt-1.5 text-[11px] text-slate-400">{tl("Mostro le ultime 40 di")} {cls.samples.length}.</p>}
     </article>
   )
 })
@@ -145,8 +146,8 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
   const qc = useQueryClient()
   const [mode, setMode] = useState<Mode>(newMode ?? 'image')
   const [id, setId] = useState<string | null>(projectId)
-  const [name, setName] = useState('Nuovo progetto')
-  const [classes, setClasses] = useState<ClassState[]>(() => (newMode === 'face' ? [emptyClass(0, 'Neutro'), emptyClass(1, 'Felice')] : [emptyClass(0, 'Classe 1'), emptyClass(1, 'Classe 2')]))
+  const [name, setName] = useState(tl("Nuovo progetto"))
+  const [classes, setClasses] = useState<ClassState[]>(() => (newMode === 'face' ? [emptyClass(0, tl("Neutro")), emptyClass(1, tl("Felice"))] : [emptyClass(0, tl("Classe 1")), emptyClass(1, tl("Classe 2"))]))
   const [loading, setLoading] = useState(Boolean(projectId))
   const [engineReady, setEngineReady] = useState(false)
   const [engineError, setEngineError] = useState(false)
@@ -205,11 +206,11 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       const restored = deserializeClasses(data.data).map((c) => (outdated ? { ...c, samples: c.samples.map((x) => ({ ...x, vectors: [] })) } : c))
       setMode(projectMode)
       setName(data.name)
-      setClasses(restored.length >= 2 ? restored : [...restored, ...[0, 1].slice(restored.length).map((i) => emptyClass(i, `Classe ${i + 1}`))])
+      setClasses(restored.length >= 2 ? restored : [...restored, ...[0, 1].slice(restored.length).map((i) => emptyClass(i, tl("Classe {0}", i + 1)))])
       setAccuracy(data.accuracy)
       loadedRef.current = true
       setLoading(false)
-    }).catch(() => { toast({ variant: 'destructive', title: 'Progetto non trovato' }); onBack() })
+    }).catch(() => { toast({ variant: 'destructive', title: tl("Progetto non trovato") }); onBack() })
     return () => { cancelled = true }
   }, [projectId, onBack, toast])
 
@@ -243,12 +244,12 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
     const currentMode = modeRef.current
     const landmark = currentMode !== 'image'
     const ready = classesRef.current.filter((c) => c.samples.length >= MIN_SAMPLES)
-    if (ready.length < 2) { toast({ title: 'Servono almeno due classi con qualche esempio' }); return }
+    if (ready.length < 2) { toast({ title: tl("Servono almeno due classi con qualche esempio") }); return }
     const run = ++trainRun.current
     trainingRef.current = true
     setTraining(true)
     try {
-      setProgress({ phase: 'Preparo il motore di riconoscimento…', done: 0, total: 0 })
+      setProgress({ phase: tl("Preparo il motore di riconoscimento…"), done: 0, total: 0 })
       await (landmark ? loadLandmarkEngine(currentMode as Landmark) : loadEmbedder())
       setEngineReady(true)
       setEngineError(false)
@@ -260,7 +261,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       const rejected = new Set<string>()
       for (let index = 0; index < todo.length; index++) {
         if (run !== trainRun.current) return
-        setProgress({ phase: 'Elaboro gli esempi…', done: index, total: todo.length })
+        setProgress({ phase: tl("Elaboro gli esempi…"), done: index, total: todo.length })
         const sample = todo[index]
         try {
           const canvas = rawFrames.current.get(sample.id) ?? await canvasFromThumb(sample.thumb)
@@ -284,12 +285,12 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       setClasses((prev) => prev.map((c) => ({ ...c, samples: merged(c) })))
       done.forEach((_value, id) => rawFrames.current.delete(id))
       rejected.forEach((id) => rawFrames.current.delete(id))
-      if (rejected.size) toast({ title: `${rejected.size} ${rejected.size === 1 ? 'esempio scartato' : 'esempi scartati'}`, description: currentMode === 'pose' ? 'In quei fotogrammi non si vedevano le spalle.' : currentMode === 'hand' ? 'In quei fotogrammi non si vedeva la mano.' : currentMode === 'face' ? 'In quei fotogrammi non si vedeva il viso.' : 'Immagini non leggibili.' })
+      if (rejected.size) toast({ title: `${rejected.size} ${rejected.size === 1 ? 'esempio scartato' : 'esempi scartati'}`, description: currentMode === 'pose' ? tl("In quei fotogrammi non si vedevano le spalle.") : currentMode === 'hand' ? tl("In quei fotogrammi non si vedeva la mano.") : currentMode === 'face' ? tl("In quei fotogrammi non si vedeva il viso.") : tl("Immagini non leggibili.") })
 
       // 3. train the classifier head
-      setProgress({ phase: 'Addestro il modello…', done: 0, total: 0 })
+      setProgress({ phase: tl("Addestro il modello…"), done: 0, total: 0 })
       const usable = ready.map((cls) => ({ cls, samples: thin(merged(cls), MAX_TRAIN_PER_CLASS).filter((x) => x.vectors.length > 0) })).filter((entry) => entry.samples.length >= MIN_SAMPLES)
-      if (usable.length < 2) { toast({ variant: 'destructive', title: 'Esempi insufficienti', description: 'Dopo la verifica restano meno di due classi utilizzabili: registra altri esempi.' }); return }
+      if (usable.length < 2) { toast({ variant: 'destructive', title: tl("Esempi insufficienti"), description: tl("Dopo la verifica restano meno di due classi utilizzabili: registra altri esempi.") }); return }
       let group = 0
       const samples: TrainingSample[] = []
       usable.forEach(({ samples: list }, classIndex) => list.forEach((sample) => {
@@ -308,7 +309,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       setLive(null)
       // Cross-validation is the expensive part: skipped for big sets (the estimate would barely change anyway).
       if (samples.length <= MAX_CV_VECTORS) {
-        setProgress({ phase: 'Stimo la qualità…', done: 0, total: 0 })
+        setProgress({ phase: tl("Stimo la qualità…"), done: 0, total: 0 })
         await nextFrame()
         const score = await crossValidate(samples, usable.length, kind)
         if (run === trainRun.current) setAccuracy(score)
@@ -316,7 +317,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
     } catch (error) {
       console.error('Training failed', error)
       setEngineError(true)
-      toast({ variant: 'destructive', title: 'Addestramento non riuscito', description: 'Ricarica la pagina e riprova.' })
+      toast({ variant: 'destructive', title: tl("Addestramento non riuscito"), description: tl("Ricarica la pagina e riprova.") })
     } finally {
       if (run === trainRun.current) { trainingRef.current = false; setTraining(false); setProgress(null) }
       const keep = new Set(classesRef.current.flatMap((c) => c.samples.map((x) => x.id)))
@@ -376,7 +377,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
     const timer = setTimeout(async () => {
       setSaveState('saving')
       const payload = {
-        name: name.trim() || 'Progetto senza nome', engine: ENGINE_BY_MODE[modeRef.current], accuracy, summary: summarize(classesRef.current),
+        name: name.trim() || tl("Progetto senza nome"), engine: ENGINE_BY_MODE[modeRef.current], accuracy, summary: summarize(classesRef.current),
         data: serializeClasses(classesRef.current, modeRef.current, modelRef.current) as Record<string, unknown>, session_id: sessionId ?? null,
       }
       try {
@@ -386,7 +387,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
         void qc.invalidateQueries({ queryKey: ['ml-lab', 'projects'] })
       } catch (error: any) {
         setSaveState('error')
-        toast({ variant: 'destructive', title: 'Salvataggio non riuscito', description: error?.response?.data?.detail || 'Riprovo alla prossima modifica.' })
+        toast({ variant: 'destructive', title: tl("Salvataggio non riuscito"), description: error?.response?.data?.detail || tl("Riprovo alla prossima modifica.") })
       }
     }, 3000)
     return () => clearTimeout(timer)
@@ -452,12 +453,12 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
         rawFrames.current.set(sample.id, canvas)
         addSample(classId, sample)
       }
-    } catch { toast({ variant: 'destructive', title: 'Immagine non leggibile', description: 'Usa file JPG, PNG o WebP.' }) } finally { setBusyUpload(null) }
+    } catch { toast({ variant: 'destructive', title: tl("Immagine non leggibile"), description: tl("Usa file JPG, PNG o WebP.") }) } finally { setBusyUpload(null) }
   }, [addSample, toast])
 
   const testPhoto = async (file: File) => {
     const head = trainedRef.current
-    if (!head) { toast({ title: 'Prima aggiungi almeno due classi con qualche esempio' }); return }
+    if (!head) { toast({ title: tl("Prima aggiungi almeno due classi con qualche esempio") }); return }
     const bitmap = await createImageBitmap(file)
     try {
       if (mode === 'image') {
@@ -467,13 +468,13 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       } else {
         const canvas = wholeFrame(bitmap)
         const found = await extractFeatures(mode as Landmark, canvas, true)
-        if (!found) { toast({ title: mode === 'pose' ? 'Non trovo una persona nella foto' : mode === 'face' ? 'Non trovo un viso nella foto' : 'Non trovo una mano nella foto' }); return }
+        if (!found) { toast({ title: mode === 'pose' ? tl("Non trovo una persona nella foto") : mode === 'face' ? tl("Non trovo un viso nella foto") : tl("Non trovo una mano nella foto") }); return }
         setTestResult({ thumb: skeletonThumbnail(canvas, found.overlay), probs: predict(head.head, found.vector), classIds: head.classIds })
       }
     } finally { bitmap.close() }
   }
 
-  const addClass = () => { if (classes.length < MAX_CLASSES) setClasses((prev) => [...prev, emptyClass(prev.length, `Classe ${prev.length + 1}`)]) }
+  const addClass = () => { if (classes.length < MAX_CLASSES) setClasses((prev) => [...prev, emptyClass(prev.length, tl("Classe {0}", prev.length + 1))]) }
   const removeClass = useCallback((classId: string) => setClasses((prev) => (prev.length > 2 ? prev.filter((c) => c.id !== classId) : prev)), [])
   const renameClass = useCallback((classId: string, value: string) => setClasses((prev) => prev.map((c) => (c.id === classId ? { ...c, name: value } : c))), [])
   const clearClass = useCallback((classId: string) => setClasses((prev) => prev.map((c) => (c.id === classId ? { ...c, samples: [] } : c))), [])
@@ -493,8 +494,8 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       const file = new File([JSON.stringify(exportData())], `${name.replace(/[^\w-]+/g, '-')}.mlproject.json`, { type: 'application/json' })
       const upload = await chatApi.uploadFiles(sessionId, [file])
       await chatApi.sendSessionMessage(sessionId, `🤖 Progetto Lab ML condiviso: *${name}* (${classes.map((c) => c.name).join(' / ')})\nScaricalo e importalo nel Lab ML per continuare ad addestrarlo.`, [{ url: upload.data.urls?.[0], name: file.name, type: 'application/json' }])
-      toast({ title: 'Progetto condiviso nella chat di classe' })
-    } catch { toast({ variant: 'destructive', title: 'Condivisione non riuscita' }) }
+      toast({ title: tl("Progetto condiviso nella chat di classe") })
+    } catch { toast({ variant: 'destructive', title: tl("Condivisione non riuscita") }) }
   }
 
   // ── derived view ──
@@ -508,11 +509,11 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
   const totalSamples = classes.reduce((sum, c) => sum + c.samples.length, 0)
   const smallest = classes.reduce((min, c) => Math.min(min, c.samples.length), Infinity)
   const recordDisabled = camera !== 'on' || training
-  const noun = mode === 'pose' ? 'persona' : mode === 'hand' ? 'mano' : mode === 'face' ? 'espressione' : 'oggetto'
-  const tip = mode === 'pose' ? 'Mettiti a una distanza in cui si vedano spalle e braccia. Cambia posizione tra uno scatto e l’altro.'
-    : mode === 'hand' ? 'Mostra una mano alla volta e cambia leggermente posizione e distanza.'
-    : mode === 'face' ? 'Inquadra il viso ben illuminato e fai l’espressione in modo chiaro (anche un po’ esagerata). Muovi leggermente la testa tra uno scatto e l’altro e prova anche con altre persone.'
-    : 'Usa angolazioni, sfondi e luci diversi.'
+  const noun = mode === 'pose' ? 'persona' : mode === 'hand' ? 'mano' : mode === 'face' ? 'espressione' : tl("oggetto")
+  const tip = mode === 'pose' ? tl("Mettiti a una distanza in cui si vedano spalle e braccia. Cambia posizione tra uno scatto e l’altro.")
+    : mode === 'hand' ? tl("Mostra una mano alla volta e cambia leggermente posizione e distanza.")
+    : mode === 'face' ? tl("Inquadra il viso ben illuminato e fai l’espressione in modo chiaro (anche un po’ esagerata). Muovi leggermente la testa tra uno scatto e l’altro e prova anche con altre persone.")
+    : tl("Usa angolazioni, sfondi e luci diversi.")
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
 
@@ -520,22 +521,22 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
     <div className="mx-auto max-w-7xl px-4 py-6">
       {/* top bar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => { stopCapture(); onBack() }} className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10"><ArrowLeft className="h-4 w-4" /> Progetti</button>
-        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label="Nome del progetto" className="h-10 min-w-[12rem] flex-1 rounded-xl bg-transparent px-2 text-xl font-bold text-slate-900 sm:max-w-md" />
+        <button type="button" onClick={() => { stopCapture(); onBack() }} className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10"><ArrowLeft className="h-4 w-4" /> {tl("Progetti")}</button>
+        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label={tl("Nome del progetto")} className="h-10 min-w-[12rem] flex-1 rounded-xl bg-transparent px-2 text-xl font-bold text-slate-900 sm:max-w-md" />
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-white/10">{MODE_LABEL[mode]}</span>
         <span className="flex items-center gap-1.5 text-xs text-slate-400" role="status">
-          {saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Salvataggio…</>}
-          {saveState === 'saved' && <><Check className="h-3.5 w-3.5 text-emerald-500" /> Salvato nella libreria</>}
-          {saveState === 'dirty' && 'Modifiche non ancora salvate'}
-          {saveState === 'error' && <span className="text-rose-500">Salvataggio non riuscito</span>}
+          {saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("Salvataggio…")}</>}
+          {saveState === 'saved' && <><Check className="h-3.5 w-3.5 text-emerald-500" /> {tl("Salvato nella libreria")}</>}
+          {saveState === 'dirty' && tl("Modifiche non ancora salvate")}
+          {saveState === 'error' && <span className="text-rose-500">{tl("Salvataggio non riuscito")}</span>}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {sessionId && <Button tone="neutral" surface="outline" density="compact" onClick={() => void shareToChat()} disabled={totalSamples === 0}><Share2 className="h-3.5 w-3.5" /> Condividi in chat</Button>}
-          <Button tone="neutral" surface="outline" density="compact" onClick={exportProject} disabled={totalSamples === 0}><Download className="h-3.5 w-3.5" /> Esporta</Button>
+          {sessionId && <Button tone="neutral" surface="outline" density="compact" onClick={() => void shareToChat()} disabled={totalSamples === 0}><Share2 className="h-3.5 w-3.5" /> {tl("Condividi in chat")}</Button>}
+          <Button tone="neutral" surface="outline" density="compact" onClick={exportProject} disabled={totalSamples === 0}><Download className="h-3.5 w-3.5" /> {tl("Esporta")}</Button>
         </div>
       </div>
 
-      {engineError && <p className="mb-4 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">Non riesco a caricare il motore di riconoscimento. Ricarica la pagina e riprova.</p>}
+      {engineError && <p className="mb-4 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">{tl("Non riesco a caricare il motore di riconoscimento. Ricarica la pagina e riprova.")}</p>}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* classes */}
@@ -548,7 +549,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
             />
           ))}
           <button type="button" onClick={addClass} disabled={classes.length >= MAX_CLASSES} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 text-sm font-bold text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] disabled:opacity-40 dark:border-white/20">
-            <Plus className="h-4 w-4" /> Aggiungi classe {classes.length >= MAX_CLASSES ? `(massimo ${MAX_CLASSES})` : ''}
+            <Plus className="h-4 w-4" /> {tl("Aggiungi classe")} {classes.length >= MAX_CLASSES ? `(massimo ${MAX_CLASSES})` : ''}
           </button>
         </section>
 
@@ -558,12 +559,12 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-slate-900">
               <video ref={videoRef} playsInline muted className="h-full w-full -scale-x-100 object-cover" />
               {isLandmark && <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-cover" />}
-              {camera !== 'on' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-white/80"><Camera className="h-8 w-8" />{camera === 'starting' ? 'Avvio della webcam…' : 'Webcam non disponibile: puoi comunque caricare foto'}</div>}
-              {capturing && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white"><span className="h-2 w-2 animate-pulse rounded-full bg-white" />Registrazione…</span>}
-              {isLandmark && trained && !detected && !capturing && camera === 'on' && <span className="absolute bottom-3 left-3 right-3 rounded-2xl bg-slate-800/80 px-4 py-2 text-center text-sm font-bold text-white backdrop-blur">Nessuna {noun} rilevata</span>}
+              {camera !== 'on' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-white/80"><Camera className="h-8 w-8" />{camera === 'starting' ? tl("Avvio della webcam…") : tl("Webcam non disponibile: puoi comunque caricare foto")}</div>}
+              {capturing && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white"><span className="h-2 w-2 animate-pulse rounded-full bg-white" />{tl("Registrazione…")}</span>}
+              {isLandmark && trained && !detected && !capturing && camera === 'on' && <span className="absolute bottom-3 left-3 right-3 rounded-2xl bg-slate-800/80 px-4 py-2 text-center text-sm font-bold text-white backdrop-blur">{tl("Nessuna")} {noun} rilevata</span>}
               {liveEntries && camera === 'on' && !capturing && detected && (
                 <span className={`absolute bottom-3 left-3 right-3 rounded-2xl px-4 py-2 text-center text-sm font-black text-white backdrop-blur ${liveEntries.sure ? '' : 'bg-slate-800/80'}`} style={liveEntries.sure ? { background: liveEntries.top.cls.color } : undefined}>
-                  {liveEntries.sure ? `${liveEntries.top.cls.name} · ${Math.round(liveEntries.top.prob * 100)}%` : 'Non sono sicuro'}
+                  {liveEntries.sure ? `${liveEntries.top.cls.name} · ${Math.round(liveEntries.top.prob * 100)}%` : tl("Non sono sicuro")}
                 </span>
               )}
             </div>
@@ -571,20 +572,20 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
 
           <div className="ui-card space-y-3 p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">Cosa vede ora</h2>
+              <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">{tl("Cosa vede ora")}</h2>
               {training && progress && <span className="flex items-center gap-1.5 text-xs text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {progress.phase}{progress.total > 0 ? ` ${progress.done}/${progress.total}` : ''}</span>}
             </div>
             <Button tone="accent" surface="solid" fullWidth onClick={() => void trainModel()} disabled={training || Boolean(capturing) || readyClasses < 2 || camera === 'starting'}>
-              {training ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {training ? 'Addestramento in corso…' : trained ? 'Riaddestra il modello' : 'Addestra il modello'}
+              {training ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {training ? tl("Addestramento in corso…") : trained ? tl("Riaddestra il modello") : tl("Addestra il modello")}
             </Button>
             {training && progress && progress.total > 0 && <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full rounded-full bg-[var(--app-accent,#7c3aed)] transition-[width]" style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} /></div>}
-            {!training && readyClasses < 2 && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-white/5">Registra almeno {MIN_SAMPLES} esempi in due classi, poi premi «Addestra il modello». {isLandmark ? tip : ''}</p>}
-            {!training && readyClasses >= 2 && !upToDate && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">{trained ? 'Hai cambiato gli esempi: il modello non è aggiornato.' : 'Gli esempi sono pronti.'} Premi «{trained ? 'Riaddestra il modello' : 'Addestra il modello'}»{rawCount > 0 ? ` per elaborare ${rawCount} ${rawCount === 1 ? 'fotogramma' : 'fotogrammi'}` : ''}.</p>}
+            {!training && readyClasses < 2 && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500 dark:bg-white/5">{tl("Registra almeno")} {MIN_SAMPLES} {tl("esempi in due classi, poi premi «Addestra il modello».")} {isLandmark ? tip : ''}</p>}
+            {!training && readyClasses >= 2 && !upToDate && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">{trained ? tl("Hai cambiato gli esempi: il modello non è aggiornato.") : tl("Gli esempi sono pronti.")} {tl("Premi «")}{trained ? tl("Riaddestra il modello") : tl("Addestra il modello")}»{rawCount > 0 ? ` per elaborare ${rawCount} ${rawCount === 1 ? 'fotogramma' : 'fotogrammi'}` : ''}.</p>}
             {liveEntries && (
               <ul className="space-y-2">
                 {liveEntries.entries.map(({ cls, prob, trained: isTrained }) => (
                   <li key={cls.id}>
-                    <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-600"><span className="truncate">{cls.name}</span><span className="tabular-nums">{isTrained ? `${Math.round(prob * 100)}%` : 'servono esempi'}</span></div>
+                    <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-600"><span className="truncate">{cls.name}</span><span className="tabular-nums">{isTrained ? `${Math.round(prob * 100)}%` : tl("servono esempi")}</span></div>
                     <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full rounded-full transition-[width] duration-200" style={{ width: `${isTrained ? prob * 100 : 0}%`, background: cls.color }} /></div>
                   </li>
                 ))}
@@ -595,14 +596,14 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
           {trained && upToDate && !training && <UseModelInP5Card name={name} mode={mode} />}
 
           <div className="ui-card space-y-2 p-4 text-sm">
-            <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">Qualità del modello</h2>
+            <h2 className="text-sm font-black uppercase tracking-wider text-slate-700">{tl("Qualità del modello")}</h2>
             {accuracy !== null
-              ? <p className="text-slate-600"><b className={accuracy >= 0.85 ? 'text-emerald-600' : accuracy >= 0.65 ? 'text-amber-600' : 'text-rose-600'}>~{Math.round(accuracy * 100)}%</b> di risposte giuste stimate su esempi non usati per addestrare.</p>
-              : <p className="text-slate-500">La stima compare quando ogni classe ha almeno 3 esempi.</p>}
-            {totalSamples > 0 && smallest < RECOMMENDED && <p className="text-xs text-slate-500">Consiglio: porta ogni classe ad almeno {RECOMMENDED} esempi. {tip} Sbilanciare le classi peggiora i risultati.</p>}
+              ? <p className="text-slate-600"><b className={accuracy >= 0.85 ? 'text-emerald-600' : accuracy >= 0.65 ? 'text-amber-600' : 'text-rose-600'}>~{Math.round(accuracy * 100)}%</b> {tl("di risposte giuste stimate su esempi non usati per addestrare.")}</p>
+              : <p className="text-slate-500">{tl("La stima compare quando ogni classe ha almeno 3 esempi.")}</p>}
+            {totalSamples > 0 && smallest < RECOMMENDED && <p className="text-xs text-slate-500">{tl("Consiglio: porta ogni classe ad almeno")} {RECOMMENDED} esempi. {tip} {tl("Sbilanciare le classi peggiora i risultati.")}</p>}
             <div>
               <input ref={testInput} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void testPhoto(file); event.target.value = '' }} />
-              <Button tone="neutral" surface="outline" density="compact" onClick={() => testInput.current?.click()} disabled={!trained}><Upload className="h-3.5 w-3.5" /> Prova con una foto</Button>
+              <Button tone="neutral" surface="outline" density="compact" onClick={() => testInput.current?.click()} disabled={!trained}><Upload className="h-3.5 w-3.5" /> {tl("Prova con una foto")}</Button>
             </div>
             {testResult && (
               <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-white/5">
@@ -612,9 +613,9 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
                     const best = testResult.probs.indexOf(Math.max(...testResult.probs))
                     const cls = classes.find((c) => c.id === testResult.classIds[best])
                     const sure = testResult.probs[best] >= CONFIDENCE_THRESHOLD
-                    return <p className="font-bold text-slate-800">{sure ? `${cls?.name ?? '?'} · ${Math.round(testResult.probs[best] * 100)}%` : `Non sono sicuro (forse ${cls?.name ?? '?'}, ${Math.round(testResult.probs[best] * 100)}%)`}</p>
+                    return <p className="font-bold text-slate-800">{sure ? `${cls?.name ?? '?'} · ${Math.round(testResult.probs[best] * 100)}%` : tl("Non sono sicuro (forse {0}, {1}%)", cls?.name ?? '?', Math.round(testResult.probs[best] * 100))}</p>
                   })()}
-                  <button type="button" onClick={() => setTestResult(null)} className="mt-1 text-slate-400 hover:text-slate-600">Chiudi</button>
+                  <button type="button" onClick={() => setTestResult(null)} className="mt-1 text-slate-400 hover:text-slate-600">{tl("Chiudi")}</button>
                 </div>
               </div>
             )}

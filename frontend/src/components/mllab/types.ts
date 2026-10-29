@@ -1,6 +1,7 @@
 import { packFloats, packVector, unpackFloats, unpackVector } from '@/lib/imageClassifier'
 import { ENGINE_BY_MODE, type Mode } from '@/lib/mlFeatures'
 import type { MLLabProjectSummary } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 export interface SampleState { id: string; thumb: string; vectors: Float32Array[] }
 export interface ClassState { id: string; name: string; color: string; samples: SampleState[] }
@@ -36,7 +37,7 @@ export function deserializeClasses(data: any): ClassState[] {
   const classes = Array.isArray(data?.classes) ? data.classes : []
   return classes.map((c: any, index: number) => ({
     id: String(c.id || uid()),
-    name: String(c.name || `Classe ${index + 1}`),
+    name: String(c.name || tl("Classe {0}", index + 1)),
     color: String(c.color || CLASS_PALETTE[index % CLASS_PALETTE.length]),
     samples: (Array.isArray(c.samples) ? c.samples : []).map((s: any) => ({ id: uid(), thumb: String(s.t || ''), vectors: (s.e || []).map(unpack) })),
   }))

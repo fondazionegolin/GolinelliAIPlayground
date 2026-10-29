@@ -4,6 +4,7 @@ import { MoreVertical, Pencil, Plus, Trash2, Search, MessageSquare, X } from '@/
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import PullToRefresh from '@/components/ui/PullToRefresh'
+import { tl } from '@/i18n/tl'
 
 interface ConversationHistory {
   id: string
@@ -40,13 +41,13 @@ function groupByDate(conversations: ConversationHistory[]): Record<string, Conve
 
     let group: string
     if (convDate.getTime() === today.getTime()) {
-      group = 'Oggi'
+      group = tl("Oggi")
     } else if (convDate.getTime() === yesterday.getTime()) {
-      group = 'Ieri'
+      group = tl("Ieri")
     } else if (convDate.getTime() > weekAgo.getTime()) {
-      group = 'Questa settimana'
+      group = tl("Questa settimana")
     } else {
-      group = 'Precedenti'
+      group = tl("Precedenti")
     }
 
     if (!groups[group]) {
@@ -67,7 +68,7 @@ function formatTime(dateString: string): string {
   if (diffDays === 0) {
     return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
   } else if (diffDays === 1) {
-    return 'Ieri'
+    return tl("Ieri")
   } else if (diffDays < 7) {
     return date.toLocaleDateString('it-IT', { weekday: 'short' })
   } else {
@@ -94,7 +95,7 @@ export function ChatConversationList({
   const selectedConversation = conversations.find((conversation) => conversation.id === longPressId)
 
   const requestDelete = useCallback(async (conversation: ConversationHistory) => {
-    if (!window.confirm(`Eliminare la conversazione “${conversation.title || 'Nuova conversazione'}”?`)) return
+    if (!window.confirm(tl("Eliminare la conversazione “{0}”?", conversation.title || 'Nuova conversazione'))) return
     setLongPressId(null)
     await onDeleteConversation(conversation.id)
   }, [onDeleteConversation])
@@ -113,7 +114,7 @@ export function ChatConversationList({
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 
   const groupedConversations = groupByDate(filteredConversations)
-  const groupOrder = ['Oggi', 'Ieri', 'Questa settimana', 'Precedenti']
+  const groupOrder = [tl("Oggi"), tl("Ieri"), tl("Questa settimana"), tl("Precedenti")]
 
   const handleLongPressStart = useCallback((id: string) => {
     longPressTimerRef.current = setTimeout(() => {
@@ -173,7 +174,7 @@ export function ChatConversationList({
             className="bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md rounded-full px-4"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Nuova
+            {tl("Nuova")}
           </Button>
         </div>
 
@@ -184,7 +185,7 @@ export function ChatConversationList({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cerca conversazioni..."
+            placeholder={tl("Cerca conversazioni...")}
             className="w-full pl-9 pr-4 py-2 bg-slate-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
         </div>
@@ -198,9 +199,9 @@ export function ChatConversationList({
               <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
                 <MessageSquare className="h-8 w-8 text-slate-300" />
               </div>
-              <h3 className="font-medium text-slate-700 mb-1">Nessuna conversazione</h3>
+              <h3 className="font-medium text-slate-700 mb-1">{tl("Nessuna conversazione")}</h3>
               <p className="text-sm text-slate-500 mb-4">
-                Inizia una nuova chat con {profileName}
+                {tl("Inizia una nuova chat con")} {profileName}
               </p>
               <Button
                 onClick={() => {
@@ -210,7 +211,7 @@ export function ChatConversationList({
                 className="bg-gradient-to-br from-sky-500 to-blue-600"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Nuova conversazione
+                {tl("Nuova conversazione")}
               </Button>
             </div>
           ) : (
@@ -254,10 +255,10 @@ export function ChatConversationList({
       {/* Accessible action sheet, opened by the visible menu button or a long press. */}
       <AnimatePresence>
         {selectedConversation && (
-          <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-label="Azioni conversazione">
+          <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-label={tl("Azioni conversazione")}>
             <motion.button
               type="button"
-              aria-label="Chiudi menu azioni"
+              aria-label={tl("Chiudi menu azioni")}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -271,18 +272,18 @@ export function ChatConversationList({
               className="relative w-full rounded-t-2xl bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
             >
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-semibold text-slate-800">{selectedConversation.title || 'Nuova conversazione'}</p>
-                <button type="button" onClick={() => setLongPressId(null)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Chiudi">
+                <p className="truncate text-sm font-semibold text-slate-800">{selectedConversation.title || tl("Nuova conversazione")}</p>
+                <button type="button" onClick={() => setLongPressId(null)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label={tl("Chiudi")}>
                   <X className="h-5 w-5" />
                 </button>
               </div>
               <button type="button" onClick={() => void requestRename(selectedConversation)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-100">
                 <Pencil className="h-4 w-4" />
-                Rinomina conversazione
+                {tl("Rinomina conversazione")}
               </button>
               <button type="button" onClick={() => void requestDelete(selectedConversation)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50">
                 <Trash2 className="h-4 w-4" />
-                Elimina conversazione
+                {tl("Elimina conversazione")}
               </button>
             </motion.div>
           </div>
@@ -348,7 +349,7 @@ function ConversationItem({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-medium text-slate-800 truncate text-sm">
-                {conversation.title || 'Nuova conversazione'}
+                {conversation.title || tl("Nuova conversazione")}
               </h3>
               <span className="text-xs text-slate-400 flex-shrink-0">
                 {formatTime(conversation.updated_at)}
@@ -368,7 +369,7 @@ function ConversationItem({
             onOpenActions()
           }}
           className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500"
-          aria-label={`Azioni per ${conversation.title || 'Nuova conversazione'}`}
+          aria-label={tl("Azioni per {0}", conversation.title || 'Nuova conversazione')}
         >
           <MoreVertical className="h-5 w-5" />
         </button>

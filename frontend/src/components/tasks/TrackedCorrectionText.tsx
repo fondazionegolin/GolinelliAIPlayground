@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { tl } from '@/i18n/tl'
 
 type DiffPart = {
   value: string
@@ -66,7 +67,7 @@ export function TrackedCorrectionText({ original, corrected }: { original: strin
           {part.changed ? (
             <mark
               className="rounded bg-amber-200 px-0.5 text-amber-950 decoration-clone"
-              title="Correzione del docente"
+              title={tl("Correzione del docente")}
             >
               {part.value}
             </mark>

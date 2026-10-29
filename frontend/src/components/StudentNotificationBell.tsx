@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Bell, Users, AtSign, Check, KanbanSquare, ClipboardList, FileText, MessageSquare, Bot } from '@/components/icons'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
+import { tl } from '@/i18n/tl'
 
 interface RoomLite {
   id: string
@@ -53,22 +54,22 @@ export function StudentNotificationBell({
       } else if (type === 'share_chat_mention' && payload.room?.id) {
         push({ id: `mention-${payload.room.id}-${payload.message_id || payload.timestamp || now}`, type: 'mention', from: payload.from_nickname || '—', preview: payload.preview, room: payload.room, ts: now, read: false })
       } else if (type === 'board_shared') {
-        push({ id: `board-${payload.board_id}`, type: 'board', from: 'Docente', preview: payload.title || 'Nuova board condivisa', room: emptyRoom(payload.title || 'Board condivisa'), payload, ts: now, read: false })
+        push({ id: `board-${payload.board_id}`, type: 'board', from: tl("Docente"), preview: payload.title || tl("Nuova board condivisa"), room: emptyRoom(payload.title || tl("Board condivisa")), payload, ts: now, read: false })
       } else if (type === 'task_published' || (type === 'platform_change' && payload.entity === 'task' && payload.action === 'published')) {
         const taskId = payload.task_id || payload.entity_id
         const taskData = payload.data || payload
         const documentTypes = ['lesson', 'presentation', 'document', 'document_v1', 'presentation_v2']
         const isDocument = documentTypes.includes(String(taskData.task_type || '').toLowerCase())
-        push({ id: `task-${taskId}`, type: isDocument ? 'document' : 'task', from: 'Docente', preview: taskData.title || payload.title || 'Nuova attività', room: emptyRoom('Attività'), payload: { ...payload, ...taskData, task_id: taskId }, ts: now, read: false })
+        push({ id: `task-${taskId}`, type: isDocument ? 'document' : 'task', from: tl("Docente"), preview: taskData.title || payload.title || tl("Nuova attività"), room: emptyRoom(tl("Attività")), payload: { ...payload, ...taskData, task_id: taskId }, ts: now, read: false })
       } else if (type === 'document_uploaded') {
-        push({ id: `document-${payload.document_id}`, type: 'document', from: 'Docente', preview: payload.filename || 'Nuovo documento', room: emptyRoom('Documenti'), payload, ts: now, read: false })
+        push({ id: `document-${payload.document_id}`, type: 'document', from: tl("Docente"), preview: payload.filename || tl("Nuovo documento"), room: emptyRoom(tl("Documenti")), payload, ts: now, read: false })
       } else if (type === 'task_correction') {
-        push({ id: `correction-${payload.submission_id}`, type: 'correction', from: 'Docente', preview: 'Hai ricevuto una correzione', room: emptyRoom('Correzione'), payload, ts: now, read: false })
+        push({ id: `correction-${payload.submission_id}`, type: 'correction', from: tl("Docente"), preview: tl("Hai ricevuto una correzione"), room: emptyRoom(tl("Correzione")), payload, ts: now, read: false })
       } else if (type === 'task_feedback_published') {
-        push({ id: `feedback-${payload.submission_id}`, type: 'feedback', from: 'Docente', preview: 'È disponibile un nuovo feedback', room: emptyRoom('Feedback'), payload, ts: now, read: false })
+        push({ id: `feedback-${payload.submission_id}`, type: 'feedback', from: tl("Docente"), preview: tl("È disponibile un nuovo feedback"), room: emptyRoom('Feedback'), payload, ts: now, read: false })
       } else if (type === 'chat_message' && payload.message?.is_notification && payload.message.notification_type === 'teacherbot_published') {
         const notificationData = payload.message.notification_data || {}
-        push({ id: `teacherbot-${notificationData.teacherbot_id || payload.message.id}`, type: 'teacherbot', from: 'Docente', preview: payload.message.text || 'Nuovo Teacherbot disponibile', room: emptyRoom('Teacherbot'), payload: notificationData, ts: now, read: false })
+        push({ id: `teacherbot-${notificationData.teacherbot_id || payload.message.id}`, type: 'teacherbot', from: tl("Docente"), preview: payload.message.text || tl("Nuovo Teacherbot disponibile"), room: emptyRoom('Teacherbot'), payload: notificationData, ts: now, read: false })
       }
     }
 
@@ -129,7 +130,7 @@ export function StudentNotificationBell({
         onClick={() => { setOpen((v) => !v); if (!open) markAllRead() }}
         className="navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0"
         style={{ '--btn-tone': accentColor } as CSSProperties}
-        title="Notifiche"
+        title={tl("Notifiche")}
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
@@ -142,16 +143,16 @@ export function StudentNotificationBell({
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-80 ds-popover nav-cluster-unroll overflow-hidden rounded-[var(--ds-radius-panel)]">
           <div className="flex items-center justify-between border-b border-slate-50 px-4 py-2.5">
-            <span className="text-sm font-bold text-slate-800">Notifiche</span>
+            <span className="text-sm font-bold text-slate-800">{tl("Notifiche")}</span>
             {notifs.length > 0 && (
               <button onClick={markAllRead} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">
-                <Check className="h-3 w-3" /> Segna lette
+                <Check className="h-3 w-3" /> {tl("Segna lette")}
               </button>
             )}
           </div>
           <div className="max-h-80 overflow-y-auto">
             {notifs.length === 0 ? (
-              <p className="px-4 py-8 text-center text-xs text-slate-400">Nessuna notifica.</p>
+              <p className="px-4 py-8 text-center text-xs text-slate-400">{tl("Nessuna notifica.")}</p>
             ) : (
               notifs.map((n) => (
                 <button
@@ -166,17 +167,17 @@ export function StudentNotificationBell({
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-800">
                       {n.type === 'mention'
-                        ? `${n.from} ti ha menzionato`
-                        : n.type === 'board' ? 'Nuova board condivisa'
-                        : n.type === 'task' ? 'Nuova attività assegnata'
-                        : n.type === 'document' ? 'Nuovo documento disponibile'
-                        : n.type === 'correction' ? 'Nuova correzione'
-                        : n.type === 'feedback' ? 'Nuovo feedback'
-                        : n.type === 'teacherbot' ? 'Nuovo Teacherbot disponibile'
-                        : `${n.from} ti ha incluso in una chat`}
+                        ? tl("{0} ti ha menzionato", n.from)
+                        : n.type === 'board' ? tl("Nuova board condivisa")
+                        : n.type === 'task' ? tl("Nuova attività assegnata")
+                        : n.type === 'document' ? tl("Nuovo documento disponibile")
+                        : n.type === 'correction' ? tl("Nuova correzione")
+                        : n.type === 'feedback' ? tl("Nuovo feedback")
+                        : n.type === 'teacherbot' ? tl("Nuovo Teacherbot disponibile")
+                        : tl("{0} ti ha incluso in una chat", n.from)}
                     </span>
                     <span className="block truncate text-xs text-slate-500">
-                      {n.preview || n.room.title || 'Chat condivisa'}
+                      {n.preview || n.room.title || tl("Chat condivisa")}
                     </span>
                   </span>
                   {!n.read && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: accentColor }} />}

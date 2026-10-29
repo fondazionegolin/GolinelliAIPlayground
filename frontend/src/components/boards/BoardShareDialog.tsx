@@ -4,6 +4,7 @@ import { Link2, Loader2, Share2, X } from '@/components/icons'
 import { boardsApi, type BoardShareTarget } from '@/lib/api'
 import { SearchPill } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 type SharesResponse = {
   teachers: BoardShareTarget[]
@@ -56,11 +57,11 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
     onSuccess: (res) => {
       queryClient.setQueryData(['board-shares', board.id, board.session_id], res.data)
       queryClient.invalidateQueries({ queryKey: ['board-members', board.id] })
-      toast({ title: 'Condivisione aggiornata' })
+      toast({ title: tl("Condivisione aggiornata") })
       onClose()
     },
     onError: (error: any) => {
-      toast({ title: 'Condivisione non salvata', description: error?.response?.data?.detail || 'Riprova tra poco.', variant: 'destructive' })
+      toast({ title: tl("Condivisione non salvata"), description: error?.response?.data?.detail || tl("Riprova tra poco."), variant: 'destructive' })
     },
   })
 
@@ -80,20 +81,20 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
       <div className="ds-popover flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--ds-radius-card)]" role="dialog" aria-modal="true" aria-labelledby="board-share-title">
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
-            <h3 id="board-share-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><Share2 className="h-5 w-5" /> Condividi board</h3>
-            <p className="mt-1 text-sm text-slate-500">Scegli chi può vedere la board e chi può modificarne i task.</p>
+            <h3 id="board-share-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><Share2 className="h-5 w-5" /> {tl("Condividi board")}</h3>
+            <p className="mt-1 text-sm text-slate-500">{tl("Scegli chi può vedere la board e chi può modificarne i task.")}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <section className="space-y-2">
-            <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Sessione</h4>
+            <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{tl("Sessione")}</h4>
             {!board.session_id ? (
               <div className="rounded-[var(--ds-radius-control)] bg-slate-50 p-3 text-sm text-slate-600">
-                <p>La board non è collegata a una sessione: per condividerla con gli studenti collegala alla sessione attiva.</p>
+                <p>{tl("La board non è collegata a una sessione: per condividerla con gli studenti collegala alla sessione attiva.")}</p>
                 {activeSessionId && !isStudent && (
                   <button
                     type="button"
@@ -101,7 +102,7 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                     onClick={() => onBoardPatch({ session_id: activeSessionId })}
                     className="mt-2 inline-flex h-9 items-center gap-1 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] disabled:opacity-40"
                   >
-                    <Link2 className="h-4 w-4" /> Collega alla sessione attiva
+                    <Link2 className="h-4 w-4" /> {tl("Collega alla sessione attiva")}
                   </button>
                 )}
               </div>
@@ -114,12 +115,12 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
                     disabled={boardPatchPending}
                     onChange={(event) => onBoardPatch({ visibility: event.target.checked ? 'session_shared' : 'private' })}
                   />
-                  Condividi con tutta la sessione{board.session_title ? ` “${board.session_title}”` : ''}
+                  {tl("Condividi con tutta la sessione")}{board.session_title ? ` “${board.session_title}”` : ''}
                 </label>
                 {sessionShared && (
                   <label className="ml-6 flex items-center gap-2 text-xs font-bold text-slate-500">
                     <input type="checkbox" checked={board.students_can_edit} disabled={boardPatchPending} onChange={(event) => onBoardPatch({ students_can_edit: event.target.checked })} />
-                    tutti gli studenti possono modificare i task
+                    {tl("tutti gli studenti possono modificare i task")}
                   </label>
                 )}
               </div>
@@ -127,13 +128,13 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
           </section>
 
           {isLoading ? (
-            <p className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Caricamento…</p>
+            <p className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Caricamento…")}</p>
           ) : (
             <>
               {!isStudent && (
                 <PeoplePicker
-                  title="Docenti"
-                  empty="Nessun altro docente nella scuola."
+                  title={tl("Docenti")}
+                  empty={tl("Nessun altro docente nella scuola.")}
                   search={teacherSearch}
                   onSearch={setTeacherSearch}
                   people={filteredTeachers.map((t) => ({ id: t.id, name: t.name, detail: t.email }))}
@@ -143,8 +144,8 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
               )}
               {board.session_id && (
                 <PeoplePicker
-                  title={isStudent ? 'Compagni di sessione' : 'Studenti specifici della sessione'}
-                  empty="Nessuno studente nella sessione."
+                  title={isStudent ? tl("Compagni di sessione") : tl("Studenti specifici della sessione")}
+                  empty={tl("Nessuno studente nella sessione.")}
                   search={studentSearch}
                   onSearch={setStudentSearch}
                   people={filteredStudents}
@@ -157,14 +158,14 @@ export default function BoardShareDialog({ board, activeSessionId, isStudent, on
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">Annulla</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
           <button
             type="button"
             disabled={save.isPending || isLoading}
             onClick={() => save.mutate()}
             className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {save.isPending ? 'Salvataggio…' : 'Salva condivisione'}
+            {save.isPending ? tl("Salvataggio…") : tl("Salva condivisione")}
           </button>
         </div>
       </div>
@@ -186,10 +187,10 @@ function PeoplePicker({ title, empty, search, onSearch, people, selected, onChan
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{title}{count ? ` · ${count}` : ''}</h4>
-        <SearchPill value={search} onValueChange={onSearch} placeholder="Cerca" aria-label={`Cerca ${title.toLowerCase()}`} className="w-40" />
+        <SearchPill value={search} onValueChange={onSearch} placeholder={tl("Cerca")} aria-label={tl("Cerca {0}", title.toLowerCase())} className="w-40" />
       </div>
       <div className="max-h-52 space-y-1 overflow-y-auto rounded-[var(--ds-radius-control)] bg-slate-50 p-1">
-        {people.length === 0 ? <p className="px-2 py-3 text-xs text-slate-400">{search ? 'Nessun risultato.' : empty}</p> : people.map((person) => {
+        {people.length === 0 ? <p className="px-2 py-3 text-xs text-slate-400">{search ? tl("Nessun risultato.") : empty}</p> : people.map((person) => {
           const isSelected = person.id in selected
           return (
             <div key={person.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${isSelected ? 'bg-white shadow-[var(--ds-shadow-1)]' : ''}`}>
@@ -212,10 +213,10 @@ function PeoplePicker({ title, empty, search, onSearch, people, selected, onChan
                   value={selected[person.id] ? 'edit' : 'view'}
                   onChange={(event) => onChange({ ...selected, [person.id]: event.target.value === 'edit' })}
                   className="h-7 rounded-md border border-slate-200 bg-white px-1 text-xs"
-                  aria-label={`Permesso per ${person.name}`}
+                  aria-label={tl("Permesso per {0}", person.name)}
                 >
-                  <option value="edit">Può modificare</option>
-                  <option value="view">Solo lettura</option>
+                  <option value="edit">{tl("Può modificare")}</option>
+                  <option value="view">{tl("Solo lettura")}</option>
                 </select>
               )}
             </div>

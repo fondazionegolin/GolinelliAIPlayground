@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, func, Text, UniqueConstraint
+from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, Integer, func, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -118,6 +118,12 @@ class ActivationToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
+    # Consegna dell'e-mail d'invito (SENT | FAILED) e lettura stimata da un pixel.
+    email_status = Column(String(16), nullable=True)
+    email_error = Column(Text, nullable=True)
+    email_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    email_sent_at = Column(DateTime(timezone=True), nullable=True)
+    email_opened_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user = relationship("User")

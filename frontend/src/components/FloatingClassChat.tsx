@@ -5,6 +5,7 @@ import ChatSidebar, { type ChatMessage } from '@/components/ChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
 import { useDraggableFloating } from '@/hooks/useDraggableFloating'
 import { type StudentAccentId } from '@/lib/studentAccent'
+import { tl } from '@/i18n/tl'
 
 interface FloatingClassChatProps {
   sessionId: string
@@ -113,8 +114,8 @@ export function FloatingClassChat({
           }}
           className="fixed z-[65] flex h-12 w-12 touch-none select-none items-center justify-center rounded-2xl border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-xl ring-1 ring-white/40 transition-transform hover:scale-105 active:scale-95"
           style={{ left: position.x, top: position.y }}
-          aria-label="Apri chat di classe"
-          title="Chat di classe · trascina in alto o in basso"
+          aria-label={tl("Apri chat di classe")}
+          title={tl("Chat di classe · trascina in alto o in basso")}
         >
           <MessageSquare className="h-5 w-5" />
           {unreadCount > 0 && (
@@ -126,7 +127,7 @@ export function FloatingClassChat({
       )}
 
       {open && (
-        <div className="fixed inset-0 z-[100] h-[100dvh] w-screen overflow-hidden bg-white" role="dialog" aria-modal="true" aria-label="Chat di classe">
+        <div className="fixed inset-0 z-[100] h-[100dvh] w-screen overflow-hidden bg-white" role="dialog" aria-modal="true" aria-label={tl("Chat di classe")}>
           <section className="absolute inset-0 flex min-h-0 w-full flex-col overflow-hidden bg-white">
             <ChatSidebar
               sessionId={sessionId}

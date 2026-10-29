@@ -1,4 +1,5 @@
 import api from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 export interface PodcastOptions {
   voice_id: string
@@ -12,7 +13,7 @@ export interface PodcastOptions {
 }
 export const DEFAULT_PODCAST_OPTIONS: PodcastOptions = {
   voice_id: '', duration_minutes: 3, language: 'it', tone: 'didattico',
-  audience: 'Studenti della scuola secondaria', instructions: '', speed: 1, stability: 0.5,
+  audience: tl("Studenti della scuola secondaria"), instructions: '', speed: 1, stability: 0.5,
 }
 
 export function normalizePodcastOptions(options?: Partial<PodcastOptions>): PodcastOptions {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, Cable, CheckCircle2, Download, Loader2, Play, Send, Terminal, Unplug, Zap } from '@/components/icons'
 import { hardwareApi, type CircuitPlaygroundCompileResult } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 type SerialPortLike = {
   open: (options: { baudRate: number }) => Promise<void>
@@ -227,7 +228,7 @@ function parseUf2Blocks(firmware: CircuitPlaygroundCompileResult): Uf2Block[] {
       data: block.slice(32, 32 + payloadSize),
     })
   }
-  if (!blocks.length) throw new Error('Il firmware UF2 compilato non contiene blocchi flash validi.')
+  if (!blocks.length) throw new Error(tl("Il firmware UF2 compilato non contiene blocchi flash validi."))
   return blocks
 }
 
@@ -240,7 +241,7 @@ function usbFilters(): UsbDeviceFilterLike[] {
 
 async function requestAdafruitUsbDevice(): Promise<UsbDeviceLike> {
   const usb = (navigator as DeviceNavigator).usb
-  if (!usb) throw new Error('WebUSB non e disponibile. Usa Chrome o Edge desktop su HTTPS o localhost.')
+  if (!usb) throw new Error(tl("WebUSB non e disponibile. Usa Chrome o Edge desktop su HTTPS o localhost."))
   const authorized = await usb.getDevices?.()
   const existing = authorized?.find((device) => device.vendorId === ADAFRUIT_USB_VENDOR_ID || device.productName?.toLowerCase().includes('circuit playground'))
   if (existing) return existing as unknown as UsbDeviceLike
@@ -279,7 +280,7 @@ class WebUsbHf2Flasher {
     await this.connect()
     await this.init()
     await this.switchToBootloader()
-    this.log(`[flash] scrivo ${blocks.length} blocchi UF2 sulla flash`)
+    this.log(tl("[flash] scrivo {0} blocchi UF2 sulla flash", blocks.length))
     await this.talk(HF2_CMD_START_FLASH).catch(() => undefined)
     for (let index = 0; index < blocks.length; index += 1) {
       const block = blocks[index]
@@ -292,7 +293,7 @@ class WebUsbHf2Flasher {
       }
     }
     await this.talk(HF2_CMD_RESET_INTO_APP).catch(() => undefined)
-    this.log('[flash] reset in runtime richiesto')
+    this.log(tl("[flash] reset in runtime richiesto"))
     await this.close()
   }
 
@@ -302,7 +303,7 @@ class WebUsbHf2Flasher {
       await this.device.selectConfiguration(1)
     }
     const configuration = this.device.configuration ?? this.device.configurations?.[0]
-    if (!configuration) throw new Error('La scheda non espone una configurazione WebUSB leggibile.')
+    if (!configuration) throw new Error(tl("La scheda non espone una configurazione WebUSB leggibile."))
 
     const match = configuration.interfaces
       .map((iface) => ({ iface, alternate: iface.alternates[0] }))
@@ -315,7 +316,7 @@ class WebUsbHf2Flasher {
         return pxtHf2 && hasHidEndpoints
       })
 
-    if (!match) throw new Error('Non trovo l interfaccia HF2/WebUSB della Circuit Playground.')
+    if (!match) throw new Error(tl("Non trovo l interfaccia HF2/WebUSB della Circuit Playground."))
     this.iface = match.iface
     this.epIn = match.alternate.endpoints.find((endpoint) => endpoint.direction === 'in') ?? null
     this.epOut = match.alternate.endpoints.find((endpoint) => endpoint.direction === 'out') ?? null
@@ -340,23 +341,23 @@ class WebUsbHf2Flasher {
     this.bootloaderMode = info[0] === HF2_MODE_BOOTLOADER
     const pageSize = read32(info, 4)
     const flashSize = read32(info, 8) * pageSize
-    this.log(`[flash] HF2 ${this.bootloaderMode ? 'bootloader' : 'runtime'}; pagina ${pageSize} byte; flash ${Math.round(flashSize / 1024)} KB`)
+    this.log(tl("[flash] HF2 {0}; pagina {1} byte; flash {2} KB", this.bootloaderMode ? 'bootloader' : 'runtime', pageSize, Math.round(flashSize / 1024)))
   }
 
   private async switchToBootloader() {
     if (this.bootloaderMode) return
-    this.log('[flash] passo la scheda in bootloader HF2')
+    this.log(tl("[flash] passo la scheda in bootloader HF2"))
     try {
       await this.talk(HF2_CMD_START_FLASH)
       await this.init()
-      if (!this.bootloaderMode) throw new Error('La scheda non e entrata in bootloader HF2.')
+      if (!this.bootloaderMode) throw new Error(tl("La scheda non e entrata in bootloader HF2."))
     } catch {
       const previousSerial = this.device.serialNumber
       await this.talk(HF2_CMD_RESET_INTO_BOOTLOADER).catch(() => undefined)
       await this.close()
       const bootloader = await waitForAuthorizedAdafruitUsbDevice(previousSerial)
       if (!bootloader) {
-        throw new Error('La scheda e stata riavviata in bootloader, ma il browser non la vede tra i dispositivi USB gia autorizzati. Riprova Esegui sulla scheda e seleziona CPLAYBOOT se Chrome lo chiede.')
+        throw new Error(tl("La scheda e stata riavviata in bootloader, ma il browser non la vede tra i dispositivi USB gia autorizzati. Riprova Esegui sulla scheda e seleziona CPLAYBOOT se Chrome lo chiede."))
       }
       this.device = bootloader
       this.iface = null
@@ -364,7 +365,7 @@ class WebUsbHf2Flasher {
       this.epOut = null
       await this.connect()
       await this.init()
-      if (!this.bootloaderMode) throw new Error('La scheda non e entrata in bootloader HF2.')
+      if (!this.bootloaderMode) throw new Error(tl("La scheda non e entrata in bootloader HF2."))
     }
   }
 
@@ -387,10 +388,10 @@ class WebUsbHf2Flasher {
       const responseSeq = (response.data[0] || 0) | ((response.data[1] || 0) << 8)
       const status = response.data[2]
       if (responseSeq !== seq) continue
-      if (status !== HF2_STATUS_OK) throw new Error(`HF2 ha risposto con stato ${status}`)
+      if (status !== HF2_STATUS_OK) throw new Error(tl("HF2 ha risposto con stato {0}", status))
       return response.data.slice(4)
     }
-    throw new Error('Timeout nella risposta HF2 della scheda.')
+    throw new Error(tl("Timeout nella risposta HF2 della scheda."))
   }
 
   private async sendMessage(message: Uint8Array) {
@@ -404,13 +405,13 @@ class WebUsbHf2Flasher {
   }
 
   private async sendPacket(packet: Uint8Array) {
-    if (!this.iface) throw new Error('Interfaccia USB non pronta.')
+    if (!this.iface) throw new Error(tl("Interfaccia USB non pronta."))
     if (this.epOut && this.device.transferOut) {
       const result = await this.device.transferOut(this.epOut.endpointNumber, packet)
-      if (result.status !== 'ok') throw new Error('Transfer USB OUT fallito.')
+      if (result.status !== 'ok') throw new Error(tl("Transfer USB OUT fallito."))
       return
     }
-    if (!this.device.controlTransferOut) throw new Error('La scheda non supporta transfer USB OUT dal browser.')
+    if (!this.device.controlTransferOut) throw new Error(tl("La scheda non supporta transfer USB OUT dal browser."))
     const result = await this.device.controlTransferOut({
       requestType: 'class',
       recipient: 'interface',
@@ -418,7 +419,7 @@ class WebUsbHf2Flasher {
       value: USB_CONTROL_OUT_REPORT,
       index: this.iface.interfaceNumber,
     }, packet)
-    if (result.status !== 'ok') throw new Error('Control transfer USB OUT fallito.')
+    if (result.status !== 'ok') throw new Error(tl("Control transfer USB OUT fallito."))
   }
 
   private async receiveMessage(deadline: number): Promise<{ kind: 'command'; data: Uint8Array } | { kind: 'serial'; text: string }> {
@@ -438,11 +439,11 @@ class WebUsbHf2Flasher {
         return { kind: 'command', data: new Uint8Array(chunks) }
       }
     }
-    throw new Error('Timeout nella lettura USB della scheda.')
+    throw new Error(tl("Timeout nella lettura USB della scheda."))
   }
 
   private async receivePacket() {
-    if (!this.iface) throw new Error('Interfaccia USB non pronta.')
+    if (!this.iface) throw new Error(tl("Interfaccia USB non pronta."))
     const result = this.epIn && this.device.transferIn
       ? await this.device.transferIn(this.epIn.endpointNumber, 64)
       : await this.device.controlTransferIn?.({
@@ -452,7 +453,7 @@ class WebUsbHf2Flasher {
         value: USB_CONTROL_IN_REPORT,
         index: this.iface.interfaceNumber,
       }, 64)
-    if (!result || result.status !== 'ok' || !result.data) throw new Error('Transfer USB IN fallito.')
+    if (!result || result.status !== 'ok' || !result.data) throw new Error(tl("Transfer USB IN fallito."))
     return new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength)
   }
 }
@@ -544,10 +545,10 @@ function BoardPreview({ values, live, state }: { values: Record<string, string>;
 
         <div className="mt-3 grid w-full grid-cols-3 gap-2 text-center">
           <Metric label="Temp" value={live ? `${temp || 0}` : '--'} />
-          <Metric label="Luce" value={live ? `${luce || 0}` : '--'} />
-          <Metric label="Mov." value={live ? `${movimento || 0}` : '--'} />
+          <Metric label={tl("Luce")} value={live ? `${luce || 0}` : '--'} />
+          <Metric label={tl("Mov.")} value={live ? `${movimento || 0}` : '--'} />
           <div className="col-span-3 rounded-lg bg-white/10 px-2 py-2 text-xs text-slate-300">
-            {live ? 'Dati seriali realtime' : state === 'bootloader' ? 'Bootloader UF2: pronto per firmware' : 'In attesa della seriale del firmware'}
+            {live ? tl("Dati seriali realtime") : state === 'bootloader' ? tl("Bootloader UF2: pronto per firmware") : tl("In attesa della seriale del firmware")}
           </div>
         </div>
       </div>
@@ -621,8 +622,8 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
     portRef.current = port
     writerRef.current = port.writable?.getWriter() ?? null
     setState('serial-ready')
-    setMessage('Seriale aperta. Quando il firmware MakeCode invia righe key=value, il cruscotto si aggiorna in realtime.')
-    appendLine(`[browser] Circuit Playground collegata via Web Serial (${reason})`)
+    setMessage(tl("Seriale aperta. Quando il firmware MakeCode invia righe key=value, il cruscotto si aggiorna in realtime."))
+    appendLine(tl("[browser] Circuit Playground collegata via Web Serial ({0})", reason))
 
     if (!port.readable) return
     const reader = port.readable.getReader()
@@ -664,10 +665,10 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
           setState(bootloader ? 'bootloader' : 'detected-no-serial')
           setMessage(
             bootloader
-              ? 'Scheda rilevata in bootloader UF2. E pronta per ricevere un firmware compilato.'
-              : 'Scheda rilevata via WebHID, ma non c e una porta seriale aperta. Dopo il flash del firmware, riconnetti la seriale per il cruscotto.'
+              ? tl("Scheda rilevata in bootloader UF2. E pronta per ricevere un firmware compilato.")
+              : tl("Scheda rilevata via WebHID, ma non c e una porta seriale aperta. Dopo il flash del firmware, riconnetti la seriale per il cruscotto.")
           )
-          appendLine(`[browser] ${productName} rilevata via WebHID${bootloader ? ' bootloader' : ''}`)
+          appendLine(tl("[browser] {0} rilevata via WebHID{1}", productName, bootloader ? ' bootloader' : ''))
           return true
         }
       } catch {
@@ -687,10 +688,10 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         setState(bootloader ? 'bootloader' : 'detected-no-serial')
         setMessage(
           bootloader
-            ? 'Scheda rilevata in bootloader UF2. E pronta per ricevere un firmware compilato.'
-            : 'Scheda rilevata via WebUSB, ma manca la porta seriale. Dopo il flash del firmware, riconnetti la seriale per il cruscotto.'
+            ? tl("Scheda rilevata in bootloader UF2. E pronta per ricevere un firmware compilato.")
+            : tl("Scheda rilevata via WebUSB, ma manca la porta seriale. Dopo il flash del firmware, riconnetti la seriale per il cruscotto.")
         )
-        appendLine(`[browser] ${productName} rilevata via WebUSB${bootloader ? ' bootloader' : ''}`)
+        appendLine(tl("[browser] {0} rilevata via WebUSB{1}", productName, bootloader ? ' bootloader' : ''))
         return true
       } catch {
         // Nessun canale diagnostico disponibile o permesso negato.
@@ -707,8 +708,8 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         filters: [{ usbVendorId: ADAFRUIT_USB_VENDOR_ID }],
       })
     } catch {
-      setMessage('La porta non compare nel filtro Adafruit. Apro l elenco completo delle seriali: scegli la porta USB/ACM della Circuit Playground.')
-      appendLine('[browser] filtro seriale Adafruit vuoto o annullato; provo elenco seriale completo')
+      setMessage(tl("La porta non compare nel filtro Adafruit. Apro l elenco completo delle seriali: scegli la porta USB/ACM della Circuit Playground."))
+      appendLine(tl("[browser] filtro seriale Adafruit vuoto o annullato; provo elenco seriale completo"))
       return await serial.requestPort()
     }
   }, [appendLine])
@@ -720,20 +721,20 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
     }
     if (!serialSupported) {
       setState('error')
-      setMessage('Web Serial non e disponibile. Usa Chrome o Edge desktop su HTTPS o localhost.')
+      setMessage(tl("Web Serial non e disponibile. Usa Chrome o Edge desktop su HTTPS o localhost."))
       return
     }
 
     setState('connecting')
-    setMessage('Cerco la porta seriale della Circuit Playground...')
+    setMessage(tl("Cerco la porta seriale della Circuit Playground..."))
     try {
       const port = await requestSerialPort()
-      await openSerialPort(port, 'selezione utente')
+      await openSerialPort(port, tl("selezione utente"))
     } catch {
       const diagnosed = await inspectUsbOrHid()
       if (!diagnosed) {
         setState('error')
-        setMessage('Non trovo una seriale della Circuit Playground. Se la lista e vuota, controlla cavo dati, permessi USB/seriali del sistema operativo e che nessun editor stia gia usando la porta.')
+        setMessage(tl("Non trovo una seriale della Circuit Playground. Se la lista e vuota, controlla cavo dati, permessi USB/seriali del sistema operativo e che nessun editor stia gia usando la porta."))
       }
     }
   }, [disconnectSerial, inspectUsbOrHid, openSerialPort, requestSerialPort, serialReady, serialSupported])
@@ -748,8 +749,8 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         const adafruitPort = ports.find((port) => port.getInfo?.().usbVendorId === ADAFRUIT_USB_VENDOR_ID) ?? ports[0]
         if (!cancelled && adafruitPort && !portRef.current) {
           setState('auto-detected')
-          setMessage('Porta seriale gia autorizzata trovata. La apro automaticamente per il cruscotto realtime.')
-          await openSerialPort(adafruitPort, 'permesso gia concesso')
+          setMessage(tl("Porta seriale gia autorizzata trovata. La apro automaticamente per il cruscotto realtime."))
+          await openSerialPort(adafruitPort, tl("permesso gia concesso"))
         }
       } catch {
         // Il rilevamento automatico e solo un aiuto, non deve bloccare la pagina.
@@ -758,7 +759,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
 
     const handleDisconnect = () => {
       void disconnectSerial()
-      appendLine('[browser] Circuit Playground scollegata')
+      appendLine(tl("[browser] Circuit Playground scollegata"))
     }
     ;(navigator as DeviceNavigator).serial?.addEventListener?.('disconnect', handleDisconnect)
 
@@ -773,12 +774,12 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
     setMessage(null)
     try {
       if (!usbSupported) {
-        throw new Error('WebUSB non e disponibile. Per caricare direttamente la Circuit Playground serve Chrome o Edge desktop su HTTPS o localhost.')
+        throw new Error(tl("WebUSB non e disponibile. Per caricare direttamente la Circuit Playground serve Chrome o Edge desktop su HTTPS o localhost."))
       }
       setState('connecting')
-      setMessage('Seleziona la Circuit Playground nella finestra USB del browser. Poi compilo e carico il firmware automaticamente.')
+      setMessage(tl("Seleziona la Circuit Playground nella finestra USB del browser. Poi compilo e carico il firmware automaticamente."))
       const usbDevice = await requestAdafruitUsbDevice()
-      appendLine(`[browser] ${usbDevice.productName || 'Circuit Playground'} selezionata via WebUSB`)
+      appendLine(tl("[browser] {0} selezionata via WebUSB", usbDevice.productName || 'Circuit Playground'))
 
       if (serialReady) {
         await disconnectSerial()
@@ -788,32 +789,32 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
       const code = rawCode && !looksLikeCircuitPythonSource(rawCode) ? rawCode : MAKECODE_SENSOR_SCRIPT
       if (code !== source.trim()) {
         onReplaceSource?.(code)
-        appendLine('[browser] sorgente ripulita per MakeCode TypeScript')
+        appendLine(tl("[browser] sorgente ripulita per MakeCode TypeScript"))
       }
 
-      appendLine('[compiler] invio codice al microservizio PXT')
+      appendLine(tl("[compiler] invio codice al microservizio PXT"))
       const response = await hardwareApi.compileCircuitPlayground(code)
       setCompiledFirmware(response.data)
-      appendLine(`[compiler] UF2 pronto: ${response.data.filename} (${response.data.size_bytes} byte)`)
-      setMessage(`Firmware compilato (${Math.round(response.data.size_bytes / 1024)} KB). Carico ora sulla scheda via WebUSB/HF2...`)
+      appendLine(tl("[compiler] UF2 pronto: {0} ({1} byte)", response.data.filename, response.data.size_bytes))
+      setMessage(tl("Firmware compilato ({0} KB). Carico ora sulla scheda via WebUSB/HF2...", Math.round(response.data.size_bytes / 1024)))
 
       const flasher = new WebUsbHf2Flasher(usbDevice, appendLine)
       await flasher.flash(response.data)
       setState('detected-no-serial')
-      setMessage('Firmware caricato. Attendo la porta seriale del runtime per popolare il cruscotto realtime.')
+      setMessage(tl("Firmware caricato. Attendo la porta seriale del runtime per popolare il cruscotto realtime."))
 
       await delay(1400)
       const ports = await (navigator as DeviceNavigator).serial?.getPorts?.()
       const adafruitPort = ports?.find((port) => port.getInfo?.().usbVendorId === ADAFRUIT_USB_VENDOR_ID) ?? ports?.[0]
       if (adafruitPort) {
-        await openSerialPort(adafruitPort, 'dopo flash')
+        await openSerialPort(adafruitPort, tl("dopo flash"))
       } else {
-        appendLine('[browser] firmware caricato; nessuna seriale gia autorizzata trovata')
+        appendLine(tl("[browser] firmware caricato; nessuna seriale gia autorizzata trovata"))
       }
     } catch (err) {
       setState((current) => current === 'serial-ready' ? current : 'error')
       const detail = (err as { response?: { data?: { detail?: { error?: string; logs?: string } | string } } })?.response?.data?.detail
-      let message = err instanceof Error ? err.message : 'Compilazione firmware non riuscita.'
+      let message = err instanceof Error ? err.message : tl("Compilazione firmware non riuscita.")
       if (detail) {
         if (typeof detail === 'string') {
           message = detail
@@ -836,20 +837,20 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
       const code = rawCode && !looksLikeCircuitPythonSource(rawCode) ? rawCode : MAKECODE_SENSOR_SCRIPT
       if (code !== source.trim()) {
         onReplaceSource?.(code)
-        appendLine('[browser] sorgente ripulita per MakeCode TypeScript')
+        appendLine(tl("[browser] sorgente ripulita per MakeCode TypeScript"))
       }
 
-      appendLine('[compiler] invio codice al microservizio PXT')
+      appendLine(tl("[compiler] invio codice al microservizio PXT"))
       const response = await hardwareApi.compileCircuitPlayground(code)
       setCompiledFirmware(response.data)
-      appendLine(`[compiler] UF2 pronto: ${response.data.filename} (${response.data.size_bytes} byte)`)
+      appendLine(tl("[compiler] UF2 pronto: {0} ({1} byte)", response.data.filename, response.data.size_bytes))
       downloadUf2(response.data)
       setState('bootloader')
-      setMessage('UF2 scaricato. Premi due volte il tasto RESET sulla scheda: i LED diventano verdi e compare l unita CPLAYBOOT. Trascina il file .uf2 scaricato su quell unita: la scheda lampeggia, si riavvia e parte il programma. Poi premi "Seriale dati" per il cruscotto.')
+      setMessage(tl("UF2 scaricato. Premi due volte il tasto RESET sulla scheda: i LED diventano verdi e compare l unita CPLAYBOOT. Trascina il file .uf2 scaricato su quell unita: la scheda lampeggia, si riavvia e parte il programma. Poi premi \"Seriale dati\" per il cruscotto."))
     } catch (err) {
       setState('error')
       const detail = (err as { response?: { data?: { detail?: { error?: string; logs?: string } | string } } })?.response?.data?.detail
-      let message = err instanceof Error ? err.message : 'Compilazione firmware non riuscita.'
+      let message = err instanceof Error ? err.message : tl("Compilazione firmware non riuscita.")
       if (detail) {
         if (typeof detail === 'string') {
           message = detail
@@ -874,12 +875,12 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
 
   const badge = {
     idle: ['offline', 'bg-slate-100 text-slate-600'],
-    'auto-detected': ['seriale trovata', 'bg-sky-100 text-sky-700'],
+    'auto-detected': [tl("seriale trovata"), 'bg-sky-100 text-sky-700'],
     connecting: ['connessione', 'bg-amber-100 text-amber-700'],
     'serial-ready': ['live', 'bg-emerald-100 text-emerald-700'],
     bootloader: ['bootloader', 'bg-amber-100 text-amber-700'],
     'detected-no-serial': ['rilevata', 'bg-sky-100 text-sky-700'],
-    error: ['errore', 'bg-red-100 text-red-700'],
+    error: [tl("errore"), 'bg-red-100 text-red-700'],
   }[state]
 
   return (
@@ -890,7 +891,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-extrabold text-slate-900">Circuit Playground Express</p>
-          <p className="truncate text-[11px] text-slate-500">MakeCode UF2, seriale e sensori realtime</p>
+          <p className="truncate text-[11px] text-slate-500">{tl("MakeCode UF2, seriale e sensori realtime")}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${badge[1]}`}>{badge[0]}</span>
       </div>
@@ -901,10 +902,10 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
         <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            Runtime supportato: MakeCode UF2
+            {tl("Runtime supportato: MakeCode UF2")}
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Il codice viene compilato fuori da React con PXT/MakeCode. La seriale serve al cruscotto quando il firmware sta gia girando sulla scheda.
+            {tl("Il codice viene compilato fuori da React con PXT/MakeCode. La seriale serve al cruscotto quando il firmware sta gia girando sulla scheda.")}
           </p>
           {compiledFirmware && (
           <button
@@ -912,7 +913,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
             className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
           >
             <Download className="h-3.5 w-3.5" />
-            Scarica UF2 compilato
+            {tl("Scarica UF2 compilato")}
           </button>
           )}
         </div>
@@ -940,7 +941,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
             }`}
           >
             {state === 'connecting' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : serialReady ? <Unplug className="h-3.5 w-3.5" /> : <Cable className="h-3.5 w-3.5" />}
-            {serialReady ? 'Scollega seriale' : 'Seriale dati'}
+            {serialReady ? tl("Scollega seriale") : tl("Seriale dati")}
           </button>
           <button
             onClick={() => void execute()}
@@ -948,7 +949,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Esegui sulla scheda
+            {tl("Esegui sulla scheda")}
           </button>
           <button
             onClick={() => void compileAndDownload()}
@@ -956,15 +957,15 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
             className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            Compila e scarica UF2
+            {tl("Compila e scarica UF2")}
           </button>
         </div>
 
         {!serialSupported && (
-          <p className="mt-2 text-xs leading-5 text-amber-700">Web Serial non e supportato qui. Usa Chrome o Edge desktop su HTTPS o localhost.</p>
+          <p className="mt-2 text-xs leading-5 text-amber-700">{tl("Web Serial non e supportato qui. Usa Chrome o Edge desktop su HTTPS o localhost.")}</p>
         )}
         {!usbSupported && !hidSupported && (
-          <p className="mt-2 text-xs leading-5 text-amber-700">WebUSB/WebHID non sono disponibili: posso leggere solo porte seriali gia esposte dal runtime.</p>
+          <p className="mt-2 text-xs leading-5 text-amber-700">{tl("WebUSB/WebHID non sono disponibili: posso leggere solo porte seriali gia esposte dal runtime.")}</p>
         )}
         {message && (
           <p className={`mt-2 text-xs leading-5 ${state === 'error' || state === 'bootloader' ? 'text-amber-700' : 'text-slate-600'}`}>
@@ -986,7 +987,7 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
           <div className="col-span-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center">
             <Activity className="mx-auto h-5 w-5 text-slate-300" />
             <p className="mt-2 text-xs text-slate-500">
-              Il cruscotto si aggiorna quando riceve righe come <span className="font-mono">temp=22 luce=120 movimento=3</span>.
+              {tl("Il cruscotto si aggiorna quando riceve righe come")} <span className="font-mono">temp=22 luce=120 movimento=3</span>.
             </p>
           </div>
         )}
@@ -995,17 +996,17 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
       <div className="flex min-h-0 flex-1 flex-col bg-slate-950">
         <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
           <Terminal className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-xs font-semibold text-slate-400">Log seriale</span>
+          <span className="text-xs font-semibold text-slate-400">{tl("Log seriale")}</span>
           <div className="flex-1" />
           {lines.length > 0 && (
             <button onClick={() => setLines([])} className="text-[10px] font-semibold text-slate-500 hover:text-slate-300">
-              Pulisci
+              {tl("Pulisci")}
             </button>
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-xs">
           {lines.length === 0 ? (
-            <p className="text-slate-600">Nessun dato ricevuto.</p>
+            <p className="text-slate-600">{tl("Nessun dato ricevuto.")}</p>
           ) : (
             lines.map((line) => (
               <div key={line.id} className="flex gap-2 py-0.5 text-slate-300">
@@ -1023,14 +1024,14 @@ export default function CircuitPlaygroundPanel({ source = '', onReplaceSource }:
               if (event.key === 'Enter') void sendCommand()
             }}
             disabled={!serialReady}
-            placeholder="Invia comando alla console seriale"
+            placeholder={tl("Invia comando alla console seriale")}
             className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 disabled:opacity-50"
           />
           <button
             onClick={() => void sendCommand()}
             disabled={!serialReady || !command.trim()}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-sky-600 text-white transition hover:bg-sky-500 disabled:opacity-40"
-            title="Invia comando"
+            title={tl("Invia comando")}
           >
             <Send className="h-3.5 w-3.5" />
           </button>

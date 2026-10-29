@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
+import { tl } from '@/i18n/tl'
 
 /**
  * Deterministic document formatting used by Document Builder (after the user confirmed the agent's
@@ -261,23 +262,23 @@ export function applyFormatOperations(editor: Editor, operations: FormatOperatio
     const before = tr.steps.length
     if (op.op === 'paragraph_format') {
       const count = applyParagraphFormat(tr, activeRange, op)
-      if (count) lines.push(`Formato di ${count} paragrafi`)
+      if (count) lines.push(tl("Formato di {0} paragrafi", count))
       changed += count
     } else if (op.op === 'text_style') {
       const count = applyTextStyle(tr, activeRange, op)
-      if (count) lines.push(`Stile del testo su ${count} blocchi`)
+      if (count) lines.push(tl("Stile del testo su {0} blocchi", count))
       changed += count
     } else if (op.op === 'normalize_spacing') {
       const { removed, spaced } = normalizeSpacing(tr, activeRange, op)
-      if (removed) lines.push(`${removed} righe vuote sostituite da spaziatura tra paragrafi (${spaced} punti)`)
+      if (removed) lines.push(tl("{0} righe vuote sostituite da spaziatura tra paragrafi ({1} punti)", removed, spaced))
       changed += removed
     } else if (op.op === 'detect_structure') {
       const count = detectStructure(tr, activeRange)
-      if (count) lines.push(`${count} titoli riconosciuti`)
+      if (count) lines.push(tl("{0} titoli riconosciuti", count))
       changed += count
     } else if (op.op === 'smart_indent') {
       const count = smartIndent(tr, activeRange, op)
-      if (count) lines.push(`Rientro uniforme su ${count} paragrafi`)
+      if (count) lines.push(tl("Rientro uniforme su {0} paragrafi", count))
       changed += count
     }
     if (activeRange && tr.steps.length > before) {

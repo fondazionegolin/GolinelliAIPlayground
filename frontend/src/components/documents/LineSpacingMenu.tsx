@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { AlignVerticalSpaceAround, Check } from '@/components/icons'
 import type { Editor } from '@tiptap/core'
 import { applyFormatOperations } from '@/lib/documentFormatOps'
+import { tl } from '@/i18n/tl'
 
 const LINE_HEIGHTS: Array<{ value: number | null; label: string }> = [
-  { value: null, label: 'Predefinita' },
+  { value: null, label: tl("Predefinita") },
   { value: 1, label: '1,0' },
   { value: 1.15, label: '1,15' },
   { value: 1.5, label: '1,5' },

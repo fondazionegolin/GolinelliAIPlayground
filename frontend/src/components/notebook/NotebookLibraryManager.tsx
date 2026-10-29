@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, ChevronDown, ChevronRight, PackagePlus, Code2, Camera } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES, LIBRARY_CATEGORIES, type NotebookLibrary, type LibraryTemplate } from './notebookLibraries'
+import { tl } from '@/i18n/tl'
 
 interface Props {
   open: boolean
@@ -23,7 +24,7 @@ function TemplateCard({ template, onInsert }: { template: LibraryTemplate; onIns
         <button
           onClick={onInsert}
           className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors"
-          title="Aggiunge il template al tuo sketch: il codice già presente viene mantenuto e il template adattato"
+          title={tl("Aggiunge il template al tuo sketch: il codice già presente viene mantenuto e il template adattato")}
         >
           <Code2 className="h-3 w-3" />
           Inserisci
@@ -70,7 +71,7 @@ function LibraryCard({
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {selected ? 'Rimuovi' : 'Aggiungi'}
+                {selected ? tl("Rimuovi") : tl("Aggiungi")}
               </button>
             </div>
             <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">{library.description}</p>
@@ -85,7 +86,7 @@ function LibraryCard({
               className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900 transition-colors"
             >
               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              {library.templates.length} template{library.templates.length > 1 ? 's' : ''} disponibili
+              {library.templates.length} template{library.templates.length > 1 ? 's' : ''} {tl("disponibili")}
             </button>
             {expanded && (
               <div className="mt-2 space-y-2">
@@ -131,7 +132,7 @@ export default function NotebookLibraryManager({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
             <PackagePlus className="h-4 w-4 text-indigo-600" />
-            <span className="text-sm font-bold text-slate-800">Librerie</span>
+            <span className="text-sm font-bold text-slate-800">{tl("Librerie")}</span>
             {activeCount > 0 && (
               <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white">
                 {activeCount} attiv{activeCount === 1 ? 'a' : 'e'}
@@ -149,9 +150,8 @@ export default function NotebookLibraryManager({
         {/* Info banner */}
         <div className="mx-3 mt-3 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2">
           <p className="text-[11px] text-indigo-700 leading-relaxed">
-            Le librerie vengono caricate prima dello sketch. Le librerie con{' '}
-            <span className="font-semibold">webcam</span> richiedono autorizzazione camera.
-            Usa i <span className="font-semibold">template</span> come punto di partenza.
+            {tl("Le librerie vengono caricate prima dello sketch. Le librerie con")}{' '}
+            <span className="font-semibold">webcam</span> {tl("richiedono autorizzazione camera. Usa i")} <span className="font-semibold">template</span> {tl("come punto di partenza.")}
           </p>
         </div>
 

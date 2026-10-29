@@ -4,6 +4,7 @@ import CanvasWorld from './CanvasWorld'
 import { getDrawingLayout, type DrawingScene } from './blackboard'
 import { refineScene } from './sceneLint'
 import type { Region, SourceImage } from './types'
+import { tl } from '@/i18n/tl'
 
 const SHEET_WIDTH = 1600
 const COLUMNS = 2
@@ -24,7 +25,7 @@ export function buildSheet(scene: DrawingScene, regions: Region[], source: strin
     const x = (step % columns) * tileW, y = Math.floor(step / columns) * (tileH + caption)
     return <g key={step}>
       <rect x={x} y={y} width={tileW} height={caption} fill="#1f2a3d" />
-      <text x={x + 14} y={y + 23} fontSize={17} fill="#ffffff" fontFamily="ui-sans-serif, system-ui, sans-serif">{`Passo ${step + 1}/${scene.steps.length} · ${title}`}</text>
+      <text x={x + 14} y={y + 23} fontSize={17} fill="#ffffff" fontFamily="ui-sans-serif, system-ui, sans-serif">{tl("Passo {0}/{1} · {2}", step + 1, scene.steps.length, title)}</text>
       <svg x={x} y={y + caption} width={tileW} height={tileH} viewBox={`${-pad} ${-pad} ${worldW} ${worldH}`}>
         <rect x={-pad} y={-pad} width={worldW} height={worldH} fill="#f6f7f9" />
         <CanvasWorld layout={layout} imageUrl={source} />
@@ -59,7 +60,7 @@ async function inlineSource(url: string, width: number, height: number): Promise
 export async function snapshotDrawing(scene: DrawingScene, regions: Region[], image: SourceImage): Promise<{ png: string; issues: string[] }> {
   const source = await inlineSource(image.url, image.width, image.height)
   const sheet = buildSheet(scene, regions, source, image.width, image.height)
-  const img = await load('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sheet.svg))
+  const img = await load("data:image/svg+xml;charset=utf-8," + encodeURIComponent(sheet.svg))
   const canvas = document.createElement('canvas')
   canvas.width = sheet.width; canvas.height = sheet.height
   canvas.getContext('2d')!.drawImage(img, 0, 0)

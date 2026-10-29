@@ -59,6 +59,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 type SessionStudentSummary = { id: string; nickname: string; is_frozen: boolean }
 
@@ -109,7 +110,7 @@ export default function TeacherDashboard() {
     ...sessionStudents,
     ...onlineStudents
       .filter(student => !sessionStudents.some(enrolled => enrolled.id === student.student_id))
-      .map(student => ({ id: student.student_id, nickname: student.nickname || 'Studente', is_frozen: false })),
+      .map(student => ({ id: student.student_id, nickname: student.nickname || tl("Studente"), is_frozen: false })),
   ].sort((left, right) => {
     const onlineDelta = Number(onlineStudentIds.has(right.id)) - Number(onlineStudentIds.has(left.id))
     return onlineDelta || left.nickname.localeCompare(right.nickname, 'it')
@@ -199,8 +200,8 @@ export default function TeacherDashboard() {
       localStorage.removeItem('student_token')
       toast({
         variant: 'destructive',
-        title: 'Vista soggettiva non disponibile',
-        description: error?.response?.data?.detail || 'Non è stato possibile accedere all’interfaccia dello studente.',
+        title: tl("Vista soggettiva non disponibile"),
+        description: error?.response?.data?.detail || tl("Non è stato possibile accedere all’interfaccia dello studente."),
       })
     } finally {
       setSubjectiveStudentId(null)
@@ -214,12 +215,12 @@ export default function TeacherDashboard() {
       if (student.is_frozen) await teacherApi.unfreezeStudent(activeSessionId, student.id)
       else await teacherApi.freezeStudent(activeSessionId, student.id)
       setSessionStudents(current => current.map(item => item.id === student.id ? { ...item, is_frozen: !student.is_frozen } : item))
-      toast({ title: student.is_frozen ? 'Studente sbloccato' : 'Studente bloccato' })
+      toast({ title: student.is_frozen ? tl("Studente sbloccato") : tl("Studente bloccato") })
     } catch (error: any) {
       toast({
         variant: 'destructive',
-        title: 'Operazione non riuscita',
-        description: error?.response?.data?.detail || 'Impossibile aggiornare lo studente.',
+        title: tl("Operazione non riuscita"),
+        description: error?.response?.data?.detail || tl("Impossibile aggiornare lo studente."),
       })
     } finally {
       setUpdatingStudentId(null)
@@ -238,11 +239,11 @@ export default function TeacherDashboard() {
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/ai-3d', label: 'AI 3D', icon: MushroomIcon },
+    { path: '/teacher/ai-3d', label: tl("AI 3D"), icon: MushroomIcon },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
     ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
-    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/visual-comprehension', label: 'Comprensione visuale · Beta', icon: Sparkles }] : []),
+    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/visual-comprehension', label: tl("Comprensione visuale · Beta"), icon: Sparkles }] : []),
   ]
 
   const handleMobileLogout = () => {
@@ -341,7 +342,7 @@ export default function TeacherDashboard() {
             {/* Online students */}
             <div className="relative">
               <button
-                title="Studenti connessi"
+                title={tl("Studenti connessi")}
                 onClick={() => setShowOnlineMenu(v => !v)}
                 className={`app-button-chrome relative flex h-9 w-9 items-center justify-center rounded-lg ${showOnlineMenu ? 'app-button-chrome-active' : ''}`}
                 style={railButtonStyle}
@@ -359,13 +360,13 @@ export default function TeacherDashboard() {
                       <UserRound className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800">Studenti della sessione</p>
-                      <p className="text-[11px] text-slate-400">{onlineStudents.length} online · {visibleSessionStudents.length} iscritti</p>
+                      <p className="text-sm font-bold text-slate-800">{tl("Studenti della sessione")}</p>
+                      <p className="text-[11px] text-slate-400">{onlineStudents.length} online · {visibleSessionStudents.length} {tl("iscritti")}</p>
                     </div>
                   </div>
                   <div className="max-h-[min(60vh,30rem)] overflow-y-auto p-2">
                     {visibleSessionStudents.length === 0 ? (
-                      <p className="px-3 py-8 text-center text-xs text-slate-400">Nessuno studente nella sessione</p>
+                      <p className="px-3 py-8 text-center text-xs text-slate-400">{tl("Nessuno studente nella sessione")}</p>
                     ) : (
                       visibleSessionStudents.map((student) => {
                         const isOnline = onlineStudentIds.has(student.id)
@@ -373,15 +374,15 @@ export default function TeacherDashboard() {
                         <div key={student.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2.5 hover:bg-slate-50">
                           <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-700">{student.nickname || 'Studente'}</p>
-                            <p className="text-[10px] text-slate-400">{isOnline ? 'Online' : 'Disconnesso'}</p>
+                            <p className="truncate text-sm font-semibold text-slate-700">{student.nickname || tl("Studente")}</p>
+                            <p className="text-[10px] text-slate-400">{isOnline ? 'Online' : tl("Disconnesso")}</p>
                           </div>
                           <button
                             type="button"
                             onClick={() => window.dispatchEvent(new CustomEvent('openPrivateChat', { detail: { id: student.id, nickname: student.nickname } }))}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
-                            title={`Chat diretta con ${student.nickname}`}
-                            aria-label={`Chat diretta con ${student.nickname}`}
+                            title={tl("Chat diretta con {0}", student.nickname)}
+                            aria-label={tl("Chat diretta con {0}", student.nickname)}
                           >
                             <MessageSquare className="h-3.5 w-3.5" />
                           </button>
@@ -390,8 +391,8 @@ export default function TeacherDashboard() {
                             onClick={() => void toggleStudentFrozen(student)}
                             disabled={updatingStudentId !== null}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40"
-                            title={student.is_frozen ? `Sblocca ${student.nickname}` : `Blocca ${student.nickname}`}
-                            aria-label={student.is_frozen ? `Sblocca ${student.nickname}` : `Blocca ${student.nickname}`}
+                            title={student.is_frozen ? tl("Sblocca {0}", student.nickname) : tl("Blocca {0}", student.nickname)}
+                            aria-label={student.is_frozen ? tl("Sblocca {0}", student.nickname) : tl("Blocca {0}", student.nickname)}
                           >
                             {updatingStudentId === student.id
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -402,8 +403,8 @@ export default function TeacherDashboard() {
                             onClick={() => void enterSubjectiveView({ student_id: student.id, nickname: student.nickname })}
                             disabled={!isOnline || subjectiveStudentId !== null}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-50"
-                            title={isOnline ? `Entra nella vista soggettiva di ${student.nickname || 'Studente'}` : 'Vista soggettiva disponibile solo quando lo studente è online'}
-                            aria-label={`Entra nella vista soggettiva di ${student.nickname || 'Studente'}`}
+                            title={isOnline ? tl("Entra nella vista soggettiva di {0}", student.nickname || 'Studente') : tl("Vista soggettiva disponibile solo quando lo studente è online")}
+                            aria-label={tl("Entra nella vista soggettiva di {0}", student.nickname || 'Studente')}
                           >
                             {subjectiveStudentId === student.id
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -467,12 +468,12 @@ export default function TeacherDashboard() {
               <Route path="toy-lm" element={<ToyLMPage />} />
               <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
-              <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
-              <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
-              <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
-              <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
-              <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
-              <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Area riservata agli amministratori.</div>} />
+              <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="coding" element={
                 activeSessionId ? (
                   <div className="h-full min-h-0 overflow-hidden">
@@ -482,9 +483,9 @@ export default function TeacherDashboard() {
                   <div className="flex h-full items-center justify-center p-8">
                     <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
                       <Code2 className="mx-auto h-8 w-8 text-slate-400" />
-                      <h2 className="mt-3 text-sm font-bold text-slate-900">Seleziona una sessione</h2>
+                      <h2 className="mt-3 text-sm font-bold text-slate-900">{tl("Seleziona una sessione")}</h2>
                       <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                        Il Vibe Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.
+                        {tl("Il Vibe Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.")}
                       </p>
                     </div>
                   </div>
@@ -634,11 +635,11 @@ function TeacherMobileNavigation({
     <>
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <div className="relative flex h-12 items-center gap-2">
-          <button type="button" onClick={() => setOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700" aria-label="Apri menu">
+          <button type="button" onClick={() => setOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700" aria-label={tl("Apri menu")}>
             <Menu className="h-6 w-6" strokeWidth={2.5} />
           </button>
           <button type="button" onClick={() => onNavigate('/teacher')} className="hidden min-w-0 flex-1 text-left sm:block">
-            <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>Area docente</span>
+            <span className="block text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>{tl("Area docente")}</span>
             <span className="block truncate text-base font-black leading-tight text-slate-950">
               {isHome ? 'Home' : items.find(item => currentPath.startsWith(item.path) && item.path !== '/teacher')?.label || 'Workspace'}
             </span>
@@ -649,7 +650,7 @@ function TeacherMobileNavigation({
               <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
             </button>
           )}
-          <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || 'Docente'} aria-label={`Apri chat di classe · ${teacherName || 'Docente'}`}>
+          <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
             <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
             <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>
             {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
@@ -659,11 +660,11 @@ function TeacherMobileNavigation({
 
       {open && (
         <div className="fixed inset-0 z-[80]">
-          <button className="absolute inset-0 bg-slate-950/45" onClick={() => setOpen(false)} aria-label="Chiudi menu" />
+          <button className="absolute inset-0 bg-slate-950/45" onClick={() => setOpen(false)} aria-label={tl("Chiudi menu")} />
           <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-              <div className="flex items-center gap-3"><LogoMark className="h-11 w-11 shrink-0" /><div><span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: accentColor }}>Golinelli.ai</span><p className="mt-1 text-lg font-black text-slate-950">{teacherName || t('teacher_dashboard.mobile_teacher_default')}</p><p className="text-xs font-medium text-slate-400">Area docente</p></div></div>
-              <button type="button" onClick={() => setOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label="Chiudi menu"><X className="h-5 w-5" /></button>
+              <div className="flex items-center gap-3"><LogoMark className="h-11 w-11 shrink-0" /><div><span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: accentColor }}>Golinelli.ai</span><p className="mt-1 text-lg font-black text-slate-950">{teacherName || t('teacher_dashboard.mobile_teacher_default')}</p><p className="text-xs font-medium text-slate-400">{tl("Area docente")}</p></div></div>
+              <button type="button" onClick={() => setOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Chiudi menu")}><X className="h-5 w-5" /></button>
             </div>
             <nav className="flex-1 overflow-y-auto p-3">
               {items.map(({ path, label, icon: Icon, exact }) => {
@@ -696,12 +697,12 @@ function MobileTeacherHome({
   accentColor: string
   onOpenAssistant: () => void
 }) {
-  const firstName = teacherName?.trim().split(/\s+/)[0] || 'docente'
+  const firstName = teacherName?.trim().split(/\s+/)[0] || tl("docente")
   const tools = [
-    { to: '/teacher/classes', title: 'Classi', description: 'Gestisci studenti e gruppi', icon: Users, tone: 'bg-sky-50 text-sky-700' },
-    { to: '/teacher/sessions', title: 'Sessioni', description: 'Prepara e avvia una lezione', icon: PlayCircle, tone: 'bg-rose-50 text-rose-600' },
-    { to: '/teacher/documents', title: 'Documenti', description: 'Materiali e risorse didattiche', icon: FileText, tone: 'bg-amber-50 text-amber-700' },
-    { to: '/teacher/teacherbots', title: 'Teacherbot', description: 'Crea assistenti per la classe', icon: Bot, tone: 'bg-violet-50 text-violet-700' },
+    { to: '/teacher/classes', title: tl("Classi"), description: tl("Gestisci studenti e gruppi"), icon: Users, tone: 'bg-sky-50 text-sky-700' },
+    { to: '/teacher/sessions', title: tl("Sessioni"), description: tl("Prepara e avvia una lezione"), icon: PlayCircle, tone: 'bg-rose-50 text-rose-600' },
+    { to: '/teacher/documents', title: tl("Documenti"), description: tl("Materiali e risorse didattiche"), icon: FileText, tone: 'bg-amber-50 text-amber-700' },
+    { to: '/teacher/teacherbots', title: 'Teacherbot', description: tl("Crea assistenti per la classe"), icon: Bot, tone: 'bg-violet-50 text-violet-700' },
   ]
 
   return (
@@ -711,10 +712,10 @@ function MobileTeacherHome({
         <div className="relative">
           <div className="flex items-center gap-2 text-sm font-bold text-emerald-400">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_5px_rgba(52,211,153,0.12)]" />
-            Area docente connessa
+            {tl("Area docente connessa")}
           </div>
-          <p className="mt-14 text-base font-bold text-slate-400">Ciao, {firstName}</p>
-          <h1 className="mt-2 max-w-[15rem] text-4xl font-black leading-[1.05] tracking-tight">Cosa prepariamo oggi?</h1>
+          <p className="mt-14 text-base font-bold text-slate-400">{tl("Ciao,")} {firstName}</p>
+          <h1 className="mt-2 max-w-[15rem] text-4xl font-black leading-[1.05] tracking-tight">{tl("Cosa prepariamo oggi?")}</h1>
           <button
             type="button"
             onClick={onOpenAssistant}
@@ -723,7 +724,7 @@ function MobileTeacherHome({
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
               <AcademicAiIcon className="h-6 w-6" />
             </span>
-            <span className="flex-1 text-lg font-black">Apri l'assistente AI</span>
+            <span className="flex-1 text-lg font-black">{tl("Apri l'assistente AI")}</span>
             <ChevronRight className="h-6 w-6" strokeWidth={2.5} />
           </button>
         </div>
@@ -736,7 +737,7 @@ function MobileTeacherHome({
             <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-bold uppercase tracking-wider text-emerald-600">Sessione attiva</span>
+            <span className="block text-xs font-bold uppercase tracking-wider text-emerald-600">{tl("Sessione attiva")}</span>
             <span className="block truncate text-base font-black text-slate-900">{currentSession.name}</span>
             <span className="block truncate text-xs text-slate-400">{currentSession.className}{currentSession.joinCode ? ` · ${currentSession.joinCode}` : ''}</span>
           </span>
@@ -747,7 +748,7 @@ function MobileTeacherHome({
       <div className="mt-6 flex items-end justify-between px-1">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: accentColor }}>Workspace</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">I tuoi strumenti</h2>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">{tl("I tuoi strumenti")}</h2>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">

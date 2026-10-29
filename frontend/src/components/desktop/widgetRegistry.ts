@@ -1,3 +1,4 @@
+import { tl } from '@/i18n/tl'
 /**
  * Widget Registry — single source of truth for all widget types.
  * Used by WidgetPalette, AgentSearchBar, and the backend agent system prompt.
@@ -19,8 +20,8 @@ export interface WidgetSpec {
 export const WIDGET_REGISTRY: WidgetSpec[] = [
   {
     type: 'CLOCK',
-    label: 'Orologio',
-    description: 'Orologio digitale con ora, secondi e data corrente.',
+    label: tl("Orologio"),
+    description: tl("Orologio digitale con ora, secondi e data corrente."),
     configSchema: {
       type: 'object',
       properties: {
@@ -37,12 +38,12 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   {
     type: 'NOTE',
     label: 'Post-it',
-    description: 'Nota libera colorata con testo libero. Colori disponibili: #fef08a (giallo), #bfdbfe (azzurro), #bbf7d0 (verde), #fecaca (rosso), #e9d5ff (viola). Dimensioni consigliate: 4×4.',
+    description: tl("Nota libera colorata con testo libero. Colori disponibili: #fef08a (giallo), #bfdbfe (azzurro), #bbf7d0 (verde), #fecaca (rosso), #e9d5ff (viola). Dimensioni consigliate: 4×4."),
     configSchema: {
       type: 'object',
       properties: {
         text:  { type: 'string', default: '' },
-        color: { type: 'string', default: '#fef08a', description: 'Colore esadecimale sfondo del post-it' },
+        color: { type: 'string', default: '#fef08a', description: tl("Colore esadecimale sfondo del post-it") },
       },
     },
     defaultConfig: { text: '', color: '#fef08a' },
@@ -53,12 +54,12 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   },
   {
     type: 'TASKLIST',
-    label: 'Lista compiti',
-    description: 'Lista di attività con checkbox. Items è un array di oggetti {text: string, done: boolean}.',
+    label: tl("Lista compiti"),
+    description: tl("Lista di attività con checkbox. Items è un array di oggetti {text: string, done: boolean}."),
     configSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', default: 'Da fare' },
+        title: { type: 'string', default: tl("Da fare") },
         items: {
           type: 'array',
           items: {
@@ -73,7 +74,7 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
         },
       },
     },
-    defaultConfig: { title: 'Da fare', items: [] },
+    defaultConfig: { title: tl("Da fare"), items: [] },
     defaultSize: { w: 5, h: 5 },
     color: 'text-emerald-400',
     bg: 'bg-emerald-400/10',
@@ -81,8 +82,8 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   },
   {
     type: 'CALENDAR',
-    label: 'Calendario mensile',
-    description: 'Calendario mensile con note personali per giorno. Config: {notes: {"YYYY-MM-DD": "testo nota"}}. Usa questo per eventi/note personali dello studente.',
+    label: tl("Calendario mensile"),
+    description: tl("Calendario mensile con note personali per giorno. Config: {notes: {\"YYYY-MM-DD\": \"testo nota\"}}. Usa questo per eventi/note personali dello studente."),
     configSchema: {
       type: 'object',
       properties: {
@@ -90,7 +91,7 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
           type: 'object',
           additionalProperties: { type: 'string' },
           default: {},
-          description: 'Mappa data→nota: {"2026-04-15": "Compito matematica"}',
+          description: tl("Mappa data→nota: {\"2026-04-15\": \"Compito matematica\"}"),
         },
       },
     },
@@ -102,8 +103,8 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   },
   {
     type: 'WEEKLY_CALENDAR',
-    label: 'Calendario sessione',
-    description: 'Calendario settimanale condiviso della sessione. Richiede session_id. Solo per desktop con una sessione attiva.',
+    label: tl("Calendario sessione"),
+    description: tl("Calendario settimanale condiviso della sessione. Richiede session_id. Solo per desktop con una sessione attiva."),
     configSchema: {
       type: 'object',
       properties: {
@@ -121,8 +122,8 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   },
   {
     type: 'FILE_REF',
-    label: 'Riferimento file',
-    description: 'Collegamento rapido a un documento con anteprima al click.',
+    label: tl("Riferimento file"),
+    description: tl("Collegamento rapido a un documento con anteprima al click."),
     configSchema: {
       type: 'object',
       properties: {
@@ -131,7 +132,7 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
         url:       { type: 'string' },
       },
     },
-    defaultConfig: { filename: 'File', mime_type: '' },
+    defaultConfig: { filename: tl("File"), mime_type: '' },
     defaultSize: { w: 4, h: 3 },
     color: 'text-violet-400',
     bg: 'bg-violet-400/10',
@@ -139,8 +140,8 @@ export const WIDGET_REGISTRY: WidgetSpec[] = [
   },
   {
     type: 'IMAGE_REF',
-    label: 'Immagine',
-    description: 'Immagine con anteprima, click per ingrandire.',
+    label: tl("Immagine"),
+    description: tl("Immagine con anteprima, click per ingrandire."),
     configSchema: {
       type: 'object',
       properties: {

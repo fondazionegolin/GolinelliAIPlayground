@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Loader2, ChevronRight, Check, X, Sparkles } from '@/components/icons'
 import { desktopAgentApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 export interface AgentAction {
   type: string
@@ -90,7 +91,7 @@ export default function AgentSearchBar({
       }
     } catch (err) {
       setResult({
-        reply: 'Si è verificato un errore. Riprova tra poco.',
+        reply: tl("Si è verificato un errore. Riprova tra poco."),
         actions: [],
         requires_confirmation: false,
       })
@@ -148,7 +149,7 @@ export default function AgentSearchBar({
           onChange={e => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onFocus={() => setFocused(true)}
-          placeholder={loading ? 'Sto elaborando...' : 'Cosa vuoi che faccia?'}
+          placeholder={loading ? tl("Sto elaborando...") : tl("Cosa vuoi che faccia?")}
           disabled={loading}
           className="flex-1 bg-transparent text-sm text-white placeholder-white/25 outline-none font-mono caret-indigo-400 min-w-0"
         />
@@ -182,7 +183,7 @@ export default function AgentSearchBar({
           {/* Actions preview */}
           {hasActions && (
             <div className="px-4 py-2 border-b border-white/8">
-              <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Azioni proposte</div>
+              <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">{tl("Azioni proposte")}</div>
               <div className="flex flex-col gap-1">
                 {result.actions.map((action, i) => (
                   <ActionBadge key={i} action={action} />
@@ -199,21 +200,21 @@ export default function AgentSearchBar({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs hover:bg-indigo-500/30 transition-colors"
               >
                 <Check className="h-3 w-3" />
-                Esegui
+                {tl("Esegui")}
               </button>
               <button
                 onClick={dismiss}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-white/40 text-xs hover:bg-white/10 transition-colors"
               >
                 <X className="h-3 w-3" />
-                Annulla
+                {tl("Annulla")}
               </button>
-              <span className="text-[10px] text-white/20 ml-auto">Premi Invio per confermare</span>
+              <span className="text-[10px] text-white/20 ml-auto">{tl("Premi Invio per confermare")}</span>
             </div>
           ) : (
             <div className="flex justify-end px-4 py-2">
               <button onClick={dismiss} className="text-[10px] text-white/30 hover:text-white/50 transition-colors">
-                Chiudi
+                {tl("Chiudi")}
               </button>
             </div>
           )}
@@ -225,11 +226,11 @@ export default function AgentSearchBar({
 
 function ActionBadge({ action }: { action: AgentAction }) {
   const labels: Record<string, (a: AgentAction) => string> = {
-    create_widget: a => `Crea widget ${a.widget_type as string}${(a.config as any)?.text ? ` — "${String((a.config as any).text).slice(0, 40)}"` : ''}`,
-    update_widget: a => `Modifica widget ${a.widget_id as string ? (a.widget_id as string).slice(0, 8) + '…' : ''}`,
-    update_wallpaper: a => `Cambia sfondo → ${a.wallpaper_key as string}`,
-    create_calendar_event: a => `Evento "${a.title as string}" il ${a.event_date as string}${a.event_time ? ` alle ${a.event_time as string}` : ''}`,
-    update_calendar_note: a => `Nota personale il ${a.date as string}: "${String(a.note as string).slice(0, 40)}"`,
+    create_widget: a => tl("Crea widget {0}{1}", a.widget_type as string, (a.config as any)?.text ? ` — "${String((a.config as any).text).slice(0, 40)}"` : ''),
+    update_widget: a => tl("Modifica widget {0}", a.widget_id as string ? (a.widget_id as string).slice(0, 8) + '…' : ''),
+    update_wallpaper: a => tl("Cambia sfondo → {0}", a.wallpaper_key as string),
+    create_calendar_event: a => tl("Evento \"{0}\" il {1}{2}", a.title as string, a.event_date as string, a.event_time ? ` alle ${a.event_time as string}` : ''),
+    update_calendar_note: a => tl("Nota personale il {0}: \"{1}\"", a.date as string, String(a.note as string).slice(0, 40)),
   }
 
   const colors: Record<string, string> = {

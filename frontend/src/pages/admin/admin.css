@@ -1,0 +1,21 @@
+/*
+ * Shared polish for every admin section: readable tables, numbers that never collide, long values that wrap
+ * instead of overflowing their card. Scoped to the admin shell so the rest of the platform is untouched.
+ */
+.admin-shell { overflow-wrap: anywhere; }
+.admin-shell table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.admin-shell th { white-space: nowrap; vertical-align: bottom; font-weight: 600; letter-spacing: .01em; }
+.admin-shell td { vertical-align: middle; line-height: 1.4; }
+.admin-shell th, .admin-shell td { padding-top: .7rem; padding-bottom: .7rem; padding-inline: .85rem; }
+.admin-shell th:first-child, .admin-shell td:first-child { padding-left: 1rem; }
+.admin-shell th:last-child, .admin-shell td:last-child { padding-right: 1rem; }
+.admin-shell tbody tr + tr td { border-top: 1px solid rgb(226 232 240 / .8); }
+/* Digits line up in columns and keep their width while they change. */
+.admin-shell td, .admin-shell .tabular-nums, .admin-shell [class*="text-2xl"], .admin-shell [class*="text-3xl"] { font-variant-numeric: tabular-nums; }
+/* Big figures inside cards: shrink instead of spilling out of a narrow card. */
+.admin-shell [class*="text-2xl"], .admin-shell [class*="text-3xl"] { line-height: 1.15; overflow-wrap: anywhere; }
+.admin-shell .grid > * { min-width: 0; }
+/* Cells meant to stay on one line (amounts, dates, badges). */
+.admin-shell td.nowrap, .admin-shell .admin-nowrap { white-space: nowrap; overflow-wrap: normal; }
+/* Long tokens (e-mails, links, codes) wrap within their cell instead of pushing the table wider. */
+.admin-shell td a, .admin-shell td .font-mono { overflow-wrap: anywhere; }

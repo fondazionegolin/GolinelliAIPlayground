@@ -2372,6 +2372,7 @@ async def create_task(
             select(ChatRoom)
             .where(ChatRoom.session_id == session_id)
             .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+            .limit(1)
         )
         room = result.scalar_one_or_none()
         if not room:
@@ -2508,16 +2509,15 @@ async def update_task(
     if content_json is not None:
         task.content_json = sanitize_document_draft_content_json(content_json)
 
-    await db.commit()
-    await db.refresh(task)
-
     # If task was just published, send notification to students
-    if old_status != TaskStatus.PUBLISHED and task.status == TaskStatus.PUBLISHED:
+    just_published = old_status != TaskStatus.PUBLISHED and task.status == TaskStatus.PUBLISHED
+    if just_published:
         # Get or create public chat room
         result = await db.execute(
             select(ChatRoom)
             .where(ChatRoom.session_id == session_id)
             .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+            .limit(1)
         )
         room = result.scalar_one_or_none()
         if not room:
@@ -2527,8 +2527,7 @@ async def update_task(
                 room_type=ChatRoomType.PUBLIC,
             )
             db.add(room)
-            await db.commit()
-            await db.refresh(room)
+            await db.flush()
         
         # Save notification message to chat
         notification_text = f"📋 Nuovo compito: {task.title}"
@@ -2550,8 +2549,13 @@ async def update_task(
             },
         )
         db.add(chat_message)
-        await db.commit()
-        
+
+    # Persist the status and notification together, so a failed notification
+    # cannot leave the task published without notifying students.
+    await db.commit()
+    await db.refresh(task)
+
+    if just_published:
         # Emit Socket.IO event to all students in session
         # Only emit task_published - the frontend will create the notification message
         await sio.emit(

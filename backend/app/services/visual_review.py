@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.services.visual_blackboard import Ink, compose_blackboard, one_element_per_step, salvage_scene
+from app.services.visual_blackboard import Ink, carry_over, compose_blackboard, one_element_per_step, salvage_scene
 from app.services.visual_comprehension import DataModel, Grounding, generate_validated
 from app.services.visual_snap import snap_pins
 
@@ -134,6 +134,8 @@ async def review_drawing(snapshot: str, scene: dict, grounding: Grounding, expla
         explorer = any(e.get("kind") == "plot" and (e.get("plot") or {}).get("sliders") for e in scene.get("elements", []))
         redone = await compose_blackboard(source, grounding, explanation, brief or scene.get("title", ""), scene, on_usage, feedback=review.notes,
                                           action="explorer" if explorer else "explain")
+        # Marks kept from the turn before are the student's board, not part of what was judged: they survive the redo.
+        redone = carry_over(scene, redone, grounding, keep=[e["id"] for e in scene.get("elements", []) if e.get("carried")])
         return redone.model_dump(), review, -1
     if review.verdict == "ok" or not review.ops:
         return scene, review, 0

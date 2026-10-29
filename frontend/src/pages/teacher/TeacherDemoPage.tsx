@@ -15,6 +15,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuthStore } from '@/stores/auth'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -155,13 +156,13 @@ function ProfileDemoChat({ profile }: { profile: ChatbotProfile }) {
       </div>
 
       <div className="p-4 border-t border-slate-100 flex items-center gap-2">
-        <button onClick={() => setMessages([])} className="p-2 rounded-lg hover:bg-slate-100 transition-colors" title="Ricomincia">
+        <button onClick={() => setMessages([])} className="p-2 rounded-lg hover:bg-slate-100 transition-colors" title={tl("Ricomincia")}>
           <RefreshCw className="h-4 w-4 text-slate-400" />
         </button>
         <input
           type="text" value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-          placeholder="Scrivi un messaggio di prova..."
+          placeholder={tl("Scrivi un messaggio di prova...")}
           className="flex-1 px-4 py-2 border border-slate-200 rounded-full focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
           disabled={busy}
         />
@@ -256,13 +257,13 @@ function ProfileDetailView({
       queryClient.invalidateQueries({ queryKey: ['session-chatbot-profiles', sessionId] })
       setHasCustom(!isDefault)
       toast({
-        title: 'Prompt salvato',
+        title: tl("Prompt salvato"),
         description: isDefault
-          ? 'Ripristinato al prompt predefinito.'
-          : `Il prompt personalizzato per "${profile.name}" è ora attivo per questa sessione.`,
+          ? tl("Ripristinato al prompt predefinito.")
+          : tl("Il prompt personalizzato per \"{0}\" è ora attivo per questa sessione.", profile.name),
       })
     } catch {
-      toast({ title: 'Errore', description: 'Impossibile salvare il prompt.', variant: 'destructive' })
+      toast({ title: tl("Errore"), description: tl("Impossibile salvare il prompt."), variant: 'destructive' })
     } finally {
       setSaving(false)
     }
@@ -275,9 +276,9 @@ function ProfileDetailView({
       queryClient.invalidateQueries({ queryKey: ['session-chatbot-profiles', sessionId] })
       setPromptValue(defaultPrompt)
       setHasCustom(false)
-      toast({ title: 'Ripristinato', description: 'Prompt riportato al default.' })
+      toast({ title: tl("Ripristinato"), description: tl("Prompt riportato al default.") })
     } catch {
-      toast({ title: 'Errore', variant: 'destructive' })
+      toast({ title: tl("Errore"), variant: 'destructive' })
     }
   }
 
@@ -286,7 +287,7 @@ function ProfileDetailView({
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 flex-shrink-0">
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
-          <ArrowLeft className="h-4 w-4" /> Indietro
+          <ArrowLeft className="h-4 w-4" /> {tl("Indietro")}
         </Button>
         <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center`}>
           <ProfileIcon iconKey={profile.icon} className={`h-5 w-5 ${s.icon}`} />
@@ -296,7 +297,7 @@ function ProfileDetailView({
             <h2 className="font-bold text-slate-800">{profile.name}</h2>
             {hasCustom && sessionId !== 'all' && (
               <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
-                Personalizzato
+                {tl("Personalizzato")}
               </span>
             )}
           </div>
@@ -316,7 +317,7 @@ function ProfileDetailView({
           onClick={() => setActiveTab('chat')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          <MessageCircle className="h-3.5 w-3.5" /> Prova Chat
+          <MessageCircle className="h-3.5 w-3.5" /> {tl("Prova Chat")}
         </button>
       </div>
 
@@ -326,12 +327,12 @@ function ProfileDetailView({
           {/* Session context notice */}
           {sessionId === 'all' ? (
             <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex-shrink-0">
-              <strong>Sola lettura.</strong> Seleziona una sessione specifica nella lista principale per personalizzare il prompt per quella sessione.
+              <strong>{tl("Sola lettura.")}</strong> {tl("Seleziona una sessione specifica nella lista principale per personalizzare il prompt per quella sessione.")}
             </div>
           ) : (
             <div className="mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-700 flex-shrink-0">
-              <strong>Sessione attiva.</strong> Le modifiche si applicano solo a questa sessione. Seleziona il testo nel prompt per ottenere suggerimenti AI granulari.
-              <span className="ml-1 inline-flex items-center gap-0.5 font-medium"><Sparkles className="h-3 w-3" /> Trascina per selezionare</span>
+              <strong>{tl("Sessione attiva.")}</strong> {tl("Le modifiche si applicano solo a questa sessione. Seleziona il testo nel prompt per ottenere suggerimenti AI granulari.")}
+              <span className="ml-1 inline-flex items-center gap-0.5 font-medium"><Sparkles className="h-3 w-3" /> {tl("Trascina per selezionare")}</span>
             </div>
           )}
 
@@ -371,14 +372,14 @@ function ProfileDetailView({
                       onClick={() => setPromptValue(defaultPrompt)}
                       className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
                     >
-                      <RotateCcw className="h-3 w-3" /> Usa default come base
+                      <RotateCcw className="h-3 w-3" /> {tl("Usa default come base")}
                     </button>
                     {hasCustom && (
                       <button
                         onClick={handleReset}
                         className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 transition-colors"
                       >
-                        Rimuovi personalizzazione
+                        {tl("Rimuovi personalizzazione")}
                       </button>
                     )}
                   </div>
@@ -388,7 +389,7 @@ function ProfileDetailView({
                     onClick={handleSave}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
-                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Save className="h-3.5 w-3.5 mr-1.5" />Salva per sessione</>}
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Save className="h-3.5 w-3.5 mr-1.5" />{tl("Salva per sessione")}</>}
                   </Button>
                 </div>
               )}
@@ -424,7 +425,7 @@ export default function TeacherDemoPage() {
 
   const handleEnterStudentPreview = async () => {
     if (selectedSessionId === 'all') {
-      toast({ variant: 'destructive', title: 'Seleziona una sessione', description: 'Devi selezionare una sessione specifica per entrare in modalità anteprima studente.' })
+      toast({ variant: 'destructive', title: tl("Seleziona una sessione"), description: tl("Devi selezionare una sessione specifica per entrare in modalità anteprima studente.") })
       return
     }
     setEnteringPreview(true)
@@ -448,7 +449,7 @@ export default function TeacherDemoPage() {
       )
       navigate('/student')
     } catch {
-      toast({ variant: 'destructive', title: 'Errore', description: 'Impossibile avviare la modalità anteprima.' })
+      toast({ variant: 'destructive', title: tl("Errore"), description: tl("Impossibile avviare la modalità anteprima.") })
     } finally {
       setEnteringPreview(false)
     }
@@ -545,7 +546,7 @@ export default function TeacherDemoPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800 mb-1">Studentbot</h1>
         <p className="text-slate-500 text-sm">
-          Entra nell'interfaccia studente in modalità anteprima, oppure personalizza i chatbot per sessione.
+          {tl("Entra nell'interfaccia studente in modalità anteprima, oppure personalizza i chatbot per sessione.")}
         </p>
       </div>
 
@@ -555,9 +556,9 @@ export default function TeacherDemoPage() {
           <MonitorPlay className="h-6 w-6 text-white" />
         </div>
         <div className="flex-1">
-          <h2 className="text-base font-bold text-slate-800">Visualizza come studente</h2>
+          <h2 className="text-base font-bold text-slate-800">{tl("Visualizza come studente")}</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Entra nell'interfaccia studente con le stesse funzionalità che vedono i tuoi studenti. Seleziona prima una sessione.
+            {tl("Entra nell'interfaccia studente con le stesse funzionalità che vedono i tuoi studenti. Seleziona prima una sessione.")}
           </p>
         </div>
         <Button
@@ -566,27 +567,27 @@ export default function TeacherDemoPage() {
           className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 flex-shrink-0"
         >
           {enteringPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-          Entra come studente
+          {tl("Entra come studente")}
         </Button>
       </div>
 
       {/* Session selector */}
       <div className="mb-8">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Sessione</label>
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{tl("Sessione")}</label>
         <div className="relative inline-block">
           <select
             value={selectedSessionId}
             onChange={e => { setSelectedSessionId(e.target.value); setSelected(null) }}
             className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
           >
-            <option value="all">Tutti i chatbot (sola lettura)</option>
+            <option value="all">{tl("Tutti i chatbot (sola lettura)")}</option>
             {activeSessions.length > 0 && (
-              <optgroup label="🟢 Sessioni attive">
+              <optgroup label={tl("🟢 Sessioni attive")}>
                 {activeSessions.map(s => <option key={s.id} value={s.id}>{s.class_name} — {s.title}</option>)}
               </optgroup>
             )}
             {otherSessions.length > 0 && (
-              <optgroup label="Altre sessioni">
+              <optgroup label={tl("Altre sessioni")}>
                 {otherSessions.map(s => <option key={s.id} value={s.id}>{s.class_name} — {s.title}</option>)}
               </optgroup>
             )}
@@ -595,7 +596,7 @@ export default function TeacherDemoPage() {
         </div>
         {selectedSessionId !== 'all' && (
           <p className="mt-1.5 text-xs text-indigo-600 font-medium">
-            Clicca su un assistente base per personalizzare il suo comportamento per questa sessione.
+            {tl("Clicca su un assistente base per personalizzare il suo comportamento per questa sessione.")}
           </p>
         )}
       </div>
@@ -604,7 +605,7 @@ export default function TeacherDemoPage() {
       {profilesData && profilesData.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assistenti base</h2>
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{tl("Assistenti base")}</h2>
             {selectedSessionId !== 'all' && customizedKeys.size > 0 && (
               <span className="text-xs text-indigo-600 font-medium">
                 {customizedKeys.size} personalizzat{customizedKeys.size === 1 ? 'o' : 'i'}
@@ -622,7 +623,7 @@ export default function TeacherDemoPage() {
                   className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all relative ${s.card}`}
                 >
                   {isCustomized && (
-                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" title="Prompt personalizzato" />
+                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" title={tl("Prompt personalizzato")} />
                   )}
                   <div className={`w-12 h-12 rounded-xl ${s.iconBg} flex items-center justify-center mb-3`}>
                     <ProfileIcon iconKey={p.icon} className={`h-6 w-6 ${s.icon}`} />
@@ -641,7 +642,7 @@ export default function TeacherDemoPage() {
       {/* Teacherbots */}
       <div>
         <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-          {selectedSessionId === 'all' ? 'I tuoi chatbot' : 'Chatbot della sessione'}
+          {selectedSessionId === 'all' ? tl("I tuoi chatbot") : tl("Chatbot della sessione")}
         </h2>
         {loadingBots ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -651,7 +652,7 @@ export default function TeacherDemoPage() {
           <div className="text-center py-10 text-slate-400">
             <Wand2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
             <p className="text-sm">
-              {selectedSessionId === 'all' ? 'Nessun chatbot creato' : 'Nessun chatbot pubblicato su questa sessione'}
+              {selectedSessionId === 'all' ? tl("Nessun chatbot creato") : tl("Nessun chatbot pubblicato su questa sessione")}
             </p>
           </div>
         ) : (

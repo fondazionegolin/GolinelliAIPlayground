@@ -54,6 +54,7 @@ import {
   DialogTitle,
 } from '@/design/primitives/Dialog'
 import type { StrudelPreviewHandle } from '@/components/notebook/NotebookStrudelPreview'
+import { tl } from '@/i18n/tl'
 
 interface ConsoleEntry {
   id: string
@@ -437,7 +438,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   // riempie a ogni autosave ma traccia comunque l'evoluzione del lavoro.
   const maybeAutoSnapshot = useCallback(() => {
     if (Date.now() - lastSnapshotRef.current > 180_000) {
-      createSnapshot('Checkpoint automatico', 'auto')
+      createSnapshot(tl("Checkpoint automatico"), 'auto')
     }
   }, [createSnapshot])
 
@@ -744,7 +745,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
         }
       }
       if (event.data.source === 'strudel-preview') {
-        if (event.data.type === 'error') setStrudelError(event.data.payload?.message || 'Errore')
+        if (event.data.type === 'error') setStrudelError(event.data.payload?.message || tl("Errore"))
         if (event.data.type === 'status') {
           setStrudelPlaying(event.data.payload?.playing || false)
           if (event.data.payload?.playing) setStrudelError(null)
@@ -820,7 +821,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     const proposal = (assistantProposals[cellId] || []).find((item) => item.id === proposalId)
     if (!proposal) return
     // Snapshot dello stato attuale: così la modifica dell'AI è sempre annullabile.
-    createSnapshot('Prima della proposta AI', 'ai')
+    createSnapshot(tl("Prima della proposta AI"), 'ai')
     setCells((prev) => {
       const next = prev.map((cell) => {
         if (cell.id !== cellId) return cell
@@ -858,7 +859,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
         updateEditorSettings({ libraries: [...current, ...missing] })
       }
     }
-    setAssistantSummary('Ho preparato una proposta didattica applicata al codice. Se vuoi, chiedimi nel tutor perché questa modifica è utile.')
+    setAssistantSummary(tl("Ho preparato una proposta didattica applicata al codice. Se vuoi, chiedimi nel tutor perché questa modifica è utile."))
   }, [assistantProposals, createSnapshot, editorSettings.libraries, replaceLineRange, scheduleSave, updateEditorSettings])
 
   const rejectProposal = useCallback((cellId: string, proposalId: string) => {
@@ -917,7 +918,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
         [activeCell.id]: res.data.proposals || [],
       }))
     } catch {
-      setAssistantSummary('Non riesco a proporre modifiche in questo momento.')
+      setAssistantSummary(tl("Non riesco a proporre modifiche in questo momento."))
     } finally {
       setAssistantLoading(false)
     }
@@ -1034,10 +1035,10 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   }[pyStatus]
 
   const pyStatusText = {
-    idle: 'Kernel fermo',
-    loading: 'Avvio kernel Python…',
-    ready: 'Kernel pronto',
-    error: pyError || 'Errore kernel',
+    idle: tl("Kernel fermo"),
+    loading: tl("Avvio kernel Python…"),
+    ready: tl("Kernel pronto"),
+    error: pyError || tl("Errore kernel"),
   }[pyStatus]
 
   if (isLoading) {
@@ -1130,7 +1131,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             )}
 
             {projectType === 'microbit' && (
-              <IconButton type="button" size="sm" tone="neutral" surface="soft" onClick={() => setMicrobitManualOpen(true)} title="Manuale micro:bit">
+              <IconButton type="button" size="sm" tone="neutral" surface="soft" onClick={() => setMicrobitManualOpen(true)} title={tl("Manuale micro:bit")}>
                 <BookOpen />
               </IconButton>
             )}
@@ -1212,7 +1213,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 </Button>
                 <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleGameStop} disabled={!gamePlaying} title={isEnglish ? 'Pause game' : 'Pausa gioco'}>
                   <Pause />
-                  Pausa
+                  {tl("Pausa")}
                 </Button>
               </>
             )}
@@ -1220,12 +1221,12 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
               <>
                 <Button type="button" density="compact" tone={mlModels.length ? 'accent' : 'neutral'} surface="soft" onClick={() => setModelsOpen(true)} title={isEnglish ? 'Use a model trained in the ML Lab (hands, pose, images)' : 'Usa un modello addestrato nel Lab ML (mani, pose, immagini)'}>
                   <Brain />
-                  Modelli
+                  {tl("Modelli")}
                   {mlModels.length > 0 && <span className="ml-0.5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{mlModels.length}</span>}
                 </Button>
                 <Button type="button" density="compact" tone="neutral" surface="soft" onClick={() => setLibraryManagerOpen((v) => !v)} title={isEnglish ? 'Manage extra libraries' : 'Gestisci librerie aggiuntive'}>
                   <PackagePlus />
-                  Librerie
+                  {tl("Librerie")}
                   {(editorSettings.libraries ?? []).length > 0 && (
                     <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
                       {(editorSettings.libraries ?? []).length}
@@ -1272,7 +1273,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
               <Cpu className="h-3.5 w-3.5" />
             </div>
           ) : projectType === 'strudel' ? (
-            <div className={`flex shrink-0 items-center gap-1 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`} title={strudelPlaying ? 'Suonando' : 'Live Music'}>
+            <div className={`flex shrink-0 items-center gap-1 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`} title={strudelPlaying ? tl("Suonando") : 'Live Music'}>
               <Music2 className="h-3.5 w-3.5" />
             </div>
           ) : projectType === 'game2d' ? (
@@ -1982,7 +1983,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 finished = true
                 return true
               } else if (event.type === 'error') {
-                throw new Error(String(event.message || 'Integrazione non riuscita.'))
+                throw new Error(String(event.message || tl("Integrazione non riuscita.")))
               }
             })
             if (!finished) throw new Error(isEnglish ? 'Merge interrupted.' : 'Integrazione interrotta.')
@@ -1999,35 +2000,35 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     <Dialog open={microbitManualOpen} onOpenChange={setMicrobitManualOpen}>
       <DialogContent size="xl" surface="base" className="max-h-[calc(100vh-2rem)] overflow-hidden p-0">
         <DialogHeader className="border-b border-[var(--border-subtle)] px-6 py-5">
-          <DialogTitle>Manuale micro:bit</DialogTitle>
+          <DialogTitle>{tl("Manuale micro:bit")}</DialogTitle>
           <DialogDescription>
-            Guida indicizzata a MicroPython, sensori integrati, pin e sensori esterni, con esercizi pratici per ogni sezione.
+            {tl("Guida indicizzata a MicroPython, sensori integrati, pin e sensori esterni, con esercizi pratici per ogni sezione.")}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
           <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
             <nav className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs lg:sticky lg:top-0 lg:self-start">
-              <p className="mb-3 font-bold uppercase tracking-wide text-slate-500">Indice</p>
+              <p className="mb-3 font-bold uppercase tracking-wide text-slate-500">{tl("Indice")}</p>
               <div className="grid gap-2">
-                <a href="#mb-base" className="text-slate-700 hover:text-slate-950">1. Base del programma</a>
-                <a href="#mb-vars" className="text-slate-700 hover:text-slate-950">2. Variabili e tipi</a>
-                <a href="#mb-print" className="text-slate-700 hover:text-slate-950">3. Print e seriale</a>
-                <a href="#mb-if" className="text-slate-700 hover:text-slate-950">4. Condizioni</a>
-                <a href="#mb-loops" className="text-slate-700 hover:text-slate-950">5. Cicli e tempo</a>
+                <a href="#mb-base" className="text-slate-700 hover:text-slate-950">{tl("1. Base del programma")}</a>
+                <a href="#mb-vars" className="text-slate-700 hover:text-slate-950">{tl("2. Variabili e tipi")}</a>
+                <a href="#mb-print" className="text-slate-700 hover:text-slate-950">{tl("3. Print e seriale")}</a>
+                <a href="#mb-if" className="text-slate-700 hover:text-slate-950">{tl("4. Condizioni")}</a>
+                <a href="#mb-loops" className="text-slate-700 hover:text-slate-950">{tl("5. Cicli e tempo")}</a>
                 <a href="#mb-display" className="text-slate-700 hover:text-slate-950">6. Display LED</a>
-                <a href="#mb-buttons" className="text-slate-700 hover:text-slate-950">7. Pulsanti e touch</a>
-                <a href="#mb-sensors" className="text-slate-700 hover:text-slate-950">8. Sensori integrati</a>
-                <a href="#mb-sound" className="text-slate-700 hover:text-slate-950">9. Suono</a>
-                <a href="#mb-pins" className="text-slate-700 hover:text-slate-950">10. Pin e sensori esterni</a>
-                <a href="#mb-projects" className="text-slate-700 hover:text-slate-950">11. Progetti guidati</a>
+                <a href="#mb-buttons" className="text-slate-700 hover:text-slate-950">{tl("7. Pulsanti e touch")}</a>
+                <a href="#mb-sensors" className="text-slate-700 hover:text-slate-950">{tl("8. Sensori integrati")}</a>
+                <a href="#mb-sound" className="text-slate-700 hover:text-slate-950">{tl("9. Suono")}</a>
+                <a href="#mb-pins" className="text-slate-700 hover:text-slate-950">{tl("10. Pin e sensori esterni")}</a>
+                <a href="#mb-projects" className="text-slate-700 hover:text-slate-950">{tl("11. Progetti guidati")}</a>
               </div>
             </nav>
 
             <div className="grid gap-4">
               <section id="mb-base" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">1. Base del programma</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("1. Base del programma")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  Un programma micro:bit usa MicroPython. Importa le API della scheda, poi descrive cosa deve fare una volta o in un ciclo continuo.
+                  {tl("Un programma micro:bit usa MicroPython. Importa le API della scheda, poi descrive cosa deve fare una volta o in un ciclo continuo.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2035,14 +2036,14 @@ display.show(Image.HEART)
 sleep(1000)
 display.clear()`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Mostra il tuo nome con `display.scroll`, poi mostra un'icona diversa.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Mostra il tuo nome con `display.scroll`, poi mostra un'icona diversa.")}
                 </div>
               </section>
 
               <section id="mb-vars" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">2. Variabili e tipi</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("2. Variabili e tipi")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  Le variabili salvano numeri, testi e stati booleani. Usa nomi brevi ma leggibili: `temp`, `passi`, `acceso`.
+                  {tl("Le variabili salvano numeri, testi e stati booleani. Usa nomi brevi ma leggibili: `temp`, `passi`, `acceso`.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2053,15 +2054,14 @@ acceso = True
 display.scroll(nome)
 display.show(str(passi))`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Crea una variabile `punteggio`, aumentala quando premi A e mostrala sul display.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Crea una variabile `punteggio`, aumentala quando premi A e mostrala sul display.")}
                 </div>
               </section>
 
               <section id="mb-print" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">3. Print e seriale</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("3. Print e seriale")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  `print()` invia testo al monitor seriale. Il cruscotto live legge bene righe nel formato `chiave=valore`.
-                  Evita f-string: usa `.format()` per compatibilita con MicroPython micro:bit.
+                  {tl("`print()` invia testo al monitor seriale. Il cruscotto live legge bene righe nel formato `chiave=valore`. Evita f-string: usa `.format()` per compatibilita con MicroPython micro:bit.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2071,14 +2071,14 @@ while True:
     print("temp={} light={}".format(temp, luce))
     sleep(200)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Aggiungi alla riga seriale `a=1` quando il pulsante A e premuto, altrimenti `a=0`.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Aggiungi alla riga seriale `a=1` quando il pulsante A e premuto, altrimenti `a=0`.")}
                 </div>
               </section>
 
               <section id="mb-if" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">4. Condizioni</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("4. Condizioni")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  `if`, `elif`, `else` permettono di prendere decisioni. L'indentazione e parte della sintassi: le righe del blocco devono essere rientrate.
+                  {tl("`if`, `elif`, `else` permettono di prendere decisioni. L'indentazione e parte della sintassi: le righe del blocco devono essere rientrate.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2092,14 +2092,14 @@ while True:
         display.clear()
     sleep(100)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Se la temperatura supera 28 gradi mostra `!`, altrimenti mostra un segno di spunta.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Se la temperatura supera 28 gradi mostra `!`, altrimenti mostra un segno di spunta.")}
                 </div>
               </section>
 
               <section id="mb-loops" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">5. Cicli e tempo</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("5. Cicli e tempo")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  `while True` ripete per sempre. `for` ripete un numero definito di volte. `sleep(ms)` mette in pausa senza consumare troppe risorse.
+                  {tl("`while True` ripete per sempre. `for` ripete un numero definito di volte. `sleep(ms)` mette in pausa senza consumare troppe risorse.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2113,14 +2113,14 @@ while True:
     display.clear()
     sleep(300)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Crea un conto alla rovescia da 9 a 0 e poi mostra `GO`.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Crea un conto alla rovescia da 9 a 0 e poi mostra `GO`.")}
                 </div>
               </section>
 
               <section id="mb-display" className="rounded-lg border border-slate-200 bg-white p-4">
                 <h3 className="text-sm font-bold text-slate-900">6. Display LED</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  Il display e una matrice 5x5. Puoi mostrare immagini predefinite, testo o creare immagini personalizzate con luminosita da 0 a 9.
+                  {tl("Il display e una matrice 5x5. Puoi mostrare immagini predefinite, testo o creare immagini personalizzate con luminosita da 0 a 9.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2134,14 +2134,14 @@ display.show(freccia)
 sleep(1000)
 display.scroll("N S E O")`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Disegna una linea verticale nord-sud e falla lampeggiare ogni mezzo secondo.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Disegna una linea verticale nord-sud e falla lampeggiare ogni mezzo secondo.")}
                 </div>
               </section>
 
               <section id="mb-buttons" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">7. Pulsanti e touch</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("7. Pulsanti e touch")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  `button_a` e `button_b` leggono i pulsanti frontali. Su micro:bit V2 puoi usare anche il logo touch con `pin_logo`.
+                  {tl("`button_a` e `button_b` leggono i pulsanti frontali. Su micro:bit V2 puoi usare anche il logo touch con `pin_logo`.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2155,19 +2155,19 @@ while True:
     display.show(str(contatore % 10))
     sleep(50)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Usa A per aumentare un valore, B per diminuirlo e stampa `value=...` nel monitor seriale.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Usa A per aumentare un valore, B per diminuirlo e stampa `value=...` nel monitor seriale.")}
                 </div>
               </section>
 
               <section id="mb-sensors" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">8. Sensori integrati</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("8. Sensori integrati")}</h3>
                 <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Temperatura:</strong> `temperature()` restituisce gradi Celsius approssimati.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Luce:</strong> `display.read_light_level()` restituisce 0-255.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Accelerometro:</strong> `get_x()`, `get_y()`, `get_z()`, gesture come `shake`.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Bussola:</strong> `compass.heading()` restituisce 0-359 gradi.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Microfono V2:</strong> `microphone.sound_level()` restituisce 0-255.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Tempo:</strong> `running_time()` restituisce millisecondi dall'avvio.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Temperatura:")}</strong> {tl("`temperature()` restituisce gradi Celsius approssimati.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Luce:")}</strong> {tl("`display.read_light_level()` restituisce 0-255.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Accelerometro:")}</strong> {tl("`get_x()`, `get_y()`, `get_z()`, gesture come `shake`.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Bussola:")}</strong> {tl("`compass.heading()` restituisce 0-359 gradi.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Microfono V2:")}</strong> {tl("`microphone.sound_level()` restituisce 0-255.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Tempo:")}</strong> {tl("`running_time()` restituisce millisecondi dall'avvio.")}</div>
                 </div>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 
@@ -2182,14 +2182,14 @@ while True:
     ))
     sleep(200)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Costruisci una bussola: mostra N, E, S, O sul display e stampa `direction=...`.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Costruisci una bussola: mostra N, E, S, O sul display e stampa `direction=...`.")}
                 </div>
               </section>
 
               <section id="mb-sound" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">9. Suono</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("9. Suono")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  Per riprodurre note importa il modulo `music`. Non importare `music` da `microbit`: usa `import music` su una riga separata.
+                  {tl("Per riprodurre note importa il modulo `music`. Non importare `music` da `microbit`: usa `import music` su una riga separata.")}
                 </p>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
 import music
@@ -2199,21 +2199,20 @@ while True:
         music.play(["C4:2", "E4:2", "G4:2"])
     sleep(50)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Crea un allarme: se la luce scende sotto 20, suona tre note e mostra una X.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Crea un allarme: se la luce scende sotto 20, suona tre note e mostra una X.")}
                 </div>
               </section>
 
               <section id="mb-pins" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">10. Pin e sensori esterni</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("10. Pin e sensori esterni")}</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  I pin permettono di collegare LED, pulsanti, potenziometri e sensori. Collega sempre GND in comune e rispetta 3V.
-                  Evita sensori che richiedono 5V sui pin dati della micro:bit.
+                  {tl("I pin permettono di collegare LED, pulsanti, potenziometri e sensori. Collega sempre GND in comune e rispetta 3V. Evita sensori che richiedono 5V sui pin dati della micro:bit.")}
                 </p>
                 <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Digitale:</strong> `pin0.read_digital()`, `pin0.write_digital(1)`.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Analogico:</strong> `pin1.read_analog()` restituisce 0-1023.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Touch:</strong> `pin0.is_touched()` su pin compatibili.</div>
-                  <div className="rounded-lg bg-slate-50 p-3"><strong>Servo/PWM:</strong> `pin0.write_analog(value)` e `set_analog_period()`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Digitale:")}</strong> `pin0.read_digital()`, `pin0.write_digital(1)`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>{tl("Analogico:")}</strong> {tl("`pin1.read_analog()` restituisce 0-1023.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Touch:</strong> {tl("`pin0.is_touched()` su pin compatibili.")}</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Servo/PWM:</strong> {tl("`pin0.write_analog(value)` e `set_analog_period()`.")}</div>
                   <div className="rounded-lg bg-slate-50 p-3"><strong>I2C:</strong> `i2c.init()`, `i2c.read(addr, n)`, `i2c.write(addr, bytes)`.</div>
                   <div className="rounded-lg bg-slate-50 p-3"><strong>UART:</strong> `uart.init()`, `uart.read()`, `uart.write()`.</div>
                 </div>
@@ -2229,24 +2228,24 @@ while True:
     print("pot={} led={}".format(pot, 1 if pot > soglia else 0))
     sleep(100)`}</pre>
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-                  <strong>Esercizio.</strong> Collega un potenziometro a P1 e un LED a P0: il LED si accende sopra meta scala e il cruscotto mostra `pot=...`.
+                  <strong>{tl("Esercizio.")}</strong> {tl("Collega un potenziometro a P1 e un LED a P0: il LED si accende sopra meta scala e il cruscotto mostra `pot=...`.")}
                 </div>
               </section>
 
               <section id="mb-projects" className="rounded-lg border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900">11. Progetti guidati</h3>
+                <h3 className="text-sm font-bold text-slate-900">{tl("11. Progetti guidati")}</h3>
                 <div className="mt-3 grid gap-3 text-xs leading-5 text-slate-700">
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <strong>Data logger ambientale.</strong> Stampa ogni secondo temperatura e luce; quando premi A cambia frequenza di lettura.
+                    <strong>{tl("Data logger ambientale.")}</strong> {tl("Stampa ogni secondo temperatura e luce; quando premi A cambia frequenza di lettura.")}
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <strong>Contapassi.</strong> Usa `was_gesture("shake")`, incrementa un contatore e invia `steps=...` al monitor seriale.
+                    <strong>{tl("Contapassi.")}</strong> {tl("Usa `was_gesture(\"shake\")`, incrementa un contatore e invia `steps=...` al monitor seriale.")}
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <strong>Bussola cardinale.</strong> Converte `compass.heading()` in N, E, S, O e mostra la lettera sul display.
+                    <strong>{tl("Bussola cardinale.")}</strong> {tl("Converte `compass.heading()` in N, E, S, O e mostra la lettera sul display.")}
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <strong>Allarme con sensore esterno.</strong> Legge un valore analogico su P1 e accende LED/suono quando supera una soglia.
+                    <strong>{tl("Allarme con sensore esterno.")}</strong> {tl("Legge un valore analogico su P1 e accende LED/suono quando supera una soglia.")}
                   </div>
                 </div>
                 <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *

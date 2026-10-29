@@ -10,6 +10,7 @@ import {
   STATUS_LABEL, STYLE_SWATCH, isBusy,
   type Entity, type Project, type Script, type Shot, type VideoStudioConfig,
 } from '@/components/videostudio/types'
+import { tl } from '@/i18n/tl'
 
 const api = adminApi.videoStudio
 
@@ -27,7 +28,7 @@ export default function VideoStudioEditorPage() {
   const { toast } = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
   const fail = (title: string) => (err: any) =>
-    toast({ variant: 'destructive', title, description: err?.response?.data?.detail || 'Riprova tra poco.' })
+    toast({ variant: 'destructive', title, description: err?.response?.data?.detail || tl("Riprova tra poco.") })
 
   const config = useQuery<VideoStudioConfig>({ queryKey: ['vs', 'config'], queryFn: async () => (await api.config()).data })
   const query = useQuery<Project>({
@@ -68,7 +69,7 @@ export default function VideoStudioEditorPage() {
   const saveScript = useMutation({
     mutationFn: async () => (await api.saveScript(projectId, script)).data,
     onSuccess: () => { setScriptDirty(false); refresh() },
-    onError: fail('Salvataggio non riuscito'),
+    onError: fail(tl("Salvataggio non riuscito")),
   })
 
   const busy = isBusy(p)
@@ -93,15 +94,15 @@ export default function VideoStudioEditorPage() {
   const genScript = useMutation({
     mutationFn: async () => { await flushEdits(); return (await api.generateScript(projectId)).data as Project },
     onSuccess: () => { setScriptDirty(false); setSelected(1); refresh() },
-    onError: fail('Sceneggiatura non generata'),
+    onError: fail(tl("Sceneggiatura non generata")),
   })
   const startStoryboard = useMutation({
     mutationFn: async (shots?: number[]) => { await flushEdits(); return (await api.storyboard(projectId, shots)).data },
-    onSuccess: refresh, onError: fail('Storyboard non avviato'),
+    onSuccess: refresh, onError: fail(tl("Storyboard non avviato")),
   })
   const startRender = useMutation({
     mutationFn: async (shots?: number[]) => { await flushEdits(); return (await api.render(projectId, shots)).data },
-    onSuccess: refresh, onError: fail('Montaggio non avviato'),
+    onSuccess: refresh, onError: fail(tl("Montaggio non avviato")),
   })
 
   const shots = script.shots || []
@@ -139,8 +140,8 @@ export default function VideoStudioEditorPage() {
     try {
       const res = await api.extractText(file)
       patchForm({ source_text: res.data.text, ...(form.title === 'Nuovo video' ? { title: file.name.replace(/\.[^.]+$/, '') } : {}) })
-      toast({ title: 'Documento letto', description: `${res.data.text.length.toLocaleString('it-IT')} caratteri estratti` })
-    } catch (err) { fail('Lettura file non riuscita')(err) }
+      toast({ title: tl("Documento letto"), description: tl("{0} caratteri estratti", res.data.text.length.toLocaleString('it-IT')) })
+    } catch (err) { fail(tl("Lettura file non riuscita"))(err) }
   }
 
   const download = async () => {
@@ -159,16 +160,16 @@ export default function VideoStudioEditorPage() {
   }
 
   const primary = (() => {
-    if (stage === 'script') return { label: 'Genera sceneggiatura', Icon: Sparkles, run: () => genScript.mutate(), disabled: !canGenerate || genScript.isPending || busy }
-    if (stage === 'storyboard') return { label: keyframes ? 'Completa storyboard' : 'Genera storyboard', Icon: Sparkles, run: () => startStoryboard.mutate(undefined), disabled: busy || !keyOk }
-    if (stage === 'render') return { label: 'Monta il video', Icon: Play, run: () => startRender.mutate(undefined), disabled: busy }
-    return { label: 'Scarica MP4', Icon: Download, run: download, disabled: false }
+    if (stage === 'script') return { label: tl("Genera sceneggiatura"), Icon: Sparkles, run: () => genScript.mutate(), disabled: !canGenerate || genScript.isPending || busy }
+    if (stage === 'storyboard') return { label: keyframes ? tl("Completa storyboard") : tl("Genera storyboard"), Icon: Sparkles, run: () => startStoryboard.mutate(undefined), disabled: busy || !keyOk }
+    if (stage === 'render') return { label: tl("Monta il video"), Icon: Play, run: () => startRender.mutate(undefined), disabled: busy }
+    return { label: tl("Scarica MP4"), Icon: Download, run: download, disabled: false }
   })()
 
   const steps: Array<{ key: Stage; label: string; done: boolean }> = [
-    { key: 'script', label: 'Sceneggiatura', done: hasScript },
+    { key: 'script', label: tl("Sceneggiatura"), done: hasScript },
     { key: 'storyboard', label: 'Storyboard', done: hasScript && keyframes === shots.length },
-    { key: 'render', label: 'Montaggio', done: p.has_final },
+    { key: 'render', label: tl("Montaggio"), done: p.has_final },
   ]
   const totalSeconds = shots.length * shotSeconds
   const saving = saveForm.isPending || saveScript.isPending
@@ -177,13 +178,13 @@ export default function VideoStudioEditorPage() {
     <div className="flex h-full min-h-0 flex-col text-[var(--text-primary)]">
       {/* header */}
       <header className="ds-frame-header flex shrink-0 flex-wrap items-center gap-3 px-4 py-3">
-        <IconButton tone="neutral" surface="ghost" size="sm" onClick={() => navigate('/teacher/video-studio')} title="Tutti i video"><ArrowLeft /></IconButton>
+        <IconButton tone="neutral" surface="ghost" size="sm" onClick={() => navigate('/teacher/video-studio')} title={tl("Tutti i video")}><ArrowLeft /></IconButton>
         <Input
           value={form.title}
           onChange={(e) => patchForm({ title: e.target.value })}
           density="compact"
           className="max-w-[300px] flex-1 font-bold"
-          aria-label="Titolo del video"
+          aria-label={tl("Titolo del video")}
         />
         <ol className="hidden items-center gap-1.5 md:flex">
           {steps.map((s, i) => {
@@ -199,7 +200,7 @@ export default function VideoStudioEditorPage() {
         </ol>
         <div className="ml-auto flex items-center gap-3">
           <span className="hidden text-xs text-[var(--text-secondary)] sm:inline">
-            {saving ? 'Salvo…' : formDirty || scriptDirty ? 'Modifiche non salvate' : `Spesa stimata $${p.cost_usd.toFixed(2)}`}
+            {saving ? tl("Salvo…") : formDirty || scriptDirty ? tl("Modifiche non salvate") : tl("Spesa stimata ${0}", p.cost_usd.toFixed(2))}
           </span>
           {stage === 'storyboard' && estimate ? <span className="hidden text-xs text-[var(--text-secondary)] md:inline">~${estimate.toFixed(2)}</span> : null}
           <Button tone="accent" surface="solid" density="default" onClick={primary.run} disabled={primary.disabled}>
@@ -212,7 +213,7 @@ export default function VideoStudioEditorPage() {
       {p.error && <div className="shrink-0 bg-[color-mix(in_srgb,var(--logo-pink)_12%,transparent)] px-4 py-2 text-xs text-[var(--logo-pink)]">{p.error}</div>}
       {config.data && !config.data.configured && (
         <div className="shrink-0 bg-[color-mix(in_srgb,var(--logo-violet)_10%,transparent)] px-4 py-2 text-xs text-[var(--text-secondary)]">
-          OPENAI_API_KEY mancante nel file .env: non è possibile generare le immagini.
+          {tl("OPENAI_API_KEY mancante nel file .env: non è possibile generare le immagini.")}
         </div>
       )}
 
@@ -220,7 +221,7 @@ export default function VideoStudioEditorPage() {
         {/* left rail: direction */}
         <aside className="ds-frame-sidebar w-full shrink-0 space-y-5 p-4 lg:w-[272px] lg:overflow-y-auto">
           <div>
-            <Label>Stile visivo</Label>
+            <Label>{tl("Stile visivo")}</Label>
             <div className="grid grid-cols-2 gap-2">
               {config.data?.styles.map((s) => {
                 const on = form.style_key === s.key
@@ -238,11 +239,11 @@ export default function VideoStudioEditorPage() {
                 )
               })}
             </div>
-            {keyframes > 0 && <p className="mt-2 text-[11px] text-[var(--text-secondary)]">Il nuovo stile vale dalle prossime immagini.</p>}
+            {keyframes > 0 && <p className="mt-2 text-[11px] text-[var(--text-secondary)]">{tl("Il nuovo stile vale dalle prossime immagini.")}</p>}
           </div>
 
           <div>
-            <Label>Formato</Label>
+            <Label>{tl("Formato")}</Label>
             <div className="flex gap-2">
               {config.data?.aspects.map((a) => (
                 <Button key={a} density="compact" tone={form.aspect === a ? 'accent' : 'neutral'} surface={form.aspect === a ? 'solid' : 'soft'}
@@ -253,9 +254,9 @@ export default function VideoStudioEditorPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Narrazione</Label>
+              <Label>{tl("Narrazione")}</Label>
               <Select density="compact" value={form.language} onChange={(e) => patchForm({ language: e.target.value })}>
-                <option value="it">Italiano</option><option value="en">English</option>
+                <option value="it">{tl("Italiano")}</option><option value="en">English</option>
               </Select>
             </div>
             <div>
@@ -268,16 +269,16 @@ export default function VideoStudioEditorPage() {
           {hasScript && (
             <>
               <div>
-                <Label>Nota di regia</Label>
-                <Textarea {...areaProps} rows={4} className="min-h-0" value={form.brief} onChange={(e) => patchForm({ brief: e.target.value })} placeholder="Cosa vuoi trasmettere e come…" />
+                <Label>{tl("Nota di regia")}</Label>
+                <Textarea {...areaProps} rows={4} className="min-h-0" value={form.brief} onChange={(e) => patchForm({ brief: e.target.value })} placeholder={tl("Cosa vuoi trasmettere e come…")} />
               </div>
               <div>
-                <Label>Testo sorgente</Label>
+                <Label>{tl("Testo sorgente")}</Label>
                 <Textarea {...areaProps} rows={6} className="min-h-0" value={form.source_text} onChange={(e) => patchForm({ source_text: e.target.value })} />
               </div>
               <Button tone="neutral" surface="soft" density="compact" fullWidth disabled={busy || genScript.isPending || !canGenerate}
-                onClick={() => window.confirm('Rigenerare la sceneggiatura? Storyboard e video attuali verranno persi.') && genScript.mutate()}>
-                <RefreshCw />Rigenera sceneggiatura
+                onClick={() => window.confirm(tl("Rigenerare la sceneggiatura? Storyboard e video attuali verranno persi.")) && genScript.mutate()}>
+                <RefreshCw />{tl("Rigenera sceneggiatura")}
               </Button>
             </>
           )}
@@ -304,7 +305,7 @@ export default function VideoStudioEditorPage() {
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold">
                     Timeline · {shots.length} shot · {Math.floor(totalSeconds / 60)}:{String(totalSeconds % 60).padStart(2, '0')}
-                    <span className="ml-2 font-normal text-[var(--text-secondary)]">{keyframes}/{shots.length} immagini · {clips}/{shots.length} clip</span>
+                    <span className="ml-2 font-normal text-[var(--text-secondary)]">{keyframes}/{shots.length} {tl("immagini ·")} {clips}/{shots.length} clip</span>
                   </span>
                   <Button tone="neutral" surface="soft" density="compact" onClick={addShot} disabled={busy || shots.length >= 12}><Plus />Shot</Button>
                 </div>
@@ -312,7 +313,7 @@ export default function VideoStudioEditorPage() {
                   {p.has_final && (
                     <button type="button" onClick={() => setSelected('film')}
                       className={`flex h-[84px] w-[116px] shrink-0 flex-col items-center justify-center gap-1 rounded-[var(--control-radius)] text-xs font-semibold ${selected === 'film' ? 'ds-selected' : 'ds-control'}`}>
-                      <Film className="h-5 w-5" />Film completo
+                      <Film className="h-5 w-5" />{tl("Film completo")}
                     </button>
                   )}
                   {shots.map((s) => (
@@ -340,23 +341,23 @@ export default function VideoStudioEditorPage() {
               {tab === 'shot' && current && (
                 <>
                   <div>
-                    <Label>Titolo</Label>
+                    <Label>{tl("Titolo")}</Label>
                     <Input density="compact" value={current.title} onChange={(e) => editShot(current.n, { title: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Voce narrante (didascalia)</Label>
+                    <Label>{tl("Voce narrante (didascalia)")}</Label>
                     <Textarea {...areaProps} rows={3} className="min-h-0" value={current.narration} onChange={(e) => editShot(current.n, { narration: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Prima inquadratura</Label>
+                    <Label>{tl("Prima inquadratura")}</Label>
                     <Textarea {...areaProps} rows={5} className="min-h-0" value={current.visual} onChange={(e) => editShot(current.n, { visual: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Movimento ({shotSeconds}s)</Label>
+                    <Label>{tl("Movimento (")}{shotSeconds}s)</Label>
                     <Textarea {...areaProps} rows={3} className="min-h-0" value={current.motion} onChange={(e) => editShot(current.n, { motion: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Chi compare</Label>
+                    <Label>{tl("Chi compare")}</Label>
                     <div className="flex flex-wrap gap-1.5">
                       {entities.map((e) => {
                         const on = current.entities.includes(e.id)
@@ -371,17 +372,16 @@ export default function VideoStudioEditorPage() {
                   </div>
                   {current.error && <p className="rounded-[var(--control-radius)] bg-[color-mix(in_srgb,var(--logo-pink)_12%,transparent)] p-3 text-xs text-[var(--logo-pink)]">{current.error}</p>}
                   <div className="flex flex-wrap gap-2">
-                    <Button tone="neutral" surface="soft" density="compact" disabled={busy || !keyOk} onClick={() => startStoryboard.mutate([current.n])}><RefreshCw />Immagine</Button>
+                    <Button tone="neutral" surface="soft" density="compact" disabled={busy || !keyOk} onClick={() => startStoryboard.mutate([current.n])}><RefreshCw />{tl("Immagine")}</Button>
                     {current.keyframe_key && <Button tone="neutral" surface="soft" density="compact" disabled={busy} onClick={() => startRender.mutate([current.n])}><Play />Clip</Button>}
-                    <IconButton tone="danger" surface="ghost" size="sm" className="ml-auto" title="Rimuovi shot" disabled={busy || shots.length <= 1} onClick={() => removeShot(current.n)}><Trash2 /></IconButton>
+                    <IconButton tone="danger" surface="ghost" size="sm" className="ml-auto" title={tl("Rimuovi shot")} disabled={busy || shots.length <= 1} onClick={() => removeShot(current.n)}><Trash2 /></IconButton>
                   </div>
                 </>
               )}
               {tab === 'cast' && (
                 <>
                   <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
-                    Descrizione visiva bloccata di ogni personaggio o oggetto, riusata identica in tutti gli shot per mantenerne l’aspetto.
-                    Se la modifichi, rigenera l’immagine degli shot in cui compare.
+                    {tl("Descrizione visiva bloccata di ogni personaggio o oggetto, riusata identica in tutti gli shot per mantenerne l’aspetto. Se la modifichi, rigenera l’immagine degli shot in cui compare.")}
                   </p>
                   {entities.map((e) => (
                     <div key={e.id} className="ui-card space-y-2 p-3">
@@ -394,7 +394,7 @@ export default function VideoStudioEditorPage() {
                     </div>
                   ))}
                   <div>
-                    <Label>Linguaggio visivo (tutti gli shot)</Label>
+                    <Label>{tl("Linguaggio visivo (tutti gli shot)")}</Label>
                     <Textarea {...areaProps} rows={4} className="min-h-0" value={script.style_bible || ''} onChange={(e) => edit({ style_bible: e.target.value })} />
                   </div>
                 </>
@@ -420,8 +420,8 @@ function Composer({ form, onChange, onPickFile, generating, canGenerate, onGener
       <div className="ui-card flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-[var(--app-accent)]" />
         <div>
-          <p className="text-base font-bold">Sto scrivendo la sceneggiatura…</p>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">Cast, linguaggio visivo e shot: servono circa 30–60 secondi.</p>
+          <p className="text-base font-bold">{tl("Sto scrivendo la sceneggiatura…")}</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">{tl("Cast, linguaggio visivo e shot: servono circa 30–60 secondi.")}</p>
         </div>
         <div className="flex gap-2">
           {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-14 w-20 animate-pulse rounded-[var(--control-radius)] bg-[var(--ds-surface-muted)]" style={{ animationDelay: `${i * 120}ms` }} />)}
@@ -433,23 +433,23 @@ function Composer({ form, onChange, onPickFile, generating, canGenerate, onGener
     <div className="flex flex-1 items-start justify-center overflow-y-auto lg:items-center">
       <div className="ui-card w-full max-w-3xl space-y-4 p-5">
         <div>
-          <h2 className="text-xl font-black tracking-tight">Cosa vuoi spiegare?</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">Incolla un testo o carica un documento, poi dirigi: cosa trasmettere e come.</p>
+          <h2 className="text-xl font-black tracking-tight">{tl("Cosa vuoi spiegare?")}</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">{tl("Incolla un testo o carica un documento, poi dirigi: cosa trasmettere e come.")}</p>
         </div>
         <Textarea density="roomy" resize="none" rows={9} className="min-h-0" value={form.source_text}
           onChange={(e) => onChange({ source_text: e.target.value })}
-          placeholder="Incolla qui la lezione, gli appunti o il testo da trasformare in video…" />
+          placeholder={tl("Incolla qui la lezione, gli appunti o il testo da trasformare in video…")} />
         <div>
-          <span className="mb-1.5 block text-[11px] font-semibold text-[var(--text-secondary)]">Nota di regia</span>
+          <span className="mb-1.5 block text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Nota di regia")}</span>
           <Textarea density="compact" resize="none" rows={2} className="min-h-0" value={form.brief}
             onChange={(e) => onChange({ brief: e.target.value })}
-            placeholder="Es. Spiega la fotosintesi come un viaggio della luce dentro la foglia, tono curioso, un solo personaggio guida" />
+            placeholder={tl("Es. Spiega la fotosintesi come un viaggio della luce dentro la foglia, tono curioso, un solo personaggio guida")} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button tone="neutral" surface="soft" onClick={onPickFile}><Paperclip />Carica documento</Button>
+          <Button tone="neutral" surface="soft" onClick={onPickFile}><Paperclip />{tl("Carica documento")}</Button>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[var(--text-secondary)]">{form.source_text.length.toLocaleString('it-IT')} caratteri{!canGenerate && form.source_text.length > 0 ? ' · minimo 40' : ''}</span>
-            <Button tone="accent" surface="solid" density="roomy" onClick={onGenerate} disabled={!canGenerate}><Sparkles />Genera sceneggiatura</Button>
+            <Button tone="accent" surface="solid" density="roomy" onClick={onGenerate} disabled={!canGenerate}><Sparkles />{tl("Genera sceneggiatura")}</Button>
           </div>
         </div>
       </div>
@@ -476,12 +476,12 @@ function StageView({ project, shot, ratio, onGenerate, estimate }: {
             style={{ aspectRatio: String(ratio), width: wide ? 'min(100%, 720px)' : 'min(70%, 320px)', maxHeight: '100%' }}>
             <div>
               <Film className="mx-auto mb-3 h-7 w-7 text-[var(--text-secondary)]" />
-              <p className="line-clamp-4 text-sm leading-relaxed text-[var(--text-secondary)]">{shot.visual || 'Shot senza descrizione'}</p>
+              <p className="line-clamp-4 text-sm leading-relaxed text-[var(--text-secondary)]">{shot.visual || tl("Shot senza descrizione")}</p>
               {onGenerate ? (
                 <Button tone="accent" surface="solid" className="mt-4" onClick={onGenerate}>
-                  <Sparkles />Genera storyboard{estimate ? ` · ~$${estimate.toFixed(2)}` : ''}
+                  <Sparkles />{tl("Genera storyboard")}{estimate ? ` · ~$${estimate.toFixed(2)}` : ''}
                 </Button>
-              ) : <p className="mt-3 text-xs text-[var(--text-secondary)]">Immagine non ancora generata</p>}
+              ) : <p className="mt-3 text-xs text-[var(--text-secondary)]">{tl("Immagine non ancora generata")}</p>}
             </div>
           </div>
         )}

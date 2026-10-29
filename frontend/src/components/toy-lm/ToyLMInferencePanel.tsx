@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { ChevronRight, RefreshCw, Type } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { tl } from '@/i18n/tl'
 
 export interface ToyLMGeneratePayload {
   seed: string
@@ -39,7 +40,7 @@ export default function ToyLMInferencePanel({
       })
       setGeneratedText(generated)
     } catch (err) {
-      setError((err as Error).message || 'Errore generazione')
+      setError((err as Error).message || tl("Errore generazione"))
     } finally {
       setIsGenerating(false)
     }
@@ -49,7 +50,7 @@ export default function ToyLMInferencePanel({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Type className="h-4 w-4 text-[var(--logo-violet)]" />
-        <span className="text-sm font-black">Genera testo</span>
+        <span className="text-sm font-black">{tl("Genera testo")}</span>
       </div>
 
       {!canGenerate ? (
@@ -62,16 +63,16 @@ export default function ToyLMInferencePanel({
             value={seedText}
             onChange={e => setSeedText(e.target.value)}
             rows={2}
-            placeholder="Testo seme (seed)..."
+            placeholder={tl("Testo seme (seed)...")}
             className="w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-white p-2.5 font-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:ring-[var(--logo-violet-22)]"
           />
           <div className="grid grid-cols-2 gap-x-5 gap-y-2">
-            <ParamSlider label="Temperatura" value={temperature} min={0.1} max={2.0} step={0.05} onChange={setTemperature} displayFn={v => v.toFixed(2)} />
-            <ParamSlider label="Max caratteri" value={maxTokens} min={50} max={1000} step={25} onChange={setMaxTokens} />
+            <ParamSlider label={tl("Temperatura")} value={temperature} min={0.1} max={2.0} step={0.05} onChange={setTemperature} displayFn={v => v.toFixed(2)} />
+            <ParamSlider label={tl("Max caratteri")} value={maxTokens} min={50} max={1000} step={25} onChange={setMaxTokens} />
           </div>
           <Button tone="accent" surface="solid" fullWidth density="compact" disabled={isGenerating} onClick={handleGenerate}>
             {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-            {isGenerating ? 'Generazione...' : 'Genera autocomplete'}
+            {isGenerating ? tl("Generazione...") : tl("Genera autocomplete")}
           </Button>
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">

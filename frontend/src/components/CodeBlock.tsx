@@ -3,6 +3,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Check, Copy } from '@/components/icons'
 import type { Components } from 'react-markdown'
+import { tl } from '@/i18n/tl'
 
 /** Inline code (backtick) — minimal styling, no syntax highlighting */
 export function InlineCode({ children, darkMode }: { children: React.ReactNode; darkMode?: boolean }) {
@@ -42,12 +43,12 @@ export function CodeBlock({ className, children }: { className?: string; childre
           {copied ? (
             <>
               <Check className="h-3 w-3 text-emerald-400" />
-              <span className="text-emerald-400">Copiato</span>
+              <span className="text-emerald-400">{tl("Copiato")}</span>
             </>
           ) : (
             <>
               <Copy className="h-3 w-3" />
-              <span>Copia</span>
+              <span>{tl("Copia")}</span>
             </>
           )}
         </button>

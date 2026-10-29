@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import { RotateCcw, Save, Code2, Palette, Clock, Eye } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -48,38 +49,38 @@ type TemplateHistoryResponse = {
 
 const DEFAULT_CONFIGS: Record<string, EmailConfig> = {
   teacher_invitation: {
-    headerTitle: '🎓 Golinelli.ai',
+    headerTitle: tl("🎓 Golinelli.ai"),
     color1: '#667eea',
     color2: '#764ba2',
-    greeting: 'Ciao, {first_name}!',
+    greeting: tl("Ciao, {first_name}!"),
     bodyText:
       'Sei stato invitato a unirti alla piattaforma Golinelli.ai come docente.\n\nPer accettare l\'invito e configurare il tuo account, clicca sul pulsante qui sotto:',
-    buttonLabel: 'Accetta invito',
-    warningText: '⚠️ Questo link scadrà tra 7 giorni.',
-    footerText: 'Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai.',
+    buttonLabel: tl("Accetta invito"),
+    warningText: tl("⚠️ Questo link scadrà tra 7 giorni."),
+    footerText: tl("Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai."),
   },
   teacher_activation: {
-    headerTitle: '🎓 Golinelli.ai',
+    headerTitle: tl("🎓 Golinelli.ai"),
     color1: '#667eea',
     color2: '#764ba2',
-    greeting: 'Benvenuto/a, {first_name}!',
+    greeting: tl("Benvenuto/a, {first_name}!"),
     bodyText:
       'Siamo lieti di informarti che la tua richiesta di account docente è stata approvata.\n\nPer completare l\'attivazione del tuo account, clicca sul pulsante qui sotto:',
-    buttonLabel: 'Attiva il tuo account',
-    warningText: '⚠️ Questo link è personale e scadrà tra 72 ore. Non condividerlo con nessuno.',
+    buttonLabel: tl("Attiva il tuo account"),
+    warningText: tl("⚠️ Questo link è personale e scadrà tra 72 ore. Non condividerlo con nessuno."),
     footerText:
       'Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai.\nSe non hai richiesto questo account, puoi ignorare questa email.',
   },
   password_reset: {
-    headerTitle: '🔐 Golinelli.ai',
+    headerTitle: tl("🔐 Golinelli.ai"),
     color1: '#f093fb',
     color2: '#f5576c',
-    greeting: 'Ciao, {first_name}!',
+    greeting: tl("Ciao, {first_name}!"),
     bodyText:
       'Un amministratore ha impostato una nuova password temporanea per il tuo account.\n\nLa tua password temporanea è: {temporary_password}\n\nPer accedere, clicca sul pulsante qui sotto:',
-    buttonLabel: 'Vai al login',
-    warningText: '⚠️ Per sicurezza, cambia la password subito dopo il primo accesso.',
-    footerText: 'Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai.',
+    buttonLabel: tl("Vai al login"),
+    warningText: tl("⚠️ Per sicurezza, cambia la password subito dopo il primo accesso."),
+    footerText: tl("Questa email è stata inviata automaticamente dalla piattaforma Golinelli.ai."),
   },
 }
 
@@ -238,12 +239,12 @@ function VisualEmailEditor({
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Palette className="h-4 w-4 text-slate-500" />
-            Tema
+            {tl("Tema")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           <div>
-            <Label className="mb-1 block text-xs font-medium">Titolo header</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Titolo header")}</Label>
             <Input
               value={config.headerTitle}
               onChange={(e) => set({ headerTitle: e.target.value })}
@@ -251,8 +252,8 @@ function VisualEmailEditor({
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <ColorField label="Colore primario" value={config.color1} onChange={(v) => set({ color1: v })} />
-            <ColorField label="Colore secondario" value={config.color2} onChange={(v) => set({ color2: v })} />
+            <ColorField label={tl("Colore primario")} value={config.color1} onChange={(v) => set({ color1: v })} />
+            <ColorField label={tl("Colore secondario")} value={config.color2} onChange={(v) => set({ color2: v })} />
           </div>
           <div
             className="h-6 w-full rounded"
@@ -264,10 +265,10 @@ function VisualEmailEditor({
       {/* Messaggio */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Messaggio</CardTitle>
+          <CardTitle className="text-sm font-semibold">{tl("Messaggio")}</CardTitle>
           {placeholders.length > 0 && (
             <CardDescription className="text-xs">
-              Variabili:{' '}
+              {tl("Variabili:")}{' '}
               {placeholders.map((p) => (
                 <code key={p} className="mx-0.5 rounded bg-slate-100 px-1 text-[11px] font-mono text-slate-700">
                   {p}
@@ -278,7 +279,7 @@ function VisualEmailEditor({
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           <div>
-            <Label className="mb-1 block text-xs font-medium">Saluto</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Saluto")}</Label>
             <Input
               value={config.greeting}
               onChange={(e) => set({ greeting: e.target.value })}
@@ -286,16 +287,16 @@ function VisualEmailEditor({
             />
           </div>
           <div>
-            <Label className="mb-1 block text-xs font-medium">Corpo del messaggio</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Corpo del messaggio")}</Label>
             <Textarea
               value={config.bodyText}
               onChange={(e) => set({ bodyText: e.target.value })}
               className="min-h-[100px] resize-y text-sm"
             />
-            <p className="mt-1 text-[11px] text-slate-400">Ogni riga diventa un paragrafo separato.</p>
+            <p className="mt-1 text-[11px] text-slate-400">{tl("Ogni riga diventa un paragrafo separato.")}</p>
           </div>
           <div>
-            <Label className="mb-1 block text-xs font-medium">Testo del pulsante</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Testo del pulsante")}</Label>
             <Input
               value={config.buttonLabel}
               onChange={(e) => set({ buttonLabel: e.target.value })}
@@ -308,11 +309,11 @@ function VisualEmailEditor({
       {/* Note */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Note e footer</CardTitle>
+          <CardTitle className="text-sm font-semibold">{tl("Note e footer")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           <div>
-            <Label className="mb-1 block text-xs font-medium">Avviso sotto al pulsante</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Avviso sotto al pulsante")}</Label>
             <Input
               value={config.warningText}
               onChange={(e) => set({ warningText: e.target.value })}
@@ -320,7 +321,7 @@ function VisualEmailEditor({
             />
           </div>
           <div>
-            <Label className="mb-1 block text-xs font-medium">Testo footer</Label>
+            <Label className="mb-1 block text-xs font-medium">{tl("Testo footer")}</Label>
             <Textarea
               value={config.footerText}
               onChange={(e) => set({ footerText: e.target.value })}
@@ -460,7 +461,7 @@ export default function EmailPage() {
       toast({
         variant: 'destructive',
         title: 'Errore salvataggio',
-        description: error?.response?.data?.detail || 'Impossibile salvare',
+        description: error?.response?.data?.detail || tl("Impossibile salvare"),
       })
     },
   })
@@ -483,9 +484,9 @@ export default function EmailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Email & Messaggi</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{tl("Email & Messaggi")}</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Personalizza le email automatiche e il disclaimer beta.
+          {tl("Personalizza le email automatiche e il disclaimer beta.")}
         </p>
       </div>
 
@@ -497,7 +498,7 @@ export default function EmailPage() {
             <CardContent className="p-4 space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
-                  Caso d'uso
+                  {tl("Caso d'uso")}
                 </Label>
                 <select
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
@@ -520,12 +521,12 @@ export default function EmailPage() {
             <Card>
               <CardContent className="p-4 space-y-1.5">
                 <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
-                  Oggetto email
+                  {tl("Oggetto email")}
                 </Label>
                 <Input
                   value={selectedTemplate?.subject || ''}
                   onChange={(e) => updateSubject(e.target.value)}
-                  placeholder="Inserisci l'oggetto…"
+                  placeholder={tl("Inserisci l'oggetto…")}
                   className="text-sm"
                 />
               </CardContent>
@@ -545,7 +546,7 @@ export default function EmailPage() {
                   }`}
                 >
                   <Palette className="h-3.5 w-3.5" />
-                  Visuale
+                  {tl("Visuale")}
                 </button>
                 <button
                   onClick={handleSwitchToHtml}
@@ -556,11 +557,11 @@ export default function EmailPage() {
                   }`}
                 >
                   <Code2 className="h-3.5 w-3.5" />
-                  HTML sorgente
+                  {tl("HTML sorgente")}
                 </button>
                 {mode === 'html' && (
                   <p className="ml-1 text-xs text-amber-600">
-                    ⚠️ Le modifiche HTML potrebbero non essere riconvertite in visuale.
+                    {tl("⚠️ Le modifiche HTML potrebbero non essere riconvertite in visuale.")}
                   </p>
                 )}
               </div>
@@ -580,10 +581,10 @@ export default function EmailPage() {
                       <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                           <Eye className="h-4 w-4 text-slate-400" />
-                          Anteprima live
+                          {tl("Anteprima live")}
                         </CardTitle>
                         <CardDescription className="text-xs">
-                          Valori di esempio: {Object.entries(PREVIEW_SAMPLES).slice(0, 3).map(([k]) => k).join(', ')}…
+                          {tl("Valori di esempio:")} {Object.entries(PREVIEW_SAMPLES).slice(0, 3).map(([k]) => k).join(', ')}…
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="p-0 overflow-hidden rounded-b-lg">
@@ -591,7 +592,7 @@ export default function EmailPage() {
                           ref={iframeRef}
                           srcDoc={previewHtml}
                           className="h-[560px] w-full border-0"
-                          title="Anteprima email"
+                          title={tl("Anteprima email")}
                           sandbox="allow-same-origin"
                         />
                       </CardContent>
@@ -602,7 +603,7 @@ export default function EmailPage() {
                 /* ── HTML mode ── */
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold">HTML sorgente</CardTitle>
+                    <CardTitle className="text-sm font-semibold">{tl("HTML sorgente")}</CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 pt-0">
                     <Textarea
@@ -618,7 +619,7 @@ export default function EmailPage() {
             /* ── beta_disclaimer or other plain templates ── */
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Contenuto</CardTitle>
+                <CardTitle className="text-sm font-semibold">{tl("Contenuto")}</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <Textarea
@@ -639,7 +640,7 @@ export default function EmailPage() {
               disabled={resetTemplateMutation.isPending}
             >
               <RotateCcw className="h-4 w-4" />
-              {resetTemplateMutation.isPending ? 'Ripristino…' : 'Ripristina default'}
+              {resetTemplateMutation.isPending ? tl("Ripristino…") : tl("Ripristina default")}
             </Button>
             <Button
               className="gap-2 bg-slate-800 hover:bg-slate-900 text-white"
@@ -650,7 +651,7 @@ export default function EmailPage() {
               }
             >
               <Save className="h-4 w-4" />
-              {saveTemplatesMutation.isPending ? 'Salvataggio…' : 'Salva template'}
+              {saveTemplatesMutation.isPending ? tl("Salvataggio…") : tl("Salva template")}
             </Button>
           </div>
         </div>
@@ -661,13 +662,13 @@ export default function EmailPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Clock className="h-4 w-4 text-slate-400" />
-                Storico versioni
+                {tl("Storico versioni")}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="max-h-[500px] space-y-1.5 overflow-auto">
                 {(templateHistory?.items || []).length === 0 ? (
-                  <p className="text-xs text-slate-400">Nessuna versione salvata.</p>
+                  <p className="text-xs text-slate-400">{tl("Nessuna versione salvata.")}</p>
                 ) : (
                   (templateHistory?.items || []).map((item) => (
                     <div

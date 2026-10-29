@@ -14,6 +14,7 @@ import {
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
   Building2,
 } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 /* ─── types ──────────────────────────────────────────── */
 interface TeacherRequest {
@@ -170,14 +171,14 @@ export default function TeachersPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       setApprovalResult({ email: res.data.email, email_sent: res.data.email_sent })
     },
-    onError: () => toast({ variant: 'destructive', title: 'Errore approvazione' }),
+    onError: () => toast({ variant: 'destructive', title: tl("Errore approvazione") }),
   })
 
   const rejectMutation = useMutation({
     mutationFn: (id: string) => adminApi.rejectTeacher(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teacher-requests'] })
-      toast({ title: 'Richiesta rifiutata' })
+      toast({ title: tl("Richiesta rifiutata") })
     },
   })
 
@@ -186,17 +187,17 @@ export default function TeachersPage() {
     onSuccess: (res) => {
       setResetResult({ email: res.data.email, email_sent: res.data.email_sent })
     },
-    onError: () => toast({ variant: 'destructive', title: 'Errore reset password' }),
+    onError: () => toast({ variant: 'destructive', title: tl("Errore reset password") }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (userId: string) => adminApi.deleteUser(userId),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
-      toast({ title: 'Docente eliminato', description: res.data.message })
+      toast({ title: tl("Docente eliminato"), description: res.data.message })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Errore', description: error.response?.data?.detail })
+      toast({ variant: 'destructive', title: tl("Errore"), description: error.response?.data?.detail })
     },
   })
 
@@ -204,10 +205,10 @@ export default function TeachersPage() {
     mutationFn: (userId: string) => adminApi.promoteToAdmin(userId),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
-      toast({ title: 'Ruolo aggiornato', description: res.data.message })
+      toast({ title: tl("Ruolo aggiornato"), description: res.data.message })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Errore', description: error.response?.data?.detail })
+      toast({ variant: 'destructive', title: tl("Errore"), description: error.response?.data?.detail })
     },
   })
 
@@ -219,11 +220,11 @@ export default function TeachersPage() {
       if (res?.data?.email_sent === false) {
         toast({
           variant: 'destructive',
-          title: 'Invito creato, ma email NON inviata',
-          description: 'Controlla la configurazione SMTP (password app Google scaduta?). Usa "Reinvia" dopo aver sistemato.',
+          title: tl("Invito creato, ma email NON inviata"),
+          description: tl("Controlla la configurazione SMTP (password app Google scaduta?). Usa \"Reinvia\" dopo aver sistemato."),
         })
       } else {
-        toast({ title: 'Invito inviato' })
+        toast({ title: tl("Invito inviato") })
       }
       setInviteEmail(''); setInviteFirstName(''); setInviteLastName(''); setInviteSchool('')
       setShowInvite(false)
@@ -232,14 +233,14 @@ export default function TeachersPage() {
       const detail = error.response?.data?.detail
       const description = Array.isArray(detail)
         ? detail.map((e: any) => e.msg ?? String(e)).join(', ')
-        : typeof detail === 'string' ? detail : 'Errore sconosciuto'
+        : typeof detail === 'string' ? detail : tl("Errore sconosciuto")
       const normalizedEmail = inviteEmail.trim().toLowerCase()
       const existingTeacher = (teachersStatus?.items || []).find((teacher) => teacher.email.toLowerCase() === normalizedEmail)
       toast({
         variant: 'destructive',
-        title: 'Invito fallito',
+        title: tl("Invito fallito"),
         description: existingTeacher
-          ? `${description}. Per questa email usa "Reinvia accesso".`
+          ? tl("{0}. Per questa email usa \"Reinvia accesso\".", description)
           : description,
       })
     },
@@ -253,15 +254,15 @@ export default function TeachersPage() {
       if (res?.data?.email_sent === false) {
         toast({
           variant: 'destructive',
-          title: 'Invito aggiornato, ma email NON inviata',
-          description: 'SMTP non configurato correttamente (password app Google scaduta?).',
+          title: tl("Invito aggiornato, ma email NON inviata"),
+          description: tl("SMTP non configurato correttamente (password app Google scaduta?)."),
         })
       } else {
-        toast({ title: 'Invito reinviato' })
+        toast({ title: tl("Invito reinviato") })
       }
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Reinvio fallito', description: error.response?.data?.detail || 'Impossibile reinviare l\'invito' })
+      toast({ variant: 'destructive', title: tl("Reinvio fallito"), description: error.response?.data?.detail || tl("Impossibile reinviare l'invito") })
     },
   })
 
@@ -270,10 +271,10 @@ export default function TeachersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
-      toast({ title: 'Invito rimosso', description: res.data?.message })
+      toast({ title: tl("Invito rimosso"), description: res.data?.message })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Rimozione fallita', description: error.response?.data?.detail || 'Impossibile rimuovere l\'invito' })
+      toast({ variant: 'destructive', title: tl("Rimozione fallita"), description: error.response?.data?.detail || tl("Impossibile rimuovere l'invito") })
     },
   })
 
@@ -283,9 +284,9 @@ export default function TeachersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       setEditingCapId(null)
-      toast({ title: 'Limite aggiornato' })
+      toast({ title: tl("Limite aggiornato") })
     },
-    onError: () => toast({ variant: 'destructive', title: 'Errore aggiornamento limite' }),
+    onError: () => toast({ variant: 'destructive', title: tl("Errore aggiornamento limite") }),
   })
 
   const bulkSchoolMutation = useMutation({
@@ -294,13 +295,13 @@ export default function TeachersPage() {
     onSuccess: (res, action) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       toast({
-        title: action === 'add' ? 'Inviti inviati' : 'Docenti rimossi',
-        description: action === 'add' ? `${res.data.changed} docenti notificati via piattaforma ed email` : `${res.data.changed} appartenenze aggiornate`,
+        title: action === 'add' ? tl("Inviti inviati") : tl("Docenti rimossi"),
+        description: action === 'add' ? tl("{0} docenti notificati via piattaforma ed email", res.data.changed) : tl("{0} appartenenze aggiornate", res.data.changed),
       })
     },
     onError: (error: any) => toast({
-      variant: 'destructive', title: 'Operazione non riuscita',
-      description: error.response?.data?.detail || 'Errore aggiornamento istituti',
+      variant: 'destructive', title: tl("Operazione non riuscita"),
+      description: error.response?.data?.detail || tl("Errore aggiornamento istituti"),
     }),
   })
 
@@ -310,11 +311,11 @@ export default function TeachersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       setBulkCap('')
-      toast({ title: 'Limiti mensili aggiornati', description: `${res.data.updated} docenti aggiornati` })
+      toast({ title: tl("Limiti mensili aggiornati"), description: tl("{0} docenti aggiornati", res.data.updated) })
     },
     onError: (error: any) => toast({
-      variant: 'destructive', title: 'Operazione non riuscita',
-      description: error.response?.data?.detail || 'Errore aggiornamento limiti',
+      variant: 'destructive', title: tl("Operazione non riuscita"),
+      description: error.response?.data?.detail || tl("Errore aggiornamento limiti"),
     }),
   })
 
@@ -326,10 +327,10 @@ export default function TeachersPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
       setHardDeleteId(null)
       setHardDeleteEmail('')
-      toast({ title: 'Utente eliminato definitivamente', description: res.data.message })
+      toast({ title: tl("Utente eliminato definitivamente"), description: res.data.message })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Eliminazione fallita', description: error.response?.data?.detail })
+      toast({ variant: 'destructive', title: tl("Eliminazione fallita"), description: error.response?.data?.detail })
     },
   })
 
@@ -388,7 +389,7 @@ export default function TeachersPage() {
       updateRow(row.id, { status: 'sent' })
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
     } catch (err: any) {
-      updateRow(row.id, { status: 'error', errorMsg: err?.response?.data?.detail || 'Errore' })
+      updateRow(row.id, { status: 'error', errorMsg: err?.response?.data?.detail || tl("Errore") })
     }
   }
 
@@ -400,7 +401,7 @@ export default function TeachersPage() {
       await sendSingleRow(row)
     }
     setIsSendingAll(false)
-    toast({ title: 'Inviti completati', description: `${toSend.length} inviti inviati` })
+    toast({ title: tl("Inviti completati"), description: tl("{0} inviti inviati", toSend.length) })
   }
 
   const toggleSelectAll = (checked: boolean) =>
@@ -437,8 +438,8 @@ export default function TeachersPage() {
   const exportTeachersCsv = () => {
     if (teachers.length === 0) return
     const header = [
-      'nome', 'cognome', 'email', 'ruolo', 'verificato', 'scuola',
-      'ultimo_accesso', 'data_registrazione', 'sessioni', 'studenti',
+      'nome', 'cognome', 'email', tl("ruolo"), 'verificato', 'scuola',
+      'ultimo_accesso', 'data_registrazione', tl("sessioni"), tl("studenti"),
       'limite_mensile_crediti', 'utilizzo_mensile_crediti', 'consumo_periodo_crediti', 'chiamate_periodo',
     ]
     const body = teachers.map((t) => [
@@ -502,13 +503,13 @@ export default function TeachersPage() {
       {/* Header */}
       <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Amministrazione utenti</p>
-          <h1 className="text-2xl font-bold text-white">Docenti</h1>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{tl("Amministrazione utenti")}</p>
+          <h1 className="text-2xl font-bold text-white">{tl("Docenti")}</h1>
           <p className="text-sm text-slate-300 mt-1">
-            {teachers.length} docenti attivi
+            {teachers.length} {tl("docenti attivi")}
             {pending.length > 0 && (
               <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-medium">
-                · <Clock className="h-3.5 w-3.5" /> {pending.length} in attesa
+                · <Clock className="h-3.5 w-3.5" /> {pending.length} {tl("in attesa")}
               </span>
             )}
           </p>
@@ -521,14 +522,14 @@ export default function TeachersPage() {
             className="gap-2 border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:text-white"
           >
             <Download className="h-4 w-4" />
-            Esporta CSV
+            {tl("Esporta CSV")}
           </Button>
           <Button
             onClick={() => setShowInvite((v) => !v)}
             className="gap-2 bg-white hover:bg-slate-100 text-slate-950"
           >
             <UserPlus className="h-4 w-4" />
-            Invita docente
+            {tl("Invita docente")}
             {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
         </div>
@@ -539,7 +540,7 @@ export default function TeachersPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cerca docente o invitato…"
+          placeholder={tl("Cerca docente o invitato…")}
           className="pl-9 h-10 border-slate-300 bg-white text-sm shadow-sm"
         />
       </div>
@@ -555,10 +556,10 @@ export default function TeachersPage() {
         >
           <Check className="h-5 w-5 mt-0.5 flex-shrink-0" />
           <div className="flex-1 text-sm">
-            <strong>Docente approvato:</strong>{' '}
+            <strong>{tl("Docente approvato:")}</strong>{' '}
             {approvalResult.email_sent
-              ? `Email di attivazione inviata a ${approvalResult.email}`
-              : `Attenzione: email non inviata a ${approvalResult.email}. Verifica SMTP.`}
+              ? tl("Email di attivazione inviata a {0}", approvalResult.email)
+              : tl("Attenzione: email non inviata a {0}. Verifica SMTP.", approvalResult.email)}
           </div>
           <button onClick={() => setApprovalResult(null)} className="opacity-60 hover:opacity-100">
             <X className="h-4 w-4" />
@@ -572,12 +573,12 @@ export default function TeachersPage() {
           <Key className={`h-5 w-5 mt-0.5 flex-shrink-0 ${resetResult.email_sent ? 'text-emerald-600' : 'text-amber-600'}`} />
           <div className="flex-1 text-sm">
             <p className={`font-semibold mb-0.5 ${resetResult.email_sent ? 'text-emerald-800' : 'text-amber-800'}`}>
-              {resetResult.email_sent ? 'Link di reset inviato' : 'Reset generato — email non inviata'}
+              {resetResult.email_sent ? tl("Link di reset inviato") : tl("Reset generato — email non inviata")}
             </p>
             <p className={resetResult.email_sent ? 'text-emerald-700' : 'text-amber-700'}>
               {resetResult.email_sent
-                ? <>Il docente riceverà un'email su <strong>{resetResult.email}</strong> con il link per impostare la nuova password (valido 24 h).</>
-                : <>Verifica la configurazione SMTP. Email non recapitata a {resetResult.email}.</>
+                ? <>{tl("Il docente riceverà un'email su")} <strong>{resetResult.email}</strong> {tl("con il link per impostare la nuova password (valido 24 h).")}</>
+                : <>{tl("Verifica la configurazione SMTP. Email non recapitata a")} {resetResult.email}.</>
               }
             </p>
           </div>
@@ -592,35 +593,34 @@ export default function TeachersPage() {
         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-5">
           <h3 className="font-semibold text-slate-700 flex items-center gap-2">
             <Mail className="h-4 w-4 text-slate-500" />
-            Invita docenti
+            {tl("Invita docenti")}
           </h3>
 
           {/* ── single invite row ── */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Invito singolo</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{tl("Invito singolo")}</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1">
-                <Label className="text-xs">Email *</Label>
+                <Label className="text-xs">{tl("Email *")}</Label>
                 <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" className="h-8 text-sm" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Nome</Label>
+                <Label className="text-xs">{tl("Nome")}</Label>
                 <Input value={inviteFirstName} onChange={e => setInviteFirstName(e.target.value)} className="h-8 text-sm" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Cognome</Label>
+                <Label className="text-xs">{tl("Cognome")}</Label>
                 <Input value={inviteLastName} onChange={e => setInviteLastName(e.target.value)} className="h-8 text-sm" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Scuola</Label>
-                <Input value={inviteSchool} onChange={e => setInviteSchool(e.target.value)} placeholder="Istituto…" className="h-8 text-sm" />
+                <Label className="text-xs">{tl("Scuola")}</Label>
+                <Input value={inviteSchool} onChange={e => setInviteSchool(e.target.value)} placeholder={tl("Istituto…")} className="h-8 text-sm" />
               </div>
             </div>
             {inviteTargetTeacher ? (
               <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                Questa email appartiene già al docente{' '}
-                <strong>{[inviteTargetTeacher.first_name, inviteTargetTeacher.last_name].filter(Boolean).join(' ') || inviteTargetTeacher.email}</strong>.
-                Usa <strong>Reinvia accesso</strong> invece di creare un nuovo invito.
+                {tl("Questa email appartiene già al docente")}{' '}
+                <strong>{[inviteTargetTeacher.first_name, inviteTargetTeacher.last_name].filter(Boolean).join(' ') || inviteTargetTeacher.email}</strong>{tl(". Usa")} <strong>{tl("Reinvia accesso")}</strong> {tl("invece di creare un nuovo invito.")}
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
@@ -630,7 +630,7 @@ export default function TeachersPage() {
                 onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
               >
                 <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                {inviteMutation.isPending ? 'Invio…' : 'Invia invito'}
+                {inviteMutation.isPending ? tl("Invio…") : tl("Invia invito")}
               </Button>
               {inviteTargetTeacher ? (
                 <Button
@@ -641,7 +641,7 @@ export default function TeachersPage() {
                   onClick={() => resetMutation.mutate(inviteTargetTeacher.id)}
                 >
                   <Key className="mr-1.5 h-3.5 w-3.5" />
-                  {resetMutation.isPending ? 'Invio link…' : 'Reinvia accesso'}
+                  {resetMutation.isPending ? tl("Invio link…") : tl("Reinvia accesso")}
                 </Button>
               ) : null}
             </div>
@@ -649,7 +649,7 @@ export default function TeachersPage() {
 
           {/* ── CSV import ── */}
           <div className="space-y-4">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Importazione CSV</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{tl("Importazione CSV")}</p>
 
             {/* Drop zone */}
             {csvRows.length === 0 && (
@@ -667,9 +667,9 @@ export default function TeachersPage() {
               >
                 <Upload className="h-8 w-8 text-slate-300" />
                 <div className="text-center">
-                  <p className="text-sm font-medium text-slate-600">Trascina un CSV qui o clicca per sfogliare</p>
-                  <p className="text-xs text-slate-400 mt-1">Colonne rilevate automaticamente: email, nome, cognome, scuola</p>
-                  <p className="text-xs text-slate-400">Separatore: virgola o punto e virgola · Con o senza intestazione</p>
+                  <p className="text-sm font-medium text-slate-600">{tl("Trascina un CSV qui o clicca per sfogliare")}</p>
+                  <p className="text-xs text-slate-400 mt-1">{tl("Colonne rilevate automaticamente: email, nome, cognome, scuola")}</p>
+                  <p className="text-xs text-slate-400">{tl("Separatore: virgola o punto e virgola · Con o senza intestazione")}</p>
                 </div>
                 <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }} />
               </div>
@@ -681,12 +681,12 @@ export default function TeachersPage() {
                 {/* Toolbar */}
                 <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-slate-700">{csvRows.length} docenti importati</span>
+                    <span className="text-sm font-semibold text-slate-700">{csvRows.length} {tl("docenti importati")}</span>
                     {sentCount > 0 && <span className="text-xs text-emerald-600 font-medium">{sentCount} inviati</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setCsvRows([]); if (fileInputRef.current) fileInputRef.current.value = '' }}>
-                      <X className="h-3.5 w-3.5 mr-1" />Annulla
+                      <X className="h-3.5 w-3.5 mr-1" />{tl("Annulla")}
                     </Button>
                     <Button
                       size="sm"
@@ -695,7 +695,7 @@ export default function TeachersPage() {
                       onClick={sendAllSelected}
                     >
                       {isSendingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                      {isSendingAll ? 'Invio in corso…' : `Invia ${selectedCount} selezionati`}
+                      {isSendingAll ? tl("Invio in corso…") : tl("Invia {0} selezionati", selectedCount)}
                     </Button>
                   </div>
                 </div>
@@ -708,7 +708,7 @@ export default function TeachersPage() {
                       <Input
                         value={groupTag}
                         onChange={e => setGroupTag(e.target.value)}
-                        placeholder="Gruppo / tag (es. sperimentazione torino)"
+                        placeholder={tl("Gruppo / tag (es. sperimentazione torino)")}
                         className="h-8 text-sm flex-1"
                       />
                     </div>
@@ -717,14 +717,14 @@ export default function TeachersPage() {
                       className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white hover:bg-slate-50 transition-colors"
                     >
                       <MessageSquare className="h-3.5 w-3.5" />
-                      {showMessage ? 'Nascondi messaggio' : 'Messaggio personalizzato'}
+                      {showMessage ? tl("Nascondi messaggio") : tl("Messaggio personalizzato")}
                     </button>
                   </div>
                   {showMessage && (
                     <textarea
                       value={customMessage}
                       onChange={e => setCustomMessage(e.target.value)}
-                      placeholder="Testo aggiuntivo che apparirà nell'email di invito (facoltativo)…"
+                      placeholder={tl("Testo aggiuntivo che apparirà nell'email di invito (facoltativo)…")}
                       className="w-full rounded-lg border border-slate-200 p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-slate-300 min-h-[80px]"
                     />
                   )}
@@ -738,12 +738,12 @@ export default function TeachersPage() {
                         <th className="px-4 py-2 text-left w-8">
                           <input type="checkbox" checked={allIdleSelected} onChange={e => toggleSelectAll(e.target.checked)} className="rounded" />
                         </th>
-                        <th className="px-3 py-2 text-left font-medium">Email</th>
-                        <th className="px-3 py-2 text-left font-medium">Nome</th>
-                        <th className="px-3 py-2 text-left font-medium">Cognome</th>
-                        <th className="px-3 py-2 text-left font-medium">Scuola</th>
-                        <th className="px-3 py-2 text-center font-medium">Stato</th>
-                        <th className="px-3 py-2 text-right font-medium">Azione</th>
+                        <th className="px-3 py-2 text-left font-medium">{tl("Email")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{tl("Nome")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{tl("Cognome")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{tl("Scuola")}</th>
+                        <th className="px-3 py-2 text-center font-medium">{tl("Stato")}</th>
+                        <th className="px-3 py-2 text-right font-medium">{tl("Azione")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -784,11 +784,11 @@ export default function TeachersPage() {
                                 onClick={() => sendSingleRow(row)}
                                 className="text-xs text-slate-700 hover:text-slate-900 font-medium"
                               >
-                                Invia
+                                {tl("Invia")}
                               </button>
                             )}
                             {row.status === 'error' && (
-                              <button onClick={() => { updateRow(row.id, { status: 'idle', errorMsg: undefined }); sendSingleRow({ ...row, status: 'idle' }) }} className="text-xs text-amber-600 hover:text-amber-800 font-medium">Riprova</button>
+                              <button onClick={() => { updateRow(row.id, { status: 'idle', errorMsg: undefined }); sendSingleRow({ ...row, status: 'idle' }) }} className="text-xs text-amber-600 hover:text-amber-800 font-medium">{tl("Riprova")}</button>
                             )}
                           </td>
                         </tr>
@@ -813,11 +813,11 @@ export default function TeachersPage() {
               >
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 group-hover:text-slate-700 transition-colors">
-                    Inviti in attesa
+                    {tl("Inviti in attesa")}
                   </p>
                   <p className="mt-0.5 text-sm text-slate-400">
-                    {filteredInvitations.length} risultati
-                    {search.trim() ? ` per "${search}"` : ` · ${pendingOnlyInvitations.length} non ancora accettati`}
+                    {filteredInvitations.length} {tl("risultati")}
+                    {search.trim() ? ` per "${search}"` : tl(" · {0} non ancora accettati", pendingOnlyInvitations.length)}
                   </p>
                 </div>
                 {showInvitations
@@ -826,7 +826,7 @@ export default function TeachersPage() {
               </button>
               <span className="flex items-center gap-1 text-[10px] text-slate-400">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                aggiornamento automatico
+                {tl("aggiornamento automatico")}
               </span>
             </div>
 
@@ -835,19 +835,19 @@ export default function TeachersPage() {
                 <table className="w-full min-w-[720px] text-xs">
                   <thead>
                     <tr className="border-b text-left text-[11px] uppercase text-slate-400">
-                      <th className="pb-1.5 font-medium">Docente</th>
-                      <th className="pb-1.5 font-medium">Gruppo</th>
-                      <th className="pb-1.5 font-medium">Stato</th>
-                      <th className="pb-1.5 font-medium">Inviato</th>
-                      <th className="pb-1.5 font-medium">Scadenza</th>
-                      <th className="pb-1.5 text-right font-medium">Azioni</th>
+                      <th className="pb-1.5 font-medium">{tl("Docente")}</th>
+                      <th className="pb-1.5 font-medium">{tl("Gruppo")}</th>
+                      <th className="pb-1.5 font-medium">{tl("Stato")}</th>
+                      <th className="pb-1.5 font-medium">{tl("Inviato")}</th>
+                      <th className="pb-1.5 font-medium">{tl("Scadenza")}</th>
+                      <th className="pb-1.5 text-right font-medium">{tl("Azioni")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredInvitations.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-sm text-slate-400">
-                          Nessun invito trovato
+                          {tl("Nessun invito trovato")}
                         </td>
                       </tr>
                     ) : (
@@ -869,7 +869,7 @@ export default function TeachersPage() {
                             <td className="py-2">
                               {isExpired
                                 ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">scaduto</span>
-                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">in attesa</span>}
+                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{tl("in attesa")}</span>}
                             </td>
                             <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
                             <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
@@ -881,18 +881,18 @@ export default function TeachersPage() {
                                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-800 disabled:opacity-50"
                                 >
                                   <Send className="h-3 w-3" />
-                                  Reinvia
+                                  {tl("Reinvia")}
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (confirm(`Rimuovere l'invito per ${inv.email}? L'account verrà disattivato.`))
+                                    if (confirm(tl("Rimuovere l'invito per {0}? L'account verrà disattivato.", inv.email)))
                                       deleteInvitationMutation.mutate(inv.id)
                                   }}
                                   disabled={deleteInvitationMutation.isPending || resendInvitationMutation.isPending}
                                   className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
                                 >
                                   <Trash2 className="h-3 w-3" />
-                                  Rimuovi
+                                  {tl("Rimuovi")}
                                 </button>
                               </div>
                             </td>
@@ -914,7 +914,7 @@ export default function TeachersPage() {
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-amber-600" />
             <h3 className="font-semibold text-amber-800">
-              {pending.length} richiesta{pending.length > 1 ? 'e' : ''} in attesa di approvazione
+              {pending.length} {tl("richiesta")}{pending.length > 1 ? 'e' : ''} {tl("in attesa di approvazione")}
             </h3>
           </div>
           <div className="space-y-2">
@@ -945,7 +945,7 @@ export default function TeachersPage() {
                     disabled={approveMutation.isPending}
                   >
                     <Check className="h-3.5 w-3.5" />
-                    Approva
+                    {tl("Approva")}
                   </Button>
                   <Button
                     size="sm"
@@ -955,7 +955,7 @@ export default function TeachersPage() {
                     disabled={rejectMutation.isPending}
                   >
                     <X className="h-3.5 w-3.5" />
-                    Rifiuta
+                    {tl("Rifiuta")}
                   </Button>
                 </div>
               </div>
@@ -970,7 +970,7 @@ export default function TeachersPage() {
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-md">
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-semibold text-white">
-                {selectedTeachersCount} {selectedTeachersCount === 1 ? 'docente selezionato' : 'docenti selezionati'}
+                {selectedTeachersCount} {selectedTeachersCount === 1 ? tl("docente selezionato") : tl("docenti selezionati")}
               </span>
               <div className="h-6 w-px bg-indigo-200 hidden sm:block" />
               <select
@@ -978,7 +978,7 @@ export default function TeachersPage() {
                 onChange={(e) => setBulkSchoolId(e.target.value)}
                 className="h-8 min-w-[220px] rounded-md border border-slate-600 bg-slate-800 px-2 text-xs text-white"
               >
-                <option value="">Scegli un istituto…</option>
+                <option value="">{tl("Scegli un istituto…")}</option>
                 {schoolTenants.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}
               </select>
               <Button
@@ -987,7 +987,7 @@ export default function TeachersPage() {
                 disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
                 onClick={() => bulkSchoolMutation.mutate('add')}
               >
-                <Building2 className="mr-1.5 h-3.5 w-3.5" /> Invita nell'istituto
+                <Building2 className="mr-1.5 h-3.5 w-3.5" /> {tl("Invita nell'istituto")}
               </Button>
               <Button
                 size="sm"
@@ -996,7 +996,7 @@ export default function TeachersPage() {
                 disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
                 onClick={() => bulkSchoolMutation.mutate('remove')}
               >
-                Rimuovi dall'istituto
+                {tl("Rimuovi dall'istituto")}
               </Button>
               <div className="h-6 w-px bg-indigo-200 hidden lg:block" />
               <div className="flex items-center gap-1">
@@ -1007,7 +1007,7 @@ export default function TeachersPage() {
                   step="10"
                   value={bulkCap}
                   onChange={(e) => setBulkCap(e.target.value)}
-                  placeholder="Limite/mese"
+                  placeholder={"Limite/mese"}
                   className="h-8 w-28 border-indigo-200 bg-white text-xs"
                 />
                 <Button
@@ -1017,7 +1017,7 @@ export default function TeachersPage() {
                   disabled={bulkCap === '' || Number.isNaN(Number(bulkCap)) || Number(bulkCap) < 0 || bulkCapMutation.isPending}
                   onClick={() => bulkCapMutation.mutate(Number(bulkCap))}
                 >
-                  Applica limite
+                  {tl("Applica limite")}
                 </Button>
               </div>
               <button
@@ -1025,7 +1025,7 @@ export default function TeachersPage() {
                 className="ml-auto text-xs text-slate-300 hover:text-white"
                 onClick={() => setSelectedTeacherIds(new Set())}
               >
-                Deseleziona tutti
+                {tl("Deseleziona tutti")}
               </button>
             </div>
           </div>
@@ -1033,9 +1033,9 @@ export default function TeachersPage() {
         <Card>
           <CardContent className="p-0">
             {loadingTeachers ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Caricamento…</div>
+              <div className="py-12 text-center text-slate-400 text-sm">{tl("Caricamento…")}</div>
             ) : teachers.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Nessun docente trovato</div>
+              <div className="py-12 text-center text-slate-400 text-sm">{tl("Nessun docente trovato")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1080px] table-fixed text-sm">
@@ -1051,49 +1051,49 @@ export default function TeachersPage() {
                             selectableTeachers.forEach(teacher => e.target.checked ? next.add(teacher.id) : next.delete(teacher.id))
                             setSelectedTeacherIds(next)
                           }}
-                          aria-label="Seleziona tutti i docenti visibili"
+                          aria-label={tl("Seleziona tutti i docenti visibili")}
                         />
                       </th>
                       <th className="w-[250px] px-4 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-slate-600">
-                          Docente
+                          {tl("Docente")}
                           <SortIcon field="name" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
                       <th className="w-[210px] px-3 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('institution')} className="flex items-center gap-1 hover:text-slate-600">
-                          Scuola
+                          {tl("Scuola")}
                           <SortIcon field="institution" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
                       <th className="w-[145px] px-3 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('last_login_at')} className="flex items-center gap-1 hover:text-slate-600">
                           <LogIn className="h-3.5 w-3.5" />
-                          Ultimo accesso
+                          {tl("Ultimo accesso")}
                           <SortIcon field="last_login_at" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
                       <th className="px-3 py-3 text-center font-medium">
                         <button type="button" onClick={() => toggleSort('session_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
                           <BookOpen className="h-3.5 w-3.5" />
-                          Sessioni
+                          {tl("Sessioni")}
                           <SortIcon field="session_count" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
                       <th className="px-3 py-3 text-center font-medium">
                         <button type="button" onClick={() => toggleSort('total_student_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
                           <Users className="h-3.5 w-3.5" />
-                          Studenti
+                          {tl("Studenti")}
                           <SortIcon field="total_student_count" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
                       <th className="px-3 py-3 text-left font-medium">
                         <span className="flex items-center gap-1">
                           <Zap className="h-3.5 w-3.5" />
-                          Crediti mensili
+                          {tl("Crediti mensili")}
                         </span>
                       </th>
-                      <th className="px-4 py-3 text-right font-medium">Azioni</th>
+                      <th className="px-4 py-3 text-right font-medium">{tl("Azioni")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1113,7 +1113,7 @@ export default function TeachersPage() {
                                 e.target.checked ? next.add(teacher.id) : next.delete(teacher.id)
                                 setSelectedTeacherIds(next)
                               }}
-                              aria-label={`Seleziona ${teacher.email}`}
+                              aria-label={tl("Seleziona {0}", teacher.email)}
                             />
                           )}
                         </td>
@@ -1144,7 +1144,7 @@ export default function TeachersPage() {
                             )}
                             {(teacher.role || '').toUpperCase() !== 'ADMIN' && !teacher.is_verified && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium hidden sm:inline">
-                                non verificato
+                                {tl("non verificato")}
                               </span>
                             )}
                           </div>
@@ -1161,9 +1161,9 @@ export default function TeachersPage() {
                               ))}
                             </div>
                           ) : teacher.institution ? (
-                            <span title="Testo storico, non ancora collegato a un istituto">{teacher.institution}</span>
+                            <span title={tl("Testo storico, non ancora collegato a un istituto")}>{teacher.institution}</span>
                           ) : (
-                            <span className="text-slate-400">Nessun istituto</span>
+                            <span className="text-slate-400">{tl("Nessun istituto")}</span>
                           )}
                         </td>
 
@@ -1227,7 +1227,7 @@ export default function TeachersPage() {
                                 <span className="text-[10px] text-slate-400">/</span>
                                 <span className="text-xs text-slate-500">{formatCurrency(teacher.monthly_cap)}</span>
                                 {teacher.period_cost > 0 && (
-                                  <span className="text-[10px] text-indigo-500 font-medium ml-1" title={`Spesa effettiva (${teacher.period_calls} chiamate)`}>
+                                  <span className="text-[10px] text-indigo-500 font-medium ml-1" title={tl("Spesa effettiva ({0} chiamate)", teacher.period_calls)}>
                                     ({formatCurrency(teacher.period_cost)})
                                   </span>
                                 )}
@@ -1237,7 +1237,7 @@ export default function TeachersPage() {
                                     setEditingCapId(teacher.id)
                                     setEditingCapValue(String(toCredits(teacher.monthly_cap)))
                                   }}
-                                  title="Modifica limite"
+                                  title={tl("Modifica limite")}
                                 >
                                   <Pencil className="h-3 w-3" />
                                 </button>
@@ -1266,7 +1266,7 @@ export default function TeachersPage() {
                         <td className="px-4 py-3">
                           {hardDeleteId === teacher.id ? (
                             <div className="flex items-center gap-1 justify-end flex-wrap">
-                              <span className="text-[10px] text-red-600 font-medium mr-1">Digita email per confermare:</span>
+                              <span className="text-[10px] text-red-600 font-medium mr-1">{tl("Digita email per confermare:")}</span>
                               <input
                                 type="email"
                                 autoFocus
@@ -1286,13 +1286,13 @@ export default function TeachersPage() {
                                 disabled={hardDeleteEmail.trim().toLowerCase() !== teacher.email.toLowerCase() || hardDeleteMutation.isPending}
                                 className="h-6 px-2 rounded bg-red-600 text-white text-[10px] font-medium disabled:opacity-40 hover:bg-red-700"
                               >
-                                Elimina
+                                {tl("Elimina")}
                               </button>
                               <button
                                 onClick={() => { setHardDeleteId(null); setHardDeleteEmail('') }}
                                 className="h-6 px-1.5 rounded border border-slate-200 text-slate-500 text-[10px] hover:bg-slate-50"
                               >
-                                Annulla
+                                {tl("Annulla")}
                               </button>
                             </div>
                           ) : (
@@ -1303,7 +1303,7 @@ export default function TeachersPage() {
                                 className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                                 onClick={() => resetMutation.mutate(teacher.id)}
                                 disabled={resetMutation.isPending}
-                                title="Invia link reset password"
+                                title={tl("Invia link reset password")}
                               >
                                 <Key className="h-3.5 w-3.5 mr-1" />
                                 <span className="hidden lg:inline">Reset password</span>
@@ -1314,11 +1314,11 @@ export default function TeachersPage() {
                                   variant="ghost"
                                   className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
                                   onClick={() => {
-                                    if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
+                                    if (confirm(tl("Promuovere {0} ad amministratore? Non sarà più un docente.", teacher.email)))
                                       promoteMutation.mutate(teacher.id)
                                   }}
                                   disabled={promoteMutation.isPending}
-                                  title="Promuovi ad amministratore"
+                                  title={tl("Promuovi ad amministratore")}
                                 >
                                   <ShieldCheck className="h-3.5 w-3.5" />
                                 </Button>
@@ -1328,11 +1328,11 @@ export default function TeachersPage() {
                                 variant="ghost"
                                 className="h-7 px-2 text-xs text-orange-500 hover:text-orange-700 hover:bg-orange-50"
                                 onClick={() => {
-                                  if (confirm(`Disattivare ${teacher.email}? L'account verrà nascosto ma resterà nel database.`))
+                                  if (confirm(tl("Disattivare {0}? L'account verrà nascosto ma resterà nel database.", teacher.email)))
                                     deleteMutation.mutate(teacher.id)
                                 }}
                                 disabled={deleteMutation.isPending}
-                                title="Disattiva account (soft-delete)"
+                                title={tl("Disattiva account (soft-delete)")}
                               >
                                 <X className="h-3.5 w-3.5" />
                               </Button>
@@ -1341,7 +1341,7 @@ export default function TeachersPage() {
                                 variant="ghost"
                                 className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
                                 onClick={() => { setHardDeleteId(teacher.id); setHardDeleteEmail('') }}
-                                title="Elimina definitivamente dal database"
+                                title={tl("Elimina definitivamente dal database")}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

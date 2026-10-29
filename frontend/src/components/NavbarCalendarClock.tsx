@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { ChevronLeft, ChevronRight } from '@/components/icons'
 import { calendarApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
+import { tl } from '@/i18n/tl'
 
-const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
+const MONTHS_IT = [tl("Gennaio"),tl("Febbraio"),tl("Marzo"),tl("Aprile"),tl("Maggio"),tl("Giugno"),tl("Luglio"),tl("Agosto"),tl("Settembre"),tl("Ottobre"),tl("Novembre"),tl("Dicembre")]
 const WEEKDAYS_SHORT = ['L','M','M','G','V','S','D']
 
 export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = false }: { sessionId?: string; accentColor: string; inNavCluster?: boolean }) {
@@ -122,7 +123,7 @@ export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = fal
             upcomingEvents.length > 0 ? (
               <>
                 <div className="border-t border-slate-100 px-4 pt-2.5 pb-1">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Prossimi eventi</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{tl("Prossimi eventi")}</div>
                 </div>
                 <div className="px-2 pb-3 space-y-0.5">
                   {upcomingEvents.map(evt => (
@@ -140,12 +141,12 @@ export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = fal
               </>
             ) : (
               <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400 text-center">
-                Nessun evento in programma
+                {tl("Nessun evento in programma")}
               </div>
             )
           ) : (
             <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400 text-center">
-              Seleziona una sessione per vedere gli eventi
+              {tl("Seleziona una sessione per vedere gli eventi")}
             </div>
           )}
         </div>

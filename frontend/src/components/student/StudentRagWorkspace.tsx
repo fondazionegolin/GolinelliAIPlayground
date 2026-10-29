@@ -14,6 +14,7 @@ import remarkGfm from 'remark-gfm'
 import { studentRagApi, type RagWorkspaceApi } from '@/lib/api'
 import type { AccentTheme } from '@/design/themes/roleThemes'
 import { type RagSession, saveRagSession, getRagSessions } from '@/lib/ragSessions'
+import { tl } from '@/i18n/tl'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,11 +73,11 @@ function hex2rgba(hex: string, alpha: number): string {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const UPLOAD_STEPS = [
-  { key: 'reading', label: 'Lettura del documento…' },
-  { key: 'chunking', label: 'Divisione in blocchi semantici…' },
-  { key: 'embedding', label: 'Generazione vettori embedding…' },
-  { key: 'indexing', label: 'Indicizzazione nella knowledge base…' },
-  { key: 'done', label: 'Documento pronto!' },
+  { key: 'reading', label: tl("Lettura del documento…") },
+  { key: 'chunking', label: tl("Divisione in blocchi semantici…") },
+  { key: 'embedding', label: tl("Generazione vettori embedding…") },
+  { key: 'indexing', label: tl("Indicizzazione nella knowledge base…") },
+  { key: 'done', label: tl("Documento pronto!") },
 ]
 
 const DOC_ICON: Record<string, React.ReactNode> = {
@@ -134,7 +135,7 @@ function HighlightedText({ text, highlights }: { text: string; highlights?: RagH
         <mark
           key={`h${i}`}
           data-rag-highlight
-          title={`Corrispondenza ${h.kind === 'semantic' ? 'semantica' : 'testuale'} · ${Math.round(h.score * 100)}%`}
+          title={tl("Corrispondenza {0} · {1}%", h.kind === 'semantic' ? 'semantica' : 'testuale', Math.round(h.score * 100))}
           className="rounded-[3px] px-0.5 text-slate-900"
           style={{
             background: 'linear-gradient(transparent 12%, rgba(250,204,21,0.62) 12%, rgba(250,204,21,0.62) 92%, transparent 92%)',
@@ -178,10 +179,10 @@ function getLatestSessionSourceChunks(messages: RagMessage[]): RagChunk[] | null
 
 function RagExplainer({ theme, teacher }: { theme: AccentTheme; teacher?: boolean }) {
   const steps = [
-    { n: 1, title: 'Lettura completa', desc: 'Il documento viene segmentato in parti leggibili, mantenendo pagine e struttura.' },
-    { n: 2, title: 'Ricerca intelligente', desc: 'La domanda viene confrontata sia per significato sia per parole esatte.' },
-    { n: 3, title: 'Selezione delle prove', desc: 'I passaggi più utili compaiono nella colonna Fonti con le frasi pertinenti evidenziate.' },
-    { n: 4, title: 'Risposta vincolata', desc: 'Il chatbot resta dentro i contenuti caricati e cita i riferimenti [[n]].' },
+    { n: 1, title: tl("Lettura completa"), desc: tl("Il documento viene segmentato in parti leggibili, mantenendo pagine e struttura.") },
+    { n: 2, title: tl("Ricerca intelligente"), desc: tl("La domanda viene confrontata sia per significato sia per parole esatte.") },
+    { n: 3, title: tl("Selezione delle prove"), desc: tl("I passaggi più utili compaiono nella colonna Fonti con le frasi pertinenti evidenziate.") },
+    { n: 4, title: tl("Risposta vincolata"), desc: tl("Il chatbot resta dentro i contenuti caricati e cita i riferimenti [[n]].") },
   ]
   return (
     <div className="space-y-2 text-[11px] text-slate-600">
@@ -194,11 +195,7 @@ function RagExplainer({ theme, teacher }: { theme: AccentTheme; teacher?: boolea
       ))}
       {teacher && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] leading-relaxed text-amber-900">
-          <p><strong>RAG ≠ context learning.</strong> Con il <em>context learning</em> incolli i documenti nel prompt: il modello
-            li legge tutti ma entrano solo se sono corti. Con il <em>RAG</em> i documenti vengono indicizzati e, a ogni richiesta,
-            viene recuperato solo il frammento pertinente: scala a molti file, costa meno e permette citazioni verificabili.
-            Per creare quiz, infografiche o documenti da materiali lunghi il RAG è lo strumento migliore:
-            allega un notebook nella chat del docente.</p>
+          <p><strong>RAG ≠ context learning.</strong> {tl("Con il")} <em>context learning</em> {tl("incolli i documenti nel prompt: il modello li legge tutti ma entrano solo se sono corti. Con il")} <em>RAG</em> {tl("i documenti vengono indicizzati e, a ogni richiesta, viene recuperato solo il frammento pertinente: scala a molti file, costa meno e permette citazioni verificabili. Per creare quiz, infografiche o documenti da materiali lunghi il RAG è lo strumento migliore: allega un notebook nella chat del docente.")}</p>
         </div>
       )}
     </div>
@@ -229,7 +226,7 @@ function DocumentPanel({
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
         <BookOpen className="h-4 w-4" style={{ color: theme.text }} />
-        <span className="text-sm font-semibold text-slate-800">Documenti</span>
+        <span className="text-sm font-semibold text-slate-800">{tl("Documenti")}</span>
         {docs.length > 0 && (
           <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: theme.text }}>
             {docs.length}
@@ -244,7 +241,7 @@ function DocumentPanel({
             }}
             className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-slate-700"
           >
-            {docs.every((d) => selectedDocIds.includes(d.id)) ? 'Deseleziona' : 'Seleziona tutti'}
+            {docs.every((d) => selectedDocIds.includes(d.id)) ? tl("Deseleziona") : tl("Seleziona tutti")}
           </button>
         )}
       </div>
@@ -269,14 +266,14 @@ function DocumentPanel({
           <div className="flex items-center gap-1.5 text-emerald-700">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
-              Pronto · {uploadResult.chunk_count} passaggi indicizzati
+              {tl("Pronto ·")} {uploadResult.chunk_count} {tl("passaggi indicizzati")}
             </span>
             {(uploadResult.summary || uploadResult.key_concepts.length > 0) && (
               <button type="button" onClick={() => setShowDetails((v) => !v)} className="text-emerald-600 hover:text-emerald-800">
                 {showDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
             )}
-            <button type="button" onClick={onDismissResult} className="text-emerald-500 hover:text-emerald-800" aria-label="Chiudi">
+            <button type="button" onClick={onDismissResult} className="text-emerald-500 hover:text-emerald-800" aria-label={tl("Chiudi")}>
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -299,8 +296,8 @@ function DocumentPanel({
         {docs.length === 0 && !isUploading && (
           <div className="flex h-full flex-col items-center justify-center py-8 text-center text-xs text-slate-400">
             <BookOpen className="mb-2 h-8 w-8 opacity-30" />
-            <p className="font-medium">Nessun documento</p>
-            <p className="mt-1 text-[11px]">Usa <strong>Aggiungi file</strong> o trascina qui PDF, Word, fogli dati, immagini</p>
+            <p className="font-medium">{tl("Nessun documento")}</p>
+            <p className="mt-1 text-[11px]">{tl("Usa")} <strong>{tl("Aggiungi file")}</strong> {tl("o trascina qui PDF, Word, fogli dati, immagini")}</p>
           </div>
         )}
         {docs.map((doc) => {
@@ -326,20 +323,20 @@ function DocumentPanel({
                   <p className="truncate text-xs font-medium text-slate-700" title={doc.title}>{doc.title}</p>
                   <p className="flex items-center gap-1.5 text-[10px] text-slate-400">
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-emerald-500' : processing ? 'bg-amber-500' : 'bg-red-500'}`} />
-                    {ready ? (doc.chunk_count > 0 ? `${doc.chunk_count} blocchi` : 'Pronto') : processing ? 'Elaborazione…' : 'Errore'}
+                    {ready ? (doc.chunk_count > 0 ? `${doc.chunk_count} blocchi` : tl("Pronto")) : processing ? tl("Elaborazione…") : tl("Errore")}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-0.5">
                   {ready && (
                     <button onClick={(e) => { e.stopPropagation(); onPreview(doc.id) }}
-                      title="Anteprima documento"
+                      title={tl("Anteprima documento")}
                       className="rounded-lg p-1 transition-colors hover:bg-slate-100"
                       style={previewDocId === doc.id ? { color: theme.text } : { color: '#a3a3a3' }}>
                       <Eye className="h-3.5 w-3.5" />
                     </button>
                   )}
                   <button onClick={(e) => { e.stopPropagation(); onDelete(doc.id) }}
-                    title={`Rimuovi dal ${noun}`}
+                    title={tl("Rimuovi dal {0}", noun)}
                     className="rounded-lg p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -385,27 +382,27 @@ function DocumentPreviewModal({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Anteprima ${doc.title}`}>
+        onClick={(e) => e.stopPropagation()} role="dialog" aria-label={tl("Anteprima {0}", doc.title)}>
         <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-4 py-3">
           {docIcon(doc.doc_type)}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
             <p className="text-[11px] text-slate-400">
               {chunks.length} blocchi
-              {totalHighlights > 0 && <> · <span className="inline-flex items-center gap-1"><Highlighter className="h-3 w-3" />{totalHighlights} passaggi evidenziati dall’ultima ricerca</span></>}
+              {totalHighlights > 0 && <> · <span className="inline-flex items-center gap-1"><Highlighter className="h-3 w-3" />{totalHighlights} {tl("passaggi evidenziati dall’ultima ricerca")}</span></>}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {loading && (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400" style={{ color: theme.text }}>
-              <Loader2 className="h-4 w-4 animate-spin" /> Caricamento…
+              <Loader2 className="h-4 w-4 animate-spin" /> {tl("Caricamento…")}
             </div>
           )}
-          {!loading && chunks.length === 0 && <p className="py-12 text-center text-sm text-slate-400">Nessun contenuto da mostrare.</p>}
+          {!loading && chunks.length === 0 && <p className="py-12 text-center text-sm text-slate-400">{tl("Nessun contenuto da mostrare.")}</p>}
           {chunks.map((c, i) => {
             const hl = highlightsByChunk.get(c.id)
             const isFocus = focusChunkId === c.id
@@ -415,7 +412,7 @@ function DocumentPreviewModal({
             return (
               <div key={c.id}>
                 {c.page && c.page !== prevPage && (
-                  <p className="mb-1 mt-2 border-b border-slate-100 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pagina {c.page}</p>
+                  <p className="mb-1 mt-2 border-b border-slate-100 pb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tl("Pagina")} {c.page}</p>
                 )}
                 <div ref={isFocus ? focusRef : attachMark ? firstMarkRef : undefined}
                   className={`whitespace-pre-wrap rounded-lg px-2 py-1 text-[13px] leading-relaxed text-slate-700 ${isFocus ? 'ring-2 ring-amber-300' : ''}`}>
@@ -456,7 +453,7 @@ function CitedContent({
 	                : chunk
 	                  ? { backgroundColor: 'var(--surface-muted)', color: 'var(--selection-text)' }
                   : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
-              title={chunk ? `Fonte: ${chunk.document_title}${chunk.page ? ` — p.${chunk.page}` : ''}` : 'Fonte non disponibile'}>
+              title={chunk ? tl("Fonte: {0}{1}", chunk.document_title, chunk.page ? ` — p.${chunk.page}` : '') : tl("Fonte non disponibile")}>
               {seg.index}
             </button>
           )
@@ -519,9 +516,9 @@ function ChatPanel({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 py-12">
             <Search className="h-10 w-10 mb-3 opacity-30" />
-            <p className="text-sm font-medium text-slate-600">Fai domande precise sui tuoi documenti</p>
+            <p className="text-sm font-medium text-slate-600">{tl("Fai domande precise sui tuoi documenti")}</p>
             <p className="text-xs mt-1 max-w-sm">
-              Il sistema cerca passaggi pertinenti, li mostra nella colonna Fonti e risponde con citazioni [[1]], [[2]].
+              {tl("Il sistema cerca passaggi pertinenti, li mostra nella colonna Fonti e risponde con citazioni [[1]], [[2]].")}
             </p>
           </div>
         )}
@@ -555,8 +552,8 @@ function ChatPanel({
               <Search className="h-3.5 w-3.5 animate-pulse" style={{ color: theme.text }} />
             </div>
 	            <div className="rounded-xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] px-4 py-3 shadow-sm">
-              <p className="text-sm font-medium text-[var(--text-primary)]">Ricerca nelle fonti…</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">Sto combinando significato e corrispondenze testuali.</p>
+              <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Ricerca nelle fonti…")}</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{tl("Sto combinando significato e corrispondenze testuali.")}</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
@@ -572,8 +569,8 @@ function ChatPanel({
 	              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: theme.text }} />
 	            </div>
 	            <div className="rounded-xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] px-4 py-3 shadow-sm">
-              <p className="text-sm font-medium text-[var(--text-primary)]">Generazione risposta…</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">La risposta viene costruita solo a partire dai passaggi trovati.</p>
+              <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Generazione risposta…")}</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{tl("La risposta viene costruita solo a partire dai passaggi trovati.")}</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-2 h-2 rounded-full animate-bounce"
@@ -602,8 +599,8 @@ function ChatPanel({
           onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d4d4d4' }}>
           <textarea ref={composerRef} value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (onHistoryKey(e)) return; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend() } }}
-            placeholder={isLoading ? 'Elaborazione in corso…' :
-              selectedDocIds.length > 0 ? 'Domanda sui documenti selezionati…' : `Domanda sul ${noun}…`}
+            placeholder={isLoading ? tl("Elaborazione in corso…") :
+              selectedDocIds.length > 0 ? tl("Domanda sui documenti selezionati…") : tl("Domanda sul {0}…", noun)}
             rows={2} disabled={isLoading}
             className="flex-1 resize-none bg-transparent px-2 py-2 text-[16px] leading-7 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] disabled:cursor-not-allowed" />
           <button onClick={handleSend} disabled={!input.trim() || isLoading}
@@ -612,7 +609,7 @@ function ChatPanel({
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-slate-400">
-          Risposte ancorate ai documenti caricati · Citazioni [[n]] cliccabili
+          {tl("Risposte ancorate ai documenti caricati · Citazioni [[n]] cliccabili")}
         </p>
       </div>
     </div>
@@ -643,13 +640,13 @@ function SourcePanel({
   }, [highlightedChunk])
 
   const displayChunks = pendingChunks ?? sourceChunks ?? chunks
-  const label = pendingChunks ? `Fonti trovate (${pendingChunks.length})`
-    : sourceChunks ? `Fonti citate (${sourceChunks.length})`
+  const label = pendingChunks ? tl("Fonti trovate ({0})", pendingChunks.length)
+    : sourceChunks ? tl("Fonti citate ({0})", sourceChunks.length)
     : activeDoc ? activeDoc.title
-    : 'Fonti'
+    : tl("Fonti")
 
-  const labelBadge = pendingChunks ? { text: 'anteprima', amber: true }
-    : sourceChunks ? { text: 'ultima risposta', amber: false }
+  const labelBadge = pendingChunks ? { text: tl("anteprima"), amber: true }
+    : sourceChunks ? { text: tl("ultima risposta"), amber: false }
     : null
 
   return (
@@ -670,15 +667,15 @@ function SourcePanel({
       {(isLoadingChunks || ragPhase === 'searching') && (
         <div className="flex flex-col items-center justify-center py-8 gap-2" style={{ color: theme.text }}>
           <Search className="h-5 w-5 animate-pulse" />
-          <p className="text-[11px]">Ricerca in corso…</p>
+          <p className="text-[11px]">{tl("Ricerca in corso…")}</p>
         </div>
       )}
 
       {!isLoadingChunks && ragPhase !== 'searching' && displayChunks.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs text-center py-8">
           <Eye className="h-8 w-8 mb-2 opacity-30" />
-          <p>Le fonti appariranno qui</p>
-          <p className="mt-1 text-[11px]">Apri un documento o invia una domanda per vedere i passaggi usati</p>
+          <p>{tl("Le fonti appariranno qui")}</p>
+          <p className="mt-1 text-[11px]">{tl("Apri un documento o invia una domanda per vedere i passaggi usati")}</p>
         </div>
       )}
 
@@ -720,12 +717,12 @@ function SourcePanel({
               <div className="mt-2 flex items-center gap-2">
                 {chunk.highlights && chunk.highlights.length > 0 && (
                   <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
-                    <Highlighter className="h-3 w-3" />{chunk.highlights.length} {chunk.highlights.length === 1 ? 'passaggio pertinente' : 'passaggi pertinenti'}
+                    <Highlighter className="h-3 w-3" />{chunk.highlights.length} {chunk.highlights.length === 1 ? tl("passaggio pertinente") : tl("passaggi pertinenti")}
                   </span>
                 )}
                 <button type="button" onClick={() => onOpenInDocument(chunk)}
                   className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-slate-700">
-                  Apri nel documento
+                  {tl("Apri nel documento")}
                 </button>
               </div>
             </div>
@@ -742,7 +739,7 @@ const ACCEPT = '.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md,.png,.jpg,.jpeg,.webp,.
 
 export default function StudentRagWorkspace({
   theme, session, onSessionUpdate, onNewSession, onSwitchSession, onDeleteSession,
-  api = studentRagApi, store, variant = 'student', onBack, backLabel = 'Spazio AI',
+  api = studentRagApi, store, variant = 'student', onBack, backLabel = tl("Spazio AI"),
 }: {
   theme: AccentTheme
   session: RagSession
@@ -910,7 +907,7 @@ export default function StudentRagWorkspace({
       })
       queryClient.invalidateQueries({ queryKey: docsKey })
     } catch (err: unknown) {
-      setChatError(errorDetail(err, 'Impossibile trascrivere e indicizzare il video YouTube.'))
+      setChatError(errorDetail(err, tl("Impossibile trascrivere e indicizzare il video YouTube.")))
     } finally {
       setIsAddingSource(false)
     }
@@ -960,7 +957,7 @@ export default function StudentRagWorkspace({
       setSourceChunks(responseChunks)
       setPendingChunks(null)
     } catch (err: unknown) {
-      setChatError(errorDetail(err, err instanceof Error ? err.message : 'Errore nella risposta. Riprova.'))
+      setChatError(errorDetail(err, err instanceof Error ? err.message : tl("Errore nella risposta. Riprova.")))
       setPendingChunks(null)
     } finally {
       setRagPhase('idle')
@@ -1006,7 +1003,7 @@ export default function StudentRagWorkspace({
       {/* Single toolbar: navigation · session · sources · help */}
       <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white/95 px-3 py-2 shadow-sm">
         {onBack && (
-          <button type="button" onClick={onBack} className="inline-flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-bold text-slate-700 hover:bg-slate-100" title={`Torna a ${backLabel}`}>
+          <button type="button" onClick={onBack} className="inline-flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-bold text-slate-700 hover:bg-slate-100" title={tl("Torna a {0}", backLabel)}>
             <ChevronLeft className="h-4 w-4" />
             <span className="hidden sm:inline">{backLabel}</span>
           </button>
@@ -1017,7 +1014,7 @@ export default function StudentRagWorkspace({
           <button
             onClick={() => setSessionMenuOpen((o) => !o)}
             className="flex h-9 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left transition-all hover:border-slate-300"
-            title="Cronologia e fonti della sessione"
+            title={tl("Cronologia e fonti della sessione")}
           >
             <Database className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{session.name}</span>
@@ -1033,12 +1030,12 @@ export default function StudentRagWorkspace({
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100">
                     <Plus className="h-3.5 w-3.5" style={{ color: theme.text }} />
                   </div>
-                  <span className="text-xs font-semibold" style={{ color: theme.text }}>Nuova sessione</span>
+                  <span className="text-xs font-semibold" style={{ color: theme.text }}>{tl("Nuova sessione")}</span>
                 </button>
               </div>
               <div className="max-h-56 space-y-0.5 overflow-y-auto p-2">
                 {allSessions.length === 0 && (
-                  <p className="py-3 text-center text-[11px] text-slate-400">Nessuna sessione salvata</p>
+                  <p className="py-3 text-center text-[11px] text-slate-400">{tl("Nessuna sessione salvata")}</p>
                 )}
                 {allSessions.map((s) => {
                   const isCurrent = s.id === session.id
@@ -1053,7 +1050,7 @@ export default function StudentRagWorkspace({
                           <span className="truncate text-xs font-semibold text-slate-700">{s.name}</span>
                           {isCurrent && (
                             <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
-                              style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>attiva</span>
+                              style={{ backgroundColor: 'rgb(var(--c-neutral-100))', color: theme.text }}>{tl("attiva")}</span>
                           )}
                         </div>
                         {lastMsg && <p className="truncate text-[10px] text-slate-400">{lastMsg.content.slice(0, 50)}</p>}
@@ -1062,7 +1059,7 @@ export default function StudentRagWorkspace({
                       <button
                         onClick={() => { onDeleteSession(s.id); setSessionMenuOpen(false) }}
                         className="shrink-0 rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
-                        title="Rimuovi sessione"
+                        title={tl("Rimuovi sessione")}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1074,28 +1071,28 @@ export default function StudentRagWorkspace({
           )}
         </div>
 
-        <button onClick={onNewSession} title="Nuova sessione" className={toolbarBtn}>
+        <button onClick={onNewSession} title={tl("Nuova sessione")} className={toolbarBtn}>
           <Plus className="h-3.5 w-3.5" />
-          <span className="hidden md:inline">Nuova</span>
+          <span className="hidden md:inline">{tl("Nuova")}</span>
         </button>
 
         <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
 
         {/* Sources */}
         <button onClick={() => fileRef.current?.click()} disabled={isUploading} className={toolbarBtn}
-          title="PDF, Word, TXT, CSV, Excel, immagini — puoi anche trascinarli nella finestra">
+          title={tl("PDF, Word, TXT, CSV, Excel, immagini — puoi anche trascinarli nella finestra")}>
           {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-          <span className="hidden md:inline">Aggiungi file</span>
+          <span className="hidden md:inline">{tl("Aggiungi file")}</span>
         </button>
 
         <div className="relative" ref={youtubeRef}>
-          <button onClick={() => setYoutubeOpen((o) => !o)} disabled={isAddingSource} className={toolbarBtn} title="Aggiungi trascrizione YouTube">
+          <button onClick={() => setYoutubeOpen((o) => !o)} disabled={isAddingSource} className={toolbarBtn} title={tl("Aggiungi trascrizione YouTube")}>
             {isAddingSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             <span className="hidden md:inline">YouTube</span>
           </button>
           {youtubeOpen && (
             <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl">
-              <p className="mb-1.5 text-[11px] font-bold text-slate-700">Trascrizione YouTube nel {noun}</p>
+              <p className="mb-1.5 text-[11px] font-bold text-slate-700">{tl("Trascrizione YouTube nel")} {noun}</p>
               <form className="flex gap-2" onSubmit={(e) => {
                 e.preventDefault()
                 if (!youtubeUrl.trim()) return
@@ -1107,7 +1104,7 @@ export default function StudentRagWorkspace({
                   className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs outline-none placeholder:text-slate-400 focus:border-slate-300" />
                 <button type="submit" disabled={!youtubeUrl.trim()}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] disabled:bg-none disabled:bg-slate-100 disabled:text-slate-300"
-                  title="Trascrivi e indicizza">
+                  title={tl("Trascrivi e indicizza")}>
                   <Plus className="h-3.5 w-3.5" />
                 </button>
               </form>
@@ -1116,9 +1113,9 @@ export default function StudentRagWorkspace({
         </div>
 
         <div className="relative ml-auto flex items-center gap-1" ref={infoRef}>
-          <button onClick={() => setInfoOpen((o) => !o)} className={toolbarBtn} title="Come usa le fonti?">
+          <button onClick={() => setInfoOpen((o) => !o)} className={toolbarBtn} title={tl("Come usa le fonti?")}>
             <Sparkles className="h-3.5 w-3.5" style={{ color: theme.text }} />
-            <span className="hidden lg:inline">Come funziona</span>
+            <span className="hidden lg:inline">{tl("Come funziona")}</span>
           </button>
           {infoOpen && (
             <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
@@ -1126,7 +1123,7 @@ export default function StudentRagWorkspace({
             </div>
           )}
           <button onClick={() => setDocsCollapsed((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
-            title={docsCollapsed ? 'Mostra documenti' : 'Nascondi documenti'}>
+            title={docsCollapsed ? tl("Mostra documenti") : tl("Nascondi documenti")}>
             {docsCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
@@ -1137,7 +1134,7 @@ export default function StudentRagWorkspace({
           style={{ borderColor: theme.accent }}>
           <div className="text-center">
             <Upload className="mx-auto mb-2 h-8 w-8" style={{ color: theme.text }} />
-            <p className="text-sm font-bold text-slate-700">Rilascia per aggiungere al {noun}</p>
+            <p className="text-sm font-bold text-slate-700">{tl("Rilascia per aggiungere al")} {noun}</p>
           </div>
         </div>
       )}

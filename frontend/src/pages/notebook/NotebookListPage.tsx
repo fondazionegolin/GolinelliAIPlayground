@@ -13,6 +13,7 @@ import { Button } from '@/design/primitives/Button'
 import type { NotebookProjectType } from '@/components/notebook/types'
 import { useAuthStore } from '@/stores/auth'
 import ProjectPreview, { colorOf } from '@/components/notebook/ProjectPreview'
+import { tl } from '@/i18n/tl'
 
 interface NotebookMeta {
   id: string
@@ -160,7 +161,7 @@ function getProjectDescription(type: NotebookProjectType, isEnglish: boolean) {
 
 function formatCellCount(count: number, isEnglish: boolean) {
   if (isEnglish) return count === 1 ? '1 cell' : `${count} cells`
-  return count === 1 ? '1 cella' : `${count} celle`
+  return count === 1 ? tl("1 cella") : `${count} celle`
 }
 
 function NotebookCard({

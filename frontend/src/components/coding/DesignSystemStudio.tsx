@@ -15,31 +15,32 @@ import {
 } from '@/components/icons'
 import { designSystemApi } from '@/lib/api'
 import type { DesignSystem, DesignTokens } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 // System-safe font stacks (the preview sandbox has no network → no web fonts). Keys match the
 // backend DS_FONT_STACKS so a chosen key renders identically here and in the generated app.
 const FONT_STACKS: Record<string, { label: string; stack: string }> = {
-  sans: { label: 'Sans (sistema)', stack: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" },
-  humanist: { label: 'Umanista', stack: "'Segoe UI', 'Helvetica Neue', Optima, 'Gill Sans', 'Trebuchet MS', system-ui, sans-serif" },
-  geometric: { label: 'Geometrico', stack: "Futura, 'Century Gothic', 'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif" },
-  rounded: { label: 'Arrotondato', stack: "ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif" },
-  condensed: { label: 'Stretto', stack: "'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', 'Segoe UI', sans-serif" },
-  serif: { label: 'Serif elegante', stack: "Georgia, 'Times New Roman', 'Iowan Old Style', serif" },
+  sans: { label: tl("Sans (sistema)"), stack: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" },
+  humanist: { label: tl("Umanista"), stack: "'Segoe UI', 'Helvetica Neue', Optima, 'Gill Sans', 'Trebuchet MS', system-ui, sans-serif" },
+  geometric: { label: tl("Geometrico"), stack: "Futura, 'Century Gothic', 'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif" },
+  rounded: { label: tl("Arrotondato"), stack: "ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif" },
+  condensed: { label: tl("Stretto"), stack: "'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', 'Segoe UI', sans-serif" },
+  serif: { label: tl("Serif elegante"), stack: "Georgia, 'Times New Roman', 'Iowan Old Style', serif" },
   slab: { label: 'Slab', stack: "Rockwell, 'Roboto Slab', 'Courier New', Georgia, serif" },
   didone: { label: 'Didone', stack: "Didot, 'Bodoni MT', 'Playfair Display', 'Hoefler Text', Georgia, serif" },
-  mono: { label: 'Monospazio', stack: "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" },
+  mono: { label: tl("Monospazio"), stack: "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" },
 }
 
 const MOODS = [
-  { key: 'giocoso', label: 'Giocoso', hint: 'colori vivaci, forme morbide' },
-  { key: 'elegante', label: 'Elegante', hint: 'sobrio, contrasti netti, serif' },
-  { key: 'tech', label: 'Tech', hint: 'scuro, accenti brillanti, mono' },
-  { key: 'editoriale', label: 'Editoriale', hint: 'tipografia forte, molto whitespace' },
-  { key: 'naturale', label: 'Naturale', hint: 'toni caldi/terra, calmo' },
-  { key: 'minimal', label: 'Minimal', hint: 'piatto, pochi colori, essenziale' },
+  { key: 'giocoso', label: tl("Giocoso"), hint: tl("colori vivaci, forme morbide") },
+  { key: 'elegante', label: tl("Elegante"), hint: tl("sobrio, contrasti netti, serif") },
+  { key: 'tech', label: 'Tech', hint: tl("scuro, accenti brillanti, mono") },
+  { key: 'editoriale', label: tl("Editoriale"), hint: tl("tipografia forte, molto whitespace") },
+  { key: 'naturale', label: tl("Naturale"), hint: tl("toni caldi/terra, calmo") },
+  { key: 'minimal', label: 'Minimal', hint: tl("piatto, pochi colori, essenziale") },
 ]
 
-const PRIORITY_OPTIONS = ['leggibilità', 'gerarchia', 'whitespace', 'densità informativa', 'vivacità', 'coerenza', 'accessibilità']
+const PRIORITY_OPTIONS = [tl("leggibilità"), 'gerarchia', 'whitespace', tl("densità informativa"), tl("vivacità"), 'coerenza', tl("accessibilità")]
 
 const DEFAULT_TOKENS: DesignTokens = {
   mood: '',
@@ -53,7 +54,7 @@ const DEFAULT_TOKENS: DesignTokens = {
   typography: { fontHeading: 'sans', fontBody: 'sans', baseSize: 16, scaleRatio: 1.25, headingWeight: 700, bodyWeight: 400 },
   shape: { radius: 12, buttonShape: 'soft', buttonStyle: 'solid', surfaceStyle: 'flat', shadowLevel: 'soft', borderWidth: 1 },
   spacing: { base: 8, density: 'comfortable' },
-  priorities: ['leggibilità', 'gerarchia', 'coerenza'],
+  priorities: [tl("leggibilità"), 'gerarchia', 'coerenza'],
 }
 
 // --- contrast helpers (client mirror of the backend so feedback is instant) ---
@@ -149,11 +150,11 @@ function previewVars(t: DesignTokens): Record<string, string> {
 }
 
 const CONTRAST_PAIRS: { label: string; fg: (p: DesignTokens['palette']) => string; bg: (p: DesignTokens['palette']) => string }[] = [
-  { label: 'Testo su sfondo', fg: (p) => p.text, bg: (p) => p.background },
-  { label: 'Testo su superficie', fg: (p) => p.text, bg: (p) => p.surface },
-  { label: 'Testo attenuato', fg: (p) => p.textMuted, bg: (p) => p.background },
-  { label: 'Bottone primario', fg: (p) => p.primaryText, bg: (p) => p.primary },
-  { label: 'Bottone accento', fg: (p) => p.accentText, bg: (p) => p.accent },
+  { label: tl("Testo su sfondo"), fg: (p) => p.text, bg: (p) => p.background },
+  { label: tl("Testo su superficie"), fg: (p) => p.text, bg: (p) => p.surface },
+  { label: tl("Testo attenuato"), fg: (p) => p.textMuted, bg: (p) => p.background },
+  { label: tl("Bottone primario"), fg: (p) => p.primaryText, bg: (p) => p.primary },
+  { label: tl("Bottone accento"), fg: (p) => p.accentText, bg: (p) => p.accent },
 ]
 
 type StudioProps = {
@@ -164,7 +165,7 @@ type StudioProps = {
 
 type Mode = { kind: 'list' } | { kind: 'edit'; id: string | null }
 
-const STEPS = ['Identità', 'Palette', 'Tipografia', 'Forma', 'Priorità', 'Riepilogo'] as const
+const STEPS = [tl("Identità"), 'Palette', tl("Tipografia"), tl("Forma"), tl("Priorità"), tl("Riepilogo")] as const
 
 export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
   const [systems, setSystems] = useState<DesignSystem[]>([])
@@ -342,7 +343,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
                   onClick={() => (step === 0 ? setMode({ kind: 'list' }) : setStep((s) => s - 1))}
                   className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
                 >
-                  <ChevronLeft className="h-4 w-4" /> {step === 0 ? 'Libreria' : 'Indietro'}
+                  <ChevronLeft className="h-4 w-4" /> {step === 0 ? tl("Libreria") : tl("Indietro")}
                 </button>
                 {step < STEPS.length - 1 ? (
                   <button
@@ -350,7 +351,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
                     disabled={step === 0 && !name.trim()}
                     className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    Avanti <ChevronRight className="h-4 w-4" />
+                    {tl("Avanti")} <ChevronRight className="h-4 w-4" />
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -359,7 +360,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
                       disabled={saving || !name.trim()}
                       className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
                     >
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Salva in libreria
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {tl("Salva in libreria")}
                     </button>
                     {onApply && (
                       <button
@@ -367,7 +368,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
                         disabled={saving || !name.trim()}
                         className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                       >
-                        <Wand2 className="h-4 w-4" /> Salva e applica
+                        <Wand2 className="h-4 w-4" /> {tl("Salva e applica")}
                       </button>
                     )}
                   </div>
@@ -376,7 +377,7 @@ export default function DesignSystemStudio({ onApply, onClose }: StudioProps) {
             </div>
             {/* right: live preview */}
             <div className="min-h-0 w-1/2 overflow-y-auto bg-slate-100 p-5">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Anteprima coerenza</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">{tl("Anteprima coerenza")}</p>
               <LivePreview tokens={tokens} />
             </div>
           </div>
@@ -414,9 +415,9 @@ function LibraryView({ systems, loading, onNew, onEdit, onApply, onDelete }: {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-5">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-slate-500">I tuoi design system riutilizzabili. Creane uno e applicalo a qualsiasi progetto.</p>
+        <p className="text-sm text-slate-500">{tl("I tuoi design system riutilizzabili. Creane uno e applicalo a qualsiasi progetto.")}</p>
         <button onClick={onNew} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-          <Plus className="h-4 w-4" /> Nuovo
+          <Plus className="h-4 w-4" /> {tl("Nuovo")}
         </button>
       </div>
       {loading ? (
@@ -424,8 +425,8 @@ function LibraryView({ systems, loading, onNew, onEdit, onApply, onDelete }: {
       ) : systems.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 px-6 py-12 text-center">
           <Sparkles className="mx-auto mb-2 h-8 w-8 text-indigo-300" />
-          <p className="font-semibold text-slate-700">Ancora nessun design system</p>
-          <p className="mt-1 text-sm text-slate-500">Costruiscine uno guidato: palette, tipografia, forma e priorità visive.</p>
+          <p className="font-semibold text-slate-700">{tl("Ancora nessun design system")}</p>
+          <p className="mt-1 text-sm text-slate-500">{tl("Costruiscine uno guidato: palette, tipografia, forma e priorità visive.")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -437,8 +438,8 @@ function LibraryView({ systems, loading, onNew, onEdit, onApply, onDelete }: {
                   {ds.tokens_json?.mood && <p className="text-xs text-slate-400">{ds.tokens_json.mood}</p>}
                 </div>
                 <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                  <button onClick={() => onEdit(ds)} title="Modifica" className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => onDelete(ds.id)} title="Elimina" className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => onEdit(ds)} title={tl("Modifica")} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
+                  <button onClick={() => onDelete(ds.id)} title={tl("Elimina")} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
               <div className="mb-3 flex gap-1.5">
@@ -448,7 +449,7 @@ function LibraryView({ systems, loading, onNew, onEdit, onApply, onDelete }: {
               </div>
               {onApply && (
                 <button onClick={() => onApply(ds)} className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
-                  Applica al progetto
+                  {tl("Applica al progetto")}
                 </button>
               )}
             </div>
@@ -484,16 +485,16 @@ function StepIdentity({ name, setName, description, setDescription, mood, sugges
 }) {
   return (
     <div>
-      <Field label="Nome del design system" hint="Es. “Brand scuola”, “Estate vivace”">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dai un nome riconoscibile"
+      <Field label={tl("Nome del design system")} hint={tl("Es. “Brand scuola”, “Estate vivace”")}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tl("Dai un nome riconoscibile")}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
       </Field>
-      <Field label="A cosa serve / che mood?" hint="Una riga: aiuta l’AI a proporre una base coerente">
+      <Field label={tl("A cosa serve / che mood?")} hint={tl("Una riga: aiuta l’AI a proporre una base coerente")}>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-          placeholder="Es. sito per una festa di scuola, allegro e colorato"
+          placeholder={tl("Es. sito per una festa di scuola, allegro e colorato")}
           className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
       </Field>
-      <Field label="Parti da un’identità" hint="Scegli un mood: l’AI propone palette, font e forme coerenti (poi personalizzi tutto)">
+      <Field label={tl("Parti da un’identità")} hint={tl("Scegli un mood: l’AI propone palette, font e forme coerenti (poi personalizzi tutto)")}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {MOODS.map((m) => (
             <button key={m.key} onClick={() => onSuggest(m.key)} disabled={suggesting}
@@ -503,7 +504,7 @@ function StepIdentity({ name, setName, description, setDescription, mood, sugges
             </button>
           ))}
         </div>
-        {suggesting && <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-600"><Loader2 className="h-3.5 w-3.5 animate-spin" /> L’AI sta proponendo una base coerente…</p>}
+        {suggesting && <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-600"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {tl("L’AI sta proponendo una base coerente…")}</p>}
       </Field>
     </div>
   )
@@ -529,11 +530,11 @@ function StepPalette({ tokens, patch, checks, rationale }: {
 }) {
   const set = (key: keyof DesignTokens['palette']) => (v: string) => patch((t) => { t.palette[key] = v; return t })
   const pairs: [keyof DesignTokens['palette'], string][] = [
-    ['primary', 'Primario'], ['primaryText', 'Testo su primario'],
-    ['accent', 'Accento'], ['accentText', 'Testo su accento'],
-    ['background', 'Sfondo'], ['surface', 'Superficie/Card'],
-    ['text', 'Testo'], ['textMuted', 'Testo attenuato'],
-    ['border', 'Bordi'], ['success', 'Successo'], ['danger', 'Errore'],
+    ['primary', tl("Primario")], ['primaryText', tl("Testo su primario")],
+    ['accent', tl("Accento")], ['accentText', tl("Testo su accento")],
+    ['background', tl("Sfondo")], ['surface', "Superficie/Card"],
+    ['text', 'Testo'], ['textMuted', tl("Testo attenuato")],
+    ['border', tl("Bordi")], ['success', tl("Successo")], ['danger', tl("Errore")],
   ]
   return (
     <div>
@@ -542,7 +543,7 @@ function StepPalette({ tokens, patch, checks, rationale }: {
         {pairs.map(([k, label]) => <ColorInput key={k} label={label} value={tokens.palette[k]} onChange={set(k)} />)}
       </div>
       <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Controllo contrasto (AA ≥ 4.5)</p>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{tl("Controllo contrasto (AA ≥ 4.5)")}</p>
         <div className="space-y-1">
           {checks.map((c) => (
             <div key={c.label} className="flex items-center justify-between text-xs">
@@ -563,16 +564,16 @@ function StepTypography({ tokens, patch, rationale }: { tokens: DesignTokens; pa
   return (
     <div>
       <RationaleNote text={rationale} />
-      <Field label="Font titoli">
+      <Field label={tl("Font titoli")}>
         <FontPicker value={t.fontHeading} onChange={(v) => patch((x) => { x.typography.fontHeading = v; return x })} />
       </Field>
-      <Field label="Font corpo">
+      <Field label={tl("Font corpo")}>
         <FontPicker value={t.fontBody} onChange={(v) => patch((x) => { x.typography.fontBody = v; return x })} />
       </Field>
-      <Field label={`Dimensione base: ${t.baseSize}px`} hint="≥ 16px per buona leggibilità">
+      <Field label={tl("Dimensione base: {0}px", t.baseSize)} hint={tl("≥ 16px per buona leggibilità")}>
         <input type="range" min={14} max={20} value={t.baseSize} onChange={(e) => patch((x) => { x.typography.baseSize = Number(e.target.value); return x })} className="w-full" />
       </Field>
-      <Field label={`Scala tipografica: ${t.scaleRatio}`} hint="Più alta = titoli più grandi, gerarchia più forte">
+      <Field label={tl("Scala tipografica: {0}", t.scaleRatio)} hint={tl("Più alta = titoli più grandi, gerarchia più forte")}>
         <input type="range" min={1.1} max={1.6} step={0.05} value={t.scaleRatio} onChange={(e) => patch((x) => { x.typography.scaleRatio = Number(e.target.value); return x })} className="w-full" />
       </Field>
     </div>
@@ -614,12 +615,12 @@ function StepShape({ tokens, patch, rationale }: { tokens: DesignTokens; patch: 
   return (
     <div>
       <RationaleNote text={rationale} />
-      <OptionRow label="Forma bottoni" value={tokens.shape.buttonShape}
-        options={[{ key: 'squared', label: 'Squadrati' }, { key: 'soft', label: 'Morbidi' }, { key: 'pill', label: 'Pillola' }]}
+      <OptionRow label={tl("Forma bottoni")} value={tokens.shape.buttonShape}
+        options={[{ key: 'squared', label: tl("Squadrati") }, { key: 'soft', label: tl("Morbidi") }, { key: 'pill', label: tl("Pillola") }]}
         onChange={(v) => patch((x) => { x.shape.buttonShape = v; return x })} />
-      <Field label="Stile bottoni">
+      <Field label={tl("Stile bottoni")}>
         <div className="grid grid-cols-3 gap-2">
-          {([['solid', 'Pieno'], ['outline', 'Bordo'], ['soft', 'Tinta'], ['gradient', 'Gradiente'], ['glass', 'Vetro'], ['glossy', 'Lucido']] as const).map(([k, label]) => (
+          {([['solid', tl("Pieno")], ['outline', tl("Bordo")], ['soft', tl("Tinta")], ['gradient', tl("Gradiente")], ['glass', tl("Vetro")], ['glossy', tl("Lucido")]] as const).map(([k, label]) => (
             <button key={k} onClick={() => patch((x) => { x.shape.buttonStyle = k; return x })}
               className={`rounded-lg border px-2 py-1.5 text-sm font-semibold transition ${tokens.shape.buttonStyle === k ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
               {label}
@@ -627,9 +628,9 @@ function StepShape({ tokens, patch, rationale }: { tokens: DesignTokens; patch: 
           ))}
         </div>
       </Field>
-      <Field label="Stile card/superfici" hint="Vetro e translucido si vedono meglio su sfondi colorati">
+      <Field label={tl("Stile card/superfici")} hint={tl("Vetro e translucido si vedono meglio su sfondi colorati")}>
         <div className="grid grid-cols-4 gap-2">
-          {([['flat', 'Piene'], ['transparent', 'Translucide'], ['frosted', 'Vetro'], ['glossy', 'Lucide']] as const).map(([k, label]) => (
+          {([['flat', tl("Piene")], ['transparent', tl("Translucide")], ['frosted', tl("Vetro")], ['glossy', tl("Lucide")]] as const).map(([k, label]) => (
             <button key={k} onClick={() => patch((x) => { x.shape.surfaceStyle = k; return x })}
               className={`rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${tokens.shape.surfaceStyle === k ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
               {label}
@@ -637,14 +638,14 @@ function StepShape({ tokens, patch, rationale }: { tokens: DesignTokens; patch: 
           ))}
         </div>
       </Field>
-      <Field label={`Raggio angoli card: ${tokens.shape.radius}px`}>
+      <Field label={tl("Raggio angoli card: {0}px", tokens.shape.radius)}>
         <input type="range" min={0} max={28} value={tokens.shape.radius} onChange={(e) => patch((x) => { x.shape.radius = Number(e.target.value); return x })} className="w-full" />
       </Field>
-      <OptionRow label="Profondità (ombre)" value={tokens.shape.shadowLevel}
-        options={[{ key: 'none', label: 'Piatto' }, { key: 'soft', label: 'Morbide' }, { key: 'strong', label: 'Marcate' }]}
+      <OptionRow label={tl("Profondità (ombre)")} value={tokens.shape.shadowLevel}
+        options={[{ key: 'none', label: tl("Piatto") }, { key: 'soft', label: tl("Morbide") }, { key: 'strong', label: tl("Marcate") }]}
         onChange={(v) => patch((x) => { x.shape.shadowLevel = v; return x })} />
-      <OptionRow label="Densità spaziatura" value={tokens.spacing.density}
-        options={[{ key: 'compact', label: 'Compatta' }, { key: 'comfortable', label: 'Comoda' }, { key: 'spacious', label: 'Ariosa' }]}
+      <OptionRow label={tl("Densità spaziatura")} value={tokens.spacing.density}
+        options={[{ key: 'compact', label: tl("Compatta") }, { key: 'comfortable', label: tl("Comoda") }, { key: 'spacious', label: tl("Ariosa") }]}
         onChange={(v) => patch((x) => { x.spacing.density = v; return x })} />
     </div>
   )
@@ -658,7 +659,7 @@ function StepPriorities({ tokens, patch }: { tokens: DesignTokens; patch: (fn: (
   })
   return (
     <div>
-      <p className="mb-3 text-sm text-slate-500">Cosa conta di più in questo design? L’ordine guida le scelte di gerarchia e layout dell’AI.</p>
+      <p className="mb-3 text-sm text-slate-500">{tl("Cosa conta di più in questo design? L’ordine guida le scelte di gerarchia e layout dell’AI.")}</p>
       <div className="flex flex-wrap gap-2">
         {PRIORITY_OPTIONS.map((p) => {
           const idx = tokens.priorities.indexOf(p)
@@ -682,25 +683,25 @@ function StepSummary({ name, score, warnings, compiling, markdown }: {
   const pct = score == null ? null : Math.round(score * 100)
   return (
     <div>
-      <Field label="Coerenza visiva">
+      <Field label={tl("Coerenza visiva")}>
         {compiling ? (
-          <p className="inline-flex items-center gap-1.5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Calcolo…</p>
+          <p className="inline-flex items-center gap-1.5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Calcolo…")}</p>
         ) : (
           <div className="flex items-center gap-3">
             <div className={`flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold ${pct != null && pct >= 80 ? 'bg-green-100 text-green-700' : pct != null && pct >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
               {pct == null ? '—' : `${pct}`}
             </div>
-            <p className="text-sm text-slate-600">{pct != null && pct >= 80 ? 'Ottima coerenza e leggibilità.' : 'Migliorabile: vedi le note sotto.'}</p>
+            <p className="text-sm text-slate-600">{pct != null && pct >= 80 ? tl("Ottima coerenza e leggibilità.") : tl("Migliorabile: vedi le note sotto.")}</p>
           </div>
         )}
       </Field>
       {warnings.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-700">Da migliorare</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-700">{tl("Da migliorare")}</p>
           <ul className="list-disc space-y-1 pl-4 text-xs text-amber-800">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </div>
       )}
-      <Field label={`design-system.md (verrà allegato a “${name || 'progetto'}”)`} hint="L’Ai è vincolata a queste regole quando genera il codice">
+      <Field label={tl("design-system.md (verrà allegato a “{0}”)", name || 'progetto')} hint={tl("L’Ai è vincolata a queste regole quando genera il codice")}>
         <pre className="max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-snug text-slate-600">{markdown || '…'}</pre>
       </Field>
     </div>
@@ -724,26 +725,26 @@ function LivePreview({ tokens }: { tokens: DesignTokens }) {
   }
   return (
     <div style={{ ...vars, background: bg, borderRadius: 16, padding: 'calc(var(--ds-space) * 3)', fontFamily: bodyFont, color: 'var(--ds-text)' }}>
-      <h1 style={{ fontFamily: headingFont, fontWeight: tokens.typography.headingWeight, fontSize: base * Math.pow(r, 3), margin: 0, lineHeight: 1.2 }}>Titolo principale</h1>
+      <h1 style={{ fontFamily: headingFont, fontWeight: tokens.typography.headingWeight, fontSize: base * Math.pow(r, 3), margin: 0, lineHeight: 1.2 }}>{tl("Titolo principale")}</h1>
       <p style={{ color: 'var(--ds-text-muted)', fontSize: base, marginTop: 'var(--ds-space)', lineHeight: 1.5 }}>
-        Testo di esempio per valutare leggibilità, ritmo e coerenza dei colori.
+        {tl("Testo di esempio per valutare leggibilità, ritmo e coerenza dei colori.")}
       </p>
       <div style={{ display: 'flex', gap: 'var(--ds-space)', marginTop: 'calc(var(--ds-space) * 2)', flexWrap: 'wrap' }}>
-        <button style={{ background: 'var(--ds-btn-bg)', color: 'var(--ds-btn-color)', border: 'var(--ds-btn-border)', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, boxShadow: 'var(--ds-shadow)', backdropFilter: 'var(--ds-btn-backdrop)', WebkitBackdropFilter: 'var(--ds-btn-backdrop)', cursor: 'pointer' }}>Azione primaria</button>
-        <button style={{ background: 'var(--ds-color-accent)', color: 'var(--ds-color-accent-text)', border: 'none', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, cursor: 'pointer' }}>Accento</button>
-        <button style={{ background: 'transparent', color: 'var(--ds-text)', border: 'var(--ds-border-width, 1px) solid var(--ds-border)', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, cursor: 'pointer' }}>Secondario</button>
+        <button style={{ background: 'var(--ds-btn-bg)', color: 'var(--ds-btn-color)', border: 'var(--ds-btn-border)', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, boxShadow: 'var(--ds-shadow)', backdropFilter: 'var(--ds-btn-backdrop)', WebkitBackdropFilter: 'var(--ds-btn-backdrop)', cursor: 'pointer' }}>{tl("Azione primaria")}</button>
+        <button style={{ background: 'var(--ds-color-accent)', color: 'var(--ds-color-accent-text)', border: 'none', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, cursor: 'pointer' }}>{tl("Accento")}</button>
+        <button style={{ background: 'transparent', color: 'var(--ds-text)', border: 'var(--ds-border-width, 1px) solid var(--ds-border)', borderRadius: 'var(--ds-btn-radius)', padding: '10px 18px', fontWeight: 600, cursor: 'pointer' }}>{tl("Secondario")}</button>
       </div>
       <div style={{ ...cardStyle, padding: 'calc(var(--ds-space) * 2)', marginTop: 'calc(var(--ds-space) * 2)' }}>
-        <h2 style={{ fontFamily: headingFont, fontWeight: tokens.typography.headingWeight, fontSize: base * Math.pow(r, 1.5), margin: 0 }}>Card di esempio</h2>
-        <p style={{ color: 'var(--ds-text-muted)', fontSize: base * 0.9, marginTop: 6, lineHeight: 1.5 }}>Card su superficie, con bordo e ombra secondo il design system.</p>
+        <h2 style={{ fontFamily: headingFont, fontWeight: tokens.typography.headingWeight, fontSize: base * Math.pow(r, 1.5), margin: 0 }}>{tl("Card di esempio")}</h2>
+        <p style={{ color: 'var(--ds-text-muted)', fontSize: base * 0.9, marginTop: 6, lineHeight: 1.5 }}>{tl("Card su superficie, con bordo e ombra secondo il design system.")}</p>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ds-success)' }}>● Successo</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ds-danger)' }}>● Errore</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ds-success)' }}>{tl("● Successo")}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ds-danger)' }}>{tl("● Errore")}</span>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'calc(var(--ds-space) * 2)' }}>
         <Type className="h-3.5 w-3.5" style={{ color: 'var(--ds-text-muted)' }} />
-        <input placeholder="Campo di testo" style={{ flex: 1, background: 'var(--ds-surface)', border: '1px solid var(--ds-border)', borderRadius: 'var(--ds-btn-radius)', padding: '8px 12px', color: 'var(--ds-text)', fontSize: base * 0.9 }} />
+        <input placeholder={tl("Campo di testo")} style={{ flex: 1, background: 'var(--ds-surface)', border: '1px solid var(--ds-border)', borderRadius: 'var(--ds-btn-radius)', padding: '8px 12px', color: 'var(--ds-text)', fontSize: base * 0.9 }} />
       </div>
     </div>
   )

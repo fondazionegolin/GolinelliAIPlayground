@@ -1,7 +1,8 @@
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import deferred
 
 from app.core.database import Base
 
@@ -22,6 +23,10 @@ class SolidModel(Base):
     shared_class_ids = Column(JSONB, nullable=False, default=list, server_default="[]")
     public_token = Column(String(64), nullable=True, unique=True)
     public_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    # Binary glTF built by the editor for AR viewers (Scene Viewer / Quick Look); valid while
+    # ar_scene_hash equals scene_hash(scene). Deferred: never loaded with list/detail queries.
+    ar_glb = deferred(Column(LargeBinary, nullable=True))
+    ar_scene_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 

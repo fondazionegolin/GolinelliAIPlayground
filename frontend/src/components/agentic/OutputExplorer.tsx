@@ -1,6 +1,7 @@
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BarChart3, Braces, Check, Copy, Download, FileSpreadsheet, Gauge, RotateCcw, X } from '@/components/icons'
 import { Button } from '@/design'
+import { tl } from '@/i18n/tl'
 
 export type TableValue = { columns?: string[]; rows: Array<Record<string, unknown>>; rowCount?: number }
 export type PlotValue = { kind: 'scatter' | 'histogram' | 'scatter3d'; x: number[]; xEnd?: number[]; y: number[]; z?: number[]; color?: unknown[]; labels?: Record<string, string>; title?: string }
@@ -22,7 +23,7 @@ const PALETTES: Record<string, string[]> = {
   Contrasto: ['#111827', '#dc2626', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#be185d'],
 }
 
-const METRIC_LABELS: Record<string, string> = { clusters: 'Cluster', rows: 'Righe', inertia: 'Inerzia', silhouette: 'Silhouette', davies_bouldin: 'Davies–Bouldin', r2: 'R²', rmse: 'RMSE', mae: 'MAE', accuracy: 'Accuracy', precision: 'Precisione', recall: 'Recall', f1: 'F1', cv_mean: 'CV media' }
+const METRIC_LABELS: Record<string, string> = { clusters: 'Cluster', rows: tl("Righe"), inertia: tl("Inerzia"), silhouette: 'Silhouette', davies_bouldin: 'Davies–Bouldin', r2: 'R²', rmse: 'RMSE', mae: 'MAE', accuracy: 'Accuracy', precision: tl("Precisione"), recall: 'Recall', f1: 'F1', cv_mean: tl("CV media") }
 
 /** Full-screen, operational explorer for any node output that is not a table (tables open in the spreadsheet). */
 export function OutputExplorerModal({ target, onClose, onOpenTable }: { target: ExplorerTarget; onClose: () => void; onOpenTable: (title: string, table: TableValue) => void }) {
@@ -33,13 +34,13 @@ export function OutputExplorerModal({ target, onClose, onOpenTable }: { target: 
     return () => window.removeEventListener('keydown', keydown)
   }, [onClose])
   const Icon = target.kind === 'plot' ? BarChart3 : target.kind === 'metrics' ? Gauge : Braces
-  const subtitle = target.kind === 'plot' ? 'Explorer interattivo del grafico' : target.kind === 'metrics' ? 'Metriche calcolate dal nodo' : 'Output completo del nodo'
+  const subtitle = target.kind === 'plot' ? tl("Explorer interattivo del grafico") : target.kind === 'metrics' ? tl("Metriche calcolate dal nodo") : tl("Output completo del nodo")
   return <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-sm md:p-5" role="dialog" aria-modal="true" aria-label={target.title} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <div className="flex h-[96vh] w-[98vw] max-w-[1800px] flex-col overflow-hidden rounded-2xl bg-neutral-100 shadow-2xl">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><Icon className="h-5 w-5" /></span>
-        <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{target.title}</h2><p className="text-[10px] text-slate-500">{subtitle} · Esc per chiudere</p></div>
-        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label="Chiudi"><X className="h-4 w-4" /></button>
+        <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black">{target.title}</h2><p className="text-[10px] text-slate-500">{subtitle} {tl("· Esc per chiudere")}</p></div>
+        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-4 w-4" /></button>
       </header>
       <div className="min-h-0 flex-1">
         {target.kind === 'plot' && <PlotExplorer title={target.title} plot={target.plot} onOpenTable={onOpenTable} />}
@@ -62,10 +63,10 @@ type PlotSettings = {
 function initialSettings(plot: PlotValue): PlotSettings {
   return {
     chart: plot.kind === 'histogram' ? 'bar' : plot.kind === 'scatter3d' ? 'scatter3d' : 'scatter',
-    title: plot.title || (plot.kind === 'histogram' ? 'Distribuzione' : 'Grafico'),
-    xLabel: plot.labels?.x || 'x', yLabel: plot.labels?.y || (plot.kind === 'histogram' ? 'Conteggio' : 'y'), zLabel: plot.labels?.z || 'z',
+    title: plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico")),
+    xLabel: plot.labels?.x || 'x', yLabel: plot.labels?.y || (plot.kind === 'histogram' ? tl("Conteggio") : 'y'), zLabel: plot.labels?.z || 'z',
     groupByColor: Boolean(plot.color?.length), markerSize: plot.kind === 'scatter3d' ? 4 : 8, opacity: .85,
-    xLog: false, yLog: false, grid: true, trend: false, palette: 'Piattaforma',
+    xLog: false, yLog: false, grid: true, trend: false, palette: tl("Piattaforma"),
     xMin: '', xMax: '', yMin: '', yMax: '',
   }
 }
@@ -85,12 +86,12 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
   const points = useMemo(() => {
     const xMin = numberOrNull(settings.xMin); const xMax = numberOrNull(settings.xMax)
     const yMin = numberOrNull(settings.yMin); const yMax = numberOrNull(settings.yMax)
-    return plot.x.map((x, index) => ({ x: Number(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? 'Dati') }))
+    return plot.x.map((x, index) => ({ x: Number(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? tl("Dati")) }))
       .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
       .filter((point) => (xMin === null || point.x >= xMin) && (xMax === null || point.x <= xMax) && (yMin === null || point.y >= yMin) && (yMax === null || point.y <= yMax))
   }, [plot, settings.xMin, settings.xMax, settings.yMin, settings.yMax])
 
-  const groups = settings.groupByColor ? [...new Set(points.map((point) => point.group))] : ['Dati']
+  const groups = settings.groupByColor ? [...new Set(points.map((point) => point.group))] : [tl("Dati")]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
   const regression = useMemo(() => {
     if (xs.length < 2) return null
@@ -157,10 +158,10 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
         xaxis: axis(settings.xLabel, settings.xLog, isHistogram && settings.chart === 'bar' ? { type: 'category' } : {}), yaxis: axis(settings.yLabel, settings.yLog) }
 
   const pointsTable = (): TableValue => {
-    const columns = [settings.xLabel, ...(isHistogram && plot.xEnd ? [`${settings.xLabel}_fine`] : []), settings.yLabel, ...(is3D ? [settings.zLabel] : []), ...(plot.color?.length ? ['gruppo'] : [])]
+    const columns = [settings.xLabel, ...(isHistogram && plot.xEnd ? [`${settings.xLabel}_fine`] : []), settings.yLabel, ...(is3D ? [settings.zLabel] : []), ...(plot.color?.length ? [tl("gruppo")] : [])]
     const rows = points.map((point) => Object.fromEntries([
       [settings.xLabel, point.x], ...(isHistogram && plot.xEnd ? [[`${settings.xLabel}_fine`, point.xEnd]] : []), [settings.yLabel, point.y],
-      ...(is3D ? [[settings.zLabel, point.z]] : []), ...(plot.color?.length ? [['gruppo', point.group]] : []),
+      ...(is3D ? [[settings.zLabel, point.z]] : []), ...(plot.color?.length ? [[tl("gruppo"), point.group]] : []),
     ]))
     return { columns, rows, rowCount: rows.length }
   }
@@ -173,32 +174,32 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
   }
 
   const chartOptions: Array<[PlotSettings['chart'], string]> = is3D
-    ? [['scatter3d', 'Dispersione 3D'], ['scatter', 'Proiezione X/Y']]
-    : isHistogram ? [['bar', 'Barre'], ['line', 'Linea'], ['area', 'Area']]
-      : [['scatter', 'Dispersione'], ['line', 'Linea'], ['area', 'Area'], ['bar', 'Barre'], ['density', 'Densità']]
+    ? [['scatter3d', tl("Dispersione 3D")], ['scatter', tl("Proiezione X/Y")]]
+    : isHistogram ? [['bar', tl("Barre")], ['line', tl("Linea")], ['area', 'Area']]
+      : [['scatter', tl("Dispersione")], ['line', tl("Linea")], ['area', 'Area'], ['bar', tl("Barre")], ['density', tl("Densità")]]
   const showMarkers = !isHistogram && settings.chart !== 'density' && settings.chart !== 'bar'
 
   return <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
     <aside className="min-h-0 space-y-5 overflow-y-auto border-r border-slate-200 bg-white p-4 text-xs">
-      <Section title="Visualizzazione">
+      <Section title={tl("Visualizzazione")}>
         <div className="grid grid-cols-2 gap-1.5">{chartOptions.map(([id, label]) => <button key={id} type="button" onClick={() => set('chart', id)} className={`h-9 rounded-lg px-2 font-bold ${settings.chart === id ? 'ds-selected' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>{label}</button>)}</div>
         <Field label="Palette"><select value={settings.palette} onChange={(event) => set('palette', event.target.value)} className={INPUT}>{Object.keys(PALETTES).map((name) => <option key={name}>{name}</option>)}</select></Field>
-        {plot.color?.length ? <Toggle label="Colora per gruppo" value={settings.groupByColor} onChange={(value) => set('groupByColor', value)} /> : null}
-        <Toggle label="Griglia" value={settings.grid} onChange={(value) => set('grid', value)} />
-        {!isHistogram && !is3D && <Toggle label="Linea di tendenza" value={settings.trend} onChange={(value) => set('trend', value)} />}
+        {plot.color?.length ? <Toggle label={tl("Colora per gruppo")} value={settings.groupByColor} onChange={(value) => set('groupByColor', value)} /> : null}
+        <Toggle label={tl("Griglia")} value={settings.grid} onChange={(value) => set('grid', value)} />
+        {!isHistogram && !is3D && <Toggle label={tl("Linea di tendenza")} value={settings.trend} onChange={(value) => set('trend', value)} />}
       </Section>
-      <Section title="Stile">
-        {showMarkers && <Range label="Dimensione punti" min={2} max={18} step={1} value={settings.markerSize} onChange={(value) => set('markerSize', value)} />}
-        <Range label="Opacità" min={.2} max={1} step={.05} value={settings.opacity} onChange={(value) => set('opacity', value)} />
+      <Section title={tl("Stile")}>
+        {showMarkers && <Range label={tl("Dimensione punti")} min={2} max={18} step={1} value={settings.markerSize} onChange={(value) => set('markerSize', value)} />}
+        <Range label={tl("Opacità")} min={.2} max={1} step={.05} value={settings.opacity} onChange={(value) => set('opacity', value)} />
       </Section>
-      <Section title="Assi">
-        <Field label="Titolo"><input value={settings.title} onChange={(event) => set('title', event.target.value)} className={INPUT} /></Field>
-        <Field label="Etichetta X"><input value={settings.xLabel} onChange={(event) => set('xLabel', event.target.value)} className={INPUT} /></Field>
-        <Field label="Etichetta Y"><input value={settings.yLabel} onChange={(event) => set('yLabel', event.target.value)} className={INPUT} /></Field>
-        {is3D && <Field label="Etichetta Z"><input value={settings.zLabel} onChange={(event) => set('zLabel', event.target.value)} className={INPUT} /></Field>}
-        {settings.chart !== 'scatter3d' && <><Toggle label="Scala logaritmica X" value={settings.xLog} onChange={(value) => set('xLog', value)} /><Toggle label="Scala logaritmica Y" value={settings.yLog} onChange={(value) => set('yLog', value)} /></>}
+      <Section title={tl("Assi")}>
+        <Field label={tl("Titolo")}><input value={settings.title} onChange={(event) => set('title', event.target.value)} className={INPUT} /></Field>
+        <Field label={tl("Etichetta X")}><input value={settings.xLabel} onChange={(event) => set('xLabel', event.target.value)} className={INPUT} /></Field>
+        <Field label={tl("Etichetta Y")}><input value={settings.yLabel} onChange={(event) => set('yLabel', event.target.value)} className={INPUT} /></Field>
+        {is3D && <Field label={tl("Etichetta Z")}><input value={settings.zLabel} onChange={(event) => set('zLabel', event.target.value)} className={INPUT} /></Field>}
+        {settings.chart !== 'scatter3d' && <><Toggle label={tl("Scala logaritmica X")} value={settings.xLog} onChange={(value) => set('xLog', value)} /><Toggle label={tl("Scala logaritmica Y")} value={settings.yLog} onChange={(value) => set('yLog', value)} /></>}
       </Section>
-      <Section title="Filtra intervallo">
+      <Section title={tl("Filtra intervallo")}>
         <div className="grid grid-cols-2 gap-1.5">
           <input value={settings.xMin} onChange={(event) => set('xMin', event.target.value)} placeholder="X min" className={INPUT} />
           <input value={settings.xMax} onChange={(event) => set('xMax', event.target.value)} placeholder="X max" className={INPUT} />
@@ -207,30 +208,30 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
         </div>
       </Section>
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
-        <Button type="button" onClick={() => onOpenTable(`${title} · dati del grafico`, pointsTable())} tone="neutral" surface="outline" density="compact" className="rounded-full"><FileSpreadsheet className="h-4 w-4" /> Apri dati nel foglio</Button>
-        <Button type="button" onClick={exportCsv} tone="neutral" surface="outline" density="compact" className="rounded-full"><Download className="h-4 w-4" /> Esporta CSV</Button>
-        <Button type="button" onClick={() => setSettings(initialSettings(plot))} tone="neutral" surface="ghost" density="compact" className="rounded-full"><RotateCcw className="h-4 w-4" /> Ripristina</Button>
+        <Button type="button" onClick={() => onOpenTable(tl("{0} · dati del grafico", title), pointsTable())} tone="neutral" surface="outline" density="compact" className="rounded-full"><FileSpreadsheet className="h-4 w-4" /> {tl("Apri dati nel foglio")}</Button>
+        <Button type="button" onClick={exportCsv} tone="neutral" surface="outline" density="compact" className="rounded-full"><Download className="h-4 w-4" /> {tl("Esporta CSV")}</Button>
+        <Button type="button" onClick={() => setSettings(initialSettings(plot))} tone="neutral" surface="ghost" density="compact" className="rounded-full"><RotateCcw className="h-4 w-4" /> {tl("Ripristina")}</Button>
       </div>
     </aside>
     <section className="flex min-h-0 flex-col gap-3 p-4">
       <div className="grid shrink-0 grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-        <Stat label={isHistogram ? 'Intervalli' : 'Punti'} value={points.length} />
+        <Stat label={isHistogram ? tl("Intervalli") : tl("Punti")} value={points.length} />
         {isHistogram ? <>
-          <Stat label="Totale" value={ys.reduce((sum, value) => sum + value, 0)} />
-          <Stat label="Picco" value={ys.length ? Math.max(...ys) : '—'} />
+          <Stat label={tl("Totale")} value={ys.reduce((sum, value) => sum + value, 0)} />
+          <Stat label={tl("Picco")} value={ys.length ? Math.max(...ys) : '—'} />
           <Stat label="Da" value={xs.length ? Math.min(...xs) : '—'} />
           <Stat label="A" value={points.length ? Math.max(...points.map((point) => Number(point.xEnd ?? point.x))) : '—'} />
         </> : <>
-          <Stat label={`Media ${settings.xLabel}`} value={xs.length ? mean(xs) : '—'} hint={xs.length ? `σ ${formatCompact(std(xs))}` : undefined} />
-          <Stat label={`Media ${settings.yLabel}`} value={ys.length ? mean(ys) : '—'} hint={ys.length ? `σ ${formatCompact(std(ys))}` : undefined} />
-          <Stat label="Intervallo X" value={xs.length ? `${formatCompact(Math.min(...xs))} – ${formatCompact(Math.max(...xs))}` : '—'} />
-          <Stat label="Correlazione" value={correlation === null ? '—' : correlation} />
-          {regression && <Stat label="Retta" value={`y = ${formatCompact(regression.slope)}x ${regression.intercept >= 0 ? '+' : '−'} ${formatCompact(Math.abs(regression.intercept))}`} hint={`R² ${regression.r2.toFixed(3)}`} />}
+          <Stat label={tl("Media {0}", settings.xLabel)} value={xs.length ? mean(xs) : '—'} hint={xs.length ? `σ ${formatCompact(std(xs))}` : undefined} />
+          <Stat label={tl("Media {0}", settings.yLabel)} value={ys.length ? mean(ys) : '—'} hint={ys.length ? `σ ${formatCompact(std(ys))}` : undefined} />
+          <Stat label={tl("Intervallo X")} value={xs.length ? `${formatCompact(Math.min(...xs))} – ${formatCompact(Math.max(...xs))}` : '—'} />
+          <Stat label={tl("Correlazione")} value={correlation === null ? '—' : correlation} />
+          {regression && <Stat label={tl("Retta")} value={`y = ${formatCompact(regression.slope)}x ${regression.intercept >= 0 ? '+' : '−'} ${formatCompact(Math.abs(regression.intercept))}`} hint={`R² ${regression.r2.toFixed(3)}`} />}
         </>}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-[var(--ds-shadow-1)]">
-        <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-slate-400">Caricamento explorer…</div>}>
-          <Plot data={traces as never} layout={layout as never} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { filename: settings.title || 'grafico', scale: 2 } }} style={{ width: '100%', height: '100%' }} useResizeHandler />
+        <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-slate-400">{tl("Caricamento explorer…")}</div>}>
+          <Plot data={traces as never} layout={layout as never} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { filename: settings.title || tl("grafico"), scale: 2 } }} style={{ width: '100%', height: '100%' }} useResizeHandler />
         </Suspense>
       </div>
     </section>
@@ -243,7 +244,7 @@ function MetricsExplorer({ metrics }: { metrics: Record<string, unknown> }) {
   return <div className="h-full overflow-y-auto p-5">
     {scalars.length > 0 && <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{scalars.map(([key, value]) => <div key={key} className="rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, ' ')}</p><p className="mt-1 break-words text-2xl font-black text-slate-900">{formatCompact(value)}</p></div>)}</div>}
     {nested.map(([key, value]) => <div key={key} className="mt-5 rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><p className="mb-3 text-[10px] font-black uppercase tracking-wider text-slate-400">{METRIC_LABELS[key] || key.replace(/_/g, ' ')}</p><StructuredValue value={value} /></div>)}
-    {!scalars.length && !nested.length && <p className="text-sm text-slate-400">Nessuna metrica disponibile.</p>}
+    {!scalars.length && !nested.length && <p className="text-sm text-slate-400">{tl("Nessuna metrica disponibile.")}</p>}
   </div>
 }
 
@@ -267,7 +268,7 @@ function RawExplorer({ value }: { value: unknown }) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
   const copy = async () => { try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ } }
   return <div className="flex h-full flex-col gap-3 p-5">
-    <div className="flex justify-end"><Button type="button" onClick={copy} tone="neutral" surface="outline" density="compact" className="rounded-full">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copiato' : 'Copia'}</Button></div>
+    <div className="flex justify-end"><Button type="button" onClick={copy} tone="neutral" surface="outline" density="compact" className="rounded-full">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? tl("Copiato") : tl("Copia")}</Button></div>
     {value && typeof value === 'object'
       ? <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-white p-4 shadow-[var(--ds-shadow-1)]"><StructuredValue value={value} /></div>
       : <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-5 font-mono text-xs leading-6 text-slate-100">{text}</pre>}

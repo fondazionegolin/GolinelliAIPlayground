@@ -887,6 +887,12 @@ def _kb_files(files: list[dict]) -> list[dict]:
     return [file for file in files if str(file.get("path") or "").lower().endswith(".md")]
 
 
+def _kb_content_for_prompt(file: dict) -> str:
+    """KB text fed to codegen. spec.md is the project's source of truth, so it gets a far larger window."""
+    limit = 30000 if str(file.get("path") or "").lower() == "spec.md" else 8000
+    return str(file.get("content") or "")[:limit]
+
+
 def _append_request_log(description_md: str, request: str) -> str:
     request = (request or "").strip()
     if not request:
@@ -1395,15 +1401,14 @@ CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
     # Compatibility for projects saved with the previous frontend key.
     "gpt-mini": ("openai", "gpt-5.6-luna"),
     # DeepSeek V4 — Coding Lab only (not exposed in the global /available-models list).
-    "deepseek-flash": ("deepseek", "deepseek-v4-flash"),
     "deepseek-pro": ("deepseek", "deepseek-v4-pro"),
 }
 
 
 # Students may only use DeepSeek and Claude Haiku 5.5 in the Coding Lab (other Claude models are off).
 # DeepSeek. Any other choice (incl. the platform default) is coerced to the DeepSeek default.
-STUDENT_CODING_MODEL_KEYS = {"deepseek-flash", "deepseek-pro", "haiku-5"}
-STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-flash"
+STUDENT_CODING_MODEL_KEYS = {"deepseek-pro", "haiku-5"}
+STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-pro"
 
 
 def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) -> tuple[str, str]:
@@ -1645,6 +1650,396 @@ def _parse_delimited_files(text: str) -> list[dict]:
         if current_path is not None:
             current_lines.append(line)
     flush()
+    return out
+
+
+async def _continue_missing_files(
+    original_user: str, done_files: list[dict], missing: list[str], provider: str, model: str,
+) -> list[dict]:
+    """Second pass after an output-limit cutoff: write ONLY the files the first pass never finished,
+    coherent with the ones it did finish. Best effort — returns [] on any failure."""
+    written = "\n\n".join(f"=== FILE: {f['path']} ===\n{f['content']}\n=== END ===" for f in done_files)
+    prompt = (
+        f"{original_user}\n\n"
+        "La generazione precedente e` stata interrotta per limite di lunghezza.\n"
+        f"FILE GIA` COMPLETATI (non riscriverli, usa i loro export reali):\n{written or '(nessuno)'}\n\n"
+        "Scrivi ORA, completi e funzionanti, SOLO questi file mancanti: " + ", ".join(missing) + ".\n"
+        "Niente ragionamento. Formato per ogni file: riga '=== FILE: percorso ===', contenuto, riga '=== END ==='.\n"
+        "Mantieni ogni file sotto le 350 righe; se serve, sii piu` compatto."
+    )
+    try:
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": prompt}],
+            system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+            provider=provider,
+            model=model,
+            temperature=0.2,
+            max_tokens=16000,
+            allow_web_search=False,
+        )
+    except Exception as exc:
+        logger.warning("continuation of truncated generation failed (%s)", exc)
+        return []
+    text = response.content or ""
+    if "@@FILES@@" in text:
+        text = text.split("@@FILES@@", 1)[1]
+    parsed = _parse_delimited_files(text)
+    wanted = set(missing)
+    return [f for f in parsed if f["path"] in wanted]
+
+
+# --- Parallel multi-agent build -------------------------------------------------------------
+# A fresh project is NOT written by one serial LLM call. An architect first fixes the contract
+# (file plan with exact exports, shared types, global styles, package.json); then 2-4 workers write
+# disjoint groups of files concurrently. The contract is the only source of truth between workers,
+# and the deterministic import check + the missing-file continuation catch any drift afterwards.
+
+MAX_PARALLEL_WORKERS = 4
+
+_PLATFORM_ENTRY_PATHS = {
+    "index.tsx", "index.ts", "index.jsx", "index.js", "main.tsx", "main.ts", "main.jsx", "main.js",
+    "golinelli-bridge.ts",
+}
+
+
+def _platform_owned_path(path: str) -> bool:
+    """Files the platform injects or owns (HTML shell, React entry, KB markdown): models must not write them."""
+    lower = (path or "").lower()
+    return lower.endswith((".html", ".htm", ".md")) or lower in _PLATFORM_ENTRY_PATHS or ".." in lower.split("/")
+
+
+ARCHITECT_FORMAT_INSTRUCTIONS = """
+
+FORMATO PER QUESTA CHIAMATA (SOSTITUISCE il "FORMATO DI OUTPUT" descritto sopra): sei l'ARCHITETTO.
+Altri worker scriveranno i componenti IN PARALLELO: tu fissi solo il contratto. NON scrivere i componenti.
+1) Brevissimo ragionamento in italiano (piano, viste, scelte di design), MASSIMO 8 righe.
+2) Una riga con ESATTAMENTE: @@PLAN@@
+3) Una riga per ogni file da far scrivere ai worker (App.tsx incluso, assegnato al worker 1), formato esatto:
+   <worker 1-4> | <percorso> | <scopo in 3-8 parole> | <export pubblici con firma completa>
+   es. `2 | components/Header.tsx | barra di navigazione | export default function Header(props: { title: string; onNavigate: (view: View) => void })`
+   Bilancia i file su 2-4 worker per quantita' di codice (max ~350 righe a file). Gli export del contratto sono
+   l'UNICA fonte di verita': i worker li useranno alla lettera, quindi sii preciso su nomi, props e tipi.
+4) Una riga con ESATTAMENTE: @@SHARED@@
+5) I file condivisi, completi, nel formato `=== FILE: percorso ===`: types.ts (tutti i tipi/interfacce/costanti e
+   dati di esempio condivisi tra piu' file), styles.css (blocco :root completo + reset + classi globali minime
+   come .container .btn .card, max 150 righe) e package.json solo se servono librerie oltre a react/react-dom.
+6) Chiudi con una riga: === END ===
+Non elencare nel piano i file condivisi del punto 5."""
+
+
+WORKER_FORMAT_TEMPLATE = """
+
+FORMATO PER QUESTA CHIAMATA (SOSTITUISCE il "FORMATO DI OUTPUT" descritto sopra): sei il WORKER {worker}.
+Niente ragionamento, niente @@FILES@@. Scrivi SOLO questi file: {paths}.
+Per ciascuno: una riga `=== FILE: percorso ===`, il contenuto completo, e dopo l'ULTIMO file una riga `=== END ===`.
+Gli altri file del progetto li scrivono ALTRI worker in parallelo: rispetta il CONTRATTO alla lettera
+(percorsi, nomi ed export esatti, props e tipi) e importa solo da file elencati nel contratto o condivisi.
+Non ridefinire cio' che e' gia' nei file condivisi. Resta compatto: ogni file sotto le 350 righe.
+
+CONTRATTO (worker | file | scopo | export):
+{contract}
+
+FILE CONDIVISI GIA' SCRITTI (importali, non riscriverli):
+{shared}"""
+
+
+class _DelimitedFileParser:
+    """Incremental parser for `=== FILE: path ===` ... `=== END ===` output. A file still open at the end
+    of the stream (no END) hit the output limit: it is dropped and reported in `truncated_path`."""
+
+    _FILE = re.compile(r"^===\s*FILE:\s*(.+?)\s*(?:===)?\s*$")
+    _END = re.compile(r"^===\s*END\s*(?:===)?\s*$")
+
+    def __init__(self) -> None:
+        self.buffer = ""
+        self.path: str | None = None
+        self.lines: list[str] = []
+        self.reported = -1
+        self.files: list[dict] = []
+        self.truncated_path: str | None = None
+
+    def _close(self) -> list[dict]:
+        events: list[dict] = []
+        if self.path is not None:
+            content = _strip_code_fences("\n".join(self.lines).strip("\n"))
+            if content.strip():
+                self.files.append({"path": self.path, "content": content, "language": _lang_for_path(self.path)})
+                events.append({"type": "file_done", "path": self.path, "lines": content.count("\n") + 1})
+        self.path = None
+        self.lines = []
+        return events
+
+    def _line(self, line: str) -> list[dict]:
+        match = self._FILE.match(line)
+        if match:
+            events = self._close()
+            raw = match.group(1).strip().lstrip("/")
+            self.lines = []
+            self.reported = -1
+            if _platform_owned_path(raw):
+                self.path = None
+            else:
+                self.path = raw
+                events.append({"type": "file_start", "path": raw, "op": "file"})
+            return events
+        if self._END.match(line):
+            return self._close()
+        if self.path is not None:
+            self.lines.append(line)
+            if len(self.lines) - self.reported >= 15:
+                self.reported = len(self.lines)
+                return [{"type": "file_progress", "path": self.path, "lines": len(self.lines)}]
+        return []
+
+    def feed(self, chunk: str) -> list[dict]:
+        self.buffer += chunk
+        events: list[dict] = []
+        while "\n" in self.buffer:
+            line, self.buffer = self.buffer.split("\n", 1)
+            events.extend(self._line(line))
+        return events
+
+    def finish(self) -> list[dict]:
+        events: list[dict] = []
+        if self.buffer:
+            if not self._END.match(self.buffer):
+                events.extend(self._line(self.buffer))
+            self.buffer = ""
+        if self.path is not None:
+            # Models often forget the final END marker. A file whose brackets balance is complete; one cut
+            # mid-expression (unbalanced) is a real output-limit truncation.
+            if _looks_complete("\n".join(self.lines)):
+                events.extend(self._close())
+            else:
+                self.truncated_path = self.path
+            self.path = None
+            self.lines = []
+        return events
+
+
+def _looks_complete(content: str) -> bool:
+    text = content.strip()
+    if not text:
+        return False
+    depth = {"{": 0, "(": 0, "[": 0}
+    pair = {"}": "{", ")": "(", "]": "["}
+    quote: str | None = None
+    prev = ""
+    for ch in text:
+        if quote:
+            if ch == quote and prev != "\\":
+                quote = None
+        elif ch in "\"'`":
+            quote = ch
+        elif ch in depth:
+            depth[ch] += 1
+        elif ch in pair:
+            depth[pair[ch]] -= 1
+        prev = ch
+    return quote is None and all(v == 0 for v in depth.values())
+
+
+_PLAN_LINE = re.compile(r"^\s*[-*]?\s*`?(\d)`?\s*\|\s*`?([\w@./-]+\.[A-Za-z0-9]+)`?\s*\|\s*(.*?)\s*\|\s*(.*?)\s*$")
+
+
+def _parse_architect_plan(lines: list[str]) -> list[dict]:
+    plan: list[dict] = []
+    seen: set[str] = set()
+    for line in lines:
+        match = _PLAN_LINE.match(line)
+        if not match:
+            continue
+        path = match.group(2).lstrip("/")
+        if path in seen or _platform_owned_path(path):
+            continue
+        seen.add(path)
+        worker = min(max(int(match.group(1)), 1), MAX_PARALLEL_WORKERS)
+        plan.append({"worker": worker, "path": path, "purpose": match.group(3)[:160], "exports": match.group(4)[:400]})
+    return plan
+
+
+async def _parallel_build(user_context: str, provider: str, model: str, *, temperature: float = 0.4):
+    """Async generator yielding ("sse", payload) frames, then one ("result", dict).
+    result = {"ok": bool, "generated": [...], "reasoning": [...], "plan": [...], "raw": str, "prompt_chars": int}.
+    ok=False means the architect output was unusable and the caller should fall back to a single call."""
+    reasoning: list[str] = []
+    plan_lines: list[str] = []
+    shared_parser = _DelimitedFileParser()
+    raw_parts: list[str] = []
+    state = "reasoning"
+    buffer = ""
+    thinking_chars = 0
+
+    def _count(text: str) -> None:
+        nonlocal thinking_chars
+        thinking_chars += len(text)
+
+    def _consume_line(line: str):
+        nonlocal state
+        events: list[dict] = []
+        if state == "reasoning":
+            if "@@PLAN@@" in line:
+                pre = line.split("@@PLAN@@", 1)[0]
+                if pre.strip():
+                    reasoning.append(pre)
+                    events.append({"type": "reasoning", "content": pre + "\n"})
+                state = "plan"
+            else:
+                reasoning.append(line)
+                events.append({"type": "reasoning", "content": line + "\n"})
+        elif state == "plan":
+            if "@@SHARED@@" in line:
+                state = "shared"
+            else:
+                plan_lines.append(line)
+        else:
+            events.extend(shared_parser.feed(line + "\n"))
+        return events
+
+    yield ("sse", {"type": "status", "message": "L'architetto definisce il contratto del progetto..."})
+    architect_prompt = user_context + ARCHITECT_FORMAT_INSTRUCTIONS
+    async for kind, chunk in _heartbeat_stream(lambda: _coding_generate_stream(
+        messages=[{"role": "user", "content": architect_prompt}],
+        system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+        provider=provider,
+        model=model,
+        temperature=temperature,
+        max_tokens=14000,
+        reasoning_sink=_count,
+    )):
+        if kind == "idle":
+            detail = f" · {thinking_chars} caratteri di ragionamento" if thinking_chars else ""
+            yield ("sse", {"type": "status", "message": f"L'architetto sta ragionando… {chunk}s{detail}"})
+            continue
+        raw_parts.append(chunk)
+        buffer += chunk
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            for event in _consume_line(line):
+                yield ("sse", event)
+    if buffer:
+        for event in _consume_line(buffer):
+            yield ("sse", event)
+    for event in shared_parser.finish():
+        yield ("sse", event)
+
+    architect_raw = "".join(raw_parts)
+    plan = _parse_architect_plan(plan_lines)
+    shared = list(shared_parser.files)
+    if not plan or not any(item["path"] == "App.tsx" for item in plan):
+        logger.warning("parallel architect plan unusable (state=%s, plan_lines=%d); tail: %r", state, len(plan_lines), "".join(raw_parts)[-600:])
+        yield ("result", {"ok": False, "raw": "".join(raw_parts)})
+        return
+
+    yield ("sse", {"type": "plan", "files": [{"path": item["path"], "purpose": item["purpose"]} for item in plan[:30]]})
+    shared_by_path = {f["path"]: f for f in shared}
+    shared_text = "\n\n".join(f"=== FILE: {f['path']} ===\n{f['content']}" for f in shared) or "(nessuno)"
+    contract = "\n".join(f"{item['worker']} | {item['path']} | {item['purpose']} | {item['exports']}" for item in plan)
+
+    groups: dict[int, list[dict]] = {}
+    for item in plan:
+        groups.setdefault(item["worker"], []).append(item)
+    # Re-number to a dense 1..K so no worker slot is empty.
+    ordered = [groups[key] for key in sorted(groups)]
+    yield ("sse", {"type": "status", "message": f"Contratto pronto. {len(ordered)} agenti scrivono {len(plan)} file in parallelo..."})
+
+    queue: asyncio.Queue = asyncio.Queue()
+    results: dict[int, _DelimitedFileParser] = {}
+    prompt_chars = len(architect_prompt)
+
+    async def run_worker(index: int, items: list[dict]) -> None:
+        parser = _DelimitedFileParser()
+        results[index] = parser
+        paths = ", ".join(item["path"] for item in items)
+        prompt = user_context + WORKER_FORMAT_TEMPLATE.format(
+            worker=index + 1, paths=paths, contract=contract, shared=shared_text,
+        )
+        try:
+            async for chunk in _coding_generate_stream(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+                provider=provider,
+                model=model,
+                temperature=temperature,
+                max_tokens=16000,
+            ):
+                raw_parts.append(chunk)
+                for event in parser.feed(chunk):
+                    await queue.put(("sse", event))
+            for event in parser.finish():
+                await queue.put(("sse", event))
+        except Exception as exc:  # the missing files are recovered by the caller's continuation pass
+            logger.warning("parallel worker %s failed (%s)", index + 1, exc)
+            for event in parser.finish():
+                await queue.put(("sse", event))
+        finally:
+            await queue.put(("done", index))
+
+    tasks = [asyncio.create_task(run_worker(i, items)) for i, items in enumerate(ordered)]
+    prompt_chars += sum(len(user_context) + len(contract) + len(shared_text) for _ in ordered)
+    pending = len(tasks)
+    try:
+        while pending:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                yield ("sse", {"type": "ping"})
+                continue
+            if kind == "done":
+                pending -= 1
+            else:
+                yield ("sse", payload)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+    for index, items in enumerate(ordered):
+        parser = results.get(index)
+        got = {f["path"] for f in parser.files} if parser else set()
+        lacking = [item["path"] for item in items if item["path"] not in got]
+        if lacking:
+            logger.warning("parallel worker %d lacks %s (truncated=%s, wrote=%s)", index + 1, lacking, parser.truncated_path if parser else None, sorted(got))
+    generated: list[dict] = list(shared_by_path.values())
+    assigned = {item["path"] for item in plan}
+    for index in sorted(results):
+        for f in results[index].files:
+            if f["path"] in shared_by_path and f["path"] not in assigned:
+                continue  # workers must not overwrite the architect's shared files
+            generated = [g for g in generated if g["path"] != f["path"]]
+            generated.append(f)
+    yield ("result", {
+        "ok": True,
+        "generated": generated,
+        "reasoning": reasoning,
+        # A shared file cut by the output limit is listed too, so the continuation pass rewrites it.
+        "plan": [item["path"] for item in plan] + ([shared_parser.truncated_path] if shared_parser.truncated_path else []),
+        "raw": "".join(raw_parts),
+        "architect_raw": architect_raw,
+        "prompt_chars": prompt_chars,
+    })
+
+
+_DS_ROOT_RE = re.compile(r":root\s*\{[^}]*\}", re.DOTALL)
+
+
+def _ensure_design_root(files: list[dict]) -> list[dict]:
+    """Deterministic (LLM-free) design-system guard: the :root block of design-system.md must open styles.css."""
+    ds = next((str(f.get("content") or "") for f in files if str(f.get("path") or "").lower() == "design-system.md"), "")
+    match = next((m for m in _DS_ROOT_RE.finditer(ds) if "--ds-" in m.group(0)), None)
+    if not match:
+        return files
+    out: list[dict] = []
+    found = False
+    for f in files:
+        if str(f.get("path") or "") == "styles.css":
+            found = True
+            content = str(f.get("content") or "")
+            if "--ds-" not in content:
+                f = {**f, "content": match.group(0) + "\n\n" + content}
+        out.append(f)
+    if not found:
+        out.append({"path": "styles.css", "content": match.group(0) + "\n", "language": "css"})
     return out
 
 
@@ -2977,6 +3372,171 @@ async def coding_ai_interview(
         return {"questions": []}
 
 
+INTERVIEW_CHAT_SYSTEM_PROMPT = """Sei un product analyst che intervista l'utente (studente o docente) per definire
+nel dettaglio un progetto web prima che venga costruito. Parli in italiano, tono diretto e collaborativo.
+
+Regole:
+- Ricevi l'idea iniziale (puo` essere una riga o una specifica lunghissima, magari prodotta da un altro bot)
+  e la conversazione finora. Non ripetere mai domande gia` risposte o gia` coperte dall'idea iniziale.
+- Se l'idea e` gia` dettagliata: riassumila in 2-3 righe come l'hai capita e chiedi SOLO cio` che manca davvero.
+- Fai al massimo 2 domande per turno, concrete. Per ciascuna offri 2-4 risposte rapide (suggestions).
+- Aree da coprire (solo se mancanti): scopo e pubblico; tipo di prodotto (pagina singola, app multi-pagina,
+  piattaforma con area admin e dati); funzioni chiave e priorita` (MVP vs dopo); contenuti e dati; ruoli
+  (visitatore / utente / admin) e cosa cambia per ciascuno; stile e tono; vincoli.
+- Chiudi appena hai abbastanza per costruire senza indovinare (di solito 2-5 turni): metti "ready": true e in
+  "reply" scrivi un breve riepilogo + invito a premere "Genera specifiche".
+- Mai codice. Mai piu` di 120 parole nel reply.
+Rispondi SOLO con JSON valido:
+{"reply": "testo per l'utente", "suggestions": ["..."], "ready": false}"""
+
+
+SPEC_ARCHITECT_SYSTEM_PROMPT = """Sei un software architect e product lead. Trasformi un'idea di progetto web
+(breve o molto lunga, con eventuale intervista) in una SPECIFICA OPERATIVA e in un PIANO A MILESTONE.
+
+Non perdere nessun requisito dell'input: scomponi, ordina, deduplica, ma conserva ogni funzione, regola, testo,
+dato e vincolo citato. Se qualcosa e` ambiguo scegli il default piu` ragionevole e annotalo in "Assunzioni".
+
+Output, ESATTAMENTE in questo ordine:
+1) La specifica in Markdown con le sezioni: # Titolo; ## Obiettivo e pubblico; ## Ruoli e permessi;
+   ## Funzioni (elenco numerato F1, F2... ciascuna con criterio di accettazione); ## Pagine / schermate
+   (e rotte); ## Modello dati (collezioni e campi); ## Stile e contenuti; ## Assunzioni; ## Fuori scope.
+2) Una riga con solo: @@MILESTONES@@
+3) Un array JSON di 1-6 milestone ordinate, ognuna costruibile in UNA generazione (max ~8 file, ~900 righe):
+   [{"title": "breve", "goal": "cosa deve funzionare a fine milestone", "features": ["F1", "F2"]}]
+   La milestone 1 e` sempre uno scheletro navigabile ma funzionante (layout, navigazione, dati di esempio,
+   funzione principale). Le successive aggiungono funzioni a strati senza riscrivere il lavoro precedente.
+   Per un'idea semplice usa UNA sola milestone.
+Niente altro testo."""
+
+
+def _parse_spec_output(raw: str) -> tuple[str, list[dict]]:
+    """Split the spec architect output into (spec markdown, milestones[])."""
+    text = (raw or "").strip()
+    spec, _, tail = text.partition("@@MILESTONES@@")
+    milestones: list[dict] = []
+    if tail.strip():
+        try:
+            parsed = _extract_json_array(tail)
+        except Exception:
+            parsed = []
+        for item in parsed[:6]:
+            if not isinstance(item, dict):
+                continue
+            goal = str(item.get("goal") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if not (goal or title):
+                continue
+            milestones.append({
+                "title": title[:120] or f"Milestone {len(milestones) + 1}",
+                "goal": goal[:600],
+                "features": [str(f).strip()[:20] for f in (item.get("features") or []) if str(f).strip()][:20],
+            })
+    return spec.strip(), milestones
+
+
+def _actor_cost_kwargs(actor: StudentOrTeacher) -> dict:
+    return dict(
+        tenant_id=actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id,
+        session_id=actor.student.session_id if actor.is_student else None,
+        student_id=actor.student.id if actor.is_student else None,
+        teacher_id=actor.teacher.id if actor.is_teacher else None,
+    )
+
+
+@router.post("/ai/interview-chat")
+async def coding_ai_interview_chat(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """One turn of the conversational project interview. Errors are surfaced (never silently skipped)
+    so the client can retry instead of falling through to a blind generation."""
+    title = str(body.get("title") or "").strip()
+    idea = str(body.get("prompt") or "").strip()[:20000]
+    if not idea:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+    turns = []
+    for item in (body.get("messages") or [])[-24:]:
+        if isinstance(item, dict) and item.get("role") in {"user", "assistant"}:
+            text = str(item.get("content") or "").strip()[:4000]
+            if text:
+                turns.append({"role": item["role"], "content": text})
+    # The idea is anchored in the first user turn; the dialogue is replayed after it.
+    opening = f"Titolo: {title or '(senza titolo)'}\n\nIdea iniziale dell'utente:\n{idea}\n\nInizia l'intervista."
+    messages = [{"role": "user", "content": opening}]
+    for turn in turns:
+        if messages[-1]["role"] == turn["role"]:
+            messages[-1]["content"] += "\n\n" + turn["content"]
+        else:
+            messages.append(turn)
+    if messages[-1]["role"] != "user":
+        messages.append({"role": "user", "content": "Continua."})
+    try:
+        response = await _coding_generate(messages=messages, system_prompt=INTERVIEW_CHAT_SYSTEM_PROMPT, temperature=0.5, max_tokens=900)
+    except Exception as exc:
+        logger.warning("coding interview-chat failed (%s)", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
+    await _record_coding_cost(
+        db, provider=response.provider, model=response.model,
+        prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
+        context="coding_ai_interview_chat", **_actor_cost_kwargs(actor),
+    )
+    try:
+        payload = _extract_json_object(response.content)
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    reply = str(payload.get("reply") or "").strip() or (response.content or "").strip()[:800]
+    if not reply:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
+    suggestions = [str(s).strip()[:160] for s in (payload.get("suggestions") or []) if str(s).strip()][:4]
+    return {"reply": reply, "suggestions": suggestions, "ready": bool(payload.get("ready"))}
+
+
+@router.post("/ai/spec")
+async def coding_ai_spec(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Turn the idea (+ interview transcript) into spec.md and a milestone plan. Handles very long input."""
+    title = str(body.get("title") or "").strip()
+    idea = str(body.get("prompt") or "").strip()[:20000]
+    if not idea:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+    transcript_lines = []
+    for item in (body.get("messages") or [])[-40:]:
+        if isinstance(item, dict) and item.get("role") in {"user", "assistant"}:
+            text = str(item.get("content") or "").strip()[:4000]
+            if text:
+                transcript_lines.append(("Utente" if item["role"] == "user" else "Intervistatore") + ": " + text)
+    content = f"Titolo: {title or '(senza titolo)'}\n\nIDEA / SPECIFICA DELL'UTENTE:\n{idea}"
+    if transcript_lines:
+        content += "\n\nINTERVISTA:\n" + "\n".join(transcript_lines)
+    try:
+        response = await _coding_generate(
+            messages=[{"role": "user", "content": content}],
+            system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT,
+            temperature=0.3,
+            max_tokens=9000,
+        )
+    except Exception as exc:
+        logger.warning("coding spec failed (%s)", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Non sono riuscito a scrivere le specifiche, riprova.")
+    await _record_coding_cost(
+        db, provider=response.provider, model=response.model,
+        prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
+        context="coding_ai_spec", **_actor_cost_kwargs(actor),
+    )
+    spec_md, milestones = _parse_spec_output(response.content)
+    if not spec_md:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Specifiche vuote, riprova.")
+    if not milestones:
+        milestones = [{"title": "Progetto completo", "goal": "Implementa tutta la specifica.", "features": []}]
+    return {"spec_md": spec_md, "milestones": milestones}
+
+
 @router.post("/projects", response_model=CodingProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: CodingProjectCreate,
@@ -3404,7 +3964,7 @@ async def generate_project_code(
 
     kb_context = ""
     if kb_files:
-        kb_snippets = [f"FILE: {f.get('path')}\n{str(f.get('content') or '')[:8000]}" for f in kb_files]
+        kb_snippets = [f"FILE: {f.get('path')}\n{_kb_content_for_prompt(f)}" for f in kb_files]
         kb_context = (
             "\n\nKnowledge base di progetto (istruzioni autorevoli da rispettare SEMPRE, non includerle nell'output):\n"
             + "\n\n---\n\n".join(kb_snippets)
@@ -3689,7 +4249,7 @@ async def generate_project_code_stream(
 
     kb_context = ""
     if kb_files:
-        kb_snippets = [f"FILE: {f.get('path')}\n{str(f.get('content') or '')[:8000]}" for f in kb_files]
+        kb_snippets = [f"FILE: {f.get('path')}\n{_kb_content_for_prompt(f)}" for f in kb_files]
         kb_context = (
             "\n\nKnowledge base di progetto (istruzioni autorevoli da rispettare SEMPRE, non includerle nell'output):\n"
             + "\n\n---\n\n".join(kb_snippets)
@@ -3818,13 +4378,37 @@ async def generate_project_code_stream(
                 current_path = path
                 return _sse({"type": "file_start", "path": path, "op": kind})
 
+            planned_paths: list[str] = []
             thinking_chars = 0
 
             def _count_thinking(text: str) -> None:
                 nonlocal thinking_chars
                 thinking_chars += len(text)
 
-            async for event_kind, chunk in _heartbeat_stream(lambda: _coding_generate_stream(
+            # Fresh builds go through the parallel architect + workers pipeline; edits and fixes stay on
+            # the surgical single-call patch path. If the architect output is unusable we fall back.
+            parallel_used = False
+            if not is_edit and not is_fix:
+                async for kind, value in _parallel_build(final_gen_user, gen_provider, gen_model):
+                    if kind == "sse":
+                        yield _sse(value)
+                        continue
+                    if value.get("ok"):
+                        parallel_used = True
+                        generated = value["generated"]
+                        reasoning_parts = value["reasoning"]
+                        planned_paths = value["plan"]
+                        full = value["raw"]
+                        state = "files"
+                        usage_prompt += value["prompt_chars"] // 4
+                    else:
+                        yield _sse({"type": "status", "message": "Piano non leggibile, passo alla generazione unica..."})
+
+            async def _no_chunks():
+                return
+                yield
+
+            stream_source = _no_chunks() if parallel_used else _heartbeat_stream(lambda: _coding_generate_stream(
                 messages=[{"role": "user", "content": final_gen_user}],
                 system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
                 provider=gen_provider,
@@ -3832,7 +4416,8 @@ async def generate_project_code_stream(
                 temperature=0.2 if is_fix else 0.4,
                 max_tokens=12000 if is_fix else 24000,
                 reasoning_sink=_count_thinking,
-            )):
+            ))
+            async for event_kind, chunk in stream_source:
                 if event_kind == "idle":
                     # Silent thinking phase (no answer text yet): show progress instead of a frozen UI.
                     if not full:
@@ -3858,6 +4443,7 @@ async def generate_project_code_stream(
                                 if match and "/" not in match.group(1).split(".")[-1]:
                                     plan.append({"path": match.group(1).lstrip("/"), "purpose": match.group(2)[:160]})
                             if plan:
+                                planned_paths = [item["path"] for item in plan[:30]]
                                 yield _sse({"type": "plan", "files": plan[:30]})
                             yield _sse({"type": "status", "message": "Piano definito. Applico le modifiche..." if is_edit else "Struttura definita. Inizio a scrivere i file..."})
                             continue
@@ -3908,9 +4494,39 @@ async def generate_project_code_stream(
                     _open_file(file_marker.match(buffer).group(1))
                 elif not end_marker.match(buffer) and current_path is not None:
                     current_lines.append(buffer)
+            # A file still open here never received its "=== END ===": the model hit its output
+            # limit mid-file. Keeping that half file is what produced broken, unrunnable projects.
+            truncated_path = current_path if (current_path is not None and current_kind == "file") else None
             done = _finalize_current()
-            if done:
+            if truncated_path:
+                generated = [g for g in generated if g["path"] != truncated_path]
+            elif done:
                 yield done
+
+            def _owned_by_platform(path: str) -> bool:
+                lower = path.lower()
+                return lower.endswith((".html", ".htm", ".md")) or lower in {"index.tsx", "index.ts", "index.jsx", "index.js", "main.tsx", "main.ts", "main.jsx", "main.js", "golinelli-bridge.ts"}
+
+            written = {g["path"] for g in generated} | set(patches) | deleted
+            missing_paths = [p for p in planned_paths if p not in written and not _owned_by_platform(p)]
+            if truncated_path and truncated_path not in missing_paths:
+                missing_paths.insert(0, truncated_path)
+            if missing_paths and state == "files":
+                yield _sse({"type": "status", "message": f"Output troppo lungo, completo {len(missing_paths)} file mancanti..."})
+                extra: list[dict] = []
+                async for kind, value in _heartbeat_await(_continue_missing_files(
+                    final_gen_user, generated, missing_paths, gen_provider, gen_model,
+                )):
+                    if kind == "ping":
+                        yield _sse({"type": "ping"})
+                    else:
+                        extra = value
+                for item in extra:
+                    if _owned_by_platform(item["path"]):
+                        continue
+                    generated = [g for g in generated if g["path"] != item["path"]]
+                    generated.append(item)
+                    yield _sse({"type": "file_done", "path": item["path"], "lines": item["content"].count("\n") + 1})
 
             reasoning_text = "\n".join(reasoning_parts).strip()
             est = build_estimated_token_usage(
@@ -3989,7 +4605,11 @@ async def generate_project_code_stream(
             # Agentic design-system enforcement: when a design-system.md contract is attached, run a
             # dedicated pass that rewrites the generated React styling to actually obey it (paste :root,
             # use --ds-* everywhere). Only fires when a contract exists; an extra strong-model call.
-            if _is_react_files(files) and any(str(f.get("path") or "").lower() == "design-system.md" for f in files):
+            if parallel_used and _is_react_files(files):
+                # Workers already received design-system.md as binding context; only the free, deterministic
+                # :root guard runs here instead of a slow whole-project LLM rewrite.
+                files = _ensure_design_root(files)
+            elif _is_react_files(files) and any(str(f.get("path") or "").lower() == "design-system.md" for f in files):
                 yield _sse({"type": "status", "message": "Revisione design system in corso..."})
                 ds_changed: list[str] = []
                 async for kind, value in _heartbeat_await(_design_review_files(files)):

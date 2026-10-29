@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { systemApi, type ServerHealthResponse, type ServerHealthStatus } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 
 const ACTIVE_CLASS: Record<ServerHealthStatus, string> = {
@@ -13,10 +14,10 @@ function withNetworkLatency(data: ServerHealthResponse, networkMs: number): Serv
   const reasons = [...data.reasons]
   if (networkMs >= 2500) {
     status = 'red'
-    reasons.unshift('Connessione al server molto lenta')
+    reasons.unshift(tl("Connessione al server molto lenta"))
   } else if (networkMs >= 900 && status === 'green') {
     status = 'yellow'
-    reasons.unshift('Connessione al server rallentata')
+    reasons.unshift(tl("Connessione al server rallentata"))
   }
   return {
     ...data,
@@ -24,8 +25,8 @@ function withNetworkLatency(data: ServerHealthResponse, networkMs: number): Serv
     summary: status === data.status
       ? data.summary
       : status === 'red'
-        ? 'Server non raggiungibile o molto lento'
-        : 'Possibili rallentamenti',
+        ? tl("Server non raggiungibile o molto lento")
+        : tl("Possibili rallentamenti"),
     reasons,
     metrics: { ...data.metrics, network_ms: Math.round(networkMs) },
   }
@@ -63,8 +64,8 @@ export function ServerHealthIndicator() {
   const { data } = useServerHealth()
   const health: ServerHealthResponse = data ?? {
     status: 'yellow',
-    summary: 'Controllo del server…',
-    reasons: ['Raccolta dello stato in corso'],
+    summary: tl("Controllo del server…"),
+    reasons: [tl("Raccolta dello stato in corso")],
   }
 
   return (
@@ -72,7 +73,7 @@ export function ServerHealthIndicator() {
       <button
         type="button"
         className="flex h-5 w-5 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-        aria-label={`Stato server: ${health.summary}`}
+        aria-label={tl("Stato server: {0}", health.summary)}
         title={health.summary}
       >
         <span className={`h-2.5 w-2.5 rounded-full transition hover:brightness-95 ${ACTIVE_CLASS[health.status]}`} aria-hidden="true" />
@@ -90,7 +91,7 @@ export function ServerHealthIndicator() {
           <div><strong className="block text-slate-700">CPU</strong>{metric(health.metrics?.cpu_percent)}</div>
           <div><strong className="block text-slate-700">RAM</strong>{metric(health.metrics?.memory_percent)}</div>
           <div><strong className="block text-slate-700">GPU</strong>{health.metrics?.gpu_available === false ? 'assente' : metric(health.metrics?.gpu_percent)}</div>
-          <div><strong className="block text-slate-700">Rete</strong>{health.metrics?.network_ms == null ? 'n/d' : `${health.metrics.network_ms} ms`}</div>
+          <div><strong className="block text-slate-700">{tl("Rete")}</strong>{health.metrics?.network_ms == null ? 'n/d' : `${health.metrics.network_ms} ms`}</div>
         </div>
       </div>
     </div>

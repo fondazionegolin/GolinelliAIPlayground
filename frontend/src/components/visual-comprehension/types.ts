@@ -46,14 +46,23 @@ export type ExerciseWidget = {
   id: string; kind: 'exercise'; title: string; prompt: string; target: string; template: string; show_target: boolean
   hints: string[]; explanation: string; window: LabWindow
 }
+export type SolidShape = 'cube' | 'cuboid' | 'tetrahedron' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'prism' | 'pyramid' | 'cylinder' | 'cone' | 'sphere'
+/** A 3D solid the student orbits and unfolds into its net. Sizes: a = edge/base side/radius, b = depth, c = height. */
+export type SolidWidget = {
+  id: string; kind: 'solid'; title: string; shape: SolidShape; sides: number; a: number; b: number; c: number
+  labels: boolean; unfold: boolean; note: string
+}
 /** Interactive objects on the board, kept by the session independently of the drawings' steps. */
-export type LabWidget = ExplorerWidget | ExerciseWidget
+export type LabWidget = ExplorerWidget | ExerciseWidget | SolidWidget
+/** An intuition, a deduction or a result the student writes on the canvas; position in % of the image (outside 0..100 = beside it). */
+export type StudentNote = { id: string; x: number; y: number; text: string }
 export type VisualSessionItem = {
   id: string; title: string; image_name: string; image_width: number; image_height: number
   updated_at: string; revision: number; busy: boolean; message_count: number
 }
 export type DialogueState = {
   objective?: string; complete?: boolean; memory?: string; overlays?: Overlay[]; drawing?: DrawingScene; widgets?: LabWidget[]
+  student_notes?: StudentNote[]
   coverage?: Array<{ id: string; title: string; scope: string; source_unit_ids: string[]; status: string; evidence: string }>
 }
 export type SavedVisualSession = VisualSessionItem & {

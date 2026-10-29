@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-10-26T13:53:33.769779+00:00",
-  "version_label": "2026.10.26-18df1d95",
+  "generated_at": "2026-10-26T21:11:44.476429+00:00",
+  "version_label": "2026.10.26-2e6e1247",
   "title": "Aggiornamenti branch staging",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "18df1d954774fd9da12d120c8f39ee23d3cb6542",
+  "git_ref": "2e6e12476086c4746283f3a5693b0fde8c982aad",
   "items": [
     {
-      "category": "new",
-      "title": "Add podcasts and update landing and privacy",
-      "description": "Add podcasts and update landing and privacy"
+      "category": "improved",
+      "title": "Fix(teacherbot): working KB grounding, prompt optimizer; fix live quiz AI",
+      "description": "Fix(teacherbot): working KB grounding, prompt optimizer; fix live quiz AI"
     }
   ]
 }

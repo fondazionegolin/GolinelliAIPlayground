@@ -54,6 +54,7 @@ import { InvitationsPanel } from '@/components/InvitationsPanel'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuthStore } from '@/stores/auth'
 import { useMobile } from '@/hooks/useMobile'
+import { tl } from '@/i18n/tl'
 
 interface ClassData {
   id: string
@@ -282,7 +283,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({ title: isEnglish ? 'Class archived' : 'Classe archiviata' })
     },
-    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Termina tutte le sessioni prima di archiviare la classe', variant: 'destructive' }),
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || tl("Termina tutte le sessioni prima di archiviare la classe"), variant: 'destructive' }),
   })
 
   const restoreClassMutation = useMutation({
@@ -299,7 +300,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({ title: isEnglish ? 'Class permanently deleted' : 'Classe eliminata definitivamente' })
     },
-    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile eliminare la classe', variant: 'destructive' }),
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || tl("Impossibile eliminare la classe"), variant: 'destructive' }),
   })
 
   const createSessionMutation = useMutation({
@@ -332,7 +333,7 @@ export default function TeacherClassesSessionsManager({
       setSessionToTrash(null)
       toast({ title: isEnglish ? 'Session moved to trash' : 'Sessione spostata nel cestino' })
     },
-    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile archiviare la sessione', variant: 'destructive' }),
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || tl("Impossibile archiviare la sessione"), variant: 'destructive' }),
   })
 
   const restoreSessionMutation = useMutation({
@@ -342,7 +343,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({ title: isEnglish ? 'Session restored' : 'Sessione recuperata' })
     },
-    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile recuperare la sessione', variant: 'destructive' }),
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || tl("Impossibile recuperare la sessione"), variant: 'destructive' }),
   })
 
   const permanentlyDeleteSessionMutation = useMutation({
@@ -353,7 +354,7 @@ export default function TeacherClassesSessionsManager({
       setSessionToPermanentlyDelete(null)
       toast({ title: isEnglish ? 'Session permanently deleted' : 'Sessione eliminata definitivamente' })
     },
-    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile eliminare la sessione', variant: 'destructive' }),
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || tl("Impossibile eliminare la sessione"), variant: 'destructive' }),
   })
 
   const renameSessionMutation = useMutation({
@@ -486,9 +487,9 @@ export default function TeacherClassesSessionsManager({
           <>
             <header className="flex items-start justify-between gap-4 px-1">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">Area docente</p>
-                <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Le tue classi</h1>
-                <p className="mt-1 text-sm font-medium text-slate-500">Scegli una classe per vedere e gestire le sessioni.</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">{tl("Area docente")}</p>
+                <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">{tl("Le tue classi")}</h1>
+                <p className="mt-1 text-sm font-medium text-slate-500">{tl("Scegli una classe per vedere e gestire le sessioni.")}</p>
               </div>
               <InvitationsPanel />
             </header>
@@ -605,7 +606,7 @@ export default function TeacherClassesSessionsManager({
                   </Select>
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => handleSaveClass()} disabled={updateClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-slate-950 px-3 text-xs font-black text-white disabled:opacity-50">{isEnglish ? 'Save' : 'Salva'}</button>
-                    {selectedClass.role === 'owner' && <button type="button" onClick={() => { if (window.confirm(`Archiviare la classe \"${selectedClass.name}\"?`)) archiveClassMutation.mutate(selectedClass.id) }} disabled={archiveClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-50">{isEnglish ? 'Archive' : 'Archivia'}</button>}
+                    {selectedClass.role === 'owner' && <button type="button" onClick={() => { if (window.confirm(tl("Archiviare la classe \"{0}\"?", selectedClass.name))) archiveClassMutation.mutate(selectedClass.id) }} disabled={archiveClassMutation.isPending} className="flex h-12 items-center justify-center rounded-xl bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-50">{isEnglish ? 'Archive' : 'Archivia'}</button>}
                   </div>
                 </div>
               )}
@@ -1057,7 +1058,7 @@ export default function TeacherClassesSessionsManager({
                       </IconButton>
                       {cls.role === 'owner' && (
                         <IconButton
-                          onClick={() => { if (window.confirm(`Archiviare la classe "${cls.name}"? Resterà recuperabile dall'archivio.`)) archiveClassMutation.mutate(cls.id) }}
+                          onClick={() => { if (window.confirm(tl("Archiviare la classe \"{0}\"? Resterà recuperabile dall'archivio.", cls.name))) archiveClassMutation.mutate(cls.id) }}
                           disabled={archiveClassMutation.isPending}
                           title={isEnglish ? 'Archive class' : 'Archivia classe'}
                           tone="neutral"
@@ -1210,7 +1211,7 @@ export default function TeacherClassesSessionsManager({
                   <div className="flex shrink-0 gap-2">
                     <Button density="compact" tone="neutral" surface="soft" onClick={() => restoreClassMutation.mutate(cls.id)} disabled={restoreClassMutation.isPending}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Restore' : 'Ripristina'}</Button>
                     <Button density="compact" tone="danger" surface="ghost" onClick={() => {
-                      if (window.confirm(`ATTENZIONE: eliminare definitivamente "${cls.name}" con tutte le sessioni, consegne, chat e documenti? L’azione non è annullabile.`)) permanentlyDeleteClassMutation.mutate(cls.id)
+                      if (window.confirm(tl("ATTENZIONE: eliminare definitivamente \"{0}\" con tutte le sessioni, consegne, chat e documenti? L’azione non è annullabile.", cls.name))) permanentlyDeleteClassMutation.mutate(cls.id)
                     }} disabled={permanentlyDeleteClassMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Delete forever' : 'Elimina tutto'}</Button>
                   </div>
                 </div>
@@ -1234,7 +1235,7 @@ export default function TeacherClassesSessionsManager({
               <DialogDescription>
                 {isEnglish
                   ? <>You are working on <strong>{newSessionClass.name}</strong>. Give the session a clear name.</>
-                  : <>Stai lavorando su <strong>{newSessionClass.name}</strong>. Dai un nome chiaro alla sessione.</>}
+                  : <>{tl("Stai lavorando su")} <strong>{newSessionClass.name}</strong>{tl(". Dai un nome chiaro alla sessione.")}</>}
               </DialogDescription>
             </DialogHeader>
             <DialogBody>
@@ -1270,7 +1271,7 @@ export default function TeacherClassesSessionsManager({
             <DialogDescription>
               {isEnglish
                 ? <>The session <strong>{sessionToTrash?.title}</strong> will disappear from the session cards and move to the trash.</>
-                : <>La sessione <strong>{sessionToTrash?.title}</strong> scomparirà dall’elenco e verrà spostata nell’archivio.</>}
+                : <>{tl("La sessione")} <strong>{sessionToTrash?.title}</strong> {tl("scomparirà dall’elenco e verrà spostata nell’archivio.")}</>}
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
@@ -1306,7 +1307,7 @@ export default function TeacherClassesSessionsManager({
             <DialogDescription>
               {isEnglish
                 ? <>This will permanently delete <strong>{sessionToPermanentlyDelete?.title}</strong> and clean its related data.</>
-                : <>La sessione <strong>{sessionToPermanentlyDelete?.title}</strong> verrà eliminata definitivamente insieme a tutti i dati collegati.</>}
+                : <>{tl("La sessione")} <strong>{sessionToPermanentlyDelete?.title}</strong> {tl("verrà eliminata definitivamente insieme a tutti i dati collegati.")}</>}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

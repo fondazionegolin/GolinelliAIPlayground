@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CalendarRange, Plus, Trash2, X } from '@/components/icons'
 import type { BoardSprintInput } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 export type BoardSprint = { id: string; name: string; goal?: string; start_date?: string | null; end_date?: string | null; auto_generated?: boolean }
 
@@ -42,35 +43,35 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
             <h3 id="board-sprints-title" className="flex items-center gap-2 text-lg font-black text-slate-900"><CalendarRange className="h-5 w-5" /> Sprint</h3>
-            <p className="mt-1 text-sm text-slate-500">Dividi il lavoro in iterazioni. Eliminando uno sprint i suoi task tornano senza sprint.</p>
+            <p className="mt-1 text-sm text-slate-500">{tl("Dividi il lavoro in iterazioni. Eliminando uno sprint i suoi task tornano senza sprint.")}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Chiudi">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}>
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5">
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3">
             <input type="checkbox" checked={automatic} onChange={(event) => setAutomatic(event.target.checked)} className="mt-0.5 h-4 w-4" />
-            <span className="text-sm text-slate-700"><strong className="block">Sprint settimanali automatici</strong><span className="text-xs text-slate-500">Ogni settimana, da lunedì a domenica. I task li inserisci e assegni tu.</span></span>
+            <span className="text-sm text-slate-700"><strong className="block">{tl("Sprint settimanali automatici")}</strong><span className="text-xs text-slate-500">{tl("Ogni settimana, da lunedì a domenica. I task li inserisci e assegni tu.")}</span></span>
           </label>
-          {draft.length === 0 && <p className="text-sm text-slate-400">Nessuno sprint.</p>}
+          {draft.length === 0 && <p className="text-sm text-slate-400">{tl("Nessuno sprint.")}</p>}
           {draft.map((sprint, index) => (
             <div key={sprint.id || `new-${index}`} className="space-y-2 rounded-[var(--ds-radius-control)] bg-slate-50 p-3">
               <div className="flex items-center gap-2">
-                <input value={sprint.name} onChange={(event) => update(index, { name: event.target.value })} maxLength={60} placeholder={`Sprint ${index + 1}`} className={`${inputClass} font-bold`} aria-label="Nome sprint" />
+                <input value={sprint.name} onChange={(event) => update(index, { name: event.target.value })} maxLength={60} placeholder={`Sprint ${index + 1}`} className={`${inputClass} font-bold`} aria-label={tl("Nome sprint")} />
                 {sprint.id && cardCounts[sprint.id] ? <span className="shrink-0 text-xs text-slate-400">{cardCounts[sprint.id]} task</span> : null}
-                <button type="button" onClick={() => setDraft((current) => current.filter((_, i) => i !== index))} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={`Elimina ${sprint.name}`}>
+                <button type="button" onClick={() => setDraft((current) => current.filter((_, i) => i !== index))} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label={tl("Elimina {0}", sprint.name)}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
-              <input value={sprint.goal || ''} onChange={(event) => update(index, { goal: event.target.value })} maxLength={300} placeholder="Obiettivo dello sprint" className={inputClass} aria-label="Obiettivo sprint" />
+              <input value={sprint.goal || ''} onChange={(event) => update(index, { goal: event.target.value })} maxLength={300} placeholder={tl("Obiettivo dello sprint")} className={inputClass} aria-label={tl("Obiettivo sprint")} />
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  Inizio
+                  {tl("Inizio")}
                   <input type="date" value={sprint.start_date || ''} onChange={(event) => update(index, { start_date: event.target.value || null })} className={`${inputClass} mt-1 font-normal`} />
                 </label>
                 <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  Fine
+                  {tl("Fine")}
                   <input type="date" value={sprint.end_date || ''} min={sprint.start_date || undefined} onChange={(event) => update(index, { end_date: event.target.value || null })} className={`${inputClass} mt-1 font-normal`} />
                 </label>
               </div>
@@ -82,19 +83,19 @@ export default function BoardSprintsDialog({ sprints, autoSprintWeekly, cardCoun
               onClick={() => setDraft((current) => [...current, { name: `Sprint ${current.length + 1}`, goal: '', ...nextSprintDates(current[current.length - 1]) }])}
               className="inline-flex h-9 items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 text-xs font-bold text-slate-600 hover:border-slate-400"
             >
-              <Plus className="h-4 w-4" /> Nuovo sprint
+              <Plus className="h-4 w-4" /> {tl("Nuovo sprint")}
             </button>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">Annulla</button>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg px-4 text-sm font-bold text-slate-600 hover:bg-slate-100">{tl("Annulla")}</button>
           <button
             type="button"
             disabled={pending}
             onClick={() => onSave(draft.map((sprint, index) => ({ ...sprint, name: sprint.name.trim() || `Sprint ${index + 1}` })), automatic)}
             className="h-[var(--button-height-default)] rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-4 text-sm font-bold text-[var(--selection-active-text)] disabled:opacity-40"
           >
-            {pending ? 'Salvataggio…' : 'Salva sprint'}
+            {pending ? tl("Salvataggio…") : tl("Salva sprint")}
           </button>
         </div>
       </div>

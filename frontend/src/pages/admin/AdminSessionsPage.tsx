@@ -5,6 +5,7 @@ import { adminApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
+import { tl } from '@/i18n/tl'
 
 interface Person { id: string; name: string; email: string | null; role: 'owner' | 'co-teacher' | 'live-creator'; live_total: number; live_active: number }
 interface SessionRow {
@@ -27,14 +28,14 @@ interface Overview {
   sessions: SessionRow[]; teachers: TeacherRow[]
 }
 
-const ROLE_LABEL: Record<Person['role'], string> = { owner: 'Proprietario', 'co-teacher': 'Co-docente', 'live-creator': 'Ha creato live' }
+const ROLE_LABEL: Record<Person['role'], string> = { owner: tl("Proprietario"), 'co-teacher': "Co-docente", 'live-creator': tl("Ha creato live") }
 const STATUS_STYLE: Record<string, string> = { active: 'bg-emerald-50 text-emerald-700', paused: 'bg-amber-50 text-amber-700', ended: 'bg-slate-100 text-slate-500', draft: 'bg-sky-50 text-sky-700' }
-const STATUS_LABEL: Record<string, string> = { active: 'Attiva', paused: 'In pausa', ended: 'Conclusa', draft: 'Bozza' }
+const STATUS_LABEL: Record<string, string> = { active: tl("Attiva"), paused: tl("In pausa"), ended: tl("Conclusa"), draft: tl("Bozza") }
 const ago = (iso: string | null) => {
   if (!iso) return '—'
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
-  if (minutes < 1) return 'adesso'
-  if (minutes < 60) return `${minutes} min fa`
+  if (minutes < 1) return tl("adesso")
+  if (minutes < 60) return tl("{0} min fa", minutes)
   if (minutes < 1440) return `${Math.round(minutes / 60)} h fa`
   return `${Math.round(minutes / 1440)} g fa`
 }
@@ -59,16 +60,16 @@ export default function AdminSessionsPage() {
     onSuccess: (_, vars) => {
       setEditing(null)
       void qc.invalidateQueries({ queryKey: ['admin', 'activity'] })
-      toast({ title: 'Limite aggiornato', description: `Ora fino a ${vars.limit} studenti per sessione: vale subito per tutte le sessioni di questa organizzazione.` })
+      toast({ title: tl("Limite aggiornato"), description: tl("Ora fino a {0} studenti per sessione: vale subito per tutte le sessioni di questa organizzazione.", vars.limit) })
     },
-    onError: (err: any) => toast({ variant: 'destructive', title: 'Limite non aggiornato', description: err?.response?.data?.detail || 'Riprova tra poco.' }),
+    onError: (err: any) => toast({ variant: 'destructive', title: tl("Limite non aggiornato"), description: err?.response?.data?.detail || tl("Riprova tra poco.") }),
   })
 
   const data = query.data
   const sessions = (data?.sessions ?? []).filter((s) => !onlyOpen || s.status !== 'ended')
   const submitLimit = (tenantId: string) => {
     const limit = Number(limitDraft)
-    if (!Number.isInteger(limit) || limit < 1 || limit > 5000) { toast({ variant: 'destructive', title: 'Inserisci un numero tra 1 e 5000' }); return }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5000) { toast({ variant: 'destructive', title: tl("Inserisci un numero tra 1 e 5000") }); return }
     raise.mutate({ tenantId, limit })
   }
 
@@ -76,36 +77,35 @@ export default function AdminSessionsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-[#1a1a2e]">Sessioni e attività dei docenti</h1>
+          <h1 className="text-2xl font-black text-[#1a1a2e]">{tl("Sessioni e attività dei docenti")}</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
-            Chi sta davvero lavorando adesso: proprietari, co-docenti e chi ha creato live nelle sessioni di altri. Il limite di capienza conta gli studenti <b>connessi contemporaneamente</b> (connessione attiva o segnale negli ultimi {data?.online_window_minutes ?? 5} minuti), non tutti quelli entrati in passato: chi esce libera subito un posto.
-            «Iscritti totali» è solo informativo. Si aggiorna ogni 20 secondi.
+            {tl("Chi sta davvero lavorando adesso: proprietari, co-docenti e chi ha creato live nelle sessioni di altri. Il limite di capienza conta gli studenti")} <b>{tl("connessi contemporaneamente")}</b> {tl("(connessione attiva o segnale negli ultimi")} {data?.online_window_minutes ?? 5} {tl("minuti), non tutti quelli entrati in passato: chi esce libera subito un posto. «Iscritti totali» è solo informativo. Si aggiorna ogni 20 secondi.")}
           </p>
         </div>
         <Button onClick={() => void query.refetch()} variant="outline" className="gap-2" disabled={query.isFetching}>
-          {query.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Aggiorna
+          {query.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} {tl("Aggiorna")}
         </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Stat label="Sessioni attive" value={data?.totals.active_sessions} />
-        <Stat label="Studenti online" value={data?.totals.online_students} />
-        <Stat label="Live in corso" value={data?.totals.active_live_interactions} />
-        <Stat label="Docenti attivi (24 h)" value={data?.totals.teachers_active_24h} />
-        <Stat label="Sessioni al limite" value={data ? data.totals.full_sessions + data.totals.near_full_sessions : undefined} tone={data && data.totals.full_sessions ? 'red' : data && data.totals.near_full_sessions ? 'amber' : undefined}
-          hint={data ? `${data.totals.full_sessions} piene · ${data.totals.near_full_sessions} oltre il 90%` : undefined} />
+        <Stat label={tl("Sessioni attive")} value={data?.totals.active_sessions} />
+        <Stat label={tl("Studenti online")} value={data?.totals.online_students} />
+        <Stat label={tl("Live in corso")} value={data?.totals.active_live_interactions} />
+        <Stat label={tl("Docenti attivi (24 h)")} value={data?.totals.teachers_active_24h} />
+        <Stat label={tl("Sessioni al limite")} value={data ? data.totals.full_sessions + data.totals.near_full_sessions : undefined} tone={data && data.totals.full_sessions ? 'red' : data && data.totals.near_full_sessions ? 'amber' : undefined}
+          hint={data ? tl("{0} piene · {1} oltre il 90%", data.totals.full_sessions, data.totals.near_full_sessions) : undefined} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        {([['sessions', 'Sessioni'], ['teachers', 'Docenti']] as const).map(([id, label]) => (
+        {([['sessions', tl("Sessioni")], ['teachers', tl("Docenti")]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setView(id)} className={`rounded-full px-4 py-1.5 font-bold ${view === id ? 'bg-[#1a1a2e] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
         ))}
-        <label className="ml-auto flex items-center gap-1.5 text-slate-500">Periodo
+        <label className="ml-auto flex items-center gap-1.5 text-slate-500">{tl("Periodo")}
           <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg border border-slate-200 bg-white px-2 py-1">
-            <option value={7}>7 giorni</option><option value={30}>30 giorni</option><option value={90}>90 giorni</option><option value={365}>1 anno</option>
+            <option value={7}>{tl("7 giorni")}</option><option value={30}>{tl("30 giorni")}</option><option value={90}>{tl("90 giorni")}</option><option value={365}>{tl("1 anno")}</option>
           </select>
         </label>
-        {view === 'sessions' && <label className="flex items-center gap-1.5 text-slate-500"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> Solo non concluse</label>}
+        {view === 'sessions' && <label className="flex items-center gap-1.5 text-slate-500"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> {tl("Solo non concluse")}</label>}
       </div>
 
       {query.isLoading && <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
@@ -114,7 +114,7 @@ export default function AdminSessionsPage() {
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[60rem] text-left text-xs">
             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
-              <tr><th className="px-3 py-2">Sessione</th><th className="px-3 py-2">Docenti coinvolti</th><th className="px-3 py-2">Connessi ora / limite</th><th className="px-3 py-2 text-right">Iscritti totali</th><th className="px-3 py-2 text-right">Live</th><th className="px-3 py-2">Ultima attività</th></tr>
+              <tr><th className="px-3 py-2">{tl("Sessione")}</th><th className="px-3 py-2">{tl("Docenti coinvolti")}</th><th className="px-3 py-2">{tl("Connessi ora / limite")}</th><th className="px-3 py-2 text-right">{tl("Iscritti totali")}</th><th className="px-3 py-2 text-right">Live</th><th className="px-3 py-2">{tl("Ultima attività")}</th></tr>
             </thead>
             <tbody>
               {sessions.map((s) => {
@@ -140,29 +140,29 @@ export default function AdminSessionsPage() {
                           <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full rounded-full ${s.full ? 'bg-red-500' : s.near_full ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} /></span>
                           <span className={`whitespace-nowrap font-bold tabular-nums ${s.full ? 'text-red-600' : 'text-slate-700'}`}>{s.online} / {s.limit}</span>
                         </div>
-                        {s.full && <p className="mt-1 flex items-center gap-1 text-[10px] font-bold text-red-600"><AlertTriangle className="h-3 w-3" /> Piena: i nuovi studenti vengono rifiutati finché qualcuno esce</p>}
+                        {s.full && <p className="mt-1 flex items-center gap-1 text-[10px] font-bold text-red-600"><AlertTriangle className="h-3 w-3" /> {tl("Piena: i nuovi studenti vengono rifiutati finché qualcuno esce")}</p>}
                         {s.frozen > 0 && <p className="mt-0.5 text-[10px] text-slate-400">{s.frozen} bloccati</p>}
                         {editing === s.id ? (
                           <div className="mt-1.5 flex items-center gap-1.5">
-                            <Input value={limitDraft} onChange={(e) => setLimitDraft(e.target.value)} inputMode="numeric" className="h-7 w-20 text-xs" aria-label="Nuovo limite per sessione" />
+                            <Input value={limitDraft} onChange={(e) => setLimitDraft(e.target.value)} inputMode="numeric" className="h-7 w-20 text-xs" aria-label={tl("Nuovo limite per sessione")} />
                             {[100, 300, 500].map((n) => <button key={n} onClick={() => setLimitDraft(String(n))} className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-200">{n}</button>)}
                             <Button size="sm" className="h-7 gap-1 bg-[#e85c8d] px-2 text-[11px] text-white hover:bg-[#d34d7d]" disabled={raise.isPending} onClick={() => submitLimit(s.tenant.id)}>
-                              {raise.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Applica
+                              {raise.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} {tl("Applica")}
                             </Button>
-                            <button onClick={() => setEditing(null)} className="text-[10px] font-semibold text-slate-400 hover:text-slate-600">Annulla</button>
+                            <button onClick={() => setEditing(null)} className="text-[10px] font-semibold text-slate-400 hover:text-slate-600">{tl("Annulla")}</button>
                           </div>
                         ) : (
-                          <button onClick={() => { setEditing(s.id); setLimitDraft(String(Math.max(300, s.limit * 2))) }} className={`mt-1 text-[10px] font-bold underline ${s.near_full ? 'text-[#e85c8d]' : 'text-slate-400 hover:text-slate-600'}`} title={`Il limite vale per tutta l'organizzazione «${s.tenant.name}»`}>Alza il limite</button>
+                          <button onClick={() => { setEditing(s.id); setLimitDraft(String(Math.max(300, s.limit * 2))) }} className={`mt-1 text-[10px] font-bold underline ${s.near_full ? 'text-[#e85c8d]' : 'text-slate-400 hover:text-slate-600'}`} title={tl("Il limite vale per tutta l'organizzazione «{0}»", s.tenant.name)}>{tl("Alza il limite")}</button>
                         )}
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.registered}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.live_active ? <b className="text-emerald-600">{s.live_active} in corso</b> : <span className="text-slate-400">{s.live_total} create</span>}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.live_active ? <b className="text-emerald-600">{s.live_active} {tl("in corso")}</b> : <span className="text-slate-400">{s.live_total} create</span>}</td>
                       <td className="px-3 py-3 text-slate-500">{ago(s.last_activity)}</td>
                     </tr>
                   </Fragment>
                 )
               })}
-              {sessions.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-slate-400">Nessuna sessione nel periodo.</td></tr>}
+              {sessions.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-slate-400">{tl("Nessuna sessione nel periodo.")}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -172,8 +172,8 @@ export default function AdminSessionsPage() {
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[56rem] text-left text-xs">
             <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
-              <tr><th className="px-3 py-2">Docente</th><th className="px-3 py-2 text-right">Sessioni proprie</th><th className="px-3 py-2 text-right">Su sessioni altrui</th><th className="px-3 py-2 text-right">Live create</th>
-                <th className="px-3 py-2 text-right">Studenti iscritti / online</th><th className="px-3 py-2">Ultima attività</th><th className="px-3 py-2" /></tr>
+              <tr><th className="px-3 py-2">{tl("Docente")}</th><th className="px-3 py-2 text-right">{tl("Sessioni proprie")}</th><th className="px-3 py-2 text-right">{tl("Su sessioni altrui")}</th><th className="px-3 py-2 text-right">{tl("Live create")}</th>
+                <th className="px-3 py-2 text-right">{tl("Studenti iscritti / online")}</th><th className="px-3 py-2">{tl("Ultima attività")}</th><th className="px-3 py-2" /></tr>
             </thead>
             <tbody>
               {data.teachers.map((t) => (
@@ -182,11 +182,11 @@ export default function AdminSessionsPage() {
                     <td className="px-3 py-2.5"><p className="font-bold text-slate-800">{t.name}{t.role === 'ADMIN' && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black text-slate-500">ADMIN</span>}</p><p className="text-[10px] text-slate-400">{t.email}</p></td>
                     <td className="px-3 text-right tabular-nums">{t.owned_sessions}</td>
                     <td className="px-3 text-right tabular-nums">{t.other_sessions ? <b className="text-[#e85c8d]">{t.other_sessions}</b> : 0}</td>
-                    <td className="px-3 text-right tabular-nums">{t.live_total}{t.live_active > 0 && <span className="ml-1 font-bold text-emerald-600">({t.live_active} in corso)</span>}</td>
+                    <td className="px-3 text-right tabular-nums">{t.live_total}{t.live_active > 0 && <span className="ml-1 font-bold text-emerald-600">({t.live_active} {tl("in corso)")}</span>}</td>
                     <td className="px-3 text-right tabular-nums">{t.registered_students} / <b>{t.online_students}</b></td>
-                    <td className="px-3 text-slate-500" title={t.last_login_at ? `Ultimo accesso ${new Date(t.last_login_at).toLocaleString('it-IT')}` : undefined}>{ago(t.last_activity)}</td>
+                    <td className="px-3 text-slate-500" title={t.last_login_at ? tl("Ultimo accesso {0}", new Date(t.last_login_at).toLocaleString('it-IT')) : undefined}>{ago(t.last_activity)}</td>
                     <td className="px-2 text-right">
-                      {t.involved.length > 0 && <button onClick={() => setOpenTeacher(openTeacher === t.id ? null : t.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Dettaglio sessioni">{openTeacher === t.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button>}
+                      {t.involved.length > 0 && <button onClick={() => setOpenTeacher(openTeacher === t.id ? null : t.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label={tl("Dettaglio sessioni")}>{openTeacher === t.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button>}
                     </td>
                   </tr>
                   {openTeacher === t.id && (
@@ -205,12 +205,12 @@ export default function AdminSessionsPage() {
                   )}
                 </Fragment>
               ))}
-              {data.teachers.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">Nessun docente attivo nel periodo.</td></tr>}
+              {data.teachers.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">{tl("Nessun docente attivo nel periodo.")}</td></tr>}
             </tbody>
           </table>
         </div>
       )}
-      <p className="flex items-center gap-1.5 text-[11px] text-slate-400"><Activity className="h-3.5 w-3.5" /><Users className="h-3.5 w-3.5" /> «Su sessioni altrui» conta le sessioni in cui il docente è co-docente o ha creato una live senza esserne il proprietario.</p>
+      <p className="flex items-center gap-1.5 text-[11px] text-slate-400"><Activity className="h-3.5 w-3.5" /><Users className="h-3.5 w-3.5" /> {tl("«Su sessioni altrui» conta le sessioni in cui il docente è co-docente o ha creato una live senza esserne il proprietario.")}</p>
     </div>
   )
 }

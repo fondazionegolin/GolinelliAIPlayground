@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FileSpreadsheet, Hash, Type, Calendar, ChevronDown, ChevronUp, AlertCircle } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 export interface SheetInfo {
   name: string
@@ -72,7 +73,7 @@ export default function DataFileCard({ preview, compact = false }: DataFileCardP
       <div className="flex items-center gap-2 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
         <AlertCircle className="h-4 w-4 flex-shrink-0" />
         <span className="truncate">{preview.filename}</span>
-        <span className="text-orange-400">— anteprima non disponibile</span>
+        <span className="text-orange-400">{tl("— anteprima non disponibile")}</span>
       </div>
     )
   }
@@ -106,7 +107,7 @@ export default function DataFileCard({ preview, compact = false }: DataFileCardP
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-slate-700 truncate block">{preview.filename}</span>
           <span className="text-slate-400">
-            {sheet.rows.toLocaleString()} righe · {sheet.columns.length} colonne
+            {sheet.rows.toLocaleString()} {tl("righe ·")} {sheet.columns.length} colonne
             {preview.size_bytes ? ` · ${formatSize(preview.size_bytes)}` : ''}
           </span>
         </div>

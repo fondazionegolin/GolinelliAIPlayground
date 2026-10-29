@@ -49,13 +49,17 @@ from app.services.environmental_impact import (
 )
 from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
 from app.services.presentation_layouts import (
-    LAYOUT_REGISTRY,
+    LAYOUTS,
     choose_layout,
     fit_font_size,
-    render_slide_blocks,
+    normalize_content,
+    render_outline_slide,
 )
+from app.services.presentation_quality import check_and_fix_slides
+from app.services.presentation_themes import THEMES, THEMES_BY_ID, resolve_theme, theme_from_deck
 from app.services.slide_sanitizer import sanitize_slide_text_html
 from app.services import document_assist
+from app.services import presentation_studio as studio_service
 from app.models.alert import ContentAlert
 from app.realtime.gateway import notify_teacher_content_alert, sio
 
@@ -123,6 +127,21 @@ def _parse_submission_score(value) -> tuple[Optional[float], bool]:
         return None, False
 
 
+_THEME_COLOR_ROLES = {
+    "background", "surface", "primary", "accent", "text", "muted", "border", "primary_text", "accent_text",
+    "on_primary", "on_primary_muted", "on_accent", "inverse", "on_inverse", "accent_on_inverse",
+}
+
+
+def _clean_theme_role(raw) -> Optional[dict]:
+    if not isinstance(raw, dict):
+        return None
+    clean = {key: raw[key] for key in ("fill", "stroke", "color") if raw.get(key) in _THEME_COLOR_ROLES}
+    if raw.get("font") in {"heading", "body"}:
+        clean["font"] = raw["font"]
+    return clean or None
+
+
 def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
     width = float(dims.get("width") or 960)
     height = float(dims.get("height") or 540)
@@ -146,8 +165,10 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
             if block_type not in allowed_types:
                 continue
 
-            block_width = _bounded_number(block.get("width"), 220, 1 if block_type == "line" else 24, width)
-            block_height = _bounded_number(block.get("height"), 80, 0 if block_type == "line" else 24, height)
+            # Shapes may legitimately be thin (accent rules, list markers): only text/images need room.
+            min_size = {"line": 0, "rectangle": 2, "ellipse": 2, "text": 16}.get(block_type, 24)
+            block_width = _bounded_number(block.get("width"), 220, max(1, min_size), width)
+            block_height = _bounded_number(block.get("height"), 80, min_size, height)
             # Full in-canvas containment (no off-canvas slack) — the LLM-freehand geometry this
             # guards against is being phased out in favor of the layout registry (see
             # presentation_layouts.py), but this stays as a defense-in-depth bound for anything
@@ -164,7 +185,7 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 align = style.get("textAlign")
                 if not isinstance(align, str) or align not in allowed_align:
                     align = "left"
-                font_size = _bounded_number(style.get("fontSize"), 22, 10, 72)
+                font_size = _bounded_number(style.get("fontSize"), 22, 10, 140)
                 line_height = _bounded_number(style.get("lineHeight"), 1.25, 0.9, 2.0)
                 padding = int(_bounded_number(style.get("padding"), 0, 0, 40))
                 content = text[:900]
@@ -174,6 +195,8 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 font_size = fit_font_size(plain_length_text, block_width, block_height, font_size, min_font_size=10, line_height=line_height, padding=padding)
                 clean_style = {
                     "fontFamily": str(style.get("fontFamily") or "Inter, Arial, sans-serif")[:80],
+                    **({"fontStyle": "italic"} if style.get("fontStyle") == "italic" else {}),
+                    **({"textDecoration": str(style.get("textDecoration"))[:40]} if style.get("textDecoration") in {"underline", "line-through"} else {}),
                     "fontSize": int(font_size),
                     "color": str(style.get("color") or "#111827")[:32],
                     "backgroundColor": str(style.get("backgroundColor") or "transparent")[:32],
@@ -202,7 +225,7 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 if block_type == "rectangle":
                     clean_style["cornerRadius"] = int(_bounded_number(style.get("cornerRadius"), 12, 0, 64))
 
-            clean_blocks.append({
+            clean_block = {
                 "id": str(uuid.uuid4()),
                 "type": block_type,
                 "content": content,
@@ -213,15 +236,27 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 "rotation": _bounded_number(block.get("rotation"), 0, -360, 360),
                 "zIndex": int(block.get("zIndex") if isinstance(block.get("zIndex"), int) else layer),
                 "style": clean_style,
-            })
+            }
+            if block.get("locked") is True:
+                clean_block["locked"] = True
+            theme_role = _clean_theme_role(block.get("themeRole"))
+            if theme_role:
+                clean_block["themeRole"] = theme_role
+            if block_type == "image" and block.get("imagePrompt"):
+                clean_block["imagePrompt"] = str(block.get("imagePrompt"))[:200]
+            clean_blocks.append(clean_block)
 
         if clean_blocks:
-            clean_slides.append({
+            clean_slide = {
                 "id": str(uuid.uuid4()),
                 "title": str(slide.get("title") or f"Slide {slide_index + 1}").strip()[:120],
                 "blocks": clean_blocks,
-                "speakerNotes": str(slide.get("speakerNotes") or slide.get("notes") or "").strip()[:1200],
-            })
+                "speakerNotes": str(slide.get("speakerNotes") or slide.get("notes") or "").strip()[:2000],
+            }
+            if slide.get("layout") in LAYOUTS and isinstance(slide.get("content"), dict):
+                clean_slide["layout"] = slide["layout"]
+                clean_slide["content"] = normalize_content(slide["content"])
+            clean_slides.append(clean_slide)
 
     if not clean_slides:
         raise ValueError("Presentation agent returned no renderable slides")
@@ -257,16 +292,7 @@ def _fallback_presentation_strategy(prompt: str) -> dict:
     }
 
 
-def _fallback_presentation_style() -> dict:
-    return {
-        "palette": {"background": "#F8FAFC", "surface": "#FFFFFF", "primary": "#4F46E5", "accent": "#06B6D4", "text": "#0F172A"},
-        "typography": {"heading": "Inter", "body": "Inter", "title_size": 34, "body_size": 20},
-        "layout": "Titolo forte, griglia ariosa, massimo tre nuclei informativi per slide",
-        "components": ["accent_bar", "content_cards", "summary_panel"],
-    }
-
-
-def _fallback_presentation_payload(strategy: dict, fmt: str, width: int, height: int) -> dict:
+def _fallback_presentation_payload(strategy: dict, fmt: str, width: int, height: int, theme: Optional[dict] = None) -> dict:
     """Builds a full deck straight from the strategist's outline via the same deterministic
     layout registry the primary composer stage uses (see presentation_layouts.py) — one source
     of truth for "what a cover/title+bullets/etc. slide looks like" instead of a second,
@@ -289,18 +315,14 @@ def _fallback_presentation_payload(strategy: dict, fmt: str, width: int, height:
 
         layout_key = "cover" if index == 0 else choose_layout(role, points, visual_idea)
         content = {
+            "layout": layout_key,
             "title": slide_title,
-            "subtitle": str(strategy.get("core_message") or source.get("purpose") or ""),
-            "bullets": points,
-            "left_bullets": points[: math.ceil(len(points) / 2)],
-            "right_bullets": points[math.ceil(len(points) / 2):],
-            "steps": points,
-            "stat_value": points[0] if points else slide_title,
-            "stat_label": str(source.get("purpose") or ""),
+            "subtitle": str(strategy.get("core_message") or source.get("purpose") or "") if index == 0 else "",
+            "points": points,
             "image_prompt": visual_idea or slide_title,
+            "notes": str(source.get("speaker_notes") or "")[:1000],
         }
-        blocks = render_slide_blocks(layout_key, width, height, content)
-        slides.append({"title": slide_title, "speakerNotes": str(source.get("speaker_notes") or "")[:1000], "blocks": blocks})
+        slides.append(render_outline_slide(content, index, width, height, theme or resolve_theme(None)))
     return {"title": title, "format": fmt, "slides": slides}
 
 
@@ -2161,14 +2183,11 @@ async def presentation_agent(
         f"Presentazione corrente, se da modificare:\n{current_summary}\n\n"
         "Produci JSON con questa forma:\n"
         "{\"title\":\"...\",\"audience\":\"...\",\"core_message\":\"...\",\"narrative_arc\":\"...\","
+        "\"theme_id\":\"<id del template grafico più adatto>\","
         "\"slides\":[{\"title\":\"...\",\"role\":\"cover|concept|evidence|comparison|process|summary\","
-        "\"purpose\":\"...\",\"key_points\":[\"...\"],\"visual_idea\":\"...\",\"speaker_notes\":\"...\"}]}"
-    )
-
-    style_system = (
-        "Sei un art director per presentazioni in stile Gamma/Keynote: sistemi visuali puliti, coerenti, moderni. "
-        "Definisci palette, gerarchie tipografiche, ritmo, pattern layout e componenti. "
-        "Evita palette monotone e slide piene di testo. Rispondi solo con JSON valido, compatto e senza spiegazioni."
+        "\"purpose\":\"...\",\"key_points\":[\"...\"],\"visual_idea\":\"...\",\"speaker_notes\":\"...\"}]}\n\n"
+        "Template grafici disponibili (scegline uno per theme_id; se modifichi una presentazione esistente mantieni il suo):\n"
+        + "\n".join(f"- {theme['id']}: {theme['name']} — {theme['description']}" for theme in THEMES)
     )
 
     compose_system = (
@@ -2181,7 +2200,6 @@ async def presentation_agent(
 
     try:
         strategy_resp = None
-        style_resp = None
         compose_resp = None
         try:
             strategy_resp = await llm_service.generate(
@@ -2200,28 +2218,11 @@ async def presentation_agent(
             logger.warning("Presentation strategist fallback: %s", strategy_error)
             strategy = _fallback_presentation_strategy(prompt)
 
-        style_user = (
-            f"Strategia:\n{json.dumps(strategy, ensure_ascii=False)[:7000]}\n\n"
-            "Restituisci ESATTAMENTE un JSON compatto con questo schema e nessun altro campo:\n"
-            "{\"palette\":{\"background\":\"#...\",\"surface\":\"#...\",\"primary\":\"#...\",\"accent\":\"#...\",\"text\":\"#...\"},"
-            "\"typography\":{\"heading\":\"Inter\",\"body\":\"Inter\",\"title_size\":34,\"body_size\":20},"
-            "\"layout\":\"una frase breve\",\"components\":[\"massimo\",\"quattro\",\"elementi\"]}. "
-            "Massimo 900 caratteri complessivi."
-        )
-        try:
-            style_resp = await llm_service.generate(
-                messages=[{"role": "user", "content": style_user}],
-                system_prompt=style_system,
-                provider=provider,
-                model=model,
-                temperature=0.4,
-                max_tokens=900,
-                allow_web_search=False,
-            )
-            style = _extract_json_object(style_resp.content)
-        except Exception as style_error:
-            logger.warning("Presentation art director fallback: %s", style_error)
-            style = _fallback_presentation_style()
+        # Colours are never invented by the LLM: it can only pick one of the curated, contrast-checked
+        # themes (see presentation_themes). An edited deck keeps its own theme.
+        existing_theme = theme_from_deck(current_presentation.get("theme")) if current_presentation else None
+        theme_id = existing_theme["id"] if existing_theme else str(strategy.get("theme_id") or "")
+        style = existing_theme or resolve_theme(theme_id if theme_id in THEMES_BY_ID else None)
 
         # Layout is chosen deterministically per slide from the strategist's own intent (role /
         # key_points volume / visual_idea) — see presentation_layouts.choose_layout — instead of
@@ -2244,7 +2245,7 @@ async def presentation_agent(
             slide_briefs.append({
                 "slide_index": index,
                 "layout": layout_key,
-                "fields_to_fill": LAYOUT_REGISTRY[layout_key].fields,
+                "fields_to_fill": LAYOUTS[layout_key]["fields"],
                 "title_hint": slide.get("title"),
                 "purpose": slide.get("purpose"),
                 "key_points": slide.get("key_points"),
@@ -2253,14 +2254,13 @@ async def presentation_agent(
 
         compose_user = (
             f"Lingua: {language}.\n"
-            "DIREZIONE VISIVA (tono/argomento, non serve nello JSON di risposta):\n"
-            f"{json.dumps(style, ensure_ascii=False)}\n\n"
             "Per ciascuna slide qui sotto, scrivi SOLO i campi elencati in fields_to_fill:\n"
             f"{json.dumps(slide_briefs, ensure_ascii=False)}\n\n"
             "Campi possibili e significato: title (max 8 parole), subtitle (una frase), "
-            "bullets/left_bullets/right_bullets/steps (liste di frasi brevi, max 14 parole ciascuna), "
-            "stat_value (un numero o dato breve), stat_label (poche parole), supporting_text (una frase), "
-            "image_prompt (breve descrizione visiva in inglese per un placeholder).\n\n"
+            "points/points_right (liste di frasi brevi, max 14 parole ciascuna; per il layout cards usa 'Concetto: spiegazione'), "
+            "left_label/right_label (etichette brevi delle due colonne), "
+            "stat_value (un numero o dato breve), stat_label (poche parole), quote/attribution (citazione e autore), "
+            "image_prompt (breve descrizione dell'immagine da inserire).\n\n"
             "Restituisci JSON: {\"slides\":[{\"slide_index\":0, <solo i campi richiesti per quella slide>}, ...]} "
             "nello stesso ordine, un oggetto per ogni slide elencata sopra."
         )
@@ -2300,36 +2300,34 @@ async def presentation_agent(
                 # Missing/short-changed fields still render something sane via each layout's own
                 # fallbacks (title_hint/key_points), rather than an empty or half-built slide.
                 content.setdefault("title", slide.get("title"))
-                content.setdefault("bullets", slide.get("key_points"))
-                content.setdefault("steps", slide.get("key_points"))
+                content.setdefault("points", slide.get("key_points"))
                 content.setdefault("image_prompt", slide.get("visual_idea") or slide.get("title"))
-                blocks = render_slide_blocks(layout_key, canvas_width, canvas_height, content, style)
-                rendered_slides.append({
-                    "title": str(slide.get("title") or content.get("title") or f"Slide {index + 1}"),
-                    "speakerNotes": str(slide.get("speaker_notes") or ""),
-                    "blocks": blocks,
-                })
+                content["layout"] = layout_key
+                content["notes"] = slide.get("speaker_notes")
+                rendered_slides.append(render_outline_slide(content, index, canvas_width, canvas_height, style))
             payload = {"title": strategy.get("title") or "Presentazione", "format": fmt, "slides": rendered_slides}
         else:
-            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height)
+            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height, style)
         payload["format"] = fmt
         payload["agent_steps"] = [
             {"agent": "Strategist", "summary": str(strategy.get("core_message") or strategy.get("narrative_arc") or "")[:500]},
-            {"agent": "Art director", "summary": json.dumps(style, ensure_ascii=False)[:500]},
+            {"agent": "Art director", "summary": f"Template «{style['name']}»: colori e caratteri con contrasto verificato."},
             {"agent": "Composer", "summary": "Ha prodotto slide editabili con layout, gerarchie e blocchi nativi." if compose_resp else "Ha applicato il layout editabile di fallback."},
         ]
         try:
             result = _sanitize_slide_agent_payload(payload, {"width": canvas_width, "height": canvas_height})
         except (TypeError, ValueError, KeyError) as sanitize_error:
             logger.warning("Presentation payload sanitizer fallback: %s", sanitize_error)
-            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height)
+            payload = _fallback_presentation_payload(strategy, fmt, canvas_width, canvas_height, style)
             payload["agent_steps"] = [
                 {"agent": "Strategist", "summary": str(strategy.get("core_message") or strategy.get("narrative_arc") or "")[:500]},
                 {"agent": "Composer", "summary": "Ha applicato il layout editabile di fallback."},
             ]
             result = _sanitize_slide_agent_payload(payload, {"width": canvas_width, "height": canvas_height})
 
-        responses = [response for response in (strategy_resp, style_resp, compose_resp) if response is not None]
+        check_and_fix_slides(result["slides"], canvas_width, canvas_height, style)
+        result["theme"] = {"id": style["id"], "options": style["options"]}
+        responses = [response for response in (strategy_resp, compose_resp) if response is not None]
         total_prompt = sum(response.prompt_tokens for response in responses)
         total_completion = sum(response.completion_tokens for response in responses)
         last_response = responses[-1] if responses else None
@@ -2346,7 +2344,7 @@ async def presentation_agent(
                 {
                     "type": "presentation_agent",
                     "prompt": prompt[:1000],
-                    "agent_steps": ["strategy", "style", "compose"],
+                    "agent_steps": ["strategy", "compose"],
                     "slides": len(result["slides"]),
                     "prompt_tokens": total_prompt,
                     "completion_tokens": total_completion,
@@ -2382,7 +2380,7 @@ async def document_context_assist(
     target_kind = str(target.get("kind") or "").strip()
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
-    if target_kind not in {"selected_text", "document", "slide_block", "slide", "presentation"}:
+    if target_kind not in {"selected_text", "document", "slide_block", "slide_blocks", "slide", "presentation"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select text, a slide object, a slide, or the presentation first")
 
     provider = request.get("provider")
@@ -2625,8 +2623,36 @@ async def document_context_assist(
             logger.exception("Document text assist failed")
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
 
-    target_payload = json.dumps(target, ensure_ascii=False)[:60000 if target_kind == "presentation" else 10000]
+    target_payload = json.dumps(target, ensure_ascii=False)[:{"presentation": 60000, "slide_blocks": 30000}.get(target_kind, 10000)]
     document_context = json.dumps(request.get("document_context") or {}, ensure_ascii=False)[:5000]
+    # Decks made by the Presentation Studio keep each slide's layout + structured content and their
+    # theme: the assistant then edits *content* and the slide is re-rendered deterministically, so it
+    # can't produce off-theme colours or meaningless shapes. Freehand block editing is only used for
+    # slides the user has customised by hand (and is still constrained by the theme + quality pass).
+    deck_theme = theme_from_deck(target.get("theme")) if target_kind in {"slide", "presentation"} else None
+    content_mode_slides = None
+    if deck_theme:
+        source_slides = [target.get("slide")] if target_kind == "slide" else (target.get("slides") or [])
+        if source_slides and all(
+            isinstance(item, dict) and item.get("layout") in LAYOUTS and isinstance(item.get("content"), dict) and not item.get("customized")
+            for item in source_slides
+        ):
+            content_mode_slides = [
+                {"id": item.get("id"), "layout": item["layout"],
+                 **{k: v for k, v in normalize_content(item["content"]).items() if v not in ("", [])},
+                 "notes": str(item.get("speakerNotes") or "")[:1500]}
+                for item in source_slides
+            ]
+            target_payload = json.dumps({"title": target.get("title"), "slides": content_mode_slides}, ensure_ascii=False)[:60000]
+    theme_rules = ""
+    if deck_theme and not content_mode_slides:
+        colors = deck_theme["colors"]
+        theme_rules = (
+            f" Usa SOLO i colori del tema: sfondo {colors['background']}, superfici {colors['surface']}, primario {colors['primary']}, "
+            f"accento {colors['accent']}, testo {colors['text']}, testo secondario {colors['muted']}, testo su primario {colors['on_primary']}. "
+            f"Caratteri: titoli {deck_theme['fonts']['heading']}, testo {deck_theme['fonts']['body']}. "
+            "Il testo deve essere sempre ben leggibile sul colore che c'è sotto. Non aggiungere forme decorative senza funzione."
+        )
     if target_kind == "selected_text":
         response_schema = '{"summary":"breve descrizione della modifica","replacement_text":"testo sostitutivo, senza commenti"}'
         target_rules = (
@@ -2639,11 +2665,47 @@ async def document_context_assist(
             "Modifica soltanto l'oggetto selezionato. Conserva posizione, dimensioni e tipo quando la richiesta non li riguarda. "
             "Per immagini non inventare URL esterni: conserva content se non viene chiesta una sostituzione."
         )
+    elif target_kind == "slide_blocks":
+        response_schema = (
+            '{"summary":"breve descrizione della modifica","replacement_blocks":[{"id":"id esistente, vuoto se nuovo",'
+            '"type":"text|image|rectangle|ellipse|line","content":"...","x":0,"y":0,"width":100,"height":100,"style":{}}]}'
+        )
+        target_rules = (
+            "Il bersaglio è un gruppo di oggetti selezionati insieme: trattalo come un'unica struttura funzionale "
+            "(es. elenco numerato, timeline, schema a passi fatto di cerchi, numeri, connettori e testi). "
+            "Applica la richiesta al gruppo intero, ricalcolando posizioni e dimensioni di tutti gli oggetti in modo coerente: "
+            "allineamenti, spaziature regolari, numeri centrati nei loro cerchi, connettori che collegano davvero gli elementi. "
+            "Per un layout verticale gli elementi vanno impilati dall'alto in basso, ciascuno con il suo testo accanto, e i connettori orizzontali diventano verticali. "
+            "Restituisci TUTTI gli oggetti del gruppo che devono restare, conservando il loro id; ometti solo quelli da eliminare; "
+            "gli oggetti nuovi hanno id vuoto. Conserva tipo, contenuto e stile quando la richiesta non li riguarda. "
+            "Resta dentro la slide e, se possibile, nell'area occupata ora dal gruppo, evitando di sovrapporti a other_blocks. "
+            "Per una linea, x/y è il punto iniziale e x+width/y+height il punto finale: una linea verticale ha width 0. "
+            "Per immagini non inventare URL: conserva content."
+        )
+    elif target_kind == "slide" and content_mode_slides:
+        response_schema = '{"summary":"breve descrizione della modifica","slide":' + studio_service.SLIDE_SCHEMA + '}'
+        target_rules = (
+            "Modifica soltanto il contenuto della slide corrente: testi, note e, se serve, il layout. "
+            "La grafica viene applicata automaticamente dal tema: non indicare colori, posizioni o forme.\n" + studio_service.LAYOUT_GUIDE
+        )
     elif target_kind == "slide":
         response_schema = '{"summary":"breve descrizione della modifica","replacement_slide":{"title":"...","blocks":[...]}}'
         target_rules = (
             "Modifica soltanto la slide corrente. Restituisci tutti i suoi blocchi, inclusi quelli invariati. "
-            "Usa solo blocchi text, image, rectangle, ellipse e line."
+            "Usa solo blocchi text, image, rectangle, ellipse e line." + theme_rules
+        )
+    elif content_mode_slides:
+        response_schema = (
+            '{"summary":"breve descrizione della modifica","title":"titolo presentazione",'
+            '"slides":[{"id":"id esistente o vuoto se nuova",' + studio_service.SLIDE_SCHEMA[1:] + ']}'
+        )
+        if isinstance(target.get("selected_slide_ids"), list) and len(target["selected_slide_ids"]) > 1:
+            scope_rule = "Modifica soltanto le slide ricevute e restituiscile tutte, nello stesso ordine e nello stesso numero. "
+        else:
+            scope_rule = "Puoi modificare titolo, ordine, numero e contenuto delle slide; restituisci sempre tutte le slide. "
+        target_rules = (
+            scope_rule + "Lavora sul contenuto (testi, note, layout): la grafica viene applicata automaticamente dal tema, "
+            "non indicare colori, posizioni o forme. Conserva gli id delle slide esistenti.\n" + studio_service.LAYOUT_GUIDE
         )
     else:
         response_schema = '{"summary":"breve descrizione della modifica","replacement_presentation":{"title":"...","format":"16:9|4:3","slides":[{"title":"...","blocks":[...],"speakerNotes":"..."}]}}'
@@ -2652,13 +2714,13 @@ async def document_context_assist(
             target_rules = (
                 "Modifica soltanto le slide selezionate ricevute nel bersaglio. "
                 "Restituisci tutte e sole le slide selezionate, nello stesso ordine e nello stesso numero, incluse quelle rimaste invariate. "
-                "Non modificare il titolo o il formato della presentazione e usa solo blocchi text, image, rectangle, ellipse e line."
+                "Non modificare il titolo o il formato della presentazione e usa solo blocchi text, image, rectangle, ellipse e line." + theme_rules
             )
         else:
             target_rules = (
                 "Puoi modificare l'intera presentazione: titolo, ordine, numero e contenuto delle slide. "
                 "Restituisci sempre la presentazione completa, incluse le slide rimaste invariate. "
-                "Mantieni il formato corrente salvo richiesta esplicita e usa solo blocchi text, image, rectangle, ellipse e line."
+                "Mantieni il formato corrente salvo richiesta esplicita e usa solo blocchi text, image, rectangle, ellipse e line." + theme_rules
             )
 
     system_prompt = (
@@ -2681,7 +2743,7 @@ async def document_context_assist(
             provider=provider,
             model=model,
             temperature=0.25,
-            max_tokens=16000 if target_kind == "presentation" else 3200,
+            max_tokens={"presentation": 16000, "slide_blocks": 8000}.get(target_kind, 3200),
             allow_web_search=False,
         )
         usage_responses = [response]
@@ -2709,7 +2771,7 @@ async def document_context_assist(
                 provider=provider,
                 model=model,
                 temperature=0,
-                max_tokens=16000 if target_kind == "presentation" else 5000,
+                max_tokens={"presentation": 16000, "slide_blocks": 10000}.get(target_kind, 5000),
                 allow_web_search=False,
             )
             usage_responses.append(repair_response)
@@ -2742,6 +2804,56 @@ async def document_context_assist(
             if not blocks:
                 raise ValueError("Replacement block is not renderable")
             proposal = {"kind": target_kind, "replacement_block": blocks[0]}
+        elif target_kind == "slide_blocks":
+            raw_blocks = payload.get("replacement_blocks")
+            if not isinstance(raw_blocks, list):
+                raise ValueError("No replacement blocks returned")
+            known_ids = {block.get("id") for block in target.get("blocks") or [] if isinstance(block, dict)}
+            replacement_blocks = []
+            # Sanitized one by one: the sanitizer drops unrenderable blocks and mints fresh ids, so this
+            # is the only way to carry each surviving block's original id back to the client.
+            for raw in raw_blocks[:40]:
+                if not isinstance(raw, dict):
+                    continue
+                sanitized = _sanitize_slide_agent_payload(
+                    {"title": "Proposal", "slides": [{"title": "Target", "blocks": [raw]}]},
+                    {"width": canvas_width, "height": canvas_height},
+                )
+                blocks = sanitized.get("slides", [{}])[0].get("blocks", []) if sanitized.get("slides") else []
+                if not blocks:
+                    continue
+                block = blocks[0]
+                block["id"] = raw.get("id") if raw.get("id") in known_ids else ""
+                replacement_blocks.append(block)
+            if not replacement_blocks:
+                raise ValueError("Replacement blocks are not renderable")
+            proposal = {"kind": target_kind, "replacement_blocks": replacement_blocks}
+        elif target_kind == "slide" and content_mode_slides:
+            original = target.get("slide") or {}
+            slide_index = target.get("slide_index") if isinstance(target.get("slide_index"), int) else 1
+            edited = studio_service.normalize_slide(payload.get("slide"), "dettagliata", keep_id=original.get("id"))
+            rendered = render_outline_slide(edited, slide_index, canvas_width, canvas_height, deck_theme)
+            check_and_fix_slides([rendered], canvas_width, canvas_height, deck_theme)
+            proposal = {"kind": target_kind, "replacement_slide": rendered}
+        elif target_kind == "presentation" and content_mode_slides:
+            raw_slides = payload.get("slides") if isinstance(payload.get("slides"), list) else []
+            known_ids = {item.get("id") for item in content_mode_slides}
+            indexes = target.get("slide_indexes") if isinstance(target.get("slide_indexes"), list) else None
+            rendered_slides = []
+            for position, item in enumerate(raw_slides[:30]):
+                if not isinstance(item, dict):
+                    continue
+                edited = studio_service.normalize_slide(item, "dettagliata", keep_id=item.get("id") if item.get("id") in known_ids else None)
+                index = indexes[position] if indexes and position < len(indexes) and isinstance(indexes[position], int) else position
+                rendered_slides.append(render_outline_slide(edited, index, canvas_width, canvas_height, deck_theme))
+            if not rendered_slides:
+                raise ValueError("No replacement slides returned")
+            check_and_fix_slides(rendered_slides, canvas_width, canvas_height, deck_theme)
+            proposal = {"kind": target_kind, "replacement_presentation": {
+                "title": str(payload.get("title") or target.get("title") or "Presentazione")[:140],
+                "format": target.get("format") or "16:9",
+                "slides": rendered_slides,
+            }}
         elif target_kind == "slide":
             replacement_slide = payload.get("replacement_slide")
             if not isinstance(replacement_slide, dict):
@@ -2753,6 +2865,9 @@ async def document_context_assist(
             slides = sanitized.get("slides", [])
             if not slides:
                 raise ValueError("Replacement slide is not renderable")
+            studio_service.infer_theme_roles(slides[0], canvas_width, canvas_height)
+            check_and_fix_slides(slides[:1], canvas_width, canvas_height, deck_theme)
+            slides[0]["customized"] = True
             proposal = {"kind": target_kind, "replacement_slide": slides[0]}
         else:
             replacement_presentation = payload.get("replacement_presentation")
@@ -2762,6 +2877,10 @@ async def document_context_assist(
                 replacement_presentation,
                 {"width": canvas_width, "height": canvas_height},
             )
+            for slide in sanitized["slides"]:
+                studio_service.infer_theme_roles(slide, canvas_width, canvas_height)
+                slide["customized"] = True
+            check_and_fix_slides(sanitized["slides"], canvas_width, canvas_height, deck_theme)
             proposal = {"kind": target_kind, "replacement_presentation": sanitized}
 
         real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER

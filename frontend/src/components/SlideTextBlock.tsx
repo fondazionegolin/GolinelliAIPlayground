@@ -20,6 +20,9 @@ import type { TextSlideBlock } from './SlideEditor'
 interface SlideTextBlockProps {
   block: TextSlideBlock
   readOnly?: boolean
+  /** Text editing is entered by double-click: until then the box is an ordinary object that a
+   * single click selects and drags, so pointer events fall through to the block wrapper. */
+  editing?: boolean
   onChange: (html: string) => void
   onSelectBlock: () => void
   onEditorFocus: (editor: Editor) => void
@@ -46,6 +49,7 @@ interface SlideTextBlockProps {
 export function SlideTextBlock({
   block,
   readOnly = false,
+  editing = false,
   onChange,
   onSelectBlock,
   onEditorFocus,
@@ -75,7 +79,7 @@ export function SlideTextBlock({
       TextAlign.configure({ types: ['paragraph'] }),
     ],
     content: block.content,
-    editable: !readOnly && !block.locked,
+    editable: !readOnly && !block.locked && editing,
     onCreate: ({ editor }) => onEditorCreate(editor),
     onUpdate: ({ editor }) => onChange(sanitizeSlideHtml(editor.getHTML())),
     onSelectionUpdate: onSelectionChange,
@@ -89,8 +93,8 @@ export function SlideTextBlock({
   }, [editor, block.content])
 
   useEffect(() => {
-    editor?.setEditable(!readOnly && !block.locked)
-  }, [editor, readOnly, block.locked])
+    editor?.setEditable(!readOnly && !block.locked && editing)
+  }, [editor, readOnly, block.locked, editing])
 
   useEffect(() => {
     if (!editor || readOnly || !onOverflowFontFit) return
@@ -114,7 +118,7 @@ export function SlideTextBlock({
   return (
     <EditorContent
       editor={editor}
-      className="slide-text-block h-full w-full cursor-text select-text [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0"
+      className={`slide-text-block h-full w-full ${editing || readOnly ? 'cursor-text select-text' : 'pointer-events-none select-none'} [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0`}
       style={{
         fontFamily: style.fontFamily,
         fontSize: style.fontSize,
@@ -126,8 +130,14 @@ export function SlideTextBlock({
         lineHeight: style.lineHeight,
       }}
       onPointerDown={(e) => {
+        // Shift/Ctrl/Cmd+click is a multi-selection gesture: let it reach the block wrapper
+        // (which toggles the block in the selection) instead of entering text editing.
+        if (e.shiftKey || e.metaKey || e.ctrlKey) return
         e.stopPropagation()
         if (!readOnly) onSelectBlock()
+      }}
+      onMouseDown={(e) => {
+        if (e.shiftKey || e.metaKey || e.ctrlKey) e.preventDefault()
       }}
       onFocus={() => {
         if (!readOnly) {

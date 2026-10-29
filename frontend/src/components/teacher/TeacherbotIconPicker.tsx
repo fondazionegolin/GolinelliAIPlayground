@@ -4,6 +4,7 @@ import {
   TEACHERBOT_ICON_LIBRARY, TEACHERBOT_EMOJI_LIBRARY,
   encodeLucideIcon, encodeEmojiIcon, resolveTeacherbotIcon,
 } from '@/lib/teacherbotIcons'
+import { tl } from '@/i18n/tl'
 
 interface TeacherbotIconPickerProps {
   value: string
@@ -32,7 +33,7 @@ export default function TeacherbotIconPicker({ value, onChange, swatchHex }: Tea
             onClick={() => setTab('icons')}
             className={`rounded-md px-2.5 py-1 transition-colors ${tab === 'icons' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            Icone
+            {tl("Icone")}
           </button>
           <button
             type="button"
@@ -44,11 +45,11 @@ export default function TeacherbotIconPicker({ value, onChange, swatchHex }: Tea
           <button
             type="button"
             onClick={() => onChange('bot')}
-            title="Icona automatica in base all'argomento del bot"
+            title={tl("Icona automatica in base all'argomento del bot")}
             className={`flex items-center gap-1 rounded-md px-2.5 py-1 transition-colors ${resolved.kind === 'auto' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <Shuffle className="h-3 w-3" />
-            Automatica
+            {tl("Automatica")}
           </button>
         </div>
 
@@ -59,7 +60,7 @@ export default function TeacherbotIconPicker({ value, onChange, swatchHex }: Tea
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca icona..."
+              placeholder={tl("Cerca icona...")}
               className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
             />
             {search && (
@@ -100,7 +101,7 @@ export default function TeacherbotIconPicker({ value, onChange, swatchHex }: Tea
           </div>
         ) : (
           <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-xs text-slate-400">
-            Nessuna icona corrisponde a &quot;{search}&quot;
+            {tl("Nessuna icona corrisponde a \"")}{search}&quot;
           </div>
         )
       ) : (

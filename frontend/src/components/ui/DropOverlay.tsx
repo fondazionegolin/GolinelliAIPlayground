@@ -1,7 +1,8 @@
 import { Upload } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 /** Full-area drop target highlight. Pointer-transparent so it never steals the drag events it is announcing. */
-export function DropOverlay({ active, label = 'Rilascia qui i file', hint }: { active: boolean; label?: string; hint?: string }) {
+export function DropOverlay({ active, label = tl("Rilascia qui i file"), hint }: { active: boolean; label?: string; hint?: string }) {
   if (!active) return null
   return (
     <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center rounded-[inherit] bg-primary/10 p-3 backdrop-blur-[2px] animate-in fade-in duration-100">

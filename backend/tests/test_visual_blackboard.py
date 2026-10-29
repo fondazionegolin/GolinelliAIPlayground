@@ -362,3 +362,26 @@ def test_an_area_model_is_a_real_grid_with_steps_that_exist():
     raw["elements"][0]["area_model"]["cells"] = raw["elements"][0]["area_model"]["cells"][:1]
     with pytest.raises(ValueError, match="una riga per ogni rows"):
         validate_scene(raw, GROUNDING)
+
+
+def test_the_board_carries_over_what_the_new_turn_keeps():
+    from app.services.visual_blackboard import carry_over
+    grounding = Grounding.model_validate({"subject": "Triangolo", "overview": "Un triangolo", "warnings": [], "regions": [
+        {"id": "A", "label": "Vertice A", "text": "A", "box": {"x": 10, "y": 80, "width": 2, "height": 2}, "confidence": "high"},
+        {"id": "B", "label": "Vertice B", "text": "B", "box": {"x": 80, "y": 80, "width": 2, "height": 2}, "confidence": "high"}]})
+    previous = {"title": "Base", "steps": ["Base", "Nome"], "boards": [{"id": "calc", "side": "right"}],
+                "points": [{"id": "pa", "kind": "region", "region": "A"}, {"id": "pb", "kind": "region", "region": "B"}],
+                "elements": [{"id": "base", "kind": "line", "anchors": ["pa", "pb"], "color": "blue"},
+                             {"id": "work", "kind": "formula", "space": "calc", "box": BOX, "text": "A = ?", "step": 1},
+                             {"id": "spot", "kind": "spotlight", "from_region_id": "A", "step": 1}]}
+    new = DrawingScene.model_validate({"title": "Altezza", "steps": ["Altezza"], "keep": ["base", "work", "spot", "ghost"],
+                                       "elements": [{"id": "h", "kind": "arrow", "points": [{"x": 45, "y": 20}, {"x": 45, "y": 80}]}]})
+    merged = carry_over(previous, new, grounding)
+    marks = {e.id: e for e in merged.elements}
+    assert set(marks) == {"base", "work", "h"}  # a spotlight is a moment, not a mark; unknown ids are ignored
+    assert marks["base"].carried and marks["work"].carried and not marks["h"].carried
+    assert {p.id for p in merged.points} == {"pa", "pb"} and [b.id for b in merged.boards] == ["calc"] and merged.keep == []
+    assert carry_over(previous, new.model_copy(update={"keep": []}), grounding) == new.model_copy(update={"keep": []})
+    # The new scene wins a clash: a redefined mark replaces the old one.
+    clash = new.model_copy(update={"elements": [*new.elements, new.elements[0].model_copy(update={"id": "base"})]})
+    assert not next(e for e in carry_over(previous, clash, grounding).elements if e.id == "base").carried

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Sparkles, Expand, RefreshCw, Wand2, Loader2, X, Check } from '@/components/icons'
 import { llmApi } from '@/lib/api'
+import { tl } from '@/i18n/tl'
 
 interface AITextAssistPanelProps {
   selectedText: string
@@ -61,7 +62,7 @@ export function AITextAssistPanel({
     setActiveAction(action)
 
     let prompt = ''
-    const contextInfo = context ? `\n\nContesto del documento: ${context}` : ''
+    const contextInfo = context ? tl("\n\nContesto del documento: {0}", context) : ''
 
     switch (action) {
       case 'expand':
@@ -142,11 +143,11 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
       if (assistantMessage) {
         setResult(assistantMessage.trim())
       } else {
-        setError('Nessuna risposta ricevuta')
+        setError(tl("Nessuna risposta ricevuta"))
       }
     } catch (err: any) {
       console.error('AI assist error:', err)
-      setError(err.response?.data?.detail || 'Errore durante la generazione')
+      setError(err.response?.data?.detail || tl("Errore durante la generazione"))
     } finally {
       setIsLoading(false)
     }
@@ -170,7 +171,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-violet-400 flex-shrink-0" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Assistente AI</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">{tl("Assistente AI")}</p>
             </div>
             <p className="truncate text-xs text-slate-400 mt-0.5">
               {selectedText.length > 120 ? `${selectedText.substring(0, 120)}...` : selectedText}
@@ -180,7 +181,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
             onClick={onClose}
             className="p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-white flex-shrink-0"
             disabled={isLoading}
-            aria-label="Chiudi assistente AI"
+            aria-label={tl("Chiudi assistente AI")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -192,31 +193,31 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
             <button
               onClick={() => handleAction('expand')}
               className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
-              title="Espandi il testo con più dettagli"
+              title={tl("Espandi il testo con più dettagli")}
             >
               <Expand className="h-3.5 w-3.5 text-slate-300" />
-              <span className="text-[10px] font-medium text-slate-200 leading-tight">Espandi</span>
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">{tl("Espandi")}</span>
             </button>
             <button
               onClick={() => handleAction('reformat')}
               className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
-              title="Riformatta per chiarezza"
+              title={tl("Riformatta per chiarezza")}
             >
               <RefreshCw className="h-3.5 w-3.5 text-slate-300" />
-              <span className="text-[10px] font-medium text-slate-200 leading-tight">Riformatta</span>
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">{tl("Riformatta")}</span>
             </button>
             <button
               onClick={() => handleAction('generate')}
               className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
-              title="Genera nuovo testo"
+              title={tl("Genera nuovo testo")}
             >
               <Wand2 className="h-3.5 w-3.5 text-slate-300" />
-              <span className="text-[10px] font-medium text-slate-200 leading-tight">Genera</span>
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">{tl("Genera")}</span>
             </button>
             <button
               onClick={() => handleAction('formula')}
               className="flex flex-col items-center gap-1 rounded-lg bg-violet-600/40 px-2 py-1.5 text-center transition-colors hover:bg-violet-600/60"
-              title="Converti in formula KaTeX"
+              title={tl("Converti in formula KaTeX")}
             >
               <span className="text-[11px] font-bold text-violet-300">∑</span>
               <span className="text-[10px] font-medium text-violet-200 leading-tight">Formula</span>
@@ -224,7 +225,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
             <button
               onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
               className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
-              title="Istruzione personalizzata"
+              title={tl("Istruzione personalizzata")}
             >
               <Sparkles className="h-3.5 w-3.5 text-slate-300" />
               <span className="text-[10px] font-medium text-slate-200 leading-tight">Custom</span>
@@ -237,7 +238,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
             <textarea
               value={customInstruction}
               onChange={(e) => setCustomInstruction(e.target.value)}
-              placeholder="Inserisci istruzione..."
+              placeholder={tl("Inserisci istruzione...")}
               className="mb-2 h-20 w-full resize-none rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
             />
             <button
@@ -245,7 +246,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               disabled={!customInstruction.trim()}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Applica istruzione
+              {tl("Applica istruzione")}
             </button>
           </div>
         )}
@@ -253,7 +254,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
         {isLoading && (
           <div className="flex items-center gap-2 border-t border-slate-700 px-4 py-3 text-sm text-slate-200">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Elaborazione in corso...</span>
+            <span>{tl("Elaborazione in corso...")}</span>
           </div>
         )}
 
@@ -277,13 +278,13 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
                 }}
                 className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-200 transition-colors hover:bg-white/10"
               >
-                Annulla
+                {tl("Annulla")}
               </button>
               <button
                 onClick={handleApplyResult}
                 className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
               >
-                Applica al testo
+                {tl("Applica al testo")}
               </button>
             </div>
           </div>
@@ -307,7 +308,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
       <div className='bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2 flex items-center justify-between'>
         <div className="flex items-center gap-2 text-white">
           <Sparkles className="h-4 w-4" />
-          <span className="font-medium text-sm">Assistente AI</span>
+          <span className="font-medium text-sm">{tl("Assistente AI")}</span>
         </div>
         <button
           onClick={onClose}
@@ -320,7 +321,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
 
       {/* Selected text preview */}
       <div className="px-4 py-2 bg-slate-50 border-b">
-        <p className="text-xs text-slate-500 mb-1">Testo selezionato:</p>
+        <p className="text-xs text-slate-500 mb-1">{tl("Testo selezionato:")}</p>
         <p className="text-sm text-slate-700 line-clamp-2 italic">
           "{selectedText.length > 100 ? selectedText.substring(0, 100) + '...' : selectedText}"
         </p>
@@ -337,8 +338,8 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               <Expand className="h-4 w-4" />
             </div>
             <div>
-              <p className="font-medium text-sm text-slate-800">Espandi contenuto</p>
-              <p className="text-xs text-slate-500">Arricchisce mantenendo il testo originale</p>
+              <p className="font-medium text-sm text-slate-800">{tl("Espandi contenuto")}</p>
+              <p className="text-xs text-slate-500">{tl("Arricchisce mantenendo il testo originale")}</p>
             </div>
           </button>
 
@@ -350,8 +351,8 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               <RefreshCw className="h-4 w-4" />
             </div>
             <div>
-              <p className="font-medium text-sm text-slate-800">Riformatta testo</p>
-              <p className="text-xs text-slate-500">Migliora stile e chiarezza</p>
+              <p className="font-medium text-sm text-slate-800">{tl("Riformatta testo")}</p>
+              <p className="text-xs text-slate-500">{tl("Migliora stile e chiarezza")}</p>
             </div>
           </button>
 
@@ -363,8 +364,8 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               <Wand2 className="h-4 w-4" />
             </div>
             <div>
-              <p className="font-medium text-sm text-slate-800">Genera nuovo contenuto</p>
-              <p className="text-xs text-slate-500">Crea da zero basandosi sul testo</p>
+              <p className="font-medium text-sm text-slate-800">{tl("Genera nuovo contenuto")}</p>
+              <p className="text-xs text-slate-500">{tl("Crea da zero basandosi sul testo")}</p>
             </div>
           </button>
         </div>
@@ -375,9 +376,9 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
         <div className="p-6 flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 text-violet-500 animate-spin" />
           <p className="text-sm text-slate-600">
-            {activeAction === 'expand' && 'Espansione in corso...'}
-            {activeAction === 'reformat' && 'Riformattazione in corso...'}
-            {activeAction === 'generate' && 'Generazione in corso...'}
+            {activeAction === 'expand' && tl("Espansione in corso...")}
+            {activeAction === 'reformat' && tl("Riformattazione in corso...")}
+            {activeAction === 'generate' && tl("Generazione in corso...")}
           </p>
         </div>
       )}
@@ -392,7 +393,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
             onClick={() => { setError(null); setActiveAction(null) }}
             className="w-full py-2 text-sm text-slate-600 hover:text-slate-800"
           >
-            Riprova
+            {tl("Riprova")}
           </button>
         </div>
       )}
@@ -400,7 +401,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
       {/* Result state */}
       {result && (
         <div className="p-3">
-          <p className="text-xs text-slate-500 mb-2">Risultato:</p>
+          <p className="text-xs text-slate-500 mb-2">{tl("Risultato:")}</p>
           <div className="bg-slate-50 rounded-lg p-3 max-h-48 overflow-y-auto mb-3">
             <p className="text-sm text-slate-700 whitespace-pre-wrap">{result}</p>
           </div>
@@ -409,14 +410,14 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               onClick={() => { setResult(null); setActiveAction(null) }}
               className="flex-1 py-2 px-3 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
             >
-              Annulla
+              {tl("Annulla")}
             </button>
             <button
               onClick={handleApplyResult}
               className="flex-1 py-2 px-3 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
             >
               <Check className="h-4 w-4" />
-              Applica
+              {tl("Applica")}
             </button>
           </div>
         </div>
@@ -428,20 +429,20 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
           <div className="border-t border-slate-200 pt-3">
             <div className="flex items-center gap-2 text-slate-700 mb-2">
               <Wand2 className="h-4 w-4 text-pink-500" />
-              <span className="text-sm font-semibold">Modifica personalizzata</span>
+              <span className="text-sm font-semibold">{tl("Modifica personalizzata")}</span>
             </div>
             <textarea
               value={customInstruction}
               onChange={(e) => setCustomInstruction(e.target.value)}
               className="w-full min-h-[70px] text-sm border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-pink-400/40"
-              placeholder="Es: traduci tutto in inglese; togli tutte le maiuscole; riduci a un punto elenco."
+              placeholder={tl("Es: traduci tutto in inglese; togli tutte le maiuscole; riduci a un punto elenco.")}
             />
             <button
               onClick={() => handleAction('custom')}
               disabled={!customInstruction.trim()}
               className="mt-2 w-full py-2 text-sm bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Applica istruzione
+              {tl("Applica istruzione")}
             </button>
           </div>
         </div>

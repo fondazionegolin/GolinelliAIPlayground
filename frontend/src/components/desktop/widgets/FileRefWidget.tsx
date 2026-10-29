@@ -1,4 +1,5 @@
 import { FileText, Image, FileArchive, File, Eye } from '@/components/icons'
+import { tl } from '@/i18n/tl'
 
 interface FileRefConfig {
   file_id?: string
@@ -25,7 +26,7 @@ export default function FileRefWidget({ config, onOpen }: FileRefWidgetProps) {
   const handleOpen = () => {
     if (!config.url) return
     if (onOpen) {
-      onOpen({ url: config.url, filename: config.filename || 'File', type: config.mime_type })
+      onOpen({ url: config.url, filename: config.filename || tl("File"), type: config.mime_type })
     } else {
       window.open(config.url, '_blank')
     }
@@ -36,7 +37,7 @@ export default function FileRefWidget({ config, onOpen }: FileRefWidgetProps) {
       <FileIcon mime={config.mime_type} />
       <div className="text-center">
         <div className="text-sm font-medium text-white/80 break-all line-clamp-2">
-          {config.filename || 'File'}
+          {config.filename || tl("File")}
         </div>
         {config.mime_type && (
           <div className="text-[12px] text-white/30 mt-0.5">{config.mime_type}</div>
@@ -48,7 +49,7 @@ export default function FileRefWidget({ config, onOpen }: FileRefWidgetProps) {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm text-white/70"
         >
           <Eye className="h-3 w-3" />
-          Apri
+          {tl("Apri")}
         </button>
       )}
     </div>

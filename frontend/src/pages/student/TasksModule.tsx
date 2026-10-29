@@ -22,6 +22,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import 'katex/dist/katex.min.css'
+import { tl } from '@/i18n/tl'
 
 interface QuizQuestion {
   question: string
@@ -171,8 +172,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
       queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
       if (detail?.task_id) setSelectedTaskId(detail.task_id)
       toast({
-        title: 'Nuova correzione del docente',
-        description: 'Apri il compito, leggi le modifiche evidenziate e conferma con “Ho letto”.',
+        title: tl("Nuova correzione del docente"),
+        description: tl("Apri il compito, leggi le modifiche evidenziate e conferma con “Ho letto”."),
       })
     }
     window.addEventListener('student-task-correction', handleCorrection)
@@ -184,7 +185,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
       const detail = (event as CustomEvent<{ task_id?: string }>).detail
       queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
       if (detail?.task_id) setSelectedTaskId(detail.task_id)
-      toast({ title: 'Nuovo feedback del docente', description: 'Apri il compito per leggere la valutazione e i commenti.' })
+      toast({ title: tl("Nuovo feedback del docente"), description: tl("Apri il compito per leggere la valutazione e i commenti.") })
     }
     window.addEventListener('student-task-feedback', handleFeedback)
     return () => window.removeEventListener('student-task-feedback', handleFeedback)
@@ -256,10 +257,10 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
           <div className="mx-auto max-w-3xl text-center">
             <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
               <div className="overflow-hidden">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Compiti</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>{tl("Compiti")}</p>
                 <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
                 <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                  {readOnly ? 'Consulta attività, istruzioni e consegne in modalità sola lettura.' : t('tasks.subtitle')}
+                  {readOnly ? tl("Consulta attività, istruzioni e consegne in modalità sola lettura.") : t('tasks.subtitle')}
                 </p>
               </div>
             </div>
@@ -269,7 +270,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                 type="text"
                 value={taskSearch}
                 onChange={e => setTaskSearch(e.target.value)}
-                placeholder="Cerca compiti..."
+                placeholder={tl("Cerca compiti...")}
                 className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
               />
               {taskSearch && (
@@ -277,7 +278,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                   type="button"
                   onClick={() => setTaskSearch('')}
                   className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                  aria-label="Cancella ricerca"
+                  aria-label={tl("Cancella ricerca")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -290,8 +291,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                     <button
                       type="button"
                       onClick={() => setViewMode('grid')}
-                      aria-label="Vista griglia"
-                      title="Vista griglia"
+                      aria-label={tl("Vista griglia")}
+                      title={tl("Vista griglia")}
                       className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                       <LayoutGrid className="h-3.5 w-3.5" />
@@ -299,8 +300,8 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                     <button
                       type="button"
                       onClick={() => setViewMode('list')}
-                      aria-label="Vista lista"
-                      title="Vista lista"
+                      aria-label={tl("Vista lista")}
+                      title={tl("Vista lista")}
                       className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'list' ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                       <List className="h-3.5 w-3.5" />
@@ -328,24 +329,24 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
       >
         <div className="mx-auto w-full max-w-6xl">
           {visibleTasks.length === 0 && taskSearch ? (
-            <p className="py-10 text-center text-sm text-slate-400">Nessun compito corrisponde a "{taskSearch}"</p>
+            <p className="py-10 text-center text-sm text-slate-400">{tl("Nessun compito corrisponde a \"")}{taskSearch}"</p>
           ) : (
             <div className="space-y-8">
               <TaskSection
-                title="Da consegnare"
-                subtitle="Parti da qui: bozze e attività ancora da completare"
+                title={tl("Da consegnare")}
+                subtitle={tl("Parti da qui: bozze e attività ancora da completare")}
                 tasks={pendingTasks}
                 viewMode={viewMode}
                 draftTaskIds={draftTaskIds}
                 accentColor={accentTheme.accent}
                 onOpenDocument={onOpenDocument}
                 onOpenTask={setSelectedTaskId}
-                emptyMessage="Non hai compiti da consegnare"
+                emptyMessage={tl("Non hai compiti da consegnare")}
               />
               {completedTasks.length > 0 && (
                 <TaskSection
-                  title="Consegnati"
-                  subtitle="Attività completate e materiali già inviati"
+                  title={tl("Consegnati")}
+                  subtitle={tl("Attività completate e materiali già inviati")}
                   tasks={completedTasks}
                   viewMode={viewMode}
                   draftTaskIds={draftTaskIds}
@@ -392,10 +393,10 @@ const TASK_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: str
 }
 
 const TASK_TYPE_LABELS: Record<string, string> = {
-  lesson: 'Documento',
-  quiz: 'Quiz',
-  exercise: 'Esercizio',
-  presentation: 'Presentazione',
+  lesson: tl("Documento"),
+  quiz: tl("Quiz"),
+  exercise: tl("Esercizio"),
+  presentation: tl("Presentazione"),
 }
 
 function TaskSection({ title, subtitle, tasks, viewMode, draftTaskIds, accentColor, onOpenDocument, onOpenTask, emptyMessage }: {
@@ -485,13 +486,13 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
           {typeIcon}
         </div>
         <span className={`max-w-[68%] truncate rounded-full border px-2 py-1 text-[9px] font-black uppercase ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
-          {isCompleted ? 'Fatto' : hasDraft ? 'Bozza' : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
+          {isCompleted ? tl("Fatto") : hasDraft ? tl("Bozza") : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
         </span>
       </div>
       <div className="mt-3 line-clamp-3 text-sm font-black leading-[1.25rem] text-slate-950">{task.title}</div>
       {(hasUnreadFeedback || hasUnreadCorrection) && (
         <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-900">
-          Nuovo feedback
+          {tl("Nuovo feedback")}
         </span>
       )}
       <div className="mt-auto flex items-center justify-between gap-2 pt-3">
@@ -502,9 +503,9 @@ function TaskCard({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boole
           </div>
         )}
         {isCompleted && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800"><Check className="h-3 w-3" /> Consegnato</span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800"><Check className="h-3 w-3" /> {tl("Consegnato")}</span>
         )}
-        {!task.due_at && !isCompleted && <span className="text-[10px] font-bold text-slate-500">Apri</span>}
+        {!task.due_at && !isCompleted && <span className="text-[10px] font-bold text-slate-500">{tl("Apri")}</span>}
         <ChevronRight className="h-4 w-4 text-slate-300" />
       </div>
     </motion.div>
@@ -542,10 +543,10 @@ function TaskRow({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boolea
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-black text-slate-950">{task.title}</div>
-        {(hasUnreadFeedback || hasUnreadCorrection) && <span className="text-[10px] font-black text-amber-700">Nuovo feedback del docente</span>}
+        {(hasUnreadFeedback || hasUnreadCorrection) && <span className="text-[10px] font-black text-amber-700">{tl("Nuovo feedback del docente")}</span>}
       </div>
       <span className={`hidden shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase sm:inline-block ${hasDraft && !isCompleted ? 'border-amber-200 bg-amber-100 text-amber-800' : s.badge}`}>
-        {isCompleted ? 'Fatto' : hasDraft ? 'Bozza' : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
+        {isCompleted ? tl("Fatto") : hasDraft ? tl("Bozza") : (TASK_TYPE_LABELS[task.task_type] ?? task.task_type)}
       </span>
       {task.due_at && !isCompleted && (
         <div className={`hidden shrink-0 items-center gap-1 md:flex ${s.time}`}>
@@ -560,11 +561,11 @@ function TaskRow({ task, hasDraft, onClick }: { task: TaskData; hasDraft: boolea
 }
 
 const TASK_TYPE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  quiz:         { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'Quiz' },
-  exercise:     { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'Esercizio' },
-  lesson:       { bg: 'bg-blue-100',    text: 'text-blue-700',    label: 'Documento' },
-  presentation: { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: 'Presentazione' },
-  discussion:   { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'Discussione' },
+  quiz:         { bg: 'bg-violet-100',  text: 'text-violet-700',  label: tl("Quiz") },
+  exercise:     { bg: 'bg-amber-100',   text: 'text-amber-700',   label: tl("Esercizio") },
+  lesson:       { bg: 'bg-blue-100',    text: 'text-blue-700',    label: tl("Documento") },
+  presentation: { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: tl("Presentazione") },
+  discussion:   { bg: 'bg-violet-100',  text: 'text-violet-700',  label: tl("Discussione") },
 }
 
 const TASK_MODAL_THEMES: Record<string, {
@@ -717,12 +718,12 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
               </span>
               {hasDraft && !isCompleted && !readOnly && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white/80 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                  <Clock className="h-2.5 w-2.5" /> Bozza salvata
+                  <Clock className="h-2.5 w-2.5" /> {tl("Bozza salvata")}
                 </span>
               )}
               {readOnly && !isCompleted && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[10px] font-bold text-sky-800">
-                  <BookOpen className="h-2.5 w-2.5" /> Sola lettura
+                  <BookOpen className="h-2.5 w-2.5" /> {tl("Sola lettura")}
                 </span>
               )}
               {task.due_at && !isCompleted && (
@@ -743,8 +744,8 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
             onClick={closeAndKeepDraft}
             disabled={isSubmitting}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/70 text-slate-500 shadow-sm transition-colors hover:bg-white hover:text-slate-900 disabled:opacity-40"
-            aria-label={readOnly ? 'Chiudi compito' : 'Chiudi e salva la bozza'}
-            title={readOnly ? 'Chiudi compito (Esc)' : 'Chiudi e salva la bozza (Esc)'}
+            aria-label={readOnly ? tl("Chiudi compito") : tl("Chiudi e salva la bozza")}
+            title={readOnly ? tl("Chiudi compito (Esc)") : tl("Chiudi e salva la bozza (Esc)")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -830,7 +831,7 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
       {body && <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-700">{body}</p>}
       {content?.questions?.map((question, index) => (
         <section key={`${question.question}-${index}`} className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
-          <p className="text-xs font-black uppercase tracking-wider text-violet-600">Domanda {index + 1}</p>
+          <p className="text-xs font-black uppercase tracking-wider text-violet-600">{tl("Domanda")} {index + 1}</p>
           <h3 className="mt-2 font-extrabold leading-6 text-slate-950">{question.question}</h3>
           <div className="mt-4 space-y-2">
             {question.options.map((option, optionIndex) => (
@@ -844,14 +845,14 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
       ))}
       {content?.examples && content.examples.length > 0 && (
         <section className="rounded-2xl border border-sky-100 bg-sky-50/70 p-5">
-          <h3 className="font-extrabold text-slate-950">Esempi</h3>
+          <h3 className="font-extrabold text-slate-950">{tl("Esempi")}</h3>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
             {content.examples.map((example, index) => <li key={`${example}-${index}`}>• {example}</li>)}
           </ul>
         </section>
       )}
       {content?.hint && <p className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-medium text-amber-900"><Lightbulb className="mr-2 inline h-4 w-4" />{content.hint}</p>}
-      {!body && !content?.questions?.length && <p className="py-10 text-center text-sm text-slate-400">Nessun contenuto aggiuntivo per questo compito.</p>}
+      {!body && !content?.questions?.length && <p className="py-10 text-center text-sm text-slate-400">{tl("Nessun contenuto aggiuntivo per questo compito.")}</p>}
     </div>
   )
 }
@@ -964,7 +965,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
           disabled={currentIndex === 0}
           className="flex items-center gap-1.5 rounded-lg border border-transparent px-4 py-2 text-sm font-bold text-slate-600 transition-all hover:border-violet-200 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-30"
         >
-          <ChevronLeft className="h-4 w-4" /> Precedente
+          <ChevronLeft className="h-4 w-4" /> {tl("Precedente")}
         </button>
 
         {currentIndex === questions.length - 1 ? (
@@ -973,7 +974,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
             onClick={() => onSubmit(answers)}
             className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
           >
-            {isSubmitting ? 'Invio...' : 'Invia Quiz'} <Send className="h-3.5 w-3.5" />
+            {isSubmitting ? tl("Invio...") : tl("Invia Quiz")} <Send className="h-3.5 w-3.5" />
           </button>
         ) : (
           <button
@@ -981,7 +982,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
             disabled={answers[currentIndex] === undefined}
             className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
           >
-            Avanti <ChevronRight className="h-3.5 w-3.5" />
+            {tl("Avanti")} <ChevronRight className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
@@ -1037,7 +1038,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
             onChange={(event) => updateBlankAnswer(id, event.target.value)}
             onPaste={(event) => event.preventDefault()}
             placeholder={String(children || '________')}
-            aria-label={`Parola mancante ${id}`}
+            aria-label={tl("Parola mancante {0}", id)}
             className="mx-1 inline-block min-w-24 max-w-48 border-0 border-b-2 border-amber-400 bg-amber-50 px-2 py-0.5 text-center font-semibold text-slate-900 outline-none focus:border-orange-600 focus:ring-0"
           />
         )
@@ -1052,7 +1053,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
         <div className="bg-white border border-amber-300 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <PenTool className="h-4 w-4 text-amber-600" />
-            <span className="text-xs font-bold uppercase tracking-widest text-amber-500">Esercizio</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-500">{tl("Esercizio")}</span>
           </div>
           {content?.title && (
             <h3 className="text-lg font-bold text-slate-900 mb-2">{content.title}</h3>
@@ -1075,7 +1076,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
           </div>
           {examples.length > 0 && (
             <div className="mt-4 rounded-xl bg-white/70 border border-amber-100 p-3">
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">Esempi</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">{tl("Esempi")}</div>
               <ul className="space-y-1.5 pl-4 text-sm text-slate-700">
                 {examples.map((example, index) => (
                   <li key={index} className="chat-markdown prose prose-sm max-w-none">
@@ -1102,7 +1103,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
           onPaste={(e) => e.preventDefault()}
           onCopy={(e) => e.preventDefault()}
           onCut={(e) => e.preventDefault()}
-          placeholder="Scrivi qui la tua risposta..."
+          placeholder={tl("Scrivi qui la tua risposta...")}
           onChange={(e) => onResponseChange(e.target.value)}
           className="min-h-[150px] w-full resize-y rounded-xl border border-orange-200 bg-orange-50/20 p-4 text-slate-800 shadow-sm outline-none focus:ring-2"
           style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
@@ -1115,7 +1116,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
         className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-orange-300 bg-orange-500 text-sm font-black text-white transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Send className="h-4 w-4" />
-        {isSubmitting ? 'Invio in corso...' : 'Consegna Risposta'}
+        {isSubmitting ? tl("Invio in corso...") : tl("Consegna Risposta")}
       </button>
     </div>
   )
@@ -1130,10 +1131,10 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
     mutationFn: () => studentApi.acknowledgeTaskCorrection(task.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
-      toast({ title: 'Conferma inviata', description: 'Il docente vedrà che hai letto la correzione.' })
+      toast({ title: tl("Conferma inviata"), description: tl("Il docente vedrà che hai letto la correzione.") })
     },
     onError: () => {
-      toast({ title: 'Impossibile inviare la conferma', variant: 'destructive' })
+      toast({ title: tl("Impossibile inviare la conferma"), variant: 'destructive' })
     },
   })
   if (!submission) return null
@@ -1145,14 +1146,14 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
         <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-200/70 bg-emerald-50 sm:mb-4 sm:h-14 sm:w-14">
           <CheckCircle2 className="h-6 w-6 text-emerald-500 sm:h-7 sm:w-7" />
         </div>
-        <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Ottimo lavoro!</h3>
-        <p className="text-slate-400 text-sm mt-1">Consegnato il {new Date(submission.submitted_at).toLocaleDateString('it-IT')}</p>
+        <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{tl("Ottimo lavoro!")}</h3>
+        <p className="text-slate-400 text-sm mt-1">{tl("Consegnato il")} {new Date(submission.submitted_at).toLocaleDateString('it-IT')}</p>
       </div>
 
       <div className="space-y-3">
         {/* Answer Box */}
         <div className="rounded-xl border border-slate-200/60 bg-white/60 p-4 backdrop-blur-sm sm:p-5">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">La tua consegna</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{tl("La tua consegna")}</p>
           <p className="break-words text-sm leading-relaxed text-slate-700">
             {submission.content}
           </p>
@@ -1162,15 +1163,15 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
           <div className="overflow-hidden rounded-xl border border-amber-200 bg-amber-50/40">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-100/70 px-4 py-3 sm:px-5">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-900">Correzioni del docente</p>
-                <p className="mt-0.5 text-xs text-amber-800">Le parti evidenziate in giallo sono state modificate.</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-900">{tl("Correzioni del docente")}</p>
+                <p className="mt-0.5 text-xs text-amber-800">{tl("Le parti evidenziate in giallo sono state modificate.")}</p>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                 correction.status === 'read'
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-white text-amber-900'
               }`}>
-                {correction.status === 'read' ? 'Letto · docente avvisato' : 'Da leggere'}
+                {correction.status === 'read' ? tl("Letto · docente avvisato") : tl("Da leggere")}
               </span>
             </div>
             <div className="space-y-4 p-4 sm:p-5">
@@ -1187,7 +1188,7 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
                     className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-100 px-4 text-sm font-black text-amber-950 transition-colors hover:bg-amber-200 disabled:opacity-50"
                   >
                     <Check className="h-4 w-4" />
-                    {acknowledgeCorrection.isPending ? 'Invio…' : 'Ho letto'}
+                    {acknowledgeCorrection.isPending ? tl("Invio…") : tl("Ho letto")}
                   </button>
                 </div>
               )}
@@ -1206,28 +1207,28 @@ function SubmissionSummary({ task, accentTheme }: { task: TaskData; accentTheme:
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: accentTheme.accent }}>
-                Feedback del Docente
+                {tl("Feedback del Docente")}
               </span>
               {submission.score && (
                 <div
                   className="px-3 py-1 rounded-full text-xs font-bold border bg-white/80"
                   style={{ color: accentTheme.accent, borderColor: `${accentTheme.accent}30` }}
                 >
-                  Voto: {submission.score}
+                  {tl("Voto:")} {submission.score}
                 </div>
               )}
             </div>
             {submission.feedback ? (
               <p className="text-slate-700 leading-relaxed text-sm">{submission.feedback}</p>
             ) : (
-              <p className="text-slate-400 text-sm italic">Il docente non ha ancora inserito un commento.</p>
+              <p className="text-slate-400 text-sm italic">{tl("Il docente non ha ancora inserito un commento.")}</p>
             )}
             {submission.answer_feedback && Object.keys(submission.answer_feedback).length > 0 && (
               <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Commenti sulle risposte</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{tl("Commenti sulle risposte")}</p>
                 {Object.entries(submission.answer_feedback).sort(([a], [b]) => Number(a) - Number(b)).map(([questionIndex, comment]) => (
                   <div key={questionIndex} className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700">
-                    <span className="mr-2 font-bold">Domanda {Number(questionIndex) + 1}</span>{comment}
+                    <span className="mr-2 font-bold">{tl("Domanda")} {Number(questionIndex) + 1}</span>{comment}
                   </div>
                 ))}
               </div>
