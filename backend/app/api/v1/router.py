@@ -2,6 +2,8 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import podcasts
 from app.api.v1.endpoints import visual_comprehension
 from app.api.v1.endpoints import visual_sessions
+from app.api.v1.endpoints import smart_canvas
+from app.api.v1.endpoints import legal_docs
 
 from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research, school_onboarding, privacy, video_studio
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
@@ -16,6 +18,8 @@ api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"]
 
 api_router.include_router(system_health.router, prefix="/system", tags=["system"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(legal_docs.public_router, prefix="/legal-docs", tags=["legal-docs"])
+api_router.include_router(legal_docs.admin_router, prefix="/admin/legal-docs", tags=["admin-legal-docs"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_backend.router, tags=["admin-backend"])
 api_router.include_router(admin_models.router, prefix="/admin/models", tags=["admin-models"])
@@ -24,6 +28,7 @@ api_router.include_router(admin_activity.router, prefix="/admin/activity", tags=
 api_router.include_router(video_studio.router, prefix="/admin/video-studio", tags=["admin-video-studio"])
 api_router.include_router(visual_comprehension.router, prefix="/admin/visual-comprehension", tags=["admin-visual-comprehension"])
 api_router.include_router(visual_sessions.router, prefix="/admin/visual-comprehension/sessions", tags=["admin-visual-sessions"])
+api_router.include_router(smart_canvas.router, prefix="/smart-canvases", tags=["admin-smart-canvases"])
 api_router.include_router(teacher_memory.router, prefix="/teacher-memory", tags=["teacher-memory"])
 api_router.include_router(ml_lab.router, prefix="/ml-lab", tags=["ml-lab"])
 api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])

@@ -12,7 +12,7 @@ import {
   GraduationCap, Search, ChevronDown, ChevronUp, ChevronsUpDown,
   Users, BookOpen, Zap, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
-  Building2,
+  Building2, UserMinus,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
@@ -203,6 +203,17 @@ export default function TeachersPage() {
 
   const promoteMutation = useMutation({
     mutationFn: (userId: string) => adminApi.promoteToAdmin(userId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      toast({ title: tl("Ruolo aggiornato"), description: res.data.message })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: tl("Errore"), description: error.response?.data?.detail })
+    },
+  })
+
+  const demoteMutation = useMutation({
+    mutationFn: (userId: string) => adminApi.demoteAdmin(userId),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       toast({ title: tl("Ruolo aggiornato"), description: res.data.message })
@@ -1093,7 +1104,7 @@ export default function TeachersPage() {
                           {tl("Crediti mensili")}
                         </span>
                       </th>
-                      <th className="px-4 py-3 text-right font-medium">{tl("Azioni")}</th>
+                      <th className="w-[170px] px-3 py-3 text-right font-medium">{tl("Azioni")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1187,7 +1198,7 @@ export default function TeachersPage() {
                         </td>
 
                         {/* Credits with limit editing */}
-                        <td className="px-3 py-3 min-w-[140px]">
+                        <td className="w-[190px] px-3 py-3">
                           {editingCapId === teacher.id ? (
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-slate-400">cr.</span>
@@ -1220,7 +1231,7 @@ export default function TeachersPage() {
                             </div>
                           ) : (
                             <div className="space-y-1">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                                 <span className="text-xs font-medium text-slate-700">
                                   {formatCurrency(teacher.monthly_usage)}
                                 </span>
@@ -1263,7 +1274,7 @@ export default function TeachersPage() {
                         </td>
 
                         {/* Actions */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           {hardDeleteId === teacher.id ? (
                             <div className="flex items-center gap-1 justify-end flex-wrap">
                               <span className="text-[10px] text-red-600 font-medium mr-1">{tl("Digita email per confermare:")}</span>
@@ -1296,52 +1307,70 @@ export default function TeachersPage() {
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex flex-nowrap items-center justify-end gap-0.5">
                               <Button
-                                size="sm"
+                                size="icon"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                className="h-7 w-7 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                                 onClick={() => resetMutation.mutate(teacher.id)}
                                 disabled={resetMutation.isPending}
                                 title={tl("Invia link reset password")}
+                                aria-label={tl("Invia link reset password")}
                               >
-                                <Key className="h-3.5 w-3.5 mr-1" />
-                                <span className="hidden lg:inline">Reset password</span>
+                                <Key className="h-3.5 w-3.5" />
                               </Button>
-                              {(teacher.role || '').toUpperCase() !== 'ADMIN' && (
+                              {(teacher.role || '').toUpperCase() !== 'ADMIN' ? (
                                 <Button
-                                  size="sm"
+                                  size="icon"
                                   variant="ghost"
-                                  className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-800 hover:bg-amber-50"
                                   onClick={() => {
                                     if (confirm(tl("Promuovere {0} ad amministratore? Non sarà più un docente.", teacher.email)))
                                       promoteMutation.mutate(teacher.id)
                                   }}
                                   disabled={promoteMutation.isPending}
                                   title={tl("Promuovi ad amministratore")}
+                                  aria-label={tl("Promuovi ad amministratore")}
                                 >
                                   <ShieldCheck className="h-3.5 w-3.5" />
                                 </Button>
+                              ) : (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  onClick={() => {
+                                    if (confirm(tl("Rimuovere i permessi di amministratore a {0}? Tornerà ad essere un docente.", teacher.email)))
+                                      demoteMutation.mutate(teacher.id)
+                                  }}
+                                  disabled={demoteMutation.isPending}
+                                  title={tl("Rimuovi permessi di amministratore")}
+                                  aria-label={tl("Rimuovi permessi di amministratore")}
+                                >
+                                  <UserMinus className="h-3.5 w-3.5" />
+                                </Button>
                               )}
                               <Button
-                                size="sm"
+                                size="icon"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                                className="h-7 w-7 shrink-0 text-orange-500 hover:text-orange-700 hover:bg-orange-50"
                                 onClick={() => {
                                   if (confirm(tl("Disattivare {0}? L'account verrà nascosto ma resterà nel database.", teacher.email)))
                                     deleteMutation.mutate(teacher.id)
                                 }}
                                 disabled={deleteMutation.isPending}
                                 title={tl("Disattiva account (soft-delete)")}
+                                aria-label={tl("Disattiva account (soft-delete)")}
                               >
                                 <X className="h-3.5 w-3.5" />
                               </Button>
                               <Button
-                                size="sm"
+                                size="icon"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                                className="h-7 w-7 shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                                 onClick={() => { setHardDeleteId(teacher.id); setHardDeleteEmail('') }}
                                 title={tl("Elimina definitivamente dal database")}
+                                aria-label={tl("Elimina definitivamente dal database")}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

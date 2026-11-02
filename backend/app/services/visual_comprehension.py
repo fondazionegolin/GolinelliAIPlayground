@@ -263,7 +263,7 @@ async def generate_validated(stage, instruction, schema, validate, image, on_usa
                 anthropic_options=options,
             )
         except BadRequestError as exc:
-            if not structured or "grammar" not in str(exc):
+            if not structured or not any(marker in str(exc) for marker in ("grammar", "too complex")):
                 raise
             logger.warning("visual_stage schema %s too large for structured outputs, using prompt schema", schema.__name__)
             _UNSTRUCTURED.add(schema.__name__)

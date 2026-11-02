@@ -1445,6 +1445,31 @@ async def canvas_cursor(sid, data):
     return {"success": True}
 
 
+@sio.event
+async def canvas_summon(sid, data):
+    """The teacher calls everyone on a board to a point of it ("richiama qui"); students just pan there."""
+    user = connected_users.get(sid)
+    if not user or user.get("type") != "teacher":
+        return {"error": "Forbidden"}
+    session_id = data.get("session_id")
+    canvas_key = normalize_canvas_key(data.get("canvas_key"))
+    if not session_id or not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+    try:
+        x = max(-100000.0, min(float(data.get("x")), 100000.0))
+        y = max(-100000.0, min(float(data.get("y")), 100000.0))
+    except (TypeError, ValueError):
+        return {"error": "Valid coordinates required"}
+    await sio.emit(
+        "canvas_summon",
+        {"session_id": str(session_id), "canvas_key": canvas_key, "x": x, "y": y, "user_id": str(user.get("id") or ""),
+         "label": user.get("nickname") or "Docente"},
+        room=f"session:{session_id}",
+        skip_sid=sid,
+    )
+    return {"success": True}
+
+
 # Helper function to broadcast from API endpoints
 async def broadcast_to_session(session_id: str, event: str, data: dict):
     """Broadcast an event to all users in a session"""

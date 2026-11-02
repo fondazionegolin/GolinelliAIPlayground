@@ -12,7 +12,7 @@ import io
 from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password, create_student_join_token
 from app.core.config import settings
-from app.core.legal_documents import LEGAL_DOCUMENTS, STUDENT_CONSENTS
+from app.core.legal_documents import STUDENT_CONSENTS, current_legal_documents, refresh_legal_overrides
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
@@ -743,6 +743,31 @@ async def promote_to_admin(
     user.is_verified = True
     await db.commit()
     return {"message": f"{user.email} è ora amministratore"}
+
+
+@router.post("/users/{user_id}/demote-admin")
+async def demote_admin(
+    user_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Remove admin privileges: the user goes back to being a teacher."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Non puoi modificare il tuo stesso ruolo")
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="L'utente non è amministratore")
+    remaining = (await db.execute(
+        select(func.count(User.id)).where(User.role == UserRole.ADMIN, User.is_active == True, User.id != user.id)  # noqa: E712
+    )).scalar_one()
+    if not remaining:
+        raise HTTPException(status_code=400, detail="Deve restare almeno un amministratore")
+
+    user.role = UserRole.TEACHER
+    await db.commit()
+    return {"message": f"{user.email} è tornato docente"}
 
 
 @router.get("/users", response_model=list[dict])
@@ -2378,11 +2403,48 @@ async def get_teachers_status(
     }
 
 
+@router.get("/notifications")
+async def admin_notifications(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Open items per admin section, shown as red dots in the sidebar. Keys are the sidebar paths."""
+    from app.models.credits import CreditAlert
+    from app.models.enums import CreditRequestStatus, TeacherRequestStatus
+    from app.models.feedback import FeedbackReport
+    from app.models.ai_model import AIModel
+
+    async def count(query) -> int:
+        return (await db.execute(query)).scalar() or 0
+
+    open_alerts = await count(select(func.count()).select_from(CreditAlert).where(CreditAlert.status == "OPEN"))
+    exhausted = await count(select(func.count()).select_from(CreditAlert).where(CreditAlert.status == "OPEN", CreditAlert.severity == "EXHAUSTED"))
+    credit_requests = await count(select(func.count()).select_from(CreditRequest).where(CreditRequest.status == CreditRequestStatus.PENDING))
+    teacher_requests = await count(
+        select(func.count()).select_from(TeacherRequest).where(TeacherRequest.status == TeacherRequestStatus.PENDING)
+    )
+    new_feedback = await count(select(func.count()).select_from(FeedbackReport).where(FeedbackReport.status == "new"))
+    model_news = await count(
+        select(func.count()).select_from(AIModel).where(
+            AIModel.status != "deprecated", or_(AIModel.proposed_input_usd.is_not(None), AIModel.acknowledged == False)  # noqa: E712
+        )
+    )
+    items = {
+        "/admin/credits": {"count": open_alerts + credit_requests, "urgent": exhausted > 0 or credit_requests > 0},
+        "/admin/teachers": {"count": teacher_requests, "urgent": teacher_requests > 0},
+        "/admin/feedback-board": {"count": new_feedback, "urgent": False},
+        "/admin/models": {"count": model_news, "urgent": False},
+    }
+    return {"items": {path: value for path, value in items.items() if value["count"] > 0}}
+
+
 @router.get("/legal-consents")
 async def list_legal_consents(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
+    await refresh_legal_overrides(db)
+    legal_documents = current_legal_documents()
     teachers = (
         await db.execute(
             select(User).where(
@@ -2401,7 +2463,7 @@ async def list_legal_consents(
                 select(LegalDocumentAcceptance)
                 .where(
                     LegalDocumentAcceptance.user_id.in_(teacher_ids),
-                    LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+                    LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in legal_documents]),
                 )
                 .order_by(LegalDocumentAcceptance.accepted_at.desc())
             )
@@ -2412,7 +2474,7 @@ async def list_legal_consents(
         by_teacher.setdefault(str(row.user_id), []).append(row)
 
     return {
-        "required_documents": LEGAL_DOCUMENTS,
+        "required_documents": legal_documents,
         "items": [
             {
                 "teacher": {
@@ -2435,7 +2497,7 @@ async def list_legal_consents(
                             else None
                         ),
                     }
-                    for doc in LEGAL_DOCUMENTS
+                    for doc in legal_documents
                     for match in [
                         next(
                             (

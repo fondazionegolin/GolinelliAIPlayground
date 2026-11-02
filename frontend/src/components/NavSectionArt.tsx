@@ -17,6 +17,7 @@ const ART: Record<string, string> = {
   '/teacher/agentic': 'agentic',
   '/teacher/video-studio': 'video-studio',
   '/teacher/visual-comprehension': 'visual-comprehension',
+  '/teacher/smart-canvas': 'visual-comprehension',
   '/teacher/feedback-board': 'feedback-board',
 }
 

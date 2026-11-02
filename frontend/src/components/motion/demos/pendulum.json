@@ -1,0 +1,164 @@
+{
+ "title": "Il pendolo e l'energia",
+ "width": 800,
+ "height": 450,
+ "duration": 4,
+ "loop": true,
+ "background": "lab",
+ "entities": [
+  {
+   "id": "ceil",
+   "type": "rect",
+   "x": 400,
+   "y": 52,
+   "w": 220,
+   "h": 9,
+   "fill": "#475569",
+   "rx": 3
+  },
+  {
+   "id": "path",
+   "type": "path",
+   "x": 0,
+   "y": 0,
+   "d": "M258.8 266.3A250 250 0 0 0 541.2 266.3",
+   "stroke": "#94a3b8",
+   "strokeWidth": 2,
+   "dash": true,
+   "opacity": 0.7
+  },
+  {
+   "id": "rod",
+   "type": "line",
+   "x": 400,
+   "y": 60,
+   "x2": "250*sin(0.6*cos(2*pi*t/4))",
+   "y2": "250*cos(0.6*cos(2*pi*t/4))",
+   "stroke": "#334155",
+   "strokeWidth": 3
+  },
+  {
+   "id": "bob",
+   "type": "circle",
+   "r": 24,
+   "x": "400+250*sin(0.6*cos(2*pi*t/4))",
+   "y": "60+250*cos(0.6*cos(2*pi*t/4))",
+   "fill": "#3b82f6",
+   "shade": true
+  },
+  {
+   "id": "vel",
+   "type": "arrow",
+   "x": "400+250*sin(0.6*cos(2*pi*t/4))",
+   "y": "60+250*cos(0.6*cos(2*pi*t/4))",
+   "x2": "-110*sin(2*pi*t/4)*cos(0.6*cos(2*pi*t/4))",
+   "y2": "110*sin(2*pi*t/4)*sin(0.6*cos(2*pi*t/4))",
+   "stroke": "#16a34a",
+   "strokeWidth": 3.5
+  },
+  {
+   "id": "grav",
+   "type": "arrow",
+   "x": "400+250*sin(0.6*cos(2*pi*t/4))",
+   "y": "60+250*cos(0.6*cos(2*pi*t/4))",
+   "x2": 0,
+   "y2": 70,
+   "stroke": "#dc2626",
+   "strokeWidth": 3.5,
+   "opacity": 0.85
+  },
+  {
+   "id": "tv",
+   "type": "text",
+   "x": "400+250*sin(0.6*cos(2*pi*t/4))-110*sin(2*pi*t/4)*cos(0.6*cos(2*pi*t/4))*1.25",
+   "y": "60+250*cos(0.6*cos(2*pi*t/4))+110*sin(2*pi*t/4)*sin(0.6*cos(2*pi*t/4))*1.25",
+   "text": "v",
+   "size": 18,
+   "bold": true,
+   "fill": "#16a34a"
+  },
+  {
+   "id": "tg",
+   "type": "text",
+   "x": "400+250*sin(0.6*cos(2*pi*t/4))+16",
+   "y": "60+250*cos(0.6*cos(2*pi*t/4))+78",
+   "text": "P",
+   "size": 18,
+   "bold": true,
+   "fill": "#dc2626"
+  },
+  {
+   "id": "kin",
+   "type": "rect",
+   "x": 660,
+   "y": "366-(100*sin(2*pi*t/4)^2+3)/2",
+   "w": 46,
+   "h": "100*sin(2*pi*t/4)^2+3",
+   "fill": "#16a34a",
+   "rx": 3
+  },
+  {
+   "id": "pot",
+   "type": "rect",
+   "x": 730,
+   "y": "366-(100*cos(2*pi*t/4)^2+3)/2",
+   "w": 46,
+   "h": "100*cos(2*pi*t/4)^2+3",
+   "fill": "#f59e0b",
+   "rx": 3
+  },
+  {
+   "id": "base",
+   "type": "line",
+   "x": 635,
+   "y": 368,
+   "x2": 125,
+   "y2": 0,
+   "stroke": "#94a3b8",
+   "strokeWidth": 2
+  },
+  {
+   "id": "tk",
+   "type": "text",
+   "x": 660,
+   "y": 386,
+   "text": "Cinetica",
+   "size": 13
+  },
+  {
+   "id": "tp",
+   "type": "text",
+   "x": 730,
+   "y": 386,
+   "text": "Potenziale",
+   "size": 13
+  },
+  {
+   "id": "tt",
+   "type": "text",
+   "x": 698,
+   "y": 215,
+   "text": "Energia",
+   "size": 16,
+   "bold": true
+  }
+ ],
+ "steps": [
+  {
+   "at": 0,
+   "text": "Agli estremi il pendolo si ferma per un istante: tutta l'energia è potenziale."
+  },
+  {
+   "at": 0.8,
+   "text": "Scendendo, l'energia potenziale diventa cinetica: la velocità (v) cresce."
+  },
+  {
+   "at": 1.7,
+   "text": "Nel punto più basso la velocità è massima e l'energia è tutta cinetica."
+  },
+  {
+   "at": 2.4,
+   "text": "Risalendo si rallenta; la somma delle due energie resta costante (senza attriti)."
+  }
+ ]
+}

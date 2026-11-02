@@ -1,14 +1,34 @@
 {
-  "generated_at": "2026-10-26T21:11:44.476429+00:00",
-  "version_label": "2026.10.26-2e6e1247",
+  "generated_at": "2026-11-02T10:41:40.771411+00:00",
+  "version_label": "2026.11.02-923a8bf2",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "2e6e12476086c4746283f3a5693b0fde8c982aad",
+  "summary": "Bozza generata automaticamente da 5 commit dall'ultima release pubblicata.",
+  "git_ref": "923a8bf25da3e47b58a2ffd6fded681347e0754b",
   "items": [
     {
-      "category": "improved",
-      "title": "Fix(teacherbot): working KB grounding, prompt optimizer; fix live quiz AI",
-      "description": "Fix(teacherbot): working KB grounding, prompt optimizer; fix live quiz AI"
+      "category": "new",
+      "title": "Chat: intent routing via OpenAI Decisions, prompt history, live generation status",
+      "description": "Chat: intent routing via OpenAI Decisions, prompt history, live generation status"
+    },
+    {
+      "category": "new",
+      "title": "Visual comprehension tutor, Lab exercises and Untitled UI icon set",
+      "description": "Visual comprehension tutor, Lab exercises and Untitled UI icon set"
+    },
+    {
+      "category": "new",
+      "title": "Add podcasts and update landing and privacy",
+      "description": "Add podcasts and update landing and privacy"
+    },
+    {
+      "category": "fixed",
+      "title": "Teacherbot: working KB grounding, prompt optimizer; fix live quiz AI",
+      "description": "Teacherbot: working KB grounding, prompt optimizer; fix live quiz AI"
+    },
+    {
+      "category": "new",
+      "title": "Vibe-lab: interview chat, spec+milestones, parallel build; landing FAQ",
+      "description": "Vibe-lab: interview chat, spec+milestones, parallel build; landing FAQ"
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Box, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -11,8 +11,9 @@ import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { navRecentFetchers, type NavRecent } from '@/lib/navRecents'
 import { NavClusterBar, NavClusterRail, isNavPathActive, type NavCluster } from '@/components/NavClusterMenu'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
+import { endSession } from '@/lib/session'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
@@ -328,15 +329,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     console.log('[TeacherNavbar] Logout clicked')
     setShowDropdown(false)
 
-    // Clear localStorage tokens
-    localStorage.removeItem('teacher_token')
-    localStorage.removeItem('teacher_selected_session')
-
-    // Clear Zustand persisted auth store (THIS IS CRITICAL!)
-    useAuthStore.getState().logout()
-
-    console.log('[TeacherNavbar] Store cleared, navigating to /login')
-    navigate('/login')
+    // Delete the server cookie, the query cache, per-user local state and the persisted auth store.
+    void endSession().finally(() => navigate('/login'))
   }
 
   const getInitials = () => {
@@ -377,7 +371,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const betaItems = [
     ...(isAdmin ? [{ path: '/teacher/agentic', details: tl("Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo."), label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
     ...(isAdmin ? [{ path: '/teacher/video-studio', label: tl("Video Studio"), description: tl("Video didattici da un testo, shot da 5 secondi"), icon: Film }] : []),
-    ...(isAdmin ? [{ path: '/teacher/visual-comprehension', label: tl("Comprensione visuale"), description: tl("Esplora immagini e screenshot con un tutor e overlay interattivi"), icon: Sparkles }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   // Classes row: the session being worked on first, then the other running sessions.
@@ -394,6 +387,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     ] },
     { id: 'classes', label: t('navbar.nav_classes'), icon: Users, items: [
       { path: '/teacher/classes', details: tl("Crea e organizza le tue classi, avvia le sessioni di lavoro con gli studenti, condividi il codice di accesso e gestisci gli inviti dei colleghi."), label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount, recents: { queryKey: ['classes'], limit: 3, entries: sessionRecents } },
+      { path: '/teacher/smart-canvas', isNew: true, details: tl("Lavagna in stile Figma: importa immagini, disegna e modifica insieme all'AI, poi condividila con la classe."), label: tl("Canvas intelligente"), description: tl("Lavagna in stile Figma: l'AI legge immagini e modifiche e disegna con te"), icon: CanvasEaselIcon },
       { path: '/teacher/live-interaction', details: tl("Lancia quiz, sondaggi, word wall ed escape room in diretta: gli studenti rispondono dal telefono e tu segui risultati e classifica in tempo reale."), label: 'Live', description: t('navbar.desc_live'), icon: Zap, recents: { queryKey: ['live', sid], limit: 3, fetch: navRecentFetchers.live(sid) } },
       { path: '/teacher/boards', details: tl("Organizza il lavoro con lavagne Kanban o Scrum condivise con la classe: puoi generare il backlog con l'AI da un prompt o da un file."), label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare, recents: { queryKey: ['boards', sid], limit: 3, fetch: navRecentFetchers.boards(sid) } },
       ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: tl("Istituto"), description: tl("Docenti e informativa famiglie"), icon: Building2 }] : []),
@@ -402,7 +396,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       { path: '/teacher/documents', details: tl("Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare."), label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
       { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
       { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon },
-      { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Box },
+      { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Cube3DIcon },
     ] },
     { id: 'labs', label: t('navbar.nav_labs'), icon: FlaskConical, items: [
       { path: '/teacher/coding', details: tl("Crea app, giochi e pagine web dialogando con l'AI: anteprima in diretta, versioni salvate e condivisione del progetto con la classe."), label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2, recents: { queryKey: ['coding', sid], limit: 1, fetch: navRecentFetchers.coding(sid) } },

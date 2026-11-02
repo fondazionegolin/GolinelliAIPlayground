@@ -1,5 +1,6 @@
 from app.models.tenant import Tenant
 from app.models.user import LegalDocumentAcceptance, User
+from app.models.legal_document import LegalDocumentFile
 from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.session import Class, Session, SessionModule, SessionStudent, SessionProfileOverride
 from app.models.chat import ChatRoom, ChatMessage
@@ -38,6 +39,7 @@ from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeR
 from app.models.solid_model import SolidModel
 from app.models.video_project import VideoProject
 from app.models.visual_comprehension import VisualComprehensionSession
+from app.models.smart_canvas import SmartCanvas  # noqa: F401
 from app.models.drive import DriveItem, DriveShare
 
 __all__ = [

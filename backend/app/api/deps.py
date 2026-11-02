@@ -6,7 +6,7 @@ from sqlalchemy import select
 import uuid
 
 from app.core.database import get_db
-from app.core.legal_documents import required_legal_documents
+from app.core.legal_documents import refresh_legal_overrides, required_legal_documents
 from app.core.security import decode_token
 from app.models.user import LegalDocumentAcceptance, User
 from app.models.session import SessionStudent, Session
@@ -94,6 +94,7 @@ async def get_current_teacher(
         tenant_type = (await db.execute(
             select(Tenant.tenant_type).where(Tenant.id == current_user.tenant_id)
         )).scalar_one_or_none()
+        await refresh_legal_overrides(db)
         required_docs = required_legal_documents(
             is_school_owner=bool(current_user.is_school_owner),
             in_school_tenant=str(getattr(tenant_type, "value", tenant_type)) == TenantType.SCHOOL.value,

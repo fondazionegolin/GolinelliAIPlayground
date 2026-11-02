@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, Clock, Loader2, Search, ShieldCheck } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
+import { LegalDocsManager } from './LegalDocsManager'
 
 type LegalDocument = {
   key: string
@@ -98,6 +99,8 @@ export default function LicensesPage() {
           <Metric label={tl("Completati")} value={completeCount} />
         </div>
       </div>
+
+      <LegalDocsManager />
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">

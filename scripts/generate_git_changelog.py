@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,19 +38,15 @@ def save_state(data: dict) -> None:
 
 
 def normalize_commit(subject: str) -> dict:
-    lower = subject.lower().strip()
+    match = re.match(r"^(\w+)(?:\(([^)]*)\))?!?:\s*(.*)$", subject.strip())
+    kind, scope, rest = (match.group(1).lower(), match.group(2), match.group(3)) if match else ("", None, subject.strip())
     category = "improved"
-    if lower.startswith(("feat:", "feature:", "add:", "new:")):
+    if kind in ("feat", "feature", "add", "new"):
         category = "new"
-    elif lower.startswith(("fix:", "bugfix:", "hotfix:")):
+    elif kind in ("fix", "bugfix", "hotfix"):
         category = "fixed"
 
-    cleaned = subject
-    for prefix in ("feat:", "feature:", "add:", "new:", "fix:", "bugfix:", "hotfix:", "chore:", "refactor:"):
-        if lower.startswith(prefix):
-            cleaned = subject[len(prefix):].strip()
-            break
-
+    cleaned = f"{scope}: {rest}" if scope and rest else rest
     title = cleaned[:1].upper() + cleaned[1:] if cleaned else "Aggiornamento piattaforma"
     return {
         "category": category,
@@ -63,7 +61,9 @@ def main() -> None:
     branch = run_git("rev-parse", "--abbrev-ref", "HEAD")
 
     state = load_state()
-    last_ref = state.get("last_processed_ref")
+    # The draft is cumulative: it lists every commit since the last *published* release, so a push that is not
+    # followed by a publish never drops earlier commits from the next draft.
+    last_ref = state.get("published_ref") or state.get("last_processed_ref")
 
     if last_ref:
       commit_lines = run_git("log", "--format=%H%x1f%s", f"{last_ref}..HEAD")
@@ -90,15 +90,26 @@ def main() -> None:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "version_label": f"{datetime.now().strftime('%Y.%m.%d')}-{short_head}",
             "title": f"Aggiornamenti branch {branch}",
-            "summary": f"Bozza generata automaticamente da {len(commits)} commit nuovi.",
+            "summary": f"Bozza generata automaticamente da {len(commits)} commit dall'ultima release pubblicata.",
             "git_ref": head,
             "items": [normalize_commit(commit["subject"]) for commit in reversed(commits)],
         }
 
     DRAFT_PATH.parent.mkdir(parents=True, exist_ok=True)
     DRAFT_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    save_state({"last_processed_ref": head, "generated_at": payload["generated_at"]})
+    save_state({**state, "last_processed_ref": head, "generated_at": payload["generated_at"]})
+
+
+def mark_published() -> None:
+    """Call after the current draft has been published in Admin > Backend: the next draft starts after it."""
+    state = load_state()
+    draft = json.loads(DRAFT_PATH.read_text()) if DRAFT_PATH.exists() else {}
+    ref = draft.get("git_ref") or run_git("rev-parse", "HEAD")
+    save_state({**state, "published_ref": ref})
 
 
 if __name__ == "__main__":
-    main()
+    if "--mark-published" in sys.argv:
+        mark_published()
+    else:
+        main()

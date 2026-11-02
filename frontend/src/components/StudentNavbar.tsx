@@ -1,7 +1,8 @@
+import { queryClient } from '@/lib/queryClient'
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, Box, FolderOpen } from '@/components/icons'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, FolderOpen } from '@/components/icons'
+import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
@@ -274,6 +275,7 @@ export function StudentNavbar({
 
   const handleLogout = () => {
     logout()
+    queryClient.clear()
     localStorage.removeItem('student_nickname')
     navigate('/join')
   }
@@ -287,8 +289,9 @@ export function StudentNavbar({
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { key: 'boards', label: 'Board', icon: KanbanSquare },
-    { key: 'models3d', label: '3D Lab', icon: Box },
+    { key: 'models3d', label: '3D Lab', icon: Cube3DIcon },
     { key: 'models3d_ai', label: tl("AI 3D"), icon: MushroomIcon },
+    { key: 'smart_canvas', label: tl("Lavagne"), icon: CanvasEaselIcon },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'files'])

@@ -1,0 +1,407 @@
+{
+ "title": "Come agisce un enzima",
+ "width": 800,
+ "height": 450,
+ "duration": 14,
+ "loop": true,
+ "background": "cell",
+ "entities": [
+  {
+   "id": "enz",
+   "type": "path",
+   "x": 400,
+   "y": 268,
+   "d": "M-120 40C-130 -40 -70 -90 -20 -70C-10 -60 -5 -45 0 -40C10 -35 25 -35 30 -45C35 -60 40 -75 60 -80C110 -90 140 -30 125 30C110 90 20 110 -50 100C-100 95 -115 80 -120 40Z",
+   "fill": "#a78bfa",
+   "stroke": "#6d28d9",
+   "strokeWidth": 3,
+   "scale": {
+    "keys": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      1
+     ],
+     [
+      6.2,
+      1.05
+     ],
+     [
+      9.5,
+      1.05
+     ],
+     [
+      10.5,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "id": "site",
+   "type": "circle",
+   "x": 415,
+   "y": 221,
+   "r": {
+    "keys": [
+     [
+      3.5,
+      10
+     ],
+     [
+      5,
+      34
+     ]
+    ]
+   },
+   "fill": "#fde047",
+   "opacity": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      5,
+      0.45
+     ],
+     [
+      9,
+      0.45
+     ],
+     [
+      10,
+      0
+     ]
+    ]
+   },
+   "glow": true
+  },
+  {
+   "id": "sbond",
+   "type": "bond",
+   "a": "sA",
+   "b": "sB",
+   "order": 1,
+   "stroke": "#334155",
+   "opacity": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      0.6,
+      1
+     ],
+     [
+      7,
+      1
+     ],
+     [
+      8.5,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "sA",
+   "type": "circle",
+   "r": 16,
+   "x": {
+    "keys": [
+     [
+      0,
+      110
+     ],
+     [
+      4,
+      404
+     ],
+     [
+      9,
+      404
+     ],
+     [
+      11.5,
+      320
+     ]
+    ]
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      70
+     ],
+     [
+      4,
+      210
+     ],
+     [
+      9,
+      210
+     ],
+     [
+      11.5,
+      85
+     ]
+    ]
+   },
+   "fill": "#f97316",
+   "shade": true,
+   "opacity": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      0.6,
+      1
+     ],
+     [
+      12.5,
+      1
+     ],
+     [
+      13.5,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "sB",
+   "type": "circle",
+   "r": 16,
+   "x": {
+    "keys": [
+     [
+      0,
+      146
+     ],
+     [
+      4,
+      438
+     ],
+     [
+      9,
+      438
+     ],
+     [
+      11.5,
+      510
+     ]
+    ]
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      70
+     ],
+     [
+      4,
+      210
+     ],
+     [
+      9,
+      210
+     ],
+     [
+      11.5,
+      85
+     ]
+    ]
+   },
+   "fill": "#22c55e",
+   "shade": true,
+   "opacity": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      0.6,
+      1
+     ],
+     [
+      12.5,
+      1
+     ],
+     [
+      13.5,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "te",
+   "type": "text",
+   "x": 400,
+   "y": 388,
+   "text": "Enzima",
+   "size": 19,
+   "bold": true,
+   "fill": "#6d28d9"
+  },
+  {
+   "id": "ts",
+   "type": "text",
+   "x": 128,
+   "y": 38,
+   "text": "Substrato",
+   "size": 17,
+   "bold": true,
+   "opacity": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      0.6,
+      1
+     ],
+     [
+      3,
+      1
+     ],
+     [
+      4,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "tsite",
+   "type": "text",
+   "x": 590,
+   "y": 188,
+   "text": "sito attivo",
+   "size": 15,
+   "anchor": "start",
+   "opacity": {
+    "keys": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      1
+     ],
+     [
+      6,
+      0
+     ],
+     [
+      12,
+      0
+     ],
+     [
+      13,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "id": "tarr",
+   "type": "arrow",
+   "x": 588,
+   "y": 194,
+   "x2": -130,
+   "y2": 14,
+   "stroke": "#64748b",
+   "strokeWidth": 2,
+   "opacity": {
+    "keys": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      1
+     ],
+     [
+      6,
+      0
+     ],
+     [
+      12,
+      0
+     ],
+     [
+      13,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "id": "tp",
+   "type": "text",
+   "x": 415,
+   "y": 50,
+   "text": "Prodotti",
+   "size": 17,
+   "bold": true,
+   "opacity": {
+    "keys": [
+     [
+      9.5,
+      0
+     ],
+     [
+      11,
+      1
+     ],
+     [
+      12.5,
+      1
+     ],
+     [
+      13.5,
+      0
+     ]
+    ]
+   }
+  }
+ ],
+ "steps": [
+  {
+   "at": 0,
+   "text": "L'enzima ha un sito attivo con una forma complementare al substrato."
+  },
+  {
+   "at": 3,
+   "text": "Il substrato entra nel sito attivo: si forma il complesso enzima-substrato."
+  },
+  {
+   "at": 6,
+   "text": "L'enzima si adatta leggermente (adattamento indotto) e favorisce la reazione."
+  },
+  {
+   "at": 8,
+   "text": "Il legame del substrato si rompe: l'energia di attivazione richiesta è più bassa."
+  },
+  {
+   "at": 10.2,
+   "text": "I prodotti lasciano l'enzima, che resta invariato e può ricominciare."
+  }
+ ]
+}

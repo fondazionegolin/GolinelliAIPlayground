@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_admin, get_current_teacher, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.legal_documents import DEPLOYER_AGREEMENT, LEGAL_DOCUMENTS
+from app.core.legal_documents import DEPLOYER_AGREEMENT, current_legal_documents, refresh_legal_overrides
 from app.core.school_documents import (
     PLATFORM_SUMMARY,
     deployer_agreement_html,
@@ -472,7 +472,7 @@ async def _valid_invite(db: AsyncSession, token: str) -> SchoolOnboardingInvite:
 
 
 def _principal_documents() -> list[dict]:
-    return [*LEGAL_DOCUMENTS, DEPLOYER_AGREEMENT]
+    return [*current_legal_documents(), DEPLOYER_AGREEMENT]
 
 
 @public_router.get("/invites/{token}")
@@ -482,6 +482,7 @@ async def get_invite_public(token: str, db: Annotated[AsyncSession, Depends(get_
     inv.last_opened_at = _now()
     inv.open_count = (inv.open_count or 0) + 1
     await db.commit()
+    await refresh_legal_overrides(db)
     school = None
     if inv.mechanographic_code:
         row = (await db.execute(
@@ -523,6 +524,7 @@ class InviteProgress(BaseModel):
 async def invite_progress(token: str, body: InviteProgress, db: Annotated[AsyncSession, Depends(get_db)]):
     """Documents ticked so far on the invite page: the admin sees a partial acceptance before it is confirmed."""
     inv = await _valid_invite(db, token)
+    await refresh_legal_overrides(db)
     keys = {d["key"] for d in _principal_documents()}
     inv.progress = {"accepted": [k for k in dict.fromkeys(body.accepted) if k in keys], "updated_at": _now().isoformat()}
     await db.commit()
@@ -596,6 +598,7 @@ async def complete_invite(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     inv = await _valid_invite(db, token)
+    await refresh_legal_overrides(db)
     docs = _principal_documents()
     missing = [d["title"] for d in docs if d["key"] not in set(body.accepted_documents)]
     if missing:

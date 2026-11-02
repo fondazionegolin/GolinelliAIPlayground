@@ -605,7 +605,8 @@ async def upsert_session_canvas(
         )
         db.add(canvas)
     else:
-        if desired_canvas_key != canvas.canvas_key:
+        # Smart-canvas boards keep a stable key: the title is only a label there.
+        if desired_canvas_key != canvas.canvas_key and not canvas.canvas_key.startswith("smart:"):
             duplicate = await db.execute(
                 select(SessionCanvas.id)
                 .where(SessionCanvas.session_id == session_id)

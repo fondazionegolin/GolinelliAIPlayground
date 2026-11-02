@@ -1,11 +1,11 @@
+import { endSession } from '@/lib/session'
 import { useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity, CreditCard } from '@/components/icons'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity, CreditCard } from '@/components/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { adminApi, creditsApi } from '@/lib/api'
+import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, IconButton } from '@/design'
 import AdminOverviewPage from './AdminControlCenterPage'
@@ -13,7 +13,6 @@ import TeachersPage from './TeachersPage'
 import ClassesPage from './ClassesPage'
 import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
-import FeedbackPage from './FeedbackPage'
 import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import AdminModelsPage from './AdminModelsPage'
@@ -39,7 +38,6 @@ const navItems = [
   { path: '/admin/credits', label: tl("Crediti"), icon: CreditCard, exact: false },
   { path: '/admin/costs', label: tl("Costi"), icon: BarChart3, exact: false },
   { path: '/admin/email', label: tl("Email"), icon: Mail, exact: false },
-  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
   { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
   { path: '/admin/models', label: tl("Modelli"), icon: Bot, exact: false },
   { path: '/admin/chatbots', label: 'Chatbot', icon: Bot, exact: false },
@@ -118,7 +116,7 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient()
   useSocket('')
   usePlatformRealtimeSync(queryClient)
-  const { logout } = useAuthStore()
+  const logout = () => { void endSession() }
   const location = useLocation()
   const navigate = useNavigate()
   const [showChangePwd, setShowChangePwd] = useState(false)
@@ -139,8 +137,8 @@ export default function AdminDashboard() {
   }
 
   return (
-    <AppBackground className="min-h-screen" gradient="#eef1f5">
-      <div className="flex min-h-screen">
+    <AppBackground className="h-screen" gradient="#eef1f5">
+      <div className="flex h-screen">
         <AdminSidebar
           expanded={sidebarExpanded}
           locationPath={location.pathname}
@@ -167,7 +165,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-xl lg:hidden">
             <IconButton
               tone="neutral"
@@ -197,7 +195,7 @@ export default function AdminDashboard() {
                 <Route path="credits" element={<CreditsHubPage />} />
                 <Route path="costs" element={<UsersPage />} />
                 <Route path="email" element={<TeacherRequestsPage />} />
-                <Route path="feedback" element={<FeedbackPage />} />
+                <Route path="feedback" element={<Navigate to="/admin/feedback-board" replace />} />
                 <Route path="feedback-board" element={<FeedbackBoardPage />} />
                 <Route path="sessions" element={<AdminSessionsPage />} />
                 <Route path="models" element={<AdminModelsPage />} />
@@ -238,13 +236,12 @@ function AdminSidebar({
   onLogout: () => void
 }) {
   const widthClass = expanded ? 'w-72' : 'w-[5.25rem]'
-  const { data: creditsBadge } = useQuery({
-    queryKey: ['admin-credits-badge'],
-    queryFn: async () => (await creditsApi.adminBadge()).data as { total?: number; exhausted?: number },
+  const { data: notifications } = useQuery({
+    queryKey: ['admin-notifications'],
+    queryFn: async () => (await adminApi.getNotifications()).data as { items: Record<string, { count: number; urgent: boolean }> },
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
   })
-  const creditsBadgeTotal = creditsBadge?.total ?? 0
 
   return (
     <aside
@@ -321,12 +318,12 @@ function AdminSidebar({
               )}
               <item.icon className="relative h-4 w-4 shrink-0" />
               {expanded && <span className="relative truncate">{item.label}</span>}
-              {item.path === '/admin/credits' && creditsBadgeTotal > 0 && (
+              {(notifications?.items[item.path]?.count ?? 0) > 0 && (
                 <span
-                  className={`relative ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${(creditsBadge?.exhausted ?? 0) > 0 ? 'bg-red-500' : 'bg-amber-500'} ${expanded ? '' : 'absolute right-1 top-1 !ml-0 h-4 min-w-4 px-1 text-[9px]'}`}
-                  title={tl("Crediti in esaurimento o richieste da autorizzare")}
+                  className={`relative ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-slate-950 ${expanded ? '' : 'absolute right-1 top-1 !ml-0 h-4 min-w-4 px-1 text-[9px]'}`}
+                  title={tl("Richiede attenzione")}
                 >
-                  {creditsBadgeTotal}
+                  {notifications!.items[item.path].count}
                 </span>
               )}
             </button>

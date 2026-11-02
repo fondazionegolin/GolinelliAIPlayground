@@ -370,6 +370,7 @@ export const adminApi = {
   createAiModel: (data: Record<string, unknown>) => api.post('/admin/models', data),
   updateAiModel: (id: string, data: Record<string, unknown>) => api.patch(`/admin/models/${id}`, data),
   setAiModelsOffered: (ids: string[], offered: boolean) => api.post('/admin/models/offered', { ids, offered }),
+  applyAllAiModelProposals: () => api.post('/admin/models/apply-all-proposals'),
   applyAiModelProposal: (id: string) => api.post(`/admin/models/${id}/apply-proposal`),
   dismissAiModelProposal: (id: string) => api.post(`/admin/models/${id}/dismiss-proposal`),
   acknowledgeAiModel: (id: string) => api.post(`/admin/models/${id}/acknowledge`),
@@ -443,6 +444,12 @@ export const adminApi = {
     api.get('/admin/realtime/status'),
   getLegalConsents: () =>
     api.get('/admin/legal-consents'),
+  getNotifications: () =>
+    api.get('/admin/notifications'),
+  getLegalDocs: () =>
+    api.get('/admin/legal-docs'),
+  uploadLegalDoc: (key: string, form: FormData) =>
+    api.post(`/admin/legal-docs/${key}`, form, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getStudents: (q?: string) =>
     api.get('/admin/students', { params: q ? { q } : undefined }),
   getStudentActivity: (studentId: string, limit = 50, offset = 0) =>
@@ -475,6 +482,8 @@ export const adminApi = {
     api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
   promoteToAdmin: (userId: string) =>
     api.post(`/admin/users/${userId}/promote-admin`),
+  demoteAdmin: (userId: string) =>
+    api.post(`/admin/users/${userId}/demote-admin`),
   hardDeleteUser: (userId: string, confirmEmail: string) =>
     api.delete(`/admin/users/${userId}/permanent`, { data: { confirm_email: confirmEmail } }),
   listBackendWidgetTemplates: () =>

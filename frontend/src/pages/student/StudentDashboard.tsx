@@ -8,8 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, Box, FolderOpen } from '@/components/icons'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen } from '@/components/icons'
+import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
@@ -17,6 +17,7 @@ const ClassificationModule  = lazy(() => import('./ClassificationModule'))
 const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
 const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
+const StudentSmartCanvasModule = lazy(() => import('./StudentSmartCanvasModule'))
 const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const StudentSolidModelsModule = lazy(() => import('./StudentSolidModelsModule'))
@@ -164,11 +165,20 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     models3d: {
       label: '3D Lab',
       description: tl("Modella oggetti 3D e guarda quelli condivisi dal docente"),
-      icon: Box,
+      icon: Cube3DIcon,
       colorClass: 'text-violet-800',
       bgClass: 'bg-violet-100',
       borderClass: 'border-violet-200/80',
       shadowClass: 'shadow-violet-100/40',
+    },
+    smart_canvas: {
+      label: tl("Lavagne intelligenti"),
+      description: tl("Lavagne collaborative con un assistente che legge e disegna con te"),
+      icon: CanvasEaselIcon,
+      colorClass: 'text-pink-800',
+      bgClass: 'bg-pink-100',
+      borderClass: 'border-pink-200/80',
+      shadowClass: 'shadow-pink-100/40',
     },
     models3d_ai: {
       label: tl("AI 3D"),
@@ -220,6 +230,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
   'boards',
   'models3d',
   'models3d_ai',
+  'smart_canvas',
 ]
 
 export default function StudentDashboard() {
@@ -913,8 +924,9 @@ function StudentMobileShell({
     { key: 'classification', label: 'ML Lab', detail: tl("Allena e prova modelli"), icon: Brain },
     { key: 'coding', label: 'Vibe Lab', detail: tl("Crea app con l’AI"), icon: Code2 },
     { key: 'boards', label: 'Board', detail: tl("Task e idee"), icon: KanbanSquare },
-    { key: 'models3d', label: tl("Modelli 3D"), detail: tl("Guarda e scarica STL"), icon: Box },
+    { key: 'models3d', label: tl("Modelli 3D"), detail: tl("Guarda e scarica STL"), icon: Cube3DIcon },
     { key: 'models3d_ai', label: tl("AI 3D"), detail: tl("Genera modelli con l’AI"), icon: MushroomIcon },
+    { key: 'smart_canvas', label: tl("Lavagne intelligenti"), detail: tl("Disegna e ragiona insieme"), icon: CanvasEaselIcon },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -1513,6 +1525,16 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'smart_canvas') {
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <StudentSmartCanvasModule />
+        </Suspense>
       </div>
     )
   }

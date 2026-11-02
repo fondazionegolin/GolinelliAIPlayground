@@ -12,6 +12,8 @@ export interface NavClusterItem {
   description?: string
   icon: React.ElementType
   badgeCount?: number
+  /** Shows a small «NEW» tag next to the label for freshly released sections. */
+  isNew?: boolean
   /** Longer explanation shown under the title when the menu is wide (with recents). */
   details?: string
   /** Quick access to the latest work in this section, shown on the right of the row. */
@@ -45,6 +47,14 @@ function ClusterBadge({ count, className = '' }: { count: number; className?: st
   return (
     <span className={`flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white shadow-[var(--ds-shadow-1)] ${className}`}>
       {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+function NewTag() {
+  return (
+    <span className="brand-beta-pill shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-black leading-none tracking-[0.06em] shadow-[var(--ds-shadow-1)]">
+      NEW
     </span>
   )
 }
@@ -142,6 +152,7 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-emphasis text-[19px] font-extrabold leading-tight tracking-tight">{item.label}</span>
+                        {item.isNew && <NewTag />}
                         <ClusterBadge count={item.badgeCount ?? 0} />
                       </span>
                       {(item.details || item.description) && <span className="mt-1 line-clamp-3 block text-[12.5px] leading-[1.45] text-slate-500">{item.details || item.description}</span>}
@@ -181,7 +192,10 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
                     </span>
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-emphasis text-[13px] font-bold leading-tight">{item.label}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-emphasis text-[13px] font-bold leading-tight">{item.label}</span>
+                      {item.isNew && <NewTag />}
+                    </span>
                     {item.description && <span className="mt-0.5 block truncate text-[11px] leading-tight text-slate-500">{item.description}</span>}
                   </span>
                   <ClusterBadge count={item.badgeCount ?? 0} />

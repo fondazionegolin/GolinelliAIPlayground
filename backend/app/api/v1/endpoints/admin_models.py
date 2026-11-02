@@ -154,6 +154,22 @@ async def update_model(model_id: UUID, payload: ModelUpdate, _: Admin, db: Db) -
     return _serialize(model)
 
 
+@router.post("/apply-all-proposals")
+async def apply_all_proposals(_: Admin, db: Db) -> dict:
+    models = (await db.execute(select(AIModel).where(AIModel.proposed_input_usd.is_not(None), AIModel.proposed_output_usd.is_not(None)))).scalars().all()
+    now = datetime.now(timezone.utc)
+    for model in models:
+        model.input_usd, model.output_usd = model.proposed_input_usd, model.proposed_output_usd
+        model.proposed_input_usd = model.proposed_output_usd = model.proposed_at = None
+        model.price_checked_at = now
+        if model.status == "available":
+            model.status = "active"
+        model.acknowledged = True
+    await db.commit()
+    await _reapply(db)
+    return {"applied": len(models)}
+
+
 @router.post("/{model_id}/apply-proposal")
 async def apply_proposal(model_id: UUID, _: Admin, db: Db) -> dict:
     model = await _get(db, model_id)

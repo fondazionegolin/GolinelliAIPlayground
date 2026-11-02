@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { ColorPicker } from '@/components/ui/ColorPicker'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
@@ -6,23 +6,37 @@ import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
-  RectangleHorizontal, Triangle, Undo2, Redo2, Maximize, Minimize,
+  RectangleHorizontal, Triangle, Circle, Square, Star, Minus, ArrowRight, Undo2, Redo2, Maximize, Minimize,
   LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+import { FormulaEditor } from './FormulaEditor'
+import { MotionFrame, MotionPlayer } from './motion/MotionStage'
+import { CanvasShape } from './CanvasShape'
+import { canvasLabelColor } from './canvasColors'
+import { DEMOS } from './motion/library'
+import { buildTutorial, TUTORIAL_SIZE } from './canvasTutorial'
+import type { Scene } from './motion/spec'
+import { CanvasMinimap, type MinimapItem } from './CanvasMinimap'
+import { plainToLatex } from './canvasMath'
+import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, describeDoc, renderDocToPng, collectImages, plotGeometry, type AiOp, type SceneItem } from './canvasAi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CanvasRole = 'teacher' | 'student'
-type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector'
+type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move'
+const SHAPE_TOOLS: Tool[] = ['roundedRect', 'triangle', 'rect', 'ellipse', 'diamond', 'star', 'hexagon']
 
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left']
 type LockInfo = { userId: string; userType: string }
+type Collaborator = { id: string; name: string; role: 'teacher' | 'student'; avatarUrl?: string }
 type RemoteCursor = { userId: string; label: string; color: string; x: number; y: number; updatedAt: number }
 
-type CanvasItemBase = { id: string; parentFrameId?: string }
+type CanvasItemBase = { id: string; parentFrameId?: string; ai?: boolean }
 
 type CanvasTextStyle = {
   fontFamily: string
@@ -39,13 +53,29 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; backgroundColor?: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string; textStyle?: CanvasTextStyle })
-  | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rounded-rect' | 'triangle' | 'parallelogram'; fill: string; stroke: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; text?: string; textColor?: string; textStyle?: CanvasTextStyle })
+  | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rect' | 'rounded-rect' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'parallelogram'; fill: string; fillOpacity?: number; stroke: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; text?: string; textColor?: string; textStyle?: CanvasTextStyle })
   | (CanvasItemBase & { type: 'connector'; fromId: string; fromAnchor: Anchor; toId: string; toAnchor: Anchor; color: string; width: number })
+  | (CanvasPositionedItemBase & { type: 'line'; color: string; width: number; arrow?: boolean; flipX?: boolean; flipY?: boolean })
+  | (CanvasPositionedItemBase & { type: 'animation'; scene: Scene })
+  | (CanvasPositionedItemBase & { type: 'formula'; latex: string; src?: string; fontSize: number; color: string })
+  | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }> })
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
-  | (CanvasItemBase & { type: 'path'; points: Point[]; color: string; width: number; parentFrameId?: string })
+  | (CanvasPositionedItemBase & { type: 'path'; points: Point[]; ow: number; oh: number; color: string; width: number })
 
 type CanvasDoc = { type: 'canvas_v1'; items: CanvasItem[] }
+export type { CanvasItem, CanvasDoc }
+
+/** What the smart-canvas page can do to a mounted board. */
+export interface CanvasHandle {
+  /** Everything the model needs to read the board: pixels, structured scene, selection, pasted originals. */
+  snapshot(): Promise<{ overview: string; images: string[]; imagesMeta: Array<{ id: string; width: number; height: number }>; items: SceneItem[]; selected: string[]; doc: CanvasDoc; fromAlias: Record<string, string> }>
+  applyOps(ops: AiOp[]): { created: string[]; idMap: Record<string, string> }
+  focusItems(ids: string[]): void
+  getDoc(): CanvasDoc
+  /** Lays the built-in tutorial out on the board (beside existing content) and zooms to its first station. */
+  insertTutorial(): void
+}
 
 interface CollaborativeCanvasProps {
   sessionId?: string
@@ -56,6 +86,20 @@ interface CollaborativeCanvasProps {
   initialContent?: string
   onContentChange?: (contentJson: string) => void
   readOnly?: boolean
+  /** Extra controls drawn at the right of the top bar (e.g. open the AI panel). */
+  chrome?: React.ReactNode
+  /** Fill the parent's height instead of the viewport-based default. */
+  fill?: boolean
+  /** Lets formula actions (solve, explain…) hand a request to the AI assistant. */
+  onAssist?: (prompt: string, itemIds: string[]) => void
+  /** Controls at the far left of the top bar (e.g. back to the list). */
+  leading?: React.ReactNode
+  /** Shows the «Guida» button, which lays the tutorial out on the board. */
+  tutorial?: boolean
+  /** Called once the board's content is loaded and ready to be edited. */
+  onHydrated?: () => void
+  /** Fires with the live value of the single students-can-write flag (the AI assistant follows it). */
+  onPermissionChange?: (studentsCanWrite: boolean) => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -303,7 +347,7 @@ const parseCanvasDoc = (raw: string | null | undefined): CanvasDoc => {
   try {
     const parsed = JSON.parse(raw)
     if (parsed?.type === 'canvas_v1' && Array.isArray(parsed.items)) {
-      return { type: 'canvas_v1', items: parsed.items.map((item: CanvasItem) => ensureTextStyle(item)) }
+      return { type: 'canvas_v1', items: parsed.items.map((item: CanvasItem) => normalizePath(ensureTextStyle(item))) }
     }
   } catch { /* no-op */ }
   return EMPTY_CANVAS
@@ -336,15 +380,14 @@ const toCsvTable = (rows: Array<Array<string | number | boolean | null>>): strin
   rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell))))
 
 const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' }> => item.type === 'frame'
-const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
 const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
 const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
 const isTextEditable = (item: CanvasItem): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' | 'shape' }> =>
   item.type === 'postit' || item.type === 'frame' || item.type === 'text' || item.type === 'shape'
-const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> =>
-  !isPath(item) && !isConnector(item)
+const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'connector' }> =>
+  !isConnector(item)
 
-const getAnchorPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }>, anchor: Anchor): Point => {
+const getAnchorPoint = (item: Exclude<CanvasItem, { type: 'connector' }>, anchor: Anchor): Point => {
   if (anchor === 'top') return { x: item.x + item.w / 2, y: item.y }
   if (anchor === 'right') return { x: item.x + item.w, y: item.y + item.h / 2 }
   if (anchor === 'bottom') return { x: item.x + item.w / 2, y: item.y + item.h }
@@ -392,6 +435,13 @@ const collectFrameDescendants = (items: CanvasItem[], frameId: string): string[]
 
 // ─── Tool button (module-level to avoid remount on parent re-render) ──────────
 
+const DiamondIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>
+const GrabHandIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10.5V5a1.5 1.5 0 0 1 3 0v5.5" /><path d="M14 10.5V6.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 6.5-6 6.5-2.4 0-3.7-1-5-3L4 14.2a1.4 1.4 0 0 1 2.3-1.6L8 14.5V12" /></svg>
+const SigmaIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M18 5H6l6 7-6 7h12" /></svg>
+const AnimationIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M10 8.5v5l4-2.5z" /><path d="M8 21h8" /></svg>
+const MapIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>
+const HexagonIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M7 4h10l5 8-5 8H7l-5-8z" /></svg>
+
 function ToolButton({
   activeTool,
   t,
@@ -421,7 +471,7 @@ function ToolButton({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CollaborativeCanvas({
+export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasProps>(function CollaborativeCanvas({
   sessionId,
   canvasName,
   role,
@@ -430,7 +480,14 @@ export function CollaborativeCanvas({
   initialContent,
   onContentChange,
   readOnly = false,
-}: CollaborativeCanvasProps) {
+  chrome,
+  fill = false,
+  onAssist,
+  onPermissionChange,
+  leading,
+  tutorial = false,
+  onHydrated,
+}, handleRef) {
   const collaborationNameRef = useRef((canvasName || title || tl("Lavagna collaborativa")).trim())
   const [collaborationKey, setCollaborationKey] = useState(() => collaborationNameRef.current.toLocaleLowerCase().trim().replace(/\s+/g, ' ').slice(0, 240))
   // Refs
@@ -510,7 +567,18 @@ export function CollaborativeCanvas({
   const [isPanning, setIsPanning] = useState(false)
   const [studentsCanWrite, setStudentsCanWrite] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(true)
+  const [liveSocket, setLiveSocket] = useState<any>(() => (window as any).socket || null)
+  const [online, setOnline] = useState<Collaborator[]>([])
+  const [summon, setSummon] = useState<{ x: number; y: number; label: string; at: number } | null>(null)
+  const onHydratedRef = useRef(onHydrated)
+  onHydratedRef.current = onHydrated
+  const onPermissionChangeRef = useRef(onPermissionChange)
+  onPermissionChangeRef.current = onPermissionChange
+  const [viewSize, setViewSize] = useState({ w: 800, h: 600 })
   const [showTemplates, setShowTemplates] = useState(false)
+  const [showAnimations, setShowAnimations] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; itemId: string | null } | null>(null)
 
@@ -519,7 +587,6 @@ export function CollaborativeCanvas({
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
   const itemById = useMemo(() => new Map(canvasDoc.items.map((item) => [item.id, item])), [canvasDoc.items])
   const connectorItems = useMemo(() => canvasDoc.items.filter(isConnector) as Array<Extract<CanvasItem, { type: 'connector' }>>, [canvasDoc.items])
-  const pathItems = useMemo(() => canvasDoc.items.filter(isPath) as Array<Extract<CanvasItem, { type: 'path' }>>, [canvasDoc.items])
   const positionedItems = useMemo(() => canvasDoc.items.filter(isPositioned), [canvasDoc.items])
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const itemZIndex = useMemo(() => new Map(canvasDoc.items.map((item, index) => [item.id, index + 1])), [canvasDoc.items])
@@ -527,6 +594,10 @@ export function CollaborativeCanvas({
     () => (selectedId ? itemById.get(selectedId) || null : null),
     [itemById, selectedId],
   )
+  const editingFormula = useMemo(() => {
+    const item = editingId ? canvasDoc.items.find((i) => i.id === editingId) : null
+    return item && item.type === 'formula' ? item : null
+  }, [canvasDoc.items, editingId])
   const selectedTextStyle = useMemo(() => {
     if (!selectedItem || !isTextEditable(selectedItem)) return null
     return { ...DEFAULT_TEXT_STYLE, ...(selectedItem.textStyle || {}) }
@@ -568,6 +639,7 @@ export function CollaborativeCanvas({
     const world = worldRef.current
     if (!world) return
     world.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0) scale(${nextZoom})`
+    world.style.setProperty('--canvas-zoom', String(nextZoom))
     const container = containerRef.current
     if (container) {
       container.style.backgroundSize = `${24 * nextZoom}px ${24 * nextZoom}px`
@@ -682,6 +754,78 @@ export function CollaborativeCanvas({
     setPan({ x: (rect.width - (maxX - minX) * newZoom) / 2 - minX * newZoom, y: (rect.height - (maxY - minY) * newZoom) / 2 - minY * newZoom })
   }, [positionedItems])
 
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => setViewSize({ w: el.clientWidth, h: el.clientHeight })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const minimapItems = useMemo<MinimapItem[]>(() => canvasDoc.items.flatMap((item): MinimapItem[] => {
+    const kind: MinimapItem['kind'] = item.ai ? 'ai' : item.type === 'frame' ? 'frame' : item.type === 'image' ? 'image' : item.type === 'plot' ? 'plot' : 'item'
+    return isPositioned(item) ? [{ id: item.id, x: item.x, y: item.y, w: item.w, h: item.h, kind, selected: selectedIdSet.has(item.id) }] : []
+  }), [canvasDoc.items, selectedIdSet])
+
+  const graphSelectedFormula = useCallback((formula: Extract<CanvasItem, { type: 'formula' }>) => {
+    const made = graphFromFormula(parseCanvasDoc(latestSerializedRef.current), formula)
+    if (!made) return
+    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, ...made] }))
+    setEditingId(null)
+    setSelectedId(made[0].id); setSelectedIds([made[0].id])
+    window.setTimeout(() => focusItemsRef.current([formula.id, made[0].id]), 50)
+  }, [])
+
+  // ─── AI handle ────────────────────────────────────────────────────────────
+
+  const focusItems = useCallback((ids: string[]) => {
+    const container = containerRef.current
+    const targets = canvasDoc.items.filter((item) => ids.includes(item.id) && isPositioned(item))
+    if (!container || targets.length === 0) return
+    const boxes = targets as Array<Exclude<CanvasItem, { type: 'connector' }>>
+    const minX = Math.min(...boxes.map((i) => i.x)) - 60, minY = Math.min(...boxes.map((i) => i.y)) - 60
+    const maxX = Math.max(...boxes.map((i) => i.x + i.w)) + 60, maxY = Math.max(...boxes.map((i) => i.y + i.h)) + 60
+    const rect = container.getBoundingClientRect()
+    const nextZoom = Math.max(MIN_ZOOM, Math.min(1.2, Math.min(rect.width / (maxX - minX), rect.height / (maxY - minY))))
+    setZoom(nextZoom)
+    setPan({ x: (rect.width - (maxX - minX) * nextZoom) / 2 - minX * nextZoom, y: (rect.height - (maxY - minY) * nextZoom) / 2 - minY * nextZoom })
+    setSelectedIds(ids); setSelectedId(ids[0] ?? null)
+  }, [canvasDoc.items])
+
+  const insertTutorialRef = useRef<() => void>(() => {})
+  const focusItemsRef = useRef<(ids: string[]) => void>(() => {})
+  focusItemsRef.current = focusItems
+  insertTutorialRef.current = () => {
+    const current = parseCanvasDoc(latestSerializedRef.current)
+    const spot = findFreeRect(current, null, TUTORIAL_SIZE.w, TUTORIAL_SIZE.h, 160)
+    const added = buildTutorial(spot)
+    const next = { ...current, items: [...current.items, ...added] }
+    latestSerializedRef.current = JSON.stringify(next)
+    setCanvasDoc(next)
+    window.setTimeout(() => focusItemsRef.current([added[0].id]), 120)
+  }
+
+  useImperativeHandle(handleRef, () => ({
+    getDoc: () => parseCanvasDoc(latestSerializedRef.current),
+    focusItems,
+    insertTutorial: () => insertTutorialRef.current(),
+    applyOps: (ops: AiOp[]) => {
+      const current = parseCanvasDoc(latestSerializedRef.current)
+      const result = applyAiOps(current, ops)
+      latestSerializedRef.current = JSON.stringify(result.doc)
+      setCanvasDoc(result.doc)
+      return { created: result.created, idMap: result.idMap }
+    },
+    snapshot: async () => {
+      const doc = parseCanvasDoc(latestSerializedRef.current)
+      const { items, toAlias, fromAlias } = describeDoc(doc)
+      const [overview, sent] = await Promise.all([renderDocToPng(doc, toAlias), collectImages(doc, selectedIds, toAlias)])
+      return { overview, images: sent.map((i) => i.src), imagesMeta: sent.map((i) => i.meta), items, selected: selectedIds.map((id) => toAlias[id]).filter(Boolean), doc, fromAlias }
+    },
+  }), [focusItems, selectedIds])
+
   // ─── Remote canvas ────────────────────────────────────────────────────────
 
   const fetchRemoteCanvas = useCallback(async () => {
@@ -721,6 +865,7 @@ export function CollaborativeCanvas({
           setHistoryIndex(0)
         }
       }
+      if (firstHydration) window.setTimeout(() => onHydratedRef.current?.(), 60)
     } catch { /* silent */ }
   }, [collaborationKey, role, sessionId])
 
@@ -827,8 +972,21 @@ export function CollaborativeCanvas({
     return () => { if (pollTimerRef.current) window.clearInterval(pollTimerRef.current) }
   }, [fetchRemoteCanvas, sessionId, socketConnected])
 
+  // Other hooks (re)create the shared socket; follow it rather than reading it once.
   useEffect(() => {
-    const socket = (window as any).socket
+    const timer = window.setInterval(() => {
+      const current = (window as any).socket || null
+      setLiveSocket((prev: any) => (prev === current ? prev : current))
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => { onPermissionChangeRef.current?.(studentsCanWrite) }, [studentsCanWrite])
+  // A private board has nothing to load: it is ready as soon as it is mounted.
+  useEffect(() => { if (!sessionId) { const timer = window.setTimeout(() => onHydratedRef.current?.(), 80); return () => window.clearTimeout(timer) } }, [sessionId])
+
+  useEffect(() => {
+    const socket = liveSocket
     if (!socket) return
     const onConnect = () => setSocketConnected(true)
     const onDisconnect = () => setSocketConnected(false)
@@ -836,13 +994,13 @@ export function CollaborativeCanvas({
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
     return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect) }
-  }, [])
+  }, [liveSocket])
 
   // Keep versionRef in sync so socket handler doesn't need version in its deps
   useEffect(() => { versionRef.current = version }, [version])
 
   useEffect(() => {
-    const socket = (window as any).socket
+    const socket = liveSocket
     if (!socket || !sessionId) return
     const onCanvasUpdated = (payload: any) => {
       if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey) return
@@ -931,7 +1089,7 @@ export function CollaborativeCanvas({
     socket.on('canvas_item_transform', onItemTransform)
     socket.on('canvas_cursor', onCanvasCursor)
     return () => { socket.off('canvas_updated', onCanvasUpdated); socket.off('canvas_item_lock', onItemLock); socket.off('canvas_item_unlock', onItemUnlock); socket.off('canvas_item_transform', onItemTransform); socket.off('canvas_cursor', onCanvasCursor) }
-  }, [collaborationKey, currentUserId, sessionId])
+  }, [collaborationKey, currentUserId, liveSocket, sessionId])
 
   // Auto-expire stale locks (60 s) — prevents permanently stuck "In uso" state
   useEffect(() => {
@@ -987,6 +1145,16 @@ export function CollaborativeCanvas({
       if (isTyping) return
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
+      if (tool === 'move' && canEdit && selectedIds.length && e.key.startsWith('Arrow')) {
+        e.preventDefault()
+        const step = e.shiftKey ? 10 : 1
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+        const moving = new Set(selectedIds)
+        selectedIds.forEach((id) => { const it = itemById.get(id); if (it && isFrame(it)) collectFrameDescendants(canvasDoc.items, id).forEach((child) => moving.add(child)) })
+        setCanvasDoc((prev) => ({ ...prev, items: prev.items.map((i) => (moving.has(i.id) && isPositioned(i) ? { ...i, x: i.x + dx, y: i.y + dy } : i)) }))
+        return
+      }
       const selected = selectedId ? itemById.get(selectedId) : null
       const startsTextEditing = canEdit && tool === 'select' && selected && isTextEditable(selected)
         && (e.key === 'Enter' || (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1))
@@ -1005,6 +1173,11 @@ export function CollaborativeCanvas({
           if (e.key === 'f' || e.key === 'F') setTool('frame')
           if (e.key === 't' || e.key === 'T') setTool('text')
           if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
+          if (e.key === 'g' || e.key === 'G') setTool('move')
+          if (e.key === 'o' || e.key === 'O') setTool('ellipse')
+          if (e.key === 'm' || e.key === 'M') setTool('formula')
+          if (e.key === 'l' || e.key === 'L') setTool('line')
+          if (e.key === 'a' || e.key === 'A') setTool('arrow')
           if (e.key === 'c' || e.key === 'C') setTool('connector')
           if (e.key === 'd' || e.key === 'D') setTool('pen')
         }
@@ -1039,6 +1212,73 @@ export function CollaborativeCanvas({
   const emitTransientTransform = (itemId: string, transform: Partial<{ x: number; y: number; w: number; h: number }>) => {
     emitTransientTransforms([{ itemId, transform }])
   }
+  // ─── Presence & "richiama qui" ──────────────────────────────────────────────
+
+  useEffect(() => {
+    const socket = liveSocket
+    if (!socket || !sessionId) return
+    const toCollaborator = (u: any): Collaborator => ({ id: String(u.student_id), name: String(u.nickname || (u.role === 'teacher' ? 'Docente' : 'Studente')), role: u.role === 'teacher' ? 'teacher' : 'student', avatarUrl: u.avatar_url || undefined })
+    const join = () => socket.emit('join_session', { session_id: sessionId }, (response: { online_students?: any[] }) => {
+      if (response?.online_students) setOnline(response.online_students.map(toCollaborator))
+    })
+    const onPresence = (data: any) => {
+      const id = String(data?.student_id || '')
+      if (!id) return
+      if (data.status === 'online') setOnline((prev) => (prev.some((u) => u.id === id) ? prev.map((u) => (u.id === id ? toCollaborator(data) : u)) : [...prev, toCollaborator(data)]))
+      else {
+        setOnline((prev) => prev.filter((u) => u.id !== id))
+        setRemoteCursors((prev) => { const next = { ...prev }; delete next[id]; return next })
+      }
+    }
+    const onSummon = (payload: any) => {
+      if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey || role === 'teacher') return
+      const x = Number(payload.x), y = Number(payload.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      setSummon({ x, y, label: String(payload.label || 'Docente'), at: Date.now() })
+      const container = containerRef.current
+      if (!container) return
+      const from = { ...panRef.current }, fromZoom = zoomRef.current
+      const toZoom = Math.max(fromZoom, 0.6)
+      const target = { x: container.clientWidth / 2 - x * toZoom, y: container.clientHeight / 2 - y * toZoom }
+      const started = performance.now()
+      const step = (now: number) => {
+        const t = Math.min((now - started) / 550, 1), e = 1 - (1 - t) ** 3
+        const nextZoom = fromZoom + (toZoom - fromZoom) * e
+        const nextPan = { x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e }
+        zoomRef.current = nextZoom; panRef.current = nextPan
+        paintViewport(nextPan, nextZoom)
+        if (t < 1) window.requestAnimationFrame(step)
+        else { setZoom(nextZoom); setPan(nextPan) }
+      }
+      window.requestAnimationFrame(step)
+    }
+    join()
+    const refresh = window.setInterval(() => { if (socket.connected) join() }, 20000)
+    socket.on('connect', join)
+    socket.on('presence_update', onPresence)
+    socket.on('canvas_summon', onSummon)
+    return () => { window.clearInterval(refresh); socket.off('connect', join); socket.off('presence_update', onPresence); socket.off('canvas_summon', onSummon) }
+  }, [collaborationKey, liveSocket, paintViewport, role, sessionId])
+
+  useEffect(() => {
+    if (!summon) return
+    const timer = window.setTimeout(() => setSummon(null), 4500)
+    return () => window.clearTimeout(timer)
+  }, [summon])
+
+  const summonStudents = (clientX: number, clientY: number) => {
+    const point = toWorld(clientX, clientY)
+    liveSocket?.emit('canvas_summon', { session_id: sessionId, canvas_key: collaborationKey, x: point.x, y: point.y })
+    setSummon({ x: point.x, y: point.y, label: 'Docente', at: Date.now() })
+  }
+
+  const goToCollaborator = (id: string) => {
+    const cursor = remoteCursors[id]
+    const container = containerRef.current
+    if (!cursor || !container) return
+    setPan({ x: container.clientWidth / 2 - cursor.x * zoomRef.current, y: container.clientHeight / 2 - cursor.y * zoomRef.current })
+  }
+
   const emitCursor = (point: Point, active = true) => {
     const now = performance.now()
     if (active && now - lastCursorEmitRef.current < 50) return
@@ -1071,6 +1311,7 @@ export function CollaborativeCanvas({
 
   const DEFAULT_ITEM_SIZES: Partial<Record<Tool, [number, number]>> = {
     postit: [220, 180], frame: [360, 260], text: [280, 120], roundedRect: [220, 140], triangle: [220, 160],
+    rect: [220, 140], ellipse: [200, 140], diamond: [200, 160], star: [180, 180], hexagon: [220, 150], line: [160, 0], arrow: [160, 0], formula: [380, 84],
   }
 
   const createItemAtBounds = (type: Tool, x: number, y: number, w: number, h: number): CanvasItem | null => {
@@ -1079,6 +1320,10 @@ export function CollaborativeCanvas({
     if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', backgroundColor: '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'formula') return { id, type: 'formula', x, y, w, h, latex: '', fontSize: 28, color: '#0f172a' }
+    const shapeByTool: Partial<Record<Tool, 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon'>> = { rect: 'rect', ellipse: 'ellipse', diamond: 'diamond', star: 'star', hexagon: 'hexagon' }
+    const extraShape = shapeByTool[type]
+    if (extraShape) return { id, type: 'shape', shape: extraShape, x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     return null
   }
@@ -1165,9 +1410,7 @@ export function CollaborativeCanvas({
       if (!target) return prev
       const belongsToLayer = isPositioned(target)
         ? isPositioned
-        : isPath(target)
-          ? isPath
-          : isConnector
+        : isConnector
       const layerItems = prev.items.filter(belongsToLayer)
       const idx = layerItems.findIndex((item) => item.id === id)
       if (idx === -1) return prev
@@ -1237,7 +1480,7 @@ export function CollaborativeCanvas({
 
     // A frame is also a creation surface. Previously it swallowed the event,
     // forcing users to create on the empty canvas and move the item afterward.
-    if (canEdit && isFrame(item) && tool !== 'select' && tool !== 'hand' && tool !== 'connector') {
+    if (canEdit && isFrame(item) && tool !== 'select' && tool !== 'move' && tool !== 'hand' && tool !== 'connector') {
       e.preventDefault()
       containerRef.current?.setPointerCapture(e.pointerId)
       const wp = toWorld(e.clientX, e.clientY)
@@ -1271,7 +1514,7 @@ export function CollaborativeCanvas({
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
     if (isTextEditable(item) && editingId !== item.id) { e.preventDefault(); setEditingId(null) }
-    if (!canEdit || isPath(item) || isConnector(item) || isLockedByOther(item.id)) return
+    if (!canEdit || isConnector(item) || isLockedByOther(item.id)) return
 
     const wp = toWorld(e.clientX, e.clientY)
     const posItem = isPositioned(item) ? item : null
@@ -1288,14 +1531,14 @@ export function CollaborativeCanvas({
     if (pinchRef.current) return
     activePointerIdRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
-    if (spaceHeldRef.current || tool === 'hand' || e.button === 1 || e.pointerType === 'touch' && tool === 'select') {
+    if (spaceHeldRef.current || tool === 'hand' || e.button === 1 || e.pointerType === 'touch' && (tool === 'select' || tool === 'move')) {
       e.preventDefault()
       panningRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startPanX: panRef.current.x, startPanY: panRef.current.y }
       setIsPanning(true)
       return
     }
     if (!canEdit) return
-    if (tool === 'select') {
+    if (tool === 'select' || tool === 'move') {
       const wp = toWorld(e.clientX, e.clientY)
       marqueeRef.current = { start: wp, current: wp, additive: e.shiftKey || e.ctrlKey || e.metaKey }
       setEditingId(null)
@@ -1465,8 +1708,10 @@ export function CollaborativeCanvas({
     // Resize (RAF throttled) — store pending size in ref, apply in RAF
     if (resizingRef.current && canEdit) {
       const resize = resizingRef.current
-      resize.pendingW = Math.max(80, resize.startW + (e.clientX - resize.startX) / zoomRef.current)
-      resize.pendingH = Math.max(60, resize.startH + (e.clientY - resize.startY) / zoomRef.current)
+      const resizingType = itemById.get(resize.id)?.type
+      const isLine = resizingType === 'line' || resizingType === 'path'
+      resize.pendingW = Math.max(isLine ? 4 : 80, resize.startW + (e.clientX - resize.startX) / zoomRef.current)
+      resize.pendingH = Math.max(isLine ? 2 : 60, resize.startH + (e.clientY - resize.startY) / zoomRef.current)
       if (!resizeRafRef.current) {
         resizeRafRef.current = window.requestAnimationFrame(() => {
           resizeRafRef.current = null
@@ -1604,6 +1849,16 @@ export function CollaborativeCanvas({
       const MIN_DRAG = 15
       const [dw, dh] = DEFAULT_ITEM_SIZES[dc.tool] ?? [220, 160]
       let itemX: number, itemY: number, itemW: number, itemH: number
+      if (dc.tool === 'line' || dc.tool === 'arrow') {
+        const flipX = dc.currentX < dc.startX, flipY = dc.currentY < dc.startY
+        const long = dragW > MIN_DRAG || dragH > MIN_DRAG
+        const line: CanvasItem = { id: mkId(), type: 'line', x: long ? Math.min(dc.startX, dc.currentX) : dc.startX, y: long ? Math.min(dc.startY, dc.currentY) : dc.startY, w: long ? Math.max(dragW, 1) : dw, h: long ? Math.max(dragH, 1) : 1, flipX: long && flipX, flipY: long && flipY, arrow: dc.tool === 'arrow', color: newShapeStroke, width: 3 }
+        beginInteraction()
+        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, line] }))
+        setSelectedId(line.id); setSelectedIds([line.id]); setEditingId(null); setTool('select')
+        endInteraction()
+        return
+      }
       if (dragW > MIN_DRAG || dragH > MIN_DRAG) {
         itemX = Math.min(dc.startX, dc.currentX)
         itemY = Math.min(dc.startY, dc.currentY)
@@ -1632,7 +1887,7 @@ export function CollaborativeCanvas({
         setSelectedId(item.id)
         setSelectedIds([item.id])
         if (isTextEditable(item)) startTextEditingRef.current(item.id)
-        else setEditingId(null)
+        else setEditingId(item.type === 'formula' ? item.id : null)
         setTool('select')
         endInteraction()
       }
@@ -1651,12 +1906,10 @@ export function CollaborativeCanvas({
     let didMutate = false
     if (drawingRef.current && canEdit && drawingRef.current.points.length > 1) {
       didMutate = true
-      const path: CanvasItem = { id: mkId(), type: 'path', points: simplifyPoints(drawingRef.current.points, 1.5 / zoomRef.current), color: strokeColor, width: strokeWidth }
+      const absolute = simplifyPoints(drawingRef.current.points, 1.5 / zoomRef.current)
+      const path: CanvasItem = makePath(mkId(), absolute, strokeColor, strokeWidth)
       setCanvasDoc((prev) => {
-        const parentFrame = prev.items.filter(isFrame).find((frame) => {
-          const pts = (path as any).points as Point[]
-          return pts.length > 0 && pts.every((p) => p.x >= frame.x && p.x <= frame.x + frame.w && p.y >= frame.y && p.y <= frame.y + frame.h)
-        })
+        const parentFrame = prev.items.filter(isFrame).find((frame) => absolute.length > 0 && absolute.every((p) => p.x >= frame.x && p.x <= frame.x + frame.w && p.y >= frame.y && p.y <= frame.y + frame.h))
         return { ...prev, items: [...prev.items, parentFrame ? { ...path, parentFrameId: parentFrame.id } : path] }
       })
     }
@@ -1762,10 +2015,63 @@ export function CollaborativeCanvas({
     return () => el.removeEventListener('wheel', onNativeWheel)
   }, [applyZoom, paintViewport])
 
+  // Pasting an image (screenshot, copied picture) drops it at the centre of the view.
+  const pasteImagesRef = useRef<(files: File[]) => void>(() => {})
+  pasteImagesRef.current = (files) => {
+    if (!canEdit) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const centre = toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    void (async () => {
+      let offset = 0
+      for (const file of files) {
+        try {
+          const src = await uploadImage(file)
+          const natural = await new Promise<{ w: number; h: number }>((resolve) => {
+            const probe = new Image(); probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight }); probe.onerror = () => resolve({ w: 4, h: 3 }); probe.src = src
+          })
+          const w = Math.min(520, natural.w), h = Math.max(40, Math.round(w * natural.h / Math.max(natural.w, 1)))
+          const img: CanvasItem = { id: mkId(), type: 'image', x: centre.x - w / 2 + offset, y: centre.y - h / 2 + offset, w, h, src }
+          setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
+          setSelectedId(img.id); setSelectedIds([img.id])
+          offset += 30
+        } catch (err) { console.error(err) }
+      }
+    })()
+  }
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.closest('input, textarea, [contenteditable="true"]'))) return
+      const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith('image/'))
+      if (!files.length) return
+      event.preventDefault()
+      pasteImagesRef.current(files)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
+
   // ─── Drop handler ─────────────────────────────────────────────────────────
 
+  /** Boards without a chat session keep their images inline (downscaled), so the document stays self-contained. */
+  const inlineImage = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.88))
+    }
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error(tl("Immagine non leggibile"))) }
+    image.src = url
+  })
+
   const uploadImage = async (file: File): Promise<string> => {
-    if (!sessionId) throw new Error(tl("Sessione richiesta per caricare immagini"))
+    if (!sessionId) return inlineImage(file)
     const res = await chatApi.uploadFiles(sessionId, [file])
     const url = res.data?.urls?.[0]
     if (!url) throw new Error(tl("Upload immagine non riuscito"))
@@ -1822,11 +2128,6 @@ export function CollaborativeCanvas({
 
   // ─── SVG renderers ────────────────────────────────────────────────────────
 
-  const renderPath = (item: Extract<CanvasItem, { type: 'path' }>) => {
-    const d = item.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-    return <path key={item.id} d={d} stroke={item.color} strokeWidth={item.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-  }
-
   const renderConnector = (item: Extract<CanvasItem, { type: 'connector' }>) => {
     const from = itemById.get(item.fromId)
     const to = itemById.get(item.toId)
@@ -1871,6 +2172,7 @@ export function CollaborativeCanvas({
     ? 'grabbing'
     : (spaceHeldRef.current || tool === 'hand') ? 'grab'
     : tool === 'pen' ? 'crosshair'
+    : tool === 'move' ? undefined
     : (tool === 'select' || tool === 'connector') ? 'default'
     : 'crosshair'  // shape/content creation tools
 
@@ -1879,11 +2181,12 @@ export function CollaborativeCanvas({
   return (
     <div
       className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-sm ${
-        isFullscreen ? 'fixed inset-0 z-[9999] rounded-none' : 'h-[calc(100vh-170px)] rounded-xl'
+        isFullscreen ? 'fixed inset-0 z-[9999] rounded-none' : fill ? 'h-full rounded-none border-0' : 'h-[calc(100vh-170px)] rounded-xl'
       }`}
     >
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5">
+        {leading}
         {/* Title */}
         <Input
           value={title}
@@ -1917,82 +2220,110 @@ export function CollaborativeCanvas({
 
         <div className="flex-1" />
 
+        {/* Who is here: avatars (a dot says whether the live link is up) */}
         {sessionId && (
-          <div
-            className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${socketConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}
-            title={socketConnected ? tl("Collaborazione in tempo reale attiva") : tl("Riconnessione in corso; le modifiche restano salvate localmente")}
-          >
-            <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            {socketConnected ? `Live${Object.keys(remoteCursors).length ? ` · ${Object.keys(remoteCursors).length + 1}` : ''}` : 'Offline'}
+          <div className="flex items-center gap-1.5" aria-label={tl("Utenti connessi")}>
+            <span className={`h-2 w-2 shrink-0 rounded-full ${socketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} title={socketConnected ? tl("Collaborazione in tempo reale attiva") : tl("Riconnessione in corso; le modifiche restano salvate localmente")} />
+            {!socketConnected && <span className="text-[11px] font-semibold text-amber-700">Offline</span>}
+            <div className="flex items-center -space-x-1.5">
+              {online.slice(0, 4).map((u) => {
+                const mine = u.id === currentUserId
+                const color = collaboratorColor(u.id)
+                return (
+                  <button key={u.id} type="button" onClick={() => goToCollaborator(u.id)} disabled={mine || !remoteCursors[u.id]}
+                    title={`${u.name}${u.role === 'teacher' ? ` · ${tl("Docente")}` : ''}${mine ? ` (${tl("tu")})` : ''}${remoteCursors[u.id] ? ` — ${tl("clicca per andare al cursore")}` : ''}`}
+                    className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[10px] font-bold text-white shadow-sm disabled:cursor-default"
+                    style={{ backgroundColor: color, boxShadow: u.role === 'teacher' ? `0 0 0 2px ${color}55` : undefined }}>
+                    {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="h-full w-full object-cover" /> : u.name.slice(0, 2).toUpperCase()}
+                  </button>
+                )
+              })}
+              {online.length > 4 && <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[10px] font-bold text-slate-600">+{online.length - 4}</span>}
+            </div>
           </div>
         )}
 
-        {/* Zoom controls */}
-        <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1">
-          <button type="button" onClick={zoomOut} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">−</button>
-          <span className="w-12 text-center text-xs text-slate-600 tabular-nums">{Math.round(zoom * 100)}%</span>
-          <button type="button" onClick={zoomIn} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">+</button>
-          <button type="button" onClick={fitToScreen} title={tl("Adatta alla schermata")} className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-white">
-            <Maximize2 className="h-3.5 w-3.5" />
+        {/* The single edit flag for students: only meaningful on a board shared with a session */}
+        {role === 'teacher' && sessionId && (
+          <button
+            type="button"
+            title={studentsCanWrite ? tl("Gli studenti possono modificare (e usare l'assistente) — clicca per disabilitare") : tl("Gli studenti guardano soltanto — clicca per permettere di modificare")}
+            onClick={toggleStudentsCanWrite}
+            className={`flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition-colors ${studentsCanWrite ? 'border-green-300 bg-green-50 text-green-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            {tl("Studenti")}
+            <span className={`flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}>
+              <span className={`mx-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${studentsCanWrite ? 'translate-x-3' : 'translate-x-0'}`} />
+            </span>
           </button>
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-slate-200" />
-
-        {/* Teacher-only actions */}
-        {role === 'teacher' && (
-          <>
-            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setShowTemplates(true)}>
-              <LayoutTemplate className="h-3.5 w-3.5" /> Template
-            </Button>
-            {/* Inline student write toggle — always visible for teacher */}
-            <button
-              type="button"
-              title={studentsCanWrite ? tl("Studenti possono modificare — clicca per disabilitare") : tl("Clicca per permettere agli studenti di modificare")}
-              onClick={toggleStudentsCanWrite}
-              className={`flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-all ${
-                studentsCanWrite
-                  ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-                  : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span>{tl("Modifiche studenti:")} {studentsCanWrite ? 'ON' : 'OFF'}</span>
-              <span
-                className={`flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
-              >
-                <span className={`mx-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${studentsCanWrite ? 'translate-x-3' : 'translate-x-0'}`} />
-              </span>
-            </button>
-          </>
         )}
 
-        {/* Fullscreen */}
-        <button
-          type="button"
-          title={isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")}
-          onClick={() => setIsFullscreen((v) => !v)}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
-        >
-          {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
-        </button>
+        {/* Zoom */}
+        <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1">
+          <button type="button" onClick={zoomOut} aria-label={tl("Riduci")} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">−</button>
+          <span className="w-10 text-center text-xs tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
+          <button type="button" onClick={zoomIn} aria-label={tl("Ingrandisci")} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">+</button>
+        </div>
+
+        {/* Everything else lives in one menu */}
+        <div className="relative shrink-0">
+          <button type="button" title={tl("Altro")} aria-label={tl("Altro")} aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}
+            className={`flex h-7 w-7 items-center justify-center rounded text-base font-black leading-none ${showMore ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>⋯</button>
+          {showMore && (
+            <>
+              <div className="fixed inset-0 z-[9990]" onMouseDown={() => setShowMore(false)} />
+              <div className="absolute right-0 top-8 z-[9991] w-60 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                {[
+                  ...(tutorial && canEdit ? [{ icon: <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#e85c8d] text-[10px] font-bold text-white">?</span>, label: tl("Guida: come funziona"), run: () => insertTutorialRef.current() }] : []),
+                  ...(canEdit ? [{ icon: <AnimationIcon className="h-4 w-4" />, label: tl("Animazioni scientifiche"), run: () => setShowAnimations(true) }] : []),
+                  ...(role === 'teacher' ? [{ icon: <LayoutTemplate className="h-4 w-4" />, label: tl("Template"), run: () => setShowTemplates(true) }] : []),
+                  { icon: <MapIcon className="h-4 w-4" />, label: showMinimap ? tl("Nascondi la mappa") : tl("Mostra la mappa"), run: () => setShowMinimap((v) => !v) },
+                  { icon: <Maximize2 className="h-4 w-4" />, label: tl("Adatta alla schermata"), run: fitToScreen },
+                  { icon: isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />, label: isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero"), run: () => setIsFullscreen((v) => !v) },
+                ].map((entry) => (
+                  <button key={entry.label} type="button" onClick={() => { setShowMore(false); entry.run() }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">
+                    <span className="flex h-4 w-4 items-center justify-center text-slate-500">{entry.icon}</span>{entry.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {chrome}
       </div>
 
       {/* ── Context property bar — always visible ───────────────────────── */}
       <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1 text-xs transition-opacity duration-100 ${!selectedItem ? 'opacity-40 pointer-events-none' : ''}`} style={{ minHeight: 34 }}>
         {selectedItem ? (<>
+          {selectedItem.type === 'formula' && (
+            <>
+              <span className="text-slate-500">{tl("Formula")}</span>
+              <button type="button" onClick={() => setEditingId(selectedItem.id)} className="h-6 rounded border border-slate-200 bg-white px-2 font-semibold text-slate-700 hover:bg-slate-100">{tl("Modifica")}</button>
+              <Input type="number" min={12} max={120} value={selectedItem.fontSize} onChange={(e) => updateItem(selectedItem.id, { fontSize: Math.max(12, Number(e.target.value || 28)) })} className="h-6 w-14 border-slate-200 px-1 text-center text-xs" title={tl("Dimensione")} />
+              <ColorPicker value={selectedItem.color} onChange={(color) => updateItem(selectedItem.id, { color })} title={tl("Colore")} />
+              {selectedItem.src && <button type="button" onClick={() => graphSelectedFormula(selectedItem)} className="h-6 rounded bg-[#1a1a2e] px-2 font-semibold text-white">{tl("Grafico")}</button>}
+              {onAssist && <button type="button" onClick={() => onAssist(`Risolvi passo passo: ${selectedItem.src || selectedItem.latex}. Scrivi ogni passaggio come formula sotto la precedente.`, [selectedItem.id])} className="h-6 rounded border border-slate-200 bg-white px-2 font-semibold text-[#e85c8d] hover:bg-pink-50">{tl("Risolvi con l'assistente")}</button>}
+            </>
+          )}
+          {selectedItem.type === 'text' && plainToLatex(selectedItem.text) && /[=^/]|sqrt/.test(selectedItem.text) && (
+            <button type="button" onClick={() => {
+              const latex = plainToLatex(selectedItem.text)!
+              setCanvasDoc((prev) => ({ ...prev, items: prev.items.map((i) => i.id === selectedItem.id ? { id: i.id, parentFrameId: i.parentFrameId, type: 'formula', x: selectedItem.x, y: selectedItem.y, w: Math.max(selectedItem.w, 320), h: 84, latex, src: selectedItem.text.trim(), fontSize: 28, color: selectedItem.color } : i) }))
+            }} className="h-6 rounded bg-[#1a1a2e] px-2 font-semibold text-white">{tl("Trasforma in formula")}</button>
+          )}
           {isShape(selectedItem) && (
             <>
               <span className="text-slate-500">{tl("Forma")}</span>
               <div className="flex items-center gap-1">
-                <span className="text-slate-400">Fill</span>
+                <span className="text-slate-500">Fill</span>
                 <ColorPicker value={selectedItem.fill} onChange={(color) => updateItem(selectedItem.id, { fill: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Riempimento")} />
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-slate-400">{tl("Bordo")}</span>
+                <span className="text-slate-500">{tl("Bordo")}</span>
                 <ColorPicker value={selectedItem.stroke} onChange={(color) => updateItem(selectedItem.id, { stroke: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Bordo")} />
               </div>
-              <label className="flex items-center gap-1 text-slate-400">
+              <label className="flex items-center gap-1 text-slate-500">
                 {tl("Spessore")}
                 <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2.5} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2.5))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
               </label>
@@ -2004,9 +2335,9 @@ export function CollaborativeCanvas({
           {isFrame(selectedItem) && (
             <>
               <span className="text-slate-500">Frame</span>
-              <label className="flex items-center gap-1 text-slate-400">{tl("Sfondo")} <ColorPicker value={(selectedItem.backgroundColor || '#ffffff').slice(0, 7)} onChange={(color) => updateItem(selectedItem.id, { backgroundColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
-              <label className="flex items-center gap-1 text-slate-400">{tl("Bordo")} <ColorPicker value={selectedItem.color} onChange={(color) => updateItem(selectedItem.id, { color: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
-              <label className="flex items-center gap-1 text-slate-400">{tl("Spessore")} <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
+              <label className="flex items-center gap-1 text-slate-500">{tl("Sfondo")} <ColorPicker value={(selectedItem.backgroundColor || '#ffffff').slice(0, 7)} onChange={(color) => updateItem(selectedItem.id, { backgroundColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
+              <label className="flex items-center gap-1 text-slate-500">{tl("Bordo")} <ColorPicker value={selectedItem.color} onChange={(color) => updateItem(selectedItem.id, { color: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
+              <label className="flex items-center gap-1 text-slate-500">{tl("Spessore")} <Input type="number" min={0.5} max={16} step={0.5} value={selectedItem.borderWidth ?? 2} onChange={(e) => updateItem(selectedItem.id, { borderWidth: Math.max(0.5, Math.min(16, Number(e.target.value || 2))) })} className="h-6 w-14 border-slate-200 px-1" disabled={!canEdit || isLockedByOther(selectedItem.id)} /></label>
               <button type="button" onClick={() => updateItem(selectedItem.id, { borderStyle: selectedItem.borderStyle === 'hand-drawn' ? 'dashed' : 'hand-drawn' })} className={`h-6 rounded border px-2 ${selectedItem.borderStyle === 'hand-drawn' ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>{tl("Bordo a mano")}</button>
             </>
           )}
@@ -2030,7 +2361,7 @@ export function CollaborativeCanvas({
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' } })} className={`h-6 w-6 rounded border text-xs font-bold ${selectedTextStyle.fontWeight === '600' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>B</button>
               <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' } })} className={`h-6 w-6 rounded border text-xs italic ${selectedTextStyle.fontStyle === 'italic' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>I</button>
               {selectedItem.type === 'shape' && (
-                <label className="flex items-center gap-1 text-slate-400">{tl("Colore")} <ColorPicker value={selectedItem.textColor || '#171717'} onChange={(color) => updateItem(selectedItem.id, { textColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
+                <label className="flex items-center gap-1 text-slate-500">{tl("Colore")} <ColorPicker value={canvasLabelColor(selectedItem.fill, selectedItem.textColor, selectedItem.fillOpacity)} onChange={(color) => updateItem(selectedItem.id, { textColor: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Colore")} /></label>
               )}
               {selectedItem.type === 'postit' && (
                 <div className="flex gap-1">
@@ -2047,7 +2378,7 @@ export function CollaborativeCanvas({
             </button>
           )}
         </>) : (
-          <span className="text-[11px] text-slate-400 select-none">{tl("Seleziona un elemento per vedere le proprietà")}</span>
+          <span className="text-[11px] text-slate-500 select-none">{tl("Seleziona un elemento per vedere le proprietà")}</span>
         )}
       </div>
 
@@ -2057,19 +2388,29 @@ export function CollaborativeCanvas({
         {canEdit && (
           <div className="flex w-11 shrink-0 flex-col items-center gap-0.5 border-r border-slate-200 bg-white py-2">
             <ToolButton activeTool={tool} t="select" icon={MousePointer} label={tl("Seleziona (V)")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="hand" icon={Move} label={tl("Muovi canvas (H)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="hand" icon={Move} label={tl("Sposta la vista (H)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="move" icon={GrabHandIcon} label={tl("Sposta gli elementi: trascina quelli selezionati (G)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
             <ToolButton activeTool={tool} t="postit" icon={StickyNote} label={tl("Post-it — trascina per dimensionare (P)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="frame" icon={Frame} label={tl("Frame — trascina per dimensionare (F)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="text" icon={Type} label={tl("Testo (T)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
             <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label={tl("Rettangolo — trascina per dimensionare (R)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="rect" icon={Square} label={tl("Rettangolo a spigoli vivi")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="ellipse" icon={Circle} label={tl("Ellisse — trascina per dimensionare (O)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="triangle" icon={Triangle} label={tl("Triangolo — trascina per dimensionare")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="diamond" icon={DiamondIcon} label={tl("Rombo")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="hexagon" icon={HexagonIcon} label={tl("Esagono")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="star" icon={Star} label={tl("Stella")} onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <ToolButton activeTool={tool} t="line" icon={Minus} label={tl("Linea — trascina (L)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="arrow" icon={ArrowRight} label={tl("Freccia libera — trascina (A)")} onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="formula" icon={SigmaIcon} label={tl("Formula matematica — trascina (M)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
             <ToolButton activeTool={tool} t="connector" icon={MoveRight} label={tl("Connettore — trascina da un punto di ancoraggio (C)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="pen" icon={Pencil} label={tl("Penna libera (D)")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <button type="button" title={tl("Elimina selezionato (Del)")} onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
+            <button type="button" title={tl("Elimina selezionato (Del)")} onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
               <Eraser className="h-4 w-4" />
             </button>
 
@@ -2093,7 +2434,7 @@ export function CollaborativeCanvas({
             )}
 
             {/* Shape color (when shape tool active) */}
-            {(tool === 'roundedRect' || tool === 'triangle') && (
+            {(SHAPE_TOOLS.includes(tool) || tool === 'line' || tool === 'arrow') && (
               <>
                 <div className="my-0.5 h-px w-7 bg-slate-200" />
                 <ColorPicker value={newShapeFill} onChange={(color) => setNewShapeFill(color)} title={tl("Riempimento")} />
@@ -2106,12 +2447,13 @@ export function CollaborativeCanvas({
         {/* Canvas container */}
         <div
           ref={containerRef}
-          className="relative flex-1 overflow-hidden bg-slate-50"
+          className={`relative flex-1 overflow-hidden ${tool === 'move' ? 'cursor-grab active:cursor-grabbing' : ''}`}
           style={{
             cursor,
             touchAction: 'none',
             overscrollBehavior: 'none',
-            backgroundImage: 'radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0)',
+            backgroundColor: '#ffffff',
+            backgroundImage: 'radial-gradient(circle at 1px 1px, #d6d6d6 1px, transparent 0)',
             backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`,
           }}
@@ -2130,7 +2472,11 @@ export function CollaborativeCanvas({
           {/* World layer */}
           <div
             ref={worldRef}
+            // Document colours belong to the board, independently of the app theme.
+            className="theme-keep text-slate-900"
             style={{
+              colorScheme: 'light',
+              color: '#171717',
               transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
               transformOrigin: '0 0',
               willChange: 'transform',
@@ -2148,7 +2494,6 @@ export function CollaborativeCanvas({
                 </marker>
               </defs>
               {connectorItems.map(renderConnector)}
-              {pathItems.map(renderPath)}
               {renderConnectorPreview()}
               {previewPoints.length > 0 && (
                 <path ref={previewPathRef} d="" stroke={strokeColor} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -2171,14 +2516,20 @@ export function CollaborativeCanvas({
               />
             )}
 
+            {summon && (
+              <div key={summon.at} className="pointer-events-none absolute left-0 top-0" style={{ transform: `translate3d(${summon.x}px, ${summon.y}px, 0)`, zIndex: 2_000_001 }}>
+                <span className="absolute -left-10 -top-10 h-20 w-20 animate-ping rounded-full border-4 border-[#e85c8d]" />
+                <span className="absolute -left-2 -top-2 h-4 w-4 rounded-full bg-[#e85c8d] ring-4 ring-white" />
+              </div>
+            )}
             {Object.values(remoteCursors).map((remoteCursor) => (
               <div
                 key={remoteCursor.userId}
                 className="pointer-events-none absolute left-0 top-0 transition-transform duration-75 ease-out"
-                style={{ transform: `translate3d(${remoteCursor.x}px, ${remoteCursor.y}px, 0)`, zIndex: 2_000_000 }}
+                style={{ transform: `translate3d(${remoteCursor.x}px, ${remoteCursor.y}px, 0) scale(${1 / zoom})`, transformOrigin: '0 0', zIndex: 2_000_000 }}
               >
-                <MousePointer className="h-5 w-5 -rotate-12 drop-shadow-sm" style={{ color: remoteCursor.color, fill: remoteCursor.color }} />
-                <span className="ml-3 -mt-0.5 block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: remoteCursor.color }}>
+                <MousePointer className="h-6 w-6 -rotate-12 drop-shadow-md" style={{ color: remoteCursor.color, fill: remoteCursor.color, stroke: '#fff', strokeWidth: 1.5 }} />
+                <span className="ml-4 -mt-0.5 block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold text-white shadow-md ring-2 ring-white" style={{ backgroundColor: remoteCursor.color }}>
                   {remoteCursor.label}
                 </span>
               </div>
@@ -2195,14 +2546,17 @@ export function CollaborativeCanvas({
                   ref={(element) => { itemRefs.current[item.id] = element }}
                   data-canvas-x={item.x}
                   data-canvas-y={item.y}
-                  className={`absolute ${selectedIdSet.has(item.id) ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${lockedByOther ? 'opacity-60' : ''}`}
+                  data-canvas-type={item.type}
+                  className={`absolute ${selectedIdSet.has(item.id) ? (tool === 'move' ? 'ring-2 ring-pink-500 ring-offset-2' : 'ring-2 ring-blue-500 ring-offset-1') : ''} ${lockedByOther ? 'opacity-60' : ''}`}
                   style={{
                     left: item.x, top: item.y, width: item.w, height: item.h,
                     zIndex: itemZIndex.get(item.id) || 1,
+                    pointerEvents: item.type === 'path' ? 'none' : undefined,
                     willChange: draggingRef.current?.id === item.id ? 'transform' : undefined,
                   }}
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={() => { if (item.type === 'formula' && canEdit) { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } }}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
                 >
                   {item.type === 'postit' && (
@@ -2213,7 +2567,7 @@ export function CollaborativeCanvas({
                       onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
                       className="h-full w-full resize-none rounded-md p-2 text-sm shadow-sm"
-                      style={{ background: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
+                      style={{ background: item.color, color: canvasLabelColor(item.color), fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
                       disabled={!canEdit || lockedByOther}
                       readOnly={!isEditing}
                       autoFocus={isEditing}
@@ -2250,7 +2604,7 @@ export function CollaborativeCanvas({
                         onBlur={() => { emitUnlock(item.id); endInteraction() }}
                         onChange={(e) => updateItem(item.id, { text: e.target.value })}
                         className="relative z-[1] w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
-                        style={{ borderColor: item.color, color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 12}px`, fontWeight: item.textStyle?.fontWeight || '600', fontStyle: item.textStyle?.fontStyle || 'normal', outline: 'none' }}
+                        style={{ borderColor: item.color, color: canvasLabelColor(item.backgroundColor || '#ffffff99', item.color), fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 12}px`, fontWeight: item.textStyle?.fontWeight || '600', fontStyle: item.textStyle?.fontStyle || 'normal', outline: 'none' }}
                         disabled={!canEdit || lockedByOther}
                         readOnly={!isEditing}
                         autoFocus={isEditing}
@@ -2266,7 +2620,7 @@ export function CollaborativeCanvas({
                       onFocus={() => { beginInteraction(); emitLock(item.id) }}
                       onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                      className="h-full w-full resize-none rounded bg-transparent p-2 text-sm"
+                      className={`h-full w-full resize-none overflow-hidden rounded bg-transparent text-sm ${item.h < 44 ? 'px-1 py-0' : 'p-2'}`}
                       style={{ color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
                       disabled={!canEdit || lockedByOther}
                       readOnly={!isEditing}
@@ -2277,22 +2631,7 @@ export function CollaborativeCanvas({
 
                   {item.type === 'shape' && (
                     <>
-                      <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`}>
-                        {item.borderStyle === 'hand-drawn' && (
-                          <defs>
-                            <filter id={`rough-shape-${item.id}`} x="-8%" y="-8%" width="116%" height="116%">
-                              <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="3" seed="11" result="noise" />
-                              <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" />
-                            </filter>
-                          </defs>
-                        )}
-                        {item.shape === 'rounded-rect' && <rect x="4" y="4" width={Math.max(item.w - 8, 1)} height={Math.max(item.h - 8, 1)} rx="16" ry="16" fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
-                        {item.shape === 'triangle' && <polygon points={`${item.w / 2},5 ${item.w - 5},${item.h - 5} 5,${item.h - 5}`} fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
-                        {item.shape === 'parallelogram' && <polygon points={`24,5 ${item.w - 5},5 ${item.w - 24},${item.h - 5} 5,${item.h - 5}`} fill={item.fill} stroke={item.stroke} strokeWidth={item.borderWidth ?? 2.5} strokeDasharray={item.borderStyle === 'dashed' ? '8 5' : undefined} filter={item.borderStyle === 'hand-drawn' ? `url(#rough-shape-${item.id})` : undefined} />}
-                        {item.borderStyle === 'hand-drawn' && item.shape === 'rounded-rect' && <rect x="6" y="3" width={Math.max(item.w - 10, 1)} height={Math.max(item.h - 7, 1)} rx="17" ry="15" fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
-                        {item.borderStyle === 'hand-drawn' && item.shape === 'triangle' && <polygon points={`${item.w / 2 + 2},3 ${item.w - 3},${item.h - 6} 4,${item.h - 3}`} fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
-                        {item.borderStyle === 'hand-drawn' && item.shape === 'parallelogram' && <polygon points={`26,3 ${item.w - 3},6 ${item.w - 26},${item.h - 3} 4,${item.h - 6}`} fill="none" stroke={item.stroke} strokeWidth={Math.max(0.8, (item.borderWidth ?? 2.5) * 0.5)} opacity="0.58" />}
-                      </svg>
+                      <CanvasShape item={item} />
                       <textarea
                         ref={(element) => { textEditorRefs.current[item.id] = element }}
                         value={item.text || ''}
@@ -2302,7 +2641,7 @@ export function CollaborativeCanvas({
                         onChange={(e) => updateItem(item.id, { text: e.target.value })}
                         className="absolute inset-[12%] z-[1] resize-none bg-transparent text-center"
                         style={{
-                          color: item.textColor || '#171717',
+                          color: canvasLabelColor(item.fill, item.textColor, item.fillOpacity),
                           fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                           fontSize: `${item.textStyle?.fontSize || 14}px`,
                           fontWeight: item.textStyle?.fontWeight || 'normal',
@@ -2346,10 +2685,48 @@ export function CollaborativeCanvas({
                     </>
                   )}
 
+                  {item.type === 'path' && (
+                    <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.ow} ${item.oh}`} preserveAspectRatio="none">
+                      <path d={item.points.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join('')} fill="none" stroke={item.color} strokeWidth={item.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                      {/* a fat invisible stroke: the thin line is easy to grab, the empty box around it is not */}
+                      <path d={item.points.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join('')} fill="none" stroke="transparent" strokeWidth={Math.max(item.width + 12, 16)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ pointerEvents: 'stroke' }} />
+                    </svg>
+                  )}
+
+                  {item.type === 'animation' && <MotionPlayer scene={item.scene} />}
+
+                  {item.type === 'formula' && (
+                    <div className="flex h-full w-full items-center justify-center overflow-visible rounded-md" style={{ color: item.color, fontSize: item.fontSize }}>
+                      {item.latex.trim()
+                        ? <div dangerouslySetInnerHTML={{ __html: katex.renderToString(item.latex, { throwOnError: false, displayMode: true, trust: false }) }} />
+                        : <span className="text-sm text-slate-500">{tl("Doppio clic per scrivere la formula")}</span>}
+                    </div>
+                  )}
+
+                  {item.type === 'plot' && (() => {
+                    const geo = plotGeometry(item)
+                    return (
+                      <svg className="h-full w-full overflow-visible rounded-md bg-white shadow-sm" viewBox={`0 0 ${item.w} ${item.h}`} style={{ border: '1.5px solid #64748b' }}>
+                        {geo.grid.map(([x1, y1, x2, y2], i) => <line key={`g${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#e2e8f0" />)}
+                        {geo.axes.map(([x1, y1, x2, y2], i) => <line key={`a${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1e293b" strokeWidth={2} markerEnd="url(#canvas-arrow)" />)}
+                        {geo.ticks.map((t, i) => <text key={`t${i}`} x={t.x} y={t.y} fontSize={11} fill="#475569" textAnchor={t.align} fontFamily="Inter, system-ui, sans-serif">{t.text}</text>)}
+                        {geo.curves.map((c, i) => <path key={`c${i}`} d={c.map((p, k) => `${k ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('')} fill="none" stroke={item.color} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />)}
+                        {geo.marks.map((m, i) => <g key={`m${i}`}><circle cx={m.x} cy={m.y} r={4} fill={item.color} /><text x={m.x + 7} y={m.y - 7} fontSize={12} fill="#171717" fontFamily="Inter, system-ui, sans-serif">{m.label}</text></g>)}
+                        {item.title && <text x={10} y={geo.titleY} fontSize={13} fontWeight={600} fill="#334155" fontFamily="Inter, system-ui, sans-serif">{item.title}</text>}
+                      </svg>
+                    )
+                  })()}
+
+                  {item.type === 'line' && (
+                    <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`} preserveAspectRatio="none">
+                      <line x1={item.flipX ? item.w : 0} y1={item.flipY ? item.h : 0} x2={item.flipX ? 0 : item.w} y2={item.flipY ? 0 : item.h} stroke={item.color} strokeWidth={item.width} strokeLinecap="round" markerEnd={item.arrow ? 'url(#canvas-arrow)' : undefined} vectorEffect="non-scaling-stroke" />
+                    </svg>
+                  )}
+
                   {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
 
                   {item.type === 'table' && (
-                    <div className="h-full w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-sm">
+                    <div className="h-full w-full overflow-auto rounded-md border border-slate-200 bg-white text-slate-900 shadow-sm">
                       <table className="min-w-full border-collapse text-xs">
                         <tbody>
                           {item.data.map((row, ri) => (
@@ -2362,11 +2739,16 @@ export function CollaborativeCanvas({
                     </div>
                   )}
 
+                  {/* Move mode: a grab surface over the whole item, so nothing inside it (text, players, images) steals the drag */}
+                  {tool === 'move' && canEdit && !lockedByOther && (
+                    <div className={`absolute inset-0 z-[5] cursor-grab rounded-sm active:cursor-grabbing ${selectedIdSet.has(item.id) ? 'bg-pink-400/10 outline-dashed outline-2 outline-pink-500' : 'hover:bg-pink-400/10 hover:outline-dashed hover:outline-2 hover:outline-pink-300'}`} style={{ pointerEvents: 'auto' }} />
+                  )}
+
                   {/* Resize handle */}
                   {canEdit && !lockedByOther && selectedId === item.id && isPositioned(item) && (
                     <button
                       type="button"
-                      className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-se-resize rounded-[2px] border border-white bg-slate-950 shadow-sm"
+                      className="absolute -bottom-1 -right-1 z-10 h-2.5 w-2.5 cursor-se-resize rounded-[2px] border border-white bg-slate-950 shadow-sm"
                       onPointerDown={(e) => {
                         e.stopPropagation()
                         if (!isPositioned(item) || isLockedByOther(item.id)) return
@@ -2403,6 +2785,29 @@ export function CollaborativeCanvas({
           </div>
 
           {/* Drop overlay */}
+          {summon && role !== 'teacher' && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-40 -translate-x-1/2 rounded-full bg-[#1a1a2e] px-4 py-1.5 text-xs font-bold text-white shadow-lg" role="status">
+              {summon.label} {tl("ti richiama qui")}
+            </div>
+          )}
+          {showMinimap && (
+            <div className="absolute bottom-3 right-3 z-30" onPointerDown={(e) => e.stopPropagation()}>
+              <CanvasMinimap items={minimapItems} pan={pan} zoom={zoom} viewW={viewSize.w} viewH={viewSize.h}
+                onJump={(wx, wy) => setPan({ x: viewSize.w / 2 - wx * zoomRef.current, y: viewSize.h / 2 - wy * zoomRef.current })} />
+            </div>
+          )}
+          {canEdit && editingFormula && (
+            <FormulaEditor key={editingFormula.id} latex={editingFormula.latex} src={editingFormula.src}
+              onChange={(patch) => updateItem(editingFormula.id, patch)} onClose={() => setEditingId(null)}
+              onGraph={() => graphSelectedFormula(editingFormula)}
+              onAssist={onAssist ? (prompt) => onAssist(prompt, [editingFormula.id]) : undefined} />
+          )}
+          {tool === 'move' && canEdit && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-pink-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg" role="status">
+              <GrabHandIcon className="h-4 w-4" />
+              {selectedIds.length ? tl("Modalità sposta · trascina gli elementi selezionati · frecce per spostare di precisione · Esc per uscire") : tl("Modalità sposta · seleziona con un clic o con un riquadro, poi trascina · Esc per uscire")}
+            </div>
+          )}
           {isDropActive && canEdit && (
             <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/80">
               <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
@@ -2437,7 +2842,7 @@ export function CollaborativeCanvas({
           {/* Connection status + zoom HUD */}
           <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-amber-400'}`} title={socketConnected ? tl("Connesso in tempo reale") : tl("Modalità polling")} />
-            <span className="text-xs text-slate-400">{Math.round(zoom * 100)}%</span>
+            <span className="text-xs text-slate-500">{Math.round(zoom * 100)}%</span>
           </div>
         </div>
       </div>
@@ -2451,25 +2856,33 @@ export function CollaborativeCanvas({
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {contextMenu.itemId ? (
+          {role === 'teacher' && sessionId && (
             <>
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Livello Z")}</div>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'front'); closeContextMenu() }}>
-                <span className="text-slate-400">⬆⬆</span> {tl("Porta in primo piano")}
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'forward'); closeContextMenu() }}>
-                <span className="text-slate-400">⬆</span> {tl("Porta avanti")}
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'backward'); closeContextMenu() }}>
-                <span className="text-slate-400">⬇</span> {tl("Manda indietro")}
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'back'); closeContextMenu() }}>
-                <span className="text-slate-400">⬇⬇</span> {tl("Manda in secondo piano")}
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#e85c8d] hover:bg-pink-50" onClick={() => { summonStudents(contextMenu.screenX, contextMenu.screenY); closeContextMenu() }}>
+                <Users className="h-3 w-3" /> {tl("Richiama gli studenti qui")}
               </button>
               <div className="mx-2 my-1 h-px bg-slate-100" />
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tl("Azioni")}</div>
+            </>
+          )}
+          {contextMenu.itemId ? (
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tl("Livello Z")}</div>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'front'); closeContextMenu() }}>
+                <span className="text-slate-500">⬆⬆</span> {tl("Porta in primo piano")}
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'forward'); closeContextMenu() }}>
+                <span className="text-slate-500">⬆</span> {tl("Porta avanti")}
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'backward'); closeContextMenu() }}>
+                <span className="text-slate-500">⬇</span> {tl("Manda indietro")}
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'back'); closeContextMenu() }}>
+                <span className="text-slate-500">⬇⬇</span> {tl("Manda in secondo piano")}
+              </button>
+              <div className="mx-2 my-1 h-px bg-slate-100" />
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tl("Azioni")}</div>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { duplicateItem(contextMenu.itemId!); closeContextMenu() }}>
-                <span className="text-slate-400">⧉</span> {tl("Duplica")}
+                <span className="text-slate-500">⧉</span> {tl("Duplica")}
               </button>
               {isLockedByOther(contextMenu.itemId) && role === 'teacher' && (
                 <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50" onClick={() => { forceUnlockItem(contextMenu.itemId!); closeContextMenu() }}>
@@ -2482,13 +2895,13 @@ export function CollaborativeCanvas({
             </>
           ) : (
             <>
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Canvas</div>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Canvas</div>
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { fitToScreen(); closeContextMenu() }}>
-                <Maximize2 className="h-3.5 w-3.5 text-slate-400" /> {tl("Adatta alla schermata")}
+                <Maximize2 className="h-3.5 w-3.5 text-slate-500" /> {tl("Adatta alla schermata")}
               </button>
               {role === 'teacher' && (
                 <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { setShowTemplates(true); closeContextMenu() }}>
-                  <LayoutTemplate className="h-3.5 w-3.5 text-slate-400" /> Template
+                  <LayoutTemplate className="h-3.5 w-3.5 text-slate-500" /> Template
                 </button>
               )}
             </>
@@ -2498,6 +2911,32 @@ export function CollaborativeCanvas({
       {/* Click-outside overlay to close context menu */}
       {contextMenu && (
         <div className="fixed inset-0 z-[199]" onMouseDown={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu() }} />
+      )}
+
+      {showAnimations && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAnimations(false)}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-800">{tl("Animazioni scientifiche")}</h2>
+              <p className="text-sm text-slate-500">{tl("Scegli un esempio da inserire. Per crearne una nuova, chiedila all'assistente: «Fammi un'animazione di…».")}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+              {DEMOS.map((demo) => (
+                <button key={demo.key} type="button" className="overflow-hidden rounded-xl border border-slate-200 text-left transition hover:border-slate-400 hover:shadow-md"
+                  onClick={() => {
+                    const rect = containerRef.current?.getBoundingClientRect()
+                    const centre = rect ? toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2) : { x: 300, y: 200 }
+                    const item: CanvasItem = { id: mkId(), type: 'animation', x: centre.x - 320, y: centre.y - 180, w: 640, h: 360, scene: demo.scene }
+                    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, item] }))
+                    setSelectedId(item.id); setSelectedIds([item.id]); setShowAnimations(false)
+                  }}>
+                  <MotionFrame scene={demo.scene} time={demo.scene.duration * 0.4} className="aspect-video w-full" />
+                  <div className="p-3"><div className="text-sm font-bold text-slate-900">{demo.title}</div><div className="text-xs text-slate-500">{demo.description}</div></div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Templates modal ─────────────────────────────────────────────── */}
@@ -2517,7 +2956,7 @@ export function CollaborativeCanvas({
               >
                 <span className="text-2xl">📄</span>
                 <span className="text-sm font-medium text-slate-700">{tl("Lavagna vuota")}</span>
-                <span className="text-xs text-slate-400">{tl("Inizia da zero")}</span>
+                <span className="text-xs text-slate-500">{tl("Inizia da zero")}</span>
               </button>
               {TEMPLATES.map((tpl) => (
                 <button
@@ -2528,7 +2967,7 @@ export function CollaborativeCanvas({
                 >
                   <span className="text-2xl">{tpl.emoji}</span>
                   <span className="text-sm font-medium text-slate-700">{tpl.name}</span>
-                  <span className="text-xs text-slate-400">{tpl.description}</span>
+                  <span className="text-xs text-slate-500">{tpl.description}</span>
                 </button>
               ))}
             </div>
@@ -2541,4 +2980,4 @@ export function CollaborativeCanvas({
 
     </div>
   )
-}
+})

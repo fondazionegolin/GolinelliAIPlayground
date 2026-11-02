@@ -7,7 +7,7 @@ Ogni push che introduce feature, miglioramenti o fix rilevanti deve produrre anc
 ## Workflow operativo
 
 1. Il hook git `pre-push` esegue `scripts/generate_git_changelog.py`.
-2. Lo script legge i commit nuovi e genera una bozza in `frontend/public/changelog/git-draft.json`.
+2. Lo script legge tutti i commit dall'ultima release pubblicata (`published_ref` in `docs/changelog-git-state.json`) e genera una bozza cumulativa in `frontend/public/changelog/git-draft.json`.
 3. In `Admin > Backend > Changelog` si usa `Usa bozza git` per importare il draft.
 4. Si rifinisce la release se serve.
 5. La release viene pubblicata con:
@@ -16,7 +16,8 @@ Ogni push che introduce feature, miglioramenti o fix rilevanti deve produrre anc
    - `summary`
    - una o più `items`
    - eventuale `git_ref`
-6. Solo dopo la release note si procede al push.
+6. Dopo la pubblicazione si esegue `python3 scripts/generate_git_changelog.py --mark-published`: la bozza successiva riparte dai commit seguenti.
+7. Solo dopo la release note si procede al push.
 
 ## Convenzione consigliata
 

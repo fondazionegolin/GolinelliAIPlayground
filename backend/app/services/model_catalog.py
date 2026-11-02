@@ -340,7 +340,13 @@ async def run_scan(db: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
                         continue
                     model.price_checked_at = now
                     changed = model.input_usd is None or model.output_usd is None or abs(model.input_usd - found[0]) > PRICE_EPSILON or abs(model.output_usd - found[1]) > PRICE_EPSILON
-                    if changed:
+                    if changed and model.input_usd is None and model.output_usd is None:
+                        # A model that has no price yet is not billed at all: take the official price straight away.
+                        # Changes to an existing price stay proposals, so billing never moves silently.
+                        model.input_usd, model.output_usd = found
+                        model.proposed_input_usd = model.proposed_output_usd = model.proposed_at = None
+                        summary.setdefault("auto_priced", []).append({"provider": provider, "model_id": model.model_id, "new": list(found)})
+                    elif changed:
                         model.proposed_input_usd, model.proposed_output_usd, model.proposed_at = found[0], found[1], now
                         summary["price_changes"].append({"provider": provider, "model_id": model.model_id, "old": [model.input_usd, model.output_usd], "new": list(found)})
                     else:
@@ -353,6 +359,7 @@ async def run_scan(db: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
 
     db.add(AIModelScan(trigger=trigger, summary_json=summary))
     await db.commit()
+    apply_runtime_prices(models)
     return summary
 
 

@@ -1,0 +1,273 @@
+{
+ "title": "Le fasi della Luna",
+ "width": 800,
+ "height": 450,
+ "duration": 16,
+ "loop": true,
+ "background": "space",
+ "entities": [
+  {
+   "id": "sun",
+   "type": "body",
+   "kind": "sun",
+   "r": 58,
+   "x": 110,
+   "y": 225
+  },
+  {
+   "id": "ray1",
+   "type": "arrow",
+   "x": 180,
+   "y": 195,
+   "x2": 150,
+   "y2": 0,
+   "stroke": "#fde047",
+   "strokeWidth": 2.5,
+   "opacity": 0.6
+  },
+  {
+   "id": "ray2",
+   "type": "arrow",
+   "x": 180,
+   "y": 225,
+   "x2": 150,
+   "y2": 0,
+   "stroke": "#fde047",
+   "strokeWidth": 2.5,
+   "opacity": 0.6
+  },
+  {
+   "id": "ray3",
+   "type": "arrow",
+   "x": 180,
+   "y": 255,
+   "x2": 150,
+   "y2": 0,
+   "stroke": "#fde047",
+   "strokeWidth": 2.5,
+   "opacity": 0.6
+  },
+  {
+   "id": "orb",
+   "type": "orbit",
+   "x": 420,
+   "y": 225,
+   "w": 220,
+   "h": 220,
+   "stroke": "#64748b"
+  },
+  {
+   "id": "earth",
+   "type": "body",
+   "kind": "earth",
+   "r": 28,
+   "x": 420,
+   "y": 225,
+   "light": 180
+  },
+  {
+   "id": "moon",
+   "type": "body",
+   "kind": "moon",
+   "r": 13,
+   "x": "420-110*cos(2*pi*p)",
+   "y": "225-110*sin(2*pi*p)",
+   "light": 180
+  },
+  {
+   "id": "tsun",
+   "type": "text",
+   "x": 110,
+   "y": 300,
+   "text": "Sole",
+   "size": 16
+  },
+  {
+   "id": "tearth",
+   "type": "text",
+   "x": 420,
+   "y": 275,
+   "text": "Terra",
+   "size": 15
+  },
+  {
+   "id": "tmoon",
+   "type": "text",
+   "x": "420-110*cos(2*pi*p)",
+   "y": "225-110*sin(2*pi*p)-24",
+   "text": "Luna",
+   "size": 14
+  },
+  {
+   "id": "panel",
+   "type": "rect",
+   "x": 690,
+   "y": 170,
+   "w": 170,
+   "h": 190,
+   "fill": "#0f172a",
+   "stroke": "#334155",
+   "rx": 14,
+   "opacity": 0.85
+  },
+  {
+   "id": "view",
+   "type": "body",
+   "kind": "moon",
+   "r": 44,
+   "x": 690,
+   "y": 160,
+   "phase": "p"
+  },
+  {
+   "id": "vt",
+   "type": "text",
+   "x": 690,
+   "y": 235,
+   "text": "Vista dalla Terra",
+   "size": 14
+  },
+  {
+   "id": "ph0",
+   "type": "text",
+   "x": 690,
+   "y": 280,
+   "text": "Luna nuova",
+   "size": 17,
+   "bold": true,
+   "fill": "#fde047",
+   "opacity": {
+    "keys": [
+     [
+      0,
+      1
+     ],
+     [
+      3.6,
+      1
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      15.6,
+      0
+     ],
+     [
+      16,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "id": "ph1",
+   "type": "text",
+   "x": 690,
+   "y": 280,
+   "text": "Primo quarto",
+   "size": 17,
+   "bold": true,
+   "fill": "#fde047",
+   "opacity": {
+    "keys": [
+     [
+      3.99,
+      0
+     ],
+     [
+      4.4,
+      1
+     ],
+     [
+      7.6,
+      1
+     ],
+     [
+      8.0,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "ph2",
+   "type": "text",
+   "x": 690,
+   "y": 280,
+   "text": "Luna piena",
+   "size": 17,
+   "bold": true,
+   "fill": "#fde047",
+   "opacity": {
+    "keys": [
+     [
+      7.99,
+      0
+     ],
+     [
+      8.4,
+      1
+     ],
+     [
+      11.6,
+      1
+     ],
+     [
+      12.0,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "ph3",
+   "type": "text",
+   "x": 690,
+   "y": 280,
+   "text": "Ultimo quarto",
+   "size": 17,
+   "bold": true,
+   "fill": "#fde047",
+   "opacity": {
+    "keys": [
+     [
+      11.99,
+      0
+     ],
+     [
+      12.4,
+      1
+     ],
+     [
+      15.6,
+      1
+     ],
+     [
+      16,
+      1
+     ]
+    ]
+   }
+  }
+ ],
+ "steps": [
+  {
+   "at": 0,
+   "text": "La Luna orbita attorno alla Terra: metà della sua superficie è sempre illuminata dal Sole."
+  },
+  {
+   "at": 4,
+   "text": "Quello che cambia è quanta parte della faccia illuminata vediamo dalla Terra."
+  },
+  {
+   "at": 8,
+   "text": "Luna piena: la Terra sta tra il Sole e la Luna, e vediamo tutta la faccia illuminata."
+  },
+  {
+   "at": 12,
+   "text": "Ultimo quarto: poi la fase si riduce fino alla Luna nuova, e il ciclo ricomincia (circa 29,5 giorni)."
+  }
+ ]
+}

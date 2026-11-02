@@ -21,6 +21,7 @@ interface ScanSummary {
   new_models: Array<{ provider: string; model_id: string; name: string }>
   price_changes: Array<{ provider: string; model_id: string; old: Array<number | null>; new: number[] }>
   not_in_api: Array<{ provider: string; model_id: string }>
+  auto_priced?: Array<{ provider: string; model_id: string; new: number[] }>
   errors: Record<string, string>
   pricing_unverified: string[]
 }
@@ -75,6 +76,12 @@ export default function AdminModelsPage() {
     mutationFn: ({ id, kind }: { id: string; kind: 'apply' | 'dismiss' | 'ack' }) =>
       kind === 'apply' ? adminApi.applyAiModelProposal(id) : kind === 'dismiss' ? adminApi.dismissAiModelProposal(id) : adminApi.acknowledgeAiModel(id),
     onSuccess: (_, vars) => { void refresh(); if (vars.kind === 'apply') toast({ title: tl("Prezzo applicato"), description: tl("I costi in crediti usano subito il nuovo listino.") }) },
+    onError: fail(tl("Operazione non riuscita")),
+  })
+
+  const applyAll = useMutation({
+    mutationFn: async () => (await adminApi.applyAllAiModelProposals()).data as { applied: number },
+    onSuccess: (result) => { void refresh(); toast({ title: tl("Prezzi applicati"), description: tl("{0} modelli aggiornati al nuovo listino.", result.applied) }) },
     onError: fail(tl("Operazione non riuscita")),
   })
 
@@ -183,6 +190,13 @@ export default function AdminModelsPage() {
         <Stat label={tl("Non più nelle API")} value={String(summary?.not_in_api.length ?? 0)} hint={tl("modelli attivi non restituiti dal provider")} tone={summary?.not_in_api.length ? 'amber' : undefined} />
       </div>
 
+      {summary?.auto_priced && summary.auto_priced.length > 0 && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
+          <b>{tl("Prezzo preso in automatico dal listino ufficiale (modelli che ne erano privi):")}</b>{' '}
+          {summary.auto_priced.map((item) => `${item.model_id} ${usd(item.new[0])}/${usd(item.new[1])}`).join(' · ')}
+        </div>
+      )}
+
       {summary && Object.keys(summary.errors).length > 0 && (
         <div className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
           <p className="flex items-center gap-1.5 font-bold"><AlertTriangle className="h-4 w-4" /> {tl("Alcune verifiche non sono riuscite")}</p>
@@ -195,7 +209,10 @@ export default function AdminModelsPage() {
 
       {proposals.length > 0 && (
         <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-700"><Sparkles className="h-4 w-4 text-amber-500" /> {tl("Variazioni di prezzo rilevate sui listini ufficiali")}</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-black text-slate-700"><Sparkles className="h-4 w-4 text-amber-500" /> {tl("Variazioni di prezzo rilevate sui listini ufficiali")}</h2>
+            <Button size="sm" onClick={() => applyAll.mutate()} disabled={applyAll.isPending}><Check className="mr-1 h-3.5 w-3.5" /> {tl("Applica tutte")} ({proposals.length})</Button>
+          </div>
           <div className="space-y-2">
             {proposals.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs">

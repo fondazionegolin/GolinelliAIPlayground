@@ -1,15 +1,17 @@
+import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Box, Network, Zap, GitBranch, FolderOpen, Sparkles } from '@/components/icons'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen } from '@/components/icons'
+import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const VideoStudioLibraryPage = lazy(() => import('./VideoStudioLibraryPage'))
 const VideoStudioEditorPage = lazy(() => import('./VideoStudioEditorPage'))
 const VisualComprehensionPage = lazy(() => import('./VisualComprehensionPage'))
+const SmartCanvasPage = lazy(() => import('./SmartCanvasPage'))
 const SchoolOwnerPanelPage = lazy(() => import('./SchoolOwnerPanelPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
@@ -171,7 +173,7 @@ export default function TeacherDashboard() {
   const isTeacherHomeRoute = location.pathname === '/teacher' || location.pathname === '/teacher/'
   const isTeacherAssistantRoute = isTeacherHomeRoute || location.pathname === '/teacher/assistant'
   // Routes that own their internal scroll panes (editor/IDE layouts) — the page frame must not scroll them.
-  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') || location.pathname.includes('/teacher/video-studio') || location.pathname.includes('/teacher/visual-comprehension')
+  const selfScrollingRoute = location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') || location.pathname.includes('/teacher/agentic') || location.pathname.includes('/teacher/video-studio') || location.pathname.includes('/teacher/visual-comprehension') || location.pathname.includes('/teacher/smart-canvas')
   const showMobileHome = isMobile && isTeacherHomeRoute
 
   const dockTeacherChat = () => {
@@ -238,19 +240,16 @@ export default function TeacherDashboard() {
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
-    { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
+    { path: '/teacher/3d-lab', label: '3D Lab', icon: Cube3DIcon },
     { path: '/teacher/ai-3d', label: tl("AI 3D"), icon: MushroomIcon },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
     ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
-    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/visual-comprehension', label: tl("Comprensione visuale · Beta"), icon: Sparkles }] : []),
+    { path: '/teacher/smart-canvas', label: tl("Canvas intelligente"), icon: CanvasEaselIcon },
   ]
 
   const handleMobileLogout = () => {
-    localStorage.removeItem('teacher_token')
-    localStorage.removeItem('teacher_selected_session')
-    useAuthStore.getState().logout()
-    navigate('/login')
+    void endSession().finally(() => navigate('/login'))
   }
 
   return (
@@ -468,6 +467,7 @@ export default function TeacherDashboard() {
               <Route path="toy-lm" element={<ToyLMPage />} />
               <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="smart-canvas" element={<SmartCanvasPage />} />
               <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />

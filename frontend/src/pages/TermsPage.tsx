@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
-  AlertTriangle,
   Bot,
   ChevronLeft,
   CreditCard,
@@ -20,6 +20,7 @@ import {
 import { tl } from '@/i18n/tl'
 
 const CONTACT_EMAIL = 'a.saracino@fondazionegolinelli.it'
+const PRIVACY_EMAIL = 'privacy@fondazionegolinelli.it'
 
 function DottedGridBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -169,19 +170,31 @@ function Tag({ children, variant = 'default' }: { children: React.ReactNode; var
 }
 
 const TOC = [
-  { id: 'oggetto', label: tl("Oggetto e fase pilota") },
-  { id: 'accesso', label: tl("Accesso e utenti") },
-  { id: 'studenti', label: tl("Studenti minorenni") },
+  { id: 'oggetto', label: tl("Oggetto e definizioni") },
+  { id: 'accesso', label: tl("Accesso e account") },
+  { id: 'studenti', label: tl("Studenti e istituti") },
   { id: 'contenuti', label: tl("Contenuti e responsabilità") },
   { id: 'ai', label: tl("Funzionalità AI") },
-  { id: 'usi-vietati', label: tl("Usi vietati e alert") },
+  { id: 'usi-vietati', label: tl("Usi vietati e moderazione") },
   { id: 'crediti', label: tl("Crediti AI") },
-  { id: 'servizio', label: tl("Disponibilità") },
+  { id: 'servizio', label: tl("Disponibilità e sospensione") },
   { id: 'privacy', label: tl("Dati e privacy") },
-  { id: 'contatti', label: tl("Contatti") },
+  { id: 'proprieta', label: tl("Proprietà intellettuale") },
+  { id: 'contatti', label: tl("Modifiche, legge e contatti") },
 ]
 
+const LAST_UPDATE = tl("novembre 2026")
+
 export default function TermsPage() {
+  // Se l'admin ha caricato un PDF per i termini (pannello Licenze) è quello il documento vigente.
+  const { data: current } = useQuery<Record<string, { title: string; version: string; source_url: string }>>({
+    queryKey: ['legal-docs-current'],
+    queryFn: async () => (await fetch('/api/v1/legal-docs/current')).json(),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const custom = current?.license_terms && current.license_terms.source_url !== '/terms' ? current.license_terms : null
+
   return (
     <div className="relative min-h-screen font-sans text-slate-900">
       <DottedGridBackground />
@@ -195,7 +208,7 @@ export default function TermsPage() {
           </span>
         </Link>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs font-semibold uppercase tracking-widest text-slate-400 sm:inline">{tl("Termini e condizioni")}</span>
+          <span className="hidden text-xs font-semibold uppercase tracking-widest text-slate-400 sm:inline">{tl("Condizioni d'uso")}</span>
           <Link
             to="/"
             className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-white"
@@ -205,22 +218,31 @@ export default function TermsPage() {
         </div>
       </nav>
 
+      {custom ? (
+        <main className="mx-auto max-w-5xl space-y-4 px-4 py-10 sm:px-6">
+          <h1 className="text-3xl font-black text-slate-900">{custom.title}</h1>
+          <p className="text-sm text-slate-500">{tl("Versione")} {custom.version}</p>
+          <iframe
+            src={`${custom.source_url}#toolbar=0&navpanes=0&view=FitH`}
+            title={custom.title}
+            className="h-[80vh] min-h-[480px] w-full rounded-xl border border-slate-200 bg-white"
+          />
+        </main>
+      ) : (
+      <>
       <header className="relative overflow-hidden">
         <div className="mx-auto max-w-5xl px-4 pb-8 pt-12 sm:px-6">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-rose-700">
-            <Scale size={12} /> {tl("Documento operativo")}
+            <Scale size={12} /> {tl("Termini e licenza")}
           </div>
           <h1 className="mb-3 text-4xl font-black leading-tight text-slate-900 sm:text-5xl">
-            {tl("Termini e Condizioni")} <br />
+            {tl("Condizioni d'uso")} <br />
             <span className="bg-gradient-to-r from-[#fe004d] via-indigo-600 to-[#2d2d2d] bg-clip-text text-transparent">
               {tl("della piattaforma Golinelli.ai")}
             </span>
           </h1>
           <p className="max-w-2xl text-sm text-slate-500">
-            {tl("Condizioni d'uso della piattaforma sperimentale Golinelli.ai, accessibile solo su invito nell'ambito delle attività formative e di sperimentazione promosse da Fondazione Golinelli. Ultimo aggiornamento: maggio 2026.")}
-          </p>
-          <p className="mt-3 inline-block rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-            {tl("Bozza tecnico-operativa: il presente documento non sostituisce consulenza legale qualificata e dovrà essere verificato prima della pubblicazione definitiva.")}
+            {tl("Le regole con cui docenti, studenti e istituti utilizzano Golinelli.ai – AI Playground, la piattaforma didattica di Fondazione Golinelli. Il documento va letto insieme all'Informativa sul trattamento dei dati personali (versione 2.0). Ultimo aggiornamento:")} {LAST_UPDATE}.
           </p>
         </div>
       </header>
@@ -240,133 +262,154 @@ export default function TermsPage() {
         </aside>
 
         <main className="space-y-6 pt-2">
-          <SectionCard id="oggetto" icon={FileText} color="text-indigo-700" bg="bg-indigo-100" title={tl("1. Oggetto e natura sperimentale del servizio")}>
-            <InfoRow label={tl("Gestore")} value="Fondazione Golinelli, Via Paolo Nanni Costa 14, 40133 Bologna, P.IVA 03939010371." />
-            <InfoRow label={tl("Piattaforma")} value="Golinelli.ai, ambiente digitale per attività formative, didattiche e di sperimentazione con strumenti di intelligenza artificiale." />
-            <InfoRow label={tl("Fase attuale")} value="Servizio pilota e sperimentale, accessibile esclusivamente su invito e non aperto al pubblico generale." />
+          <SectionCard id="oggetto" icon={FileText} color="text-indigo-700" bg="bg-indigo-100" title={tl("1. Oggetto e definizioni")}>
+            <InfoRow label={tl("Gestore")} value="Fondazione Golinelli, Via Paolo Nanni Costa 14, 40133 Bologna (BO), C.F./P.IVA 03823850374." />
+            <InfoRow label={tl("Piattaforma")} value="Golinelli.ai – AI Playground (playground.golinelli.ai), ambiente digitale per la didattica con strumenti di intelligenza artificiale." />
+            <InfoRow label={tl("Destinatari")} value="Docenti, studenti e istituti scolastici o enti formativi che adottano la piattaforma." />
             <p>
-              {tl("L'utilizzo della piattaforma è consentito nell'ambito dei corsi, dei percorsi formativi e delle attività di sperimentazione promosse o autorizzate da Fondazione Golinelli. Le presenti condizioni regolano l'accesso degli utenti finali e integrano eventuali accordi specifici stipulati con scuole, enti o partner.")}
+              {tl("Le presenti condizioni regolano l'accesso e l'uso della piattaforma da parte degli utenti. L'accettazione è condizione per l'utilizzo del servizio e integra eventuali accordi specifici stipulati con scuole, enti o partner, che prevalgono per le parti in cui dispongono diversamente.")}
+            </p>
+            <p>
+              {tl("Per «Docente» si intende l'utente registrato che crea classi e sessioni; per «Studente» chi accede a una sessione con il codice fornito dal Docente; per «Istituto» la scuola o l'ente che adotta la piattaforma e, per i dati degli Studenti, ne è Titolare del trattamento.")}
             </p>
           </SectionCard>
 
           <SectionCard id="accesso" icon={KeyRound} color="text-sky-700" bg="bg-sky-100" title={tl("2. Accesso, account e utenti autorizzati")}>
             <p>
-              {tl("Possono accedere alla piattaforma solo i docenti invitati dagli amministratori di Golinelli.ai e, tramite loro, gli studenti coinvolti nelle attività didattiche autorizzate. Il docente è responsabile della custodia delle proprie credenziali, della corretta configurazione delle classi e dell'utilizzo della piattaforma nel contesto formativo previsto.")}
+              {tl("L'account Docente viene attivato su invito o dopo approvazione da parte della Fondazione. Il Docente è responsabile della custodia delle proprie credenziali, della corretta configurazione delle classi e delle sessioni e dell'uso della piattaforma nel contesto didattico previsto. Ogni accesso effettuato con le sue credenziali gli è attribuito.")}
             </p>
             <p>
-              {tl("Gli studenti accedono alle sessioni tramite codice classe generato dal docente e utilizzano un nickname e una password. Non è consentito condividere codici, credenziali o accessi con soggetti non autorizzati.")}
+              {tl("Gli Studenti non creano un account con email: accedono a una sessione attiva con il codice fornito dal Docente, un nickname e una password di almeno otto caratteri. Non è consentito condividere codici o credenziali con soggetti non autorizzati né usare il nickname di altri.")}
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Tag variant="ok">{tl("Solo su invito")}</Tag>
-              <Tag>{tl("Docenti in formazione")}</Tag>
-              <Tag>{tl("Studenti tramite codice classe")}</Tag>
+              <Tag variant="ok">{tl("Account Docente su invito o approvazione")}</Tag>
+              <Tag>{tl("Studenti tramite codice sessione")}</Tag>
+              <Tag>{tl("Credenziali personali")}</Tag>
             </div>
           </SectionCard>
 
-          <SectionCard id="studenti" icon={GraduationCap} color="text-emerald-700" bg="bg-emerald-100" title={tl("3. Studenti, minorenni e contesto scolastico")}>
+          <SectionCard id="studenti" icon={GraduationCap} color="text-emerald-700" bg="bg-emerald-100" title={tl("3. Studenti, minorenni e istituti scolastici")}>
             <p>
-              {tl("La piattaforma può essere utilizzata anche da studenti minorenni, esclusivamente sotto la responsabilità e la supervisione del docente e dell'istituzione scolastica o del contesto educativo di riferimento. Il docente deve proporre attività adeguate all'età, al livello di maturità e agli obiettivi didattici degli studenti coinvolti.")}
+              {tl("La piattaforma può essere utilizzata da studenti di ogni ordine e grado, anche minorenni, esclusivamente nell'ambito di attività didattiche autorizzate e sotto la supervisione del Docente e la responsabilità dell'Istituto. Il Docente propone attività adeguate all'età, alla maturità e agli obiettivi didattici degli Studenti.")}
             </p>
             <p>
-              {tl("Golinelli.ai non è pensata per un uso autonomo da parte degli studenti al di fuori delle sessioni didattiche autorizzate. L'accesso tramite nickname e codice classe serve a ridurre la raccolta di dati identificativi diretti degli studenti.")}
+              {tl("Quando la piattaforma è usata in ambito scolastico, l'Istituto è Titolare del trattamento dei dati degli Studenti e la Fondazione agisce come Responsabile del trattamento, secondo le istruzioni documentate dell'Istituto. Spetta all'Istituto informare le famiglie e raccogliere le autorizzazioni eventualmente richieste, in particolare per gli Studenti minori di 14 anni o per funzioni che le richiedano (ad esempio l'uso della webcam in ML Lab).")}
+            </p>
+            <p>
+              {tl("Agli Studenti non vengono richiesti dati anagrafici: l'associazione tra nickname e identità è gestita esclusivamente dall'Istituto.")}
             </p>
           </SectionCard>
 
-          <SectionCard id="contenuti" icon={Users} color="text-violet-700" bg="bg-violet-100" title={tl("4. Contenuti caricati, attività didattiche e responsabilità")}>
+          <SectionCard id="contenuti" icon={Users} color="text-violet-700" bg="bg-violet-100" title={tl("4. Contenuti caricati e responsabilità")}>
             <p>
-              {tl("Docenti e studenti restano responsabili dei contenuti, materiali, prompt, allegati, consegne e messaggi inseriti nella piattaforma. È vietato caricare materiali in violazione di diritti di terzi, obblighi di riservatezza, norme scolastiche o disposizioni applicabili.")}
+              {tl("Docenti e Studenti restano responsabili dei contenuti, dei materiali, dei prompt, degli allegati, dei codici e dei messaggi che inseriscono. È vietato caricare materiali in violazione di diritti di terzi, obblighi di riservatezza, regolamenti scolastici o norme applicabili. Chi carica un contenuto garantisce di averne il diritto e concede alla Fondazione la sola licenza necessaria a erogare il servizio.")}
             </p>
             <p>
-              {tl("La piattaforma supporta il docente nell'organizzazione di materiali, interazioni e dati utili alla didattica. Non effettua valutazioni automatiche vincolanti degli studenti e non sostituisce il giudizio professionale, pedagogico e valutativo del docente.")}
+              {tl("Il Docente è responsabile della configurazione dei propri Teacherbot (istruzioni, documenti, conoscenza) e dell'uso che ne fanno gli Studenti. La piattaforma supporta l'attività didattica ma non sostituisce il giudizio professionale, pedagogico e valutativo del Docente e non effettua valutazioni automatiche vincolanti.")}
             </p>
           </SectionCard>
 
           <SectionCard id="ai" icon={Bot} color="text-rose-700" bg="bg-rose-100" title={tl("5. Funzionalità di intelligenza artificiale")}>
             <p>
-              {tl("Golinelli.ai integra modelli di intelligenza artificiale disponibili sul mercato. Come ogni sistema AI generativo, tali modelli possono produrre risposte incomplete, imprecise, non aggiornate, non pertinenti o apparentemente corrette ma errate.")}
+              {tl("Golinelli.ai integra sistemi di intelligenza artificiale generativa di fornitori terzi. Tutti gli assistenti sono sistemi di AI, non persone, e testi, immagini, audio e contenuti 3D che producono sono generati artificialmente (art. 50 del Regolamento UE 2024/1689, AI Act). I fornitori coinvolti sono elencati nell'Informativa privacy.")}
             </p>
             <p>
-              {tl("Gli output generati dall'AI sono strumenti di supporto e devono essere sempre verificati criticamente dal docente o dall'utente responsabile prima di essere utilizzati in attività didattiche, materiali, comunicazioni o decisioni.")}
+              {tl("I contenuti generati possono essere incompleti, imprecisi, non aggiornati o contenere bias, anche quando appaiono convincenti. Sono strumenti di supporto e vanno verificati criticamente dall'utente prima di essere usati in attività didattiche, materiali o decisioni.")}
+            </p>
+            <p>
+              {tl("Ogni valutazione o feedback prodotto dall'AI ha natura esclusivamente formativa ed è soggetto alla supervisione del Docente (human-in-the-loop). Nessun output AI è consulenza professionale né l'unica base per decisioni che incidano sul percorso scolastico dello Studente.")}
             </p>
             <div className="rounded-2xl border border-rose-100 bg-rose-50/70 px-4 py-3 text-xs text-rose-700">
-              {tl("Nessun output AI deve essere considerato consulenza professionale, valutazione automatica dello studente o fonte unica per decisioni educative rilevanti.")}
+              {tl("I Teacherbot non possono essere configurati per supporto psicologico o sanitario, per valutare lo stato emotivo o di salute degli Studenti né per profilarli.")}
             </div>
           </SectionCard>
 
-          <SectionCard id="usi-vietati" icon={ShieldAlert} color="text-amber-700" bg="bg-amber-100" title={tl("6. Usi vietati, filtri e segnalazioni")}>
+          <SectionCard id="usi-vietati" icon={ShieldAlert} color="text-amber-700" bg="bg-amber-100" title={tl("6. Usi vietati, moderazione e segnalazioni")}>
             <p>{tl("Non è consentito utilizzare la piattaforma per:")}</p>
             <ul className="list-inside list-disc space-y-1 pl-1">
               <li>{tl("generare, cercare o diffondere contenuti offensivi, discriminatori, violenti, sessualmente espliciti, illeciti o non adatti al contesto scolastico;")}</li>
-              <li>{tl("inserire dati personali, sensibili o riservati non necessari all'attività didattica;")}</li>
-              <li>{tl("aggirare sistemi di sicurezza, filtri, limiti di utilizzo o controlli predisposti dalla piattaforma;")}</li>
+              <li>{tl("inserire dati personali di terzi, dati di categorie particolari (art. 9 GDPR, ad esempio salute, origine, convinzioni religiose o politiche) o informazioni riservate non necessari all'attività didattica;")}</li>
+              <li>{tl("aggirare sistemi di sicurezza, filtri, limiti di utilizzo, controlli di accesso o l'isolamento tra istituti, classi e sessioni;")}</li>
               <li>{tl("usare gli output AI per plagio, sostituzione indebita del lavoro personale o violazione delle regole del corso;")}</li>
-              <li>{tl("effettuare profilazione, sorveglianza impropria o valutazione automatizzata degli studenti.")}</li>
+              <li>{tl("effettuare profilazione, sorveglianza impropria, riconoscimento biometrico o delle emozioni, o valutazione automatizzata degli Studenti;")}</li>
+              <li>{tl("compromettere la disponibilità o la sicurezza del servizio, o rivenderlo o ridistribuirlo senza autorizzazione.")}</li>
             </ul>
             <p>
-              {tl("La piattaforma può includere sistemi di filtro, alert e rilevazione di usi non consentiti, inclusi tentativi di ricerche critiche o l'impiego di parole e concetti offensivi. Tali sistemi sono misure di sicurezza e supporto, ma non sostituiscono la supervisione educativa del docente.")}
+              {tl("La piattaforma utilizza strumenti automatici di moderazione e di segnalazione degli usi non consentiti. Sono misure di sicurezza e supporto, non sostituiscono la supervisione educativa del Docente e dell'Istituto. La Fondazione può limitare o sospendere l'accesso in caso di uso non conforme alle presenti condizioni o alla normativa.")}
             </p>
           </SectionCard>
 
           <SectionCard id="crediti" icon={CreditCard} color="text-cyan-700" bg="bg-cyan-100" title={tl("7. Crediti AI e limiti di utilizzo")}>
             <p>
-              {tl("Nella fase pilota non sono previsti pagamenti diretti da parte degli utenti finali. L'utilizzo delle funzionalità AI è tuttavia soggetto a limiti tecnici ed economici interni, necessari a garantire sostenibilità, equità d'uso e continuità del servizio.")}
+              {tl("L'uso delle funzionalità AI è misurato in crediti, per garantire sostenibilità, equità d'uso e continuità del servizio. I limiti sono assegnati per Docente e, per gli Studenti, tramite un fondo condiviso a livello di istituto o di piattaforma; il consumo residuo è visibile all'utente nell'interfaccia.")}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{tl("Docente")}</p>
-                <p className="mt-1 text-2xl font-black text-slate-800">{tl("3 euro/mese")}</p>
-                <p className="mt-1 text-xs text-slate-500">{tl("limite indicativo di crediti AI per docente")}</p>
+                <p className="mt-1 text-sm text-slate-700">{tl("Limite mensile individuale, stabilito dalla Fondazione al momento dell'approvazione dell'account e aggiornabile.")}</p>
               </div>
               <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{tl("Studente")}</p>
-                <p className="mt-1 text-2xl font-black text-slate-800">{tl("2 euro/mese")}</p>
-                <p className="mt-1 text-xs text-slate-500">{tl("limite indicativo di crediti AI per studente associato")}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{tl("Studenti")}</p>
+                <p className="mt-1 text-sm text-slate-700">{tl("Fondo mensile condiviso, senza limite individuale per singolo Studente.")}</p>
               </div>
             </div>
             <p>
-              {tl("Fondazione Golinelli potrà aggiornare, sospendere o rimodulare tali limiti durante la sperimentazione, anche in base al numero di utenti, ai costi dei modelli AI e alle esigenze del percorso formativo.")}
+              {tl("Al raggiungimento di un limite le funzioni AI interessate possono essere temporaneamente non disponibili fino al successivo rinnovo o a un adeguamento concordato. La Fondazione può aggiornare i limiti in base ai costi dei modelli, al numero di utenti e agli accordi con gli istituti, dandone comunicazione quando incidono in modo sostanziale sul servizio.")}
             </p>
           </SectionCard>
 
-          <SectionCard id="servizio" icon={Sparkles} color="text-fuchsia-700" bg="bg-fuchsia-100" title={tl("8. Disponibilità, modifiche e sospensione del servizio")}>
+          <SectionCard id="servizio" icon={Sparkles} color="text-fuchsia-700" bg="bg-fuchsia-100" title={tl("8. Disponibilità, modifiche e sospensione")}>
             <p>
-              {tl("Poiché Golinelli.ai è in fase pilota, alcune funzionalità possono essere modificate, limitate, sospese o disattivate senza preavviso, anche per esigenze tecniche, organizzative, di sicurezza o di conformità. Fondazione Golinelli si impegna a gestire la piattaforma con cura e continuità ragionevole, ma non garantisce assenza di errori, interruzioni o malfunzionamenti.")}
+              {tl("La Fondazione gestisce la piattaforma con la diligenza richiesta dal contesto educativo e si adopera per assicurarne continuità e sicurezza, ma non garantisce l'assenza di errori o interruzioni. Funzionalità e modelli possono evolvere nel tempo; le modifiche che riducano in modo rilevante il servizio sono comunicate agli utenti. Sono possibili interventi di manutenzione e sospensioni per motivi tecnici o di sicurezza, anche urgenti.")}
             </p>
             <p>
-              {tl("In caso di uso improprio, rischio per la sicurezza, violazione delle presenti condizioni o necessità di tutela degli utenti, l'accesso potrà essere limitato o sospeso.")}
+              {tl("In caso di uso improprio, rischio per la sicurezza, violazione delle presenti condizioni o necessità di tutela degli utenti, l'accesso può essere limitato o sospeso. L'utente può chiedere in ogni momento la chiusura del proprio account; i dati sono conservati e cancellati secondo i tempi indicati nell'Informativa privacy.")}
+            </p>
+            <p>
+              {tl("Nei limiti consentiti dalla legge, la Fondazione non risponde di danni indiretti derivanti dall'uso degli output AI o dall'indisponibilità temporanea del servizio, fermi i diritti inderogabili degli utenti e le responsabilità non escludibili per legge.")}
             </p>
           </SectionCard>
 
           <SectionCard id="privacy" icon={Lock} color="text-indigo-700" bg="bg-indigo-100" title={tl("9. Privacy, sicurezza e dati personali")}>
             <p>
-              {tl("Il trattamento dei dati personali avviene secondo l'informativa privacy della piattaforma e nel rispetto delle misure tecniche e organizzative previste per il contesto educativo e sperimentale. Gli utenti devono evitare l'inserimento di dati personali non necessari, informazioni sensibili o contenuti riservati non pertinenti all'attività.")}
+              {tl("Il trattamento dei dati personali è descritto nell'Informativa sul trattamento dei dati personali (versione 2.0, 26 ottobre 2026), che indica titolari e responsabili, finalità e basi giuridiche, fornitori di AI e sub-responsabili, trasferimenti extra-SEE, tempi di conservazione, misure di sicurezza e diritti degli interessati. In sintesi: i dati applicativi risiedono su server a Bologna, non sono usati per addestrare modelli di AI né per marketing, e agli Studenti non vengono richiesti dati anagrafici.")}
             </p>
             <p>
-              {tl("Per maggiori dettagli sul trattamento dei dati, sull'uso dell'AI e sui diritti degli interessati, consulta la pagina Privacy e AI Act Compliance.")}
+              {tl("Per i dati degli Studenti il Titolare è l'Istituto: le richieste degli interessati vanno rivolte a quest'ultimo, che la Fondazione assiste nel darvi seguito. Per i dati dei Docenti e per la sicurezza della piattaforma la Fondazione opera come Titolare.")}
             </p>
             <Link to="/privacy" className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100">
-              <ShieldCheck size={13} /> {tl("Vai alla Privacy Policy")}
+              <ShieldCheck size={13} /> {tl("Leggi l'Informativa privacy")}
             </Link>
           </SectionCard>
 
-          <SectionCard id="contatti" icon={LifeBuoy} color="text-slate-700" bg="bg-slate-100" title={tl("10. Contatti, aggiornamenti e legge applicabile")}>
-            <InfoRow label={tl("Segnalazioni")} value={CONTACT_EMAIL} />
-            <InfoRow label={tl("Abusi o problemi")} value={tl("Per usi impropri, contenuti non consentiti, problemi di accesso o richieste sulla sperimentazione scrivere a {0}.", CONTACT_EMAIL)} />
+          <SectionCard id="proprieta" icon={Fingerprint} color="text-teal-700" bg="bg-teal-100" title={tl("10. Proprietà intellettuale e licenza d'uso")}>
             <p>
-              {tl("Le presenti condizioni potranno essere aggiornate durante la fase pilota. La versione pubblicata su questa pagina è quella vigente per l'utilizzo della piattaforma. Per quanto non espressamente previsto, si applica la legge italiana.")}
+              {tl("Software, interfaccia, marchi, modelli didattici e documentazione di Golinelli.ai sono di titolarità della Fondazione o dei rispettivi licenziatari. Ai Docenti e agli istituti è concessa una licenza personale, non esclusiva, non trasferibile e revocabile all'uso della piattaforma per finalità didattiche, nei limiti delle presenti condizioni.")}
             </p>
-            <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-              <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
-              <span>{tl("Prima dell'uso esteso o pubblico, il testo dovrebbe essere rivisto da un consulente legale, soprattutto per coordinamento con privacy, contratti con scuole e consenso/informativa per studenti minorenni.")}</span>
-            </div>
+            <p>
+              {tl("I materiali creati dagli utenti (lezioni, Teacherbot, progetti, quiz, elaborati) restano degli autori o dell'Istituto, secondo le regole applicabili. Gli output generati dall'AI sono utilizzabili per fini didattici; l'utente è responsabile di verificarne l'originalità e il rispetto di diritti di terzi prima di diffonderli.")}
+            </p>
+          </SectionCard>
+
+          <SectionCard id="contatti" icon={LifeBuoy} color="text-slate-700" bg="bg-slate-100" title={tl("11. Modifiche, legge applicabile e contatti")}>
+            <InfoRow label={tl("Assistenza e segnalazioni")} value={CONTACT_EMAIL} />
+            <InfoRow label={tl("Privacy e dati personali")} value={PRIVACY_EMAIL} />
+            <p>
+              {tl("Le presenti condizioni possono essere aggiornate per variazioni normative, tecnologiche o organizzative. La versione vigente è quella pubblicata su questa pagina con la data di revisione; per le modifiche sostanziali ai Docenti registrati è richiesta una nuova accettazione e gli istituti sono informati via email.")}
+            </p>
+            <p>
+              {tl("Per quanto non previsto si applica la legge italiana. Per ogni controversia con utenti che agiscono come professionisti o enti è competente in via esclusiva il Foro di Bologna, salvi i fori inderogabili previsti dalla legge.")}
+            </p>
           </SectionCard>
 
           <div className="rounded-3xl border border-white/80 bg-white/70 p-6 text-center text-xs text-slate-400 shadow-sm backdrop-blur-xl">
             <Fingerprint className="mx-auto mb-2 h-5 w-5 text-slate-300" />
-            {tl("Documento generato per la fase pilota di Golinelli.ai. Ultimo aggiornamento: maggio 2026.")}
+            {tl("Golinelli.ai – Condizioni d'uso. Fondazione Golinelli. Ultimo aggiornamento:")} {LAST_UPDATE}.
           </div>
         </main>
       </div>
+      </>
+      )}
     </div>
   )
 }

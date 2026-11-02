@@ -12,7 +12,7 @@ import unicodedata
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
-from app.core.legal_documents import LEGAL_DOCUMENTS, required_legal_documents
+from app.core.legal_documents import LEGAL_DOCUMENTS, refresh_legal_overrides, required_legal_documents
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_user
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
@@ -64,6 +64,7 @@ class LegalConsentAcceptRequest(BaseModel):
 async def _docs_for_user(db: AsyncSession, user: User) -> list[dict]:
     """Documenti richiesti all'utente: base + accordo dirigente / dichiarazione docente nei tenant SCUOLA."""
     from app.models.tenant import Tenant
+    await refresh_legal_overrides(db)
     tenant_type = None
     if user.tenant_id:
         tenant_type = (await db.execute(

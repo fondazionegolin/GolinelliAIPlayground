@@ -1,3 +1,4 @@
+import { clearClientSession } from '@/lib/session'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BrainCircuit, ShieldCheck, Sparkles, Workflow, FlaskConical, Eye } from '@/components/icons'
@@ -65,6 +66,7 @@ export default function LoginPage() {
     try {
       const response = await authApi.login(email, password)
       const { access_token, user_id, role, tenant_id } = response.data
+      clearClientSession() // nothing of the previous user may survive into the new session
       setUser({ id: user_id, email, role, tenant_id }, access_token)
       navigate('/teacher')
     } catch (error: unknown) {

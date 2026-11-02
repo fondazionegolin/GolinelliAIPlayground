@@ -131,7 +131,7 @@ export default function CreditsHubPage() {
   })
 
   const refreshAll = () => {
-    for (const key of ['admin-credits-overview', 'admin-credits-alerts', 'admin-credits-requests', 'admin-credits-badge']) {
+    for (const key of ['admin-credits-overview', 'admin-credits-alerts', 'admin-credits-requests', 'admin-credits-badge', 'admin-notifications']) {
       queryClient.invalidateQueries({ queryKey: [key] })
     }
   }

@@ -20,9 +20,9 @@ import {
   Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
   MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown,
-  ListChecks, SquareKanban, Box
+  ListChecks, SquareKanban
 } from '@/components/icons'
-import { MushroomIcon } from '@/components/icons/CustomIcons'
+import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
@@ -304,7 +304,7 @@ export default function SessionLivePage() {
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
-  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'models3d_ai', 'chat_collaboration']
+  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'models3d_ai', 'smart_canvas', 'chat_collaboration']
   const displayModules = [
     ...MODULE_ORDER
       .filter((k) => !modules.some((m) => m.module_key === k))
@@ -538,10 +538,16 @@ export default function SessionLivePage() {
                             desc: tl("Crea e progetta piccole applicazioni web tramite prompt di testo, con anteprima istantanea del codice."),
                           },
                           models3d: {
-                            icon: Box,
+                            icon: Cube3DIcon,
                             label: '3D Lab',
                             subtitle: tl("Modellazione solida"),
                             desc: tl("Modellatore 3D in stile Tinkercad con assistente AI: gli studenti costruiscono oggetti ed esportano STL per la stampa 3D."),
+                          },
+                          smart_canvas: {
+                            icon: CanvasEaselIcon,
+                            label: tl("Lavagne intelligenti"),
+                            subtitle: tl("Lavagne collaborative"),
+                            desc: tl("Gli studenti vedono le lavagne condivise dal docente in tempo reale e possono crearne di proprie. Se il docente abilita la modifica, usano anche l’assistente AI."),
                           },
                           models3d_ai: {
                             icon: MushroomIcon,

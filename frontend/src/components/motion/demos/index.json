@@ -1,0 +1,22 @@
+[
+ {
+  "key": "water",
+  "title": "Formazione dell'acqua",
+  "description": "Chimica · legami che si rompono e si formano"
+ },
+ {
+  "key": "moon",
+  "title": "Le fasi della Luna",
+  "description": "Astronomia · geometria Sole–Terra–Luna"
+ },
+ {
+  "key": "pendulum",
+  "title": "Pendolo ed energia",
+  "description": "Fisica · energia cinetica e potenziale"
+ },
+ {
+  "key": "enzyme",
+  "title": "Enzima e substrato",
+  "description": "Biochimica · sito attivo e adattamento indotto"
+ }
+]
