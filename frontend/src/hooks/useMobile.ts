@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 
 interface MobileState {
   isMobile: boolean
@@ -105,49 +105,6 @@ export function useMobile(): MobileState {
   }, [])
 
   return state
-}
-
-// Hook specifically for detecting keyboard
-export function useKeyboard() {
-  const [isOpen, setIsOpen] = useState(false)
-  const [height, setHeight] = useState(0)
-
-  useEffect(() => {
-    if (!window.visualViewport) return
-
-    let rafPending = false
-    const handleResize = () => {
-      if (rafPending) return
-      rafPending = true
-      requestAnimationFrame(() => {
-        rafPending = false
-        const viewportHeight = window.visualViewport!.height
-        const windowHeight = window.innerHeight
-        const keyboardHeight = windowHeight - viewportHeight
-        const keyboardOpen = keyboardHeight > 150
-
-        setIsOpen(keyboardOpen)
-        setHeight(keyboardOpen ? keyboardHeight : 0)
-      })
-    }
-
-    window.visualViewport.addEventListener('resize', handleResize)
-    window.visualViewport.addEventListener('scroll', handleResize)
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', handleResize)
-      window.visualViewport?.removeEventListener('scroll', handleResize)
-    }
-  }, [])
-
-  const dismiss = useCallback(() => {
-    const activeElement = document.activeElement as HTMLElement
-    if (activeElement && typeof activeElement.blur === 'function') {
-      activeElement.blur()
-    }
-  }, [])
-
-  return { isOpen, height, dismiss }
 }
 
 // Detect if device supports touch

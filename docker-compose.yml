@@ -44,8 +44,6 @@ services:
       # These override .env values with docker-internal hostnames
       - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
       - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - MINIO_ENDPOINT=minio:9000
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - PXT_COMPILER_URL=http://pxt-compiler:8090
@@ -71,28 +69,6 @@ services:
     environment:
       - PORT=8090
       - PXT_HOME=/tmp/pxt-home
-    networks:
-      - eduai-network
-    restart: unless-stopped
-
-  # Celery Worker
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
-    env_file:
-      - .env
-    environment:
-      # These override .env values with docker-internal hostnames
-      - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - MINIO_ENDPOINT=minio:9000
-    depends_on:
-      - api
-      - redis
     networks:
       - eduai-network
     restart: unless-stopped
