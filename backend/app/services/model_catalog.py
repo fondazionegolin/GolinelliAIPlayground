@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.pricing import PRICING_CATALOG, usd
 from app.models.ai_model import AIModel, AIModelScan
+from app.services import openrouter
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ PRICING_URLS = {
     "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing",
     "openai": "https://developers.openai.com/api/docs/pricing",
     "deepseek": "https://api-docs.deepseek.com/quick_start/pricing",
+    "openrouter": "https://openrouter.ai/models",
+    "gemini": "https://ai.google.dev/gemini-api/docs/pricing",
+    "ollama": "https://ollama.com/library",
 }
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 PRICE_EPSILON = 0.0005
@@ -144,15 +148,17 @@ async def seed_if_empty(db: AsyncSession) -> None:
         db.add(AIModel(provider=provider, model_id=model_id, display_name=name, status="active", kind=kind, input_usd=per_image, price_note=note,
                        pricing_url=PRICING_URLS[provider], price_checked_at=checked, acknowledged=True))
         added = True
-    # First run with the selector flag: offer the platform's historical list so selectors never come up empty.
-    rows = list((await db.execute(select(AIModel))).scalars().all())
-    if not any(row.offered for row in rows):
-        from app.services import model_roles
-        keep = SEED_OFFERED | {model_roles.model_for("chat.default")}
-        for row in rows:
-            if row.kind == "text" and row.model_id in keep:
-                row.offered = True
-                added = True
+    # These providers used to be inserted directly into menus. Keep them in the
+    # catalogue instead, so admins explicitly decide whether to offer them.
+    for provider, model_id, name, price in [
+        ("gemini", "gemini-3.8-flash", "Gemini 3.8 Flash", None),
+        ("ollama", "mistral-nemo", "Mistral Nemo (locale)", 0.0),
+        ("ollama", "mistral", "Mistral 7B (locale)", 0.0),
+    ]:
+        if (provider, model_id) not in existing:
+            db.add(AIModel(provider=provider, model_id=model_id, display_name=name, kind="text", status="available",
+                           input_usd=price, output_usd=price, offered=False, pricing_url=PRICING_URLS[provider]))
+            added = True
     if added:
         await db.commit()
 
@@ -185,7 +191,9 @@ def _openai_kind(model_id: str) -> str | None:
     return None
 
 
-async def _discover(client: httpx.AsyncClient, provider: str) -> list[dict[str, str]]:
+async def _discover(client: httpx.AsyncClient, provider: str) -> list[dict[str, Any]]:
+    if provider == "openrouter" and settings.OPENROUTER_API_KEY:
+        return await openrouter.discover(client)
     if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
         response = await client.get("https://api.anthropic.com/v1/models", params={"limit": 1000},
                                     headers={"x-api-key": settings.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01"})
@@ -300,21 +308,30 @@ async def run_scan(db: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
 
     async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
         for provider in PRICING_URLS:
+            if provider in {"gemini", "ollama"}:
+                continue  # manually priced catalogue entries; no pricing parser
+            discovered = []
             # 1) discovery of released models
             try:
                 discovered = await _discover(client, provider)
                 summary["providers"][provider] = {"discovered": len(discovered)}
                 seen = {item["id"] for item in discovered}
                 # Undated aliases (claude-opus-4-5) are accepted by the API in place of the dated id (claude-opus-4-5-20251101).
-                seen |= {m.model_id for m in models if m.provider == provider and any(found.startswith(m.model_id + "-20") for found in seen)}
+                if provider != "openrouter":
+                    seen |= {m.model_id for m in models if m.provider == provider and any(found.startswith(m.model_id + "-20") for found in seen)}
                 for item in discovered:
-                    if (provider, item["id"]) not in by_key and not any(m.provider == provider and item["id"].startswith(m.model_id + "-20") for m in models):
+                    if (provider, item["id"]) not in by_key and (provider == "openrouter" or not any(m.provider == provider and item["id"].startswith(m.model_id + "-20") for m in models)):
                         model = AIModel(provider=provider, model_id=item["id"], display_name=item["name"], status="available", kind=item.get("kind", "text"),
                                         pricing_url=PRICING_URLS[provider], acknowledged=False)
                         db.add(model)
                         by_key[(provider, item["id"])] = model
                         models.append(model)
                         summary["new_models"].append({"provider": provider, "model_id": item["id"], "name": item["name"]})
+                    if provider == "openrouter":
+                        model = by_key[(provider, item["id"])]
+                        model.context_window = item.get("context_window")
+                        if model.kind == "video":
+                            model.price_note = item.get("price_note")
                 for model in models:
                     if model.provider == provider:
                         model.seen_in_api = model.model_id in seen
@@ -327,9 +344,13 @@ async def run_scan(db: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
                 summary["errors"][provider] = f"Scoperta modelli fallita: {type(exc).__name__}"
             # 2) official price check
             try:
-                page = await client.get(PRICING_URLS[provider], headers={"User-Agent": BROWSER_UA, "Accept-Language": "en"})
-                page.raise_for_status()
-                prices = PARSERS[provider](page.text)
+                if provider == "openrouter":
+                    prices = {item["id"]: (item["input_usd"], item["output_usd"]) for item in discovered
+                              if item.get("kind") == "text" and item.get("input_usd") is not None and item.get("output_usd") is not None}
+                else:
+                    page = await client.get(PRICING_URLS[provider], headers={"User-Agent": BROWSER_UA, "Accept-Language": "en"})
+                    page.raise_for_status()
+                    prices = PARSERS[provider](page.text)
                 if not prices:
                     raise ValueError("tabella prezzi non riconosciuta")
                 for model in models:
@@ -368,7 +389,7 @@ async def scan_loop() -> None:
     await asyncio.sleep(300)
     while True:
         try:
-            if any((settings.ANTHROPIC_API_KEY, settings.OPENAI_API_KEY, settings.DEEPSEEK_API_KEY)):
+            if any((settings.ANTHROPIC_API_KEY, settings.OPENAI_API_KEY, settings.DEEPSEEK_API_KEY, settings.OPENROUTER_API_KEY)):
                 async with AsyncSessionLocal() as db:
                     await run_scan(db, "scheduled")
         except Exception:

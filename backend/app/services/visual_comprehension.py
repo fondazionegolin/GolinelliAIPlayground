@@ -239,8 +239,8 @@ Non anticipare la risposta nel titolo, nelle etichette grafiche, nell'action, ne
 
 
 async def generate_validated(stage, instruction, schema, validate, image, on_usage, max_tokens=7000, system_prompt=BASE_PROMPT, role="vision",
-                             think=False, extra_images=()):
-    provider, model = pair_for(role)
+                             think=False, extra_images=(), pair=None):
+    provider, model = pair or pair_for(role)
     # On Anthropic the schema is enforced by structured outputs (always parseable JSON); elsewhere it is spelled out.
     structured = provider == "anthropic" and schema.__name__ not in _UNSTRUCTURED
     schema_text = "" if structured else "\nSCHEMA JSON:\n" + json.dumps(schema.model_json_schema(), ensure_ascii=False)

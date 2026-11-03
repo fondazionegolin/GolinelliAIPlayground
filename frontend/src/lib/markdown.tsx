@@ -1,3 +1,4 @@
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -13,7 +14,7 @@ export function looksLikeMarkdown(text: string) {
 export function renderMarkdownToHtml(markdown: string) {
   return renderToStaticMarkup(
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-      {markdown}
+      {normalizeMathMarkdown(markdown)}
     </ReactMarkdown>
   )
 }

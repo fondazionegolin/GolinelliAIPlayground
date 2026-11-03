@@ -141,7 +141,7 @@ type Dims = { width: number; height: number }
 export const presentationStudioApi = {
   templates: () =>
     api.get<{ themes: ResolvedTheme[]; layouts: { id: StudioLayout; label: string; fields: string[] }[] }>('/presentation-studio/templates'),
-  outline: (data: { brief: StudioBrief; mode?: 'create' | 'revise' | 'slide'; outline?: StudioOutline; instruction?: string; slide_index?: number }, signal?: AbortSignal) =>
+  outline: (data: { brief: StudioBrief; mode?: 'create' | 'revise' | 'slide'; outline?: StudioOutline; instruction?: string; slide_index?: number; llm_provider?: string; llm_model?: string }, signal?: AbortSignal) =>
     api.post<StudioOutline>('/presentation-studio/outline', data, { signal, timeout: 240000 }),
   preview: (data: { outline: StudioOutline; theme_ids: string[]; options: Partial<ThemeOptions>; dims: Dims; slide_indexes: number[] }) =>
     api.post<{ previews: Record<string, StudioSlide[]> }>('/presentation-studio/preview', data),

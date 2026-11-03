@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { formatInternalCredits } from '@/lib/credits'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   ChevronRight, GraduationCap, Users, BookOpen,
   Search, Zap, Clock, Wifi, Building2,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { AdminEmpty, AdminPageHeader, AdminStat, AdminStatGrid } from '@/components/admin/AdminUI'
 
 /* ─── types ─────────────────────────────────────────── */
 interface StudentInfo {
@@ -57,10 +57,10 @@ const formatDateTime = (raw?: string | null) => {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700',
-  draft: 'bg-slate-100 text-slate-500',
-  closed: 'bg-red-100 text-red-600',
-  archived: 'bg-slate-100 text-slate-400',
+  active: 'admin-badge-success',
+  draft: 'admin-badge-neutral',
+  closed: 'admin-badge-danger',
+  archived: 'admin-badge-neutral',
 }
 
 /* ─── main component ─────────────────────────────────── */
@@ -124,86 +124,60 @@ export default function ClassesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{tl("Struttura didattica")}</p>
-          <h1 className="text-2xl font-bold text-white">{tl("Istituti, classi e sessioni")}</h1>
-          <p className="text-sm text-slate-300 mt-1">
-            {allClasses.length} {tl("classi ·")} {totalSessions} {tl("sessioni ·")} {totalStudents} {tl("studenti totali")}
-          </p>
-        </div>
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tl("Cerca classi, docenti…")}
-            className="pl-9 h-10 border-slate-600 bg-slate-800 text-sm text-white placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+      <AdminPageHeader
+        eyebrow={tl("Struttura didattica")}
+        title={tl("Istituti, classi e sessioni")}
+        description={<span className="tabular-nums">{allClasses.length} {tl("classi ·")} {totalSessions} {tl("sessioni ·")} {totalStudents} {tl("studenti totali")}</span>}
+        actions={
+          <div className="relative w-72 max-w-full">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tl("Cerca classi, docenti…")} className="pl-9 text-sm" />
+          </div>
+        }
+      />
 
-      {/* Summary pills */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
-          <BookOpen className="h-5 w-5 text-indigo-500 flex-shrink-0" />
-          <div>
-            <p className="text-[11px] text-slate-500">{tl("Sessioni")}</p>
-            <p className="text-lg font-bold text-slate-900">{totalSessions}</p>
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
-          <Users className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-          <div>
-            <p className="text-[11px] text-slate-500">{tl("Studenti")}</p>
-            <p className="text-lg font-bold text-slate-900">{totalStudents}</p>
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
-          <Zap className="h-5 w-5 text-slate-500 flex-shrink-0" />
-          <div>
-            <p className="text-[11px] text-slate-500">{tl("Costo totale")}</p>
-            <p className="text-lg font-bold text-slate-900">{formatCurrency(totalCost)}</p>
-          </div>
-        </div>
-      </div>
+      <AdminStatGrid className="!grid-cols-1 sm:!grid-cols-3">
+        <AdminStat label={tl("Sessioni")} value={totalSessions} icon={BookOpen} />
+        <AdminStat label={tl("Studenti")} value={totalStudents} icon={Users} />
+        <AdminStat label={tl("Costo totale")} value={formatCurrency(totalCost)} icon={Zap} />
+      </AdminStatGrid>
 
       {/* Class list */}
       {isLoading ? (
-        <div className="py-16 text-center text-slate-400 text-sm">{tl("Caricamento…")}</div>
+        <AdminEmpty>{tl("Caricamento…")}</AdminEmpty>
       ) : filteredClasses.length === 0 ? (
-        <div className="py-16 text-center text-slate-400 text-sm">{tl("Nessuna classe trovata")}</div>
+        <AdminEmpty>{tl("Nessuna classe trovata")}</AdminEmpty>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolGroups.map((school) => (
-            <section key={school.id} className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-5 py-3">
+            <section key={school.id} className="admin-panel">
+              <div className="admin-panel-head">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><Building2 className="h-4 w-4" /></span>
-                  <div><h2 className="text-sm font-bold text-slate-900">{school.name}</h2><p className="text-[11px] text-slate-500">{school.classes.length} {tl("classi")}</p></div>
+                  <Building2 className="h-4 w-4 text-slate-500" />
+                  <div><h2 className="text-sm font-semibold text-slate-900">{school.name}</h2><p className="text-[11px] text-slate-500">{school.classes.length} {tl("classi")}</p></div>
                 </div>
               </div>
-              <div className="divide-y divide-slate-200">
+              <div className="divide-y divide-[var(--admin-line)]">
           {school.classes.map((cls) => {
             const isClassOpen = expandedClasses.has(cls.class_id)
             return (
-              <Card key={cls.class_id} className="overflow-hidden rounded-none border-0 shadow-none">
+              <div key={cls.class_id}>
                 {/* Class header */}
                 <button
-                  className="grid w-full grid-cols-[20px_40px_minmax(240px,1fr)_minmax(260px,auto)] items-center gap-3 px-5 py-3.5 hover:bg-sky-50 transition-colors text-left"
+                  className="grid w-full grid-cols-[20px_40px_minmax(240px,1fr)_minmax(260px,auto)] items-center gap-3 px-4 py-3 hover:bg-[var(--admin-surface-2)] transition-colors text-left"
                   onClick={() => toggleClass(cls.class_id)}
                 >
                   <div className={`transition-transform ${isClassOpen ? 'rotate-90' : ''}`}>
                     <ChevronRight className="h-4 w-4 text-slate-400" />
                   </div>
-                  <div className="w-9 h-9 rounded-xl bg-[#1a1a2e]/10 flex items-center justify-center flex-shrink-0">
-                    <BookOpen className="h-4 w-4 text-neutral-900" />
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
+                    <BookOpen className="h-4 w-4 text-slate-600" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-800">{cls.class_name}</span>
+                      <span className="text-sm font-semibold text-slate-900">{cls.class_name}</span>
                       {cls.school_grade && (
-                        <span className="text-[11px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                        <span className="admin-badge admin-badge-neutral">
                           {cls.school_grade}
                         </span>
                       )}
@@ -215,7 +189,7 @@ export default function ClassesPage() {
                       <span className="text-xs text-slate-400">{cls.teacher_email}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 flex-shrink-0 text-xs text-slate-500">
+                  <div className="flex items-center gap-4 flex-shrink-0 text-xs text-slate-600 tabular-nums">
                     <span className="flex items-center gap-1">
                       <BookOpen className="h-3.5 w-3.5" />
                       {cls.session_count}
@@ -233,17 +207,17 @@ export default function ClassesPage() {
 
                 {/* Sessions */}
                 {isClassOpen && (
-                  <div className="border-t border-slate-100 bg-slate-50/60">
+                  <div className="border-t border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
                     {cls.sessions.length === 0 ? (
                       <p className="px-8 py-4 text-xs text-slate-400">{tl("Nessuna sessione")}</p>
                     ) : (
                       cls.sessions.map((sess) => {
                         const isSessOpen = expandedSessions.has(sess.session_id)
                         return (
-                          <div key={sess.session_id} className="border-b border-slate-100 last:border-0">
+                          <div key={sess.session_id} className="border-b border-[var(--admin-line)] last:border-0">
                             {/* Session row */}
                             <button
-                              className="w-full flex items-center gap-3 px-8 py-3 hover:bg-slate-100/70 transition-colors text-left"
+                              className="w-full flex items-center gap-3 px-8 py-2.5 hover:bg-white transition-colors text-left"
                               onClick={() => toggleSession(sess.session_id)}
                             >
                               <div className={`transition-transform ${isSessOpen ? 'rotate-90' : ''}`}>
@@ -251,16 +225,14 @@ export default function ClassesPage() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-slate-700">{sess.title}</span>
+                                  <span className="text-sm font-medium text-slate-800">{sess.title}</span>
                                   <span
-                                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                      STATUS_BADGE[sess.status] || 'bg-slate-100 text-slate-500'
-                                    }`}
+                                    className={`admin-badge ${STATUS_BADGE[sess.status] || 'admin-badge-neutral'}`}
                                   >
                                     {sess.status}
                                   </span>
                                 </div>
-                                <span className="text-[11px] text-slate-400 font-mono">
+                                <span className="text-[11px] text-slate-500 font-mono">
                                   codice: {sess.join_code}
                                 </span>
                               </div>
@@ -281,9 +253,9 @@ export default function ClassesPage() {
                                 {sess.students.length === 0 ? (
                                   <p className="text-xs text-slate-400 py-2">{tl("Nessuno studente")}</p>
                                 ) : (
-                                  <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-xs">
+                                  <div className="overflow-x-auto rounded-md border border-[var(--admin-line)] bg-white"><table className="w-full min-w-[420px] text-xs">
                                     <thead>
-                                      <tr className="text-[10px] uppercase text-slate-400 border-b border-slate-200">
+                                      <tr>
                                         <th className="pb-1.5 text-left font-medium">Nickname</th>
                                         <th className="pb-1.5 text-left font-medium">
                                           <span className="flex items-center gap-1">
@@ -301,7 +273,7 @@ export default function ClassesPage() {
                                     </thead>
                                     <tbody>
                                       {sess.students.map((stu) => (
-                                        <tr key={stu.id} className="border-t border-slate-100">
+                                        <tr key={stu.id}>
                                           <td className="py-1.5 font-medium text-slate-700">{stu.nickname}</td>
                                           <td className="py-1.5 text-slate-500">{formatDate(stu.created_at)}</td>
                                           <td className="py-1.5 text-slate-500">{formatDateTime(stu.last_seen_at)}</td>
@@ -318,7 +290,7 @@ export default function ClassesPage() {
                     )}
                   </div>
                 )}
-              </Card>
+              </div>
             )
           })}
               </div>

@@ -17,7 +17,7 @@ import httpx
 import esprima
 
 from app.core.database import get_db
-from app.services import model_roles
+from app.services import model_roles, model_selection
 from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.notebook import Notebook
@@ -715,6 +715,7 @@ PROMPT_ANALYST_PROGRESS_MESSAGE = "Leggo la richiesta, controllo il codice e pre
 
 async def _run_agent_pipeline_stream(
     project_type: str, active_source: str, last_output: str, user_prompt: str, is_student: bool,
+    override: tuple[str, str] | None = None,
 ):
     """Versione streaming della pipeline: invece di restituire tutto alla fine, EMETTE ogni
     bolla di agente non appena lo stadio finisce, poi un frame finale con le proposte. È il
@@ -726,7 +727,7 @@ async def _run_agent_pipeline_stream(
     """
     # Tutor p5js/python su DeepSeek per tutti (docenti e studenti). "deepseek-pro" è la
     # variante DeepSeek migliore per il codice; il resolver la mappa su provider/model reali.
-    provider, model = _resolve_coding_model("deepseek-pro", is_student=is_student)
+    provider, model = override or _resolve_coding_model("deepseek-pro", is_student=is_student)
 
     yield ("stage", {
         "role": "assistant", "agent_name": "Prompt Analyst",
@@ -879,6 +880,7 @@ async def _run_agent_pipeline_stream(
 
 async def _run_agent_pipeline(
     project_type: str, active_source: str, last_output: str, user_prompt: str, is_student: bool,
+    override: tuple[str, str] | None = None,
 ) -> tuple[list[dict], str, list[dict]]:
     """Wrapper non-streaming attorno a _run_agent_pipeline_stream: raccoglie tutte le bolle
     e il risultato finale. Usato dove non serve lo streaming (es. test)."""
@@ -886,7 +888,7 @@ async def _run_agent_pipeline(
     proposals: list[dict] = []
     summary = "Analisi completata."
     async for kind, payload in _run_agent_pipeline_stream(
-        project_type, active_source, last_output, user_prompt, is_student
+        project_type, active_source, last_output, user_prompt, is_student, override
     ):
         if kind == "stage":
             staged.append(payload)
@@ -898,6 +900,7 @@ async def _run_agent_pipeline(
 async def _run_legacy_single_pass(
     project_type: str, notebook_title: str, all_code: str, relevant_context: str,
     active_source: str, last_output: str, user_prompt: str,
+    override: tuple[str, str] | None = None,
 ) -> tuple[list[dict], str]:
     """Percorso a singola chiamata per microbit/circuitplayground/game2d — invariato
     rispetto a prima. Circuit Playground ha già il proprio autofix reale via compilatore
@@ -963,11 +966,12 @@ Regole:
         }
     ]
 
+    provider, model = override or model_roles.pair_for("chat.fast")
     response = await llm_service.generate(
         messages=messages,
         system_prompt=system_prompt,
-        provider=model_roles.provider_for("chat.fast"),
-        model=model_roles.model_for("chat.fast"),
+        provider=provider,
+        model=model,
         temperature=0.2,
         max_tokens=3200,
         allow_web_search=False,
@@ -1024,6 +1028,7 @@ def _notebook_agent_usage_estimate(
     active_source: str,
     last_output: str,
     user_prompt: str,
+    override: tuple[str, str] | None = None,
 ) -> tuple[str, str, int, int]:
     if project_type in {"python", "p5js"}:
         provider, model = _resolve_coding_model("deepseek-pro", is_student=False)
@@ -1034,7 +1039,17 @@ def _notebook_agent_usage_estimate(
         provider, model = model_roles.pair_for("chat.fast")
         prompt_tokens = _estimated_tokens(active_source, user_prompt, last_output)
         completion_tokens = max(500, _estimated_tokens(active_source))
+    if override:
+        provider, model = override
     return provider, model, prompt_tokens, completion_tokens
+
+
+async def _notebook_model_choice(db: AsyncSession, request: dict) -> tuple[str, str] | None:
+    """Model picked in the notebook's tutor menu (Admin → Modelli → Coding Lab); None keeps the per-project routing."""
+    provider, model = request.get("llm_provider"), request.get("llm_model")
+    if not provider or not model:
+        return None
+    return await model_selection.resolve_scoped(db, "notebook", str(provider), str(model))
 
 
 async def _notebook_credit_scope(db: AsyncSession, actor: StudentOrTeacher) -> dict:
@@ -1938,7 +1953,7 @@ Il tuo obiettivo:
     from app.services.web_search_service import augment_chat_messages_with_urls
     llm_messages = await augment_chat_messages_with_urls(messages)
 
-    provider, model = model_roles.pair_for("chat.fast")
+    provider, model = await _notebook_model_choice(db, request) or model_roles.pair_for("chat.fast")
 
     try:
         response = await llm_service.generate(
@@ -1980,8 +1995,9 @@ async def notebook_assist(
     ml_context = await _ml_models_context(db, nb)
     if ml_context:
         user_prompt = f"{user_prompt}\n\n{ml_context}"
+    override = await _notebook_model_choice(db, request)
     provider, model, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
-        project_type, active_source, last_output, user_prompt
+        project_type, active_source, last_output, user_prompt, override
     )
     credit_scope = await _notebook_credit_scope(db, actor)
     await _require_notebook_agent_credits(
@@ -2004,7 +2020,7 @@ async def notebook_assist(
             # meglio un messaggio d'errore chiaro in chat, come farebbe Coding Builder.
             try:
                 normalized, summary_text, staged_messages = await _run_agent_pipeline(
-                    project_type, active_source, last_output, user_prompt, actor.is_student
+                    project_type, active_source, last_output, user_prompt, actor.is_student, override
                 )
             except Exception as exc:
                 logger.error(f"Notebook agent pipeline error: {exc}")
@@ -2019,7 +2035,7 @@ async def notebook_assist(
             # Percorso legacy invariato per microbit/circuitplayground/game2d: una sola
             # chiamata LLM, con l'autofix reale via compilatore PXT per Circuit Playground.
             normalized, summary_text = await _run_legacy_single_pass(
-                project_type, nb.title, all_code, relevant_context, active_source, last_output, user_prompt
+                project_type, nb.title, all_code, relevant_context, active_source, last_output, user_prompt, override
             )
 
         response_payload = {
@@ -2357,8 +2373,9 @@ async def notebook_assist_stream(
     if ml_context:
         user_prompt = f"{user_prompt}\n\n{ml_context}"
     is_student = actor.is_student
+    override = await _notebook_model_choice(db, request)
     provider, model, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
-        project_type, active_source, last_output, user_prompt
+        project_type, active_source, last_output, user_prompt, override
     )
     credit_scope = await _notebook_credit_scope(db, actor)
     await _require_notebook_agent_credits(
@@ -2376,7 +2393,7 @@ async def notebook_assist_stream(
         async def run_pipeline():
             try:
                 async for kind, payload in _run_agent_pipeline_stream(
-                    project_type, active_source, last_output, user_prompt, is_student
+                    project_type, active_source, last_output, user_prompt, is_student, override
                 ):
                     if kind == "stage":
                         staged.append(payload)

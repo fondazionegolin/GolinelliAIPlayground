@@ -1,6 +1,8 @@
 """Video Studio (admin only, testing): educational mini-documentaries via Runware."""
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
+
+import httpx
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -13,6 +15,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 from app.models.video_project import VideoProject
+from app.models.ai_model import AIModel
+from app.services import openrouter
 from app.services import video_studio as studio
 from app.services.document_processor import document_processor
 from app.services.storage_service import storage_service
@@ -49,6 +53,13 @@ class ScriptUpdate(BaseModel):
 
 class ShotSelection(BaseModel):
     shots: Optional[list[int]] = None
+
+
+class RenderSelection(ShotSelection):
+    provider: Literal["local", "openrouter"] = "local"
+    model: str | None = Field(default=None, max_length=120)
+    duration: int = Field(default=5, ge=1, le=60)
+    resolution: str | None = Field(default=None, max_length=20)
 
 
 def _serialize(p: VideoProject, full: bool = True) -> dict:
@@ -93,7 +104,25 @@ async def get_config(_: Admin):
         "shot_seconds": studio.SHOT_SECONDS,
         "styles": [{"key": k, "label": v["label"]} for k, v in studio.STYLES.items()],
         "aspects": list(studio.ASPECTS.keys()),
+        "openrouter_configured": bool(settings.OPENROUTER_API_KEY),
     }
+
+
+@router.get("/video-models")
+async def list_video_models(_: Admin, db: Db):
+    if not settings.OPENROUTER_API_KEY:
+        return []
+    active = (await db.execute(select(AIModel).where(
+        AIModel.provider == "openrouter", AIModel.kind == "video", AIModel.status == "active",
+    ))).scalars().all()
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            live = {m["id"]: m for m in await openrouter.video_models(client)}
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Catalogo video OpenRouter non raggiungibile") from exc
+    fields = ("supported_durations", "supported_resolutions", "supported_aspect_ratios", "pricing_skus")
+    return [{"id": m.model_id, "name": m.display_name, **{k: live[m.model_id].get(k) for k in fields}}
+            for m in active if m.model_id in live]
 
 
 @router.get("/projects")
@@ -185,15 +214,18 @@ async def update_script(project_id: uuid.UUID, body: ScriptUpdate, admin: Admin,
     _require_idle(project)
     old = {s["n"]: s for s in (project.script or {}).get("shots", [])}
     incoming = body.script
+    # Render configuration is only writable through the validated render endpoint.
+    incoming["render_settings"] = (project.script or {}).get("render_settings", {"provider": "local"})
     shots = incoming.get("shots") or []
     if not shots or len(shots) > studio.MAX_SHOTS:
         raise HTTPException(status_code=400, detail=f"Servono da 1 a {studio.MAX_SHOTS} shot")
     for i, shot in enumerate(shots, start=1):
         prev = old.get(shot.get("n"), {})
+        shot.pop("openrouter_job_id", None)
         edited = any(shot.get(k) != prev.get(k) for k in ("visual", "entities"))
         shot["n"] = i
         if prev and not edited:
-            for k in ("keyframe_key", "keyframe_ver", "video_key", "video_ver", "cost", "status"):
+            for k in ("keyframe_key", "keyframe_ver", "video_key", "video_ver", "cost", "status", "openrouter_job_id"):
                 if k in prev:
                     shot.setdefault(k, prev[k])
         else:
@@ -232,11 +264,43 @@ async def start_storyboard(project_id: uuid.UUID, body: ShotSelection, admin: Ad
 
 
 @router.post("/projects/{project_id}/render")
-async def start_render(project_id: uuid.UUID, body: ShotSelection, admin: Admin, db: Db):
+async def start_render(project_id: uuid.UUID, body: RenderSelection, admin: Admin, db: Db):
     project = await _get(db, project_id, admin)
     _require_idle(project)
     if not any(s.get("keyframe_key") for s in (project.script or {}).get("shots", [])):
         raise HTTPException(status_code=400, detail="Genera prima lo storyboard")
+    if body.provider == "openrouter":
+        if not settings.OPENROUTER_API_KEY:
+            raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY non configurata nel file .env")
+        model = (await db.execute(select(AIModel).where(
+            AIModel.provider == "openrouter", AIModel.model_id == body.model,
+            AIModel.kind == "video", AIModel.status == "active",
+        ))).scalar_one_or_none()
+        if not model:
+            raise HTTPException(status_code=422, detail="Attiva prima il modello video in Admin → Modelli")
+        try:
+            async with httpx.AsyncClient(timeout=25) as client:
+                live = next((m for m in await openrouter.video_models(client) if m["id"] == body.model), None)
+            if not live:
+                raise ValueError("Modello non più disponibile su OpenRouter")
+            openrouter.validate_video_options(live, body.duration, project.aspect, body.resolution)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="Catalogo video OpenRouter non raggiungibile") from exc
+    render_settings = body.model_dump(exclude={"shots"}) if body.provider == "openrouter" else {"provider": "local"}
+    script = dict(project.script or {})
+    if script.get("render_settings", {"provider": "local"}) != render_settings:
+        # Clips from different models/settings must not be silently reused.
+        script["shots"] = [{k: v for k, v in shot.items() if k not in {"video_key", "video_ver", "openrouter_job_id"}}
+                           for shot in script.get("shots", [])]
+        project.final_key = None
+    script["render_settings"] = render_settings
+    if body.shots:
+        for shot in script.get("shots", []):
+            if shot["n"] in body.shots and shot.get("video_key"):
+                shot.pop("openrouter_job_id", None)
+    project.script = script
     project.status, project.error = "rendering", None
     await db.commit()
     await db.refresh(project)

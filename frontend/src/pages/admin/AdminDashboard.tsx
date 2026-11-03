@@ -1,8 +1,6 @@
 import { endSession } from '@/lib/session'
 import { useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { AppBackground } from '@/components/ui/AppBackground'
 import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare, Users, Bot, Activity, CreditCard } from '@/components/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
@@ -27,21 +25,41 @@ import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 import './admin.css'
 import { tl } from '@/i18n/tl'
 
-const navItems = [
-  { path: '/admin', label: tl("Panoramica"), icon: LayoutDashboard, exact: true },
-  { path: '/admin/schools', label: tl("Scuole"), icon: Building2, exact: false },
-  { path: '/admin/teachers', label: tl("Docenti"), icon: GraduationCap, exact: false },
-  { path: '/admin/licenses', label: tl("Licenze"), icon: FileCheck2, exact: false },
-  { path: '/admin/sessions', label: tl("Sessioni"), icon: Activity, exact: false },
-  { path: '/admin/classes', label: tl("Classi"), icon: School, exact: false },
-  { path: '/admin/students', label: tl("Studenti"), icon: Users, exact: false },
-  { path: '/admin/credits', label: tl("Crediti"), icon: CreditCard, exact: false },
-  { path: '/admin/costs', label: tl("Costi"), icon: BarChart3, exact: false },
-  { path: '/admin/email', label: tl("Email"), icon: Mail, exact: false },
-  { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
-  { path: '/admin/models', label: tl("Modelli"), icon: Bot, exact: false },
-  { path: '/admin/chatbots', label: 'Chatbot', icon: Bot, exact: false },
-  { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
+type NavItem = { path: string; label: string; icon: React.FC<{ className?: string }>; exact: boolean }
+
+const navGroups: Array<{ label: string; items: NavItem[] }> = [
+  {
+    label: tl("Generale"),
+    items: [{ path: '/admin', label: tl("Panoramica"), icon: LayoutDashboard, exact: true }],
+  },
+  {
+    label: tl("Utenti e scuole"),
+    items: [
+      { path: '/admin/schools', label: tl("Scuole"), icon: Building2, exact: false },
+      { path: '/admin/teachers', label: tl("Docenti"), icon: GraduationCap, exact: false },
+      { path: '/admin/classes', label: tl("Classi"), icon: School, exact: false },
+      { path: '/admin/students', label: tl("Studenti"), icon: Users, exact: false },
+      { path: '/admin/sessions', label: tl("Sessioni"), icon: Activity, exact: false },
+      { path: '/admin/licenses', label: tl("Licenze"), icon: FileCheck2, exact: false },
+    ],
+  },
+  {
+    label: tl("Consumi"),
+    items: [
+      { path: '/admin/credits', label: tl("Crediti"), icon: CreditCard, exact: false },
+      { path: '/admin/costs', label: tl("Costi"), icon: BarChart3, exact: false },
+      { path: '/admin/models', label: tl("Modelli"), icon: Bot, exact: false },
+      { path: '/admin/chatbots', label: 'Chatbot', icon: Bot, exact: false },
+    ],
+  },
+  {
+    label: tl("Sistema"),
+    items: [
+      { path: '/admin/email', label: tl("Email"), icon: Mail, exact: false },
+      { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
+      { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
+    ],
+  },
 ]
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
@@ -65,47 +83,47 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />
+      <div className="relative w-full max-w-sm overflow-hidden rounded-[0.625rem] border border-[#e2e5ea] bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-[#e2e5ea] bg-[#f8f9fb] px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-slate-100">
-              <KeyRound className="h-4 w-4 text-slate-600" />
-            </div>
-            <h2 className="text-sm font-bold text-slate-900">{tl("Cambia password admin")}</h2>
+            <KeyRound className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-semibold text-slate-900">{tl("Cambia password admin")}</h2>
           </div>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-600 transition-colors">
+          <button onClick={onClose} className="text-slate-400 transition-colors hover:text-slate-700">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="space-y-4 px-5 py-5">
           {[
             { label: tl("Password attuale"), value: current, set: setCurrent, placeholder: '••••••••' },
             { label: tl("Nuova password"), value: next, set: setNext, placeholder: tl("min. 8 caratteri") },
             { label: tl("Conferma nuova password"), value: confirm, set: setConfirm, placeholder: '••••••••' },
           ].map(({ label, value, set, placeholder }) => (
             <div key={label}>
-              <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">{label}</label>
               <input
                 type="password"
                 value={value}
                 onChange={e => set(e.target.value)}
                 placeholder={placeholder}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-300"
+                className="w-full rounded-md border border-[#cfd4dc] px-3 py-2 text-sm focus:border-[var(--logo-violet-strong)] focus:outline-none focus:ring-2 focus:ring-[rgba(123,105,201,0.18)]"
               />
             </div>
           ))}
           {next && confirm && next !== confirm && (
-            <p className="text-xs text-red-500">{tl("Le password non corrispondono")}</p>
+            <p className="text-xs text-red-700">{tl("Le password non corrispondono")}</p>
           )}
-          <button
+          <Button
+            tone="accent"
+            surface="solid"
+            fullWidth
             onClick={() => mutation.mutate()}
             disabled={!canSubmit || mutation.isPending}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900"
           >
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {tl("Aggiorna password")}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -137,7 +155,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <AppBackground className="h-screen" gradient="#eef1f5">
+    <div className="admin-root h-screen">
       <div className="flex h-screen">
         <AdminSidebar
           expanded={sidebarExpanded}
@@ -150,7 +168,7 @@ export default function AdminDashboard() {
 
         {mobileSidebarOpen && (
           <div className="fixed inset-0 z-50 lg:hidden">
-            <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setMobileSidebarOpen(false)} />
+            <div className="absolute inset-0 bg-slate-950/35" onClick={() => setMobileSidebarOpen(false)} />
             <div className="absolute inset-y-0 left-0 w-[18rem] max-w-[calc(100vw-2rem)]">
               <AdminSidebar
                 expanded
@@ -166,7 +184,7 @@ export default function AdminDashboard() {
         )}
 
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-xl lg:hidden">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--admin-line)] bg-white px-4 lg:hidden">
             <IconButton
               tone="neutral"
               surface="outline"
@@ -179,12 +197,12 @@ export default function AdminDashboard() {
             <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-auto" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-950">{tl("Pannello admin")}</p>
-              <p className="text-[11px] text-slate-500">Golinelli.ai</p>
+              <p className="text-[11px] text-[var(--admin-ink-3)]">Golinelli.ai</p>
             </div>
           </header>
 
-          <main className="w-full flex-1 bg-[#eef1f5] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-            <div className="admin-shell mx-auto w-full max-w-[1500px] space-y-0">
+          <main className="w-full flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+            <div className="admin-shell mx-auto w-full max-w-[1440px] space-y-0">
               <Routes>
                 <Route index element={<AdminOverviewPage />} />
                 <Route path="schools" element={<SchoolsPage />} />
@@ -214,7 +232,7 @@ export default function AdminDashboard() {
       </div>
 
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
-    </AppBackground>
+    </div>
   )
 }
 
@@ -235,7 +253,7 @@ function AdminSidebar({
   onShowChangePassword: () => void
   onLogout: () => void
 }) {
-  const widthClass = expanded ? 'w-72' : 'w-[5.25rem]'
+  const widthClass = expanded ? 'w-60' : 'w-[4.25rem]'
   const { data: notifications } = useQuery({
     queryKey: ['admin-notifications'],
     queryFn: async () => (await adminApi.getNotifications()).data as { items: Record<string, { count: number; urgent: boolean }> },
@@ -243,116 +261,87 @@ function AdminSidebar({
     refetchOnWindowFocus: true,
   })
 
+  const renderItem = (item: NavItem) => {
+    const isActive = item.exact ? locationPath === item.path : locationPath.startsWith(item.path)
+    const count = notifications?.items[item.path]?.count ?? 0
+    return (
+      <button
+        key={item.path}
+        type="button"
+        onClick={() => onNavigate(item.path)}
+        aria-current={isActive ? 'page' : undefined}
+        className={`admin-nav-item relative flex h-9 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'}`}
+        title={item.label}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        {expanded && <span className="truncate">{item.label}</span>}
+        {count > 0 && (
+          <span
+            className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--logo-pink)] px-1 text-[10px] font-semibold text-white ${expanded ? 'ml-auto' : 'absolute right-0.5 top-0.5 h-4 min-w-4 text-[9px]'}`}
+            title={tl("Richiede attenzione")}
+          >
+            {count}
+          </span>
+        )}
+      </button>
+    )
+  }
+
   return (
     <aside
-      className={`${mobile ? 'flex' : 'sticky top-0 hidden lg:flex'} ${widthClass} h-screen shrink-0 flex-col border-r border-slate-800 bg-slate-950 shadow-xl transition-[width] duration-200`}
+      className={`admin-sidebar ${mobile ? 'flex' : 'sticky top-0 hidden lg:flex'} ${widthClass} h-screen shrink-0 flex-col transition-[width] duration-200`}
     >
-      <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-4">
+      <div className="flex h-14 items-center gap-2 border-b border-[var(--admin-line)] px-3">
         <button
           type="button"
           onClick={() => onNavigate('/admin')}
-          className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left ${expanded ? '' : 'justify-center'}`}
+          className={`flex min-w-0 flex-1 items-center gap-2.5 text-left ${expanded ? '' : 'justify-center'}`}
           title={tl("Pannello admin")}
         >
-          <img src="/logo_new.png" alt="Golinelli.ai" className={`${expanded ? 'h-8 w-auto' : 'h-8 w-8 object-contain'} shrink-0`} />
+          <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-7 shrink-0 object-contain" />
           {expanded && (
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-bold text-white">
-                  Golinelli<span className="text-[var(--logo-pink)]">.ai</span>
-                </span>
-                <span className="rounded-full border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">ADMIN</span>
-              </div>
-              <p className="truncate text-[11px] text-slate-400">{tl("Centro di controllo")}</p>
+            <div className="min-w-0 leading-tight">
+              <span className="block truncate text-sm font-semibold text-[var(--admin-ink)]">
+                Golinelli<span className="text-[var(--logo-pink)]">.ai</span>
+              </span>
+              <span className="block truncate text-[11px] text-[var(--admin-ink-3)]">{tl("Amministrazione")}</span>
             </div>
           )}
         </button>
-        <IconButton
-          tone="neutral"
-          surface="ghost"
-          size="sm"
-          onClick={onToggleExpanded}
-          title={mobile ? tl("Chiudi menu") : expanded ? tl("Mostra solo icone") : tl("Mostra titoli")}
-          className={expanded ? '' : 'hidden'}
-        >
-          {mobile ? <X className="h-4 w-4" /> : expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-        </IconButton>
+        {expanded && (
+          <IconButton
+            tone="neutral"
+            surface="ghost"
+            size="sm"
+            onClick={onToggleExpanded}
+            title={mobile ? tl("Chiudi menu") : tl("Mostra solo icone")}
+          >
+            {mobile ? <X className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </IconButton>
+        )}
       </div>
 
       {!expanded && !mobile && (
-        <div className="flex justify-center border-b border-slate-800 px-3 py-3">
-          <IconButton
-            tone="neutral"
-            surface="outline"
-            size="default"
-            onClick={onToggleExpanded}
-            title={tl("Mostra titoli")}
-          >
+        <div className="flex justify-center border-b border-[var(--admin-line)] py-2">
+          <IconButton tone="neutral" surface="ghost" size="sm" onClick={onToggleExpanded} title={tl("Mostra titoli")}>
             <PanelLeftOpen className="h-4 w-4" />
           </IconButton>
         </div>
       )}
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {navItems.map((item) => {
-          const isActive = item.exact
-            ? locationPath === item.path
-            : locationPath.startsWith(item.path)
-          return (
-            <button
-              key={item.path}
-              onClick={() => onNavigate(item.path)}
-              className={`group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-all ${
-                isActive
-                  ? 'text-white'
-                  : 'text-slate-400 hover:bg-slate-900 hover:text-white'
-              } ${expanded ? 'justify-start' : 'justify-center'}`}
-              title={item.label}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId={mobile ? 'admin-mobile-nav-indicator' : 'admin-sidebar-nav-indicator'}
-                  className="absolute inset-0 rounded-xl border border-pink-500/35 bg-pink-500/15 shadow-sm"
-                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                />
-              )}
-              <item.icon className="relative h-4 w-4 shrink-0" />
-              {expanded && <span className="relative truncate">{item.label}</span>}
-              {(notifications?.items[item.path]?.count ?? 0) > 0 && (
-                <span
-                  className={`relative ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-slate-950 ${expanded ? '' : 'absolute right-1 top-1 !ml-0 h-4 min-w-4 px-1 text-[9px]'}`}
-                  title={tl("Richiede attenzione")}
-                >
-                  {notifications!.items[item.path].count}
-                </span>
-              )}
-            </button>
-          )
-        })}
+      <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        {navGroups.map((group, index) => (
+          <div key={group.label} className={!expanded && index > 0 ? 'mt-2 border-t border-[var(--admin-line)] pt-2' : ''}>
+            {expanded ? <p className="admin-sidebar-section">{group.label}</p> : index === 0 && <div className="h-3" />}
+            <div className="space-y-0.5">{group.items.map(renderItem)}</div>
+          </div>
+        ))}
       </nav>
 
-      <div className="border-t border-slate-800 p-3">
-        <div className="space-y-1">
-          <SidebarAction
-            expanded={expanded}
-            icon={BookOpen}
-            label={tl("Pannello docente")}
-            onClick={() => onNavigate('/teacher')}
-          />
-          <SidebarAction
-            expanded={expanded}
-            icon={KeyRound}
-            label={tl("Cambia password")}
-            onClick={onShowChangePassword}
-          />
-          <SidebarAction
-            expanded={expanded}
-            icon={LogOut}
-            label={tl("Esci")}
-            onClick={onLogout}
-            danger
-          />
-        </div>
+      <div className="space-y-0.5 border-t border-[var(--admin-line)] p-3">
+        <SidebarAction expanded={expanded} icon={BookOpen} label={tl("Pannello docente")} onClick={() => onNavigate('/teacher')} />
+        <SidebarAction expanded={expanded} icon={KeyRound} label={tl("Cambia password")} onClick={onShowChangePassword} />
+        <SidebarAction expanded={expanded} icon={LogOut} label={tl("Esci")} onClick={onLogout} danger />
       </div>
     </aside>
   )
@@ -372,16 +361,14 @@ function SidebarAction({
   danger?: boolean
 }) {
   return (
-    <Button
-      tone={danger ? 'danger' : 'neutral'}
-      surface="ghost"
-      density="compact"
+    <button
+      type="button"
       onClick={onClick}
       title={label}
-      className={`h-10 w-full rounded-xl px-3 ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '' : 'text-slate-400 hover:text-white'}`}
+      className={`admin-nav-item flex h-9 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '!text-[var(--logo-pink)]' : ''}`}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      {expanded && <span className="truncate text-sm">{label}</span>}
-    </Button>
+      {expanded && <span className="truncate">{label}</span>}
+    </button>
   )
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Clock, Loader2, Search, ShieldCheck } from '@/components/icons'
+import { CheckCircle2, Clock, Loader2, Search } from '@/components/icons'
+import { AdminBadge, AdminEmpty, AdminPageHeader, AdminStat, AdminStatGrid } from '@/components/admin/AdminUI'
 import { adminApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
 import { LegalDocsManager } from './LegalDocsManager'
@@ -81,79 +82,72 @@ export default function LicensesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {tl("Licenze")}
-          </div>
-          <h1 className="text-2xl font-black text-slate-950">{tl("Consensi licenza docenti")}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            {tl("Stato delle accettazioni obbligatorie per Termini e licenza, AI Act DPIA e Privacy DPA.")}
-          </p>
-        </div>
+      <AdminPageHeader
+        eyebrow={tl("Licenze")}
+        title={tl("Consensi licenza docenti")}
+        description={tl("Stato delle accettazioni obbligatorie per Termini e licenza, AI Act DPIA e Privacy DPA.")}
+      />
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Metric label={tl("Docenti")} value={items.length} />
-          <Metric label={tl("Licenza accettata")} value={licenseAcceptedCount} />
-          <Metric label={tl("Completati")} value={completeCount} />
-        </div>
-      </div>
+      <AdminStatGrid className="!grid-cols-1 sm:!grid-cols-3">
+        <AdminStat label={tl("Docenti")} value={items.length} />
+        <AdminStat label={tl("Licenza accettata")} value={licenseAcceptedCount} />
+        <AdminStat label={tl("Completati")} value={completeCount} />
+      </AdminStatGrid>
 
       <LegalDocsManager />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="admin-panel flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={tl("Cerca docente, email o istituto")}
-            className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
+            className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white pl-9 pr-3 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
           />
         </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--admin-ink-2)]">
           <input
             type="checkbox"
             checked={onlyLicenseAccepted}
             onChange={(event) => setOnlyLicenseAccepted(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
+            className="h-4 w-4 rounded border-slate-300 accent-[var(--admin-accent)]"
           />
           {tl("Solo licenza accettata")}
         </label>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="admin-panel">
         {isLoading ? (
           <div className="flex h-48 items-center justify-center text-sm text-slate-500">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             {tl("Caricamento consensi")}
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">{tl("Nessun docente trovato")}</div>
+          <AdminEmpty>{tl("Nessun docente trovato")}</AdminEmpty>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 font-bold">{tl("Docente")}</th>
-                  <th className="px-4 py-3 font-bold">{tl("Ultimo accesso")}</th>
+                  <th>{tl("Docente")}</th>
+                  <th>{tl("Ultimo accesso")}</th>
                   {(data?.required_documents || []).map((doc) => (
-                    <th key={doc.key} className="px-4 py-3 font-bold">{doc.title}</th>
+                    <th key={doc.key}>{doc.title}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {filteredItems.map((item) => (
-                  <tr key={item.teacher.id} className="hover:bg-slate-50/80">
-                    <td className="px-4 py-4">
+                  <tr key={item.teacher.id}>
+                    <td>
                       <p className="font-semibold text-slate-900">{teacherName(item)}</p>
                       <p className="text-xs text-slate-500">{item.teacher.email || '—'}</p>
                       <p className="text-xs text-slate-400">{item.teacher.institution || '—'}</p>
                     </td>
-                    <td className="px-4 py-4 text-slate-600">{formatDateTime(item.teacher.last_login_at)}</td>
+                    <td className="nowrap text-slate-600">{formatDateTime(item.teacher.last_login_at)}</td>
                     {item.acceptances.map((acceptance) => (
-                      <td key={acceptance.document_key} className="px-4 py-4">
+                      <td key={acceptance.document_key}>
                         <StatusPill acceptedAt={acceptance.accepted_at} />
                         <p className="mt-1 text-xs text-slate-500">{formatDateTime(acceptance.accepted_at)}</p>
                       </td>
@@ -169,28 +163,10 @@ export default function LicensesPage() {
   )
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
-    </div>
-  )
-}
-
 function StatusPill({ acceptedAt }: { acceptedAt?: string | null }) {
-  if (acceptedAt) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        {tl("Accettato")}
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-      <Clock className="h-3.5 w-3.5" />
-      {tl("In attesa")}
-    </span>
+  return acceptedAt ? (
+    <AdminBadge tone="success"><CheckCircle2 className="h-3 w-3" />{tl("Accettato")}</AdminBadge>
+  ) : (
+    <AdminBadge tone="warning"><Clock className="h-3 w-3" />{tl("In attesa")}</AdminBadge>
   )
 }

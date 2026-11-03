@@ -1,3 +1,4 @@
+import { storedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Check, GitCompare, History, Loader2, Send, X } from '@/components/icons'
 import { Textarea } from '@/design/primitives/Textarea'
@@ -415,7 +416,7 @@ export default function NotebookMicrobitAgentChat({
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput }),
+      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput, ...storedModelChoice('notebook') }),
     })
     if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
     if (!response.ok || !response.body) throw new Error(tl("stream non partito"))

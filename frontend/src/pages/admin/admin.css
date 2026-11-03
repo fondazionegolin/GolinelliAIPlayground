@@ -1,15 +1,85 @@
 /*
- * Shared polish for every admin section: readable tables, numbers that never collide, long values that wrap
- * instead of overflowing their card. Scoped to the admin shell so the rest of the platform is untouched.
+ * Admin panel look: a rigid, low-colour frame on top of the platform tokens. Ink and hairlines carry the
+ * structure; the platform accent (violet) marks actions and selection; green / amber / red only mark state.
+ * Scoped to the admin shell so the rest of the platform is untouched.
  */
-.admin-shell { overflow-wrap: anywhere; }
+.admin-root {
+  --admin-canvas: #f4f5f7;
+  --admin-surface: #ffffff;
+  --admin-surface-2: #f8f9fb;
+  --admin-line: #e2e5ea;
+  --admin-line-strong: #cfd4dc;
+  --admin-ink: #17151b;
+  --admin-ink-2: #4b4f58;
+  --admin-ink-3: #7b808a;
+  --admin-accent: var(--logo-violet-strong);
+  --admin-accent-soft: rgba(123, 105, 201, 0.09);
+  --admin-radius: 0.625rem;
+  /* Cards from the design system follow the admin radius here. */
+  --card-radius: var(--admin-radius);
+  background: var(--admin-canvas);
+  color: var(--admin-ink);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.admin-sidebar { background: var(--admin-surface); border-right: 1px solid var(--admin-line); }
+.admin-sidebar-section { padding: 0 .75rem; margin: 1rem 0 .35rem; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--admin-ink-3); }
+.admin-nav-item { color: var(--admin-ink-2); border-radius: .5rem; }
+.admin-nav-item:hover { background: var(--admin-surface-2); color: var(--admin-ink); }
+.admin-nav-item[aria-current="page"] { background: var(--admin-accent-soft); color: var(--admin-accent); font-weight: 600; }
+.admin-nav-item[aria-current="page"]::before { content: ""; position: absolute; left: -.75rem; top: .5rem; bottom: .5rem; width: 3px; border-radius: 0 3px 3px 0; background: var(--admin-accent); }
+
+/* ── Page building blocks (components/admin/AdminUI.tsx) ───────
+   Zero specificity via :where() so Tailwind utilities on the same element always win. */
+:where(.admin-page-header) { border-bottom: 1px solid var(--admin-line); margin-bottom: 1.25rem; }
+:where(.admin-eyebrow) { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--admin-ink-3); }
+:where(.admin-panel) { background: var(--admin-surface); border: 1px solid var(--admin-line); border-radius: var(--admin-radius); overflow: hidden; }
+:where(.admin-panel-head) { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--admin-line); background: var(--admin-surface-2); }
+:where(.admin-stat-grid) { gap: 0; background: var(--admin-surface); border: 1px solid var(--admin-line); border-radius: var(--admin-radius); overflow: hidden; }
+:where(.admin-stat) { padding: 1rem 1.1rem; box-shadow: -1px 0 0 var(--admin-line), 0 -1px 0 var(--admin-line); min-width: 0; }
+:where(.admin-notice) { display: flex; align-items: flex-start; gap: .75rem; padding: .75rem 1rem; border: 1px solid var(--admin-line); border-left-width: 3px; border-radius: var(--admin-radius); background: var(--admin-surface); color: var(--admin-ink); }
+:where(.admin-notice-info) { border-left-color: var(--admin-accent); }
+:where(.admin-notice-info > svg) { color: var(--admin-accent); }
+:where(.admin-notice-success) { border-left-color: #15803d; }
+:where(.admin-notice-success > svg) { color: #15803d; }
+:where(.admin-notice-warning) { border-left-color: #b45309; background: #fffbf3; }
+:where(.admin-notice-warning > svg) { color: #b45309; }
+:where(.admin-notice-danger) { border-left-color: #b91c1c; background: #fff7f7; }
+:where(.admin-notice-danger > svg) { color: #b91c1c; }
+:where(.admin-tabs) { display: inline-flex; gap: .25rem; padding: .2rem; border: 1px solid var(--admin-line); border-radius: .5rem; background: var(--admin-surface); }
+:where(.admin-tab) { height: 1.85rem; padding: 0 .85rem; border-radius: .35rem; font-size: 12.5px; font-weight: 500; color: var(--admin-ink-2); transition: background-color 120ms ease, color 120ms ease; }
+:where(.admin-tab:hover) { color: var(--admin-ink); background: var(--admin-surface-2); }
+:where(.admin-tab[aria-selected="true"]) { background: var(--admin-accent-soft); color: var(--admin-accent); font-weight: 600; }
+:where(.admin-badge) {display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; border-radius: .375rem; padding: .125rem .45rem; font-size: 11px; font-weight: 600; line-height: 1.35; border: 1px solid transparent; }
+:where(.admin-badge-neutral) { background: #f1f2f4; color: var(--admin-ink-2); border-color: var(--admin-line); }
+:where(.admin-badge-accent) { background: var(--admin-accent-soft); color: var(--admin-accent); border-color: rgba(85, 68, 156, .18); }
+:where(.admin-badge-success) { background: #f0faf3; color: #166534; border-color: #c9e8d3; }
+:where(.admin-badge-warning) { background: #fff8eb; color: #92400e; border-color: #f3dcb0; }
+:where(.admin-badge-danger) { background: #fef2f2; color: #991b1b; border-color: #f5caca; }
+
+/* ── Normalisation of existing page markup ───────────────── */
+.admin-shell { overflow-wrap: anywhere; color: var(--admin-ink); }
+/* Design-system cards: flat white with a hairline instead of floating shadows. */
+.admin-shell .rounded-\[var\(--card-radius\)\] { background: var(--admin-surface) !important; background-image: none !important; box-shadow: 0 0 0 1px var(--admin-line) !important; }
+/* Legacy rounded containers drawn by hand get the same tight radius. */
+.admin-shell .rounded-2xl, .admin-shell .rounded-3xl { border-radius: var(--admin-radius); }
+.admin-shell .shadow-lg, .admin-shell .shadow-xl, .admin-shell .shadow-md { box-shadow: 0 1px 2px rgba(23, 21, 27, .06); }
+/* Muted greys read too faint on white: lift them one step for contrast. */
+.admin-shell .text-slate-400 { color: var(--admin-ink-3); }
+.admin-shell .text-slate-500 { color: #5f6470; }
+.admin-shell .border-slate-100 { border-color: #eceef1; }
+.admin-shell .border-slate-200 { border-color: var(--admin-line); }
+
+/* ── Tables ──────────────────────────────────────────────── */
 .admin-shell table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.admin-shell th { white-space: nowrap; vertical-align: bottom; font-weight: 600; letter-spacing: .01em; }
-.admin-shell td { vertical-align: middle; line-height: 1.4; }
-.admin-shell th, .admin-shell td { padding-top: .7rem; padding-bottom: .7rem; padding-inline: .85rem; }
+.admin-shell thead th { background: var(--admin-surface-2); color: var(--admin-ink-2) !important; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--admin-line-strong); }
+.admin-shell th { white-space: nowrap; vertical-align: bottom; text-align: left; }
+.admin-shell td { vertical-align: middle; line-height: 1.4; color: var(--admin-ink); }
+.admin-shell th, .admin-shell td { padding-top: .65rem; padding-bottom: .65rem; padding-inline: .85rem; }
 .admin-shell th:first-child, .admin-shell td:first-child { padding-left: 1rem; }
 .admin-shell th:last-child, .admin-shell td:last-child { padding-right: 1rem; }
-.admin-shell tbody tr + tr td { border-top: 1px solid rgb(226 232 240 / .8); }
+.admin-shell tbody tr + tr td { border-top: 1px solid #eceef1; }
+.admin-shell tbody tr:hover td { background: #fafbfc; }
 /* Digits line up in columns and keep their width while they change. */
 .admin-shell td, .admin-shell .tabular-nums, .admin-shell [class*="text-2xl"], .admin-shell [class*="text-3xl"] { font-variant-numeric: tabular-nums; }
 /* Big figures inside cards: shrink instead of spilling out of a narrow card. */

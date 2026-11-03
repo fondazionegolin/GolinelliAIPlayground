@@ -1,3 +1,7 @@
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
@@ -461,12 +465,12 @@ function CitedContent({
         return (
           <ReactMarkdown
             key={i}
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
             components={{
               p: ({ children }) => <span>{children}</span>,
             }}
           >
-            {seg.content}
+            {normalizeMathMarkdown(seg.content)}
           </ReactMarkdown>
         )
       })}

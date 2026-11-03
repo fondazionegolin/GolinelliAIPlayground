@@ -28,7 +28,7 @@ def default_model_for(provider: Optional[str] = None) -> str:
     """Default chat model of ``provider`` (the platform default, set by the admin, when the provider is the default one)."""
     if provider in (None, "", settings.DEFAULT_LLM_PROVIDER):
         return settings.DEFAULT_LLM_MODEL
-    return {"openai": DEFAULT_OPENAI_CHAT_MODEL, "anthropic": "claude-haiku-4-5-20251001", "deepseek": "deepseek-v4-flash"}.get(provider, settings.DEFAULT_LLM_MODEL)
+    return {"openai": DEFAULT_OPENAI_CHAT_MODEL, "anthropic": "claude-haiku-4-5-20251001", "deepseek": "deepseek-v4-flash", "openrouter": settings.OPENROUTER_DEFAULT_MODEL}.get(provider, settings.DEFAULT_LLM_MODEL)
 
 
 def normalize_llm_model(provider: Optional[str], model: Optional[str]) -> Optional[str]:
@@ -143,6 +143,10 @@ class LLMService:
         self.openai_client = None
         self.anthropic_client = None
         self.deepseek_client = None
+        self.openrouter_client = None
+        if settings.OPENROUTER_API_KEY:
+            from app.services.openrouter import BASE_URL
+            self.openrouter_client = AsyncOpenAI(api_key=settings.OPENROUTER_API_KEY, base_url=BASE_URL)
         
         if settings.OPENAI_API_KEY:
             self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -176,7 +180,7 @@ class LLMService:
     ) -> LLMResponse:
         """``anthropic_options`` (e.g. ``thinking``, ``output_config``) is forwarded to Anthropic only."""
         provider = provider or settings.DEFAULT_LLM_PROVIDER
-        model = model or settings.DEFAULT_LLM_MODEL
+        model = model or default_model_for(provider)
         model = normalize_llm_model(provider, model) or model
         use_web_search = allow_web_search and _needs_web_search(messages)
         if use_web_search:
@@ -191,6 +195,8 @@ class LLMService:
             return await self._generate_deepseek(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "gemini":
             return await self._generate_gemini(messages, system_prompt, model, temperature, max_tokens)
+        elif provider == "openrouter":
+            return await self._generate_openrouter(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "ollama":
             return await self._generate_ollama(messages, system_prompt, model, temperature, max_tokens)
         else:
@@ -409,6 +415,34 @@ class LLMService:
             completion_tokens=usage.completion_tokens if usage else 0,
         )
 
+    async def _generate_openrouter(self, messages, system_prompt, model, temperature, max_tokens) -> LLMResponse:
+        if not self.openrouter_client:
+            raise RuntimeError("OPENROUTER_API_KEY non configurata nel file .env")
+        formatted = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + messages
+        response = await self.openrouter_client.chat.completions.create(
+            model=model, messages=formatted, temperature=temperature, max_tokens=max_tokens,
+        )
+        if not response.choices or not response.choices[0].message.content:
+            raise RuntimeError("OpenRouter non ha restituito una risposta testuale")
+        usage = response.usage
+        return LLMResponse(content=response.choices[0].message.content, provider="openrouter", model=model,
+                           prompt_tokens=usage.prompt_tokens if usage else 0,
+                           completion_tokens=usage.completion_tokens if usage else 0)
+
+    async def _stream_openrouter(self, messages, system_prompt, model, temperature, max_tokens):
+        if not self.openrouter_client:
+            raise RuntimeError("OPENROUTER_API_KEY non configurata nel file .env")
+        formatted = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + messages
+        stream = await self.openrouter_client.chat.completions.create(
+            model=model, messages=formatted, temperature=temperature, max_tokens=max_tokens, stream=True,
+        )
+        try:
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        finally:
+            await stream.close()
+
     async def _resolve_ollama_model_name(self, model: str) -> str:
         """Resolve short model aliases (e.g. mistral-nemo) to installed Ollama tags."""
         try:
@@ -457,7 +491,7 @@ class LLMService:
         thinking text (DeepSeek reasoning models) so callers can show progress during long,
         otherwise silent thinking phases."""
         provider = provider or settings.DEFAULT_LLM_PROVIDER
-        model = model or settings.DEFAULT_LLM_MODEL
+        model = model or default_model_for(provider)
         use_web_search = allow_web_search and _needs_web_search(messages)
         if use_web_search:
             logger.info("Web search enabled (stream) for %s/%s", provider, model)
@@ -473,6 +507,9 @@ class LLMService:
                 yield chunk
         elif provider == "gemini":
             async for chunk in self._stream_gemini(messages, system_prompt, model, temperature, max_tokens):
+                yield chunk
+        elif provider == "openrouter":
+            async for chunk in self._stream_openrouter(messages, system_prompt, model, temperature, max_tokens):
                 yield chunk
         else:
             response = await self.generate(messages, system_prompt, provider, model, temperature, max_tokens)

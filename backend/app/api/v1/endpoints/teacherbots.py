@@ -1,5 +1,7 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
-from app.services import model_roles
+from app.services import model_roles, default_teacherbots
+from app.models.llm import TeacherConversation, TeacherConversationMessage
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -46,9 +48,11 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
+from app.services.spreadsheet_attachments import is_excel, extract_excel_text
+from app.services.model_selection import validate_selection
 from app.services.pii_anonymizer import anonymize_text_async
 from app.core.config import settings
-from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail
+from app.services.chat_attachments import route_image_intent, save_image_thumbnail, save_document_thumbnail, message_with_attachment_context
 from app.services.web_search_service import augment_chat_messages_with_urls
 from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
 from app.services.teacherbot_escape_room import answers_match, generate_plan, judge_semantic_answer, public_state
@@ -117,6 +121,11 @@ def _join_chunks(chunks: list) -> str:
 async def _build_kb_context(db: AsyncSession, bot: "Teacherbot", query: str, tenant_id: UUID) -> str:
     """Return the KB block for the bot's system prompt (whole documents when they fit), or ''."""
     try:
+        if bot.tenant_id != tenant_id:
+            shared = (await default_teacherbots.settings(db))
+            if str(bot.id) in shared["student"] or str(bot.id) in shared["teacher"]:
+                tenant_id = bot.tenant_id
+
         # Use a savepoint so a search failure doesn't abort the outer transaction
         async with db.begin_nested():
             documents = await rag_service.get_teacherbot_kb_documents(db, teacherbot_id=bot.id, tenant_id=tenant_id)
@@ -161,6 +170,74 @@ def _enforce_mode_exclusivity(bot: Teacherbot) -> None:
     elif bot.enable_escape_room:
         bot.enable_live_voice = False
         bot.is_proactive = False
+
+
+@router.get("/teacher/teacherbots/defaults")
+async def teacher_starter_bots(db: Annotated[AsyncSession, Depends(get_db)], teacher: Annotated[User, Depends(get_current_teacher)]):
+    return [default_teacherbots.public_info(bot) for bot in await default_teacherbots.list_bots(db, "teacher")]
+
+
+@router.get("/teacher/teacherbots/{teacherbot_id}/chat-info")
+async def teacherbot_chat_info(teacherbot_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], teacher: Annotated[User, Depends(get_current_teacher)]):
+    bot = await db.scalar(select(Teacherbot).where(Teacherbot.id == teacherbot_id, Teacherbot.teacher_id == teacher.id))
+    if not bot:
+        bot = next((candidate for candidate in await default_teacherbots.list_bots(db, "teacher") if candidate.id == teacherbot_id), None)
+    if not bot:
+        raise HTTPException(404, "Teacherbot non disponibile")
+    return default_teacherbots.public_info(bot)
+
+
+class TeacherStarterMessage(BaseModel):
+    content: str
+    conversation_id: Optional[UUID] = None
+
+
+@router.get("/teacher/teacherbots/{teacherbot_id}/chat")
+async def starter_chat_history(teacherbot_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], teacher: Annotated[User, Depends(get_current_teacher)]):
+    await teacherbot_chat_info(teacherbot_id, db, teacher)
+    conversation = await db.scalar(select(TeacherConversation).where(
+        TeacherConversation.teacher_id == teacher.id, TeacherConversation.tenant_id == teacher.tenant_id,
+        TeacherConversation.agent_mode == f"teacherbot:{teacherbot_id}").order_by(TeacherConversation.updated_at.desc()).limit(1))
+    if not conversation:
+        return {"conversation_id": None, "messages": []}
+    messages = (await db.execute(select(TeacherConversationMessage).where(TeacherConversationMessage.conversation_id == conversation.id)
+        .order_by(TeacherConversationMessage.created_at, TeacherConversationMessage.id))).scalars().all()
+    return {"conversation_id": str(conversation.id), "messages": [{"id": str(m.id), "role": m.role, "content": m.content,
+        "provider": m.provider, "model": m.model, "timestamp": m.created_at.isoformat(),
+        "token_usage_json": (m.attachments_json or {}).get("token_usage_json")} for m in messages]}
+
+
+@router.post("/teacher/teacherbots/{teacherbot_id}/chat")
+async def starter_chat_message(teacherbot_id: UUID, body: TeacherStarterMessage, http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)], teacher: Annotated[User, Depends(get_current_teacher)]):
+    info = await teacherbot_chat_info(teacherbot_id, db, teacher)
+    if not body.content.strip() or len(body.content) > 20000:
+        raise HTTPException(422, "Inserisci un messaggio da 1 a 20000 caratteri")
+    conversation = None
+    if body.conversation_id:
+        conversation = await db.scalar(select(TeacherConversation).where(TeacherConversation.id == body.conversation_id,
+            TeacherConversation.teacher_id == teacher.id, TeacherConversation.tenant_id == teacher.tenant_id,
+            TeacherConversation.agent_mode == f"teacherbot:{teacherbot_id}"))
+        if not conversation:
+            raise HTTPException(404, "Conversazione non trovata")
+    else:
+        conversation = TeacherConversation(tenant_id=teacher.tenant_id, teacher_id=teacher.id,
+            title=f"{info['name']} · {body.content[:100]}", agent_mode=f"teacherbot:{teacherbot_id}")
+        db.add(conversation)
+        await db.flush()
+    history = (await db.execute(select(TeacherConversationMessage).where(TeacherConversationMessage.conversation_id == conversation.id)
+        .order_by(TeacherConversationMessage.created_at, TeacherConversationMessage.id))).scalars().all()
+    history_data = [{"role": row.role, "content": row.content or ""} for row in history[-40:]]
+    db.add(TeacherConversationMessage(tenant_id=teacher.tenant_id, conversation_id=conversation.id, role="user", content=body.content))
+    conversation.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    result = await test_teacherbot(teacherbot_id, TeacherbotTestMessage(content=body.content, history=history_data), http_request, db, teacher)
+    data = result.model_dump() if hasattr(result, "model_dump") else result
+    db.add(TeacherConversationMessage(tenant_id=teacher.tenant_id, conversation_id=conversation.id, role="assistant",
+        content=data["content"], provider=data["provider"], model=data["model"], attachments_json={"token_usage_json": data.get("token_usage_json")}))
+    conversation.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {**data, "conversation_id": str(conversation.id)}
 
 
 @router.get("/teacherbots", response_model=list[TeacherbotListResponse])
@@ -464,6 +541,12 @@ async def test_teacherbot(
     )
     bot = result.scalar_one_or_none()
     if not bot:
+        bot = next((candidate for candidate in await default_teacherbots.list_bots(db, "teacher") if candidate.id == teacherbot_id), None)
+        if bot and (request.llm_provider or request.llm_model):
+            await validate_selection(db, request.llm_provider, request.llm_model)
+        if bot and any(value is not None for value in (request.system_prompt, request.temperature)):
+            raise HTTPException(422, "La configurazione del teacherbot predefinito è gestita dall'amministratore")
+    if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
     # Check credits (Teacher level)
@@ -487,6 +570,7 @@ async def test_teacherbot(
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
 
     # Call LLM
     llm_response = await llm_service.generate(
@@ -515,7 +599,7 @@ async def test_teacherbot(
     )
 
     # Mark as testing if still draft
-    if bot.status == TeacherbotStatus.DRAFT:
+    if bot.teacher_id == teacher.id and bot.status == TeacherbotStatus.DRAFT:
         bot.status = TeacherbotStatus.TESTING
         await db.commit()
 
@@ -1315,6 +1399,7 @@ async def test_studentbot(
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
     llm_response = await llm_service.generate(
         messages=messages,
         system_prompt=system_prompt,
@@ -1474,7 +1559,8 @@ async def list_available_teacherbots(
         .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
     )
     own_bots = own_result.scalars().all()
-    bots = list({bot.id: bot for bot in [*published_bots, *own_bots]}.values())
+    defaults = await default_teacherbots.list_bots(db, "student")
+    bots = list({bot.id: bot for bot in [*defaults, *published_bots, *own_bots]}.values())
 
     return [
         StudentTeacherbotResponse(
@@ -1516,6 +1602,8 @@ async def start_teacherbot_conversation(
         .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
     )
     bot = own_result.scalar_one_or_none()
+    if not bot:
+        bot = next((candidate for candidate in await default_teacherbots.list_bots(db, "student") if candidate.id == teacherbot_id), None)
     if not bot:
         result = await db.execute(
         select(Teacherbot)
@@ -1944,6 +2032,9 @@ async def send_teacherbot_message(
             detail="Usa il terminale escape room per questa conversazione.",
         )
 
+    selection = await validate_selection(db, request.llm_provider, request.llm_model)
+    chat_provider, chat_model = selection or (bot.llm_provider, bot.llm_model)
+
     # Save user message
     user_msg = TeacherbotMessage(
         tenant_id=student.tenant_id,
@@ -1963,7 +2054,7 @@ async def send_teacherbot_message(
         .order_by(*teacherbot_message_order())
     )
     history = result.scalars().all()
-    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+    messages = [{"role": msg.role, "content": message_with_attachment_context(msg)} for msg in history]
     
     # Augment with KB context if the bot has a knowledge base
     kb_context = await _build_kb_context(db, bot, request.content, student.tenant_id)
@@ -1972,13 +2063,14 @@ async def send_teacherbot_message(
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
 
     # history already includes user_msg because of db.add and flush
     llm_response = await llm_service.generate(
         messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
-        provider=bot.llm_provider,
-        model=bot.llm_model,
+        provider=chat_provider,
+        model=chat_model,
         temperature=bot.temperature,
     )
 
@@ -2036,6 +2128,8 @@ async def send_teacherbot_message_with_files(
     student: Annotated[SessionStudent, Depends(get_current_student)],
     content: str = Form(""),
     files: List[UploadFile] = File(default=[]),
+    llm_provider: Optional[str] = Form(None),
+    llm_model: Optional[str] = Form(None),
 ):
     """Send a message with file attachments to a teacherbot conversation"""
     # Verify ownership
@@ -2086,6 +2180,9 @@ async def send_teacherbot_message_with_files(
             detail="Gli allegati non sono disponibili nella modalità escape room.",
         )
 
+    selection = await validate_selection(db, llm_provider, llm_model)
+    chat_provider, chat_model = selection or (bot.llm_provider, bot.llm_model)
+
     # Process attached files
     file_contents = []
     for file in files:
@@ -2098,7 +2195,12 @@ async def send_teacherbot_message_with_files(
         
         # Extract text content based on file type
         extracted_text = ""
-        if mime_type.startswith("text/") or filename.endswith((".txt", ".md", ".csv", ".py", ".js", ".ts", ".html", ".css", ".json")):
+        if is_excel(filename, mime_type):
+            try:
+                extracted_text = await asyncio.to_thread(extract_excel_text, file_data)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        elif mime_type.startswith("text/") or filename.endswith((".txt", ".md", ".csv", ".py", ".js", ".ts", ".html", ".css", ".json")):
             try:
                 extracted_text = file_data.decode("utf-8")
             except:
@@ -2205,7 +2307,7 @@ async def send_teacherbot_message_with_files(
         conversation_id=conversation_id,
         role="user",
         content=stored_content,
-        attachments_json=[{"filename": fc["filename"], "mime_type": fc["mime_type"], "url": fc["url"]} for fc in file_contents],
+        attachments_json=[{"filename": fc["filename"], "mime_type": fc["mime_type"], "url": fc["url"], "extracted_text": fc["content"]} for fc in file_contents],
     )
     db.add(user_msg)
     conv.updated_at = datetime.now(timezone.utc)
@@ -2225,7 +2327,7 @@ async def send_teacherbot_message_with_files(
     for msg in history:
         messages.append({
             "role": msg.role,
-            "content": msg.content or "",
+            "content": message_with_attachment_context(msg),
         })
     
     # history already includes user_msg because of db.add and flush
@@ -2342,13 +2444,14 @@ async def send_teacherbot_message_with_files(
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
 
     # Generate response
     llm_response = await llm_service.generate(
         messages=await augment_chat_messages_with_urls(messages),
         system_prompt=system_prompt,
-        provider=bot.llm_provider,
-        model=bot.llm_model,
+        provider=chat_provider,
+        model=chat_model,
         temperature=bot.temperature,
     )
     
@@ -2941,13 +3044,14 @@ async def send_public_teacherbot_message(
         .order_by(TeacherbotShareMessage.created_at.asc())
     )
     history = result.scalars().all()
-    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+    messages = [{"role": msg.role, "content": message_with_attachment_context(msg)} for msg in history]
 
     kb_context = await _build_kb_context(db, bot, request.content, link.tenant_id)
     system_prompt = bot.system_prompt
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
 
     llm_response = await llm_service.generate(
         messages=await augment_chat_messages_with_urls(messages),
@@ -3002,6 +3106,11 @@ def _extract_public_attachment_text(filename: str, mime_type: str, file_data: by
     """Text extraction for public share-link attachments. Deliberately narrower than the
     authenticated student path: no vision/image analysis and no image-generation trigger, since
     anonymous visitors have no per-user credit ledger to bound that cost against."""
+    if is_excel(filename, mime_type):
+        try:
+            return extract_excel_text(file_data)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if mime_type.startswith("text/") or filename.endswith((".txt", ".md", ".csv", ".py", ".js", ".ts", ".html", ".css", ".json")):
         try:
             return file_data.decode("utf-8")
@@ -3093,7 +3202,7 @@ async def send_public_teacherbot_message_with_files(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{file.filename}: massimo 8MB per allegato")
         filename = file.filename or "unknown"
         mime_type = file.content_type or "application/octet-stream"
-        extracted = _extract_public_attachment_text(filename, mime_type, file_data)
+        extracted = await asyncio.to_thread(_extract_public_attachment_text, filename, mime_type, file_data)
         extracted = (await anonymize_text_async(extracted[:60000])).text
         file_contents.append({"filename": filename, "mime_type": mime_type, "content": extracted[:20000]})
 
@@ -3120,7 +3229,7 @@ async def send_public_teacherbot_message_with_files(
         .order_by(TeacherbotShareMessage.created_at.asc())
     )
     history = result.scalars().all()
-    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+    messages = [{"role": msg.role, "content": message_with_attachment_context(msg)} for msg in history]
     if messages:
         messages[-1]["content"] = full_content
 
@@ -3129,6 +3238,7 @@ async def send_public_teacherbot_message_with_files(
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    system_prompt += "\n\nPer le formule matematiche usa LaTeX: $...$ nel testo e $$ su righe separate per le equazioni in blocco. Non racchiudere le formule in blocchi di codice."
 
     llm_response = await llm_service.generate(
         messages=await augment_chat_messages_with_urls(messages),

@@ -1,3 +1,8 @@
+import { teacherbotsApi } from '@/lib/api'
+import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
+import { clipboardFiles } from '@/lib/clipboardFiles'
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { PodcastPanel } from '@/components/chat/PodcastPanel'
 import { isPodcastRequest, podcastApi, type PodcastState, type PodcastMessage } from '@/lib/podcasts'
 import { isDeepResearchRequest } from '@/lib/research'
@@ -18,7 +23,7 @@ import { GenerationProgressCard, type GenerationProgress } from '@/components/ch
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
-  Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
+  Send, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Headphones, Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
   Video, ScanText, Youtube, PanelRightClose, Square, History, Brain, Globe
@@ -65,11 +70,6 @@ import { SidebarCollapseButton, SidebarRail } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
 
 // Constants
-const FALLBACK_MODELS = [
-  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', provider: 'openai' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-  { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
-]
 
 const AGENT_MODES = [
   { id: 'default', label: tl("Chat") },
@@ -497,7 +497,7 @@ const REPORT_TYPE_OPTIONS = [
 
 
 
-export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = false, dockArmed = false }: { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }) {
+function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dockArmed = false }: { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -524,7 +524,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [pickedModel, setSelectedModel] = useState<string | null>(null)
   const [pinnedModel, setPinnedModel] = useState<string | null>(() =>
     localStorage.getItem('default_model_pinned') === '1' ? localStorage.getItem('default_model') : null)
-  const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -575,7 +574,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [researchRun, setResearchRun] = useState<ResearchRun>(EMPTY_RESEARCH_RUN)
   const [researchRunConv, setResearchRunConv] = useState<string | null>(null)
   const researchJobIdRef = useRef<string | null>(null)
-  const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const linkModalRef = useRef<HTMLDivElement>(null)
   const [attachedYoutube, setAttachedYoutube] = useState<AttachedYouTube | null>(null)
@@ -587,7 +585,8 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
     queryFn: () => llmApi.getAvailableModels(),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
   const teacherProfileData = useTeacherProfile().data
   const availableModels = useMemo<AvailableModel[]>(() => {
@@ -599,8 +598,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         provider: m.provider,
       }))
 
-    if (modelsFromApi.length > 0) return modelsFromApi
-    return FALLBACK_MODELS
+    return modelsFromApi
   }, [availableModelsResponse])
   const accentTheme = useMemo(
     () => getTeacherAccentTheme(teacherProfileData?.uiAccent || DEFAULT_TEACHER_ACCENT),
@@ -660,14 +658,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
   const platformDefaultModel = availableModelsResponse?.data?.default_model as string | undefined
   const listed = (id?: string | null) => (id && availableModels.some(m => m.id === id) ? id : null)
-  const defaultModel = listed(pinnedModel) ?? listed(platformDefaultModel) ?? availableModels[0]?.id ?? FALLBACK_MODELS[0].id
+  const defaultModel = listed(pinnedModel) ?? listed(platformDefaultModel) ?? availableModels[0]?.id ?? ''
   const selectedModel = listed(pickedModel) ?? defaultModel
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
-        setShowModelMenu(false)
-      }
+
       if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
         setShowModeMenu(false)
       }
@@ -692,21 +688,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       description: t('teacher_chat.default_model_now', { model: availableModels.find(m => m.id === id)?.name })
     })
   }
-
-  // Model Icons Components
-  const ModelIcon = ({ provider, modelId: _modelId, className = "h-4 w-4" }: { provider: string, modelId?: string, className?: string }) => {
-    if (provider === 'openai') {
-      return <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className={className} style={{ objectFit: 'contain' }} />
-    }
-    if (provider === 'anthropic') {
-      return <img src="/icone_ai/anthropic.svg" alt="Anthropic" className={className} style={{ objectFit: 'contain' }} />
-    }
-    if (provider === 'deepseek') {
-      return <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className={className} style={{ objectFit: 'contain' }} />
-    }
-    return <Bot className={className} />
-  }
-
 
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
   const [genProgress, setGenProgress] = useState<GenerationProgress | null>(null)
@@ -1191,12 +1172,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     if (e.target.files) addFiles(Array.from(e.target.files))
   }
 
-  const handleInputPaste = (e: React.ClipboardEvent) => {
-    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
-    if (fileItems.length === 0) return
-    e.preventDefault()
-    const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as globalThis.File[]
-    if (files.length > 0) addFiles(files)
+  const handleInputPaste = (event: React.ClipboardEvent) => {
+    const files = clipboardFiles(event.clipboardData)
+    if (!files.length) return
+    event.preventDefault()
+    addFiles(files)
   }
 
   const extractYouTubeId = (url: string): string | null => {
@@ -3628,76 +3608,13 @@ REGOLE IMPORTANTI:
                           </div>
                         ) : (
                           (sidebarMode || agentMode !== 'image') && (
-                            <div className="relative" ref={modelMenuRef}>
-                              <button
-                                onClick={() => setShowModelMenu(!showModelMenu)}
-                                className={sidebarMode
-                                  ? "ds-control flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all"
-                                  : "ds-control flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
-                                style={selectedSoftStyle}
-                                title={tl("Seleziona modello")}
-                              >
-                                <div className="p-0.5 bg-white/20 rounded-md">
-                                  <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
-                                </div>
-                                <span className={sidebarMode ? 'sr-only' : ''}>{availableModels.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
-                              </button>
-
-                              {/* Dropdown */}
-                              {showModelMenu && (
-                                <div className="ds-popover absolute top-full right-0 mt-2 w-72 rounded-xl py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible">
-                                  <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 mb-1 flex justify-between items-center">
-                                    <span>{tl("Seleziona Modello")}</span>
-                                    <span className="text-[9px] font-normal text-slate-400">Default</span>
-                                  </div>
-                                  {availableModels.map(m => (
-                                    <div
-                                      key={m.id}
-                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-[var(--selection-radius)] transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent hover:bg-[image:var(--selection-bg)]'}`}
-                                      style={selectedModel === m.id ? selectedSoftStyle : undefined}
-                                      onClick={() => {
-                                        setSelectedModel(m.id)
-                                        setShowModelMenu(false)
-                                      }}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <div
-                                          className={`p-2 rounded-lg ${selectedModel === m.id ? 'ring-1' : 'bg-slate-100 transition-colors'}`}
-                                          style={selectedModel === m.id
-                                            ? { backgroundColor: accentTheme.softStrong, borderColor: accentTheme.border, color: accentTheme.text }
-                                            : undefined}
-                                        >
-                                          <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
-                                        </div>
-                                        <div className="flex flex-col">
-                                          <span className={`text-sm font-bold ${selectedModel === m.id ? '' : 'text-slate-700'}`} style={selectedModel === m.id ? { color: accentTheme.text } : undefined}>
-                                            {m.name}
-                                          </span>
-                                          <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
-                                        </div>
-                                      </div>
-
-                                      {/* Default Checkbox */}
-                                      <div
-                                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-100 transition-colors"
-                                        onClick={(e) => handleSetDefaultModel(m.id, e)}
-                                        title={tl("Imposta come default")}
-                                      >
-                                        <div
-                                          className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
-                                            ? 'shadow-sm'
-                                            : 'border-slate-300 text-transparent mx-auto'
-                                            }`}
-                                          style={defaultModel === m.id ? selectedSolidStyle : undefined}
-                                        >
-                                          {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                            <div className="w-52 max-w-full">
+                              <SearchableSelect value={selectedModel} label={tl("Seleziona modello")}
+                                disabled={!availableModels.length} onChange={setSelectedModel}
+                                options={availableModels.map((m) => ({ value: m.id, label: m.name, description: m.provider, searchText: m.id }))} />
+                              {selectedModel && <button type="button" className="mt-1 text-[10px] text-slate-500" onClick={(event) => handleSetDefaultModel(selectedModel, event)}>
+                                {defaultModel === selectedModel ? tl("Modello preferito") : tl("Imposta come preferito")}
+                              </button>}
                             </div>
                           )
                         )}
@@ -3891,7 +3808,7 @@ REGOLE IMPORTANTI:
                             >
                               {msg.role === 'assistant' ? (
                                 <MessageContent
-                                  content={msg.content}
+                                  content={normalizeMathMarkdown(msg.content)}
                                   onPublish={(type, data) => {
                                     setPublishMode('published')
                                     setPublishModal({ isOpen: true, type, data })
@@ -5276,7 +5193,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             ),
           }}
         >
-          {cleanContent}
+          {normalizeMathMarkdown(cleanContent)}
         </ReactMarkdown>
       )}
 
@@ -5743,4 +5660,24 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
       )}
     </div>
   )
+}
+
+
+type TeacherSupportProps = { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }
+export default function TeacherSupportChat(props: TeacherSupportProps) {
+  const [chosen, setChosen] = useState('')
+  const { data: starters = [] } = useQuery<{ id: string; name: string; synopsis?: string }[]>({
+    queryKey: ['teacher-default-teacherbots'], queryFn: async () => (await teacherbotsApi.defaults()).data,
+    staleTime: 30_000, refetchInterval: 30_000,
+  })
+  const active = starters.some((bot) => bot.id === chosen) ? chosen : ''
+  if (!starters.length) return <TeacherSupportChatBase {...props} />
+  return <div className="flex h-full min-h-0 flex-col">
+    <div className="shrink-0 border-b border-[var(--border-color)] bg-[var(--surface-elevated)] p-2">
+      <SearchableSelect value={active} label={tl("Assistente")}
+        onChange={setChosen} options={[{ value: '', label: tl("Assistente docente") }, ...starters.map((bot) => ({ value: bot.id, label: bot.name, description: bot.synopsis }))]} />
+      {active && (props.onClose || props.onMinimize) && <button type="button" className="mt-1 text-xs text-[var(--text-primary)]" onClick={props.onMinimize || props.onClose}>{tl("Riduci a icona")}</button>}
+    </div>
+    <div className="min-h-0 flex-1">{active ? <TeacherbotTestChat mode="chat" key={active} teacherbotId={active} onBack={() => setChosen('')} /> : <TeacherSupportChatBase {...props} />}</div>
+  </div>
 }

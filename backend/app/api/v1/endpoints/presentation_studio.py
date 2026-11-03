@@ -15,7 +15,7 @@ from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.api.v1.endpoints.llm import _extract_json_object, get_ui_language, safe_track_usage
 from app.core.database import get_db
 from app.models.session import Class, Session
-from app.services import model_roles
+from app.services import model_roles, model_selection
 from app.services import presentation_studio as studio
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
@@ -44,6 +44,8 @@ class OutlineRequest(BaseModel):
     outline: Optional[dict] = None
     instruction: str = Field("", max_length=2000)
     slide_index: Optional[int] = None
+    llm_provider: Optional[str] = Field(None, max_length=20)  # model picked in the Documenti menu (Admin → Modelli)
+    llm_model: Optional[str] = Field(None, max_length=120)
 
 
 class Dims(BaseModel):
@@ -155,7 +157,7 @@ async def generate_outline(
         prompt = studio.build_slide_prompt(brief, previous, payload.slide_index, payload.instruction.strip(), language, grade_instruction)
         max_tokens = 1800
 
-    provider, model = model_roles.pair_for("presentations.outline")
+    provider, model = await model_selection.resolve_scoped(db, "documents", payload.llm_provider, payload.llm_model)
     responses = []
     parsed: Optional[dict] = None
     last_error: Optional[Exception] = None

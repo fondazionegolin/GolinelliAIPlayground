@@ -1,5 +1,5 @@
 import re
-from app.services import model_roles
+from app.services import model_roles, model_selection
 import io
 import asyncio
 import time
@@ -1416,6 +1416,21 @@ def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) ->
     if is_student and (key not in STUDENT_CODING_MODEL_KEYS or key == STUDENT_DEFAULT_CODING_MODEL_KEY):
         return model_roles.pair_for("coding.student")  # admin-assigned student default (Admin → Modelli)
     return CODING_MODEL_CHOICES.get(key, (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL))
+
+
+async def _resolve_vibelab_model(db: AsyncSession, model_key: str | None, *, is_student: bool) -> tuple[str, str]:
+    """Vibe Lab generation model: the user's "provider|model" choice if the admin enabled it for Vibe Lab
+    (Admin → Modelli, separate lists for teachers and students), otherwise the section default.
+    Legacy short keys saved in older projects are mapped first."""
+    scope = "vibelab_students" if is_student else "vibelab"
+    key = (model_key or "").strip()
+    pair = tuple(key.split("|", 1)) if "|" in key else CODING_MODEL_CHOICES.get(key)
+    if pair:
+        try:
+            return await model_selection.resolve_scoped(db, scope, *pair)
+        except HTTPException:
+            pass
+    return model_selection.default_pair(scope)
 
 
 async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 16000, reasoning_sink=None):
@@ -4257,7 +4272,7 @@ async def generate_project_code_stream(
 
     request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
     base_context = f"Titolo progetto: {project_title}\n\n{request_label}:\n{user_prompt}{kb_context}"
-    gen_provider, gen_model = _resolve_coding_model(body.model_key, is_student=actor.is_student)
+    gen_provider, gen_model = await _resolve_vibelab_model(db, body.model_key, is_student=actor.is_student)
     fix_attempt = int(body.attempt or 1) if is_fix and not is_visual else 1
     if fix_attempt >= 3:
         # Repeated failures: the cheap model is not converging, switch to the strongest allowed one.

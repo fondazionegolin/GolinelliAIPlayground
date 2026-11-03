@@ -1,3 +1,6 @@
+import { clipboardFiles } from '@/lib/clipboardFiles'
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { MessageLinkPreviews, messageTextWithoutPreviewLinks } from '@/components/chat/MessageLinkPreviews'
 import { attachmentsFromContentJson, buildMessageAttachments, implicitEditImage, type MessageAttachment } from '@/lib/chatAttachments'
@@ -561,7 +564,6 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [showHistory, setShowHistory] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
-  const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-2-2026-04-21'>('gpt-image-2-2026-04-21')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -637,7 +639,6 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const modelMenuRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
   const activeGenerationAbortRef = useRef<AbortController | null>(null)
   const lastEscapeKeyAtRef = useRef(0)
@@ -900,7 +901,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       const res = await llmApi.getAvailableModels()
       return res.data as { models: LLMModel[]; default_provider: string; default_model: string }
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   // Fetch session data to get teacher's default model
@@ -932,7 +934,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       const res = await teacherbotsApi.listAvailable()
       return res.data as Teacherbot[]
     },
-    staleTime: 1000 * 60 * 2,
+    staleTime: 30000,
+    refetchInterval: 30000,
     enabled: !isTeacherPreview,
   })
 
@@ -958,7 +961,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const { data: previewBotData } = useQuery({
     queryKey: ['teacherbot-preview', initialTeacherbotId],
     queryFn: async () => {
-      const res = await teacherbotsApi.get(initialTeacherbotId!)
+      const res = await teacherbotsApi.chatInfo(initialTeacherbotId!)
       return res.data as Teacherbot
     },
     enabled: !!isTeacherPreview && !!initialTeacherbotId,
@@ -1216,15 +1219,11 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     } catch { /* The file can still be sent without a preview. */ }
   }
 
-  const handleInputPaste = (e: React.ClipboardEvent) => {
-    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
-    if (fileItems.length === 0) return
-    e.preventDefault()
-    fileItems.forEach(item => {
-      const file = item.getAsFile()
-      if (!file) return
-      addFileWithPreview(file)
-    })
+  const handleInputPaste = (event: React.ClipboardEvent) => {
+    const files = clipboardFiles(event.clipboardData)
+    if (!files.length) return
+    event.preventDefault()
+    files.forEach((file) => addFileWithPreview(file))
   }
 
   const typewriterEffect = (fullContent: string, messageId: string) => {
@@ -1527,7 +1526,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         // Teacher preview: use the test endpoint (no student session needed)
         if (isTeacherPreview) {
           const history = messages.map(m => ({ role: m.role, content: m.content }))
-          const res = await teacherbotsApi.test(selectedTeacherbot.id, content, history, signal)
+          const res = await teacherbotsApi.test(selectedTeacherbot.id, content, history, signal, effectiveSelectedModel ? { llm_provider: effectiveSelectedModel.provider, llm_model: effectiveSelectedModel.model } : undefined)
           return { content: res.data.content, id: Date.now().toString() }
         }
 
@@ -1539,11 +1538,11 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         }
 
         if (files.length > 0) {
-          const res = await teacherbotsApi.sendMessageWithFiles(convId!, content, files, signal)
+          const res = await teacherbotsApi.sendMessageWithFiles(convId!, content, files, signal, effectiveSelectedModel || undefined)
           return res.data
         }
 
-        const res = await teacherbotsApi.sendMessage(convId!, content, signal)
+        const res = await teacherbotsApi.sendMessage(convId!, content, signal, effectiveSelectedModel || undefined)
         return res.data
       }
 
@@ -2204,7 +2203,6 @@ REGOLE IMPORTANTI:
   const handleChangeModel = (model: LLMModel | null) => {
     setSelectedModel(model)
     setConversationId(null)
-    setShowModelMenu(false)
   }
 
   const handleDeleteConversation = useCallback(async (convId: string) => {
@@ -2393,7 +2391,18 @@ REGOLE IMPORTANTI:
     () => availableModels.find((m) => modelKey(m) === defaultModelKey),
     [availableModels, defaultModelKey]
   )
-  const effectiveSelectedModel = selectedModel || savedDefaultModel || teacherDefaultModel || null
+  const effectiveSelectedModel = availableModels.find((m) => modelKey(m) === modelKey(selectedModel)) || savedDefaultModel || teacherDefaultModel || availableModels[0] || null
+  const modelSelector = !selectedTeacherbot?.enable_escape_room && !selectedTeacherbot?.enable_inquiry ? (
+    <div className="w-48 max-w-full">
+      <SearchableSelect value={modelKey(effectiveSelectedModel)} label={tl("Seleziona modello")}
+        disabled={isGeneratingResponse || !availableModels.length}
+        onChange={(value) => handleChangeModel(availableModels.find((m) => modelKey(m) === value) || null)}
+        options={availableModels.map((m) => ({ value: modelKey(m), label: m.name, description: m.provider, searchText: m.model }))} />
+      {effectiveSelectedModel && <button type="button" className="mt-1 text-[10px] text-slate-500" onClick={(event) => handleSetDefaultModel(effectiveSelectedModel, event)}>
+        {defaultModelKey === modelKey(effectiveSelectedModel) ? tl("Modello preferito") : tl("Imposta come preferito")}
+      </button>}
+    </div>
+  ) : null
   const allAvailableTeacherbots = teacherbotsData || []
   const availableTeacherbots = allAvailableTeacherbots.filter((bot) => !bot.is_studentbot)
   const availableStudentbots = allAvailableTeacherbots.filter((bot) => bot.is_studentbot)
@@ -2431,16 +2440,6 @@ REGOLE IMPORTANTI:
     )
   }, [learningSessions, normalizedChatbotSearch])
   const lastAppliedTeacherbotIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
-        setShowModelMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   const handleSetDefaultModel = (model: LLMModel, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -2798,6 +2797,7 @@ REGOLE IMPORTANTI:
     return (
       <ChatConversationView
         conversationId={teacherbotConversationId}
+        headerContent={modelSelector}
         profileKey={`teacherbot-${selectedTeacherbot.id}`}
         profileName={selectedTeacherbot.name}
         profileIcon={<Wand2 className="h-5 w-5" />}
@@ -4406,81 +4406,7 @@ REGOLE IMPORTANTI:
                   </div>}
                 </div>
 
-                {!selectedTeacherbot && (
-                  <div className="hidden lg:block relative" ref={modelMenuRef}>
-                    <button
-                      onClick={() => setShowModelMenu(!showModelMenu)}
-                      className={sidebarMode
-                        ? "flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
-                        : "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold shadow-sm transition-transform hover:-translate-y-0.5"}
-                      style={activeBotSoftStyle}
-                      title={tl("Seleziona modello")}
-                    >
-                      {effectiveSelectedModel?.provider === 'openai' ? (
-                        <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3.5 w-3.5 object-contain" />
-                      ) : effectiveSelectedModel?.provider === 'anthropic' ? (
-                        <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-3.5 w-3.5 object-contain" />
-                      ) : effectiveSelectedModel?.provider === 'deepseek' ? (
-                        <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-3.5 w-3.5 object-contain" />
-                      ) : (
-                        <Bot className="h-3.5 w-3.5" />
-                      )}
-                      <span className={sidebarMode ? 'sr-only' : ''}>{effectiveSelectedModel?.name || tl("Modello AI")}</span>
-                      <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
-                    </button>
-                    {showModelMenu && (
-                      <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-40 py-1">
-                        <div className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-b border-slate-100">{tl("Seleziona modello")}</div>
-                        {availableModels.map((m) => {
-                          const selected = modelKey(effectiveSelectedModel) === modelKey(m)
-                          const isDefault = defaultModelKey === modelKey(m)
-                          return (
-                            <div
-                              key={modelKey(m)}
-                              className={`mx-1 my-0.5 px-3 py-2 rounded-[var(--selection-radius)] border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-[image:var(--selection-bg)]'}`}
-                                style={selected ? activeBotSoftStyle : undefined}
-                              onClick={() => handleChangeModel(m)}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className={`p-1.5 rounded-md ${selected ? '' : 'bg-slate-100'}`} style={selected ? { backgroundColor: 'rgba(255,255,255,0.3)' } : undefined}>
-                                  {m.provider === 'openai' ? (
-                                    <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-4 w-4 object-contain" />
-                                  ) : m.provider === 'anthropic' ? (
-                                    <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-4 w-4 object-contain" />
-                                  ) : m.provider === 'deepseek' ? (
-                                    <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-4 w-4 object-contain" />
-                                  ) : (
-                                    <Bot className="h-4 w-4" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm font-semibold truncate">{m.name}</div>
-                                  <div className="text-[10px] text-slate-400 capitalize">{m.provider}</div>
-                                </div>
-                              </div>
-                              <button
-                                className={`w-4 h-4 rounded border flex items-center justify-center ${isDefault ? '' : 'border-slate-300'}`}
-                                style={isDefault ? activeBotSolidStyle : undefined}
-                                onClick={(e) => handleSetDefaultModel(m, e)}
-                                title={t('chatbot.set_default')}
-                              >
-                                {isDefault && <Check className="h-3 w-3 text-white" />}
-                              </button>
-                            </div>
-                          )
-                        })}
-                        <div className="px-3 pb-2 pt-1 border-t border-slate-100">
-                          <button
-                            onClick={() => handleChangeModel(null)}
-                            className="text-xs text-slate-500 hover:text-slate-700"
-                          >
-                            {tl("Usa modello predefinito sessione")}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {modelSelector}
               </div>
 
               {/* Collaboration presence bar — connected users as named bubbles */}
@@ -5159,7 +5085,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
             ),
           }}
         >
-          {cleanContent}
+          {normalizeMathMarkdown(cleanContent)}
         </ReactMarkdown>
       )}
       {images.length > 0 && (

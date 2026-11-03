@@ -1,2 +1,4 @@
 # Kept in a separate Docker layer from the large ML/office dependency set.
 ddgs==9.16.1
+# Legacy Excel attachments (.xls); .xlsx is handled by openpyxl.
+xlrd==2.0.1

@@ -180,6 +180,8 @@ async def refresh_loop() -> None:
     while True:
         try:
             await load_overrides()
+            from app.services import model_selection
+            await model_selection.refresh_cache()
         except Exception:
             logger.warning("Model roles refresh failed", exc_info=True)
         await asyncio.sleep(REFRESH_SECONDS)

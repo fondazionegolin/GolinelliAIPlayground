@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import podcasts
+from app.api.v1.endpoints import podcasts, voice_lab
 from app.api.v1.endpoints import visual_comprehension
 from app.api.v1.endpoints import visual_sessions
 from app.api.v1.endpoints import smart_canvas
@@ -14,6 +14,7 @@ from app.api.v1.endpoints import platform_api
 from app.api.v1.endpoints import presentation_studio
 
 api_router = APIRouter()
+api_router.include_router(voice_lab.router, prefix="/voice-lab", tags=["voice-lab"])
 api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"])
 
 api_router.include_router(system_health.router, prefix="/system", tags=["system"])

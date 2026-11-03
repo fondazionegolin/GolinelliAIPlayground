@@ -7,7 +7,7 @@ Visual consistency strategy
      sheets of the entities in that shot plus the previous keyframe as reference images, so the same
      character / object keeps its look across framings.
   3. Each shot becomes a 5 s clip (animatic: slow camera move + narration caption, ffmpeg) and the
-     clips are concatenated. Image-to-video via Runware (runware_service) can replace step 3 later.
+     clips are concatenated. Admins can also select OpenRouter image-to-video models for step 3.
 """
 import asyncio
 import base64
@@ -20,6 +20,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+import httpx
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -30,6 +31,7 @@ from app.models.video_project import VideoProject
 from app.services.json_extract import extract_json
 from app.services.llm_service import llm_service
 from app.services.storage_service import storage_service
+from app.services import openrouter
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +324,7 @@ async def run_animatic(project_id: uuid.UUID, only_shots: Optional[list[int]] = 
     async with AsyncSessionLocal() as db:
         project = await db.get(VideoProject, project_id)
         script = project.script
+        render_settings = script.get("render_settings", {"provider": "local"})
         dims = ASPECTS.get(project.aspect, ASPECTS["16:9"])
         base = f"video-studio/{project_id}"
     shots = [s for s in script.get("shots", []) if s.get("keyframe_key") and (not only_shots or s["n"] in only_shots)]
@@ -334,14 +337,33 @@ async def run_animatic(project_id: uuid.UUID, only_shots: Optional[list[int]] = 
             await _save(project_id, lambda p, s, n=n: setattr(p, "phase_label", f"Montaggio shot {n}"))
             try:
                 image = await _get(shot["keyframe_key"])
-                clip = await asyncio.to_thread(
-                    _clip_from_image, image, shot.get("narration", ""), dims["w"], dims["h"], n % 2 == 1, SHOT_SECONDS
-                )
+                cost = 0.0
+                if render_settings["provider"] == "openrouter":
+                    async with httpx.AsyncClient(timeout=120) as client:
+                        job_id = shot.get("openrouter_job_id")
+                        if not job_id:
+                            job_id = await openrouter.submit_video(
+                                client, model=render_settings["model"],
+                                prompt=f"{script.get('style_bible', '')}\n{shot.get('visual', '')}\n{shot.get('motion', '')}",
+                                image=image, duration=render_settings["duration"], aspect_ratio=project.aspect,
+                                resolution=render_settings.get("resolution"),
+                            )
+                            def remember(p, s, n=n, job_id=job_id):
+                                for sh in s.get("shots", []):
+                                    if sh["n"] == n:
+                                        sh["openrouter_job_id"] = job_id
+                            await _save(project_id, remember)
+                        clip, cost = await openrouter.wait_video(client, job_id)
+                else:
+                    clip = await asyncio.to_thread(
+                        _clip_from_image, image, shot.get("narration", ""), dims["w"], dims["h"], n % 2 == 1, SHOT_SECONDS
+                    )
                 key = f"{base}/shot_{n}.mp4"
                 await _put(key, clip, "video/mp4")
                 ver = int(time.time())
 
-                def ok(p, s, n=n, key=key, ver=ver):
+                def ok(p, s, n=n, key=key, ver=ver, cost=cost):
+                    p.cost_usd = (p.cost_usd or 0) + cost
                     for sh in s.get("shots", []):
                         if sh["n"] == n:
                             sh.update(video_key=key, video_ver=ver, status="video", error=None)
@@ -354,6 +376,8 @@ async def run_animatic(project_id: uuid.UUID, only_shots: Optional[list[int]] = 
                     for sh in s.get("shots", []):
                         if sh["n"] == n:
                             sh["status"], sh["error"] = "failed", msg
+                            if isinstance(exc, openrouter.VideoJobFailed):
+                                sh.pop("openrouter_job_id", None)
                 await _save(project_id, bad)
     finally:
         if failures:

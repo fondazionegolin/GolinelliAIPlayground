@@ -1,3 +1,4 @@
+import { ScopedModelSelect, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1290,6 +1291,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
 
           <AppearanceMenu open={appearanceOpen} onToggle={() => setAppearanceOpen((value) => !value)} onClose={() => setAppearanceOpen(false)} settings={editorSettings} onChange={updateEditorSettings} isEnglish={isEnglish} />
 
+          <NotebookModelMenu />
+
           {notebookId && (
             <IconButton
               type="button"
@@ -2407,4 +2410,11 @@ function AppearanceMenu({ open, onToggle, onClose, settings, onChange, isEnglish
       )}
     </div>
   )
+}
+
+
+/** Model of the notebook's AI tutor, from the models the admin enabled for Coding Lab; hidden while none is enabled. */
+function NotebookModelMenu() {
+  const { value, setValue } = useScopedModelChoice('notebook')
+  return <ScopedModelSelect scope="notebook" value={value} onChange={setValue} className="w-48 shrink-0" label={tl("Modello del tutor AI")} />
 }

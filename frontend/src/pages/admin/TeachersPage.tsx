@@ -2,10 +2,9 @@ import { useState, useRef, useCallback } from 'react'
 import { formatInternalCredits, toCredits, fromCredits } from '@/lib/credits'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, creditsApi } from '@/lib/api'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Check, X, Clock, Key, UserPlus, Mail, Trash2,
@@ -15,6 +14,7 @@ import {
   Building2, UserMinus,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { AdminBadge, AdminEmpty, AdminNotice, AdminPageHeader } from '@/components/admin/AdminUI'
 
 /* ─── types ──────────────────────────────────────────── */
 interface TeacherRequest {
@@ -512,39 +512,33 @@ export default function TeachersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{tl("Amministrazione utenti")}</p>
-          <h1 className="text-2xl font-bold text-white">{tl("Docenti")}</h1>
-          <p className="text-sm text-slate-300 mt-1">
+      <AdminPageHeader
+        eyebrow={tl("Amministrazione utenti")}
+        title={tl("Docenti")}
+        description={
+          <span className="tabular-nums">
             {teachers.length} {tl("docenti attivi")}
             {pending.length > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-medium">
+              <span className="ml-2 inline-flex items-center gap-1 font-medium text-amber-700">
                 · <Clock className="h-3.5 w-3.5" /> {pending.length} {tl("in attesa")}
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <Button
-            onClick={exportTeachersCsv}
-            disabled={teachers.length === 0}
-            variant="outline"
-            className="gap-2 border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:text-white"
-          >
-            <Download className="h-4 w-4" />
-            {tl("Esporta CSV")}
-          </Button>
-          <Button
-            onClick={() => setShowInvite((v) => !v)}
-            className="gap-2 bg-white hover:bg-slate-100 text-slate-950"
-          >
-            <UserPlus className="h-4 w-4" />
-            {tl("Invita docente")}
-            {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </Button>
-        </div>
-      </div>
+          </span>
+        }
+        actions={
+          <>
+            <Button tone="neutral" surface="outline" onClick={exportTeachersCsv} disabled={teachers.length === 0}>
+              <Download className="h-4 w-4" />
+              {tl("Esporta CSV")}
+            </Button>
+            <Button tone="accent" surface="solid" onClick={() => setShowInvite((v) => !v)}>
+              <UserPlus className="h-4 w-4" />
+              {tl("Invita docente")}
+              {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </Button>
+          </>
+        }
+      />
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -552,64 +546,48 @@ export default function TeachersPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tl("Cerca docente o invitato…")}
-          className="pl-9 h-10 border-slate-300 bg-white text-sm shadow-sm"
+          className="pl-9 text-sm"
         />
       </div>
 
       {/* Approval result banner */}
       {approvalResult && (
-        <div
-          className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
-            approvalResult.email_sent
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-amber-200 bg-amber-50 text-amber-800'
-          }`}
-        >
-          <Check className="h-5 w-5 mt-0.5 flex-shrink-0" />
-          <div className="flex-1 text-sm">
-            <strong>{tl("Docente approvato:")}</strong>{' '}
-            {approvalResult.email_sent
-              ? tl("Email di attivazione inviata a {0}", approvalResult.email)
-              : tl("Attenzione: email non inviata a {0}. Verifica SMTP.", approvalResult.email)}
-          </div>
-          <button onClick={() => setApprovalResult(null)} className="opacity-60 hover:opacity-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <AdminNotice tone={approvalResult.email_sent ? 'success' : 'warning'} icon={Check} onClose={() => setApprovalResult(null)}>
+          <strong>{tl("Docente approvato:")}</strong>{' '}
+          {approvalResult.email_sent
+            ? tl("Email di attivazione inviata a {0}", approvalResult.email)
+            : tl("Attenzione: email non inviata a {0}. Verifica SMTP.", approvalResult.email)}
+        </AdminNotice>
       )}
 
       {/* Reset password result */}
       {resetResult && (
-        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${resetResult.email_sent ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-          <Key className={`h-5 w-5 mt-0.5 flex-shrink-0 ${resetResult.email_sent ? 'text-emerald-600' : 'text-amber-600'}`} />
-          <div className="flex-1 text-sm">
-            <p className={`font-semibold mb-0.5 ${resetResult.email_sent ? 'text-emerald-800' : 'text-amber-800'}`}>
+        <AdminNotice tone={resetResult.email_sent ? 'success' : 'warning'} icon={Key} onClose={() => setResetResult(null)}>
+          <div>
+            <p className="mb-0.5 font-semibold">
               {resetResult.email_sent ? tl("Link di reset inviato") : tl("Reset generato — email non inviata")}
             </p>
-            <p className={resetResult.email_sent ? 'text-emerald-700' : 'text-amber-700'}>
+            <p className="text-slate-700">
               {resetResult.email_sent
                 ? <>{tl("Il docente riceverà un'email su")} <strong>{resetResult.email}</strong> {tl("con il link per impostare la nuova password (valido 24 h).")}</>
                 : <>{tl("Verifica la configurazione SMTP. Email non recapitata a")} {resetResult.email}.</>
               }
             </p>
           </div>
-          <button onClick={() => setResetResult(null)} className="opacity-60 hover:opacity-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        </AdminNotice>
       )}
 
       {/* ── INVITE PANEL ─────────────────────────────── */}
       {showInvite && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-5">
-          <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+        <div className="admin-panel space-y-5 p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <Mail className="h-4 w-4 text-slate-500" />
             {tl("Invita docenti")}
           </h3>
 
           {/* ── single invite row ── */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{tl("Invito singolo")}</p>
+          <div className="space-y-3 rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] p-4">
+            <p className="admin-eyebrow">{tl("Invito singolo")}</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1">
                 <Label className="text-xs">{tl("Email *")}</Label>
@@ -629,14 +607,15 @@ export default function TeachersPage() {
               </div>
             </div>
             {inviteTargetTeacher ? (
-              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+              <div className="rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-xs text-slate-700">
                 {tl("Questa email appartiene già al docente")}{' '}
                 <strong>{[inviteTargetTeacher.first_name, inviteTargetTeacher.last_name].filter(Boolean).join(' ') || inviteTargetTeacher.email}</strong>{tl(". Usa")} <strong>{tl("Reinvia accesso")}</strong> {tl("invece di creare un nuovo invito.")}
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                className="h-8 text-sm bg-slate-800 hover:bg-slate-900 text-white"
+                tone="accent"
+                surface="solid"
                 disabled={!inviteEmail.trim() || !!inviteTargetTeacher || inviteMutation.isPending}
                 onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
               >
@@ -646,8 +625,8 @@ export default function TeachersPage() {
               {inviteTargetTeacher ? (
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-8 border-sky-200 bg-white text-sm text-sky-700 hover:bg-sky-50"
+                  tone="neutral"
+                  surface="outline"
                   disabled={resetMutation.isPending}
                   onClick={() => resetMutation.mutate(inviteTargetTeacher.id)}
                 >
@@ -660,12 +639,12 @@ export default function TeachersPage() {
 
           {/* ── CSV import ── */}
           <div className="space-y-4">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{tl("Importazione CSV")}</p>
+            <p className="admin-eyebrow">{tl("Importazione CSV")}</p>
 
             {/* Drop zone */}
             {csvRows.length === 0 && (
               <div
-                className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-3 py-10 ${dragOver ? 'border-slate-500 bg-slate-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                className={`relative rounded-md border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-3 py-10 ${dragOver ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]' : 'border-[var(--admin-line-strong)] bg-white hover:border-slate-400'}`}
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={e => {
@@ -688,20 +667,21 @@ export default function TeachersPage() {
 
             {/* Preview table */}
             {csvRows.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="overflow-hidden rounded-md border border-[var(--admin-line)] bg-white">
                 {/* Toolbar */}
                 <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-slate-700">{csvRows.length} {tl("docenti importati")}</span>
-                    {sentCount > 0 && <span className="text-xs text-emerald-600 font-medium">{sentCount} inviati</span>}
+                    {sentCount > 0 && <span className="text-xs text-emerald-700 font-medium">{sentCount} inviati</span>}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setCsvRows([]); if (fileInputRef.current) fileInputRef.current.value = '' }}>
+                    <Button tone="neutral" surface="outline" density="compact" onClick={() => { setCsvRows([]); if (fileInputRef.current) fileInputRef.current.value = '' }}>
                       <X className="h-3.5 w-3.5 mr-1" />{tl("Annulla")}
                     </Button>
                     <Button
-                      size="sm"
-                      className="h-7 text-xs gap-1.5 bg-slate-800 hover:bg-slate-900 text-white"
+                      tone="accent"
+                      surface="solid"
+                      density="compact"
                       disabled={selectedCount === 0 || isSendingAll}
                       onClick={sendAllSelected}
                     >
@@ -745,7 +725,7 @@ export default function TeachersPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[640px] text-sm">
                     <thead>
-                      <tr className="text-[11px] uppercase text-slate-400 border-b border-slate-100">
+                      <tr>
                         <th className="px-4 py-2 text-left w-8">
                           <input type="checkbox" checked={allIdleSelected} onChange={e => toggleSelectAll(e.target.checked)} className="rounded" />
                         </th>
@@ -759,7 +739,7 @@ export default function TeachersPage() {
                     </thead>
                     <tbody>
                       {csvRows.map(row => (
-                        <tr key={row.id} className={`border-t border-slate-100 ${row.status === 'sent' ? 'bg-emerald-50/40' : row.status === 'error' ? 'bg-red-50/40' : ''}`}>
+                        <tr key={row.id} className={row.status === 'error' ? 'bg-red-50/50' : ''}>
                           <td className="px-4 py-2">
                             <input
                               type="checkbox"
@@ -782,10 +762,10 @@ export default function TeachersPage() {
                           <td className="px-3 py-2 text-center">
                             {row.status === 'idle' && <span className="text-xs text-slate-400">—</span>}
                             {row.status === 'sending' && <Loader2 className="h-4 w-4 animate-spin text-slate-400 mx-auto" />}
-                            {row.status === 'sent' && <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />}
+                            {row.status === 'sent' && <CheckCircle2 className="h-4 w-4 text-emerald-700 mx-auto" />}
                             {row.status === 'error' && (
                               <span title={row.errorMsg}>
-                                <AlertCircle className="h-4 w-4 text-red-400 mx-auto" />
+                                <AlertCircle className="h-4 w-4 text-red-600 mx-auto" />
                               </span>
                             )}
                           </td>
@@ -793,13 +773,13 @@ export default function TeachersPage() {
                             {row.status === 'idle' && (
                               <button
                                 onClick={() => sendSingleRow(row)}
-                                className="text-xs text-slate-700 hover:text-slate-900 font-medium"
+                                className="text-xs font-semibold text-[var(--admin-accent)] hover:underline"
                               >
                                 {tl("Invia")}
                               </button>
                             )}
                             {row.status === 'error' && (
-                              <button onClick={() => { updateRow(row.id, { status: 'idle', errorMsg: undefined }); sendSingleRow({ ...row, status: 'idle' }) }} className="text-xs text-amber-600 hover:text-amber-800 font-medium">{tl("Riprova")}</button>
+                              <button onClick={() => { updateRow(row.id, { status: 'idle', errorMsg: undefined }); sendSingleRow({ ...row, status: 'idle' }) }} className="text-xs text-amber-700 hover:underline font-semibold">{tl("Riprova")}</button>
                             )}
                           </td>
                         </tr>
@@ -815,18 +795,18 @@ export default function TeachersPage() {
 
       {/* ── INVITI IN ATTESA (pending/scaduti) ─────────── */}
       {pendingOnlyInvitations.length > 0 && (
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="mb-3 flex items-center justify-between">
+        <div className="admin-panel">
+          <div>
+            <div className="admin-panel-head">
               <button
                 onClick={() => setShowInvitations(v => !v)}
                 className="flex items-center gap-2 text-left group"
               >
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 group-hover:text-slate-700 transition-colors">
+                  <p className="text-sm font-semibold text-slate-900">
                     {tl("Inviti in attesa")}
                   </p>
-                  <p className="mt-0.5 text-sm text-slate-400">
+                  <p className="mt-0.5 text-xs text-slate-500">
                     {filteredInvitations.length} {tl("risultati")}
                     {search.trim() ? ` per "${search}"` : tl(" · {0} non ancora accettati", pendingOnlyInvitations.length)}
                   </p>
@@ -835,8 +815,8 @@ export default function TeachersPage() {
                   ? <ChevronUp className="h-4 w-4 text-slate-400 ml-2" />
                   : <ChevronDown className="h-4 w-4 text-slate-400 ml-2" />}
               </button>
-              <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-accent)] animate-pulse" />
                 {tl("aggiornamento automatico")}
               </span>
             </div>
@@ -845,7 +825,7 @@ export default function TeachersPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-xs">
                   <thead>
-                    <tr className="border-b text-left text-[11px] uppercase text-slate-400">
+                    <tr>
                       <th className="pb-1.5 font-medium">{tl("Docente")}</th>
                       <th className="pb-1.5 font-medium">{tl("Gruppo")}</th>
                       <th className="pb-1.5 font-medium">{tl("Stato")}</th>
@@ -865,46 +845,50 @@ export default function TeachersPage() {
                       filteredInvitations.slice(0, 50).map((inv: any) => {
                         const isExpired = !inv.responded_at && new Date(inv.expires_at) < new Date()
                         return (
-                          <tr key={inv.id} className="border-t border-slate-100">
+                          <tr key={inv.id}>
                             <td className="py-2">
                               <div>
                                 <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
-                                <p className="font-mono text-[10px] text-slate-400">{inv.email}</p>
+                                <p className="font-mono text-[11px] text-slate-500">{inv.email}</p>
                               </div>
                             </td>
                             <td className="py-2">
                               {inv.group_tag
-                                ? <span className="rounded-full border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{inv.group_tag}</span>
+                                ? <AdminBadge>{inv.group_tag}</AdminBadge>
                                 : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="py-2">
                               {isExpired
-                                ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">scaduto</span>
-                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">{tl("in attesa")}</span>}
+                                ? <AdminBadge tone="danger">scaduto</AdminBadge>
+                                : <AdminBadge tone="warning">{tl("in attesa")}</AdminBadge>}
                             </td>
                             <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
                             <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
                             <td className="py-2 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button
+                                <Button
+                                  tone="neutral"
+                                  surface="outline"
+                                  density="compact"
                                   onClick={() => resendInvitationMutation.mutate(inv.id)}
                                   disabled={resendInvitationMutation.isPending || deleteInvitationMutation.isPending}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-800 disabled:opacity-50"
                                 >
                                   <Send className="h-3 w-3" />
                                   {tl("Reinvia")}
-                                </button>
-                                <button
+                                </Button>
+                                <Button
+                                  tone="danger"
+                                  surface="ghost"
+                                  density="compact"
                                   onClick={() => {
                                     if (confirm(tl("Rimuovere l'invito per {0}? L'account verrà disattivato.", inv.email)))
                                       deleteInvitationMutation.mutate(inv.id)
                                   }}
                                   disabled={deleteInvitationMutation.isPending || resendInvitationMutation.isPending}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
                                 >
                                   <Trash2 className="h-3 w-3" />
                                   {tl("Rimuovi")}
-                                </button>
+                                </Button>
                               </div>
                             </td>
                           </tr>
@@ -915,28 +899,28 @@ export default function TeachersPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* ── PENDING APPROVALS BLOCK ────────────────────── */}
       {!loadingRequests && pending.length > 0 && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-amber-600" />
-            <h3 className="font-semibold text-amber-800">
+        <div className="admin-panel border-l-[3px] border-l-amber-600">
+          <div className="admin-panel-head !justify-start">
+            <Clock className="h-4 w-4 text-amber-700" />
+            <h3 className="text-sm font-semibold text-slate-900">
               {pending.length} {tl("richiesta")}{pending.length > 1 ? 'e' : ''} {tl("in attesa di approvazione")}
             </h3>
           </div>
-          <div className="space-y-2">
+          <div className="divide-y divide-[var(--admin-line)]">
             {pending.map((req) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between gap-4 rounded-lg bg-white border border-amber-200 px-4 py-3"
+                className="flex items-center justify-between gap-4 px-4 py-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <GraduationCap className="h-4 w-4 text-amber-700" />
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
+                    <GraduationCap className="h-4 w-4 text-slate-600" />
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-800 truncate">
@@ -950,8 +934,9 @@ export default function TeachersPage() {
                     {formatDate(req.created_at)}
                   </span>
                   <Button
-                    size="sm"
-                    className="h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    tone="accent"
+                    surface="solid"
+                    density="compact"
                     onClick={() => approveMutation.mutate(req.id)}
                     disabled={approveMutation.isPending}
                   >
@@ -959,9 +944,9 @@ export default function TeachersPage() {
                     {tl("Approva")}
                   </Button>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1.5 border-red-300 text-red-600 hover:bg-red-50"
+                    tone="danger"
+                    surface="outline"
+                    density="compact"
                     onClick={() => rejectMutation.mutate(req.id)}
                     disabled={rejectMutation.isPending}
                   >
@@ -978,38 +963,39 @@ export default function TeachersPage() {
       {/* ── TEACHERS TABLE ─────────────────────────────── */}
       <div className="space-y-3">
         {selectedTeachersCount > 0 && (
-          <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-md">
+          <div className="admin-panel border-[var(--admin-accent)] bg-[var(--admin-accent-soft)] p-3">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-white">
+              <span className="text-sm font-semibold text-[var(--admin-accent)]">
                 {selectedTeachersCount} {selectedTeachersCount === 1 ? tl("docente selezionato") : tl("docenti selezionati")}
               </span>
-              <div className="h-6 w-px bg-indigo-200 hidden sm:block" />
+              <div className="hidden h-6 w-px bg-[var(--admin-line-strong)] sm:block" />
               <select
                 value={bulkSchoolId}
                 onChange={(e) => setBulkSchoolId(e.target.value)}
-                className="h-8 min-w-[220px] rounded-md border border-slate-600 bg-slate-800 px-2 text-xs text-white"
+                className="h-8 min-w-[220px] rounded-md border border-[var(--admin-line-strong)] bg-white px-2 text-xs text-slate-900"
               >
                 <option value="">{tl("Scegli un istituto…")}</option>
                 {schoolTenants.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}
               </select>
               <Button
-                size="sm"
-                className="h-8 bg-white text-xs text-slate-950 hover:bg-slate-100"
+                tone="accent"
+                surface="solid"
+                density="compact"
                 disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
                 onClick={() => bulkSchoolMutation.mutate('add')}
               >
                 <Building2 className="mr-1.5 h-3.5 w-3.5" /> {tl("Invita nell'istituto")}
               </Button>
               <Button
-                size="sm"
-                variant="outline"
-                className="h-8 border-slate-600 bg-slate-800 text-xs text-white hover:bg-slate-700 hover:text-white"
+                tone="neutral"
+                surface="outline"
+                density="compact"
                 disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
                 onClick={() => bulkSchoolMutation.mutate('remove')}
               >
                 {tl("Rimuovi dall'istituto")}
               </Button>
-              <div className="h-6 w-px bg-indigo-200 hidden lg:block" />
+              <div className="hidden h-6 w-px bg-[var(--admin-line-strong)] lg:block" />
               <div className="flex items-center gap-1">
                 <span className="text-xs text-slate-500">cr.</span>
                 <Input
@@ -1019,12 +1005,12 @@ export default function TeachersPage() {
                   value={bulkCap}
                   onChange={(e) => setBulkCap(e.target.value)}
                   placeholder={"Limite/mese"}
-                  className="h-8 w-28 border-indigo-200 bg-white text-xs"
+                  className="h-8 w-28 bg-white text-xs"
                 />
                 <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 border-indigo-200 bg-white text-xs text-indigo-700"
+                  tone="neutral"
+                  surface="outline"
+                  density="compact"
                   disabled={bulkCap === '' || Number.isNaN(Number(bulkCap)) || Number(bulkCap) < 0 || bulkCapMutation.isPending}
                   onClick={() => bulkCapMutation.mutate(Number(bulkCap))}
                 >
@@ -1033,7 +1019,7 @@ export default function TeachersPage() {
               </div>
               <button
                 type="button"
-                className="ml-auto text-xs text-slate-300 hover:text-white"
+                className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-900"
                 onClick={() => setSelectedTeacherIds(new Set())}
               >
                 {tl("Deseleziona tutti")}
@@ -1041,17 +1027,17 @@ export default function TeachersPage() {
             </div>
           </div>
         )}
-        <Card>
-          <CardContent className="p-0">
+        <div className="admin-panel">
+          <div>
             {loadingTeachers ? (
-              <div className="py-12 text-center text-slate-400 text-sm">{tl("Caricamento…")}</div>
+              <AdminEmpty>{tl("Caricamento…")}</AdminEmpty>
             ) : teachers.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">{tl("Nessun docente trovato")}</div>
+              <AdminEmpty>{tl("Nessun docente trovato")}</AdminEmpty>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1080px] table-fixed text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600">
+                    <tr>
                       <th className="w-10 px-4 py-3 text-left font-medium">
                         <input
                           type="checkbox"
@@ -1111,7 +1097,7 @@ export default function TeachersPage() {
                     {teachers.map((teacher) => (
                       <tr
                         key={teacher.id}
-                        className="border-t border-slate-200 odd:bg-white even:bg-slate-50/70 hover:bg-sky-50 transition-colors"
+                        className="transition-colors"
                       >
                         <td className="px-4 py-3">
                           {(teacher.role || '').toUpperCase() !== 'ADMIN' && (
@@ -1131,32 +1117,26 @@ export default function TeachersPage() {
                         {/* Name / email / badge */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${(teacher.role || '').toUpperCase() === 'ADMIN' ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
                               {(teacher.role || '').toUpperCase() === 'ADMIN'
-                                ? <ShieldCheck className="h-4 w-4 text-amber-600" />
+                                ? <ShieldCheck className="h-4 w-4 text-[var(--admin-accent)]" />
                                 : <GraduationCap className="h-4 w-4 text-slate-500" />
                               }
                             </div>
                             <div>
-                              <p className="font-semibold text-slate-800 leading-tight">
+                              <p className="font-semibold text-slate-900 leading-tight">
                                 {[teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || '—'}
                               </p>
-                              <p className="text-xs text-slate-400">{teacher.email}</p>
+                              <p className="text-xs text-slate-500">{teacher.email}</p>
                             </div>
                             {(teacher.role || '').toUpperCase() === 'ADMIN' && (
-                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium hidden sm:inline">
-                                admin
-                              </span>
+                              <AdminBadge tone="accent" className="ml-1 hidden sm:inline-flex">admin</AdminBadge>
                             )}
                             {(teacher.role || '').toUpperCase() !== 'ADMIN' && teacher.is_verified && (
-                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium hidden sm:inline">
-                                verificato
-                              </span>
+                              <AdminBadge tone="success" className="ml-1 hidden sm:inline-flex">verificato</AdminBadge>
                             )}
                             {(teacher.role || '').toUpperCase() !== 'ADMIN' && !teacher.is_verified && (
-                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium hidden sm:inline">
-                                {tl("non verificato")}
-                              </span>
+                              <AdminBadge className="ml-1 hidden sm:inline-flex">{tl("non verificato")}</AdminBadge>
                             )}
                           </div>
                         </td>
@@ -1166,7 +1146,7 @@ export default function TeachersPage() {
                           {(teacher.schools || []).length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {teacher.schools.map(school => (
-                                <span key={school.id} className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-medium text-pink-700" title={school.name}>
+                                <span key={school.id} className="admin-badge admin-badge-neutral" title={school.name}>
                                   {school.name}
                                 </span>
                               ))}
@@ -1185,14 +1165,14 @@ export default function TeachersPage() {
 
                         {/* Sessions */}
                         <td className="px-3 py-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             {teacher.session_count}
                           </span>
                         </td>
 
                         {/* Students */}
                         <td className="px-3 py-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             {teacher.total_student_count}
                           </span>
                         </td>
@@ -1212,7 +1192,7 @@ export default function TeachersPage() {
                                 autoFocus
                               />
                               <button
-                                className="text-emerald-600 hover:text-emerald-800"
+                                className="text-[var(--admin-accent)] hover:opacity-80"
                                 onClick={() => {
                                   const cap = parseFloat(editingCapValue)
                                   if (!isNaN(cap) && cap >= 0) {
@@ -1238,12 +1218,12 @@ export default function TeachersPage() {
                                 <span className="text-[10px] text-slate-400">/</span>
                                 <span className="text-xs text-slate-500">{formatCurrency(teacher.monthly_cap)}</span>
                                 {teacher.period_cost > 0 && (
-                                  <span className="text-[10px] text-indigo-500 font-medium ml-1" title={tl("Spesa effettiva ({0} chiamate)", teacher.period_calls)}>
+                                  <span className="text-[10px] text-slate-500 font-medium ml-1" title={tl("Spesa effettiva ({0} chiamate)", teacher.period_calls)}>
                                     ({formatCurrency(teacher.period_cost)})
                                   </span>
                                 )}
                                 <button
-                                  className="ml-0.5 text-slate-300 hover:text-slate-600 transition-colors"
+                                  className="ml-0.5 text-slate-400 hover:text-slate-700 transition-colors"
                                   onClick={() => {
                                     setEditingCapId(teacher.id)
                                     setEditingCapValue(String(toCredits(teacher.monthly_cap)))
@@ -1253,14 +1233,14 @@ export default function TeachersPage() {
                                   <Pencil className="h-3 w-3" />
                                 </button>
                               </div>
-                              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden w-24">
+                              <div className="h-1.5 rounded-full bg-[#eceef1] overflow-hidden w-24">
                                 <div
                                   className={`h-full rounded-full transition-all ${
                                     teacher.monthly_cap > 0 && teacher.monthly_usage / teacher.monthly_cap > 0.85
-                                      ? 'bg-red-400'
+                                      ? 'bg-red-600'
                                       : teacher.monthly_cap > 0 && teacher.monthly_usage / teacher.monthly_cap > 0.6
-                                      ? 'bg-amber-400'
-                                      : 'bg-emerald-400'
+                                      ? 'bg-amber-500'
+                                      : 'bg-[var(--admin-accent)]'
                                   }`}
                                   style={{
                                     width: teacher.monthly_cap > 0
@@ -1277,7 +1257,7 @@ export default function TeachersPage() {
                         <td className="px-3 py-3">
                           {hardDeleteId === teacher.id ? (
                             <div className="flex items-center gap-1 justify-end flex-wrap">
-                              <span className="text-[10px] text-red-600 font-medium mr-1">{tl("Digita email per confermare:")}</span>
+                              <span className="text-[10px] text-red-700 font-medium mr-1">{tl("Digita email per confermare:")}</span>
                               <input
                                 type="email"
                                 autoFocus
@@ -1309,9 +1289,10 @@ export default function TeachersPage() {
                           ) : (
                             <div className="flex flex-nowrap items-center justify-end gap-0.5">
                               <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                tone="neutral"
+                                surface="ghost"
+                                density="icon"
+                                className="h-7 w-7 shrink-0"
                                 onClick={() => resetMutation.mutate(teacher.id)}
                                 disabled={resetMutation.isPending}
                                 title={tl("Invia link reset password")}
@@ -1321,9 +1302,10 @@ export default function TeachersPage() {
                               </Button>
                               {(teacher.role || '').toUpperCase() !== 'ADMIN' ? (
                                 <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  tone="neutral"
+                                  surface="ghost"
+                                  density="icon"
+                                  className="h-7 w-7 shrink-0"
                                   onClick={() => {
                                     if (confirm(tl("Promuovere {0} ad amministratore? Non sarà più un docente.", teacher.email)))
                                       promoteMutation.mutate(teacher.id)
@@ -1336,9 +1318,10 @@ export default function TeachersPage() {
                                 </Button>
                               ) : (
                                 <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  tone="neutral"
+                                  surface="ghost"
+                                  density="icon"
+                                  className="h-7 w-7 shrink-0"
                                   onClick={() => {
                                     if (confirm(tl("Rimuovere i permessi di amministratore a {0}? Tornerà ad essere un docente.", teacher.email)))
                                       demoteMutation.mutate(teacher.id)
@@ -1351,9 +1334,10 @@ export default function TeachersPage() {
                                 </Button>
                               )}
                               <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 shrink-0 text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                                tone="neutral"
+                                surface="ghost"
+                                density="icon"
+                                className="h-7 w-7 shrink-0"
                                 onClick={() => {
                                   if (confirm(tl("Disattivare {0}? L'account verrà nascosto ma resterà nel database.", teacher.email)))
                                     deleteMutation.mutate(teacher.id)
@@ -1365,9 +1349,10 @@ export default function TeachersPage() {
                                 <X className="h-3.5 w-3.5" />
                               </Button>
                               <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                tone="danger"
+                                surface="ghost"
+                                density="icon"
+                                className="h-7 w-7 shrink-0"
                                 onClick={() => { setHardDeleteId(teacher.id); setHardDeleteEmail('') }}
                                 title={tl("Elimina definitivamente dal database")}
                                 aria-label={tl("Elimina definitivamente dal database")}
@@ -1383,8 +1368,8 @@ export default function TeachersPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

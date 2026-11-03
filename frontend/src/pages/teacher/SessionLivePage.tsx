@@ -1,3 +1,4 @@
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -94,6 +95,8 @@ interface SessionLiveData {
     status: string
     class_name: string
     class_school_grade?: string | null
+    default_llm_provider?: string | null
+    default_llm_model?: string | null
   }
   students: StudentData[]
   modules: {
@@ -135,7 +138,8 @@ export default function SessionLivePage() {
       const res = await llmApi.getAvailableModels()
       return res.data as { models: { provider: string; model: string; name: string; description: string }[]; default_provider: string; default_model: string }
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   })
 
   // Get online users + socket for real-time updates
@@ -615,7 +619,7 @@ export default function SessionLivePage() {
                   </section>
 
                   {/* Default LLM model */}
-                  <section className="ds-panel overflow-hidden rounded-[var(--ds-radius-panel)]">
+                  <section className="ds-panel rounded-[var(--ds-radius-panel)]">
                     <div className="flex items-center gap-3 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
                       <Bot className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
                       <div className="min-w-0">
@@ -624,35 +628,11 @@ export default function SessionLivePage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 p-4 sm:p-5">
-                      {modelsData?.models?.map((m: { provider: string; model: string; name: string; description: string }) => {
-                        const isSelected =
-                          (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_provider === m.provider &&
-                          (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_model === m.model
-                        return (
-                          <button
-                            key={`${m.provider}:${m.model}`}
-                            onClick={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
-                            aria-pressed={isSelected}
-                            className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition-all ${
-                              isSelected ? 'ds-selected' : 'ds-control text-slate-600 hover:text-slate-900'
-                            }`}
-                          >
-                            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-[var(--ds-shadow-1)]">
-                              {m.provider === 'openai' ? (
-                                <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3 w-3 object-contain" />
-                              ) : m.provider === 'anthropic' ? (
-                                <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-3 w-3 object-contain" />
-                              ) : m.provider === 'deepseek' ? (
-                                <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-3 w-3 object-contain" />
-                              ) : (
-                                <Bot className="h-3 w-3" />
-                              )}
-                            </span>
-                            {m.name}
-                            {isSelected && <Check className="h-3 w-3 shrink-0 text-[var(--logo-violet)]" />}
-                          </button>
-                        )
-                      })}
+                      <SearchableSelect className="w-full" label={tl("Modello AI predefinito")}
+                        value={`${data.session.default_llm_provider || modelsData?.default_provider}|${data.session.default_llm_model || modelsData?.default_model}`}
+                        disabled={updateDefaultModelMutation.isPending}
+                        onChange={(value) => { const [provider, model] = value.split('|'); updateDefaultModelMutation.mutate({ provider, model }) }}
+                        options={(modelsData?.models || []).map((m) => ({ value: `${m.provider}|${m.model}`, label: m.name, description: m.provider, searchText: m.model }))} />
                     </div>
                   </section>
                 </div>

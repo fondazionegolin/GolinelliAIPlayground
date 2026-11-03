@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { schoolOnboardingAdminApi, type RegistrySchool, type SchoolInvite } from '@/lib/api'
 import { EmailDelivery, Pill, STAGES, fmtDate } from './SchoolMonitor'
 import { tl } from '@/i18n/tl'
+import { AdminBadge, AdminNotice, AdminTabs } from './AdminUI'
 
 /** Total documents the principal accepts (3 base + the deployer agreement). */
 const DOCUMENTS = 4
@@ -46,12 +47,12 @@ export function RegistrySearch({ onPick, placeholder }: { onPick: (s: RegistrySc
         {(data ?? []).map((s) => (
           <li key={s.code}>
             <button type="button" onClick={() => onPick(s)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-slate-400">
+              className="w-full rounded-md border border-[var(--admin-line)] bg-white px-3 py-2 text-left hover:border-[var(--admin-line-strong)] hover:bg-[var(--admin-surface-2)]">
               <span className="block text-sm font-semibold text-slate-800">{s.name}</span>
               <span className="block text-xs text-slate-500">
                 <span className="font-mono">{s.code}</span> · {[s.comune, s.province].filter(Boolean).join(', ')} ·{' '}
                 {s.kind === 'STATALE' ? 'statale' : 'paritaria'}
-                {s.tenant && <span className="ml-1 font-semibold text-amber-600">{tl("· già presente:")} {s.tenant.tenant_name}</span>}
+                {s.tenant && <span className="ml-1 font-semibold text-amber-700">{tl("· già presente:")} {s.tenant.tenant_name}</span>}
               </span>
               {s.plessi.length > 1 && (
                 <span className="mt-0.5 block truncate text-[11px] text-slate-400">{s.plessi.slice(0, 3).join(' · ')}</span>
@@ -117,14 +118,13 @@ function InviteForm({ onDone }: { onDone: () => void }) {
   if (created) {
     return (
       <div className="space-y-3">
-        <div className={`flex items-start gap-2 rounded-lg p-3 text-sm ${created.mode === 'EMAIL' && !created.email_sent ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>
-          {created.mode === 'EMAIL' && !created.email_sent ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+        <AdminNotice tone={created.mode === 'EMAIL' && !created.email_sent ? 'danger' : 'success'} icon={created.mode === 'EMAIL' && !created.email_sent ? AlertTriangle : CheckCircle2}>
           <span>
             {created.mode === 'EMAIL' ? tl("Invito per {0}", created.email) : tl("Link monouso creato")}
             {created.tenant_name ? ` · ${created.tenant_name}` : ''}{tl(". Scade il")} {fmtDate(created.expires_at, false)}.
             {created.mode === 'EMAIL' && !created.email_sent && <span className="mt-1 block text-xs">{created.email_error || tl("E-mail non inviata.")} {tl("Copia il link qui sotto e invialo manualmente.")}</span>}
           </span>
-        </div>
+        </AdminNotice>
         {created.link && (
           <div className="flex gap-2">
             <Input readOnly value={created.link} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
@@ -137,19 +137,18 @@ function InviteForm({ onDone }: { onDone: () => void }) {
   }
 
   const toggle = <T extends string>(value: T, current: T, onPick: (v: T) => void, label: string, Icon?: typeof Mail) =>
-    <button key={value} type="button" onClick={() => onPick(value)}
-      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${current === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+    <button key={value} type="button" role="tab" aria-selected={current === value} onClick={() => onPick(value)} className="admin-tab flex items-center gap-1.5">
       {Icon && <Icon className="h-3.5 w-3.5" />}{label}
     </button>
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-3">
-        <div className="flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+        <div role="tablist" className="admin-tabs">
           {toggle('EMAIL', mode, setMode, tl("Invio per e-mail"), Mail)}
           {toggle('SINGLE_USE_LINK', mode, setMode, tl("Link monouso"), Link2)}
         </div>
-        <div className="flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+        <div role="tablist" className="admin-tabs">
           {toggle<Source>('registry', source, setSource, tl("Dal registro MIM"), Building2)}
           {toggle<Source>('manual', source, setSource, tl("Fuori registro (a mano)"))}
         </div>
@@ -165,7 +164,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
         <div>
           <Label className="mb-1.5 block text-xs text-slate-500">{tl("Istituto dal registro MIM")} {mode === 'EMAIL' ? '*' : '(facoltativo)'}</Label>
           {school ? (
-            <div className="flex items-start justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <div className="flex items-start justify-between gap-2 rounded-md border border-[var(--admin-line-strong)] bg-[var(--admin-surface-2)] p-3">
               <div className="min-w-0 text-sm">
                 <p className="flex items-center gap-1.5 font-semibold text-slate-900"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />{school.name}</p>
                 <p className="text-xs text-slate-600"><span className="font-mono">{school.code}</span> · {[school.address, school.comune, school.province].filter(Boolean).join(', ')}</p>
@@ -179,7 +178,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
               if (!form.email && s.email && mode === 'EMAIL') setForm((f) => ({ ...f, email: s.email!.toLowerCase() }))
             }} />
           )}
-          <p className="mt-1.5 text-xs text-slate-500">{tl("Non lo trovi?")} <button type="button" className="font-semibold text-indigo-700 hover:underline" onClick={() => setSource('manual')}>{tl("Inseriscilo a mano")}</button>.</p>
+          <p className="mt-1.5 text-xs text-slate-500">{tl("Non lo trovi?")} <button type="button" className="font-semibold text-[var(--admin-accent)] hover:underline" onClick={() => setSource('manual')}>{tl("Inseriscilo a mano")}</button>.</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
@@ -227,8 +226,8 @@ export function EmailHealthBanner() {
   const recheck = async () => qc.setQueryData(['admin-email-health'], (await schoolOnboardingAdminApi.emailHealth(true)).data)
   if (!data) return null
   return (
-    <div className={`flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3 text-sm ${data.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'}`}>
-      {data.ok ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
+    <AdminNotice tone={data.ok ? 'success' : 'danger'} icon={data.ok ? ShieldCheck : AlertTriangle}>
+      <div className="flex flex-wrap items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="font-semibold">{data.ok ? tl("Invio e-mail operativo") : tl("Le e-mail non partono")}</p>
         <p className="text-xs opacity-90">{data.ok ? tl("Mittente {0} via {1} · verificato {2}", data.sender, data.host, fmtDate(data.checked_at)) : data.error}</p>
@@ -237,7 +236,8 @@ export function EmailHealthBanner() {
       <Button tone="neutral" surface="outline" density="compact" onClick={() => void recheck()} disabled={isFetching}>
         <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />{tl("Verifica")}
       </Button>
-    </div>
+      </div>
+    </AdminNotice>
   )
 }
 
@@ -293,16 +293,16 @@ export function SchoolInviteManager() {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="admin-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
-            <Building2 className="h-4 w-4 text-pink-500" /> {tl("Inviti istituti")}
-            {pending.length > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">{pending.length} {tl("in attesa")}</span>}
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Building2 className="h-4 w-4 text-slate-500" /> {tl("Inviti istituti")}
+            {pending.length > 0 && <AdminBadge tone="warning">{pending.length} {tl("in attesa")}</AdminBadge>}
           </h2>
           <p className="mt-1 text-xs text-slate-500">
             {tl("Registro MIM:")} {registry ? <>{registry.total.toLocaleString('it-IT')} istituti{registry.school_year ? ` · a.s. ${registry.school_year.slice(0, 4)}/${registry.school_year.slice(4)}` : ''}</> : '…'}
-            {registry?.total === 0 && <span className="ml-1 font-semibold text-red-600">{"vuoto: sincronizza"}</span>}
-            <button type="button" className="ml-2 font-semibold text-indigo-600 hover:underline disabled:opacity-50" disabled={sync.isPending} onClick={() => sync.mutate()}>
+            {registry?.total === 0 && <span className="ml-1 font-semibold text-red-700">{"vuoto: sincronizza"}</span>}
+            <button type="button" className="ml-2 font-semibold text-[var(--admin-accent)] hover:underline disabled:opacity-50" disabled={sync.isPending} onClick={() => sync.mutate()}>
               {sync.isPending ? tl("Aggiornamento…") : tl("Aggiorna dal MIM")}
             </button>
           </p>
@@ -312,17 +312,13 @@ export function SchoolInviteManager() {
         </Button>
       </div>
 
-      {open && <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><InviteForm onDone={refresh} /></div>}
+      {open && <div className="admin-panel p-5"><InviteForm onDone={refresh} /></div>}
 
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
-        {([['open', tl("In corso ({0})", pending.length)], ['problems', tl("Problemi")], ['all', tl("Tutti ({0})", invites.length)]] as const).map(([key, label]) =>
-          <button key={key} type="button" onClick={() => setFilter(key)}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold ${filter === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}
-      </div>
+      <AdminTabs value={filter} onChange={setFilter} options={[['open', tl("In corso ({0})", pending.length)], ['problems', tl("Problemi")], ['all', tl("Tutti ({0})", invites.length)]]} />
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="admin-panel overflow-x-auto">
         <table className="min-w-[1180px] text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] uppercase text-slate-500">
+          <thead>
             <tr><th>{tl("Istituto")}</th><th>{tl("Referente")}</th><th>{tl("Stato")}</th><th>E-mail</th><th>{tl("Link")}</th><th>{tl("Accettazione")}</th><th>{tl("Creato · scade")}</th><th className="text-right">{tl("Azioni")}</th></tr>
           </thead>
           <tbody>
@@ -333,7 +329,7 @@ export function SchoolInviteManager() {
                 <td className="max-w-[280px]">
                   <span className="font-semibold text-slate-800">{inv.tenant_name || inv.organization?.name || tl("Da scegliere al primo accesso")}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                    {inv.mechanographic_code ? <span className="font-mono">{inv.mechanographic_code}</span> : (inv.tenant_name || inv.organization) && <Pill label={tl("fuori registro")} cls="bg-amber-50 text-amber-700" />}
+                    {inv.mechanographic_code ? <span className="font-mono">{inv.mechanographic_code}</span> : (inv.tenant_name || inv.organization) && <Pill label={tl("fuori registro")} cls="admin-badge-warning" />}
                     {inv.organization?.comune && <span>{inv.organization.comune}{inv.organization.province ? ` (${inv.organization.province})` : ''}</span>}
                     {inv.label && <span className="italic">{inv.label}</span>}
                   </span>

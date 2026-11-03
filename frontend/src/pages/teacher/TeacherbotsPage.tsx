@@ -104,6 +104,11 @@ export default function TeacherbotsPage() {
     },
   })
 
+  const { data: starters = [] } = useQuery<{ id: string; name: string; synopsis?: string }[]>({
+    queryKey: ['teacher-default-teacherbots'], queryFn: async () => (await teacherbotsApi.defaults()).data,
+    staleTime: 30_000, refetchInterval: 30_000,
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => teacherbotsApi.delete(id),
     onSuccess: () => {
@@ -285,6 +290,12 @@ export default function TeacherbotsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-transparent">
       <div className="flex-1 overflow-y-auto">
+        {starters.length > 0 && <section className="mx-4 mt-4 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-elevated)] p-4">
+          <h2 className="font-bold text-[var(--text-primary)]">{tl("Teacherbot già disponibili")}</h2>
+          <p className="mb-3 mt-1 text-sm text-[var(--text-muted)]">{tl("Gli assistenti scelti dall'amministratore per tutti i docenti.")}</p>
+          <div className="flex flex-wrap gap-2">{starters.map((bot) => <button type="button" key={bot.id} onClick={() => setTestTarget(bot.id)} className="rounded-xl border border-[var(--app-accent-border)] bg-[var(--app-accent-soft)] px-4 py-3 text-left text-[var(--text-primary)]"><b>{bot.name}</b><span className="block text-xs">{bot.synopsis}</span></button>)}</div>
+        </section>}
+
         <section className="ds-frame-header">
           <div className="mx-auto max-w-3xl px-4 py-8 text-center md:px-6">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">

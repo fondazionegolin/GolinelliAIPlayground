@@ -1,3 +1,6 @@
+import { clipboardFiles } from '@/lib/clipboardFiles'
+import 'katex/dist/katex.min.css'
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import { useState, useRef, useEffect, useCallback, memo, type ReactNode } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
@@ -45,6 +48,7 @@ interface ChatConversationViewProps {
   suggestedPrompts?: string[]
   isTeacherbot?: boolean
   onMinimize?: () => void
+  headerContent?: ReactNode
   footerContent?: ReactNode
   hideComposer?: boolean
 }
@@ -62,6 +66,7 @@ export function ChatConversationView({
   suggestedPrompts = [],
   isTeacherbot: _isTeacherbot = false,
   onMinimize,
+  headerContent,
   footerContent,
   hideComposer = false,
 }: ChatConversationViewProps) {
@@ -214,6 +219,8 @@ export function ChatConversationView({
           </Button>
         )}
       </div>
+
+      {headerContent && <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-2">{headerContent}</div>}
 
       {/* Messages area */}
       <div
@@ -376,6 +383,12 @@ export function ChatConversationView({
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(event) => {
+              const files = clipboardFiles(event.clipboardData)
+              if (!files.length) return
+              event.preventDefault()
+              void confirmAttachments(files).then(attachNow)
+            }}
             onKeyDown={(e) => {
               if (onHistoryKey(e)) return
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -461,7 +474,7 @@ export const MessageBubble = memo(function MessageBubble({
                 li: ({ children }) => <li className="text-[16px] leading-7 text-slate-800">{children}</li>,
               }}
             >
-              {message.content}
+              {normalizeMathMarkdown(message.content)}
             </ReactMarkdown>
           </div>
         )}

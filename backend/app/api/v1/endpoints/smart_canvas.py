@@ -26,7 +26,7 @@ from app.models.session_canvas import SessionCanvas
 from app.models.smart_canvas import SmartCanvas
 from app.models.user import User
 from app.realtime.gateway import sio
-from app.services import motion
+from app.services import model_selection, motion
 from app.services import smart_canvas as ai
 from app.services.credit_service import credit_service
 from app.services.visual_comprehension import normalize_image
@@ -192,6 +192,8 @@ class ChatBody(BaseModel):
     changes: list[str] = Field(default_factory=list, max_length=40)
     selected: list[str] = Field(default_factory=list, max_length=60)
     near: list[str] = Field(default_factory=list, max_length=20)
+    llm_provider: str | None = Field(default=None, max_length=20)  # model picked in the canvas menu (Admin → Modelli → Canvas)
+    llm_model: str | None = Field(default=None, max_length=120)
 
     @field_validator("changes")
     @classmethod
@@ -425,11 +427,12 @@ async def chat(canvas_id: uuid.UUID, body: ChatBody, actor: Actor, db: Db):
         extras = [await asyncio.to_thread(normalize_image, image) for image in body.images]
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    pair = await model_selection.resolve_scoped(db, "canvas", body.llm_provider, body.llm_model)
     track = await tracker(actor)
     try:
         async with asyncio.timeout(170):
             who = f"[{author}] {body.content}" if row.session_id else body.content  # on a shared board the model must tell people apart
-            reply = await ai.converse(overview, extras, body.items, body.changes, body.selected, history, who, track, near=body.near, images_meta=body.images_meta[:len(extras)])
+            reply = await ai.converse(overview, extras, body.items, body.changes, body.selected, history, who, track, near=body.near, images_meta=body.images_meta[:len(extras)], pair=pair)
     except HTTPException:
         raise
     except Exception as exc:

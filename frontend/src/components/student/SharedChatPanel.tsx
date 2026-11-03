@@ -1,3 +1,7 @@
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
@@ -223,7 +227,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
                     )}
                     {isBot ? (
                       <div className="prose prose-sm max-w-none prose-p:my-1">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeMathMarkdown(m.content)}</ReactMarkdown>
                       </div>
                     ) : (
                       <span className="whitespace-pre-wrap">{m.content}</span>

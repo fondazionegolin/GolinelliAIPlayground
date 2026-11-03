@@ -288,7 +288,7 @@ async def inquiry_turn(
         raise HTTPException(status.HTTP_409_CONFLICT, "L'intervista è già conclusa")
 
     scope = await _credit_scope(db, auth)
-    await _require_credits(db, bot.tenant_id, scope)
+    await _require_credits(db, auth.teacher.tenant_id if auth.is_teacher else auth.student.tenant_id, scope)
 
     suspect = _require_suspect(cfg, request.suspect_id)
     unlocked = list(sess.unlocked_clue_ids or [])
@@ -305,7 +305,7 @@ async def inquiry_turn(
     sess.unlocked_clue_ids = decision.unlocked_ids
     sess.turn_count = (sess.turn_count or 0) + 1
     _append_transcript(sess, [{"role": "user", "text": request.text, "flag": decision.flag, "intent": intent, "suspect": suspect.id}])
-    await _track(db, bot.tenant_id, scope, resp, "inquiry_classify", sess)
+    await _track(db, auth.teacher.tenant_id if auth.is_teacher else auth.student.tenant_id, scope, resp, "inquiry_classify", sess)
     await db.commit()
 
     out = {
@@ -364,7 +364,7 @@ async def inquiry_answer(
         if accused is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Scegli chi accusare")
     scope = await _credit_scope(db, auth)
-    await _require_credits(db, bot.tenant_id, scope)
+    await _require_credits(db, auth.teacher.tenant_id if auth.is_teacher else auth.student.tenant_id, scope)
     try:
         correct, score, feedback, resp = await svc.grade_answer(cfg, request.answer.strip(), accused)
     except Exception as exc:  # noqa: BLE001
@@ -379,7 +379,7 @@ async def inquiry_answer(
     elif sess.attempts >= MAX_ATTEMPTS:
         sess.status = "failed"
     sess.verdict = {"correct": correct, "score": score, "feedback": feedback}
-    await _track(db, bot.tenant_id, scope, resp, "inquiry_grade", sess)
+    await _track(db, auth.teacher.tenant_id if auth.is_teacher else auth.student.tenant_id, scope, resp, "inquiry_grade", sess)
     await db.commit()
 
     out = {**_public_state(sess, cfg), "correct": correct, "score": score, "feedback": feedback}

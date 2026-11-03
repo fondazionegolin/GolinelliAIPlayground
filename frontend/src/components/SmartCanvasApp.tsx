@@ -1,3 +1,4 @@
+import { ScopedModelSelect, storedModelChoice, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { v4 as uuid } from 'uuid'
 import ReactMarkdown from 'react-markdown'
@@ -391,7 +392,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       const near = snap.selected.length ? snap.selected : changedIds(before, snap.doc).map(id => toAlias[id]).filter(Boolean)
       const { data } = await api.post<{ message: { id: string; content: string; ops?: AiOp[]; focus?: string[] } }>(`${BASE}/${boardId}/chat`, {
         request_id: userMessage.id, content: text, overview: snap.overview, images: snap.images, images_meta: snap.imagesMeta,
-        items: snap.items, changes, selected: snap.selected.slice(0, 60), near: near.slice(0, 20),
+        items: snap.items, changes, selected: snap.selected.slice(0, 60), near: near.slice(0, 20), ...storedModelChoice('canvas'),
       }, { timeout: 190000 })
       let ops = unaliasOps(data.message.ops || [], snap.fromAlias)
       if (ops.some(o => o.on && o.kind === 'shape')) { setPhase(tl("Preciso le posizioni sull’immagine…")); ops = await refineOps(boardId, ops, snap.doc, text, data.message.content) }
@@ -484,6 +485,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
         {error && <div className="flex items-start gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700" role="alert"><span className="flex-1">{error}</span><button type="button" aria-label={tl("Chiudi errore")} onClick={() => setError('')}><X className="h-3.5 w-3.5" /></button></div>}
       </div>
       <form className="border-t border-slate-200 bg-white p-3" onSubmit={(e: FormEvent) => { e.preventDefault(); void send() }}>
+        <CanvasModelMenu />
         <div className="flex items-end gap-2">
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={4000} disabled={busy || !assistantAllowed}
             placeholder={assistantAllowed ? tl("Chiedi qualcosa su questa lavagna…") : tl("Assistente disponibile solo al docente")} aria-label={tl("Messaggio all’assistente")}
@@ -494,4 +496,10 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       </form>
     </aside>}
   </div>
+}
+
+/** Model of the board assistant, from the models the admin enabled for the smart canvas; hidden while none is enabled. */
+function CanvasModelMenu() {
+  const { value, setValue } = useScopedModelChoice('canvas')
+  return <ScopedModelSelect scope="canvas" value={value} onChange={setValue} className="mb-2 w-full" label={tl("Modello dell’assistente")} />
 }

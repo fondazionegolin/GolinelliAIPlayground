@@ -31,6 +31,8 @@ import {
   Zap,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { Button } from '@/design'
+import { AdminBadge, AdminPageHeader, AdminStat, AdminStatGrid } from '@/components/admin/AdminUI'
 
 type Granularity = 'day' | 'week' | 'month'
 
@@ -422,49 +424,30 @@ export default function CostsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{tl("Analytics & Consumi")}</h1>
-          <p className="mt-0.5 text-sm text-slate-500">{tl("Reportistica per periodo, utenti, studenti, token e picchi.")}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            {tl("Aggiorna")}
-          </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={rows.length === 0}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" />
-            CSV
-          </button>
-          <button
-            type="button"
-            onClick={downloadTeacherUsageReport}
-            disabled={teacherReportDownloading}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" />
-            {teacherReportDownloading ? 'Download...' : tl("Report docenti")}
-          </button>
-          <button
-            type="button"
-            onClick={downloadLedger}
-            disabled={ledgerDownloading || ledgerRows.length === 0}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" />
-            {ledgerDownloading ? 'Download...' : tl("Ledger crediti")}
-          </button>
-        </div>
-      </div>
+      <AdminPageHeader
+        title={tl("Analytics & Consumi")}
+        description={tl("Reportistica per periodo, utenti, studenti, token e picchi.")}
+        actions={
+          <>
+            <Button tone="neutral" surface="ghost" onClick={() => refetch()}>
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+              {tl("Aggiorna")}
+            </Button>
+            <Button tone="neutral" surface="outline" onClick={exportCsv} disabled={rows.length === 0}>
+              <Download className="h-4 w-4" />
+              CSV
+            </Button>
+            <Button tone="neutral" surface="outline" onClick={downloadTeacherUsageReport} disabled={teacherReportDownloading}>
+              <Download className="h-4 w-4" />
+              {teacherReportDownloading ? 'Download...' : tl("Report docenti")}
+            </Button>
+            <Button tone="accent" surface="solid" onClick={downloadLedger} disabled={ledgerDownloading || ledgerRows.length === 0}>
+              <Download className="h-4 w-4" />
+              {ledgerDownloading ? 'Download...' : tl("Ledger crediti")}
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader className="pb-3">
@@ -510,14 +493,14 @@ export default function CostsPage() {
                   setGranularity(e.target.value as Granularity)
                   setLedgerOffset(0)
                 }}
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm text-slate-800 focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
               >
                 <option value="day">{tl("Giorno")}</option>
                 <option value="week">{tl("Settimana")}</option>
                 <option value="month">{tl("Mese")}</option>
               </select>
             </div>
-            <div className="flex items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="flex items-end gap-2 rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] px-3 py-2">
               <input
                 id="analytics-empty"
                 type="checkbox"
@@ -554,7 +537,7 @@ export default function CostsPage() {
                   setSessionId('')
                   setLedgerOffset(0)
                 }}
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm text-slate-800 focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
               >
                 <option value="">{tl("Tutti")}</option>
                 {(teachers?.items || []).map((teacher) => {
@@ -577,7 +560,7 @@ export default function CostsPage() {
                   setSessionId('')
                   setLedgerOffset(0)
                 }}
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm text-slate-800 focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
               >
                 <option value="">{tl("Tutte")}</option>
                 {classOptions.map((item) => (
@@ -596,7 +579,7 @@ export default function CostsPage() {
                   setSessionId(e.target.value)
                   setLedgerOffset(0)
                 }}
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm text-slate-800 focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
               >
                 <option value="">{tl("Tutte")}</option>
                 {sessionOptions.map((session) => (
@@ -616,7 +599,7 @@ export default function CostsPage() {
                     setActorRole(e.target.value)
                     setLedgerOffset(0)
                   }}
-                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm text-slate-800 focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                 >
                   <option value="">{tl("Tutti")}</option>
                   <option value="student">{tl("Studenti")}</option>
@@ -663,43 +646,38 @@ export default function CostsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <AdminStatGrid className="xl:!grid-cols-5">
         <MetricTile
           icon={Users}
           label={tl("Utenti attivi")}
           value={formatNumber(summary?.active_users_period || 0)}
           hint={tl("{0} nel perimetro", formatNumber(summary?.registered_users_scope || 0))}
-          tone="slate"
         />
         <MetricTile
           icon={GraduationCap}
           label={tl("Studenti connessi")}
           value={formatNumber(summary?.active_students_period || 0)}
           hint={tl("{0} nuovi nel periodo", formatNumber(summary?.students_joined_period || 0))}
-          tone="emerald"
         />
         <MetricTile
           icon={Cpu}
           label="Token"
           value={formatCompact(summary?.total_tokens || 0)}
           hint={`${formatCompact(summary?.average_tokens_per_bucket || 0)} media`}
-          tone="indigo"
         />
         <MetricTile
           icon={Zap}
           label={tl("Chiamate")}
           value={formatNumber(summary?.total_api_calls || 0)}
           hint={`${formatNumber(summary?.average_api_calls_per_bucket || 0)} media`}
-          tone="sky"
         />
         <MetricTile
           icon={TrendingUp}
           label={tl("Costo")}
           value={formatCurrency(summary?.total_cost || 0)}
           hint={formatPeriod(report?.filters?.start_date, report?.filters?.end_date)}
-          tone="amber"
         />
-      </div>
+      </AdminStatGrid>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
@@ -712,13 +690,13 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows.map((r) => ({ ...r, teacher_cost: toCredits(r.teacher_cost), student_cost: toCredits(r.student_cost) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
+                  <CartesianGrid stroke="#eceef1" vertical={false} />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value: number) => `${formatCreditAmount(Number(value || 0))} cr.`} />
                   <Legend />
-                  <Line type="monotone" dataKey="teacher_cost" stroke="#404040" strokeWidth={2} dot={false} name="Docenti (crediti)" />
-                  <Line type="monotone" dataKey="student_cost" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti (crediti)" />
+                  <Line type="monotone" dataKey="teacher_cost" stroke="#17151b" strokeWidth={2} dot={false} name="Docenti (crediti)" />
+                  <Line type="monotone" dataKey="student_cost" stroke="#7b69c9" strokeWidth={2} dot={false} name="Studenti (crediti)" />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -750,16 +728,16 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
+                  <CartesianGrid stroke="#eceef1" vertical={false} />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value: number) => numberFormatter.format(Number(value || 0))} />
                   <Legend />
-                  <Line yAxisId="left" type="monotone" dataKey="active_users" stroke="#0f766e" strokeWidth={2} dot={false} name="Utenti" />
-                  <Line yAxisId="left" type="monotone" dataKey="active_students" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti" />
-                  <Line yAxisId="right" type="monotone" dataKey="total_tokens" stroke="#9333ea" strokeWidth={2} dot={false} name="Token" />
-                  <Line yAxisId="right" type="monotone" dataKey="api_calls" stroke="#f59e0b" strokeWidth={2} dot={false} name="Chiamate" />
+                  <Line yAxisId="left" type="monotone" dataKey="active_users" stroke="#17151b" strokeWidth={2} dot={false} name="Utenti" />
+                  <Line yAxisId="left" type="monotone" dataKey="active_students" stroke="#7b69c9" strokeWidth={2} dot={false} name="Studenti" />
+                  <Line yAxisId="right" type="monotone" dataKey="total_tokens" stroke="#9aa0aa" strokeDasharray="4 3" strokeWidth={2} dot={false} name="Token" />
+                  <Line yAxisId="right" type="monotone" dataKey="api_calls" stroke="#c4b9ef" strokeWidth={2} dot={false} name="Chiamate" />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -802,7 +780,7 @@ export default function CostsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
+                    <tr>
                       <th className="px-4 py-3 font-medium">{tl("Utente")}</th>
                       <th className="px-3 py-3 font-medium">{tl("Ruolo")}</th>
                       <th className="px-3 py-3 font-medium">{tl("Pool / Docente")}</th>
@@ -819,7 +797,7 @@ export default function CostsPage() {
                       const isOpen = !!expandedLedgerGroups[group.key]
                       return (
                         <Fragment key={group.key}>
-                          <tr className="border-t border-slate-100 bg-white hover:bg-slate-50">
+                          <tr>
                             <td className="px-4 py-3">
                               <button
                                 type="button"
@@ -834,15 +812,9 @@ export default function CostsPage() {
                               </button>
                             </td>
                             <td className="px-3 py-3">
-                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
-                                group.actorRole === 'student'
-                                  ? 'bg-blue-50 text-blue-700'
-                                  : group.actorRole === 'admin'
-                                    ? 'bg-amber-50 text-amber-700'
-                                    : 'bg-slate-100 text-slate-700'
-                              }`}>
+                              <AdminBadge tone={group.actorRole === 'admin' ? 'accent' : 'neutral'}>
                                 {roleLabel(group.actorRole)}
-                              </span>
+                              </AdminBadge>
                             </td>
                             <td className="px-3 py-3">
                               <p className="text-sm text-slate-700">{group.teacherName || '—'}</p>
@@ -858,7 +830,7 @@ export default function CostsPage() {
                             <td className="px-4 py-3 text-right font-mono text-xs text-slate-500">{formatDateTime(group.lastAt)}</td>
                           </tr>
                           {isOpen && group.items.map((item) => (
-                            <tr key={item.id} className="border-t border-slate-100 bg-slate-50/60">
+                            <tr key={item.id} className="bg-[var(--admin-surface-2)]">
                               <td className="px-10 py-2 font-mono text-xs text-slate-500">{formatDateTime(item.timestamp)}</td>
                               <td className="px-3 py-2 text-xs text-slate-500">{item.usage_type}</td>
                               <td className="px-3 py-2 text-xs text-slate-500">{item.teacher_email || '—'}</td>
@@ -881,7 +853,7 @@ export default function CostsPage() {
                   type="button"
                   onClick={() => setLedgerOffset(Math.max(0, ledgerOffset - 200))}
                   disabled={ledgerOffset === 0}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
+                  className="h-8 rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm font-medium text-slate-700 hover:bg-[var(--admin-surface-2)] disabled:opacity-40"
                 >
                   {tl("Precedenti")}
                 </button>
@@ -892,7 +864,7 @@ export default function CostsPage() {
                   type="button"
                   onClick={() => setLedgerOffset(ledgerOffset + 200)}
                   disabled={ledgerOffset + ledgerRows.length >= (ledger?.total || 0)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
+                  className="h-8 rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm font-medium text-slate-700 hover:bg-[var(--admin-surface-2)] disabled:opacity-40"
                 >
                   {tl("Successivi")}
                 </button>
@@ -916,7 +888,7 @@ export default function CostsPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
+                  <tr>
                     <th className="px-4 py-3 font-medium">{tl("Periodo")}</th>
                     <th className="px-3 py-3 text-right font-medium">{tl("Utenti")}</th>
                     <th className="px-3 py-3 text-right font-medium">{tl("Studenti")}</th>
@@ -928,7 +900,7 @@ export default function CostsPage() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.bucket_start} className="border-t border-slate-100 hover:bg-slate-50">
+                    <tr key={row.bucket_start}>
                       <td className="px-4 py-3 font-medium text-slate-800">{formatPeriod(row.period_start, row.period_end)}</td>
                       <td className="px-3 py-3 text-right text-slate-700">{formatNumber(row.active_users)}</td>
                       <td className="px-3 py-3 text-right text-slate-700">{formatNumber(row.active_students)}</td>
@@ -977,7 +949,7 @@ export default function CostsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
+                    <tr>
                       <th className="px-4 py-3 font-medium">{tl("Utente")}</th>
                       <th className="px-3 py-3 text-right font-medium">Token</th>
                       <th className="px-4 py-3 text-right font-medium">{tl("Costo")}</th>
@@ -985,7 +957,7 @@ export default function CostsPage() {
                   </thead>
                   <tbody>
                     {(report?.top_users || []).slice(0, 10).map((user) => (
-                      <tr key={user.user_id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <tr key={user.user_id}>
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-800">{user.name}</p>
                           <p className="text-xs text-slate-400">{user.email}</p>
@@ -1006,35 +978,17 @@ export default function CostsPage() {
 }
 
 function MetricTile({
-  icon: Icon,
+  icon,
   label,
   value,
   hint,
-  tone,
 }: {
   icon: typeof Users
   label: string
   value: string
   hint: string
-  tone: 'slate' | 'emerald' | 'indigo' | 'sky' | 'amber'
 }) {
-  const toneClasses: Record<typeof tone, string> = {
-    slate: 'border-slate-200 bg-slate-50 text-slate-600',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    indigo: 'border-indigo-200 bg-indigo-50 text-indigo-700',
-    sky: 'border-sky-200 bg-sky-50 text-sky-700',
-    amber: 'border-amber-200 bg-amber-50 text-amber-700',
-  }
-  return (
-    <div className={`rounded-lg border px-4 py-3 ${toneClasses[tone]}`}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-slate-500">{label}</p>
-        <Icon className="h-4 w-4 flex-shrink-0" />
-      </div>
-      <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
-      <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
-    </div>
-  )
+  return <AdminStat icon={icon} label={label} value={value} hint={hint} />
 }
 
 function PeakRow({
@@ -1052,7 +1006,7 @@ function PeakRow({
 }) {
   const formatted = currency ? formatCurrency(value) : compact ? formatCompact(value) : formatNumber(value)
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] px-3 py-2">
       <div>
         <p className="text-xs font-medium text-slate-700">{label}</p>
         <p className="text-[11px] text-slate-400">{period}</p>
@@ -1081,7 +1035,7 @@ function BreakdownTable({
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
+                <tr>
                   <th className="px-4 py-3 font-medium">{tl("Nome")}</th>
                   <th className="px-3 py-3 text-right font-medium">{tl("Chiamate")}</th>
                   <th className="px-3 py-3 text-right font-medium">Token</th>
@@ -1090,7 +1044,7 @@ function BreakdownTable({
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.key} className="border-t border-slate-100 hover:bg-slate-50">
+                  <tr key={item.key}>
                     <td className="max-w-[180px] truncate px-4 py-3 font-mono text-xs text-slate-700">{item.key}</td>
                     <td className="px-3 py-3 text-right text-xs text-slate-600">{formatNumber(item.calls)}</td>
                     <td className="px-3 py-3 text-right font-mono text-xs text-slate-600">{formatNumber(item.tokens)}</td>

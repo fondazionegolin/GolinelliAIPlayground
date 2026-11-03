@@ -242,7 +242,7 @@ def sanitize(reply: CanvasReply, existing: set[str]) -> CanvasReply:
 
 async def converse(overview: str, extra_images: list[str], items: list[SceneItem], changes: list[str], selected: list[str],
                    history: list[dict], message: str, on_usage: Callable[[LLMResponse, str], Awaitable[None]], near: list[str] | None = None,
-                   images_meta: list[ImageMeta] | None = None) -> CanvasReply:
+                   images_meta: list[ImageMeta] | None = None, pair: tuple[str, str] | None = None) -> CanvasReply:
     existing = {i.id for i in items}
     recent = "\n".join(f"{m['role']}: {str(m.get('content', ''))[:600]}" for m in history[-8:]) or "(nessuna)"
     instruction = (
@@ -261,7 +261,7 @@ async def converse(overview: str, extra_images: list[str], items: list[SceneItem
         try:
             async with asyncio.timeout(55 if attempt < 2 else 45):
                 reply = await generate_validated("canvas", instruction, CanvasReply, CanvasReply.model_validate, overview, on_usage,
-                                                 max_tokens=7000, system_prompt=PROMPT, role="vision.canvas", extra_images=extra_images)
+                                                 max_tokens=7000, system_prompt=PROMPT, role="vision.canvas", extra_images=extra_images, pair=pair)
             return sanitize(reply, existing)
         except TimeoutError:
             logger.warning("smart_canvas model call stalled (attempt %d)", attempt + 1)

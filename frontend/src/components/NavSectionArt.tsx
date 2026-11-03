@@ -7,6 +7,7 @@ const ART: Record<string, string> = {
   '/teacher/school': 'school',
   '/teacher/documents': 'documents',
   '/teacher/teacherbots': 'teacherbots',
+  '/teacher/voice-lab': 'voice-lab',
   '/teacher/ai-3d': 'ai-3d',
   '/teacher/3d-lab': '3d-lab',
   '/teacher/coding': 'coding',

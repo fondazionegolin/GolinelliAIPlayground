@@ -1,3 +1,4 @@
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -8,7 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { AuthMedia } from '@/components/videostudio/AuthMedia'
 import {
   STATUS_LABEL, STYLE_SWATCH, isBusy,
-  type Entity, type Project, type Script, type Shot, type VideoStudioConfig,
+  type Entity, type Project, type Script, type Shot, type VideoStudioConfig, type VideoModel,
 } from '@/components/videostudio/types'
 import { tl } from '@/i18n/tl'
 
@@ -37,6 +38,20 @@ export default function VideoStudioEditorPage() {
     refetchInterval: (q) => (isBusy(q.state.data as Project | undefined) ? 2500 : false),
   })
   const p = query.data
+  const videoModels = useQuery<VideoModel[]>({ queryKey: ['vs', 'video-models'], queryFn: async () => (await api.videoModels()).data, enabled: !!config.data?.openrouter_configured })
+  const [videoModel, setVideoModel] = useState('local')
+  const [videoDuration, setVideoDuration] = useState(5)
+  const [videoResolution, setVideoResolution] = useState('')
+  const selectedVideo = videoModels.data?.find((m) => m.id === videoModel)
+  const renderProject = useRef('')
+  useEffect(() => {
+    if (!p || renderProject.current === p.id) return
+    renderProject.current = p.id
+    const options = p.script?.render_settings
+    setVideoModel(options?.provider === 'openrouter' ? options.model || 'local' : 'local')
+    setVideoDuration(options?.duration ?? 5)
+    setVideoResolution(options?.resolution ?? '')
+  }, [p])
 
   const [form, setForm] = useState({ title: '', source_text: '', brief: '', style_key: 'flat_2d', aspect: '16:9', language: 'it', target_shots: 6 })
   const [script, setScript] = useState<Script>({})
@@ -101,7 +116,12 @@ export default function VideoStudioEditorPage() {
     onSuccess: refresh, onError: fail(tl("Storyboard non avviato")),
   })
   const startRender = useMutation({
-    mutationFn: async (shots?: number[]) => { await flushEdits(); return (await api.render(projectId, shots)).data },
+    mutationFn: async (shots?: number[]) => {
+      await flushEdits()
+      return (await api.render(projectId, shots, videoModel === 'local' ? { provider: 'local' } : {
+        provider: 'openrouter', model: videoModel, duration: videoDuration, resolution: videoResolution || undefined,
+      })).data
+    },
     onSuccess: refresh, onError: fail(tl("Montaggio non avviato")),
   })
 
@@ -111,7 +131,7 @@ export default function VideoStudioEditorPage() {
   const keyframes = shots.filter((s) => s.keyframe_key).length
   const clips = shots.filter((s) => s.video_key).length
   const current = typeof selected === 'number' ? shots.find((s) => s.n === selected) || shots[0] : undefined
-  const shotSeconds = config.data?.shot_seconds ?? 5
+  const shotSeconds = videoModel === 'local' ? (config.data?.shot_seconds ?? 5) : videoDuration
   const imageCost = config.data?.image_cost_usd ?? 0.05
   const stage: Stage = !hasScript ? 'script' : keyframes < shots.length ? 'storyboard' : clips < shots.length || !p?.has_final ? 'render' : 'done'
   const ratio = (() => { const [a, b] = (form.aspect || '16:9').split(':').map(Number); return a && b ? a / b : 16 / 9 })()
@@ -220,6 +240,34 @@ export default function VideoStudioEditorPage() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
         {/* left rail: direction */}
         <aside className="ds-frame-sidebar w-full shrink-0 space-y-5 p-4 lg:w-[272px] lg:overflow-y-auto">
+          <div>
+            <Label>{tl("Modello video")}</Label>
+            <SearchableSelect value={videoModel} disabled={busy} label={tl("Modello video")}
+              onChange={(value) => {
+                const model = videoModels.data?.find((m) => m.id === value)
+                setVideoModel(value)
+                setVideoDuration(model?.supported_durations?.[0] ?? 5)
+                setVideoResolution(model?.supported_resolutions?.[0] ?? '')
+              }}
+              options={[
+                { value: 'local', label: tl("Animazione da immagini") },
+                ...(videoModels.data || []).map((m) => ({ value: m.id, label: m.name, description: 'OpenRouter', searchText: m.id,
+                  disabled: !!m.supported_aspect_ratios?.length && !m.supported_aspect_ratios.includes(form.aspect) })),
+              ]} />
+            {config.data?.openrouter_configured && !videoModels.data?.length && <p className="mt-2 text-[11px] text-[var(--text-secondary)]">{videoModels.isError ? tl("Catalogo video non raggiungibile.") : tl("Attiva i modelli video in Admin → Modelli dopo la scansione.")}</p>}
+            {selectedVideo && <div className="mt-2 space-y-2">
+              <Label>{tl("Durata per scena")}</Label>
+              <Select density="compact" value={videoDuration} disabled={busy} onChange={(e) => setVideoDuration(Number(e.target.value))}>
+                {(selectedVideo.supported_durations?.length ? selectedVideo.supported_durations : [5]).map((d) => <option key={d} value={d}>{d}s</option>)}
+              </Select>
+              <Label>{tl("Risoluzione")}</Label>
+              <Select density="compact" value={videoResolution} disabled={busy} onChange={(e) => setVideoResolution(e.target.value)}>
+                <option value="">{tl("Predefinita")}</option>
+                {selectedVideo.supported_resolutions?.map((r) => <option key={r} value={r}>{r}</option>)}
+              </Select>
+              <p className="text-[11px] text-[var(--text-secondary)]">{Object.entries(selectedVideo.pricing_skus || {}).map(([sku, price]) => `${sku}: $${price}`).join(' · ')} {tl("La generazione usa i crediti OpenRouter.")}</p>
+            </div>}
+          </div>
           <div>
             <Label>{tl("Stile visivo")}</Label>
             <div className="grid grid-cols-2 gap-2">

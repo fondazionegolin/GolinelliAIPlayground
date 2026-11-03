@@ -3,16 +3,8 @@ import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEvent
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from '@/components/icons'
 import type { AgentStepEvent, SceneObject } from './types'
 import { tl } from '@/i18n/tl'
+import { splitModelValue, useScopedModels, modelValue } from '@/components/models/ScopedModelSelect'
 
-const MODELS = [
-  { value: 'anthropic|claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (consigliato)' },
-  { value: 'anthropic|claude-opus-4-8', label: tl("Claude Opus 4.8 (più accurato)") },
-  { value: 'openai|gpt-5.2', label: 'GPT-5.2' },
-  { value: 'default|', label: tl("Modello predefinito piattaforma") },
-]
-
-// Premium model kept for teachers: student runs draw from the shared student pool.
-const STUDENT_BLOCKED_MODELS = new Set(['anthropic|claude-opus-4-8'])
 
 const SUGGESTIONS = [
   tl("Un tavolo con piano rettangolare e quattro gambe cilindriche"),
@@ -61,9 +53,14 @@ function authHeader(student: boolean): Record<string, string> {
 }
 
 export default function SolidModelerAIPanel({ objects, selection, onRunStart, onScene, student = false, projectId = null, ensureProjectId }: Props) {
-  const models = student ? MODELS.filter(m => !STUDENT_BLOCKED_MODELS.has(m.value)) : MODELS
+  // Models enabled in Admin → Modelli (teachers and students have separate lists: student runs draw from the shared pool).
+  const { data: scoped } = useScopedModels(student ? 'models3d_students' : 'models3d')
+  const models = [
+    { value: '', label: scoped?.default_name ? tl("Predefinito · {0}", scoped.default_name) : tl("Modello predefinito piattaforma") },
+    ...(scoped?.models || []).map(m => ({ value: modelValue(m.provider, m.model), label: m.name })),
+  ]
   const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState(MODELS[0].value)
+  const [model, setModel] = useState('')
   const [maxSteps, setMaxSteps] = useState(6)
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [running, setRunning] = useState(false)
@@ -97,7 +94,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
   async function run(text = prompt) {
     const request = text.trim()
     if (!request || running) return
-    const [provider, modelName] = model.split('|')
+    const { llm_provider: provider, llm_model: modelName } = splitModelValue(model)
     setPrompt('')
     setRunning(true)
     setTurns(prev => [...prev, { prompt: request, steps: [], status: 'running' }])
@@ -115,8 +112,8 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
           prompt: request,
           scene: objects,
           selection,
-          provider: provider === 'default' ? null : provider,
-          model: provider === 'default' ? null : modelName,
+          provider: provider ?? null,
+          model: modelName ?? null,
           max_steps: maxSteps,
           model_id: modelId || undefined,
         }),

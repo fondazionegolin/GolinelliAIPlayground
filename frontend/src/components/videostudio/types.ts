@@ -4,7 +4,7 @@ export interface Shot {
   n: number; title: string; narration: string; visual: string; motion: string; entities: string[]
   status?: string; keyframe_key?: string; keyframe_ver?: number; video_key?: string; video_ver?: number; error?: string | null
 }
-export interface Script { title?: string; logline?: string; style_bible?: string; entities?: Entity[]; shots?: Shot[] }
+export interface Script { title?: string; logline?: string; style_bible?: string; entities?: Entity[]; shots?: Shot[]; render_settings?: { provider: 'local' | 'openrouter'; model?: string; duration?: number; resolution?: string } }
 export interface Project {
   id: string; title: string; style_key: string; aspect: string; language: string; target_shots: number
   status: string; phase_label: string | null; has_final: boolean; cost_usd: number; error: string | null
@@ -12,8 +12,14 @@ export interface Project {
   source_text?: string; brief?: string | null; script?: Script
 }
 export interface VideoStudioConfig {
+  openrouter_configured: boolean
   configured: boolean; image_model: string; image_cost_usd: number; shot_seconds: number
   styles: Array<{ key: string; label: string }>; aspects: string[]
+}
+
+export interface VideoModel {
+  id: string; name: string; supported_durations?: number[]; supported_resolutions?: string[]
+  supported_aspect_ratios?: string[]; pricing_skus?: Record<string, string>
 }
 
 export const STYLE_SWATCH: Record<string, string> = {

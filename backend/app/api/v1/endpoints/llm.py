@@ -734,6 +734,12 @@ async def _load_voice_teacherbot(db: AsyncSession, auth: StudentOrTeacher, teach
     """Load a teacherbot the actor may talk to, enforcing ownership (teacher) or publication (student)."""
     from app.models.teacherbot import Teacherbot, TeacherbotPublication, TeacherbotStatus
 
+    from app.services import default_teacherbots
+    audience = "teacher" if auth.is_teacher else "student"
+    shared = next((bot for bot in await default_teacherbots.list_bots(db, audience) if bot.id == teacherbot_id), None)
+    if shared:
+        return shared
+
     if auth.is_teacher:
         result = await db.execute(
             select(Teacherbot)
@@ -1004,66 +1010,32 @@ async def preview_file(
 
 
 @router.get("/available-models")
-async def list_available_models(db: AsyncSession = Depends(get_db)):
-    """Get list of available LLM models"""
-    from app.core.config import settings
+async def list_available_models(db: AsyncSession = Depends(get_db), scope: str = "chat"):
+    """Models a section's menu may offer (``scope``: chat, vibelab, models3d, notebook, canvas, documents, agentic…)."""
     from app.models.ai_model import AIModel
-    import httpx
+    from app.services.model_selection import SCOPES, default_pair, scoped_models
 
-    models = []
-    icons = {"openai": "openai", "anthropic": "anthropic", "deepseek": "deepseek"}
-    keys = {"openai": settings.OPENAI_API_KEY, "anthropic": settings.ANTHROPIC_API_KEY, "deepseek": settings.DEEPSEEK_API_KEY}
-
-    # Models offered in the selectors are managed by the admin (Admin → Modelli).
-    try:
-        offered = (await db.execute(select(AIModel).where(AIModel.kind == "text", AIModel.offered.is_(True), AIModel.status == "active", AIModel.input_usd.isnot(None), AIModel.output_usd.isnot(None))
-                                    .order_by(AIModel.provider, AIModel.input_usd))).scalars().all()
-    except Exception:
-        offered = []
-    for row in offered:
-        if keys.get(row.provider):
-            price = f"${row.input_usd:g} / ${row.output_usd:g} per 1M token" if row.input_usd is not None and row.output_usd is not None else ""
-            models.append({"provider": row.provider, "model": row.model_id, "name": row.display_name, "description": price, "icon": icons.get(row.provider, row.provider)})
-    # The platform default (chat.default) is always selectable and listed first, so a teacher's chat follows the admin's choice.
+    if scope not in SCOPES:
+        raise HTTPException(status_code=404, detail="Sezione sconosciuta")
+    rows = await scoped_models(db, scope)
+    if scope != "chat":
+        provider, model = default_pair(scope)
+        default_row = (await db.execute(select(AIModel).where(AIModel.provider == provider, AIModel.model_id == model))).scalar_one_or_none()
+        return {
+            "models": [{"provider": row.provider, "model": row.model_id, "name": row.display_name,
+                        "description": f"${row.input_usd:g} / ${row.output_usd:g} per 1M token", "icon": row.provider} for row in rows],
+            "default_provider": provider, "default_model": model,
+            "default_name": default_row.display_name if default_row else model,
+        }
     default_pair = (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL)
-    models.sort(key=lambda m: (m["provider"], m["model"]) != default_pair)
-    if keys.get(default_pair[0]) and not any((m["provider"], m["model"]) == default_pair for m in models):
-        row = (await db.execute(select(AIModel).where(AIModel.provider == default_pair[0], AIModel.model_id == default_pair[1]))).scalar_one_or_none()
-        models.insert(0, {"provider": default_pair[0], "model": default_pair[1], "name": row.display_name if row else default_pair[1],
-                          "description": "Modello predefinito della piattaforma", "icon": icons.get(default_pair[0], default_pair[0])})
-    if not offered and not models:  # catalogue not available yet: ship the historical list
-        if settings.OPENAI_API_KEY:
-            models.append({"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.6 Luna", "description": "Veloce ed economico", "icon": "openai"})
-        if settings.ANTHROPIC_API_KEY:
-            models.append({"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"})
-
-    # Gemini models
-    if settings.GEMINI_API_KEY:
-        models.extend([
-            {"provider": "gemini", "model": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "description": "Veloce e intelligente - Google", "icon": "google"},
-        ])
-
-    # Ollama models - fetch dynamically from Ollama API
-    if settings.OLLAMA_BASE_URL:
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5.0)
-                if response.status_code == 200:
-                    ollama_data = response.json()
-                    available_ollama = {m["name"].split(":")[0]: m["name"] for m in ollama_data.get("models", [])}
-                    
-                    # Add configured Ollama models if available
-                    if "mistral-nemo" in available_ollama or "mistral-nemo:latest" in [m["name"] for m in ollama_data.get("models", [])]:
-                        models.append({"provider": "ollama", "model": available_ollama.get("mistral-nemo", "mistral-nemo"), "name": "Mistral Nemo", "description": "12B locale, veloce", "icon": "mistral"})
-                    # DeepSeek R1 via Ollama — hidden from UI
-                    # if "deepseek-r1" in available_ollama:
-                    #     models.append({"provider": "ollama", "model": ..., "name": "DeepSeek R1 8B", ...})
-                    if "mistral" in available_ollama:
-                        models.append({"provider": "ollama", "model": available_ollama.get("mistral", "mistral"), "name": "Mistral 7B", "description": "Modello locale efficiente", "icon": "mistral"})
-        except Exception:
-            pass  # Ollama not available, skip
-    
-    return {"models": models, "default_provider": settings.DEFAULT_LLM_PROVIDER, "default_model": settings.DEFAULT_LLM_MODEL}
+    rows.sort(key=lambda row: (row.provider, row.model_id) != default_pair)
+    models = [{"provider": row.provider, "model": row.model_id, "name": row.display_name,
+               "description": f"${row.input_usd:g} / ${row.output_usd:g} per 1M token",
+               "icon": row.provider} for row in rows]
+    # A hidden platform default must never be injected back into an admin-controlled menu.
+    default = next((m for m in models if (m["provider"], m["model"]) == default_pair), models[0] if models else None)
+    return {"models": models, "default_provider": default["provider"] if default else None,
+            "default_model": default["model"] if default else None}
 
 
 @router.get("/profiles", response_model=list[LLMProfileResponse])

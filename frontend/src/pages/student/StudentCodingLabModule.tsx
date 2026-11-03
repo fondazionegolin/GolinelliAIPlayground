@@ -46,6 +46,7 @@ import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorC
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
+import { modelValue, useScopedModels } from '@/components/models/ScopedModelSelect'
 import MlModelPicker, { ML_MODELS_PATH, buildMlModelsMarkdown } from '@/components/coding/MlModelPicker'
 import { buildMlStub, mlModelIdsFrom, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
 import { mlLabApi, type MLLabProjectSummary } from '@/lib/api'
@@ -174,33 +175,18 @@ type BuildMilestone = { title: string; goal: string; features: string[] }
 type BuildPlan = { projectId: string; milestones: BuildMilestone[]; next: number }
 // Ideas longer than this are always analysed into spec.md + milestones instead of fed raw to codegen.
 const SPEC_PROMPT_THRESHOLD = 700
-type ModelProvider = 'anthropic' | 'openai' | 'deepseek'
+type ModelProvider = string
 type ModelOption = { key: string; label: string; hint: string; provider: ModelProvider }
 
-// Selectable generation models. Keys must match CODING_MODEL_CHOICES on the backend.
-const MODEL_OPTIONS: ModelOption[] = [
-  { key: 'sonnet', label: 'Sonnet 4.6', hint: tl("Massima qualità"), provider: 'anthropic' },
-  { key: 'haiku', label: 'Haiku 4.5', hint: tl("Più veloce"), provider: 'anthropic' },
-  { key: 'haiku-5', label: 'Haiku 5.5', hint: tl("Veloce e preciso"), provider: 'anthropic' },
-  { key: 'luna', label: 'GPT-5.6 Luna', hint: tl("Veloce ed economico"), provider: 'openai' },
-  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: tl("Qualità elevata"), provider: 'deepseek' },
-]
-// Students may only generate with DeepSeek and Claude Haiku 5.5 (the other Claude models are off).
-// (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
-const STUDENT_MODEL_KEYS = new Set(['deepseek-pro', 'haiku-5'])
-const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
-const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-pro'
+// Selectable generation models come from Admin → Modelli (separate lists for teachers and students); the key is
+// "provider|model", and the empty key is the section default resolved by the server.
 const PROJECT_MODEL_DATA_KEY = '_golinelli_generation_model'
-function modelOptionsFor(isTeacher: boolean) {
-  return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
-}
+const modelStorageKey = (isTeacher: boolean) => `coding_model_key:${isTeacher ? 'vibelab' : 'vibelab_students'}`
 function initialModelKey(isTeacher: boolean): string {
-  const fallback = isTeacher ? TEACHER_DEFAULT_MODEL_KEY : STUDENT_DEFAULT_MODEL_KEY
-  const stored = localStorage.getItem('coding_model_key') || ''
-  return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
+  try { return localStorage.getItem(modelStorageKey(isTeacher)) || '' } catch { return '' }
 }
 
-const MODEL_PROVIDER_ASSETS: Record<ModelProvider, { src: string; alt: string }> = {
+const MODEL_PROVIDER_ASSETS: Record<string, { src: string; alt: string }> = {
   anthropic: { src: '/icone_ai/anthropic.svg', alt: 'Anthropic' },
   openai: { src: "/icone_ai/OpenAI_logo_2025_(symbol).svg.png", alt: 'OpenAI' },
   deepseek: { src: '/icone_ai/deepseek-logo-icon.svg', alt: 'DeepSeek' },
@@ -208,6 +194,7 @@ const MODEL_PROVIDER_ASSETS: Record<ModelProvider, { src: string; alt: string }>
 
 function ModelProviderIcon({ provider, className = 'h-4 w-4' }: { provider: ModelProvider; className?: string }) {
   const asset = MODEL_PROVIDER_ASSETS[provider]
+  if (!asset) return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-200 text-[9px] font-bold uppercase text-slate-600`}>{provider.slice(0, 1)}</span>
   return <img src={asset.src} alt={asset.alt} className={`${className} shrink-0 object-contain`} />
 }
 
@@ -283,7 +270,7 @@ function CodingModelSelector({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold">{option.label}</span>
-                  <span className="block truncate text-xs text-[var(--text-muted)]">{MODEL_PROVIDER_ASSETS[option.provider].alt} · {option.hint}</span>
+                  <span className="block truncate text-xs text-[var(--text-muted)]">{[MODEL_PROVIDER_ASSETS[option.provider]?.alt ?? option.provider, option.hint].filter(Boolean).join(' · ')}</span>
                 </span>
                 {active && <Check className="h-4 w-4 shrink-0" />}
               </button>
@@ -512,8 +499,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return () => document.removeEventListener('fullscreenchange', onChange)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewFullscreen])
-  const modelOptions = modelOptionsFor(isTeacher)
+  const { data: scopedModels } = useScopedModels(isTeacher ? 'vibelab' : 'vibelab_students')
+  const modelOptions = useMemo<ModelOption[]>(() => [
+    { key: '', label: tl("Predefinito"), hint: scopedModels?.default_name || '', provider: scopedModels?.default_provider || 'anthropic' },
+    ...(scopedModels?.models || []).map((m) => ({ key: modelValue(m.provider, m.model), label: m.name, hint: m.description || '', provider: m.provider })),
+  ], [scopedModels])
   const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
+  useEffect(() => {
+    if (scopedModels && modelKey && !modelOptions.some((option) => option.key === modelKey)) setModelKey('')
+  }, [scopedModels, modelKey, modelOptions])
   const [consents, setConsents] = useState<Array<{ key: string; title: string; version: string; source_url: string; accept_label: string; accepted: boolean }>>([])
   useEffect(() => {
     if (isTeacher) return
@@ -555,8 +549,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   useEffect(() => {
-    localStorage.setItem('coding_model_key', modelKey)
-  }, [modelKey])
+    try { localStorage.setItem(modelStorageKey(isTeacher), modelKey) } catch { /* storage unavailable */ }
+  }, [modelKey, isTeacher])
 
   useEffect(() => {
     if (localStorage.getItem(CODING_TUTORIAL_STORAGE_KEY) !== 'seen') {

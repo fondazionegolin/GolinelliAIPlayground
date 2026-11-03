@@ -5,13 +5,13 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { adminApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/ui/use-toast'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/design'
 import {
   Search, ChevronDown, ChevronUp, Loader2, ShieldCheck, ShieldAlert, Users, Activity, Zap, Clock, Eye,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { AdminBadge, AdminPageHeader } from '@/components/admin/AdminUI'
 
 interface ConsentStatus {
   key: string
@@ -113,24 +113,22 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
-      <div>
-        <h1 className="text-xl font-black text-slate-900">{tl("Studenti")}</h1>
-        <p className="text-sm text-slate-500">
-          {tl("Elenco degli studenti che hanno effettuato l'accesso, con log delle interazioni con i servizi AI della piattaforma e stato di accettazione delle informative richieste (es. DeepSeek).")}
-        </p>
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title={tl("Studenti")}
+        description={<span className="block max-w-3xl">{tl("Elenco degli studenti che hanno effettuato l'accesso, con log delle interazioni con i servizi AI della piattaforma e stato di accettazione delle informative richieste (es. DeepSeek).")}</span>}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-72 max-w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tl("Cerca per nickname…")} className="pl-9" />
         </div>
-        <span className="text-xs font-semibold text-slate-400">{students.length} {tl("studenti")}</span>
+        <span className="text-xs font-medium text-slate-500 tabular-nums">{students.length} {tl("studenti")}</span>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
+      <div className="admin-panel">
+        <div>
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> {tl("Caricamento…")}</div>
           ) : students.length === 0 ? (
@@ -139,7 +137,7 @@ export default function StudentsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  <tr>
                     <th className="px-4 py-3">Nickname</th>
                     <th className="px-4 py-3" />
                     <th className="px-4 py-3">{tl("Classe / Sessione")}</th>
@@ -166,8 +164,8 @@ export default function StudentsPage() {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -182,10 +180,10 @@ function StudentRowView({ student, consentDefinitions, expanded, onToggle, onEnt
 }) {
   return (
     <>
-      <tr className="cursor-pointer border-b border-slate-50 hover:bg-slate-50" onClick={onToggle}>
-        <td className="px-4 py-3 font-bold text-slate-800">{student.nickname}{student.is_frozen && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500">{tl("Congelato")}</span>}</td>
+      <tr className="cursor-pointer" onClick={onToggle}>
+        <td className="px-4 py-3 font-semibold text-slate-900">{student.nickname}{student.is_frozen && <AdminBadge className="ml-2">{tl("Congelato")}</AdminBadge>}</td>
         <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-          <Button tone="accent" surface="outline" density="compact" className="rounded-full" disabled={entering} onClick={onEnterSubjectiveView}>
+          <Button tone="accent" surface="outline" density="compact" disabled={entering} onClick={onEnterSubjectiveView}>
             {entering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} {tl("Vista studente")}
           </Button>
         </td>
@@ -198,13 +196,13 @@ function StudentRowView({ student, consentDefinitions, expanded, onToggle, onEnt
           return (
             <td key={doc.key} className="px-4 py-3">
               {status?.accepted_at ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700" title={formatDateTime(status.accepted_at)}>
+                <AdminBadge tone="success" title={formatDateTime(status.accepted_at)}>
                   <ShieldCheck className="h-3 w-3" /> {tl("Accettato")}
-                </span>
+                </AdminBadge>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                <AdminBadge tone="warning">
                   <ShieldAlert className="h-3 w-3" /> {tl("In attesa")}
-                </span>
+                </AdminBadge>
               )}
             </td>
           )
@@ -212,7 +210,7 @@ function StudentRowView({ student, consentDefinitions, expanded, onToggle, onEnt
         <td className="px-4 py-3 text-right">{expanded ? <ChevronUp className="ml-auto h-4 w-4 text-slate-400" /> : <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />}</td>
       </tr>
       {expanded && (
-        <tr className="border-b border-slate-100 bg-slate-50/60">
+        <tr className="bg-[var(--admin-surface-2)]">
           <td colSpan={6 + consentDefinitions.length} className="px-4 py-4">
             <StudentActivityLog studentId={student.id} />
           </td>
@@ -236,11 +234,11 @@ function StudentActivityLog({ studentId }: { studentId: string }) {
 
   return (
     <div>
-      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><Activity className="h-3.5 w-3.5" /> {tl("Log interazioni (")}{total} {tl("totali, ultime")} {items.length})</p>
-      <div className="max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white">
+      <p className="admin-eyebrow mb-2 flex items-center gap-1.5"><Activity className="h-3.5 w-3.5" /> {tl("Log interazioni (")}{total} {tl("totali, ultime")} {items.length})</p>
+      <div className="max-h-72 overflow-auto rounded-md border border-[var(--admin-line)] bg-white">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-slate-100 text-left text-[10px] font-bold uppercase text-slate-400">
+            <tr>
               <th className="px-3 py-2">{tl("Quando")}</th>
               <th className="px-3 py-2">{tl("Tipo")}</th>
               <th className="px-3 py-2">{tl("Provider / Modello")}</th>
@@ -249,7 +247,7 @@ function StudentActivityLog({ studentId }: { studentId: string }) {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} className="border-b border-slate-50 last:border-0">
+              <tr key={item.id}>
                 <td className="nowrap px-3 py-2 text-slate-500"><Clock className="mr-1 inline h-3 w-3" />{formatDateTime(item.timestamp)}</td>
                 <td className="px-3 py-2 text-slate-600">{item.transaction_type || '—'}</td>
                 <td className="px-3 py-2 text-slate-600">{item.provider || '—'} {item.model ? `· ${item.model}` : ''}</td>

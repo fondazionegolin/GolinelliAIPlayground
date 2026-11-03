@@ -1,3 +1,7 @@
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -137,7 +141,7 @@ function ProfileDemoChat({ profile }: { profile: ChatbotProfile }) {
             )}
             <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${m.role === 'user' ? 'bg-[#181b1e] text-white rounded-tr-sm' : 'bg-slate-100 text-slate-800 rounded-tl-sm'}`}>
               {m.role === 'assistant'
-                ? <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none prose-p:my-1">{m.content}</ReactMarkdown>
+                ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} className="prose prose-sm max-w-none prose-p:my-1">{normalizeMathMarkdown(m.content)}</ReactMarkdown>
                 : <p className="text-sm">{m.content}</p>}
             </div>
           </div>

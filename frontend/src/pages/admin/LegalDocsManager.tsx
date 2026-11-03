@@ -4,6 +4,7 @@ import { ExternalLink, FileText, Loader2, Upload } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { tl } from '@/i18n/tl'
+import { Button } from '@/design'
 
 type DocVersion = {
   version: string
@@ -85,8 +86,8 @@ export function LegalDocsManager() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
+    <div className="admin-panel">
+      <div className="admin-panel-head !block">
         <h2 className="text-sm font-bold text-slate-900">{tl("Documenti in accettazione")}</h2>
         <p className="mt-0.5 text-xs text-slate-500">
           {tl("Carica un PDF per sostituire il documento mostrato ai docenti. Ogni nuova versione richiede una nuova accettazione.")}
@@ -98,7 +99,7 @@ export function LegalDocsManager() {
           {tl("Caricamento")}
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-[var(--admin-line)]">
           {(data?.documents || []).map((doc) => (
             <li key={doc.key} className="px-4 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -112,28 +113,21 @@ export function LegalDocsManager() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <a
-                    href={doc.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    {tl("Apri")} <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => (editing === doc.key ? close() : open(doc))}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white hover:bg-slate-800"
-                  >
+                  <Button asChild tone="neutral" surface="outline">
+                    <a href={doc.source_url} target="_blank" rel="noreferrer">
+                      {tl("Apri")} <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                  <Button tone="accent" surface="solid" onClick={() => (editing === doc.key ? close() : open(doc))}>
                     <Upload className="h-3.5 w-3.5" />
                     {tl("Carica nuova versione")}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               {editing === doc.key && (
                 <form
-                  className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_10rem_1fr]"
+                  className="mt-3 grid gap-3 rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] p-3 sm:grid-cols-[1fr_10rem_1fr]"
                   onSubmit={(event) => {
                     event.preventDefault()
                     if (file && version.trim()) upload.mutate(doc.key)
@@ -154,7 +148,7 @@ export function LegalDocsManager() {
                     <input
                       value={version}
                       onChange={(event) => setVersion(event.target.value)}
-                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal outline-none focus:ring-2 focus:ring-slate-100"
+                      className="mt-1 h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-2 text-sm font-normal outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                     />
                   </label>
                   <label className="text-xs font-semibold text-slate-600">
@@ -163,21 +157,17 @@ export function LegalDocsManager() {
                       value={title}
                       onChange={(event) => setTitle(event.target.value)}
                       placeholder={doc.title}
-                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal outline-none focus:ring-2 focus:ring-slate-100"
+                      className="mt-1 h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-2 text-sm font-normal outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                     />
                   </label>
                   <div className="flex items-center justify-end gap-2 sm:col-span-3">
-                    <button type="button" onClick={close} className="h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 hover:bg-white">
+                    <Button type="button" tone="neutral" surface="ghost" onClick={close}>
                       {tl("Annulla")}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!file || !version.trim() || upload.isPending}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
+                    </Button>
+                    <Button type="submit" tone="accent" surface="solid" disabled={!file || !version.trim() || upload.isPending}>
                       {upload.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       {tl("Pubblica")}
-                    </button>
+                    </Button>
                   </div>
                 </form>
               )}
@@ -188,7 +178,7 @@ export function LegalDocsManager() {
                   <ul className="mt-1 space-y-1 pl-1">
                     {doc.history.map((item) => (
                       <li key={item.version}>
-                        <a href={item.url} target="_blank" rel="noreferrer" className="font-medium text-indigo-700 hover:underline">
+                        <a href={item.url} target="_blank" rel="noreferrer" className="font-medium text-[var(--admin-accent)] hover:underline">
                           {item.version}
                         </a>{' '}
                         · {formatDate(item.uploaded_at)} · {item.uploaded_by || '—'}

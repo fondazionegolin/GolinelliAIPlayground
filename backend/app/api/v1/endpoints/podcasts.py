@@ -19,7 +19,7 @@ from app.models.enums import OwnerType, Scope
 from app.models.file import File
 from app.models.llm import TeacherConversation, TeacherConversationMessage
 from app.models.user import User
-from app.services import drive_service as drive, model_roles, podcasts
+from app.services import drive_service as drive, model_roles, podcasts, voice_lab
 from app.services.credit_service import credit_service
 from app.services.document_processor import document_processor
 from app.services.llm_service import llm_service
@@ -66,8 +66,8 @@ async def update_message(db: AsyncSession, message, state: dict):
 
 
 @router.get("/voices")
-async def voices(teacher: Teacher):
-    return {"voices": await podcasts.list_voices()}
+async def voices(db: Db, teacher: Teacher):
+    return {"voices": await voice_lab.visible_voices(db, teacher)}
 
 
 @router.post("/configure")
@@ -163,6 +163,8 @@ async def generate(message_id: UUID, request: GenerateAudio, db: Db, teacher: Te
     quota = settings.DRIVE_QUOTA_MB * 1024 * 1024
     if used + 20 * 1024 * 1024 > quota:
         raise HTTPException(413, "Spazio nei Files insufficiente per salvare il podcast.")
+    if options.voice_id not in {voice["voice_id"] for voice in await voice_lab.visible_voices(db, teacher)}:
+        raise HTTPException(422, "Scegli una voce disponibile nella tua libreria")
     audio = await podcasts.synthesize(request.script, options)
     file_id, item_id = uuid4(), uuid4()
     name = f"Podcast - {state['prompt'][:70].replace('/', '-').replace(chr(10), ' ')}.mp3"

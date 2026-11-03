@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import {
-  School, Pencil, Check, X, ChevronDown, ChevronUp,
+  Pencil, Check, X, ChevronDown, ChevronUp,
   Loader2, Plus, Building2, User,
 } from '@/components/icons'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { EmailHealthBanner, SchoolInviteManager, RegistrySearch } from '@/compon
 import { SchoolMonitor } from '@/components/admin/SchoolMonitor'
 import { schoolOnboardingAdminApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
+import { AdminBadge, AdminEmpty, AdminPageHeader, AdminTabs } from '@/components/admin/AdminUI'
 
 interface Tenant {
   id: string
@@ -42,9 +43,9 @@ interface EditLimitsState {
 
 function LimitsBadge({ label, value }: { label: string; value: number | string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-      <span className="font-semibold">{value}</span> {label}
-    </span>
+    <AdminBadge className="!font-normal">
+      <span className="font-semibold text-slate-900 tabular-nums">{value}</span> {label}
+    </AdminBadge>
   )
 }
 
@@ -69,7 +70,7 @@ function RegistryLink({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => 
         <span className="text-sm font-semibold text-slate-700">{tl("Registro MIM")}</span>
         {tenant.mechanographic_code
           ? <button onClick={() => unlink.mutate()} className="text-xs text-slate-500 hover:underline">{tl("Scollega")}</button>
-          : <button onClick={() => setOpen(o => !o)} className="text-xs text-indigo-600 hover:underline">{open ? tl("Annulla") : tl("Associa codice meccanografico")}</button>}
+          : <button onClick={() => setOpen(o => !o)} className="text-xs font-medium text-[var(--admin-accent)] hover:underline">{open ? tl("Annulla") : tl("Associa codice meccanografico")}</button>}
       </div>
       {tenant.mechanographic_code
         ? <p className="text-sm text-slate-600 mt-1">{tl("Codice")} <span className="font-mono font-semibold">{tenant.mechanographic_code}</span> {tl("certificato sul registro delle scuole.")}</p>
@@ -111,30 +112,29 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
   })
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
+    <div className="admin-panel mb-2">
       {/* Header row */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={() => setExpanded(e => !e)}
       >
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: isSchool ? '#fe004d18' : '#6366f118' }}>
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
           {isSchool
-            ? <Building2 className="w-4 h-4 text-pink-500" />
-            : <User className="w-4 h-4 text-indigo-500" />}
+            ? <Building2 className="h-4 w-4 text-slate-600" />
+            : <User className="h-4 w-4 text-slate-600" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-800 text-sm truncate">{tenant.name}</span>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isSchool ? 'bg-pink-100 text-pink-600' : 'bg-indigo-100 text-indigo-600'}`}>
+            <span className="truncate text-sm font-semibold text-slate-900">{tenant.name}</span>
+            <AdminBadge tone={isSchool ? 'accent' : 'neutral'}>
               {isSchool ? tl("SCUOLA") : 'INDIVIDUALE'}
-            </span>
+            </AdminBadge>
             {isSchool && (
               tenant.mechanographic_code
-                ? <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700" title={tl("Codice meccanografico verificato sul registro MIM")}>
+                ? <AdminBadge tone="success" className="font-mono" title={tl("Codice meccanografico verificato sul registro MIM")}>
                     {tenant.mechanographic_code}
-                  </span>
-                : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">{tl("senza meccanografico")}</span>
+                  </AdminBadge>
+                : <AdminBadge tone="warning">{tl("senza meccanografico")}</AdminBadge>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5 mt-1">
@@ -145,7 +145,7 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
             {!isSchool && <LimitsBadge label={tl("crediti docente/mese")} value={formatCreditAmount(toCredits(tenant.teacher_monthly_cap))} />}
           </div>
         </div>
-        <span className="text-slate-400 text-xs flex-shrink-0">
+        <span className="flex-shrink-0 text-xs text-slate-500 tabular-nums">
           {new Date(tenant.created_at).toLocaleDateString('it-IT')}
         </span>
         {expanded ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />}
@@ -153,20 +153,19 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
 
       {/* Expanded: limit editor */}
       {expanded && (
-        <div className="border-t border-slate-100 px-4 py-4 bg-slate-50">
+        <div className="border-t border-[var(--admin-line)] bg-[var(--admin-surface-2)] px-4 py-4">
           {isSchool && <RegistryLink tenant={tenant} onRefresh={onRefresh} />}
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-slate-700">{tl("Modifica limiti")}</span>
             {!editing
-              ? <button onClick={() => setEditing(true)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"><Pencil className="w-3 h-3" /> {tl("Modifica")}</button>
+              ? <Button tone="neutral" surface="outline" density="compact" onClick={() => setEditing(true)}><Pencil className="h-3 w-3" /> {tl("Modifica")}</Button>
               : <div className="flex gap-2">
-                  <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-green-700 font-semibold hover:underline">
-                    {saveMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} {tl("Salva")}
-                  </button>
-                  <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-xs text-slate-500 hover:underline">
-                    <X className="w-3 h-3" /> {tl("Annulla")}
-                  </button>
+                  <Button tone="neutral" surface="ghost" density="compact" onClick={() => setEditing(false)}>
+                    <X className="h-3 w-3" /> {tl("Annulla")}
+                  </Button>
+                  <Button tone="accent" surface="solid" density="compact" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+                    {saveMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} {tl("Salva")}
+                  </Button>
                 </div>
             }
           </div>
@@ -244,9 +243,9 @@ function CreateSchoolForm({ onSuccess }: { onSuccess: () => void }) {
   const autoSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div className="admin-panel p-5">
       <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-        <Building2 className="w-4 h-4 text-pink-500" /> {tl("Crea nuova scuola")}
+        <Building2 className="h-4 w-4 text-slate-500" /> {tl("Crea nuova scuola")}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -315,23 +314,12 @@ export default function SchoolsPage() {
   const individuals = tenants.filter(t => t.tenant_type !== 'SCHOOL')
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50">
-            <School className="h-5 w-5 text-pink-500" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">{tl("Scuole")}</h1>
-            <p className="text-xs text-slate-500">{schools.length} {tl("istituti ·")} {individuals.length} {tl("docenti individuali")}</p>
-          </div>
-        </div>
-        <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
-          {([['monitor', tl("Monitoraggio")], ['invites', tl("Inviti")], ['tenants', tl("Tenant e limiti")]] as const).map(([key, label]) =>
-            <button key={key} type="button" onClick={() => setTab(key)}
-              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${tab === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}
-        </div>
-      </div>
+    <div className="space-y-5">
+      <AdminPageHeader
+        title={tl("Scuole")}
+        description={<span className="tabular-nums">{schools.length} {tl("istituti ·")} {individuals.length} {tl("docenti individuali")}</span>}
+        actions={<AdminTabs value={tab} onChange={setTab} options={[['monitor', tl("Monitoraggio")], ['invites', tl("Inviti")], ['tenants', tl("Tenant e limiti")]]} />}
+      />
 
       <EmailHealthBanner />
 
@@ -339,21 +327,14 @@ export default function SchoolsPage() {
       {tab === 'invites' && <SchoolInviteManager />}
       {tab === 'tenants' && <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex w-fit gap-1 rounded-xl bg-slate-100 p-1">
-            {(['all', 'SCHOOL', 'INDIVIDUAL'] as const).map(f => (
-              <button key={f} onClick={() => setFilter(f)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
-                {f === 'all' ? tl("Tutti") : f === 'SCHOOL' ? tl("Scuole") : tl("Individuali")}
-              </button>
-            ))}
-          </div>
+          <AdminTabs value={filter} onChange={setFilter} options={[['all', tl("Tutti")], ['SCHOOL', tl("Scuole")], ['INDIVIDUAL', tl("Individuali")]]} />
           <Button onClick={() => setShowCreate(s => !s)} tone="neutral" surface="outline" className="gap-2 text-sm">
             <Plus className="h-4 w-4" />{tl("Crea scuola senza onboarding")}
           </Button>
         </div>
         {showCreate && <CreateSchoolForm onSuccess={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ['admin-tenants'] }) }} />}
         {isLoading && <div className="flex items-center justify-center py-12 text-sm text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> {tl("Caricamento…")}</div>}
-        {!isLoading && filtered.length === 0 && <div className="py-12 text-center text-sm text-slate-400">{tl("Nessun tenant trovato")}</div>}
+        {!isLoading && filtered.length === 0 && <AdminEmpty>{tl("Nessun tenant trovato")}</AdminEmpty>}
         {filtered.map(tenant => (
           <TenantRow key={tenant.id} tenant={tenant} onRefresh={() => qc.invalidateQueries({ queryKey: ['admin-tenants'] })} />
         ))}

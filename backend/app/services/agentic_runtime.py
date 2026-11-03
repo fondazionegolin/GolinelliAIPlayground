@@ -28,8 +28,11 @@ logger = logging.getLogger(__name__)
 
 
 def configured_models() -> list[dict[str, str]]:
-    """Models a workflow node can use, following the admin's assignments (Admin → Modelli)."""
-    from app.services import model_roles
+    """Models a workflow node can use: the admin's Agentic list (Admin → Modelli), else the role-based defaults."""
+    from app.services import model_roles, model_selection
+    enabled = model_selection.cached_scope("agentic")
+    if enabled:
+        return [{"provider": provider, "model": model, "name": name} for provider, model, name in enabled]
     models: list[dict[str, str]] = []
     default_provider, default_model = model_roles.pair_for("chat.default")
     fast_provider, fast_model = model_roles.pair_for("chat.fast")
@@ -320,6 +323,9 @@ def _pick_model(node_type: str, config: dict[str, Any]) -> tuple[str, str]:
         default_choice = next((item for provider_name in light_priority for item in models if item["provider"] == provider_name), models[0])
     else:
         default_choice = models[0] if models else None
+    chosen = str(config.get("model") or "")
+    if "|" in chosen:  # menu value "provider|model"
+        config = {**config, "provider": chosen.split("|", 1)[0], "model": chosen.split("|", 1)[1]}
     provider = str(config.get("provider") or (default_choice["provider"] if default_choice else settings.DEFAULT_LLM_PROVIDER))
     model = str(config.get("model") or (default_choice["model"] if default_choice else settings.DEFAULT_LLM_MODEL))
     if models and not any(item["provider"] == provider and item["model"] == model for item in models):

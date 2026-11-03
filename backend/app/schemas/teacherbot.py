@@ -227,6 +227,8 @@ class TeacherbotConversationWithDetails(TeacherbotConversationResponse):
 
 class TeacherbotMessageCreate(BaseModel):
     content: str
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
 
 
 class EscapeRoomAnswerRequest(BaseModel):

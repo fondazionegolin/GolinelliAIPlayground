@@ -20,13 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_current_student, get_current_teacher, get_student_or_teacher
 from app.api.v1.endpoints.llm import safe_track_usage
-from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.invitation import ClassTeacher
 from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.solid_model import SolidModel
 from app.models.user import User
-from app.services import background_jobs
+from app.services import background_jobs, model_selection
 from app.services.credit_service import credit_service
 from app.services.llm_service import llm_service
 from app.services.solid_modeler_agent import (
@@ -45,15 +44,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# provider/model pairs the modeler UI may request; anything else falls back to the platform default.
-ALLOWED_MODELS = {
-    ("anthropic", "claude-sonnet-4-6"),
-    ("anthropic", "claude-opus-4-8"),
-    ("openai", "gpt-5.2"),
-    ("openai", "gpt-5.6-luna"),
-}
-# Premium model reserved to teachers: student runs are billed to the shared student pool.
-STUDENT_BLOCKED_MODELS = {("anthropic", "claude-opus-4-8")}
+# The models the AI builder may use come from Admin → Modelli (separate lists for teachers and students: student
+# runs are billed to the shared student pool). Anything else falls back to the section default.
 
 
 MODULE_KEY = "models3d"
@@ -107,12 +99,12 @@ async def run_modeler_agent(
     body: AgentRequest,
     actor: Annotated[StudentOrTeacher, Depends(get_modeler_actor)],
 ):
-    provider, model = body.provider, body.model
-    allowed_models = ALLOWED_MODELS - STUDENT_BLOCKED_MODELS if actor.is_student else ALLOWED_MODELS
-    if (provider, model) not in allowed_models:
-        provider, model = settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL
-
+    scope = "models3d_students" if actor.is_student else "models3d"
     async with AsyncSessionLocal() as db:
+        try:
+            provider, model = await model_selection.resolve_scoped(db, scope, body.provider, body.model)
+        except HTTPException:
+            provider, model = model_selection.default_pair(scope)
         allowed = await credit_service.check_availability(db, _tenant_id(actor), estimated_cost=0.002, **_credit_scope(actor))
     if not allowed:
         raise HTTPException(

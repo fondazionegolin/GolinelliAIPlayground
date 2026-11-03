@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-02T10:55:04.597851+00:00",
-  "version_label": "2026.11.02-4b574be4",
+  "generated_at": "2026-11-03T09:18:37.698548+00:00",
+  "version_label": "2026.11.03-ce84f5fa",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 6 commit dall'ultima release pubblicata.",
-  "git_ref": "4b574be4a4c46786601d1827b6478263e2b5b122",
+  "summary": "Bozza generata automaticamente da 9 commit dall'ultima release pubblicata.",
+  "git_ref": "ce84f5fa3a20f9487941623a69f89282cd516293",
   "items": [
     {
       "category": "new",
@@ -34,6 +34,21 @@
       "category": "new",
       "title": "Smart canvas, admin notifications, editable legal docs, new terms",
       "description": "Smart canvas, admin notifications, editable legal docs, new terms"
+    },
+    {
+      "category": "new",
+      "title": "Deep research sources, live slide timings report, pptx import, spreadsheet logic",
+      "description": "Deep research sources, live slide timings report, pptx import, spreadsheet logic"
+    },
+    {
+      "category": "improved",
+      "title": "Remove dead code, unused deps and idle Celery worker",
+      "description": "Remove dead code, unused deps and idle Celery worker"
+    },
+    {
+      "category": "improved",
+      "title": "Off-loop password hashing, leaner deps, ML Lab training fixes",
+      "description": "Off-loop password hashing, leaner deps, ML Lab training fixes"
     }
   ]
 }

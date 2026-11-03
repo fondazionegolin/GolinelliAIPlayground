@@ -1,3 +1,4 @@
+import { ScopedModelSelect, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ColorPicker } from '@/components/ui/ColorPicker'
 import { Button } from '@/components/ui/button'
@@ -113,6 +114,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
   }
 
   // ── Outline (AI) ──────────────────────────────────────────────────────────
+  const modelChoice = useScopedModelChoice('documents')
   const runOutline = async (mode: 'create' | 'revise' | 'slide') => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -125,6 +127,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
         outline: mode === 'create' ? undefined : outline || undefined,
         instruction: mode === 'revise' ? reviseText : mode === 'slide' ? slideInstruction : undefined,
         slide_index: mode === 'slide' ? selectedIndex : undefined,
+        ...modelChoice.selection,
       }, controller.signal)
       if (outline) setOutlineHistory(history => [...history.slice(-9), outline])
       setOutline(response.data)
@@ -364,6 +367,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-5">
               {onBlank && <button type="button" onClick={onBlank} className="mr-auto text-xs font-semibold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">{tl("Inizia da una presentazione vuota")}</button>}
               {outline && <Button tone="neutral" surface="soft" onClick={() => setStep('outline')}>{tl("Torna alla scaletta")}</Button>}
+              <ScopedModelSelect scope="documents" value={modelChoice.value} onChange={modelChoice.setValue} className="w-56" label={tl("Modello per la scaletta")} />
               <Button tone="accent" disabled={brief.topic.trim().length < 3 || busy === 'outline'} onClick={() => void runOutline('create')}>
                 {busy === 'outline' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
                 {busy === 'outline' ? tl("Scrivo la scaletta…") : outline ? tl("Riscrivi la scaletta") : tl("Scrivi la scaletta")}

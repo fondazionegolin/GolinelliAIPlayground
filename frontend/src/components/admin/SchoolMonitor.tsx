@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { formatCreditAmount, toCredits } from '@/lib/credits'
 import { schoolOnboardingAdminApi, type InviteStage, type SchoolOverview, type SchoolPerson } from '@/lib/api'
 import { tl } from '@/i18n/tl'
+import { AdminStat, AdminStatGrid, AdminTabs } from './AdminUI'
 
 export const fmtDate = (iso: string | null | undefined, time = true) => iso
   ? new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}) })
@@ -13,27 +14,27 @@ const credits = (eur: number) => formatCreditAmount(toCredits(eur || 0))
 const fullName = (p: { first_name: string | null; last_name: string | null }) => [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'
 
 export const STAGES: Record<InviteStage, { label: string; cls: string }> = {
-  CREATED: { label: tl("Creato"), cls: 'bg-slate-100 text-slate-600' },
-  EMAIL_SENT: { label: tl("E-mail inviata"), cls: 'bg-sky-100 text-sky-700' },
-  EMAIL_FAILED: { label: tl("E-mail non inviata"), cls: 'bg-red-100 text-red-700' },
-  EMAIL_READ: { label: tl("E-mail letta"), cls: 'bg-indigo-100 text-indigo-700' },
-  LINK_OPENED: { label: tl("Link aperto"), cls: 'bg-violet-100 text-violet-700' },
-  PARTIAL: { label: tl("Approvazione parziale"), cls: 'bg-amber-100 text-amber-800' },
-  COMPLETED: { label: tl("Attivato"), cls: 'bg-emerald-100 text-emerald-700' },
-  EXPIRED: { label: tl("Scaduto"), cls: 'bg-red-50 text-red-600' },
-  REVOKED: { label: tl("Revocato"), cls: 'bg-slate-100 text-slate-500' },
+  CREATED: { label: tl("Creato"), cls: 'admin-badge-neutral' },
+  EMAIL_SENT: { label: tl("E-mail inviata"), cls: 'admin-badge-neutral' },
+  EMAIL_FAILED: { label: tl("E-mail non inviata"), cls: 'admin-badge-danger' },
+  EMAIL_READ: { label: tl("E-mail letta"), cls: 'admin-badge-accent' },
+  LINK_OPENED: { label: tl("Link aperto"), cls: 'admin-badge-accent' },
+  PARTIAL: { label: tl("Approvazione parziale"), cls: 'admin-badge-warning' },
+  COMPLETED: { label: tl("Attivato"), cls: 'admin-badge-success' },
+  EXPIRED: { label: tl("Scaduto"), cls: 'admin-badge-danger' },
+  REVOKED: { label: tl("Revocato"), cls: 'admin-badge-neutral' },
 }
 
 const PERSON_STATES: Record<SchoolPerson['state'], { label: string; cls: string }> = {
-  INVITED: { label: tl("Invitato"), cls: 'bg-sky-100 text-sky-700' },
-  EXPIRED: { label: tl("Invito scaduto"), cls: 'bg-red-50 text-red-600' },
-  TERMS_PENDING: { label: tl("Documenti da accettare"), cls: 'bg-amber-100 text-amber-800' },
-  ACTIVE: { label: tl("Attivo"), cls: 'bg-emerald-100 text-emerald-700' },
-  DEACTIVATED: { label: tl("Disattivato"), cls: 'bg-slate-100 text-slate-500' },
+  INVITED: { label: tl("Invitato"), cls: 'admin-badge-neutral' },
+  EXPIRED: { label: tl("Invito scaduto"), cls: 'admin-badge-danger' },
+  TERMS_PENDING: { label: tl("Documenti da accettare"), cls: 'admin-badge-warning' },
+  ACTIVE: { label: tl("Attivo"), cls: 'admin-badge-success' },
+  DEACTIVATED: { label: tl("Disattivato"), cls: 'admin-badge-neutral' },
 }
 
 export function Pill({ label, cls, title }: { label: string; cls: string; title?: string }) {
-  return <span title={title} className={`admin-nowrap inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
+  return <span title={title} className={`admin-badge ${cls}`}>{label}</span>
 }
 
 /** What happened to an invitation e-mail, in one line: sent, read, or why it failed. */
@@ -48,8 +49,8 @@ export function EmailDelivery({ status, error, sentAt, openedAt, attempts }: {
     </span>
   }
   return <span className="block text-xs text-slate-600">
-    <Mail className="mr-1 inline h-3.5 w-3.5 text-sky-600" />{tl("Inviata")} {fmtDate(sentAt)}
-    <span className={`block text-[11px] ${openedAt ? 'text-indigo-700' : 'text-slate-400'}`}>
+    <Mail className="mr-1 inline h-3.5 w-3.5 text-slate-500" />{tl("Inviata")} {fmtDate(sentAt)}
+    <span className={`block text-[11px] ${openedAt ? 'text-slate-800' : 'text-slate-500'}`}>
       {openedAt ? tl("Letta {0}", fmtDate(openedAt)) : tl("Lettura non rilevata")}
     </span>
   </span>
@@ -89,7 +90,7 @@ function Timeline({ school }: { school: SchoolOverview }) {
   ]
   return <ol className="space-y-2">
     {steps.map(({ label, at, note, failed }) => <li key={label} className="flex items-start gap-2.5 text-xs">
-      <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${at ? 'bg-emerald-500' : failed ? 'bg-red-500' : 'bg-slate-300'}`} />
+      <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${at ? 'bg-[var(--admin-accent)]' : failed ? 'bg-red-600' : 'bg-slate-300'}`} />
       <span className="min-w-0">
         <span className={`font-medium ${at ? 'text-slate-800' : 'text-slate-500'}`}>{label}</span>
         <span className="ml-1.5 text-slate-500">{at ? fmtDate(at) : '—'}</span>
@@ -101,9 +102,9 @@ function Timeline({ school }: { school: SchoolOverview }) {
 
 function TeachersTable({ teachers, max }: { teachers: SchoolPerson[]; max: number }) {
   if (!teachers.length) return <p className="text-xs text-slate-500">{tl("Il dirigente non ha ancora invitato docenti (massimo")} {max}).</p>
-  return <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+  return <div className="overflow-x-auto rounded-md border border-[var(--admin-line)] bg-white">
     <table className="min-w-[980px] text-sm">
-      <thead className="bg-slate-50 text-left text-[11px] uppercase text-slate-500">
+      <thead>
         <tr><th>{tl("Docente")}</th><th>{tl("Stato")}</th><th>{tl("E-mail d'invito")}</th><th>{tl("Invitato · attivato")}</th><th>{tl("Documenti")}</th>
           <th className="text-right">{tl("Classi")}</th><th className="text-right">{tl("Sessioni")}</th><th className="text-right">{tl("Studenti")}</th><th className="text-right">{tl("Crediti mese")}</th><th>{tl("Ultimo accesso")}</th></tr>
       </thead>
@@ -131,32 +132,32 @@ function TeachersTable({ teachers, max }: { teachers: SchoolPerson[]; max: numbe
 function Detail({ school }: { school: SchoolOverview }) {
   const p = school.principal
   const place = school.registry ?? school.organization
-  return <div className="grid gap-4 bg-slate-50/70 p-4 lg:grid-cols-3">
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Percorso d'invito")}</h4>
+  return <div className="grid gap-4 bg-[var(--admin-surface-2)] p-4 lg:grid-cols-3">
+    <section className="admin-panel p-4">
+      <h4 className="admin-eyebrow mb-3">{tl("Percorso d'invito")}</h4>
       <Timeline school={school} />
       {school.invites_count > 1 && <p className="mt-3 text-[11px] text-slate-500">{school.invites_count} {tl("inviti in totale per questo istituto.")}</p>}
     </section>
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Dirigente / referente")}</h4>
+    <section className="admin-panel p-4">
+      <h4 className="admin-eyebrow mb-3">{tl("Dirigente / referente")}</h4>
       {p ? <>
         <p className="font-semibold text-slate-800">{fullName(p)}</p>
-        <a href={`mailto:${p.email}`} className="text-sm text-indigo-700 hover:underline">{p.email}</a>
+        <a href={`mailto:${p.email}`} className="text-sm text-[var(--admin-accent)] hover:underline">{p.email}</a>
         <p className="mt-1 text-xs text-slate-500">{tl("Attivato")} {fmtDate(p.activated_at)} {tl("· ultimo accesso")} {fmtDate(p.last_login_at)}</p>
         <div className="mt-3"><Documents person={p} /></div>
       </> : <>
         <p className="text-sm text-slate-600">{tl("Non ancora attivato.")}</p>
         {school.invite && <p className="mt-1 text-xs text-slate-500">{tl("Invitato:")} {[school.invite.first_name, school.invite.last_name].filter(Boolean).join(' ') || '—'}
-          {school.invite.email && <> · <a href={`mailto:${school.invite.email}`} className="text-indigo-700 hover:underline">{school.invite.email}</a></>}</p>}
+          {school.invite.email && <> · <a href={`mailto:${school.invite.email}`} className="text-[var(--admin-accent)] hover:underline">{school.invite.email}</a></>}</p>}
       </>}
     </section>
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Istituto")}</h4>
+    <section className="admin-panel p-4">
+      <h4 className="admin-eyebrow mb-3">{tl("Istituto")}</h4>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
         <dt className="text-slate-500">{tl("Codice")}</dt><dd className="font-mono">{school.mechanographic_code || tl("fuori registro MIM")}</dd>
         {place && <><dt className="text-slate-500">{tl("Luogo")}</dt><dd>{[school.registry?.address, place.comune, place.province].filter(Boolean).join(', ') || '—'}</dd></>}
         {school.registry && <><dt className="text-slate-500">{tl("Tipo")}</dt><dd>{school.registry.kind === 'STATALE' ? tl("Statale") : tl("Paritaria")}</dd></>}
-        {school.registry?.email && <><dt className="text-slate-500">E-mail</dt><dd><a className="text-indigo-700 hover:underline" href={`mailto:${school.registry.email}`}>{school.registry.email}</a></dd></>}
+        {school.registry?.email && <><dt className="text-slate-500">E-mail</dt><dd><a className="text-[var(--admin-accent)] hover:underline" href={`mailto:${school.registry.email}`}>{school.registry.email}</a></dd></>}
         {school.registry?.pec && <><dt className="text-slate-500">PEC</dt><dd>{school.registry.pec}</dd></>}
         <dt className="text-slate-500">{tl("Creato")}</dt><dd>{fmtDate(school.created_at, false)}</dd>
         <dt className="text-slate-500">{tl("Classi")}</dt><dd>{school.stats.classes} · {school.stats.sessions} {tl("sessioni")}</dd>
@@ -164,7 +165,7 @@ function Detail({ school }: { school: SchoolOverview }) {
       </dl>
     </section>
     <section className="lg:col-span-3">
-      <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{tl("Docenti dell'istituto (")}{school.teachers.length} {tl("· massimo")} {school.max_teachers} {tl("invitati dal dirigente)")}</h4>
+      <h4 className="admin-eyebrow mb-2">{tl("Docenti dell'istituto (")}{school.teachers.length} {tl("· massimo")} {school.max_teachers} {tl("invitati dal dirigente)")}</h4>
       <TeachersTable teachers={school.teachers} max={school.max_teachers} />
     </section>
   </div>
@@ -198,27 +199,20 @@ export function SchoolMonitor() {
   }), [data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <section className="space-y-4">
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+    <AdminStatGrid className="md:!grid-cols-5">
       {([[tl("Istituti"), totals.schools], [tl("Attivati"), totals.active], [tl("Docenti attivi"), totals.teachers], [tl("Studenti"), totals.students], ['Da controllare', totals.problems]] as const)
-        .map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className={`mt-1 text-2xl font-bold ${label === 'Da controllare' && value ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
-        </div>)}
-    </div>
+        .map(([label, value]) => <AdminStat key={label} label={label} value={value} tone={label === 'Da controllare' && value ? 'danger' : 'neutral'} />)}
+    </AdminStatGrid>
     <div className="flex flex-wrap items-center gap-3">
       <div className="relative min-w-[240px] flex-1">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={tl("Cerca istituto, codice, e-mail del referente, comune…")} className="pl-9 text-sm" />
       </div>
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-        {([['all', tl("Tutti")], ['active', tl("Attivati")], ['pending', tl("In attesa")], ['problems', 'Da controllare']] as const).map(([key, label]) =>
-          <button key={key} type="button" onClick={() => setFilter(key)}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold ${filter === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}
-      </div>
+      <AdminTabs value={filter} onChange={setFilter} options={[['all', tl("Tutti")], ['active', tl("Attivati")], ['pending', tl("In attesa")], ['problems', 'Da controllare']]} />
     </div>
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="admin-panel overflow-x-auto">
       <table className="min-w-[1100px] text-sm">
-        <thead className="bg-slate-50 text-left text-[11px] uppercase text-slate-500">
+        <thead>
           <tr><th>{tl("Istituto")}</th><th>{tl("Dirigente / referente")}</th><th>{tl("Invito")}</th><th className="text-right">{tl("Docenti")}</th>
             <th className="text-right">{tl("Studenti")}</th><th className="text-right">{tl("Crediti mese")}</th><th>{tl("Ultima attività")}</th><th className="w-8" /></tr>
         </thead>
@@ -229,11 +223,11 @@ export function SchoolMonitor() {
             const expanded = open === s.id, stage = s.invite?.stage
             const contact = s.principal ?? (s.invite ? { first_name: s.invite.first_name, last_name: s.invite.last_name, email: s.invite.email ?? '' } : null)
             return <Fragment key={s.id}>
-              <tr className={`cursor-pointer hover:bg-slate-50 ${expanded ? 'bg-slate-50' : ''}`} onClick={() => setOpen(expanded ? null : s.id)}>
+              <tr className={`cursor-pointer ${expanded ? 'bg-[var(--admin-surface-2)]' : ''}`} onClick={() => setOpen(expanded ? null : s.id)}>
                 <td className="max-w-[320px]">
                   <span className="font-semibold text-slate-900">{s.name}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                    {s.mechanographic_code ? <span className="font-mono">{s.mechanographic_code}</span> : <Pill label={tl("fuori registro")} cls="bg-amber-50 text-amber-700" />}
+                    {s.mechanographic_code ? <span className="font-mono">{s.mechanographic_code}</span> : <Pill label={tl("fuori registro")} cls="admin-badge-warning" />}
                     {(s.registry?.comune || s.organization?.comune) && <span>{s.registry?.comune || s.organization?.comune}{(s.registry?.province || s.organization?.province) ? ` (${s.registry?.province || s.organization?.province})` : ''}</span>}
                   </span>
                 </td>

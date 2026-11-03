@@ -17,6 +17,8 @@ from app.models.user import User
 import asyncio
 
 from app.services import model_catalog, model_roles
+from app.services import model_selection
+from app.services.model_selection import SCOPES, provider_keys
 
 router = APIRouter()
 Admin = Annotated[User, Depends(get_current_admin)]
@@ -39,19 +41,26 @@ class ModelUpdate(BaseModel):
 
 
 class OfferedBulk(BaseModel):
-    ids: list[UUID] = Field(min_length=1, max_length=200)
+    ids: list[UUID] = Field(min_length=1, max_length=2000)
     offered: bool
+
+
+class ScopeBulk(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=2000)
+    scope: str = Field(min_length=1, max_length=40)
+    enabled: bool
 
 
 class RoleAssign(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
-    provider: Literal["openai", "anthropic", "deepseek"]
+    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama"]
     model_id: str = Field(min_length=1, max_length=120)
 
 
 class ModelCreate(ModelUpdate):
-    provider: Literal["openai", "anthropic", "deepseek"]
+    kind: Literal["text", "video"] = "text"
+    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama"]
     model_id: str = Field(min_length=1, max_length=120)
     display_name: str = Field(min_length=1, max_length=160)
 
@@ -59,7 +68,8 @@ class ModelCreate(ModelUpdate):
 def _serialize(model: AIModel) -> dict:
     blended = model_catalog.blended_usd(model.input_usd, model.output_usd)
     return {
-        "id": str(model.id), "kind": model.kind, "offered": model.offered, "price_note": model.price_note, "provider": model.provider, "model_id": model.model_id, "display_name": model.display_name, "status": model.status,
+        "id": str(model.id), "kind": model.kind, "offered": model.offered,
+        "scopes": (["chat"] if model.offered else []) + [s for s in (model.scopes or []) if s in SCOPES and s != "chat"], "price_note": model.price_note, "provider": model.provider, "model_id": model.model_id, "display_name": model.display_name, "status": model.status,
         "input_usd": model.input_usd, "output_usd": model.output_usd, "cached_input_usd": model.cached_input_usd,
         "context_window": model.context_window, "quality_score": model.quality_score, "quality_source": model.quality_source,
         "pricing_url": model.pricing_url, "notes": model.notes, "blended_usd": blended,
@@ -90,8 +100,10 @@ async def list_models(_: Admin, db: Db) -> dict:
         "models": [_serialize(m) for m in models],
         "usd_to_eur": USD_TO_EUR,
         "last_scan": {"ran_at": last.ran_at, "trigger": last.trigger, "summary": last.summary_json} if last else None,
-        "provider_keys": {"openai": bool(settings.OPENAI_API_KEY), "anthropic": bool(settings.ANTHROPIC_API_KEY), "deepseek": bool(settings.DEEPSEEK_API_KEY)},
+        "provider_keys": provider_keys(),
         "pricing_urls": model_catalog.PRICING_URLS,
+        "scopes": [{"id": s.id, "label": s.label, "group": s.group, "hint": s.hint, "providers": list(s.providers),
+                    "default": dict(zip(("provider", "model_id"), model_selection.default_pair(s.id)))} for s in SCOPES.values()],
     }
 
 
@@ -104,25 +116,46 @@ def _priced(model: AIModel) -> bool:
     return model.input_usd is not None and model.output_usd is not None
 
 
-@router.post("/offered")
-async def set_offered(payload: OfferedBulk, _: Admin, db: Db) -> dict:
-    """Show / hide several models in the chat selectors at once (teachers' chat, session default, student chatbot)."""
-    rows = list((await db.execute(select(AIModel).where(AIModel.id.in_(payload.ids)))).scalars().all())
+async def _set_scope(db: AsyncSession, ids: list[UUID], scope_id: str, enabled: bool) -> dict:
+    scope = SCOPES.get(scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Sezione sconosciuta")
+    rows = list((await db.execute(select(AIModel).where(AIModel.id.in_(ids)))).scalars().all())
     changed, skipped = 0, []
-    default = (settings.DEFAULT_LLM_PROVIDER, settings.DEFAULT_LLM_MODEL)
     for model in rows:
         if model.kind != "text":
             continue
-        if payload.offered and (model.status != "active" or not _priced(model)):
+        if enabled and (model.status == "deprecated" or not _priced(model) or (scope.providers and model.provider not in scope.providers)):
             skipped.append(model.display_name)  # unpriced calls would not be charged: activate it with a price first
             continue
-        if not payload.offered and (model.provider, model.model_id) == default:
-            skipped.append(model.display_name)  # the platform default is always selectable
+        if enabled and model.status == "available":
+            model.status = "active"
+        if enabled:
+            model.acknowledged = True
+        if scope_id == "chat":
+            if model.offered != enabled:
+                model.offered, changed = enabled, changed + 1
             continue
-        if model.offered != payload.offered:
-            model.offered, changed = payload.offered, changed + 1
+        current = list(model.scopes or [])
+        if enabled and scope_id not in current:
+            model.scopes, changed = [*current, scope_id], changed + 1
+        elif not enabled and scope_id in current:
+            model.scopes, changed = [s for s in current if s != scope_id], changed + 1
     await db.commit()
+    await _reapply(db)
     return {"changed": changed, "skipped": skipped}
+
+
+@router.post("/offered")
+async def set_offered(payload: OfferedBulk, _: Admin, db: Db) -> dict:
+    """Show / hide several models in the chat selectors at once (teachers' chat, session default, student chatbot)."""
+    return await _set_scope(db, payload.ids, "chat", payload.offered)
+
+
+@router.post("/scopes")
+async def set_scope(payload: ScopeBulk, _: Admin, db: Db) -> dict:
+    """Add / remove several models from one section's model menu (Vibe Lab, AI 3D, Notebook, Canvas, Documenti, Agentic)."""
+    return await _set_scope(db, payload.ids, payload.scope, payload.enabled)
 
 
 @router.post("", status_code=201)
@@ -143,9 +176,14 @@ async def update_model(model_id: UUID, payload: ModelUpdate, _: Admin, db: Db) -
     model = await _get(db, model_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(model, key, value)
+    if payload.offered and model.kind == "text" and model.status == "deprecated":
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Riattiva prima il modello dismesso")
     if payload.offered and model.kind == "text" and not _priced(model):
         await db.rollback()
         raise HTTPException(status_code=422, detail="Imposta prima il prezzo del modello: senza listino le chiamate non verrebbero addebitate")
+    if payload.offered and model.kind == "text" and model.status == "available":
+        model.status = "active"
     if {"input_usd", "output_usd"} & payload.model_fields_set:
         model.proposed_input_usd = model.proposed_output_usd = model.proposed_at = None
     model.acknowledged = True
@@ -205,7 +243,7 @@ async def acknowledge(model_id: UUID, _: Admin, db: Db) -> dict:
 # ── roles: which model each part of the platform uses ────────────────────────
 
 def _provider_ready(provider: str) -> bool:
-    return bool({"openai": settings.OPENAI_API_KEY, "anthropic": settings.ANTHROPIC_API_KEY, "deepseek": settings.DEEPSEEK_API_KEY}.get(provider))
+    return provider_keys().get(provider, False)
 
 
 def _candidate(model: AIModel, recommended: set[str]) -> dict:
@@ -269,8 +307,6 @@ async def assign_role(role_id: str, payload: RoleAssign, admin: Admin, db: Db) -
     model.acknowledged = True
     if model.status == "available":
         model.status = "active"
-    if role_id == "chat.default":
-        model.offered = True  # the platform default must be selectable in every chat
     await db.commit()
     await _reapply(db)
     return await list_roles(admin, db)

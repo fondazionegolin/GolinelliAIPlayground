@@ -13,6 +13,15 @@ from PIL import Image, ImageOps
 ATTACHMENT_DIR = Path("/app/uploads/chat_attachments")
 THUMB_MAX_SIDE = 640
 
+
+def message_with_attachment_context(message) -> str:
+    """Keep extracted, anonymized document data available in follow-up turns."""
+    content = message.content or ""
+    for attachment in getattr(message, "attachments_json", None) or []:
+        if attachment.get("extracted_text"):
+            content += f"\n\n[Documento: {attachment.get('filename', 'file')}]\n{attachment['extracted_text']}"
+    return content
+
 # An uploaded picture is edited (img2img) by default. These phrasings instead ask
 # *about* the picture (describe, read, explain), so they keep the vision/analysis path.
 _ANALYSIS_ONLY_RE = re.compile(

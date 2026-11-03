@@ -5,6 +5,7 @@ import { Database, FilePlus2, Save, Sparkles, Trash2 } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { tl } from '@/i18n/tl'
+import { AdminNotice, AdminPageHeader } from '@/components/admin/AdminUI'
 
 type ReleaseItemCategory = 'new' | 'improved' | 'fixed'
 
@@ -177,27 +178,23 @@ export default function AdminBackendPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Admin / Backend</p>
-            <h1 className="mt-2 text-2xl font-semibold text-slate-900">{tl("Changelog piattaforma")}</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-500">
-              {tl("Questa sezione serve solo a gestire le release note visibili dal badge beta di docenti e studenti.")}
-            </p>
-          </div>
-          <Button className="bg-[#181b1e] hover:bg-[#0f1113]" onClick={newReleaseDraft}>
-            <FilePlus2 className="mr-2 h-4 w-4" />
+      <AdminPageHeader
+        eyebrow="Backend"
+        title={tl("Changelog piattaforma")}
+        description={tl("Questa sezione serve solo a gestire le release note visibili dal badge beta di docenti e studenti.")}
+        actions={
+          <Button tone="accent" surface="solid" onClick={newReleaseDraft}>
+            <FilePlus2 className="h-4 w-4" />
             {tl("Nuova release")}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
-          <div className="mb-4 flex items-center gap-2">
-            <Database className="h-4 w-4 text-fuchsia-500" />
-            <h2 className="text-base font-semibold text-slate-900">{tl("Release registrate")}</h2>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="admin-panel self-start p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Database className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-semibold text-slate-900">{tl("Release registrate")}</h2>
           </div>
 
           <div className="space-y-2">
@@ -205,14 +202,14 @@ export default function AdminBackendPage() {
               <button
                 key={release.id}
                 onClick={() => setSelectedReleaseId(release.id)}
-                className={`w-full rounded-[22px] border px-4 py-3 text-left transition-colors ${
+                className={`w-full rounded-md border px-3 py-2.5 text-left transition-colors ${
                   selectedReleaseId === release.id
-                    ? 'border-fuchsia-300 bg-fuchsia-50/60'
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                    ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]'
+                    : 'border-[var(--admin-line)] bg-white hover:bg-[var(--admin-surface-2)]'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  <span className="admin-badge admin-badge-neutral font-mono">
                     {release.version_label}
                   </span>
                 </div>
@@ -223,13 +220,10 @@ export default function AdminBackendPage() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_25px_60px_-30px_rgba(23,23,23,0.35)] backdrop-blur-xl">
+        <div className="admin-panel p-5">
           {gitDraft && (
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-[24px] border border-fuchsia-200 bg-fuchsia-50/70 p-4">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-fuchsia-600 shadow-sm">
-                  <Sparkles className="h-4 w-4" />
-                </div>
+            <AdminNotice tone="info" icon={Sparkles} className="mb-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{tl("Bozza changelog da git disponibile")}</p>
                   <p className="mt-1 text-sm text-slate-600">
@@ -239,60 +233,60 @@ export default function AdminBackendPage() {
                     {gitDraft.version_label} · {gitDraft.generated_at}
                   </p>
                 </div>
-              </div>
-              <Button className="bg-[#181b1e] hover:bg-[#0f1113]" onClick={loadGitDraft}>
+              <Button tone="accent" surface="outline" onClick={loadGitDraft}>
                 {tl("Usa bozza git")}
               </Button>
-            </div>
+              </div>
+            </AdminNotice>
           )}
 
           {!releaseDraft ? (
-            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+            <div className="rounded-md border border-dashed border-[var(--admin-line-strong)] bg-[var(--admin-surface-2)] p-6 text-sm text-slate-500">
               {tl("Seleziona una release oppure creane una nuova.")}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">{tl("Versione")}</label>
+                  <label className="admin-eyebrow mb-1 block">{tl("Versione")}</label>
                   <input
                     value={releaseDraft.version_label}
                     onChange={(e) => setReleaseDraft((prev) => (prev ? { ...prev, version_label: e.target.value } : prev))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Git ref</label>
+                  <label className="admin-eyebrow mb-1 block">Git ref</label>
                   <input
                     value={releaseDraft.git_ref || ''}
                     onChange={(e) => setReleaseDraft((prev) => (prev ? { ...prev, git_ref: e.target.value } : prev))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                     placeholder={tl("branch o commit")}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">{tl("Titolo")}</label>
+                <label className="admin-eyebrow mb-1 block">{tl("Titolo")}</label>
                 <input
                   value={releaseDraft.title}
                   onChange={(e) => setReleaseDraft((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">{tl("Sintesi")}</label>
+                <label className="admin-eyebrow mb-1 block">{tl("Sintesi")}</label>
                 <textarea
                   value={releaseDraft.summary || ''}
                   onChange={(e) => setReleaseDraft((prev) => (prev ? { ...prev, summary: e.target.value } : prev))}
-                  className="min-h-[90px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="min-h-[90px] w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                 />
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">{tl("Voci changelog")}</label>
+                  <label className="admin-eyebrow block">{tl("Voci changelog")}</label>
                   <button
                     onClick={() =>
                       setReleaseDraft((prev) =>
@@ -301,14 +295,14 @@ export default function AdminBackendPage() {
                           : prev
                       )
                     }
-                    className="text-sm font-medium text-fuchsia-600 hover:text-fuchsia-700"
+                    className="text-sm font-medium text-[var(--admin-accent)] hover:underline"
                   >
                     {tl("+ Aggiungi voce")}
                   </button>
                 </div>
 
                 {releaseDraft.items.map((item, index) => (
-                  <div key={index} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div key={index} className="rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] p-4">
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
                       <select
                         value={item.category}
@@ -324,7 +318,7 @@ export default function AdminBackendPage() {
                               : prev
                           )
                         }
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                        className="rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                       >
                         <option value="new">{tl("Nuovo")}</option>
                         <option value="improved">{tl("Migliorato")}</option>
@@ -344,7 +338,7 @@ export default function AdminBackendPage() {
                               : prev
                           )
                         }
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                        className="rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                         placeholder={tl("Titolo voce")}
                       />
                     </div>
@@ -362,7 +356,7 @@ export default function AdminBackendPage() {
                             : prev
                         )
                       }
-                      className="mt-3 min-h-[90px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="mt-3 min-h-[90px] w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--admin-accent)] focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                       placeholder={tl("Descrizione della modifica")}
                     />
                   </div>
@@ -379,13 +373,13 @@ export default function AdminBackendPage() {
               </label>
 
               <div className="flex gap-2">
-                <Button className="bg-[#181b1e] hover:bg-[#0f1113]" onClick={saveReleaseDraft}>
-                  <Save className="mr-2 h-4 w-4" />
+                <Button tone="accent" surface="solid" onClick={saveReleaseDraft}>
+                  <Save className="h-4 w-4" />
                   {tl("Salva release")}
                 </Button>
                 {selectedReleaseId && (
-                  <Button variant="outline" onClick={() => deleteRelease.mutate(selectedReleaseId)}>
-                    <Trash2 className="mr-2 h-4 w-4" />
+                  <Button tone="danger" surface="outline" onClick={() => deleteRelease.mutate(selectedReleaseId)}>
+                    <Trash2 className="h-4 w-4" />
                     {tl("Elimina")}
                   </Button>
                 )}

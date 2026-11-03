@@ -1,3 +1,4 @@
+import { storedModelChoice } from '@/lib/modelChoice'
 import { getResponseLength } from '@/lib/responseLength'
 import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
@@ -11,6 +12,9 @@ const api = axios.create({
   withCredentials: true,
 })
 
+
+/** Sections with their own model menu (Admin → Modelli); keep in sync with backend model_selection.SCOPES. */
+export type ModelScope = 'chat' | 'vibelab' | 'vibelab_students' | 'models3d' | 'models3d_students' | 'notebook' | 'canvas' | 'documents' | 'agentic'
 export const getApiAuthHeaders = (): Record<string, string> => {
   const studentToken = localStorage.getItem('student_token')
   const publicLiveToken = window.location.pathname.startsWith('/live/') ? sessionStorage.getItem('public_live_token') : null
@@ -342,6 +346,7 @@ export const designSystemApi = {
 export const adminApi = {
   videoStudio: {
     config: () => api.get('/admin/video-studio/config'),
+    videoModels: () => api.get('/admin/video-studio/video-models'),
     list: () => api.get('/admin/video-studio/projects'),
     create: (data: Record<string, unknown>) => api.post('/admin/video-studio/projects', data),
     get: (id: string) => api.get(`/admin/video-studio/projects/${id}`),
@@ -355,11 +360,13 @@ export const adminApi = {
     generateScript: (id: string) => api.post(`/admin/video-studio/projects/${id}/script`, undefined, { timeout: 180000 }),
     saveScript: (id: string, script: unknown) => api.put(`/admin/video-studio/projects/${id}/script`, { script }),
     storyboard: (id: string, shots?: number[]) => api.post(`/admin/video-studio/projects/${id}/storyboard`, { shots: shots ?? null }),
-    render: (id: string, shots?: number[]) => api.post(`/admin/video-studio/projects/${id}/render`, { shots: shots ?? null }),
+    render: (id: string, shots?: number[], options?: { provider: 'local' | 'openrouter'; model?: string; duration?: number; resolution?: string }) => api.post(`/admin/video-studio/projects/${id}/render`, { shots: shots ?? null, ...options }),
     assemble: (id: string) => api.post(`/admin/video-studio/projects/${id}/assemble`),
     file: (id: string, name: string) => api.get(`/admin/video-studio/projects/${id}/files/${name}`, { responseType: 'blob' }),
   },
   getActivity: (days = 30) => api.get('/admin/activity', { params: { days } }),
+  getDefaultTeacherbots: () => api.get('/admin/chatbots/teacherbot-defaults'),
+  setDefaultTeacherbots: (data: { student: string[]; teacher: string[] }) => api.put('/admin/chatbots/teacherbot-defaults', data),
   getStudentChatbots: () => api.get('/admin/chatbots'),
   setStudentChatbots: (keys: string[]) => api.put('/admin/chatbots', { keys }),
   getAiModels: () => api.get('/admin/models'),
@@ -370,6 +377,7 @@ export const adminApi = {
   createAiModel: (data: Record<string, unknown>) => api.post('/admin/models', data),
   updateAiModel: (id: string, data: Record<string, unknown>) => api.patch(`/admin/models/${id}`, data),
   setAiModelsOffered: (ids: string[], offered: boolean) => api.post('/admin/models/offered', { ids, offered }),
+  setAiModelsScope: (ids: string[], scope: ModelScope, enabled: boolean) => api.post('/admin/models/scopes', { ids, scope, enabled }),
   applyAllAiModelProposals: () => api.post('/admin/models/apply-all-proposals'),
   applyAiModelProposal: (id: string) => api.post(`/admin/models/${id}/apply-proposal`),
   dismissAiModelProposal: (id: string) => api.post(`/admin/models/${id}/dismiss-proposal`),
@@ -1076,7 +1084,7 @@ export const llmApi = {
       transcript: Array<{ role: string; text: string; flag?: string | null; intent?: string | null; ts: string }>
     }>>(`/llm/realtime/inquiry/bots/${teacherbotId}/sessions`),
   getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
-  getAvailableModels: () => api.get('/llm/available-models'),
+  getAvailableModels: (scope?: ModelScope) => api.get('/llm/available-models', scope ? { params: { scope } } : undefined),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
   getConversationMessages: (conversationId: string) => api.get(`/llm/conversations/${conversationId}/messages`),
   createConversation: (sessionId: string, profileKey: string, title?: string, provider?: string, model?: string, signal?: AbortSignal) =>
@@ -1403,6 +1411,10 @@ export interface InquiryTurnResult {
 }
 
 export const teacherbotsApi = {
+  chatHistory: (id: string) => api.get(`/teacher/teacherbots/${id}/chat`),
+  chatMessage: (id: string, content: string, conversationId?: string | null) => api.post(`/teacher/teacherbots/${id}/chat`, { content, conversation_id: conversationId || undefined }, { timeout: 180000 }),
+  defaults: () => api.get('/teacher/teacherbots/defaults'),
+  chatInfo: (id: string) => api.get(`/teacher/teacherbots/${id}/chat-info`),
   // Teacher endpoints
   list: () => api.get('/teacherbots'),
   listForSession: (sessionId: string) => api.get(`/teacher/sessions/${sessionId}/teacherbots`),
@@ -1501,17 +1513,18 @@ export const teacherbotsApi = {
     api.delete(`/student/teacherbots/conversations/${conversationId}`),
   getConversationMessages: (conversationId: string) =>
     api.get(`/student/teacherbots/conversations/${conversationId}/messages`),
-  sendMessage: (conversationId: string, content: string, signal?: AbortSignal) =>
-    api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content }, { signal }),
+  sendMessage: (conversationId: string, content: string, signal?: AbortSignal, selection?: { provider: string; model: string }) =>
+    api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content, llm_provider: selection?.provider, llm_model: selection?.model }, { signal }),
   getEscapeRoom: (conversationId: string) =>
     api.get(`/student/teacherbots/conversations/${conversationId}/escape-room`),
   startEscapeRoom: (conversationId: string) =>
     api.post(`/student/teacherbots/conversations/${conversationId}/escape-room/start`),
   submitEscapeRoomAnswer: (conversationId: string, value: string) =>
     api.post(`/student/teacherbots/conversations/${conversationId}/escape-room/answer`, { value }),
-  sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal) => {
+  sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal, selection?: { provider: string; model: string }) => {
     const formData = new FormData()
     formData.append('content', content)
+    if (selection) { formData.append('llm_provider', selection.provider); formData.append('llm_model', selection.model) }
     files.forEach(file => formData.append('files', file))
     return api.post(`/student/teacherbots/conversations/${conversationId}/message-with-files`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -1811,12 +1824,12 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
     pending_proposals?: unknown[]
-  }) => api.post(`/notebooks/${id}/tutor`, data),
+  }) => api.post(`/notebooks/${id}/tutor`, { ...data, ...storedModelChoice('notebook') }),
   assist: (id: string, data: {
     message?: string
     current_cell_source?: string
     last_output?: string
-  }) => api.post(`/notebooks/${id}/assist`, data),
+  }) => api.post(`/notebooks/${id}/assist`, { ...data, ...storedModelChoice('notebook') }),
   mergeTemplateUrl: (id: string) => `/api/v1/notebooks/${id}/merge-template`,
   assistStreamUrl: (id: string) => `/api/v1/notebooks/${id}/assist-stream`,
   listVersions: (id: string) => api.get<NotebookVersionSummary[]>(`/notebooks/${id}/versions`),

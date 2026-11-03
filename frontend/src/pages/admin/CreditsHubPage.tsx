@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { AlertTriangle, Check, History, Loader2, Pencil, Plus, Search, X } from '@/components/icons'
 import { formatCreditAmount } from '@/lib/credits'
 import { tl } from '@/i18n/tl'
+import { AdminBadge, AdminPageHeader, AdminTabs } from '@/components/admin/AdminUI'
 
 type BudgetRow = {
   limit_id: string | null
@@ -84,10 +85,10 @@ const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
 const BUNDLE_PRESETS = [100, 500, 1000, 5000]
 
 const STATE_STYLE: Record<BudgetRow['state'], { label: string; chip: string; bar: string }> = {
-  ok: { label: 'Ok', chip: 'bg-emerald-50 text-emerald-700', bar: 'bg-emerald-500' },
-  low: { label: tl("In esaurimento"), chip: 'bg-amber-50 text-amber-700', bar: 'bg-amber-500' },
-  exhausted: { label: tl("Esauriti"), chip: 'bg-red-50 text-red-700', bar: 'bg-red-500' },
-  unlimited: { label: tl("Nessun limite"), chip: 'bg-slate-100 text-slate-500', bar: 'bg-slate-300' },
+  ok: { label: 'Ok', chip: 'admin-badge-success', bar: 'bg-[var(--admin-accent)]' },
+  low: { label: tl("In esaurimento"), chip: 'admin-badge-warning', bar: 'bg-amber-500' },
+  exhausted: { label: tl("Esauriti"), chip: 'admin-badge-danger', bar: 'bg-red-600' },
+  unlimited: { label: tl("Nessun limite"), chip: 'admin-badge-neutral', bar: 'bg-slate-300' },
 }
 
 function targetOf(row: BudgetRow) {
@@ -226,30 +227,26 @@ export default function CreditsHubPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-slate-900">{tl("Crediti")}</h1>
-        <p className="text-sm text-slate-500">
-          {tl("Budget mensili in crediti per istituti, docenti e classi. Le modifiche sono immediate e visibili subito nel pool della piattaforma.")}
-        </p>
-      </div>
+      <AdminPageHeader
+        title={tl("Crediti")}
+        description={tl("Budget mensili in crediti per istituti, docenti e classi. Le modifiche sono immediate e visibili subito nel pool della piattaforma.")}
+      />
 
       {/* Alert in corso */}
       {alerts.length > 0 && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <h2 className="text-sm font-bold text-amber-900">
+        <section className="admin-panel border-l-[3px] border-l-amber-600">
+          <div className="admin-panel-head !justify-start">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <h2 className="text-sm font-semibold text-slate-900">
               {tl("Crediti in esaurimento (")}{alerts.length})
             </h2>
           </div>
-          <div className="divide-y divide-amber-100 rounded-xl bg-white">
+          <div className="divide-y divide-[var(--admin-line)]">
             {alerts.map((alert) => (
               <div key={alert.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                  alert.severity === 'EXHAUSTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                }`}>
+                <AdminBadge tone={alert.severity === 'EXHAUSTED' ? 'danger' : 'warning'}>
                   {alert.severity === 'EXHAUSTED' ? tl("Esauriti") : tl("In esaurimento")}
-                </span>
+                </AdminBadge>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{alert.scope_title}</p>
                   <p className="truncate text-xs text-slate-500">
@@ -257,7 +254,7 @@ export default function CreditsHubPage() {
                     {formatCreditAmount(alert.used_credits)} / {formatCreditAmount(alert.cap_credits)} {tl("crediti usati")}
                   </p>
                 </div>
-                <Button size="sm" onClick={() => setBundleTarget({ row: rowForAlert(alert) })}>
+                <Button tone="accent" surface="solid" density="compact" onClick={() => setBundleTarget({ row: rowForAlert(alert) })}>
                   <Plus className="mr-1 h-3.5 w-3.5" /> {tl("Forza bundle")}
                 </Button>
               </div>
@@ -268,9 +265,9 @@ export default function CreditsHubPage() {
 
       {/* Richieste in attesa */}
       {pending.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-bold text-slate-900">{tl("Richieste di crediti da autorizzare (")}{pending.length})</h2>
-          <div className="divide-y divide-slate-100">
+        <section className="admin-panel">
+          <div className="admin-panel-head"><h2 className="text-sm font-semibold text-slate-900">{tl("Richieste di crediti da autorizzare (")}{pending.length})</h2></div>
+          <div className="divide-y divide-[var(--admin-line)] px-4">
             {pending.map((req) => (
               <RequestRow
                 key={req.id}
@@ -285,28 +282,16 @@ export default function CreditsHubPage() {
       )}
 
       {/* Budget */}
-      <section className="rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-          <div className="flex flex-wrap gap-1">
-            {TABS.map((t) => {
-              const count = overview?.[t.key]?.length ?? 0
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  title={t.hint}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    tab === t.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {t.label} <span className="ml-1 text-xs opacity-60">{count}</span>
-                </button>
-              )
-            })}
-          </div>
+      <section className="admin-panel">
+        <div className="admin-panel-head flex-wrap">
+          <AdminTabs
+            value={tab}
+            onChange={setTab}
+            options={TABS.map((t) => [t.key, <>{t.label} <span className="ml-1 text-xs tabular-nums opacity-60">{overview?.[t.key]?.length ?? 0}</span></>] as const)}
+          />
           <div className="ml-auto flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-slate-600">
-              <input type="checkbox" checked={onlyCritical} onChange={(e) => setOnlyCritical(e.target.checked)} />
+            <label className="flex items-center gap-1.5 text-xs text-slate-700">
+              <input type="checkbox" className="accent-[var(--admin-accent)]" checked={onlyCritical} onChange={(e) => setOnlyCritical(e.target.checked)} />
               {tl("Solo critici")}
             </label>
             <div className="relative">
@@ -321,11 +306,11 @@ export default function CreditsHubPage() {
           </div>
         </div>
 
-        <p className="px-4 pt-3 text-xs text-slate-500">{TABS.find((t) => t.key === tab)?.hint}{tl(". Cap 0 = nessun limite.")}</p>
+        <p className="border-b border-[var(--admin-line)] px-4 py-2 text-xs text-slate-500">{TABS.find((t) => t.key === tab)?.hint}{tl(". Cap 0 = nessun limite.")}</p>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            <thead>
               <tr>
                 <th className="px-4 py-2">{tl("Ambito")}</th>
                 <th className="px-3 py-2 w-56">{tl("Utilizzo")}</th>
@@ -337,7 +322,7 @@ export default function CreditsHubPage() {
                 <th className="px-4 py-2 text-right">{tl("Azioni")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {isLoading && (
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">{tl("Caricamento…")}</td></tr>
               )}
@@ -361,14 +346,12 @@ export default function CreditsHubPage() {
       </section>
 
       {resolvedRequests.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-bold text-slate-900">{tl("Ultime richieste gestite")}</h2>
-          <ul className="divide-y divide-slate-100 text-sm">
+        <section className="admin-panel">
+          <div className="admin-panel-head"><h2 className="text-sm font-semibold text-slate-900">{tl("Ultime richieste gestite")}</h2></div>
+          <ul className="divide-y divide-[var(--admin-line)] px-4 text-sm">
             {resolvedRequests.map((req) => (
               <li key={req.id} className="flex flex-wrap items-center gap-2 py-2">
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                  req.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                }`}>{req.status === 'approved' ? tl("Approvata") : tl("Rifiutata")}</span>
+                <AdminBadge tone={req.status === 'approved' ? 'success' : 'neutral'}>{req.status === 'approved' ? tl("Approvata") : tl("Rifiutata")}</AdminBadge>
                 <span className="font-semibold text-slate-800">{req.requester_name}</span>
                 <span className="text-slate-500">· {req.scope_title} · {formatCreditAmount(req.credits)} {tl("crediti")}</span>
               </li>
@@ -426,7 +409,7 @@ function BudgetTableRow({
   }
 
   return (
-    <tr className={nested ? 'bg-slate-50/60 hover:bg-slate-100/60' : 'hover:bg-slate-50/70'}>
+    <tr className={nested ? 'bg-[var(--admin-surface-2)]' : ''}>
       <td className={`py-2.5 ${nested ? 'pl-10 pr-4' : 'px-4'}`}>
         {nested ? (
           <>
@@ -447,7 +430,7 @@ function BudgetTableRow({
           <span className="text-xs text-slate-400">{formatCreditAmount(row.used_credits)} usati</span>
         ) : (
           <div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#eceef1]">
               <div className={`h-full ${style.bar}`} style={{ width: `${pct}%` }} />
             </div>
             <p className="mt-1 text-[11px] tabular-nums text-slate-500">
@@ -470,7 +453,7 @@ function BudgetTableRow({
               inputMode="decimal"
               className="h-7 w-24 text-right text-sm"
             />
-            <button onClick={commit} disabled={saving} className="text-emerald-600" title={tl("Salva")}>
+            <button onClick={commit} disabled={saving} className="text-[var(--admin-accent)]" title={tl("Salva")}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             </button>
             <button onClick={() => setEditing(false)} className="text-slate-400" title={tl("Annulla")}><X className="h-4 w-4" /></button>
@@ -482,7 +465,7 @@ function BudgetTableRow({
             title={tl("Modifica cap mensile")}
           >
             {row.cap_credits > 0 ? formatCreditAmount(row.cap_credits) : '∞'}
-            <Pencil className="h-3 w-3 text-slate-300 group-hover:text-slate-600" />
+            <Pencil className="h-3 w-3 text-slate-400 group-hover:text-slate-700" />
           </button>
         )}
       </td>
@@ -496,12 +479,13 @@ function BudgetTableRow({
         {row.cap_credits > 0 ? formatShortDate(row.period_end) : '—'}
       </td>
       <td className="px-3 py-2.5">
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${style.chip}`}>{style.label}</span>
+        <span className={`admin-badge ${style.chip}`}>{style.label}</span>
       </td>
       <td className="whitespace-nowrap px-4 py-2.5 text-right">
         <Button
-          size="sm"
-          variant="outline"
+          tone="neutral"
+          surface="outline"
+          density="compact"
           className="mr-1.5"
           onClick={onReset}
           title={tl("Azzera i consumi e riparti da oggi")}
@@ -509,8 +493,9 @@ function BudgetTableRow({
           <History className="mr-1 h-3.5 w-3.5" /> Reset
         </Button>
         <Button
-          size="sm"
-          variant="outline"
+          tone="neutral"
+          surface="outline"
+          density="compact"
           disabled={!canBundle}
           onClick={onBundle}
           title={canBundle ? tl("Aggiungi un bundle di crediti, subito") : tl("Imposta prima un cap mensile")}
@@ -553,10 +538,10 @@ function RequestRow({
           className="h-8 w-24 text-right text-sm"
         />
       </label>
-      <Button size="sm" disabled={busy || !(parsed > 0)} onClick={() => onApprove(parsed)}>
+      <Button tone="accent" surface="solid" density="compact" disabled={busy || !(parsed > 0)} onClick={() => onApprove(parsed)}>
         <Check className="mr-1 h-3.5 w-3.5" /> {tl("Autorizza")}
       </Button>
-      <Button size="sm" variant="outline" disabled={busy} onClick={onReject}>{tl("Rifiuta")}</Button>
+      <Button tone="neutral" surface="outline" density="compact" disabled={busy} onClick={onReject}>{tl("Rifiuta")}</Button>
     </div>
   )
 }
@@ -574,9 +559,9 @@ function BundleDialog({
   const parsed = Number(credits.replace(',', '.'))
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl">
-        <h2 className="text-base font-bold text-slate-900">{tl("Forza un bundle di crediti")}</h2>
+      <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-[0.625rem] border border-[var(--admin-line)] bg-white p-5 shadow-xl">
+        <h2 className="text-base font-semibold text-slate-900">{tl("Forza un bundle di crediti")}</h2>
         <p className="mt-1 text-sm text-slate-500">
           {row.title}{row.subtitle ? ` · ${row.subtitle}` : ''}
         </p>
@@ -590,7 +575,7 @@ function BundleDialog({
               key={preset}
               onClick={() => setCredits(String(preset))}
               className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
-                Number(credits) === preset ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                Number(credits) === preset ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]' : 'border-[var(--admin-line-strong)] text-slate-700 hover:bg-[var(--admin-surface-2)]'
               }`}
             >
               +{formatCreditAmount(preset)}
@@ -609,7 +594,7 @@ function BundleDialog({
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>{tl("Annulla")}</Button>
+          <Button tone="neutral" surface="outline" onClick={onClose} disabled={busy}>{tl("Annulla")}</Button>
           <Button disabled={busy || !(parsed > 0)} onClick={() => onConfirm(parsed, note.trim() || undefined)}>
             {busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             {tl("Accredita")} {parsed > 0 ? formatCreditAmount(parsed) : ''} {tl("crediti")}
@@ -635,9 +620,9 @@ function ResetDialog({
   const capChanged = validCap && parsed !== row.cap_credits
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-5 shadow-2xl">
-        <h2 className="text-base font-bold text-slate-900">{tl("Reset e nuovo ciclo")}</h2>
+      <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-[0.625rem] border border-[var(--admin-line)] bg-white p-5 shadow-xl">
+        <h2 className="text-base font-semibold text-slate-900">{tl("Reset e nuovo ciclo")}</h2>
         <p className="mt-1 text-sm text-slate-500">{row.title}{row.subtitle ? ` · ${row.subtitle}` : ''}</p>
         <p className="mt-2 text-xs text-slate-500">
           {tl("I consumi di questo ciclo ({0} crediti) tornano a zero e il ciclo mensile riparte da oggi: i crediti verranno riaccreditati ogni mese nello stesso giorno.", formatCreditAmount(row.used_credits))}
@@ -656,7 +641,7 @@ function ResetDialog({
           )}
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>{tl("Annulla")}</Button>
+          <Button tone="neutral" surface="outline" onClick={onClose} disabled={busy}>{tl("Annulla")}</Button>
           <Button disabled={busy || !validCap} onClick={() => onConfirm(capChanged ? parsed : undefined, clearBonus)}>
             {busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             {tl("Resetta da oggi")}

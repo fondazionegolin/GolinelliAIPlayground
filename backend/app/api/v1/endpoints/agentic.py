@@ -17,6 +17,7 @@ from app.models.agentic import AgenticAssistantConversation, AgenticDataset, Age
 from app.models.session import Session
 from app.models.user import User
 from app.services import agentic_assistant, agentic_assistant_agents
+from app.services import model_selection
 from app.services.agentic_runtime import NODE_REGISTRY, advance_conversation, configured_models, execute_node_isolated, execute_run, validate_graph
 
 logger = logging.getLogger(__name__)
@@ -214,12 +215,26 @@ async def _resume_chat_run(db: AsyncSession, run: AgenticWorkflowRun, workflow: 
 @router.get("/registry")
 async def get_registry(admin: Annotated[User, Depends(get_current_admin)]):
     del admin
+    await model_selection.refresh_cache()  # the editor shows the admin's latest Agentic list, not the 30 s cache
+    models = configured_models()
     return {
-        "models": configured_models(),
+        "models": models,
         "portTypes": ["TABLE", "SERIES", "ARRAY_3D", "MODEL", "METRICS", "PARAMS", "ANY"],
         "paramTypes": ["STRING", "NUMBER", "INTEGER", "BOOLEAN", "SELECT", "MULTI_SELECT", "SLIDER", "COLOR", "FILE", "CODE", "COLUMN", "COLUMNS", "DATASET"],
-        "nodes": list(NODE_REGISTRY.values()),
+        "nodes": [_with_model_menu(node, models) for node in NODE_REGISTRY.values()],
     }
+
+
+def _with_model_menu(node: dict[str, Any], models: list[dict[str, str]]) -> dict[str, Any]:
+    """Show the free-text provider/model params as one menu of the models enabled for Agentic (Admin → Modelli)."""
+    names = {p["name"] for p in node.get("params", [])}
+    if not {"provider", "model"} <= names:
+        return node
+    options = [""] + [f"{m['provider']}|{m['model']}" for m in models]
+    labels = {"": "Predefinito", **{f"{m['provider']}|{m['model']}": m["name"] for m in models}}
+    params = [p if p["name"] != "model" else {**p, "type": "SELECT", "label": "Modello", "options": options, "optionLabels": labels}
+              for p in node["params"] if p["name"] != "provider"]
+    return {**node, "params": params}
 
 
 def _dataset_payload(dataset: AgenticDataset) -> dict[str, Any]:

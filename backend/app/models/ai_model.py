@@ -1,5 +1,5 @@
 from sqlalchemy import false as sa_false
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 import uuid
 
@@ -15,12 +15,14 @@ class AIModel(Base):
     __table_args__ = (UniqueConstraint("provider", "model_id", name="uq_ai_models_provider_model"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    provider = Column(String(20), nullable=False, index=True)  # openai | anthropic | deepseek
+    provider = Column(String(20), nullable=False, index=True)  # openai | anthropic | deepseek | openrouter
     model_id = Column(String(120), nullable=False)
     display_name = Column(String(160), nullable=False)
     status = Column(String(12), nullable=False, default="active")  # active | available | deprecated
-    kind = Column(String(12), nullable=False, default="text", server_default="text")  # text | image | realtime | transcribe
+    kind = Column(String(12), nullable=False, default="text", server_default="text")  # text | image | realtime | transcribe | video
     offered = Column(Boolean, nullable=False, default=False, server_default=sa_false())  # shown in the users' model selectors
+    # Other sections whose model menu lists this model (see ``model_selection.SCOPES``); chat uses ``offered``.
+    scopes = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     price_note = Column(String(200), nullable=True)  # human-readable price for non-text kinds (per minute, audio tokens…)
     input_usd = Column(Float, nullable=True)
     output_usd = Column(Float, nullable=True)

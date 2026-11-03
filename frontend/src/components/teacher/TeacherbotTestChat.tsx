@@ -1,3 +1,7 @@
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import { useState, useRef, useEffect } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
@@ -16,6 +20,7 @@ import { tl } from '@/i18n/tl'
 interface TeacherbotTestChatProps {
   teacherbotId: string
   onBack: () => void
+  mode?: 'test' | 'chat'
 }
 
 interface Message {
@@ -28,10 +33,11 @@ interface Message {
   token_usage_json?: TokenUsageJson | null
 }
 
-export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotTestChatProps) {
+export default function TeacherbotTestChat({ teacherbotId, onBack, mode = 'test' }: TeacherbotTestChatProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [messages, setMessages] = useState<Message[]>([])
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const [inputText, setInputText] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, inputText)
@@ -41,12 +47,21 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
 
   // Load teacherbot info
   const { data: teacherbot, isLoading: isLoadingBot } = useQuery({
-    queryKey: ['teacherbot', teacherbotId],
+    queryKey: ['teacherbot-chat-info', teacherbotId],
     queryFn: async () => {
-      const res = await teacherbotsApi.get(teacherbotId)
+      const res = await teacherbotsApi.chatInfo(teacherbotId)
       return res.data
     },
   })
+
+  const history = useQuery({ queryKey: ['teacherbot-chat-history', teacherbotId], enabled: mode === 'chat', refetchOnWindowFocus: false,
+    queryFn: async () => (await teacherbotsApi.chatHistory(teacherbotId)).data,
+  })
+  useEffect(() => {
+    if (mode !== 'chat' || !history.data) return
+    setConversationId(history.data.conversation_id)
+    setMessages(history.data.messages.map((message: Message) => ({ ...message, timestamp: new Date(message.timestamp) })))
+  }, [mode, history.data])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -68,9 +83,10 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
   const testMutation = useMutation({
     mutationFn: async (content: string) => {
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      return teacherbotsApi.test(teacherbotId, content, history)
+      return mode === 'chat' ? teacherbotsApi.chatMessage(teacherbotId, content, conversationId) : teacherbotsApi.test(teacherbotId, content, history)
     },
     onSuccess: (response) => {
+      if (response.data.conversation_id) setConversationId(response.data.conversation_id)
       const assistantMsg: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -80,11 +96,13 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
         model: response.data.model,
         token_usage_json: response.data.token_usage_json,
       }
-      setMessages(prev => [...prev, assistantMsg])
+      const nextMessages = [...messages, assistantMsg]
+      setMessages(nextMessages)
+      if (mode === 'chat') queryClient.setQueryData(['teacherbot-chat-history', teacherbotId], { conversation_id: response.data.conversation_id, messages: nextMessages })
       queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
     },
     onError: () => {
-      toast({ title: tl("Errore"), description: tl("Impossibile testare il teacherbot"), variant: 'destructive' })
+      toast({ title: tl("Errore"), description: mode === 'test' ? tl("Impossibile testare il teacherbot") : tl("Impossibile inviare il messaggio"), variant: 'destructive' })
     },
   })
 
@@ -111,6 +129,8 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
   }
 
   const handleReset = () => {
+    setConversationId(null)
+    if (mode === 'chat') queryClient.setQueryData(['teacherbot-chat-history', teacherbotId], { conversation_id: null, messages: [] })
     setMessages([])
     if (teacherbot?.is_proactive && teacherbot?.proactive_message) {
       setMessages([{
@@ -137,7 +157,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
     return colorMap[color] || 'bg-[#181b1e]'
   }
 
-  if (isLoadingBot) {
+  if (isLoadingBot || (mode === 'chat' && history.isLoading)) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-neutral-900" />
@@ -158,8 +178,8 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
             <Bot className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-slate-800">Test: {teacherbot?.name}</h2>
-            <p className="text-xs text-slate-500">{tl("Prova il tuo teacherbot prima di pubblicarlo")}</p>
+            <h2 className="font-bold text-slate-800">{mode === 'test' ? 'Test: ' : ''}{teacherbot?.name}</h2>
+            <p className="text-xs text-slate-500">{mode === 'test' ? tl("Prova il tuo teacherbot prima di pubblicarlo") : tl("Conversazione privata salvata nel tuo account")}</p>
           </div>
         </div>
         <Button variant="outline" onClick={handleReset} className="text-slate-600">
@@ -176,7 +196,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
             <div className="h-full flex flex-col items-center justify-center opacity-50">
               <Bot className="h-12 w-12 text-slate-300 mb-4" />
               <p className="text-slate-400 font-medium">{tl("Inizia a conversare con il tuo bot")}</p>
-              <p className="text-sm text-slate-400">{tl("Testa come risponde prima di pubblicarlo")}</p>
+              <p className="text-sm text-slate-400">{mode === 'test' ? tl("Testa come risponde prima di pubblicarlo") : tl("Il tuo assistente è pronto.")}</p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -193,11 +213,11 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                 }`}>
                   {msg.role === 'assistant' ? (
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
                       className="chat-markdown prose max-w-none prose-p:my-1"
                       components={markdownCodeComponents()}
                     >
-                      {msg.content}
+                      {normalizeMathMarkdown(msg.content)}
                     </ReactMarkdown>
                   ) : (
                     <p className="text-sm">{msg.content}</p>
@@ -242,7 +262,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                   handleSend()
                 }
               }}
-              placeholder={tl("Scrivi un messaggio di test...")}
+              placeholder={mode === 'test' ? tl("Scrivi un messaggio di test...") : tl("Scrivi un messaggio…")}
               className="flex-1 resize-none px-4 py-2 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm leading-6"
               disabled={isLoading}
             />
@@ -258,11 +278,11 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
       </div>
 
       {/* Info Panel */}
-      <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+      {mode === 'test' && <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
         <p className="text-sm text-amber-800">
           <strong>{tl("Modalita Test:")}</strong> {tl("Questa chat e solo per testare il comportamento del tuo bot. Le conversazioni non vengono salvate e non generano report.")}
         </p>
-      </div>
+      </div>}
     </div>
   )
 }

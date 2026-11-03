@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import { RotateCcw, Save, Code2, Palette, Clock, Eye } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { AdminPageHeader, AdminTabs } from '@/components/admin/AdminUI'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -483,12 +484,10 @@ export default function EmailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">{tl("Email & Messaggi")}</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          {tl("Personalizza le email automatiche e il disclaimer beta.")}
-        </p>
-      </div>
+      <AdminPageHeader
+        title={tl("Email & Messaggi")}
+        description={tl("Personalizza le email automatiche e il disclaimer beta.")}
+      />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
         {/* ── Left: editor ── */}
@@ -501,7 +500,7 @@ export default function EmailPage() {
                   {tl("Caso d'uso")}
                 </Label>
                 <select
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  className="h-9 w-full rounded-md border border-[var(--admin-line-strong)] bg-white px-3 text-sm focus:border-[var(--admin-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]"
                   value={templateKey}
                   onChange={(e) => setTemplateKey(e.target.value)}
                 >
@@ -537,30 +536,16 @@ export default function EmailPage() {
             <>
               {/* Mode toggle */}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleSwitchToVisual()}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-                    mode === 'visual'
-                      ? 'bg-slate-800 text-white shadow-sm'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  <Palette className="h-3.5 w-3.5" />
-                  {tl("Visuale")}
-                </button>
-                <button
-                  onClick={handleSwitchToHtml}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-                    mode === 'html'
-                      ? 'bg-slate-800 text-white shadow-sm'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  {tl("HTML sorgente")}
-                </button>
+                <AdminTabs
+                  value={mode}
+                  onChange={(next) => (next === 'visual' ? handleSwitchToVisual() : handleSwitchToHtml())}
+                  options={[
+                    ['visual', <span className="flex items-center gap-1.5"><Palette className="h-3.5 w-3.5" />{tl("Visuale")}</span>],
+                    ['html', <span className="flex items-center gap-1.5"><Code2 className="h-3.5 w-3.5" />{tl("HTML sorgente")}</span>],
+                  ]}
+                />
                 {mode === 'html' && (
-                  <p className="ml-1 text-xs text-amber-600">
+                  <p className="ml-1 text-xs text-amber-700">
                     {tl("⚠️ Le modifiche HTML potrebbero non essere riconvertite in visuale.")}
                   </p>
                 )}
@@ -634,8 +619,8 @@ export default function EmailPage() {
           {/* Actions */}
           <div className="flex justify-between gap-2">
             <Button
-              variant="outline"
-              className="gap-2"
+              tone="neutral"
+              surface="outline"
               onClick={() => resetTemplateMutation.mutate()}
               disabled={resetTemplateMutation.isPending}
             >
@@ -643,7 +628,8 @@ export default function EmailPage() {
               {resetTemplateMutation.isPending ? tl("Ripristino…") : tl("Ripristina default")}
             </Button>
             <Button
-              className="gap-2 bg-slate-800 hover:bg-slate-900 text-white"
+              tone="accent"
+              surface="solid"
               onClick={() => saveTemplatesMutation.mutate()}
               disabled={
                 saveTemplatesMutation.isPending ||
@@ -673,7 +659,7 @@ export default function EmailPage() {
                   (templateHistory?.items || []).map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                      className="rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] px-3 py-2"
                     >
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold text-slate-700">v{item.version}</span>

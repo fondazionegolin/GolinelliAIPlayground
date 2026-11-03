@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_DEFAULT_MODEL: str = "openrouter/auto"
     GEMINI_API_KEY: Optional[str] = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None

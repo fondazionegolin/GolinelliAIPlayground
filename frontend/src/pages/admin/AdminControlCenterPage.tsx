@@ -1,12 +1,10 @@
-import type { ComponentType } from 'react'
 import { formatInternalCredits, toCredits } from '@/lib/credits'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { AdminBadge, AdminEmpty, AdminPageHeader, AdminSection, AdminStat, AdminStatGrid } from '@/components/admin/AdminUI'
 import {
   ResponsiveContainer,
   LineChart,
@@ -72,211 +70,122 @@ export default function AdminOverviewPage() {
   const dailyHistory = (overview?.daily_history || []).map((d) => ({ ...d, cost: toCredits(d.cost) }))
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{tl("Panoramica")}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{tl("Monitor realtime — utenti online, API, costi.")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="period-days" className="text-xs text-slate-500 whitespace-nowrap">{tl("Periodo")}</Label>
-          <Input
-            id="period-days"
-            type="number"
-            min={1}
-            max={180}
-            value={days}
-            onChange={(e) => setDays(Math.max(1, Math.min(180, Number(e.target.value || 30))))}
-            className="h-8 w-20 text-sm"
-          />
-          <span className="text-xs text-slate-500">{tl("giorni")}</span>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <AdminPageHeader
+        title={tl("Panoramica")}
+        description={tl("Monitor realtime — utenti online, API, costi.")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="period-days" className="whitespace-nowrap text-xs text-[var(--admin-ink-2)]">{tl("Periodo")}</Label>
+            <Input
+              id="period-days"
+              type="number"
+              min={1}
+              max={180}
+              value={days}
+              onChange={(e) => setDays(Math.max(1, Math.min(180, Number(e.target.value || 30))))}
+              className="h-8 w-20 text-sm"
+            />
+            <span className="text-xs text-[var(--admin-ink-2)]">{tl("giorni")}</span>
+          </div>
+        }
+      />
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <MetricCard
-          title={tl("Online ora")}
+      <AdminStatGrid>
+        <AdminStat
+          label={tl("Online ora")}
           value={`${realtime?.online_total || 0}`}
           hint={tl("Studenti {0} · Docenti {1}", realtime?.online_students || 0, realtime?.online_teachers || 0)}
           icon={Wifi}
-          color="sky"
         />
-        <MetricCard
-          title={tl("Attivi recenti")}
+        <AdminStat
+          label={tl("Attivi recenti")}
           value={`${realtime?.recent_students_2m || 0}`}
           hint={tl("Docenti 10min: {0}", realtime?.recent_active_teachers_10m || 0)}
           icon={Activity}
-          color="emerald"
         />
-        <MetricCard
-          title={tl("Chiamate API")}
+        <AdminStat
+          label={tl("Chiamate API")}
           value={`${summary?.total_api_calls_period || 0}`}
           hint={tl("Ultimi {0} giorni", summary?.period_days || days)}
           icon={Zap}
-          color="violet"
         />
-        <MetricCard
-          title={tl("Costo periodo")}
+        <AdminStat
+          label={tl("Costo periodo")}
           value={formatCurrency(summary?.total_cost_period || 0)}
           hint={tl("Docenti attivi: {0}", summary?.active_teachers_period || 0)}
           icon={DollarSign}
-          color="amber"
         />
-      </div>
+      </AdminStatGrid>
 
-      {/* Chart + Sessions */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">{tl("Chiamate e costi giornalieri")}</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dailyHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="calls"
-                  stroke="#0ea5e9"
-                  strokeWidth={2}
-                  dot={false}
-                  name="Chiamate"
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="cost"
-                  stroke="#737373"
-                  strokeWidth={2}
-                  dot={false}
-                  name="Crediti consumati"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <AdminSection title={tl("Chiamate e costi giornalieri")} className="xl:col-span-2" bodyClassName="h-72 p-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={dailyHistory}>
+              <CartesianGrid stroke="#eceef1" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={{ stroke: '#cfd4dc' }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e5ea', fontSize: 12 }} />
+              <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} />
+              <Line yAxisId="left" type="monotone" dataKey="calls" stroke="#55449c" strokeWidth={2} dot={false} name="Chiamate" />
+              <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#9aa0aa" strokeWidth={2} dot={false} name="Crediti consumati" />
+            </LineChart>
+          </ResponsiveContainer>
+        </AdminSection>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">{tl("Sessioni attive")}</CardTitle>
-            <CardDescription className="text-xs">{tl("Aggiornamento ogni 3s")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1.5 max-h-56 overflow-y-auto">
+        <AdminSection title={tl("Sessioni attive")} description={tl("Aggiornamento ogni 3s")} flush>
+          <div className="max-h-72 overflow-y-auto">
             {(realtime?.sessions_active || []).length === 0 ? (
-              <p className="text-xs text-slate-400 py-2">{tl("Nessuna sessione attiva")}</p>
+              <AdminEmpty>{tl("Nessuna sessione attiva")}</AdminEmpty>
             ) : (
               (realtime?.sessions_active || []).map((session) => (
-                <div
-                  key={session.session_id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5"
-                >
-                  <span className="font-mono text-[11px] text-slate-600">
-                    {session.session_id.slice(0, 8)}…
-                  </span>
-                  <Badge className="bg-[#1a1a2e] text-white text-[10px]">
+                <div key={session.session_id} className="flex items-center justify-between border-b border-[var(--admin-line)] px-4 py-2 last:border-b-0">
+                  <span className="font-mono text-xs text-[var(--admin-ink-2)]">{session.session_id.slice(0, 8)}…</span>
+                  <span className="text-xs font-semibold text-[var(--admin-ink)] tabular-nums">
                     {session.online_students} {tl("studenti")}
-                  </Badge>
+                  </span>
                 </div>
               ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </AdminSection>
       </div>
 
-      {/* Online Users Table */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">{tl("Utenti connessi in realtime")}</CardTitle>
-          <CardDescription className="text-xs">{tl("Lista live socket (docenti e studenti)")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {(realtime?.users_online || []).length === 0 ? (
-            <p className="text-xs text-slate-400 py-3">{tl("Nessun utente connesso")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase text-slate-400 border-b border-slate-100">
-                    <th className="pb-2 font-medium">{tl("Tipo")}</th>
-                    <th className="pb-2 font-medium">{tl("Nome")}</th>
-                    <th className="pb-2 font-medium">{tl("Email")}</th>
-                    <th className="pb-2 font-medium">{tl("Sessione")}</th>
-                    <th className="pb-2 font-medium">Socket ID</th>
+      <AdminSection title={tl("Utenti connessi in realtime")} description={tl("Lista live socket (docenti e studenti)")} flush>
+        {(realtime?.users_online || []).length === 0 ? (
+          <AdminEmpty>{tl("Nessun utente connesso")}</AdminEmpty>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-sm">
+              <thead>
+                <tr>
+                  <th>{tl("Tipo")}</th>
+                  <th>{tl("Nome")}</th>
+                  <th>{tl("Email")}</th>
+                  <th>{tl("Sessione")}</th>
+                  <th>Socket ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(realtime?.users_online || []).map((u) => (
+                  <tr key={u.sid}>
+                    <td>
+                      <AdminBadge tone={u.type === 'teacher' ? 'accent' : 'neutral'}>
+                        {u.type === 'teacher' ? tl("docente") : tl("studente")}
+                      </AdminBadge>
+                    </td>
+                    <td className="font-medium">{u.name}</td>
+                    <td className="text-xs text-[var(--admin-ink-2)]">{u.email || '—'}</td>
+                    <td className="font-mono text-xs text-[var(--admin-ink-2)]">{u.session_id || '—'}</td>
+                    <td className="font-mono text-xs text-[var(--admin-ink-3)]">{u.sid.slice(0, 12)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(realtime?.users_online || []).map((u) => (
-                    <tr key={u.sid} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
-                      <td className="py-2">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                            u.type === 'teacher'
-                              ? 'bg-[#1a1a2e]/10 text-neutral-900'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {u.type === 'teacher' ? tl("docente") : tl("studente")}
-                        </span>
-                      </td>
-                      <td className="py-2 font-medium text-slate-800">{u.name}</td>
-                      <td className="py-2 text-xs text-slate-500">{u.email || '—'}</td>
-                      <td className="py-2 font-mono text-xs text-slate-500">{u.session_id || '—'}</td>
-                      <td className="py-2 font-mono text-xs text-slate-400">{u.sid.slice(0, 12)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminSection>
     </div>
-  )
-}
-
-function MetricCard({
-  title,
-  value,
-  hint,
-  icon: Icon,
-  color,
-}: {
-  title: string
-  value: string
-  hint: string
-  icon: ComponentType<{ className?: string }>
-  color: 'sky' | 'emerald' | 'violet' | 'amber'
-}) {
-  const colorClasses: Record<string, string> = {
-    sky: 'border-sky-200 bg-sky-50',
-    emerald: 'border-emerald-200 bg-emerald-50',
-    violet: 'border-violet-200 bg-violet-50',
-    amber: 'border-amber-200 bg-amber-50',
-  }
-  const iconClasses: Record<string, string> = {
-    sky: 'text-sky-600',
-    emerald: 'text-emerald-600',
-    violet: 'text-violet-600',
-    amber: 'text-amber-600',
-  }
-  return (
-    <Card className={`border ${colorClasses[color]}`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-1 pt-4 px-4">
-        <CardTitle className="text-xs font-semibold text-slate-600">{title}</CardTitle>
-        <Icon className={`h-4 w-4 ${iconClasses[color]}`} />
-      </CardHeader>
-      <CardContent className="px-4 pb-4">
-        <div className="text-2xl font-bold text-slate-900">{value}</div>
-        <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
-      </CardContent>
-    </Card>
   )
 }

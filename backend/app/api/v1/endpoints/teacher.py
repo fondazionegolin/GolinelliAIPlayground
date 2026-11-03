@@ -4261,6 +4261,7 @@ async def list_teacher_conversations(
         )
         .outerjoin(TeacherConversationMessage)
         .where(TeacherConversation.teacher_id == teacher.id)
+        .where(or_(TeacherConversation.agent_mode.is_(None), ~TeacherConversation.agent_mode.startswith("teacherbot:")))
         .group_by(TeacherConversation.id)
         .order_by(TeacherConversation.updated_at.desc())
         .limit(limit)

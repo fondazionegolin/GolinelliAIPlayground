@@ -1,3 +1,4 @@
+import { voiceLabApi } from '@/lib/voiceLab'
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
@@ -395,6 +396,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
       { path: '/teacher/documents', details: tl("Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare."), label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
       { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
+      { path: '/teacher/voice-lab', label: 'Voice Lab', description: tl("Voci, audio e registrazioni"), details: tl("Genera audio da un testo, clona e progetta voci, crea dialoghi, trascrivi, isola il parlato, componi musica ed effetti e doppia le registrazioni. I risultati restano nella tua libreria e nei Files."), icon: Mic, isNew: true,
+        recents: { queryKey: ['voice-lab-items'], limit: 3, fetch: async () => (await voiceLabApi.items()).data.filter((item) => item.kind !== 'voice').slice(0, 3).map((item) => ({ id: item.id, title: item.title, to: `/teacher/voice-lab?item=${item.id}` })) } },
       { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon },
       { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Cube3DIcon },
     ] },
