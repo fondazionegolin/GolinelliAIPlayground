@@ -15,14 +15,18 @@ from app.models.session_canvas import SessionCanvas, normalize_canvas_key
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
+    # Emits go through Redis so pool workers (which hold no socket connections)
+    # can still reach the clients connected to the gateway process.
+    client_manager=socketio.AsyncRedisManager(settings.REDIS_URL, write_only=settings.API_ROLE == "pool"),
     cors_allowed_origins=settings.all_cors_origins,
-    logger=True,
-    engineio_logger=True,
+    # Per-packet logging of every client was a measurable CPU and log-volume cost.
+    logger=settings.SOCKETIO_DEBUG_LOGS,
+    engineio_logger=settings.SOCKETIO_DEBUG_LOGS,
 )
 
 socket_app = socketio.ASGIApp(sio, socketio_path="")
 
-# In-memory state (use Redis in production for multi-instance)
+# In-memory state: lives in the gateway process only (nginx sends every socket there)
 connected_users: dict[str, dict] = {}  # sid -> user info
 session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info

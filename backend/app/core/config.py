@@ -11,9 +11,20 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://eduai:eduai@localhost:5432/eduai"
     DATABASE_ECHO: bool = False
-    
+    # Per process: the multi-worker pool runs several processes, keep their total
+    # below Postgres max_connections.
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Process role. "gateway" (single process) owns the in-memory state: Socket.IO
+    # connections, background jobs, the Toy LM queue. "pool" processes (several uvicorn
+    # workers) only serve the stateless routes nginx sends them, and reach socket
+    # clients through the Redis message queue.
+    API_ROLE: str = "gateway"
+    SOCKETIO_DEBUG_LOGS: bool = False
 
     # Public platform-health indicator. Set PLATFORM_HEALTH_OVERRIDE to
     # green/yellow/red during planned maintenance when automatic probes cannot

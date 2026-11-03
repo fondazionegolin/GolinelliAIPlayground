@@ -30,11 +30,14 @@ REQUEST_DURATION = Histogram(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    gateway = settings.API_ROLE != "pool"
     await storage_service.ensure_bucket()
-    from app.services.toy_lm_trainer import toy_lm_service
-    toy_lm_service.start_queue_processor()
-    from app.services.background_jobs import mark_interrupted_jobs
-    await mark_interrupted_jobs()
+    if gateway:
+        # Process-wide singletons: only the gateway runs them, never once per pool worker.
+        from app.services.toy_lm_trainer import toy_lm_service
+        toy_lm_service.start_queue_processor()
+        from app.services.background_jobs import mark_interrupted_jobs
+        await mark_interrupted_jobs()
     from app.services import model_catalog
     await model_catalog.load_runtime_prices()
     from app.services import model_roles
@@ -42,11 +45,12 @@ async def lifespan(app: FastAPI):
         await model_roles.load_overrides()
     except Exception:
         pass  # table may not exist yet before the first migration
-    scan_task = asyncio.create_task(model_catalog.scan_loop())
-    roles_task = asyncio.create_task(model_roles.refresh_loop())
+    tasks = [asyncio.create_task(model_roles.refresh_loop())]
+    if gateway:
+        tasks.append(asyncio.create_task(model_catalog.scan_loop()))
     yield
-    scan_task.cancel()
-    roles_task.cancel()
+    for task in tasks:
+        task.cancel()
     # Shutdown
 
 
