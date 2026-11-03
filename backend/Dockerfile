@@ -40,6 +40,9 @@ RUN pip install --no-cache-dir --default-timeout=300 --retries=10 -r requirement
 RUN pip install --no-cache-dir --default-timeout=300 --retries=10 \
     https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl
 
+COPY requirements-research.txt .
+RUN pip install --no-cache-dir --default-timeout=300 --retries=10 -r requirements-research.txt
+
 COPY . .
 RUN chmod +x /app/entrypoint.sh
 

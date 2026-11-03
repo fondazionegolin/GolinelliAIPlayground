@@ -1,5 +1,6 @@
 import { PodcastPanel } from '@/components/chat/PodcastPanel'
 import { isPodcastRequest, podcastApi, type PodcastState, type PodcastMessage } from '@/lib/podcasts'
+import { isDeepResearchRequest } from '@/lib/research'
 import { mediaKind } from '@/lib/media'
 import { attachmentsFromContentJson } from '@/lib/chatAttachments'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
@@ -18,7 +19,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
+  Headphones, Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
   Video, ScanText, Youtube, PanelRightClose, Square, History, Brain, Globe
 } from '@/components/icons'
@@ -72,10 +73,10 @@ const FALLBACK_MODELS = [
 
 const AGENT_MODES = [
   { id: 'default', label: tl("Chat") },
+  { id: 'podcast', label: 'Podcast' },
   // { id: 'web_search', label: 'Web Search' },  // Hidden - not mature yet
   { id: 'report', label: 'Report' },
   { id: 'quiz', label: tl("Quiz") },
-  { id: 'exercise', label: tl("Esercizio") },
   { id: 'image', label: tl("Immagine") },
   { id: 'ocr', label: 'OCR' },
   { id: 'dataset', label: 'Dataset' },
@@ -88,8 +89,8 @@ const AGENT_MODES = [
 
 // Explicitly include hidden modes in type even though they're hidden from UI
 type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search' | 'brochure' | 'dispensa'
-type PublishContentType = 'quiz' | 'dataset' | 'lesson' | 'exercise'
-type EditableContentType = 'quiz' | 'lesson' | 'exercise'
+type PublishContentType = 'quiz' | 'dataset' | 'lesson'
+type EditableContentType = 'quiz' | 'lesson'
 // Width below which the chat history sidebar auto-collapses.
 // Increase this value if you want earlier collapse.
 const CHAT_HISTORY_COLLAPSE_BREAKPOINT = 1360
@@ -102,8 +103,14 @@ interface AvailableModel {
 
 interface QuizQuestion {
   question: string
+  type?: 'mcq' | 'open' | 'scale'
   options: string[]
-  correctIndex: number
+  correctIndex?: number
+  sampleAnswer?: string
+  min?: number
+  max?: number
+  minLabel?: string
+  maxLabel?: string
   explanation?: string
   points?: number
 }
@@ -2047,7 +2054,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       content = [
         existing ? tl("Per ampliare **{0}** propongo di cercare:", existing.title) : tl("Ecco come impostare la ricerca su **{0}**:", data.plan.title),
         '', ...data.plan.subtopics.map((s: { title: string }) => `- ${s.title}`), '',
-        tl("Modifica argomenti e query nel riquadro qui sotto (o scrivimi cosa cambiare), poi premi **Approva e avvia**: i sub-agent cercheranno e leggeranno le fonti finché gli argomenti non si esauriscono."),
+        tl("Modifica argomenti e query nel riquadro qui sotto (o scrivimi cosa cambiare), poi premi **Approva e avvia**: la ricerca confronterà fonti originali, pertinenza e lacune, con citazioni cliccabili."),
       ].join('\n')
     } else {
       setPendingResearch(null)
@@ -2143,7 +2150,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
   const TOOL_TO_MODE: Record<string, AgentMode> = {
     image: 'image', brochure: 'brochure', dispensa: 'dispensa', html_page: 'html_page',
-    quiz: 'quiz', exercise: 'exercise', dataset: 'dataset',
+    quiz: 'quiz', dataset: 'dataset', deep_research: 'deep_research',
   }
   const DOC_TYPES: AgentMode[] = ['html_page', 'brochure', 'dispensa']
 
@@ -2157,6 +2164,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     }
     const cachedDoc = currentConversationId ? docCacheRef.current[currentConversationId] : null
     const doc = activeDoc ?? cachedDoc
+    if (doc?.type === 'research') push('deep_research', doc.title)
     if (doc && DOC_TYPES.includes(doc.type as AgentMode)) push(doc.type, `v${doc.version ?? 1} · ${doc.title}`) // oldest guess, refined by messages below
     messages.forEach((m, idx) => {
       if (m.role !== 'assistant') return
@@ -2207,7 +2215,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const handleSend = async (overrideInput?: string) => {
     const text = (overrideInput ?? inputText).trim()
     if (overrideInput === undefined && text) rememberPrompt(text)
-    if (agentMode === 'default' && isPodcastRequest(text)) return startPodcast(text)
+    if (isLoading) return
+    if ((text || attachedFiles.length > 0) && (agentMode === 'podcast' || agentMode === 'default' && isPodcastRequest(text))) return startPodcast(text || tl("Crea un podcast dai documenti allegati"))
+    if (agentMode === 'default' && isDeepResearchRequest(text)) {
+      return runSend(overrideInput, 'deep_research', false, { tool: 'deep_research', action: 'create', top: 'deep_research', confidence: 1, alternatives: [], routed: true })
+    }
     const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
       && attachedFiles.length === 0 && !attachedYoutube && text.length >= 8
     if (canRoute) {
@@ -2215,7 +2227,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         setStreamingStatus(tl("Analizzo la richiesta…"))
         const { data } = await llmApi.decideTool(
           text,
-          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'exercise', 'dataset', 'podcast'],
+          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research'],
           collectRoutingArtifacts(),
           messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
         )
@@ -2273,7 +2285,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         report: tl("GENERA REPORT:"),
         dataset: tl("GENERA DATASET:"),
         quiz: tl("GENERA QUIZ:"),
-        exercise: tl("GENERA ESERCIZIO:"),
         ocr: 'OCR:',
       }
       const prefix = prefixes[agentMode]
@@ -2288,6 +2299,11 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
 
     const convId = await ensureConversation(messageContent)
     if (!convId) return // Should not happen but safety first
+
+    if (routedMode === 'deep_research') {
+      setAgentMode('deep_research')
+      void syncConversationMode(convId, 'deep_research')
+    }
 
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -2815,7 +2831,7 @@ REGOLE IMPORTANTI:
         } finally {
           setIsGeneratingDoc(false)
         }
-      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'report') {
+      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
         const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage], { signal, conversationId: convId, userMessage: userMessage.content })
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
@@ -3068,6 +3084,9 @@ REGOLE IMPORTANTI:
   }
 
   const buildModeInvitation = (mode: AgentMode): string | null => {
+    if (mode === 'podcast') {
+      return tl("Sei in modalità **Podcast**. Descrivi l’argomento oppure allega PDF, documenti o appunti. Scegli voce, durata, lingua e tono, rivedi il copione e genera l’audio da ascoltare o scaricare in MP3.")
+    }
     if (mode === 'dataset') {
       return tl("Sei in modalità **Dataset**. Descrivi il dataset che vuoi generare: argomento, numero di colonne e righe, tipo di dati, eventuale correlazione tra variabili.")
     }
@@ -3075,10 +3094,7 @@ REGOLE IMPORTANTI:
       return tl("Sei in modalità **Immagine**. Descrivi l'immagine che vuoi generare: soggetto, azione, sfondo, stile visivo.")
     }
     if (mode === 'quiz') {
-      return tl("Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, opzioni per domanda, livello di difficoltà.")
-    }
-    if (mode === 'exercise') {
-      return tl("Sei in modalità **Esercizio**. Descrivi l'esercizio che vuoi generare: argomento, consegna, livello di difficoltà, eventuali esempi o vincoli.")
+      return tl("Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, quante a risposta multipla e quante a risposta aperta, livello di difficoltà.")
     }
     if (mode === 'ocr') {
       return tl("Sei in modalità **OCR**. Allega una foto nitida dell elaborato a mano: genererò una trascrizione automatica locale, pronta da copiare o usare come base per correzione e feedback.")
@@ -3101,7 +3117,7 @@ REGOLE IMPORTANTI:
       return tl("Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
     }
     if (mode === 'deep_research') {
-      return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, finché i contenuti non iniziano a sovrapporsi, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
+      return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, confrontando pertinenza, copertura e fonti originali, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
     }
     if (mode === 'dispensa') {
       return tl("Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
@@ -3129,7 +3145,7 @@ REGOLE IMPORTANTI:
     if (currentConversationId) {
       void syncConversationMode(currentConversationId, mode)
     }
-    if (mode === 'dataset' || mode === 'image' || mode === 'ocr' || mode === 'report' || mode === 'quiz' || mode === 'exercise') {
+    if (mode === 'dataset' || mode === 'image' || mode === 'ocr' || mode === 'report' || mode === 'quiz') {
       setAttachedFiles([])
       setInputText('')
     }
@@ -3163,8 +3179,11 @@ REGOLE IMPORTANTI:
           type: 'quiz',
           questions: publishModal.data.questions.map((q: any) => ({
             question: q.question,
-            options: q.options,
-            correctIndex: q.correctIndex,
+            type: q.type === 'open' || q.type === 'scale' ? q.type : 'mcq',
+            options: q.type === 'open' || q.type === 'scale' ? [] : q.options,
+            correctIndex: q.type === 'open' || q.type === 'scale' ? undefined : q.correctIndex,
+            sampleAnswer: q.type === 'open' ? q.sampleAnswer : undefined,
+            ...(q.type === 'scale' ? { min: q.min ?? 1, max: q.max ?? 5, minLabel: q.minLabel, maxLabel: q.maxLabel } : {}),
             explanation: q.explanation
           }))
         })
@@ -3179,28 +3198,6 @@ REGOLE IMPORTANTI:
         taskType = 'lesson'
         title = publishModal.data?.title || tl("Nuova Lezione")
         description = publishModal.data?.description || description
-      } else if (publishModal.type === 'exercise') {
-        if (!publishModal.data?.instructions) {
-          toast({ title: tl("Errore"), description: tl("Esercizio non valido"), variant: "destructive" })
-          return
-        }
-        const examples = Array.isArray(publishModal.data.examples)
-          ? publishModal.data.examples.filter((example: unknown) => String(example || '').trim()).map(String)
-          : []
-        contentJson = JSON.stringify({
-          type: 'exercise',
-          title: publishModal.data.title || tl("Nuovo Esercizio"),
-          description: publishModal.data.description || '',
-          text: publishModal.data.instructions,
-          instructions: publishModal.data.instructions,
-          examples,
-          difficulty: publishModal.data.difficulty || 'medium',
-          hint: publishModal.data.hint || undefined,
-          response_mode: publishModal.data.response_mode || 'free_text'
-        })
-        taskType = 'exercise'
-        title = publishModal.data.title || tl("Nuovo Esercizio")
-        description = publishModal.data.description || description
       } else {
         contentJson = JSON.stringify({
           type: 'exercise',
@@ -3539,7 +3536,7 @@ REGOLE IMPORTANTI:
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
                               ? tl("OCR locale")
-                            : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
+                            : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
@@ -3625,7 +3622,7 @@ REGOLE IMPORTANTI:
                             <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
                             Claude Sonnet 4.6
                           </span>
-                        ) : !sidebarMode && (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
+                        ) : !sidebarMode && (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             {tl("Claude Haiku (fisso)")}
                           </div>
@@ -3871,6 +3868,10 @@ REGOLE IMPORTANTI:
                             <AcademicAiIcon className="h-7 w-7" style={{ color: accentTheme.accent }} />
                           </span>
                           <p className="text-sm font-semibold text-slate-500">{tl("Cosa prepariamo?")}</p>
+                          <button type="button" onClick={() => handleChangeAgentMode('podcast')} className="ds-control flex max-w-sm items-center gap-3 rounded-xl p-4 text-left text-slate-800">
+                            <Headphones className="h-5 w-5 shrink-0" />
+                            <span><strong className="block text-sm">Podcast</strong><span className="mt-1 block text-xs text-slate-500">{tl("Trasforma argomenti e documenti in audio: scegli la voce e rivedi il copione.")}</span></span>
+                          </button>
                         </div>
                       )
                     ) : (
@@ -4344,12 +4345,14 @@ REGOLE IMPORTANTI:
                                 {AGENT_MODES.map(m => {
                                   const icon = m.id === 'default'
                                     ? <MessageSquare className="h-3.5 w-3.5" />
+                                    : m.id === 'podcast'
+                                      ? <Headphones className="h-3.5 w-3.5" />
+                                    : m.id === 'deep_research'
+                                      ? <Globe className="h-3.5 w-3.5" />
                                     : m.id === 'report'
                                       ? <FileText className="h-3.5 w-3.5" />
                                       : m.id === 'quiz'
                                         ? <CheckSquare className="h-3.5 w-3.5" />
-                                        : m.id === 'exercise'
-                                          ? <Edit3 className="h-3.5 w-3.5" />
                                           : m.id === 'image'
                                             ? <ImageIcon className="h-3.5 w-3.5" />
                                             : m.id === 'ocr'
@@ -4398,8 +4401,6 @@ REGOLE IMPORTANTI:
                                     ? 'bg-blue-100 text-blue-700'
                                     : selectedModeMeta.id === 'quiz'
                                       ? 'bg-amber-100 text-amber-700'
-                                      : selectedModeMeta.id === 'exercise'
-                                        ? 'bg-teal-100 text-teal-700'
                                         : selectedModeMeta.id === 'image'
                                           ? 'bg-fuchsia-100 text-fuchsia-700'
                                           : selectedModeMeta.id === 'ocr'
@@ -4421,12 +4422,14 @@ REGOLE IMPORTANTI:
                                 {AGENT_MODES.map(m => {
                                   const icon = m.id === 'default'
                                     ? <MessageSquare className="h-3.5 w-3.5" />
+                                    : m.id === 'podcast'
+                                      ? <Headphones className="h-3.5 w-3.5" />
+                                    : m.id === 'deep_research'
+                                      ? <Globe className="h-3.5 w-3.5" />
                                     : m.id === 'report'
                                       ? <FileText className="h-3.5 w-3.5" />
                                       : m.id === 'quiz'
                                         ? <CheckSquare className="h-3.5 w-3.5" />
-                                        : m.id === 'exercise'
-                                          ? <Edit3 className="h-3.5 w-3.5" />
                                           : m.id === 'image'
                                             ? <ImageIcon className="h-3.5 w-3.5" />
                                             : m.id === 'ocr'
@@ -4570,6 +4573,7 @@ REGOLE IMPORTANTI:
                           placeholder={
                             agentMode === 'analysis'
                               ? (analysisTaskId ? tl("Domanda specifica (opzionale)...") : tl("Seleziona prima sessione e compito..."))
+                              : agentMode === 'podcast' ? tl("Descrivi il podcast o allega i documenti da trasformare in audio…")
                               : isMobile ? tl("Scrivi...") : tl("Scrivi o trascina file qui...")
                           }
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 min-h-[36px] leading-relaxed"
@@ -4646,7 +4650,7 @@ REGOLE IMPORTANTI:
               </div>
 
               <p className="text-sm text-slate-600 mb-6">
-                {tl("Scegli la sessione e la modalita di pubblicazione per")} {publishModal.type === 'quiz' ? tl("questo quiz") : publishModal.type === 'exercise' ? tl("questo esercizio") : publishModal.type === 'lesson' ? tl("questa lezione") : tl("questo dataset")}.
+                {tl("Scegli la sessione e la modalita di pubblicazione per")} {publishModal.type === 'quiz' ? tl("questo quiz") : publishModal.type === 'lesson' ? tl("questa lezione") : tl("questo dataset")}.
               </p>
 
               <div className="mb-5 rounded-lg border border-slate-200 p-3">
@@ -5182,7 +5186,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   toast: any;
   darkMode?: boolean
 }) {
-  const { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
   const [fullLessonOpen, setFullLessonOpen] = useState(false)
   const { cleanContent, images } = extractBase64Images(textContent)
 
@@ -5389,64 +5393,6 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         </div>
       )}
 
-      {exerciseData && (
-        <div className="mt-3 border border-teal-200 rounded-lg overflow-hidden">
-          <div className="bg-teal-50 px-3 py-2 flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-teal-700 flex items-center gap-2 min-w-0">
-              <Edit3 className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{tl("Esercizio:")} {exerciseData.title}</span>
-            </span>
-            <div className="flex gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs border-teal-300 text-teal-700 hover:bg-teal-100"
-                onClick={() => onEdit('exercise', exerciseData)}
-              >
-                <Edit3 className="h-3 w-3 mr-1" />
-                {tl("Modifica")}
-              </Button>
-              <Button
-                size="sm"
-                className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white"
-                onClick={() => onPublish('exercise', exerciseData)}
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                {tl("Pubblica")}
-              </Button>
-            </div>
-          </div>
-          {exerciseData.description && (
-            <div className="px-3 py-1.5 bg-teal-50/50 border-b border-teal-100 text-xs text-teal-700 italic">
-              {exerciseData.description}
-            </div>
-          )}
-          <div className="p-3 bg-white space-y-3 text-sm text-slate-700">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={markdownCodeComponents(false)}
-            >
-              {exerciseData.instructions}
-            </ReactMarkdown>
-            {exerciseData.examples && exerciseData.examples.length > 0 && (
-              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">{tl("Esempi")}</div>
-                <ul className="space-y-1.5 m-0 pl-4">
-                  {exerciseData.examples.map((example, index) => (
-                    <li key={index} className="text-xs text-slate-600">{example}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {exerciseData.hint && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                {tl("Suggerimento:")} {exerciseData.hint}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {presentationDocument && (
         <div
@@ -5619,6 +5565,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
 // Interactive Quiz Component
 function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAnswers: (answers: string) => void }) {
   const [answers, setAnswers] = useState<Record<number, number>>({})
+  const [openAnswers, setOpenAnswers] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
   const [showExplanations, setShowExplanations] = useState(false)
 
@@ -5636,7 +5583,9 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
     setShowExplanations(true)
 
     // Format answers for sending to chatbot
-    const answerText = quiz.questions.map((_, idx) => {
+    const answerText = quiz.questions.map((q, idx) => {
+      if (q.type === 'open') return `${idx + 1}"${(openAnswers[idx] || '').trim() || '?'}"`
+      if (q.type === 'scale') return `${idx + 1}=${answers[idx] ?? '?'}`
       const selected = answers[idx]
       const letter = selected !== undefined ? String.fromCharCode(65 + selected) : '?'
       return `${idx + 1}${letter}`
@@ -5645,11 +5594,14 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
     onSubmitAnswers(tl("Le mie risposte: {0}", answerText))
   }
 
+  const gradedCount = quiz.questions.filter(q => q.type !== 'open' && q.type !== 'scale').length
   const score = quiz.questions.reduce((acc, q, idx) => {
-    return acc + (answers[idx] === q.correctIndex ? 1 : 0)
+    return acc + (q.type !== 'open' && q.type !== 'scale' && answers[idx] === q.correctIndex ? 1 : 0)
   }, 0)
 
-  const allAnswered = quiz.questions.every((_, idx) => answers[idx] !== undefined)
+  const isAnswered = (q: QuizQuestion, idx: number) => q.type === 'scale' ? answers[idx] !== undefined : q.type === 'open' ? Boolean((openAnswers[idx] || '').trim()) : answers[idx] !== undefined
+  const allAnswered = quiz.questions.every((q, idx) => isAnswered(q, idx))
+  const answeredCount = quiz.questions.filter((q, idx) => isAnswered(q, idx)).length
 
   return (
     <div className="bg-gradient-to-br from-cyan-50 to-sky-50 rounded-xl p-4 border border-cyan-200 shadow-sm">
@@ -5659,8 +5611,10 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
       <div className="space-y-4">
         {quiz.questions.map((q, qIndex) => {
-          const isCorrect = answers[qIndex] === q.correctIndex
-          const hasAnswered = answers[qIndex] !== undefined
+          const isOpen = q.type === 'open'
+          const isScale = q.type === 'scale'
+          const isCorrect = !isOpen && !isScale && answers[qIndex] === q.correctIndex
+          const hasAnswered = isAnswered(q, qIndex)
 
           return (
             <div key={qIndex} className="bg-white rounded-lg p-4 shadow-sm border border-cyan-100">
@@ -5668,8 +5622,52 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                 <span className="text-cyan-600 font-bold">{qIndex + 1}.</span> {q.question}
               </p>
 
+              {isOpen && (
+                <div className="space-y-2">
+                  <textarea
+                    value={openAnswers[qIndex] || ''}
+                    onChange={(event) => { if (!submitted) setOpenAnswers(prev => ({ ...prev, [qIndex]: event.target.value })) }}
+                    disabled={submitted}
+                    rows={3}
+                    placeholder={tl("Scrivi qui la tua risposta…")}
+                    className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
+                  />
+                  {submitted && q.sampleAnswer && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                      <span className="font-bold uppercase tracking-tighter">{tl("Risposta di riferimento")}: </span>{q.sampleAnswer}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isScale && (() => {
+                const min = q.min ?? 1
+                const max = q.max ?? 5
+                const current = answers[qIndex]
+                return (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="text-center text-2xl font-black text-cyan-700">{current ?? '–'}</div>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={1}
+                      value={current ?? Math.round((min + max) / 2)}
+                      disabled={submitted}
+                      onChange={(event) => handleSelect(qIndex, Number(event.target.value))}
+                      onPointerUp={(event) => { if (current === undefined) handleSelect(qIndex, Number((event.target as HTMLInputElement).value)) }}
+                      className="w-full accent-cyan-600"
+                    />
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>{min}{q.minLabel ? ` · ${q.minLabel}` : ''}</span>
+                      <span>{q.maxLabel ? `${q.maxLabel} · ` : ''}{max}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="space-y-2">
-                {q.options.map((option, optIndex) => {
+                {!isOpen && !isScale && q.options.map((option, optIndex) => {
                   const isSelected = answers[qIndex] === optIndex
                   const isCorrectOption = q.correctIndex === optIndex
 
@@ -5708,7 +5706,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-xs ${isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-cyan-50 text-cyan-800 border border-cyan-100'}`}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    {isCorrect ? <div className="font-bold uppercase tracking-tighter">{tl("Corretto")}</div> : <div className="font-bold uppercase tracking-tighter">{tl("Spiegazione")}</div>}
+                    {isCorrect ? <div className="font-bold uppercase tracking-tighter">{tl("Corretto")}</div> : isOpen ? <div className="font-bold uppercase tracking-tighter">{tl("Spunto di correzione")}</div> : <div className="font-bold uppercase tracking-tighter">{tl("Spiegazione")}</div>}
                   </div>
                   {q.explanation}
                 </div>
@@ -5727,16 +5725,19 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
         >
-          {allAnswered ? tl("Verifica Risposte") : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
+          {allAnswered ? tl("Verifica Risposte") : `Rispondi a tutte le domande (${answeredCount}/${quiz.questions.length})`}
         </Button>
       ) : (
         <div className="mt-6 p-6 bg-white rounded-2xl shadow-inner border-2 border-cyan-100 text-center animate-in zoom-in duration-300">
           <div className="text-4xl font-black text-cyan-600 mb-1">
-            {score} / {quiz.questions.length}
+            {score} / {gradedCount}
           </div>
+          {gradedCount < quiz.questions.length && (
+            <p className="mb-2 text-xs text-slate-500">{tl("Le domande aperte non sono incluse nel punteggio: vanno corrette dal docente.")}</p>
+          )}
           <div className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">{tl("Punteggio Finale")}</div>
           <p className="text-slate-600 italic">
-            {score === quiz.questions.length ? tl("🥇 Risultato Perfetto! Ottimo lavoro.") : score >= quiz.questions.length / 2 ? tl("👏 Buon lavoro! Hai una buona base.") : tl("📚 Ti consiglio di ripassare l'argomento.")}
+            {score === gradedCount ? tl("🥇 Risultato Perfetto! Ottimo lavoro.") : score >= gradedCount / 2 ? tl("👏 Buon lavoro! Hai una buona base.") : tl("📚 Ti consiglio di ripassare l'argomento.")}
           </p>
         </div>
       )}

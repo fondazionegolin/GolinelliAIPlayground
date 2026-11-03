@@ -4,8 +4,14 @@ import { Button } from './ui/button'
 
 interface QuizQuestion {
   question: string
+  type?: 'mcq' | 'open' | 'scale'
   options: string[]
   correctIndex: number
+  sampleAnswer?: string
+  min?: number
+  max?: number
+  minLabel?: string
+  maxLabel?: string
   explanation?: string
   points?: number
 }
@@ -246,7 +252,7 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
       ...content,
       questions: [
         ...content.questions,
-        { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', points: 1 }
+        { question: '', type: 'mcq', options: ['', '', '', ''], correctIndex: 0, explanation: '', points: 1 }
       ]
     })
   }
@@ -356,12 +362,46 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
                   />
                 </div>
 
+                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs font-medium">
+                  {(['mcq', 'open', 'scale'] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => updateQuestion(qIndex, 'type', kind)}
+                      className={`rounded px-2.5 py-1 transition-colors ${(q.type || 'mcq') === kind ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}
+                    >
+                      {kind === 'mcq' ? tl("Risposta multipla") : kind === 'open' ? tl("Risposta aperta") : tl("Slider")}
+                    </button>
+                  ))}
+                </div>
+
+                {q.type === 'scale' ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <input type="number" value={q.min ?? 1} onChange={(e) => updateQuestion(qIndex, 'min', Number(e.target.value))} className="px-3 py-2 border rounded-lg bg-white" placeholder={tl("Minimo")} />
+                  <input type="number" value={q.max ?? 5} onChange={(e) => updateQuestion(qIndex, 'max', Number(e.target.value))} className="px-3 py-2 border rounded-lg bg-white" placeholder={tl("Massimo")} />
+                  <input type="text" value={q.minLabel || ''} onChange={(e) => updateQuestion(qIndex, 'minLabel', e.target.value)} className="px-3 py-2 border rounded-lg bg-white" placeholder={tl("Etichetta minimo")} />
+                  <input type="text" value={q.maxLabel || ''} onChange={(e) => updateQuestion(qIndex, 'maxLabel', e.target.value)} className="px-3 py-2 border rounded-lg bg-white" placeholder={tl("Etichetta massimo")} />
+                </div>
+                ) : q.type === 'open' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {tl("Risposta di riferimento (per il docente)")}
+                  </label>
+                  <textarea
+                    value={q.sampleAnswer || ''}
+                    onChange={(e) => updateQuestion(qIndex, 'sampleAnswer', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg bg-white"
+                    rows={2}
+                    placeholder={tl("Risposta attesa o criteri di valutazione…")}
+                  />
+                </div>
+                ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {tl("Opzioni di risposta *")}
                   </label>
                   <div className="space-y-2">
-                    {q.options.map((opt, optIndex) => (
+                    {(q.options || []).map((opt, optIndex) => (
                       <div key={optIndex} className="flex items-center gap-2">
                         <input
                           type="radio"
@@ -383,6 +423,7 @@ function QuizFormEditor({ content, onChange }: { content: QuizData; onChange: (c
                     ))}
                   </div>
                 </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

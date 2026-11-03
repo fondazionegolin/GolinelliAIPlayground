@@ -26,9 +26,23 @@ import { tl } from '@/i18n/tl'
 
 interface QuizQuestion {
   question: string
+  type?: 'mcq' | 'open' | 'scale'
   options: string[]
-  correctIndex: number
+  correctIndex?: number
+  min?: number
+  max?: number
+  minLabel?: string
+  maxLabel?: string
 }
+
+type QuizAnswer = number | string
+const isOpenQuestion = (question: QuizQuestion) => question.type === 'open'
+const isScaleQuestion = (question: QuizQuestion) => question.type === 'scale'
+const isGradedQuestion = (question: QuizQuestion) => !isOpenQuestion(question) && !isScaleQuestion(question)
+const scaleBounds = (question: QuizQuestion) => ({ min: question.min ?? 1, max: question.max ?? 5 })
+const hasQuizAnswer = (question: QuizQuestion, answer: QuizAnswer | undefined) =>
+  isOpenQuestion(question) ? typeof answer === 'string' && answer.trim() !== '' : typeof answer === 'number'
+
 
 interface TaskContent {
   type: 'quiz' | 'exercise' | 'discussion' | 'presentation' | 'lesson' | 'presentation_v2' | 'document_v1' | 'student_presentation' | 'student_document' | 'student_sheet' | 'student_canvas'
@@ -80,7 +94,7 @@ interface TaskData {
 interface StudentTaskDraft {
   response?: string
   exerciseResponse?: string
-  quizAnswers?: Record<number, number>
+  quizAnswers?: Record<number, QuizAnswer>
   quizIndex?: number
   updatedAt: string
 }
@@ -768,13 +782,18 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
                     questions={content.questions}
                     onSubmit={(answers) => {
                       let correct = 0
-                      content.questions!.forEach((q, i) => { if (answers[i] === q.correctIndex) correct++ })
-                      const scoreText = `${correct}/${content.questions!.length}`
+                      const graded = content.questions!.filter(isGradedQuestion).length
+                      const freeCount = content.questions!.length - graded
+                      content.questions!.forEach((q, i) => { if (isGradedQuestion(q) && answers[i] === q.correctIndex) correct++ })
+                      const scoreText = graded ? `${correct}/${graded}${freeCount ? ` + ${freeCount} ${tl("da valutare")}` : ''}` : tl("Inviato")
                       const content_json = JSON.stringify({
-                        answers: Object.entries(answers).map(([qIndex, aIndex]) => ({
-                          questionIndex: parseInt(qIndex),
-                          selectedIndex: aIndex,
-                        }))
+                        answers: Object.entries(answers).map(([qIndex, value]) => {
+                          const index = parseInt(qIndex)
+                          if (typeof value === 'string') return { questionIndex: index, text: value.trim() }
+                          return isScaleQuestion(content.questions![index])
+                            ? { questionIndex: index, value }
+                            : { questionIndex: index, selectedIndex: value }
+                        })
                       })
                       handleFinalSubmit(scoreText, content_json)
                     }}
@@ -834,7 +853,7 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
           <p className="text-xs font-black uppercase tracking-wider text-violet-600">{tl("Domanda")} {index + 1}</p>
           <h3 className="mt-2 font-extrabold leading-6 text-slate-950">{question.question}</h3>
           <div className="mt-4 space-y-2">
-            {question.options.map((option, optionIndex) => (
+            {(question.options || []).map((option, optionIndex) => (
               <div key={`${option}-${optionIndex}`} className="flex min-h-[48px] items-center gap-3 rounded-xl border border-white bg-white/80 px-4 text-sm font-medium text-slate-600">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-black text-violet-700">{String.fromCharCode(65 + optionIndex)}</span>
                 {option}
@@ -859,18 +878,18 @@ function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskC
 
 function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, initialAnswers, initialIndex, onDraftChange }: {
   questions: QuizQuestion[]; 
-  onSubmit: (answers: Record<number, number>) => void;
+  onSubmit: (answers: Record<number, QuizAnswer>) => void;
   accentTheme: any;
   theme: (typeof TASK_MODAL_THEMES)[string];
   isSubmitting: boolean;
-  initialAnswers: Record<number, number>;
+  initialAnswers: Record<number, QuizAnswer>;
   initialIndex: number;
-  onDraftChange: (answers: Record<number, number>, currentIndex: number) => void;
+  onDraftChange: (answers: Record<number, QuizAnswer>, currentIndex: number) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(Math.min(initialIndex, Math.max(questions.length - 1, 0)))
-  const [answers, setAnswers] = useState<Record<number, number>>(initialAnswers)
+  const [answers, setAnswers] = useState<Record<number, QuizAnswer>>(initialAnswers)
 
-  const allAnswered = questions.every((_, i) => answers[i] !== undefined)
+  const allAnswered = questions.every((question, i) => hasQuizAnswer(question, answers[i]))
 
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
@@ -921,8 +940,55 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
               </h3>
             </div>
 
+            {isOpenQuestion(questions[currentIndex]) && (
+              <textarea
+                value={typeof answers[currentIndex] === 'string' ? (answers[currentIndex] as string) : ''}
+                onChange={(event) => {
+                  const next = { ...answers, [currentIndex]: event.target.value }
+                  setAnswers(next)
+                  onDraftChange(next, currentIndex)
+                }}
+                rows={5}
+                placeholder={tl("Scrivi qui la tua risposta…")}
+                className="w-full resize-y rounded-lg border border-slate-300 bg-white p-3.5 text-sm font-medium text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              />
+            )}
+
+            {isScaleQuestion(questions[currentIndex]) && (() => {
+              const question = questions[currentIndex]
+              const { min, max } = scaleBounds(question)
+              const current = typeof answers[currentIndex] === 'number' ? (answers[currentIndex] as number) : undefined
+              const commit = (value: number) => {
+                const next = { ...answers, [currentIndex]: value }
+                setAnswers(next)
+                onDraftChange(next, currentIndex)
+              }
+              return (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="text-center text-4xl font-black tabular-nums text-violet-700">{current ?? '–'}</div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={1}
+                    value={current ?? Math.round((min + max) / 2)}
+                    onChange={(event) => commit(Number(event.target.value))}
+                    onPointerUp={(event) => { if (current === undefined) commit(Number((event.target as HTMLInputElement).value)) }}
+                    onKeyUp={(event) => { if (current === undefined) commit(Number((event.target as HTMLInputElement).value)) }}
+                    className="h-2 w-full cursor-pointer accent-violet-600"
+                    aria-label={question.question}
+                  />
+                  <div className="flex justify-between text-xs font-semibold text-slate-500">
+                    <span>{min}{question.minLabel ? ` · ${question.minLabel}` : ''}</span>
+                    <span>{question.maxLabel ? `${question.maxLabel} · ` : ''}{max}</span>
+                  </div>
+                  {current === undefined && <p className="text-center text-xs text-slate-400">{tl("Muovi o tocca lo slider per rispondere")}</p>}
+                </div>
+              )
+            })()}
+
             <div className="space-y-2">
-              {questions[currentIndex].options.map((opt, optIndex) => {
+              {isGradedQuestion(questions[currentIndex]) && (questions[currentIndex].options || []).map((opt, optIndex) => {
                 const isSelected = answers[currentIndex] === optIndex
                 return (
                   <button
@@ -979,7 +1045,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, theme, isSubmitting, i
         ) : (
           <button
             onClick={handleNext}
-            disabled={answers[currentIndex] === undefined}
+            disabled={!hasQuizAnswer(questions[currentIndex], answers[currentIndex])}
             className={`flex items-center gap-2 rounded-lg border px-6 py-2 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.action}`}
           >
             {tl("Avanti")} <ChevronRight className="h-3.5 w-3.5" />

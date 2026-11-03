@@ -1087,6 +1087,7 @@ interface ExerciseCorrection {
 
 interface QuizQuestion {
   question: string
+  type?: 'mcq' | 'open' | 'scale'
   options: string[]
   correctIndex: number
 }
@@ -1484,14 +1485,14 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
 
     try {
       const taskContent = JSON.parse(task.content_json) as { questions?: QuizQuestion[] }
-      const submissionContent = JSON.parse(submission.content_json) as { answers?: Array<{ questionIndex: number; selectedIndex: number }> }
+      const submissionContent = JSON.parse(submission.content_json) as { answers?: Array<{ questionIndex: number; selectedIndex?: number; text?: string; value?: number }> }
       const questions = taskContent.questions || []
       const answers = submissionContent.answers || []
 
       const wrongAnswers: QuizWrongAnswerDetail[] = []
       for (const answer of answers) {
         const q = questions[answer.questionIndex]
-        if (!q) continue
+        if (!q || q.type === 'open' || q.type === 'scale' || answer.selectedIndex === undefined) continue
         if (answer.selectedIndex === q.correctIndex) continue
 
         wrongAnswers.push({
@@ -1503,6 +1504,21 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
       }
 
       return wrongAnswers
+    } catch {
+      return []
+    }
+  }
+
+  const getOpenQuizAnswers = (submission: SubmissionData): Array<{ questionNumber: number; question: string; text: string; sampleAnswer?: string }> => {
+    if (task.task_type !== 'quiz' || !task.content_json || !submission.content_json) return []
+    try {
+      const questions = (JSON.parse(task.content_json) as { questions?: Array<QuizQuestion & { sampleAnswer?: string }> }).questions || []
+      const answers = (JSON.parse(submission.content_json) as { answers?: Array<{ questionIndex: number; text?: string; value?: number }> }).answers || []
+      return answers.flatMap((answer) => {
+        const q = questions[answer.questionIndex]
+        return q?.type === 'open' ? [{ questionNumber: answer.questionIndex + 1, question: q.question, text: answer.text || '', sampleAnswer: q.sampleAnswer }]
+          : q?.type === 'scale' ? [{ questionNumber: answer.questionIndex + 1, question: q.question, text: `${answer.value ?? '—'} / ${(q as QuizQuestion & { max?: number }).max ?? 5}` }] : []
+      })
     } catch {
       return []
     }
@@ -1894,6 +1910,22 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                         />
                       )}
                       <SubmissionFeedbackEditor submission={sub} task={task} sessionId={sessionId} />
+                      {task.task_type === 'quiz' && (() => {
+                        const openAnswers = getOpenQuizAnswers(sub)
+                        if (openAnswers.length === 0) return null
+                        return (
+                          <div className="mt-3 space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-2">
+                            <p className="text-xs font-medium text-sky-700">{tl("Risposte aperte e valutazioni:")} {openAnswers.length}</p>
+                            {openAnswers.map((oa) => (
+                              <div key={`${sub.id}-open-${oa.questionNumber}`} className="rounded border border-sky-100 bg-white p-2 text-xs">
+                                <p className="font-medium text-slate-800">{oa.questionNumber}. {oa.question}</p>
+                                <p className="whitespace-pre-wrap text-slate-700">{oa.text || tl("Nessuna risposta")}</p>
+                                {oa.sampleAnswer && <p className="text-emerald-700">{tl("Riferimento:")} {oa.sampleAnswer}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                       {task.task_type === 'quiz' && (() => {
                         const wrongAnswers = getWrongQuizAnswers(sub)
                         if (wrongAnswers.length === 0) return null

@@ -428,6 +428,17 @@ function GenericViewer({ content, type }: { content: any, type: string }) {
               {q.question}
             </h3>
             <div className="space-y-3 pl-11">
+              {q.type === 'scale' && (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500">
+                  {tl("Slider da")} {q.min ?? 1}{q.minLabel ? ` (${q.minLabel})` : ''} {tl("a")} {q.max ?? 5}{q.maxLabel ? ` (${q.maxLabel})` : ''}
+                </div>
+              )}
+              {q.type === 'open' && (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-500">
+                  {tl("Risposta aperta: lo studente scrive nel campo di testo.")}
+                  {q.sampleAnswer && <p className="mt-1 text-green-700">{tl("Riferimento:")} {q.sampleAnswer}</p>}
+                </div>
+              )}
               {q.options?.map((opt: string, i: number) => (
                 <div key={i} className={`p-3 rounded-lg border flex items-center gap-3 ${i === q.correctIndex ? 'bg-green-50 border-green-200 text-green-900' : 'bg-slate-50 border-slate-100'}`}>
                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs ${i === q.correctIndex ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300'}`}>

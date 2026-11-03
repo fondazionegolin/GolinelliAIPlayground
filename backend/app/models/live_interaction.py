@@ -22,6 +22,7 @@ class LiveInteraction(Base):
     status = Column(String, default="DRAFT", nullable=False)  # DRAFT | ACTIVE | CLOSED
     current_slide_index = Column(Integer, default=0, nullable=False)
     current_slide_started_at = Column(DateTime(timezone=True), nullable=True)
+    slide_timings = Column(JSONB, nullable=True)  # {"<slide_index>": iso start time of that slide}
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

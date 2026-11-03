@@ -3796,7 +3796,6 @@ async def teacher_chat_stream(
             classify_intent,
             generate_with_web_search_streaming,
             generate_quiz_with_tools,
-            generate_exercise_with_tools,
             generate_dataset,
             generate_with_analytics,
             TeacherIntent,
@@ -3980,7 +3979,7 @@ async def teacher_chat_stream(
             forced_mode_intents = {
                 "web_search": TeacherIntent.WEB_SEARCH,
                 "quiz": TeacherIntent.QUIZ_GENERATION,
-                "exercise": TeacherIntent.EXERCISE_GENERATION,
+                "exercise": TeacherIntent.QUIZ_GENERATION,  # legacy mode: exercises are quiz questions now
                 "dataset": TeacherIntent.DATASET_GENERATION,
                 "report": TeacherIntent.REPORT_GENERATION,
             }
@@ -4003,19 +4002,12 @@ async def teacher_chat_stream(
                 result = await generate_with_analytics(llm_messages, context, provider, model, ui_language=ui_language)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_web_fallback')}\n\n"
 
-            elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
+            elif intent_result.intent in (TeacherIntent.QUIZ_GENERATION, TeacherIntent.EXERCISE_GENERATION):
                 yield f"data: {json.dumps({'type': 'status', 'message': '❓ Modalità: Generazione Quiz'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione domande...'})}\n\n"
 
                 result = await generate_quiz_with_tools(llm_messages, provider, model)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_quiz')}\n\n"
-
-            elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
-                yield f"data: {json.dumps({'type': 'status', 'message': '💪 Modalità: Generazione Esercizio'})}\n\n"
-                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
-
-                result = await generate_exercise_with_tools(llm_messages, provider, model)
-                yield f"data: {await build_done_event(result, 'teacher_chat_stream_exercise')}\n\n"
 
             elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Dataset'})}\n\n"

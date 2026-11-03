@@ -1,6 +1,11 @@
 import DOMPurify from 'dompurify'
 
-const ALLOWED_STYLE_PROPERTIES = new Set(['color', 'font-family', 'font-weight', 'font-style', 'text-decoration', 'font-size', 'text-align'])
+const ALLOWED_STYLE_PROPERTIES = new Set([
+  'color', 'font-family', 'font-weight', 'font-style', 'text-decoration', 'font-size', 'text-align',
+  'line-height', 'margin-top', 'margin-bottom', 'margin-left', 'margin-right', 'text-indent', 'letter-spacing', 'vertical-align',
+  'background-color', 'list-style-type', 'padding', 'padding-left', 'width', 'min-width', 'height',
+  'border-left', 'border-right', 'border-top', 'border-bottom',
+])
 
 // DOMPurify only allows/strips the whole "style" attribute — it has no built-in per-property
 // allowlist — so a hook filters individual declarations. Named + hooked once at module scope
@@ -14,7 +19,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       const [prop, ...rest] = declaration.split(':')
       const property = prop?.trim().toLowerCase()
       const value = rest.join(':').trim()
-      return property && value && ALLOWED_STYLE_PROPERTIES.has(property) ? `${property}: ${value}` : null
+      return property && value && ALLOWED_STYLE_PROPERTIES.has(property) && !/url\(|expression\(/i.test(value) ? `${property}: ${value}` : null
     })
     .filter((declaration): declaration is string => Boolean(declaration))
     .join('; ')
@@ -31,7 +36,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
  */
 export function sanitizeSlideHtml(html: string): string {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'strong', 'em', 'u', 's', 'span', 'br', 'ul', 'ol', 'li'],
-    ALLOWED_ATTR: ['style'],
+    ALLOWED_TAGS: ['p', 'strong', 'em', 'u', 's', 'span', 'br', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'tbody', 'tr', 'td', 'th'],
+    ALLOWED_ATTR: ['style', 'colspan', 'rowspan', 'colwidth', 'start'],
   })
 }

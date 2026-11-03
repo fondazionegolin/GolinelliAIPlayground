@@ -3,7 +3,8 @@ import type { Editor } from '@tiptap/react'
 import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
 import { SlideTextBlock } from './SlideTextBlock'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'
-import { moveBlockLayer, normalizeLayerOrder, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
+import { moveBlockLayer, normalizeLayerOrder, textBoxPadding, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
+import { ensureSlideFonts } from '@/lib/slideFonts'
 import { tl } from '@/i18n/tl'
 
 /** Rotates a screen-space delta by `angleDeg` into the block's local (unrotated) coordinate space,
@@ -49,6 +50,14 @@ export interface TextSlideBlock extends BaseSlideBlock {
     lineHeight?: number
     borderRadius?: number
     padding?: number
+    paddingTop?: number
+    paddingRight?: number
+    paddingBottom?: number
+    paddingLeft?: number
+    verticalAlign?: 'middle' | 'bottom'
+    whiteSpace?: 'nowrap'
+    /** false: keep the authored size even if the text overflows its box (imported decks). */
+    autoFit?: boolean
   }
 }
 
@@ -104,6 +113,8 @@ interface SlideEditorProps {
   /** Fires with the focused text block's TipTap instance (or null on blur) so a parent toolbar
    * can route Bold/Italic/color/etc. to the actual selection range instead of the whole block. */
   onActiveTextEditorChange?: (editor: Editor | null) => void
+  /** Slide background; the editing dot grid only shows on an unset (white) slide. */
+  backgroundColor?: string
 }
 
 export function SlideEditor({
@@ -119,7 +130,8 @@ export function SlideEditor({
   slideHeight,
   snapOptions = DEFAULT_SLIDE_SNAP_OPTIONS,
   onContextAddBlock,
-  onActiveTextEditorChange
+  onActiveTextEditorChange,
+  backgroundColor,
 }: SlideEditorProps) {
   const [dragState, setDragState] = useState<{
     isDragging: boolean
@@ -160,6 +172,8 @@ export function SlideEditor({
     onSelectBlocks?.(ids)
     onSelectBlock(ids.length ? ids[ids.length - 1] : null)
   }, [onSelectBlock, onSelectBlocks])
+
+  useEffect(() => { ensureSlideFonts(blocks) }, [blocks])
 
   // A text editor stays the toolbar's target while its block stays selected, so a range selected in
   // the text survives clicking a toolbar control (which blurs the editor).
@@ -531,8 +545,9 @@ export function SlideEditor({
       onDrop={handleDrop}
       style={{ 
         cursor: dragState?.isDragging ? 'grabbing' : 'default',
-        backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)',
-        backgroundSize: '20px 20px'
+        ...(backgroundColor
+          ? { backgroundColor }
+          : { backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)', backgroundSize: '20px 20px' }),
       }}
     >
       {!blocks.length && !readOnly && (
@@ -565,7 +580,7 @@ export function SlideEditor({
               ? {
                   backgroundColor: block.style.backgroundColor || 'transparent',
                   borderRadius: block.style.borderRadius,
-                  padding: block.style.padding,
+                  ...textBoxPadding(block.style),
                 }
               : block.type === 'rectangle' || block.type === 'ellipse'
                 ? {

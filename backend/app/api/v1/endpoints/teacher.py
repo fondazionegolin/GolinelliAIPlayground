@@ -2778,9 +2778,7 @@ def _build_quiz_cross_reference(task_data: dict, submissions: list) -> str:
     for i, q in enumerate(questions):
         text = q.get("text") or q.get("question") or q.get("domanda") or f"Domanda {i+1}"
         opts = q.get("options") or q.get("opzioni") or []
-        correct_idx = q.get("correct") if isinstance(q.get("correct"), int) else (
-            q.get("correctIndex") or q.get("correct_index")
-        )
+        correct_idx = next((q[k] for k in ("correct", "correctIndex", "correct_index") if isinstance(q.get(k), int)), None)
         explanation = q.get("explanation") or q.get("spiegazione") or ""
 
         lines.append(f"**Domanda {i+1}:** {text}")
@@ -2788,6 +2786,8 @@ def _build_quiz_cross_reference(task_data: dict, submissions: list) -> str:
             for j, opt in enumerate(opts):
                 marker = "✓" if j == correct_idx else " "
                 lines.append(f"  [{marker}] {chr(65+j)}. {opt}")
+        if q.get("sampleAnswer"):
+            lines.append(f"  Risposta di riferimento (domanda aperta): {q['sampleAnswer']}")
         if explanation:
             lines.append(f"  📝 Spiegazione: {explanation}")
 
@@ -2797,14 +2797,19 @@ def _build_quiz_cross_reference(task_data: dict, submissions: list) -> str:
             answers = _parse_quiz_submissions(sub.content_json or "")
             # Find the answer for this question index
             answer_item = next(
-                (a for a in answers if a.get("question_index") == i),
+                (a for a in answers if i in (a.get("question_index"), a.get("questionIndex"))),
                 None
             )
             if answer_item is None:
                 student_rows.append(f"  - **{student.nickname}**: *(non risposto)*")
             else:
-                chosen = answer_item.get("selected_answer") or answer_item.get("risposta") or "?"
-                chosen_idx = answer_item.get("selected_index")
+                chosen_idx = answer_item.get("selected_index", answer_item.get("selectedIndex"))
+                chosen = answer_item.get("selected_answer") or answer_item.get("text") or answer_item.get("risposta")
+                if chosen is None and answer_item.get("value") is not None:
+                    chosen = f"{answer_item['value']} (slider)"
+                if not chosen and isinstance(chosen_idx, int) and 0 <= chosen_idx < len(opts):
+                    chosen = opts[chosen_idx]
+                chosen = chosen or "?"
                 is_correct = (chosen_idx == correct_idx) if correct_idx is not None else None
                 mark = " ✓" if is_correct is True else (" ✗" if is_correct is False else "")
                 student_rows.append(f"  - **{student.nickname}**: \"{chosen}\"{mark}")

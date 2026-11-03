@@ -16,9 +16,18 @@ import nh3
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_TAGS = {"p", "strong", "em", "u", "s", "span", "br", "ul", "ol", "li"}
-_ALLOWED_ATTRIBUTES = {"span": {"style"}, "p": {"style"}, "li": {"style"}}
-_ALLOWED_STYLE_PROPERTIES = {"color", "font-family", "font-weight", "font-style", "text-decoration", "font-size", "text-align"}
+_ALLOWED_TAGS = {"p", "strong", "em", "u", "s", "span", "br", "ul", "ol", "li", "table", "colgroup", "col", "tbody", "tr", "td", "th"}
+_CELL_ATTRIBUTES = {"style", "colspan", "rowspan", "colwidth"}
+_ALLOWED_ATTRIBUTES = {
+    "span": {"style"}, "p": {"style"}, "li": {"style"}, "ul": {"style"}, "ol": {"style", "start"},
+    "col": {"style"}, "tr": {"style"}, "td": _CELL_ATTRIBUTES, "th": _CELL_ATTRIBUTES,
+}
+_ALLOWED_STYLE_PROPERTIES = {
+    "color", "font-family", "font-weight", "font-style", "text-decoration", "font-size", "text-align",
+    "line-height", "margin-top", "margin-bottom", "margin-left", "margin-right", "text-indent", "letter-spacing", "vertical-align",
+    "background-color", "list-style-type", "padding", "padding-left", "width", "min-width", "height",
+    "border-left", "border-right", "border-top", "border-bottom",
+}
 
 
 def _clean_style(style: str) -> str:
@@ -29,7 +38,8 @@ def _clean_style(style: str) -> str:
         prop, _, value = declaration.partition(":")
         prop = prop.strip().lower()
         value = value.strip()
-        if prop in _ALLOWED_STYLE_PROPERTIES and value:
+        lowered = value.lower()
+        if prop in _ALLOWED_STYLE_PROPERTIES and value and "url(" not in lowered and "expression(" not in lowered:
             declarations.append(f"{prop}: {value}")
     return "; ".join(declarations)
 

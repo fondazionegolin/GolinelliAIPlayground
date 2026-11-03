@@ -1762,8 +1762,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div className="flex justify-center overflow-hidden bg-slate-100 p-2">
                     <div className="relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
                       <div className="relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
-                        {!slide.blocks.some(block => block.type === 'text') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
-                        <SlideEditor blocks={slide.blocks} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
+                        {!slide.blocks.some(block => block.type === 'text' || block.type === 'image') && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
+                        <SlideEditor blocks={slide.blocks} backgroundColor={slide.backgroundColor} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
                       </div>
                     </div>
                   </div>
@@ -1777,11 +1777,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   className="relative origin-top-left bg-white"
                   style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${scale})` }}
                 >
-                  {!currentSlide.blocks.some(block => block.type === 'text') && (
+                  {!currentSlide.blocks.some(block => block.type === 'text' || block.type === 'image') && (
                     <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{currentSlide.title}</h3>
                   )}
                   <SlideEditor
                     blocks={currentSlide.blocks}
+                    backgroundColor={currentSlide.backgroundColor}
                     onChange={() => {}}
                     selectedBlockId={null}
                     onSelectBlock={() => {}}
@@ -2471,7 +2472,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                  onClick={(e) => e.stopPropagation()}
                >
                   {!currentSlide.blocks.some(block => (
-                    block.type === 'text'
+                    block.type === 'text' || block.type === 'image'
                   )) && <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
                        value={currentSlide.title}
@@ -2489,6 +2490,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div className="flex-1 relative">
                     <SlideEditor
                       blocks={currentSlide.blocks}
+                      backgroundColor={currentSlide.backgroundColor}
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}

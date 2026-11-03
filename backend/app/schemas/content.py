@@ -35,19 +35,40 @@ class IntentResult(BaseModel):
 # ============================================================================
 
 class QuizQuestion(BaseModel):
-    """A single quiz question with multiple choice options"""
+    """A single quiz question: multiple choice (default) or open (free-text answer)"""
     question: str = Field(..., min_length=5, description="The question text")
-    options: List[str] = Field(..., min_items=2, max_items=6, description="Answer options")
-    correctIndex: int = Field(..., ge=0, description="Index of correct answer in options list")
+    type: Literal["mcq", "open", "scale"] = Field("mcq", description="mcq = multiple choice, open = free-text answer, scale = slider rating")
+    options: List[str] = Field(default_factory=list, max_items=6, description="Answer options (mcq only)")
+    correctIndex: Optional[int] = Field(None, ge=0, description="Index of correct answer in options list (mcq only)")
+    sampleAnswer: Optional[str] = Field(None, description="Reference answer or grading criteria for the teacher (open only)")
+    min: Optional[int] = Field(None, description="Lowest slider value (scale only, default 1)")
+    max: Optional[int] = Field(None, description="Highest slider value (scale only, default 5)")
+    minLabel: Optional[str] = Field(None, description="Label of the lowest value (scale only)")
+    maxLabel: Optional[str] = Field(None, description="Label of the highest value (scale only)")
     explanation: Optional[str] = Field(None, description="Explanation of the correct answer")
     points: Optional[int] = Field(1, ge=0, description="Points for this question")
 
-    @validator("correctIndex")
+    @validator("correctIndex", always=True)
     def validate_correct_index(cls, v, values):
-        """Ensure correctIndex is within options range"""
-        if "options" in values and v >= len(values["options"]):
-            raise ValueError(f"correctIndex {v} is out of range for {len(values['options'])} options")
+        """Multiple-choice questions need a valid correctIndex; open ones have none."""
+        if values.get("type", "mcq") in ("open", "scale"):
+            return None
+        options = values.get("options") or []
+        if len(options) < 2:
+            raise ValueError("a multiple-choice question needs at least 2 options")
+        if v is None or v >= len(options):
+            raise ValueError(f"correctIndex {v} is out of range for {len(options)} options")
         return v
+
+
+def _normalize_scale(question: "QuizQuestion") -> "QuizQuestion":
+    if question.type == "scale":
+        question.min = 1 if question.min is None else question.min
+        question.max = 5 if question.max is None else question.max
+        if question.max <= question.min or question.max - question.min > 20:
+            raise ValueError("a scale question needs min < max (range of at most 20 steps)")
+        question.options = []
+    return question
 
 
 class QuizData(BaseModel):
@@ -57,6 +78,10 @@ class QuizData(BaseModel):
     questions: List[QuizQuestion] = Field(..., min_items=1, description="List of questions")
     total_points: Optional[int] = Field(None, ge=0, description="Total points (auto-calculated if None)")
     time_limit_minutes: Optional[int] = Field(None, ge=1, le=300, description="Time limit in minutes")
+
+    @validator("questions", each_item=True)
+    def normalize_scale_questions(cls, v):
+        return _normalize_scale(v)
 
     @validator("total_points", always=True)
     def calculate_total_points(cls, v, values):

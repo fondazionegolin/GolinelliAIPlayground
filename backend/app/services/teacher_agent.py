@@ -16,7 +16,6 @@ from app.schemas.content import (
     IntentResult,
     TeacherIntent,
     QuizData,
-    ExerciseData,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,6 +25,20 @@ logger = logging.getLogger(__name__)
 # PLATFORM KNOWLEDGE BASE
 # Injected into teacher chat so the assistant can guide teachers on features
 # ============================================================================
+
+QUIZ_FORMAT_SPEC = """
+FORMATO QUIZ (OBBLIGATORIO quando crei un quiz, una verifica, un modulo o un questionario):
+Produci un blocco ```quiz con JSON {"title", "description", "questions": [...]}. Ogni domanda ha un "type":
+- "mcq" = risposta multipla: "options" (4 stringhe) e "correctIndex" (0-based), "explanation".
+- "open" = risposta aperta, campo di testo che lo studente compila a mano: "options": [], nessun correctIndex, "sampleAnswer" (risposta attesa o criteri; per dati personali tipo nome/cognome scrivi "Nessuna risposta giusta: dato anagrafico").
+- "scale" = slider per una valutazione: "min" (default 1), "max" (default 5), "minLabel", "maxLabel" (es. "Per niente", "Moltissimo"). Nessuna options né correctIndex.
+Esempio: {"question":"Come valuti la chiarezza della lezione?","type":"scale","min":1,"max":5,"minLabel":"Per niente chiara","maxLabel":"Chiarissima"}
+REGOLE DI FEDELTÀ ALLA RICHIESTA (prevalgono su ogni altra istruzione):
+- Rispetta ESATTAMENTE il tipo di domanda che il docente descrive: "inserisci nome e cognome", "scrivi", "spiega", "descrivi", "completa" → type "open"; "valuta da 1 a 5", "quanto", "gradimento", "scala", "slider" → type "scale"; "scegli", "quale" → type "mcq".
+- NON trasformare MAI una domanda aperta o una valutazione in scelta multipla, nemmeno se sembra più semplice. Se il docente elenca le domande, riproducile tutte, nell'ordine indicato, con il tipo corretto.
+- Se il docente non specifica i tipi, alterna mcq e open e aggiungi una scale quando ha senso (gradimento, autovalutazione).
+- Gli esercizi non esistono più come tipo a sé: sono domande "open" dentro un quiz. NON usare il blocco ```exercise_data.
+"""
 
 PLATFORM_KNOWLEDGE_BASE = """
 ## CONOSCENZA DELLA PIATTAFORMA GOLINELLI AI PLAYGROUND
@@ -53,12 +66,11 @@ La piattaforma è organizzata in **Classi** → **Sessioni** → **Contenuti**.
 - Profili studente standard: Tutor, Quiz, Intervista, Esame Orale, Dataset Generator, Math Coach
 
 **3. COMPITI (Tasks)**
-- Tipi disponibili: **Quiz** (scelta multipla), **Esercizio** (risposta aperta), **Lezione** (documento HTML), **Presentazione** (slides)
+- Tipi disponibili: **Quiz** (domande a scelta multipla, a risposta aperta e con slider di valutazione, anche mescolate), **Lezione** (documento HTML), **Presentazione** (slides)
 - I compiti vengono creati dall'assistente AI e poi pubblicati nella sessione
 - Gli studenti vedono i compiti nella sezione "Compiti" e ricevono una notifica in chat
 - Il docente può visualizzare le consegne degli studenti e inserire voti/feedback
-- Per creare un quiz: chiedere all'assistente "CREA QUIZ: [argomento]"
-- Per creare un esercizio: chiedere "CREA ESERCIZIO: [testo esercizio]"
+- Per creare un quiz o un modulo: chiedere all'assistente "CREA QUIZ: [argomento o elenco domande]"; esercizi e questionari sono quiz con domande aperte o slider
 
 **4. DOCUMENTI**
 - Il docente può caricare documenti (PDF, immagini) nella sessione
@@ -132,8 +144,7 @@ INTENT_CLASSIFIER_PROMPT = """Sei un classificatore di intenti per l'Assistente 
 Il tuo compito è distinguere tra richieste di strumenti specifici e dialogo libero di supporto/brainstorming.
 
 INTENTI DISPONIBILI:
-1. quiz_generation - Il docente chiede ESPLICITAMENTE di creare un quiz, una verifica o domande a scelta multipla.
-2. exercise_generation - Il docente chiede ESPLICITAMENTE di creare esercizi o attività pratiche.
+1. quiz_generation - Il docente chiede ESPLICITAMENTE di creare un quiz, una verifica, un esercizio o domande (a scelta multipla e/o a risposta aperta).
 3. dataset_generation - Il docente chiede di creare/generare un dataset, file CSV o tabella di dati sintetici.
 4. report_generation - Il docente chiede dati, statistiche o report sull'andamento di sessioni o studenti.
 5. web_search - Il docente chiede di cercare informazioni aggiornate online.
@@ -142,7 +153,7 @@ INTENTI DISPONIBILI:
 
 REGOLE DI CLASSIFICAZIONE:
 - Se il messaggio è colloquiale, riflessivo o di progettazione ("Cosa ne pensi di...", "Aiutami a ideare...", "Come posso spiegare...") → usa analytics.
-- Non forzare l'uso di quiz/esercizi se il docente sta solo esplorando un tema.
+- Non forzare l'uso di quiz se il docente sta solo esplorando un tema.
 - Se il docente chiede di "progettare una lezione" senza chiedere i dati strutturati finali → usa analytics per il brainstorming.
 - "dataset", "CSV", "tabella dati", "dati sintetici" → dataset_generation.
 - In caso di dubbio o ambiguità → analytics.
@@ -232,12 +243,12 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
                 extracted_params=message
             )
 
-    # Check for exercise
+    # Exercises are folded into quizzes (multiple-choice and open questions)
     for keyword in exercise_keywords:
         if keyword in message_lower:
-            logger.info(f"Intent classified by keywords: exercise_generation")
+            logger.info("Intent classified by keywords: quiz_generation (exercise request)")
             return IntentResult(
-                intent=TeacherIntent.EXERCISE_GENERATION,
+                intent=TeacherIntent.QUIZ_GENERATION,
                 confidence=0.85,
                 extracted_params=message
             )
@@ -302,8 +313,7 @@ async def classify_intent(message: str, history: list[dict]) -> IntentResult:
         # and must ALWAYS route to the correct intent without LLM classification.
         mode_prefixes = {
             ("RICERCA WEB:", "🌐"): TeacherIntent.WEB_SEARCH,
-            ("CREA QUIZ:", "GENERA QUIZ:", "❓"): TeacherIntent.QUIZ_GENERATION,
-            ("CREA ESERCIZIO:", "GENERA ESERCIZIO:", "💪"): TeacherIntent.EXERCISE_GENERATION,
+            ("CREA QUIZ:", "GENERA QUIZ:", "CREA ESERCIZIO:", "GENERA ESERCIZIO:", "❓", "💪"): TeacherIntent.QUIZ_GENERATION,
             ("GENERA DATASET:", "📊"): TeacherIntent.DATASET_GENERATION,
             ("GENERA REPORT:", "📈"): TeacherIntent.REPORT_GENERATION,
             ("EDITOR_AI:", "✍️"): TeacherIntent.TEXT_EDITOR,
@@ -395,12 +405,17 @@ Classifica l'intento e rispondi con JSON."""
 # TOOL DEFINITIONS FOR OPENAI FUNCTION CALLING
 # ============================================================================
 
+def _function_tool_kwargs(model: str) -> dict:
+    """GPT-6 rejects function tools on /v1/chat/completions unless reasoning is switched off."""
+    return {"reasoning_effort": "none"} if model.startswith("gpt-6") else {}
+
+
 QUIZ_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "create_quiz",
-            "description": "Genera un quiz strutturato con domande a risposta multipla. Usa questa funzione per creare quiz didattici con domande, opzioni di risposta, e spiegazioni.",
+            "description": "Genera un quiz strutturato che alterna domande a risposta multipla (type=mcq) e domande a risposta aperta (type=open, campo da compilare a mano): rispetta ESATTAMENTE i tipi richiesti dal docente (nome/cognome o testo libero = open, valutazione da 1 a 5 = scale) e, se non specifica i tipi, includi sia mcq sia open. Usa questa funzione per creare quiz didattici con domande, opzioni di risposta, e spiegazioni.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -422,15 +437,28 @@ QUIZ_TOOLS = [
                                     "type": "string",
                                     "description": "Il testo della domanda"
                                 },
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["mcq", "open", "scale"],
+                                    "description": "mcq = risposta multipla (default); open = lo studente scrive la risposta in un campo libero (nome, spiegazioni, ecc.); scale = slider di valutazione (es. da 1 a 5)"
+                                },
                                 "options": {
                                     "type": "array",
-                                    "description": "Lista di 4 opzioni di risposta",
+                                    "description": "Lista di 4 opzioni di risposta (solo per type=mcq; vuota per open)",
                                     "items": {"type": "string"}
                                 },
                                 "correctIndex": {
                                     "type": "integer",
-                                    "description": "Indice (0-based) della risposta corretta nell'array options"
+                                    "description": "Indice (0-based) della risposta corretta nell'array options (solo per type=mcq)"
                                 },
+                                "sampleAnswer": {
+                                    "type": "string",
+                                    "description": "Risposta di riferimento o criteri di valutazione per il docente (solo per type=open)"
+                                },
+                                "min": {"type": "integer", "description": "Valore minimo dello slider (solo type=scale, default 1)"},
+                                "max": {"type": "integer", "description": "Valore massimo dello slider (solo type=scale, default 5)"},
+                                "minLabel": {"type": "string", "description": "Etichetta del valore minimo (solo type=scale)"},
+                                "maxLabel": {"type": "string", "description": "Etichetta del valore massimo (solo type=scale)"},
                                 "explanation": {
                                     "type": "string",
                                     "description": "Spiegazione della risposta corretta"
@@ -440,7 +468,7 @@ QUIZ_TOOLS = [
                                     "description": "Punti assegnati a questa domanda (default: 1)"
                                 }
                             },
-                            "required": ["question", "options", "correctIndex"]
+                            "required": ["question"]
                         }
                     },
                     "time_limit_minutes": {
@@ -453,58 +481,6 @@ QUIZ_TOOLS = [
         }
     }
 ]
-
-EXERCISE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "create_exercise",
-            "description": "Genera esercizi pratici con istruzioni, esempi e soluzioni. Usa questa funzione per creare attività pratiche per gli studenti.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "Titolo dell'esercizio"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Descrizione dell'esercizio"
-                    },
-                    "instructions": {
-                        "type": "string",
-                        "description": "Istruzioni dettagliate per svolgere l'esercizio"
-                    },
-                    "examples": {
-                        "type": "array",
-                        "description": "Esempi svolti per guidare lo studente",
-                        "items": {"type": "string"}
-                    },
-                    "solution": {
-                        "type": "string",
-                        "description": "Soluzione completa dell'esercizio (nascosta agli studenti)"
-                    },
-                    "difficulty": {
-                        "type": "string",
-                        "enum": ["easy", "medium", "hard"],
-                        "description": "Livello di difficoltà"
-                    },
-                    "hint": {
-                        "type": "string",
-                        "description": "Suggerimento opzionale per aiutare gli studenti"
-                    },
-                    "response_mode": {
-                        "type": "string",
-                        "enum": ["free_text", "inline_blanks"],
-                        "description": "Usa inline_blanks per esercizi di completamento con campi inseriti direttamente nel testo"
-                    }
-                },
-                "required": ["title", "description", "instructions"]
-            }
-        }
-    }
-]
-
 
 # ============================================================================
 # SYSTEM PROMPTS FOR SPECIALIZED AGENTS
@@ -520,10 +496,12 @@ REQUISITI DEL QUIZ:
 - 5-10 domande varie e stimolanti
 - Ogni domanda deve avere:
   * Testo chiaro e preciso
-  * 4 opzioni di risposta plausibili
-  * Una sola risposta corretta (correctIndex: 0-3)
+  * "type": "mcq" (risposta multipla), "open" (risposta scritta a mano dallo studente) oppure "scale" (slider di valutazione)
+  * Per mcq: 4 opzioni di risposta plausibili e una sola risposta corretta (correctIndex: 0-3)
+  * Per open: "options" vuoto, nessun correctIndex, e "sampleAnswer" con la risposta di riferimento o i criteri di valutazione per il docente
   * Spiegazione della risposta corretta
   * Punti assegnati (default: 1)
+- Alterna domande a risposta multipla, aperte e slider quando ha senso (es. definizione, motivazione, calcolo con passaggi). Se il docente chiede solo risposta multipla o solo domande aperte, rispetta la richiesta.
 - Difficoltà progressiva (inizia facile, poi aumenta)
 - Copre diversi aspetti dell'argomento
 
@@ -546,6 +524,7 @@ Ho creato un quiz di 8 domande sulle equazioni di secondo grado, con difficoltà
   "questions": [
     {
       "question": "Qual è la forma standard di un'equazione di secondo grado?",
+      "type": "mcq",
       "options": [
         "ax + b = 0",
         "ax² + bx + c = 0",
@@ -555,6 +534,14 @@ Ho creato un quiz di 8 domande sulle equazioni di secondo grado, con difficoltà
       "correctIndex": 1,
       "explanation": "La forma standard è ax² + bx + c = 0, dove a ≠ 0. Il termine ax² è quello di grado più alto.",
       "points": 1
+    },
+    {
+      "question": "Risolvi x² - 5x + 6 = 0 mostrando i passaggi e indica le due soluzioni.",
+      "type": "open",
+      "options": [],
+      "sampleAnswer": "Δ = 25 - 24 = 1; x = (5 ± 1)/2 → x₁ = 2, x₂ = 3. Valutare passaggi corretti e soluzioni.",
+      "explanation": "Si applica la formula risolutiva dopo aver calcolato il discriminante.",
+      "points": 2
     },
     {
       "question": "Cosa rappresenta il discriminante (Δ = b² - 4ac)?",
@@ -576,8 +563,13 @@ REGOLE RIGIDE:
 - Il blocco ```quiz è OBBLIGATORIO
 - Genera ALMENO 5 domande
 - Il JSON deve essere valido
-- correctIndex deve essere 0, 1, 2 o 3
-- Ogni domanda deve avere esattamente 4 options
+- Ogni domanda ha "type": "mcq" oppure "open"
+- NON fare quiz di sole domande a risposta multipla se il docente non lo chiede: inserisci almeno 1-2 domande "open" ogni 5 (definizioni, motivazioni, passaggi di un calcolo, brevi argomentazioni)
+- mcq: esattamente 4 options e correctIndex 0, 1, 2 o 3
+- open: options vuoto [], nessun correctIndex, "sampleAnswer" obbligatorio
+- scale: slider di valutazione ("min" 1, "max" 5 di default, "minLabel", "maxLabel"); options vuoto, nessun correctIndex. Usalo per gradimento, autovalutazione, "valuta da 1 a 5"
+- Se il docente chiede esercizi, attività pratiche o "da compilare", usa domande "open"
+- FEDELTÀ: se il docente elenca le domande o ne descrive il tipo ("inserisci nome e cognome", "valuta da 1 a 5", "spiega…"), riproducile TUTTE nell'ordine dato con il tipo corretto. NON convertire mai una domanda aperta o uno slider in scelta multipla
 - NON omettere MAI il blocco JSON
 
 STILE:
@@ -585,56 +577,6 @@ STILE:
 - Domande chiare e prive di ambiguità
 - Spiegazioni educative, non solo "è giusto/sbagliato"
 - Considera il livello scolastico appropriato"""
-
-EXERCISE_AGENT_PROMPT = """Sei un creatore esperto di esercizi didattici per docenti.
-
-IL TUO COMPITO:
-Crea UN SOLO compito coerente e pronto da assegnare sull'argomento richiesto.
-Il blocco exercise_data deve rappresentare sempre un singolo compito, anche quando contiene più punti o domande.
-Genera più compiti separati soltanto se il docente lo richiede esplicitamente.
-
-ESERCIZI DI COMPLETAMENTO:
-- Se il docente chiede di completare frasi o un testo, imposta "response_mode": "inline_blanks".
-- Inserisci ogni campo esattamente nel punto da completare usando la sintassi Markdown `[________](#blank-1)`, con ID numerici univoci e progressivi (`#blank-2`, `#blank-3`, ...).
-- Non ripetere in fondo le frasi, le parole mancanti o un elenco di risposte da ricopiare.
-- Per gli esercizi di completamento lascia "examples" vuoto, così sotto al testo non compare materiale da ricopiare.
-- Metti le risposte corrette esclusivamente in "solution", che non viene mostrato agli studenti.
-- Per ogni altro esercizio usa "response_mode": "free_text".
-
-FORMATO OUTPUT OBBLIGATORIO:
-Devi SEMPRE rispondere così:
-
-1. Breve introduzione (1-2 frasi)
-2. Il blocco JSON exercise_data (OBBLIGATORIO!)
-
-```exercise_data
-{
-  "title": "Titolo Esercizio",
-  "description": "Descrizione breve dell'esercizio",
-  "instructions": "Istruzioni dettagliate passo-passo in markdown...",
-  "examples": ["Esempio 1 svolto", "Esempio 2 svolto"],
-  "solution": "Soluzione o criteri di valutazione",
-  "difficulty": "medium",
-  "hint": "Suggerimento opzionale",
-  "response_mode": "free_text"
-}
-```
-
-REGOLE RIGIDE:
-- Il blocco ```exercise_data è OBBLIGATORIO
-- difficulty deve essere: "easy", "medium", o "hard"
-- instructions deve contenere passi chiari
-- examples è un array di stringhe e può essere vuoto
-- response_mode deve essere "free_text" oppure "inline_blanks"
-- Produci un singolo compito per ogni richiesta, salvo esplicita richiesta contraria
-- NON omettere MAI il blocco JSON
-
-STILE:
-- Istruzioni passo-passo
-- Esempi illuminanti
-- Progressione graduale di difficoltà
-- Feedback costruttivo nelle soluzioni"""
-
 
 def _extract_quiz_payload(raw_text: str) -> Optional[dict]:
     text = (raw_text or "").strip()
@@ -696,22 +638,6 @@ def execute_create_quiz(args: dict) -> dict:
         raise ValueError(f"Errore nella creazione del quiz: {e}")
 
 
-def execute_create_exercise(args: dict) -> dict:
-    """
-    Execute exercise creation and validate the data.
-    Returns validated exercise JSON.
-    """
-    try:
-        # Validate using Pydantic
-        exercise_data = ExerciseData(**args)
-
-        return exercise_data.model_dump()
-
-    except Exception as e:
-        logger.error(f"Exercise validation error: {e}")
-        raise ValueError(f"Errore nella creazione dell'esercizio: {e}")
-
-
 # ============================================================================
 # CONTENT GENERATORS WITH TOOL CALLING
 # ============================================================================
@@ -752,6 +678,7 @@ async def generate_quiz_with_tools(
                     messages=full_messages,
                     tools=QUIZ_TOOLS,
                     tool_choice="auto",
+                    **_function_tool_kwargs(model),
                 )
             else:
                 response = await client.chat.completions.create(
@@ -826,102 +753,6 @@ async def generate_quiz_with_tools(
     return "Mi dispiace, non sono riuscito a completare la generazione del quiz."
 
 
-async def generate_exercise_with_tools(
-    messages: list[dict],
-    provider: str,
-    model: str,
-    max_iterations: int = 3
-) -> str:
-    """Generate exercise using OpenAI function calling."""
-    from openai import AsyncOpenAI
-    from app.core.config import settings
-
-    if provider != "openai" or not settings.OPENAI_API_KEY:
-        return await generate_exercise_without_tools(messages, provider, model)
-
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
-    full_messages = [
-        {"role": "system", "content": EXERCISE_AGENT_PROMPT}
-    ] + messages
-
-    exercise_json = None
-
-    for iteration in range(max_iterations):
-        try:
-            # GPT-5 and o-series models don't support custom temperature
-            if model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=full_messages,
-                    tools=EXERCISE_TOOLS,
-                    tool_choice="auto",
-                )
-            else:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=full_messages,
-                    tools=EXERCISE_TOOLS,
-                    tool_choice="auto",
-                    temperature=0.7,
-                )
-
-            message = response.choices[0].message
-
-            if message.tool_calls:
-                full_messages.append({
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments
-                            }
-                        }
-                        for tc in message.tool_calls
-                    ]
-                })
-
-                for tool_call in message.tool_calls:
-                    tool_name = tool_call.function.name
-                    try:
-                        args = json.loads(tool_call.function.arguments)
-                    except json.JSONDecodeError:
-                        args = {}
-
-                    if tool_name == "create_exercise":
-                        exercise_json = execute_create_exercise(args)
-                        tool_output = f"Esercizio creato: {exercise_json['title']}"
-                    else:
-                        tool_output = f"Tool sconosciuto: {tool_name}"
-
-                    full_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": tool_output
-                    })
-            else:
-                response_text = message.content or ""
-
-                if exercise_json and "```exercise_data" not in response_text:
-                    response_text += f"\n\n```exercise_data\n{json.dumps(exercise_json, indent=2, ensure_ascii=False)}\n```"
-
-                return response_text
-
-        except Exception as e:
-            logger.error(f"Exercise generation error at iteration {iteration}: {e}")
-            if iteration == max_iterations - 1:
-                raise
-
-    if exercise_json:
-        return f"Esercizio generato:\n\n```exercise_data\n{json.dumps(exercise_json, indent=2, ensure_ascii=False)}\n```"
-
-    return "Mi dispiace, non sono riuscito a completare la generazione dell'esercizio."
-
-
 # ============================================================================
 # FALLBACK GENERATORS (WITHOUT TOOLS)
 # ============================================================================
@@ -939,19 +770,6 @@ async def generate_quiz_without_tools(messages: list[dict], provider: str, model
     quiz_payload = _extract_quiz_payload(response.content)
     if quiz_payload:
         return _format_quiz_response(response.content, quiz_payload)
-    return response.content
-
-
-async def generate_exercise_without_tools(messages: list[dict], provider: str, model: str) -> str:
-    """Fallback exercise generation without function calling."""
-    response = await llm_service.generate(
-        messages=messages,
-        system_prompt=EXERCISE_AGENT_PROMPT,
-        provider=provider,
-        model=model,
-        temperature=0.7,
-        max_tokens=2048,
-    )
     return response.content
 
 
@@ -1349,10 +1167,6 @@ async def run_teacher_agent(
             logger.info("Routing to quiz generator")
             return await generate_quiz_with_tools(messages, provider, model)
 
-        elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
-            logger.info("Routing to exercise generator")
-            return await generate_exercise_with_tools(messages, provider, model)
-
         elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
             logger.info("Routing to dataset generator")
             return await generate_dataset(messages, provider, model)
@@ -1727,6 +1541,8 @@ async def generate_with_analytics(
 
 {PLATFORM_KNOWLEDGE_BASE}
 
+{QUIZ_FORMAT_SPEC}
+
 HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 
 {context}
@@ -1790,6 +1606,8 @@ async def generate_with_analytics_stream(
     enhanced_prompt = f"""{base_prompt}
 
 {PLATFORM_KNOWLEDGE_BASE}
+
+{QUIZ_FORMAT_SPEC}
 
 HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 

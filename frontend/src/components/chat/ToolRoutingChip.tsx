@@ -19,6 +19,7 @@ export const TOOL_LABELS: Record<string, string> = {
   brochure: 'Brochure',
   dispensa: tl("Dispensa"),
   podcast: 'Podcast',
+  deep_research: 'Deep Research',
   html_page: tl("Pagina interattiva"),
   quiz: tl("Quiz"),
   exercise: tl("Esercizio"),

@@ -92,3 +92,22 @@ async def test_unsure_artifact_on_edit_anchors_to_latest(monkeypatch):
     _use(monkeypatch, _answers("edit", 0.9, "image", 0.4))
     d = await tool_router.decide_tool("rendila più colorata", artifacts=HTML)
     assert (d["tool"], d["action"]) == ("html_page", "edit")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('text', ['voglio una deep research', 'Deep research energia Italia', 'Fammi una ricerca approfondita sul clima'])
+async def test_explicit_research_does_not_need_a_model_or_api_key(monkeypatch, text):
+    monkeypatch.setattr(tool_router.settings, 'OPENAI_API_KEY', '')
+    decision = await tool_router.decide_tool(text, allowed=['deep_research', 'podcast'])
+    assert decision['tool'] == 'deep_research' and decision['action'] == 'create'
+
+
+@pytest.mark.asyncio
+async def test_decision_model_can_choose_research_and_respects_allowed_tools(monkeypatch):
+    sent = []
+    _use(monkeypatch, _answers('create', .94, 'deep_research', .95), sent=sent)
+    assert (await tool_router.decide_tool('Indaga in dettaglio le nuove politiche energetiche', allowed=['deep_research']))['tool'] == 'deep_research'
+    assert 'deep_research' in {a['value'] for a in sent[0]['questions'][1]['choices']}
+    _use(monkeypatch, _answers('chat', .99, 'none', .99))
+    assert (await tool_router.decide_tool('Cos’è la deep research?'))['tool'] == 'chat'
+    assert (await tool_router.decide_tool('voglio una deep research', allowed=['image']))['tool'] == 'chat'

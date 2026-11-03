@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
+import { textBoxPadding, verticalAlignCss } from '@/lib/slideBlocks'
+import { ensureSlideFonts } from '@/lib/slideFonts'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 import DocumentTypeBadge, { documentKindMeta, resolveDocumentKind, type DocumentKind } from './DocumentTypeBadge'
 import { tl } from '@/i18n/tl'
@@ -64,6 +66,8 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
     .map((block, index) => ({ block, index }))
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index)), [slide?.blocks])
 
+  useEffect(() => { if (slide?.blocks) ensureSlideFonts(slide.blocks) }, [slide?.blocks])
+
   return (
     <div ref={hostRef} className={`relative h-full w-full overflow-hidden ${backdrop}`}>
       {hostSize.width > 0 && hostSize.height > 0 && (
@@ -78,7 +82,7 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
             backgroundColor: slide?.backgroundColor || '#fff',
           }}
         >
-          {slide && !slide.blocks?.some(block => block.type === 'text') && (
+          {slide && !slide.blocks?.some(block => block.type === 'text' || block.type === 'image') && (
             <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title || title}</h3>
           )}
           {!slide && (
@@ -89,7 +93,7 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
           {blocks.map(({ block, index }) => (
             <div
               key={block.id || index}
-              className={`absolute ${block.type === 'line' ? 'overflow-visible' : 'overflow-hidden'}`}
+              className={`absolute ${block.type === 'line' || (block.type === 'text' && block.style.autoFit === false) ? 'overflow-visible' : 'overflow-hidden'}`}
               style={{
                 left: block.x,
                 top: block.y,
@@ -102,7 +106,8 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
                   ? {
                       backgroundColor: block.style.backgroundColor || 'transparent',
                       borderRadius: block.style.borderRadius,
-                      padding: block.style.padding,
+                      ...textBoxPadding(block.style),
+                      ...(block.type === 'text' ? verticalAlignCss(block.style.verticalAlign) : {}),
                     }
                   : block.type === 'rectangle' || block.type === 'ellipse'
                     ? {
@@ -115,7 +120,7 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
             >
               {block.type === 'text' ? (
                 <div
-                  className="slide-text-rich h-full w-full whitespace-pre-wrap [&_p]:m-0"
+                  className={`slide-text-rich ${block.style.verticalAlign ? '' : 'h-full'} w-full ${block.style.whiteSpace === 'nowrap' ? 'whitespace-nowrap' : 'whitespace-pre-wrap'} [&_p]:m-0`}
                   style={{
                     fontFamily: block.style.fontFamily,
                     fontSize: block.style.fontSize,

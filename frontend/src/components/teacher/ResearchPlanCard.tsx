@@ -11,6 +11,11 @@ export interface ResearchPlan {
   title: string
   objective: string
   subtopics: ResearchPlanSubtopic[]
+  topic?: string
+  request?: string
+  constraints?: string
+  news?: boolean
+  seed_urls?: string[]
 }
 
 interface ResearchPlanCardProps {
@@ -44,7 +49,16 @@ export default function ResearchPlanCard({ plan, extending, disabled, onChange, 
               className={`${FIELD} mt-1.5 font-bold`}
             />
           )}
-          {plan.objective && <p className="mt-1.5 text-[11px] text-slate-500">{plan.objective}</p>}
+          <label className="mt-2 block text-[11px] text-slate-600">{tl("Domanda di ricerca")}
+            <textarea value={plan.objective} onChange={e => onChange({ ...plan, objective: e.target.value })} rows={2} className={`${FIELD} mt-1`} />
+          </label>
+          <label className="mt-2 block text-[11px] text-slate-600">{tl("Ambito, luoghi e periodo")}
+            <input value={plan.constraints || ''} onChange={e => onChange({ ...plan, constraints: e.target.value })} className={`${FIELD} mt-1`} />
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-600">
+            <input type="checkbox" checked={!!plan.news} onChange={e => onChange({ ...plan, news: e.target.checked })} />
+            {tl("Consulta anche notizie e feed RSS, confrontando le fonti originali")}
+          </label>
         </div>
       </div>
       <div className="space-y-2">

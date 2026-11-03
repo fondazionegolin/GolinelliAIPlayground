@@ -1960,6 +1960,8 @@ export const liveInteractionApi = {
     api.post(`/teacher/live-interactions/${id}/end`),
   results: (id: string) =>
     api.get(`/teacher/live-interactions/${id}/results`),
+  reportPdf: (id: string) =>
+    api.get(`/teacher/live-interactions/${id}/report.pdf`, { responseType: 'blob' }),
   enablePublicLink: (id: string) =>
     api.post(`/teacher/live-interactions/${id}/public-link`),
   disablePublicLink: (id: string) =>

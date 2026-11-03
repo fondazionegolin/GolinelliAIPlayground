@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { ArrowLeft, CheckCircle2, ChevronDown, Clock3, Loader2, LockKeyhole, Maximize2, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
+import { ArrowLeft, CheckCircle2, FileDown, ChevronDown, Clock3, Loader2, LockKeyhole, Maximize2, PackageOpen, Play, Square, Trophy, Users } from '@/components/icons'
 import { liveInteractionApi } from '@/lib/api'
+import { downloadLiveReport } from '@/lib/liveReport'
 import { useToast } from '@/components/ui/use-toast'
 import EndSessionDialog from '@/components/live/EndSessionDialog'
 import AchievementIcon from '@/components/live/AchievementIcon'
@@ -116,6 +117,15 @@ export default function LiveEscapeRoomControl({ interaction, onBack }: { interac
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /> {tl("Lista")}</button>
         <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{interaction.title}</h1>
+        {interaction.status === 'CLOSED' && (
+          <button
+            type="button"
+            onClick={() => { downloadLiveReport(interaction.id, interaction.title).catch(() => toast({ title: tl("Impossibile scaricare il report"), variant: 'destructive' })) }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            <FileDown className="h-4 w-4" /> {tl("Scarica report PDF")}
+          </button>
+        )}
         <span className={`rounded-full px-3 py-1 text-sm font-semibold ${interaction.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : interaction.status === 'CLOSED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>{interaction.status === 'ACTIVE' ? '● LIVE' : interaction.status === 'CLOSED' ? tl("Completata") : tl("Bozza")}</span>
       </div>
 

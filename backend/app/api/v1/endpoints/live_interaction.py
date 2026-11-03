@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
+from fastapi import Response
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, or_, select, update
@@ -785,6 +786,7 @@ async def start_live_interaction(
     li.status = "ACTIVE"
     li.current_slide_index = 0
     li.current_slide_started_at = now
+    li.slide_timings = {"0": now.isoformat()}
     li.started_at = now
     li.ended_at = None
     if li.interaction_type == "escape_room":
@@ -833,6 +835,7 @@ async def next_slide(
 
     li.current_slide_index = next_index
     li.current_slide_started_at = datetime.now(timezone.utc)
+    li.slide_timings = {**(li.slide_timings or {}), str(next_index): li.current_slide_started_at.isoformat()}
     await db.commit()
 
     rc = await _count_responses(db, li.id, next_index)
@@ -957,6 +960,29 @@ async def get_results(
         "results": [slides_data[i] for i in sorted(slides_data.keys())],
         "created_at": li.created_at.isoformat(),
     }
+
+
+@teacher_router.get("/live-interactions/{interaction_id}/report.pdf")
+async def download_report(
+    interaction_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Revised PDF report of a finished session: per-student indicators, response times and all answers."""
+    from app.services import live_report
+
+    li = (await db.execute(select(LiveInteraction).where(LiveInteraction.id == interaction_id))).scalar_one_or_none()
+    if not li or not await teacher_can_access_session(db, teacher, li.session_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    if li.status != "CLOSED":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Il report è disponibile solo a sessione terminata")
+    pdf = await live_report.build_pdf(db, li)
+    safe_title = "".join(c for c in li.title if c.isalnum() or c in (" ", "-", "_")).strip()[:50] or "sessione"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report-{safe_title}.pdf"'},
+    )
 
 
 @teacher_router.post("/live-interactions/extract-reference")

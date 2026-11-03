@@ -127,8 +127,9 @@ def test_import_keeps_run_formatting_theme_colours_shapes_groups_and_tables():
     assert any("Dentro" in block["content"] for block in _text_blocks(slide))
     ellipse = next(block for block in slide["blocks"] if block["type"] == "ellipse")
     assert abs(ellipse["x"] - 9 * 72) < 2, "grouped shapes keep their slide position"
-    table_text = next(block for block in _text_blocks(slide) if "A" in block["content"] and "B" in block["content"])
-    assert "1" in table_text["content"] and "2" in table_text["content"]
+    table_block = next(block for block in _text_blocks(slide) if "<table" in block["content"])
+    cells = [cell.get_text() for cell in BeautifulSoup(table_block["content"], "html.parser").find_all("td")]
+    assert cells == ["A", "B", "1", "2"]
 
 
 def test_export_writes_runs_bullets_notes_and_reimports_equivalently():
@@ -208,3 +209,132 @@ def test_background_image_becomes_locked_full_slide_block():
     assert first["type"] == "image" and first.get("locked") is True
     assert first["x"] == 0 and first["y"] == 0 and first["width"] == 800
     assert base64.b64decode(first["content"].split(",", 1)[1])[:4] == b"\x89PNG"
+
+
+def _picture_png(color: tuple[int, int, int, int], size: tuple[int, int] = (64, 32)) -> io.BytesIO:
+    image = io.BytesIO()
+    Image.new("RGBA", size, color).save(image, format="PNG")
+    image.seek(0)
+    return image
+
+
+def test_picture_crop_is_applied_to_the_pixels():
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    picture = slide.shapes.add_picture(_picture_png((200, 10, 10, 255), (100, 100)), Inches(1), Inches(1), Inches(1), Inches(1))
+    picture.crop_left = 0.5
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    block = next(b for b in _import(buffer.getvalue())["slides"][0]["blocks"] if b["type"] == "image")
+    decoded = Image.open(io.BytesIO(base64.b64decode(block["content"].split(",", 1)[1])))
+    assert decoded.size == (50, 100)
+
+
+def test_master_graphics_are_imported_locked_and_behind_slide_content():
+    presentation = Presentation()
+    layout = presentation.slide_layouts[6]
+    layout.shapes._spTree.append(_logo_element(presentation, layout))
+    slide = presentation.slides.add_slide(layout)
+    slide.shapes.add_textbox(Inches(1), Inches(1), Inches(3), Inches(1)).text_frame.text = "Contenuto"
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    blocks = _import(buffer.getvalue())["slides"][0]["blocks"]
+    assert blocks[0]["type"] == "rectangle" and blocks[0]["locked"] is True
+    assert blocks[0]["style"]["fill"].lower() == "#123456"
+
+
+def _logo_element(presentation, layout):
+    donor = presentation.slides.add_slide(layout)
+    rectangle = donor.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(1), Inches(1))
+    rectangle.fill.solid()
+    rectangle.fill.fore_color.rgb = RGBColor(0x12, 0x34, 0x56)
+    element = rectangle._element
+    element.getparent().remove(element)
+    slide_ids = presentation.slides._sldIdLst
+    presentation.part.drop_rel(slide_ids[-1].rId)
+    slide_ids.remove(slide_ids[-1])
+    return element
+
+
+def test_paragraph_spacing_anchor_insets_and_autofit_survive():
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(2))
+    frame = box.text_frame
+    frame.margin_left = Inches(0.5)
+    body = frame._txBody.find(qn("a:bodyPr"))
+    body.set("anchor", "ctr")
+    etree.SubElement(body, qn("a:normAutofit")).set("fontScale", "50000")
+    first = frame.paragraphs[0]
+    first.text = "Uno"
+    first.runs[0].font.size = Pt(40)
+    second = frame.add_paragraph()
+    second.text = "Due"
+    second.runs[0].font.size = Pt(40)
+    second.space_before = Pt(12)
+    second.line_spacing = 1.5
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    content = _import(buffer.getvalue())
+    block = _text_blocks(content["slides"][0])[0]
+    assert block["style"]["verticalAlign"] == "middle" and block["style"]["autoFit"] is False
+    pt_to_px = 800 / 720
+    assert abs(block["style"]["fontSize"] - 20 * pt_to_px) < 0.6, "fontScale shrinks the stored size"
+    assert abs(block["style"]["paddingLeft"] - 0.5 * 80) < 0.6
+    paragraphs = BeautifulSoup(block["content"], "html.parser").find_all("p")
+    assert "margin-top: 13.3px" in paragraphs[1]["style"] and "line-height: 1.8" in paragraphs[1]["style"]
+
+
+def test_dark_template_colour_map_is_honoured():
+    presentation = Presentation()
+    master = presentation.slide_masters[0]
+    color_map = master._element.find(qn("p:clrMap"))
+    color_map.set("bg1", "dk1")
+    color_map.set("tx1", "lt1")
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(3), Inches(1))
+    box.text_frame.text = "Chiaro su scuro"
+    box.text_frame.paragraphs[0].runs[0].font.color.theme_color = MSO_THEME_COLOR.TEXT_1
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    block = _text_blocks(_import(buffer.getvalue())["slides"][0])[0]
+    assert block["style"]["color"].lower() == "#ffffff"
+
+
+def test_lum_mod_works_on_lightness_not_channels():
+    from app.services.pptx_rich import resolve_color, Theme
+
+    color = etree.fromstring(
+        '<a:schemeClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="accent1">'
+        '<a:lumMod val="40000"/><a:lumOff val="60000"/></a:schemeClr>'
+    )
+    # PowerPoint shows B4C6E7 for "Accent 1, Lighter 60%" of 4472C4; channel multiplication gives 8EB1E8-like blues.
+    assert resolve_color(color, Theme({"accent1": "4472C4"}, None, None)) in {"B4C6E7", "B4C7E7"}
+
+
+def test_exported_table_is_a_real_table_with_merges_and_fills():
+    html = (
+        '<table><colgroup><col style="width: 100px"><col style="width: 300px"></colgroup><tbody>'
+        '<tr style="height: 40px"><td colspan="2" style="background-color: #112233; color: #ffffff"><p>Titolo</p></td></tr>'
+        '<tr><td><p>A</p></td><td><p>B</p></td></tr></tbody></table>'
+    )
+    native = {"type": "presentation_v2", "format": "16:9", "slides": [{"id": "s", "title": "S", "blocks": [{
+        "id": "t", "type": "text", "content": html, "x": 10, "y": 10, "width": 400, "height": 100, "style": {"fontSize": 18},
+    }]}]}
+    presentation = Presentation(io.BytesIO(export_document(json.dumps(native), "S", "pptx").content))
+    table = next(shape for shape in presentation.slides[0].shapes if getattr(shape, "has_table", False)).table
+    assert table.cell(0, 0).is_merge_origin and table.cell(0, 0).text == "Titolo"
+    assert str(table.cell(0, 0).fill.fore_color.rgb) == "112233"
+    assert table.cell(1, 1).text == "B"
+    assert table.columns[1].width > table.columns[0].width * 2.5
+
+
+def test_sanitizer_keeps_table_and_spacing_but_blocks_urls():
+    from app.services.slide_sanitizer import sanitize_slide_text_html
+
+    clean = sanitize_slide_text_html(
+        '<table onclick="x()"><tbody><tr><td colspan="2" style="background-color: url(http://evil); padding: 4px">'
+        '<p style="margin-top: 4px; position: fixed">x</p></td></tr></tbody></table><script>alert(1)</script>'
+    )
+    assert "<table>" in clean and 'colspan="2"' in clean and "margin-top: 4px" in clean
+    assert "url(" not in clean and "position" not in clean and "script" not in clean and "onclick" not in clean

@@ -10,8 +10,14 @@ import { tl } from '@/i18n/tl'
 interface QuizQuestion {
   id: string
   question: string
+  type: 'mcq' | 'open' | 'scale'
   options: string[]
   correctIndex: number
+  sampleAnswer?: string
+  min?: number
+  max?: number
+  minLabel?: string
+  maxLabel?: string
 }
 
 interface TaskBuilderProps {
@@ -62,11 +68,17 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
   // Quiz state
   const [questions, setQuestions] = useState<QuizQuestion[]>(() => {
     if (!Array.isArray(initialContent.questions) || initialContent.questions.length === 0) {
-      return [{ id: '1', question: '', options: ['', '', '', ''], correctIndex: 0 }]
+      return [{ id: '1', question: '', type: 'mcq', options: ['', '', '', ''], correctIndex: 0 }]
     }
     return initialContent.questions.map((question: any, index: number) => ({
       id: String(question.id || index + 1),
       question: String(question.question || question.text || ''),
+      type: question.type === 'open' || question.type === 'scale' ? question.type : 'mcq',
+      min: Number.isFinite(Number(question.min)) ? Number(question.min) : 1,
+      max: Number.isFinite(Number(question.max)) ? Number(question.max) : 5,
+      minLabel: question.minLabel ? String(question.minLabel) : '',
+      maxLabel: question.maxLabel ? String(question.maxLabel) : '',
+      sampleAnswer: question.sampleAnswer ? String(question.sampleAnswer) : '',
       options: Array.isArray(question.options)
         ? [...question.options.map((option: unknown) => String(option)), ...Array(4).fill('')].slice(0, Math.max(4, question.options.length))
         : ['', '', '', ''],
@@ -99,6 +111,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
       { 
         id: String(Date.now()), 
         question: '', 
+        type: 'mcq',
         options: ['', '', '', ''], 
         correctIndex: 0 
       }
@@ -136,18 +149,18 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
     if (taskType === 'quiz') {
       // Validate quiz
       const validQuestions = questions.filter(q => 
-        q.question.trim() && q.options.some(o => o.trim())
+        q.question.trim() && (q.type === 'open' || q.type === 'scale' || q.options.some(o => o.trim()))
       )
       if (validQuestions.length === 0) return
 
       content_json = JSON.stringify({
         ...initialContent,
         type: 'quiz',
-        questions: validQuestions.map(q => ({
-          question: q.question,
-          options: q.options.filter(o => o.trim()),
-          correctIndex: q.correctIndex,
-        }))
+        questions: validQuestions.map(q => q.type === 'scale'
+          ? { question: q.question, type: 'scale', options: [], min: q.min ?? 1, max: Math.max((q.max ?? 5), (q.min ?? 1) + 1), minLabel: q.minLabel?.trim() || undefined, maxLabel: q.maxLabel?.trim() || undefined }
+          : q.type === 'open'
+          ? { question: q.question, type: 'open', options: [], sampleAnswer: q.sampleAnswer?.trim() || undefined }
+          : { question: q.question, type: 'mcq', options: q.options.filter(o => o.trim()), correctIndex: q.correctIndex })
       })
     } else if (taskType === 'exercise') {
       content_json = JSON.stringify({
@@ -202,15 +215,18 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             <ClipboardList className="h-4 w-4 mr-1" />
             {tl("Quiz")}
           </Button>
-          <Button
-            type="button"
-            variant={taskType === 'exercise' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setTaskType('exercise')}
-          >
-            <FileText className="h-4 w-4 mr-1" />
-            {tl("Esercizio")}
-          </Button>
+          {/* Exercises are now open questions inside a quiz: the type is only kept to edit existing ones. */}
+          {initialData?.task_type === 'exercise' && (
+            <Button
+              type="button"
+              variant={taskType === 'exercise' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTaskType('exercise')}
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              {tl("Esercizio")}
+            </Button>
+          )}
           <Button
             type="button"
             variant={taskType === 'discussion' ? 'default' : 'outline'}
@@ -301,6 +317,45 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
                   )}
                 </div>
 
+                <div className="pl-6">
+                  <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs font-medium">
+                    {(['mcq', 'open', 'scale'] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => updateQuestion(q.id, 'type', kind)}
+                        className={`rounded px-2.5 py-1 transition-colors ${q.type === kind ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}
+                      >
+                        {kind === 'mcq' ? tl("Risposta multipla") : kind === 'open' ? tl("Risposta aperta") : tl("Slider")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {q.type === 'scale' && (
+                  <div className="pl-6 space-y-2">
+                    <p className="text-xs text-gray-500">{tl("Lo studente risponde con uno slider (valutazione, non corretta in automatico).")}</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <Input type="number" value={q.min ?? 1} onChange={(e) => updateQuestion(q.id, 'min', Number(e.target.value))} placeholder={tl("Minimo")} />
+                      <Input type="number" value={q.max ?? 5} onChange={(e) => updateQuestion(q.id, 'max', Number(e.target.value))} placeholder={tl("Massimo")} />
+                      <Input value={q.minLabel || ''} onChange={(e) => updateQuestion(q.id, 'minLabel', e.target.value)} placeholder={tl("Etichetta minimo")} />
+                      <Input value={q.maxLabel || ''} onChange={(e) => updateQuestion(q.id, 'maxLabel', e.target.value)} placeholder={tl("Etichetta massimo")} />
+                    </div>
+                  </div>
+                )}
+
+                {q.type === 'open' && (
+                  <div className="pl-6 space-y-1">
+                    <p className="text-xs text-gray-500">{tl("Lo studente scrive la risposta in un campo libero. Non è corretta in automatico: aggiungi una risposta di riferimento per te (facoltativa).")}</p>
+                    <Input
+                      value={q.sampleAnswer || ''}
+                      onChange={(e) => updateQuestion(q.id, 'sampleAnswer', e.target.value)}
+                      placeholder={tl("Risposta di riferimento / criteri di valutazione")}
+                    />
+                  </div>
+                )}
+
+                {q.type !== 'open' && q.type !== 'scale' && (
                 <div className="pl-6 space-y-2">
                   <p className="text-xs text-gray-500">
                     {tl("Opzioni (clicca ✓ per la risposta corretta):")}
@@ -327,6 +382,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             ))}
           </div>

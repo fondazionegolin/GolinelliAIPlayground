@@ -11,6 +11,9 @@ import asyncio
 import logging
 import re
 import time
+import json
+import io
+from xml.etree import ElementTree
 from dataclasses import dataclass, field
 from urllib.parse import quote, unquote, urljoin, urlparse, urldefrag
 from urllib.robotparser import RobotFileParser
@@ -27,11 +30,12 @@ MAX_BYTES = 1_500_000
 DOMAIN_DELAY_SECONDS = 1.0
 MAX_LINKS_PER_PAGE = 6
 SKIP_EXTENSIONS = (
-    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".pdf", ".zip", ".gz", ".mp3", ".mp4", ".avi", ".mov",
+    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".zip", ".gz", ".mp3", ".mp4", ".avi", ".mov",
     ".css", ".js", ".ico", ".xml", ".rss", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
 )
 SKIP_PATH_HINTS = ("login", "signin", "signup", "register", "cart", "checkout", "privacy", "cookie", "terms", "account", "/tag/", "/category/", "special:", "speciale:", "file:", "template:", "help:")
 _WORD_RE = re.compile(r"[a-zà-ÿ0-9]{4,}", re.IGNORECASE)
+STOP_WORDS = set("della delle dello degli dalla dalle dagli nelle nella negli sullo sulla sulle come cosa quali quale sono sono perche perché ricerca approfondita research deep fonti sources notizie news informazioni information analisi analysis overview approfondimento introduzione quadro generale recenti ultimo ultimi ultime ultima latest recent oggi today dettagli dettagliata documenti documento rapporto report focus effetti impatto sviluppi about with from that this their have been into more also della degli anni anno ".split())
 
 
 @dataclass
@@ -42,10 +46,13 @@ class FetchedPage:
     text: str = ""
     links: list[tuple[str, str]] = field(default_factory=list)  # (url, anchor text)
     error: str | None = None
+    published_at: str = ""
+    publisher: str = ""
+    feed_entries: list[dict] = field(default_factory=list)
 
 
 def topic_words(*texts: str) -> set[str]:
-    return {w.lower() for t in texts for w in _WORD_RE.findall(t or "")}
+    return {w.lower() for t in texts for w in _WORD_RE.findall(t or "") if w.lower() not in STOP_WORDS and not w.isdigit()}
 
 
 def canonical(url: str) -> str:
@@ -96,7 +103,7 @@ class Crawler:
                 await asyncio.sleep(delay)
             self._next_slot[host] = time.monotonic() + DOMAIN_DELAY_SECONDS
 
-    async def fetch(self, url: str, max_chars: int = 9000) -> FetchedPage:
+    async def fetch(self, url: str, max_chars: int = 9000, *, feed: bool = False) -> FetchedPage:
         current = url
         try:
             for _ in range(5):
@@ -112,25 +119,52 @@ class Crawler:
                     if response.status_code >= 400:
                         return FetchedPage(url, current, error=f"HTTP {response.status_code}")
                     kind = response.headers.get("content-type", "").lower()
-                    if "html" not in kind and "text/plain" not in kind:
+                    if not any(t in kind for t in (("xml", "rss", "atom", "text/plain") if feed else ("html", "text/plain", "application/pdf"))):
                         return FetchedPage(url, current, error=f"Tipo non supportato: {kind or 'sconosciuto'}")
                     body = b""
                     async for chunk in response.aiter_bytes():
                         body += chunk
-                        if len(body) > MAX_BYTES:
-                            break
+                        if len(body) > (6_000_000 if "application/pdf" in kind else MAX_BYTES):
+                            return FetchedPage(url, current, error="Pagina troppo grande")
                     html = body.decode(response.encoding or "utf-8", errors="replace")
-                return self._parse(url, current, html, max_chars)
+                if "application/pdf" in kind:
+                    return await asyncio.to_thread(self._parse_pdf, url, current, body, max_chars)
+                return self._parse_feed(url, current, html) if feed else self._parse(url, current, html, max_chars)
             return FetchedPage(url, current, error="Troppi redirect")
         except Exception as exc:
             return FetchedPage(url, current, error=str(exc)[:160] or exc.__class__.__name__)
 
+    def _parse_pdf(self, url: str, final_url: str, body: bytes, max_chars: int) -> FetchedPage:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(io.BytesIO(body))
+        chunks = []
+        for page in reader.pages[:25]:
+            chunks.append(page.extract_text() or "")
+            if sum(map(len, chunks)) >= max_chars:
+                break
+        title = str((reader.metadata or {}).get("/Title") or final_url)
+        return FetchedPage(url, final_url, title=title[:200], text="\n".join(chunks)[:max_chars], publisher=urlparse(final_url).hostname or "")
+
     def _parse(self, url: str, final_url: str, html: str, max_chars: int) -> FetchedPage:
         soup = BeautifulSoup(html, "html.parser")
-        for element in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "form", "noscript"]):
+        published = soup.find("meta", property="article:published_time") or soup.find("meta", attrs={"name": "date"})
+        publisher = soup.find("meta", property="og:site_name")
+        published_at = str(published.get("content", ""))[:80] if published else ""
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or script.get_text())
+                entries = data if isinstance(data, list) else [data]
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        for node in [entry, *(entry.get("@graph") or [])]:
+                            if isinstance(node, dict) and node.get("datePublished"):
+                                published_at = str(node["datePublished"])[:80]
+            except (ValueError, TypeError):
+                pass
+        for element in soup(["script", "style", "nav", "footer", "aside", "iframe", "form", "noscript"]):
             element.decompose()
         title = soup.title.get_text(" ", strip=True) if soup.title else final_url
-        main = soup.find("main") or soup.find("article") or soup.find("div", id="mw-content-text") or soup.body
+        main = soup.find("article") or soup.find("main") or soup.find("div", id="mw-content-text") or soup.body
         if main is None:
             return FetchedPage(url, final_url, title=title, error="Testo non trovato")
         lines = [line.strip() for line in main.get_text(separator="\n", strip=True).split("\n") if line.strip()]
@@ -147,7 +181,35 @@ class Crawler:
                 continue
             seen.add(key)
             links.append((key, a.get_text(" ", strip=True)[:120]))
-        return FetchedPage(url, final_url, title=title[:200], text="\n".join(lines)[:max_chars], links=links)
+        return FetchedPage(url, final_url, title=title[:200], text="\n".join(lines)[:max_chars], links=links,
+                           published_at=published_at, publisher=str(publisher.get("content", ""))[:120] if publisher else "")
+
+    def _parse_feed(self, url: str, final_url: str, xml: str) -> FetchedPage:
+        if re.search(r"<!\s*(?:DOCTYPE|ENTITY)", xml, re.I):
+            return FetchedPage(url, final_url, error="Feed XML non consentito")
+        try:
+            root = ElementTree.fromstring(xml)
+        except ElementTree.ParseError:
+            return FetchedPage(url, final_url, error="Feed non valido")
+        entries = []
+        for item in list(root.iter()):
+            if item.tag.split("}")[-1] not in {"item", "entry"}:
+                continue
+            fields = {c.tag.split("}")[-1]: c for c in item}
+            link_node = next((c for c in item if c.tag.split("}")[-1] == "link" and c.get("rel", "alternate") == "alternate"), None)
+            href = (link_node.get("href") or link_node.text or "").strip() if link_node is not None else ""
+            href = urljoin(final_url, href)
+            if not href.startswith(("http://", "https://")):
+                continue
+            def value(*names):
+                node = next((fields[n] for n in names if n in fields), None)
+                return "".join(node.itertext()).strip() if node is not None else ""
+            entries.append({"url": href, "title": value("title")[:250],
+                            "snippet": BeautifulSoup(value("description", "summary"), "html.parser").get_text(" ", strip=True)[:600],
+                            "published_at": value("pubDate", "published", "updated")[:80]})
+            if len(entries) >= 100:
+                break
+        return FetchedPage(url, final_url, feed_entries=entries)
 
 
 async def wikipedia_seeds(query: str, limit: int = 3, lang: str = "it") -> list[tuple[str, str]]:

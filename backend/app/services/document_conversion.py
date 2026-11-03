@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import datetime
 import html
 import io
 import json
@@ -31,11 +32,14 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles.colors import COLOR_INDEX
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.datetime import to_excel
 from PIL import Image, ImageOps
 
 from app.services import pptx_rich
+from app.services.pptx_import import pptx_to_native
 from app.services.docx_writer import html_to_docx
 from pptx.oxml.ns import qn as qn_pptx
 from pptx import Presentation
@@ -123,7 +127,7 @@ def _run_libreoffice(input_bytes: bytes, source_ext: str, target_ext: str, input
             str(root),
             str(source),
         ]
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=90, check=False)
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=240, check=False)
         output = root / f"source.{target_ext}"
         if completed.returncode != 0 or not output.exists():
             detail = (completed.stderr or completed.stdout or "conversione non riuscita").strip()
@@ -930,207 +934,56 @@ def _pdf_first_page_preview(data: bytes) -> str | None:
         pdf.close()
 
 
-def _pptx_background(slide: Any, theme: Any) -> tuple[str | None, bytes | None, str | None]:
-    """(colour, image bytes, image mime) of the slide background, inherited from layout/master."""
-    owners = [slide]
+def _sheet_value(value: Any) -> str:
+    """Machine form of a cell: the frontend formats it. Dates become Excel serials, as in the file."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        serial = float(to_excel(value))
+        return str(int(serial)) if serial.is_integer() else str(round(serial, 8))
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _workbook_theme_colors(workbook: Any) -> list[str]:
+    """Theme palette in the order cell colours index it (lt1, dk1, lt2, dk2, accents…)."""
+    if not workbook.loaded_theme:
+        return []
     try:
-        owners += [slide.slide_layout, slide.slide_layout.slide_master]
+        namespace = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+        scheme = etree.fromstring(workbook.loaded_theme).find(f".//{namespace}clrScheme")
+        palette = [(entry[0].get("lastClr") or entry[0].get("val") or "000000") for entry in scheme]
+        palette[0], palette[1], palette[2], palette[3] = palette[1], palette[0], palette[3], palette[2]
+        return palette
     except Exception:
-        pass
-    for owner in owners:
-        background = owner._element.find(".//" + qn_pptx("p:bg"))
-        if background is None:
-            continue
-        properties = background.find(qn_pptx("p:bgPr"))
-        if properties is not None:
-            color = pptx_rich.color_of(properties, theme)
-            if color:
-                return f"#{color}", None, None
-            blip = properties.find(".//" + qn_pptx("a:blip"))
-            if blip is not None:
-                relationship_id = blip.get(qn_pptx("r:embed"))
-                try:
-                    image_part = owner.part.related_part(relationship_id)
-                    return None, image_part.blob, image_part.content_type
-                except Exception:
-                    pass
-        reference = background.find(qn_pptx("p:bgRef"))
-        if reference is not None:
-            # bgRef carries the colour element directly (theme background style + colour).
-            scheme = reference.find(qn_pptx("a:schemeClr"))
-            srgb = reference.find(qn_pptx("a:srgbClr"))
-            if srgb is not None and srgb.get("val"):
-                return f"#{srgb.get('val').upper()}", None, None
-            if scheme is not None:
-                base = theme.colors.get(pptx_rich.SCHEME_ALIASES.get(scheme.get("val"), scheme.get("val")))
-                if base:
-                    return f"#{base}", None, None
-    return None, None, None
+        return []
 
 
-def _pptx_to_native(data: bytes) -> dict[str, Any]:
-    presentation = Presentation(io.BytesIO(data))
-    theme = pptx_rich.load_theme(presentation)
-    width = int(presentation.slide_width or 1)
-    height = int(presentation.slide_height or 1)
-    format_name = "4:3" if abs((width / height) - (4 / 3)) < 0.08 else "16:9"
-    target_width, target_height = ((800, 600) if format_name == "4:3" else (960, 540))
-    sx, sy = target_width / width, target_height / height
-    # 1 pt in canvas pixels: the canvas width spans the whole slide width.
-    pt_to_px = target_width / (width / 914400 * 72)
-    slides: list[dict[str, Any]] = []
-
-    for slide_index, slide in enumerate(presentation.slides):
-        blocks: list[dict[str, Any]] = []
-        title = f"Slide {slide_index + 1}"
-        background_color, background_image, background_mime = _pptx_background(slide, theme)
-        if background_image:
-            blocks.append({
-                "id": str(uuid.uuid4()), "type": "image", "locked": True,
-                "content": f"data:{background_mime or 'image/png'};base64,{base64.b64encode(background_image).decode('ascii')}",
-                "x": 0, "y": 0, "width": target_width, "height": target_height, "style": {},
-            })
-
-        def box(emu_x: float, emu_y: float, emu_w: float, emu_h: float, minimum: float = 8) -> dict[str, float]:
-            return {
-                "x": round(emu_x * sx, 2), "y": round(emu_y * sy, 2),
-                "width": max(minimum, round(emu_w * sx, 2)), "height": max(minimum, round(emu_h * sy, 2)),
-            }
-
-        def add_text(shape: Any, geometry: dict[str, float], rotation: float) -> None:
-            nonlocal title
-            imported = pptx_rich.text_frame_to_html(shape, slide, presentation, theme, pt_to_px)
-            if not imported.plain.strip():
-                return
-            try:
-                title_shape = slide.shapes.title
-                is_title = title_shape is not None and title_shape._element is shape._element
-            except Exception:
-                is_title = False
-            if is_title:
-                title = imported.plain.strip().splitlines()[0][:200]
-            frame = shape.text_frame
-            padding = 0.0
-            try:
-                padding = round(((frame.margin_left or 0) + (frame.margin_top or 0)) / 2 * sx, 1)
-            except Exception:
-                pass
-            blocks.append({
-                "id": str(uuid.uuid4()), "type": "text", "content": imported.html, **geometry,
-                **({"rotation": rotation} if rotation else {}),
-                "style": {
-                    "fontSize": imported.font_px or round(18 * pt_to_px, 1),
-                    "color": imported.color or "#000000",
-                    **({"fontFamily": imported.font_family} if imported.font_family else {}),
-                    "fontWeight": "bold" if imported.bold else "normal",
-                    "textAlign": imported.align or "left",
-                    "lineHeight": 1.2,
-                    **({"padding": padding} if padding else {}),
-                },
-            })
-
-        def walk(shapes: Any, transform: tuple[float, float, float, float]) -> None:
-            ox, oy, gx, gy = transform
-            for shape in shapes:
-                try:
-                    left, top = float(shape.left or 0), float(shape.top or 0)
-                    shape_w, shape_h = float(shape.width or 0), float(shape.height or 0)
-                except Exception:
-                    continue
-                emu_x, emu_y = ox + left * gx, oy + top * gy
-                emu_w, emu_h = shape_w * gx, shape_h * gy
-                rotation = float(getattr(shape, "rotation", 0) or 0)
-                shape_type = getattr(shape, "shape_type", None)
-
-                if shape_type == MSO_SHAPE_TYPE.GROUP:
-                    xfrm = shape._element.find(qn_pptx("p:grpSpPr")).find(qn_pptx("a:xfrm"))
-                    child_offset = xfrm.find(qn_pptx("a:chOff")) if xfrm is not None else None
-                    child_extent = xfrm.find(qn_pptx("a:chExt")) if xfrm is not None else None
-                    if child_offset is not None and child_extent is not None:
-                        ch_x, ch_y = float(child_offset.get("x", 0)), float(child_offset.get("y", 0))
-                        ch_w, ch_h = float(child_extent.get("cx", 1)) or 1, float(child_extent.get("cy", 1)) or 1
-                        scale_x, scale_y = emu_w / ch_w, emu_h / ch_h
-                        walk(shape.shapes, (emu_x - ch_x * scale_x, emu_y - ch_y * scale_y, scale_x, scale_y))
-                    else:
-                        walk(shape.shapes, transform)
-                    continue
-
-                image = None
-                try:
-                    image = shape.image  # pictures and picture placeholders
-                except Exception:
-                    image = None
-                if image is not None:
-                    image_blob, image_type = _web_image(image.blob, image.content_type)
-                    if not image_blob:
-                        continue
-                    blocks.append({
-                        "id": str(uuid.uuid4()), "type": "image",
-                        "content": f"data:{image_type};base64,{base64.b64encode(image_blob).decode('ascii')}",
-                        **box(emu_x, emu_y, emu_w, emu_h), **({"rotation": rotation} if rotation else {}), "style": {},
-                    })
-                    continue
-
-                if getattr(shape, "has_table", False):
-                    rows = []
-                    for row in shape.table.rows:
-                        cells = [html.escape(cell.text.strip()) for cell in row.cells]
-                        rows.append(f"<p>{' &nbsp;|&nbsp; '.join(cells)}</p>")
-                    blocks.append({
-                        "id": str(uuid.uuid4()), "type": "text", "content": "".join(rows) or "<p></p>",
-                        **box(emu_x, emu_y, emu_w, emu_h),
-                        "style": {"fontSize": round(12 * pt_to_px, 1), "color": "#000000", "textAlign": "left", "lineHeight": 1.3},
-                    })
-                    continue
-
-                element_name = shape._element.tag.rsplit("}", 1)[-1]
-                if element_name == "cxnSp" or shape_type == MSO_SHAPE_TYPE.LINE:
-                    line = shape._element.find(".//" + qn_pptx("a:ln"))
-                    stroke = pptx_rich.color_of(line, theme) if line is not None else None
-                    width_emu = float(line.get("w", 12700)) if line is not None else 12700
-                    blocks.append({
-                        "id": str(uuid.uuid4()), "type": "line", "content": "",
-                        **box(emu_x, emu_y, emu_w, emu_h, minimum=1), **({"rotation": rotation} if rotation else {}),
-                        "style": {"stroke": f"#{stroke or '000000'}", "strokeWidth": max(1, round(width_emu / 12700 * pt_to_px, 1))},
-                    })
-                    continue
-
-                geometry = shape._element.find(".//" + qn_pptx("a:prstGeom"))
-                preset = geometry.get("prst") if geometry is not None else None
-                sp_pr = shape._element.find(qn_pptx("p:spPr"))
-                fill = pptx_rich.color_of(sp_pr, theme) if sp_pr is not None else None
-                if fill is None and sp_pr is not None and sp_pr.find(qn_pptx("a:noFill")) is None:
-                    style_fill = shape._element.find(".//" + qn_pptx("p:style") + "/" + qn_pptx("a:fillRef"))
-                    fill = pptx_rich.color_of(style_fill, theme) if style_fill is not None else None
-                    if style_fill is not None and fill is None:
-                        scheme = style_fill.find(qn_pptx("a:schemeClr"))
-                        if scheme is not None:
-                            fill = theme.colors.get(pptx_rich.SCHEME_ALIASES.get(scheme.get("val"), scheme.get("val")))
-                line = sp_pr.find(qn_pptx("a:ln")) if sp_pr is not None else None
-                stroke = pptx_rich.color_of(line, theme) if line is not None and line.find(qn_pptx("a:noFill")) is None else None
-                is_shape = preset in {"rect", "roundRect", "ellipse", "snipRect", "round2SameRect"} and (fill or stroke)
-                if is_shape:
-                    style: dict[str, Any] = {"fill": f"#{fill}" if fill else "transparent", "stroke": f"#{stroke}" if stroke else "transparent"}
-                    if line is not None and line.get("w"):
-                        style["strokeWidth"] = max(1, round(float(line.get("w")) / 12700 * pt_to_px, 1))
-                    if preset == "roundRect":
-                        style["cornerRadius"] = round(min(emu_w, emu_h) * sx * 0.16, 1)
-                    blocks.append({
-                        "id": str(uuid.uuid4()), "type": "ellipse" if preset == "ellipse" else "rectangle", "content": "",
-                        **box(emu_x, emu_y, emu_w, emu_h), **({"rotation": rotation} if rotation else {}), "style": style,
-                    })
-                if getattr(shape, "has_text_frame", False):
-                    add_text(shape, box(emu_x, emu_y, emu_w, emu_h), rotation)
-
-        walk(slide.shapes, (0.0, 0.0, 1.0, 1.0))
-        native_slide: dict[str, Any] = {"id": str(uuid.uuid4()), "title": title, "blocks": blocks}
-        if background_color:
-            native_slide["backgroundColor"] = background_color
-        notes = pptx_rich.read_notes(slide)
-        if notes:
-            native_slide["notes"] = notes
-        slides.append(native_slide)
-    return {"type": "presentation_v2", "format": format_name, "slides": slides or [{"id": str(uuid.uuid4()), "title": "Slide 1", "blocks": []}]}
+def _excel_color(color: Any, theme_colors: list[str]) -> str | None:
+    if color is None:
+        return None
+    base = None
+    if color.type == "rgb" and isinstance(color.rgb, str):
+        if color.rgb[:2] == "00" and len(color.rgb) == 8 and color.rgb[2:] == "000000":
+            return None  # openpyxl's "unset" value
+        base = color.rgb[-6:]
+    elif color.type == "theme" and color.theme is not None and color.theme < len(theme_colors):
+        base = theme_colors[color.theme]
+    elif color.type == "indexed" and color.indexed is not None and color.indexed < len(COLOR_INDEX):
+        if color.indexed >= 64:
+            return None  # system foreground/background
+        base = COLOR_INDEX[color.indexed][-6:]
+    if not base:
+        return None
+    tint = float(color.tint or 0)
+    if tint:
+        channels = [int(base[i:i + 2], 16) for i in (0, 2, 4)]
+        channels = [round(c * (1 + tint)) if tint < 0 else round(c + (255 - c) * tint) for c in channels]
+        base = "".join(f"{c:02X}" for c in channels)
+    return f"#{base.upper()}"
 
 
 def _xlsx_to_native(data: bytes) -> dict[str, Any]:
@@ -1138,20 +991,24 @@ def _xlsx_to_native(data: bytes) -> dict[str, Any]:
     # row dimensions and only provide a reduced style model.
     workbook = load_workbook(io.BytesIO(data), data_only=False, read_only=False)
     sheet = workbook.active
+    theme_colors = _workbook_theme_colors(workbook)
     rows: list[list[str]] = []
     for row_index, row in enumerate(sheet.iter_rows(values_only=True)):
         if row_index >= 1000:
             break
-        values = ["" if value is None else str(value) for value in row[:100]]
+        values = [_sheet_value(value) for value in row[:100]]
         while values and values[-1] == "":
             values.pop()
         rows.append(values)
     while rows and not rows[-1]:
         rows.pop()
-    column_widths = [
-        round((sheet.column_dimensions[get_column_letter(index)].width or 13) * 7)
-        for index in range(1, min(sheet.max_column, 100) + 1)
-    ]
+    column_count = min(sheet.max_column, 100)
+    column_widths = [91] * column_count
+    # openpyxl keeps one entry per run of equal-width columns, under the first column's letter.
+    for dimension in sheet.column_dimensions.values():
+        if dimension.width and dimension.min:
+            for index in range(dimension.min, min(dimension.max or dimension.min, column_count) + 1):
+                column_widths[index - 1] = round(dimension.width * 7)
     row_heights = [
         round((sheet.row_dimensions[index].height or 27) * 4 / 3)
         for index in range(1, min(sheet.max_row, 1000) + 1)
@@ -1165,13 +1022,26 @@ def _xlsx_to_native(data: bytes) -> dict[str, Any]:
             if cell.font.name:
                 cell_style["fontFamily"] = cell.font.name
             if cell.font.sz:
-                cell_style["fontSize"] = round(float(cell.font.sz))
+                cell_style["fontSize"] = round(float(cell.font.sz) * 4 / 3)
             if cell.font.bold:
                 cell_style["fontWeight"] = "bold"
             if cell.font.italic:
                 cell_style["fontStyle"] = "italic"
+            if cell.font.underline:
+                cell_style["textDecoration"] = "underline"
+            text_color = _excel_color(cell.font.color, theme_colors)
+            if text_color and text_color != "#000000":
+                cell_style["color"] = text_color
+            if cell.fill.fill_type == "solid":
+                fill = _excel_color(cell.fill.fgColor, theme_colors)
+                if fill:
+                    cell_style["backgroundColor"] = fill
             if cell.alignment.horizontal in {"left", "center", "right"}:
                 cell_style["textAlign"] = cell.alignment.horizontal
+            if cell.alignment.wrap_text:
+                cell_style["whiteSpace"] = "normal"
+            if cell.number_format and cell.number_format != "General":
+                cell_style["numberFormat"] = cell.number_format
             if cell_style:
                 styles[f"{cell.row - 1}:{cell.column - 1}"] = cell_style
     return {
@@ -1214,7 +1084,7 @@ def import_document(filename: str, data: bytes, mime_type: str = "", file_id: st
         working = _run_libreoffice(data, extension, modern_extension)
     source = _source_metadata(filename, mime_type, file_id)
     if modern_extension == "pptx":
-        content = _pptx_to_native(working)
+        content = pptx_to_native(working, _web_image, _run_libreoffice)
         doc_type = "presentation"
     elif modern_extension == "xlsx":
         content = _xlsx_to_native(working)
@@ -1291,7 +1161,7 @@ def _native_to_docx(content: dict[str, Any], title: str) -> bytes:
 
 
 def _pptx_rgb(value: Any, fallback: str = "000000") -> PptxRGBColor:
-    raw = str(value or "").strip().lstrip("#")
+    raw = pptx_rich._hex(str(value or "")) or str(value or "").strip().lstrip("#")
     if len(raw) == 3 and re.fullmatch(r"[0-9a-fA-F]{3}", raw):
         raw = "".join(character * 2 for character in raw)
     if not re.fullmatch(r"[0-9a-fA-F]{6}", raw):
@@ -1318,6 +1188,61 @@ def _set_shape_rotation(shape: Any, block: dict[str, Any]) -> None:
         shape.rotation = 0
 
 
+def _configure_text_frame(frame: Any, style: dict[str, Any], scale_x: float, scale_y: float) -> None:
+    frame.word_wrap = style.get("whiteSpace") != "nowrap"
+    frame.auto_size = MSO_AUTO_SIZE.NONE
+    frame.vertical_anchor = {"middle": MSO_VERTICAL_ANCHOR.MIDDLE, "bottom": MSO_VERTICAL_ANCHOR.BOTTOM}.get(str(style.get("verticalAlign")), MSO_VERTICAL_ANCHOR.TOP)
+    padding = max(0.0, float(style.get("padding") or 0))
+    side = lambda name: max(0.0, float(style.get(name, padding) or 0))
+    frame.margin_left, frame.margin_right = PptxInches(side("paddingLeft") * scale_x), PptxInches(side("paddingRight") * scale_x)
+    frame.margin_top, frame.margin_bottom = PptxInches(side("paddingTop") * scale_y), PptxInches(side("paddingBottom") * scale_y)
+
+
+def _add_table_to_slide(slide: Any, content: str, x: float, y: float, width: float, height: float, style: dict[str, Any], scale_x: float) -> None:
+    """Imported tables are HTML tables inside a text block; on export they become real tables."""
+    soup = BeautifulSoup(content, "html.parser")
+    rows = soup.find_all("tr")
+    columns = soup.find("colgroup").find_all("col") if soup.find("colgroup") else []
+    column_count = max(len(columns), max((sum(int(c.get("colspan") or 1) for c in row.find_all(["td", "th"], recursive=False)) for row in rows), default=1))
+    table = slide.shapes.add_table(len(rows) or 1, column_count, PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height)).table
+    table._tbl.tblPr.remove(table._tbl.tblPr.find(qn_pptx("a:tableStyleId")))
+    table._tbl.tblPr.attrib.clear()
+    widths = [pptx_rich._px(pptx_rich._css(col).get("width")) or 0 for col in columns]
+    total = sum(widths)
+    if total:
+        for index, column_width in enumerate(widths[:column_count]):
+            table.columns[index].width = PptxInches(width * column_width / total)
+    occupied: set[tuple[int, int]] = set()
+    for row_index, row in enumerate(rows):
+        row_px = pptx_rich._px(pptx_rich._css(row).get("height"))
+        if row_px:
+            table.rows[row_index].height = PptxInches(row_px * scale_x)
+        column_index = 0
+        for source in row.find_all(["td", "th"], recursive=False):
+            while (row_index, column_index) in occupied:
+                column_index += 1
+            if column_index >= column_count:
+                break
+            cell = table.cell(row_index, column_index)
+            span_x, span_y = int(source.get("colspan") or 1), int(source.get("rowspan") or 1)
+            if span_x > 1 or span_y > 1:
+                cell.merge(table.cell(min(len(rows) - 1, row_index + span_y - 1), min(column_count - 1, column_index + span_x - 1)))
+            occupied.update((row_index + r, column_index + c) for r in range(span_y) for c in range(span_x))
+            css = pptx_rich._css(source)
+            if css.get("background-color"):
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = _pptx_rgb(css["background-color"], "FFFFFF")
+            cell.vertical_anchor = {"middle": MSO_VERTICAL_ANCHOR.MIDDLE, "bottom": MSO_VERTICAL_ANCHOR.BOTTOM}.get(css.get("vertical-align", ""), MSO_VERTICAL_ANCHOR.TOP)
+            cell_style = {
+                **style,
+                "color": css.get("color") or style.get("color"), "fontSize": pptx_rich._px(css.get("font-size")) or style.get("fontSize"),
+                "fontFamily": css.get("font-family") or style.get("fontFamily"), "textAlign": css.get("text-align") or style.get("textAlign"),
+                "fontWeight": css.get("font-weight") or style.get("fontWeight"),
+            }
+            pptx_rich.fill_text_frame(cell.text_frame, source.decode_contents(), cell_style, px_to_pt=scale_x * 72)
+            column_index += span_x
+
+
 def _add_text_to_slide(
     slide: Any,
     text: str,
@@ -1330,14 +1255,12 @@ def _add_text_to_slide(
     scale_y: float,
     rotation: float = 0,
 ) -> None:
+    if "<table" in text:
+        _add_table_to_slide(slide, text, x, y, width, height, style, scale_x)
+        return
     box = slide.shapes.add_textbox(PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
     frame = box.text_frame
-    frame.word_wrap = True
-    frame.auto_size = MSO_AUTO_SIZE.NONE
-    frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
-    padding = max(0.0, float(style.get("padding") or 0))
-    frame.margin_left = frame.margin_right = PptxInches(padding * scale_x)
-    frame.margin_top = frame.margin_bottom = PptxInches(padding * scale_y)
+    _configure_text_frame(frame, style, scale_x, scale_y)
     # Canvas pixels → points so text keeps its size relative to the slide (canvas width = slide width).
     pptx_rich.fill_text_frame(frame, text, style, px_to_pt=scale_x * 72)
     background = style.get("backgroundColor")
@@ -1456,13 +1379,8 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
                 title_placeholder.left, title_placeholder.top = PptxInches(x), PptxInches(y)
                 title_placeholder.width, title_placeholder.height = PptxInches(width), PptxInches(height)
                 frame = title_placeholder.text_frame
-                frame.word_wrap = True
-                frame.auto_size = MSO_AUTO_SIZE.NONE
                 style = block.get("style") or {}
-                padding = max(0.0, float(style.get("padding") or 0))
-                frame.margin_left = frame.margin_right = PptxInches(padding * scale_x)
-                frame.margin_top = frame.margin_bottom = PptxInches(padding * scale_y)
-                frame.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+                _configure_text_frame(frame, style, scale_x, scale_y)
                 pptx_rich.fill_text_frame(frame, str(block.get("content") or ""), style, px_to_pt=scale_x * 72)
                 _set_shape_rotation(title_placeholder, block)
             elif block.get("type") == "text":
@@ -1535,10 +1453,18 @@ def _native_to_xlsx(content: dict[str, Any], title: str) -> bytes:
             size=cell_style.get("fontSize") or cell.font.sz,
             bold=cell_style.get("fontWeight") == "bold",
             italic=cell_style.get("fontStyle") == "italic",
+            underline="single" if cell_style.get("textDecoration") == "underline" else None,
+            color=(pptx_rich._hex(str(cell_style.get("color") or "")) or None),
         )
+        fill = pptx_rich._hex(str(cell_style.get("backgroundColor") or ""))
+        if fill:
+            cell.fill = PatternFill(fill_type="solid", start_color=fill, end_color=fill)
         alignment = cell_style.get("textAlign")
-        if alignment in {"left", "center", "right"}:
-            cell.alignment = Alignment(horizontal=alignment)
+        wrap = cell_style.get("whiteSpace") == "normal"
+        if alignment in {"left", "center", "right"} or wrap:
+            cell.alignment = Alignment(horizontal=alignment if alignment in {"left", "center", "right"} else None, wrap_text=wrap or None)
+        if cell_style.get("numberFormat"):
+            cell.number_format = str(cell_style["numberFormat"])
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()

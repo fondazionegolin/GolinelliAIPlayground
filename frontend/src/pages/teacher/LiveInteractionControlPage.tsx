@@ -6,11 +6,12 @@ import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { downloadLiveReport } from '@/lib/liveReport'
 import EndSessionDialog from '@/components/live/EndSessionDialog'
 import LiveEscapeRoomControl from '@/components/teacher/LiveEscapeRoomControl'
 import {
   Play, SkipForward, Square, Users, Clock, CheckCircle2,
-  ListChecks, CloudLightning, MessageSquare, ThumbsUp, Zap, ArrowLeft, Trophy,
+  ListChecks, CloudLightning, MessageSquare, ThumbsUp, Zap, ArrowLeft, Trophy, FileDown, Loader2,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
@@ -396,6 +397,7 @@ export default function LiveInteractionControlPage() {
   const [liveState, setLiveState] = useState<LiveState | null>(null)
   const [answerCount, setAnswerCount] = useState<{ count: number; total: number } | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
+  const [downloadingReport, setDownloadingReport] = useState(false)
 
   const { data: interaction, isLoading } = useQuery({
     queryKey: ['live-interaction', interactionId],
@@ -749,6 +751,20 @@ export default function LiveInteractionControlPage() {
             <p className="text-white/80 text-sm">
               {results?.results?.length || totalSlides} slide · {totalStudents} {tl("studenti partecipanti")}
             </p>
+            <button
+              type="button"
+              disabled={downloadingReport}
+              onClick={async () => {
+                setDownloadingReport(true)
+                try { await downloadLiveReport(interactionId!, interaction?.title || results?.title || '') }
+                catch { toast({ title: tl("Impossibile scaricare il report"), variant: 'destructive' }) }
+                finally { setDownloadingReport(false) }
+              }}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:opacity-60"
+            >
+              {downloadingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              {tl("Scarica report PDF")}
+            </button>
           </div>
 
           {/* Per-slide cards */}

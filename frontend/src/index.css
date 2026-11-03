@@ -991,6 +991,9 @@ html:not(#x) :is(input:not([type='checkbox']):not([type='radio']):not([type='ran
 :where(.slide-text-block, .slide-text-rich) ol { list-style: decimal; }
 :where(.slide-text-block, .slide-text-rich) ol ol { list-style: lower-alpha; }
 :where(.slide-text-block, .slide-text-rich) li > p { margin: 0; }
+/* Imported PowerPoint tables: geometry and colours are inline on the cells. */
+:where(.slide-text-block, .slide-text-rich) table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+:where(.slide-text-block, .slide-text-rich) td { overflow-wrap: anywhere; }
 
 /* Editable tables: cell selection (merge) highlight. */
 .ProseMirror .docx-table td,

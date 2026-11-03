@@ -141,7 +141,7 @@ function ActivityTab({ run }: { run: ResearchRun }) {
         <div className="flex flex-wrap gap-1.5">
           {run.rounds.map((r) => (
             <span key={r.round} className="ds-control rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-              {tl("Giro")} {r.round}{r.status === 'done' && r.novelty !== undefined ? tl(" · novità {0}%", Math.round(r.novelty * 100)) : tl(" · in corso")}{r.saturated ? ' · esaurito' : ''}
+              {tl("Giro")} {r.round}{r.status === 'done' && r.novelty !== undefined ? tl(" · novità {0}%", Math.round(r.novelty * 100)) : tl(" · in corso")}{r.saturated ? ' · concluso' : ''}
             </span>
           ))}
         </div>
@@ -206,7 +206,7 @@ function DocumentTab({ doc, onChange }: { doc: GeneratedDoc; onChange: (content:
           />
         ) : (
           <article className="prose prose-sm prose-slate max-w-none prose-headings:font-bold prose-a:text-[var(--selection-text)]">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{draft}</ReactMarkdown>
           </article>
         )}
       </div>

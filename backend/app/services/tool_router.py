@@ -11,6 +11,7 @@ stile" mean EDIT the existing html_page instead of creating a new one or editing
 last image. Any failure degrades to plain chat.
 """
 import logging
+import re
 from typing import Optional, TypedDict
 
 import httpx
@@ -33,6 +34,7 @@ ACTIONS = [
 ]
 
 ARTIFACTS = [
+    {"value": "deep_research", "description": "An in-depth investigation / deep research / ricerca approfondita: search and read multiple online sources, compare evidence and produce a cited research report. Explicit requests for deep research always concern this artifact, not plain chat."},
     {"value": "podcast", "description": "An audio summary, narrated explanation, educational podcast or spoken version of attached documents."},
     {"value": "none", "description": "No artifact is involved: plain conversation."},
     {"value": "image", "description": "A picture, illustration, drawing, photo, logo or poster image."},
@@ -41,7 +43,6 @@ ARTIFACTS = [
     {"value": "dispensa", "description": "A structured handout / study-notes pack / course booklet (dispensa)."},
     {"value": "html_page", "description": "An interactive web page, simulation, mini-app, game or interactive visualization."},
     {"value": "quiz", "description": "A quiz or test with questions."},
-    {"value": "exercise", "description": "A practice exercise or worksheet."},
     {"value": "dataset", "description": "A tabular dataset."},
 ]
 
@@ -110,6 +111,11 @@ async def decide_tool(
     recent: Optional[list[dict]] = None,
 ) -> ToolDecision:
     text = (text or "").strip()
+    # An explicit mode request must work even when the Decisions API is unavailable.
+    if (not allowed or "deep_research" in allowed) and is_deep_research_request(text):
+        return {**_chat(), "tool": "deep_research", "action": "create", "top": "deep_research",
+                "confidence": 1.0, "routed": True,
+                "alternatives": [{"tool": "deep_research", "probability": 1.0}]}
     if len(text) < MIN_TEXT_LENGTH or not settings.OPENAI_API_KEY:
         return _chat()
 
@@ -175,3 +181,14 @@ async def decide_tool(
     if artifact == "none":
         return _chat(action="chat", **info)
     return {**_chat(**info), "tool": artifact, "action": action}  # type: ignore[return-value]
+
+
+def is_deep_research_request(text: str) -> bool:
+    if re.search(r"\b(?:non|senza|no|without|don't|do not)\s+(?:(?:voglio|vorrei|fare|una|la|a|the|want|use|need)\s+){0,3}(?:deep[\s-]*research|ricerca\s+approfondita)", text, re.I):
+        return False
+    if re.search(r"(?:cos[’']?è|cosa (?:significa|vuol dire)|what is|come (?:funziona|si usa))\s+(?:(?:la|una|the|a)\s+)?(?:deep[\s-]*research|ricerca\s+approfondita)", text, re.I):
+        return False
+    artifact = re.search(r"\b(?:deep[\s-]*research|ricerca\s+approfondita)\b", text, re.I)
+    action = re.search(r"\b(?:voglio|vorrei|fai|fammi|esegui|avvia|crea|creami|prepara|conduci|svolgi|effettua|puoi|potresti|want|need|run|start|do|conduct)\b", text, re.I)
+    command = re.match(r"^\s*(?:(?:una|la|a|the|modalità)\s+)?(?:deep[\s-]*research|ricerca\s+approfondita)\b", text, re.I)
+    return bool(artifact and (action or command))

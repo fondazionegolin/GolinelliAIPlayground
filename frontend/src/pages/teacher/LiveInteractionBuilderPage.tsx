@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import { liveInteractionApi, teacherApi, teacherbotsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { downloadLiveReport } from '@/lib/liveReport'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -1816,6 +1817,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
           onEdit={item => item.interaction_type === 'escape_room' ? setEditingEscapeId(item.id) : setEditingId(item.id)}
           onDuplicate={item => setDuplicateTarget(item as LiveInteractionItem)}
           onEnd={item => setEndTarget(item as LiveInteractionItem)}
+          onDownloadReport={item => { downloadLiveReport(item.id, item.title).catch(() => toast({ title: tl("Impossibile scaricare il report"), variant: 'destructive' })) }}
           onDelete={item => { if (confirm(tl("Eliminare questa sessione e tutte le risposte?"))) deleteMutation.mutate(item.id) }}
         />
       )}

@@ -110,6 +110,8 @@ interface Actions {
   onDelete: (item: LiveSessionItem) => void
   /** Ask to close the session for everyone (always confirmed by the caller). */
   onEnd: (item: LiveSessionItem) => void
+  /** PDF report of a finished session. */
+  onDownloadReport: (item: LiveSessionItem) => void
 }
 
 function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
@@ -125,6 +127,7 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
     { label: tl("Link pubblico"), icon: Share2, run: () => actions.onShare(item), hidden: item.status === 'CLOSED' },
     { label: tl("Modifica"), icon: Pencil, run: () => actions.onEdit(item), hidden: item.status !== 'DRAFT' },
     { label: 'Report', icon: FileBarChart2, run: () => actions.onOpen(item), hidden: item.status === 'DRAFT' || item.status === 'CLOSED' },
+    { label: tl("Scarica report PDF"), icon: FileBarChart2, run: () => actions.onDownloadReport(item), hidden: item.status !== 'CLOSED' },
     { label: isOpenLobby(item) ? tl("Chiudi lobby") : tl("Concludi per tutti"), icon: Square, run: () => actions.onEnd(item), danger: true, hidden: !isPending(item) },
     { label: tl("Duplica"), icon: Copy, run: () => actions.onDuplicate(item) },
     { label: tl("Elimina"), icon: Trash2, run: () => actions.onDelete(item), danger: true, hidden: item.status === 'ACTIVE' },

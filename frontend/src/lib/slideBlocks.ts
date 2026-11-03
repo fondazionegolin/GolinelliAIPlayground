@@ -1,4 +1,19 @@
-import type { BlockShapeType, ShapeSlideBlock, SlideBlock } from '@/components/SlideEditor'
+import type { CSSProperties } from 'react'
+import type { BlockShapeType, ShapeSlideBlock, SlideBlock, TextSlideBlock } from '@/components/SlideEditor'
+
+/** Per-side insets of a text box (imported decks), on top of the uniform `padding`. */
+export function textBoxPadding(style: TextSlideBlock['style'] | { padding?: number }): CSSProperties {
+  const sides = style as TextSlideBlock['style']
+  return {
+    padding: sides.padding,
+    ...(sides.paddingTop !== undefined ? { paddingTop: sides.paddingTop, paddingRight: sides.paddingRight, paddingBottom: sides.paddingBottom, paddingLeft: sides.paddingLeft } : {}),
+  }
+}
+
+export function verticalAlignCss(align: TextSlideBlock['style']['verticalAlign']): CSSProperties {
+  if (!align) return {}
+  return { display: 'flex', flexDirection: 'column', justifyContent: align === 'middle' ? 'center' : 'flex-end' }
+}
 
 /** Reassigns zIndex = array index for every block, keeping paint order gapless after any reorder. */
 export function normalizeLayerOrder(blocks: SlideBlock[]): SlideBlock[] {

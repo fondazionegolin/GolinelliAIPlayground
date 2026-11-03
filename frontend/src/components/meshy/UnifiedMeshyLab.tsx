@@ -71,6 +71,10 @@ const MODEL_OPTIONS: Array<{ value: MeshyAiModel; label: string; note: string }>
   { value: 'meshy-6-lite', label: 'Meshy 6 Lite', note: tl("più rapido ed economico") },
 ]
 
+// Light-blue photo studio: soft vignette plus a brighter floor pool, so the contact shadow reads and any model stands out.
+const STAGE_BACKGROUND: React.CSSProperties = {
+  background: 'radial-gradient(ellipse 62% 24% at 50% 80%, rgba(255,255,255,0.8), rgba(255,255,255,0) 72%), radial-gradient(ellipse 125% 105% at 50% 32%, #e6f3fc 0%, #c2e0f5 52%, #8dbfe3 100%)',
+}
 const FORMAT_OPTIONS = ['glb', 'obj', 'fbx', 'stl', 'usdz', '3mf'] as const
 const INPUT_CLASS = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-100 disabled:text-slate-400'
 
@@ -452,7 +456,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
               <div><p className="text-sm font-black text-slate-900">{tl("Anteprima")}</p><p className="text-[11px] font-semibold text-slate-400">{selectedModel}</p></div>
               {(task || viewingAsset) && <button type="button" onClick={resetResult} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500"><RotateCcw className="h-3.5 w-3.5" /> {tl("Pulisci")}</button>}
             </div>
-            <div className="relative flex min-h-[360px] items-center justify-center bg-gradient-to-br from-slate-50 to-violet-50/40">
+            <div className="relative flex min-h-[360px] items-center justify-center" style={STAGE_BACKGROUND}>
               {!activeGlb && !isRunning && !taskError && <div className="max-w-xs px-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm"><Box className="h-7 w-7 text-violet-400" /></div><p className="mt-4 text-sm font-black text-slate-700">{tl("Il modello apparirà qui")}</p><p className="mt-1 text-xs leading-5 text-slate-400">{tl("Puoi continuare a usare la piattaforma: la generazione resta visibile anche nella navbar.")}</p></div>}
               {isRunning && (
                 <div className="w-full max-w-sm px-6 text-center">
@@ -477,7 +481,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
               {(task?.status === 'FAILED' || task?.status === 'EXPIRED') && <div className="max-w-sm p-6 text-center text-sm font-semibold text-rose-700"><AlertCircle className="mx-auto mb-2 h-7 w-7" />{taskError || tl("Meshy non ha completato la generazione")}</div>}
               {activeGlb && <>
                 {/* @ts-expect-error model-viewer is a registered custom element */}
-                <model-viewer src={meshyApi.proxyAssetUrl(activeGlb)} camera-controls auto-rotate shadow-intensity="1" exposure="1" style={{ width: '100%', height: '420px', background: 'transparent' }} />
+                <model-viewer src={meshyApi.proxyAssetUrl(activeGlb)} camera-controls auto-rotate environment-image="neutral" shadow-intensity="1.4" shadow-softness="0.6" exposure="1.05" style={{ width: '100%', height: '420px', background: 'transparent' }} />
                 <div className="absolute bottom-3 left-3 flex flex-wrap gap-2">
                   {Object.entries(activeUrls || { glb: activeGlb }).filter((entry): entry is [string, string] => Boolean(entry[1])).map(([format, url]) => <a key={format} href={url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-black uppercase text-slate-700 shadow"><Download className="h-3.5 w-3.5" />{format}</a>)}
                 </div>

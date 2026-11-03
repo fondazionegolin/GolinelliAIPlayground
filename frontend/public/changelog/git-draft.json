@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-02T10:41:40.771411+00:00",
-  "version_label": "2026.11.02-923a8bf2",
+  "generated_at": "2026-11-02T10:55:04.597851+00:00",
+  "version_label": "2026.11.02-4b574be4",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 5 commit dall'ultima release pubblicata.",
-  "git_ref": "923a8bf25da3e47b58a2ffd6fded681347e0754b",
+  "summary": "Bozza generata automaticamente da 6 commit dall'ultima release pubblicata.",
+  "git_ref": "4b574be4a4c46786601d1827b6478263e2b5b122",
   "items": [
     {
       "category": "new",
@@ -29,6 +29,11 @@
       "category": "new",
       "title": "Vibe-lab: interview chat, spec+milestones, parallel build; landing FAQ",
       "description": "Vibe-lab: interview chat, spec+milestones, parallel build; landing FAQ"
+    },
+    {
+      "category": "new",
+      "title": "Smart canvas, admin notifications, editable legal docs, new terms",
+      "description": "Smart canvas, admin notifications, editable legal docs, new terms"
     }
   ]
 }

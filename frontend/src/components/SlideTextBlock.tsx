@@ -7,6 +7,7 @@ import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
 import Underline from '@tiptap/extension-underline'
 import Strike from '@tiptap/extension-strike'
+import HardBreak from '@tiptap/extension-hard-break'
 import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list'
 import { UndoRedo } from '@tiptap/extensions'
 import TextAlign from '@tiptap/extension-text-align'
@@ -15,6 +16,8 @@ import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import { FontSizeExtension } from '@/lib/tiptapFontSize'
 import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
+import { SlideTableExtensions, SlideTypography } from '@/lib/slideTiptap'
+import { verticalAlignCss } from '@/lib/slideBlocks'
 import type { TextSlideBlock } from './SlideEditor'
 
 interface SlideTextBlockProps {
@@ -68,6 +71,7 @@ export function SlideTextBlock({
       Italic,
       Underline,
       Strike,
+      HardBreak,
       BulletList,
       OrderedList,
       ListItem,
@@ -77,6 +81,8 @@ export function SlideTextBlock({
       FontFamily,
       FontSizeExtension,
       TextAlign.configure({ types: ['paragraph'] }),
+      SlideTypography,
+      ...SlideTableExtensions,
     ],
     content: block.content,
     editable: !readOnly && !block.locked && editing,
@@ -99,6 +105,7 @@ export function SlideTextBlock({
   useEffect(() => {
     if (!editor || readOnly || !onOverflowFontFit) return
     const currentSize = block.style.fontSize
+    if (block.style.autoFit === false) return
     if (!currentSize || currentSize <= 10) return
     const frame = requestAnimationFrame(() => {
       const dom = editor.view.dom as HTMLElement
@@ -109,7 +116,7 @@ export function SlideTextBlock({
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [editor, readOnly, block.content, block.style.fontSize, block.width, block.height, onOverflowFontFit])
+  }, [editor, readOnly, block.content, block.style.autoFit, block.style.fontSize, block.width, block.height, onOverflowFontFit])
 
   if (!editor) return null
 
@@ -118,7 +125,7 @@ export function SlideTextBlock({
   return (
     <EditorContent
       editor={editor}
-      className={`slide-text-block h-full w-full ${editing || readOnly ? 'cursor-text select-text' : 'pointer-events-none select-none'} [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0`}
+      className={`slide-text-block h-full w-full ${editing || readOnly ? 'cursor-text select-text' : 'pointer-events-none select-none'} ${style.verticalAlign ? '' : '[&_.ProseMirror]:h-full'} ${style.whiteSpace === 'nowrap' ? '[&_.ProseMirror]:!whitespace-nowrap' : ''} [&_.ProseMirror]:w-full [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:m-0`}
       style={{
         fontFamily: style.fontFamily,
         fontSize: style.fontSize,
@@ -128,6 +135,7 @@ export function SlideTextBlock({
         textDecoration: style.textDecoration,
         textAlign: style.textAlign,
         lineHeight: style.lineHeight,
+        ...verticalAlignCss(style.verticalAlign),
       }}
       onPointerDown={(e) => {
         // Shift/Ctrl/Cmd+click is a multi-selection gesture: let it reach the block wrapper

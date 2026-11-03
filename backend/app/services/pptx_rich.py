@@ -9,10 +9,11 @@ and theme fonts. It also reads shapes, groups, tables, slide backgrounds and spe
 
 from __future__ import annotations
 
+import colorsys
 import html
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -37,13 +38,19 @@ class Theme:
     colors: dict[str, str]
     major_font: str | None
     minor_font: str | None
+    # clrMap of the master, optionally overridden by layout/slide: dark templates map bg1 → dk1.
+    color_map: dict[str, str] = field(default_factory=dict)
+
+    def scheme(self, name: str | None) -> str | None:
+        name = name or ""
+        mapped = self.color_map.get(name) or SCHEME_ALIASES.get(name, name)
+        return self.colors.get(mapped)
 
 
-def load_theme(presentation: Any) -> Theme:
+def _load_theme_part(master: Any) -> Theme:
     colors: dict[str, str] = {}
     major = minor = None
     try:
-        master = presentation.slide_masters[0]
         theme_part = master.part.part_related_by(RT_THEME)
         root = etree.fromstring(theme_part.blob)
     except Exception:
@@ -67,54 +74,128 @@ def load_theme(presentation: Any) -> Theme:
     return Theme(colors, major, minor)
 
 
-def _apply_luminance(hex_color: str, color_element: Any) -> str:
-    red, green, blue = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
-    lum_mod = lum_off = None
-    shade = tint = None
+def load_theme(presentation: Any) -> Theme:
+    try:
+        master = presentation.slide_masters[0]
+    except Exception:
+        return Theme({}, None, None)
+    theme = _load_theme_part(master)
+    theme.color_map = _color_map(master._element.find(qn("p:clrMap")))
+    return theme
+
+
+def _color_map(element: Any) -> dict[str, str]:
+    return dict(element.attrib) if element is not None else {}
+
+
+def theme_for_slide(slide: Any) -> Theme:
+    """Theme of the slide's own master, with the clrMap override of slide or layout applied."""
+    master = slide.slide_layout.slide_master
+    theme = _load_theme_part(master)
+    color_map = _color_map(master._element.find(qn("p:clrMap")))
+    for owner in (slide.slide_layout, slide):
+        override = owner._element.find(qn("p:clrMapOvr") + "/" + qn("a:overrideClrMapping"))
+        if override is not None:
+            color_map = _color_map(override)
+    theme.color_map = color_map
+    return theme
+
+
+def _hsl_modifiers(hex_color: str, color_element: Any) -> str:
+    """Apply DrawingML colour transforms in document order. lumMod/lumOff act on HSL lightness,
+    so "Text 1, Lighter 35%" and friends only come out right in HSL, not on the RGB channels."""
+    red, green, blue = (int(hex_color[i:i + 2], 16) / 255 for i in (0, 2, 4))
     for modifier in color_element:
         name = etree.QName(modifier).localname
         try:
             value = int(modifier.get("val", "0")) / 100000
         except ValueError:
             continue
-        if name == "lumMod":
-            lum_mod = value
-        elif name == "lumOff":
-            lum_off = value
+        if name in {"lumMod", "lumOff", "satMod", "satOff", "hueMod", "hueOff"}:
+            hue, light, saturation = colorsys.rgb_to_hls(red, green, blue)
+            if name == "lumMod":
+                light *= value
+            elif name == "lumOff":
+                light += value
+            elif name == "satMod":
+                saturation *= value
+            elif name == "satOff":
+                saturation += value
+            elif name == "hueMod":
+                hue = (hue * value) % 1
+            else:
+                hue = (hue + int(modifier.get("val", "0")) / 21600000) % 1
+            red, green, blue = colorsys.hls_to_rgb(hue, min(1, max(0, light)), min(1, max(0, saturation)))
         elif name == "shade":
-            shade = value
+            red, green, blue = red * value, green * value, blue * value
         elif name == "tint":
-            tint = value
-    channels = [red, green, blue]
-    if lum_mod is not None or lum_off is not None:
-        channels = [min(255, max(0, round(c * (lum_mod if lum_mod is not None else 1) + 255 * (lum_off or 0)))) for c in channels]
-    if shade is not None:
-        channels = [round(c * shade) for c in channels]
-    if tint is not None:
-        channels = [round(c + (255 - c) * (1 - tint)) for c in channels]
-    return "".join(f"{c:02X}" for c in channels)
+            red, green, blue = (c + (1 - c) * (1 - value) for c in (red, green, blue))
+    return "".join(f"{min(255, max(0, round(c * 255))):02X}" for c in (red, green, blue))
+
+
+_apply_luminance = _hsl_modifiers
+_PRESET_COLORS = {
+    "black": "000000", "white": "FFFFFF", "red": "FF0000", "green": "008000", "blue": "0000FF", "yellow": "FFFF00",
+    "orange": "FFA500", "purple": "800080", "gray": "808080", "grey": "808080", "lightGray": "D3D3D3", "darkGray": "A9A9A9",
+    "cyan": "00FFFF", "magenta": "FF00FF", "navy": "000080", "teal": "008080", "silver": "C0C0C0", "maroon": "800000",
+}
+
+
+def _color_element(fill_parent: Any) -> Any | None:
+    if fill_parent is None:
+        return None
+    local = etree.QName(fill_parent).localname
+    if local == "gradFill":
+        stops = fill_parent.find(qn("a:gsLst"))
+        return stops[0][0] if stops is not None and len(stops) and len(stops[0]) else None
+    solid = fill_parent if local == "solidFill" else fill_parent.find(qn("a:solidFill"))
+    if solid is None and local != "solidFill":
+        gradient = fill_parent.find(qn("a:gradFill"))
+        if gradient is not None:
+            return _color_element(gradient)
+    if solid is None:
+        return None
+    return solid[0] if len(solid) else None
+
+
+def resolve_color(color: Any, theme: Theme) -> str | None:
+    if color is None:
+        return None
+    name = etree.QName(color).localname
+    if name == "srgbClr" and color.get("val"):
+        return _apply_luminance(color.get("val").upper(), color)
+    if name == "schemeClr":
+        base = theme.scheme(color.get("val"))
+        return _apply_luminance(base, color) if base else None
+    if name == "sysClr" and color.get("lastClr"):
+        return _apply_luminance(color.get("lastClr").upper(), color)
+    if name == "prstClr":
+        base = _PRESET_COLORS.get(color.get("val"))
+        return _apply_luminance(base, color) if base else None
+    return None
 
 
 def color_of(fill_parent: Any, theme: Theme) -> str | None:
-    """Hex colour of a:solidFill (or a colour element) under `fill_parent`."""
-    if fill_parent is None:
+    """Hex colour of a:solidFill (or the first stop of a:gradFill) under `fill_parent`."""
+    return resolve_color(_color_element(fill_parent), theme)
+
+
+def alpha_of(fill_parent: Any) -> float:
+    color = _color_element(fill_parent)
+    alpha = color.find(qn("a:alpha")) if color is not None else None
+    try:
+        return max(0.0, min(1.0, int(alpha.get("val")) / 100000)) if alpha is not None else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def css_color(hex_color: str | None, alpha: float = 1.0) -> str | None:
+    if not hex_color:
         return None
-    solid = fill_parent.find(qn("a:solidFill")) if etree.QName(fill_parent).localname != "solidFill" else fill_parent
-    if solid is None:
-        return None
-    for color in solid:
-        name = etree.QName(color).localname
-        if name == "srgbClr" and color.get("val"):
-            return _apply_luminance(color.get("val").upper(), color)
-        if name == "schemeClr":
-            scheme = SCHEME_ALIASES.get(color.get("val"), color.get("val"))
-            base = theme.colors.get(scheme)
-            return _apply_luminance(base, color) if base else None
-        if name == "sysClr" and color.get("lastClr"):
-            return color.get("lastClr").upper()
-        if name == "prstClr":
-            return {"black": "000000", "white": "FFFFFF", "red": "FF0000", "blue": "0000FF"}.get(color.get("val"))
-    return None
+    if alpha >= 0.995:
+        return f"#{hex_color}"
+    red, green, blue = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({red}, {green}, {blue}, {round(alpha, 3)})"
 
 
 def resolve_typeface(typeface: str | None, theme: Theme) -> str | None:
@@ -125,6 +206,41 @@ def resolve_typeface(typeface: str | None, theme: Theme) -> str | None:
     if typeface.startswith("+mn"):
         return theme.minor_font
     return typeface
+
+
+# PowerPoint stores a static weight as part of the family ("Josefin Sans SemiBold"); the web
+# font is the family plus a numeric weight.
+_WEIGHT_SUFFIXES = {
+    "thin": 100, "hairline": 100, "extralight": 200, "extra light": 200, "ultralight": 200, "ultra light": 200, "light": 300,
+    "medium": 500, "semibold": 600, "semi bold": 600, "demibold": 600, "demi bold": 600,
+    "extrabold": 800, "extra bold": 800, "ultrabold": 800, "black": 900, "heavy": 900,
+}
+_FONT_ALIASES = {"arial mt": "Arial", "times new roman psmt": "Times New Roman", "arialmt": "Arial"}
+# Face used by browsers that have neither the original font nor its web version.
+_FONT_FALLBACKS = {"segoe ui": "'Open Sans', sans-serif", "consolas": "'Courier New', monospace", "garamond": "'EB Garamond', serif"}
+_SERIF_FONT = re.compile(r"times|georgia|cambria|garamond|serif(?<!sans serif)|playfair|merriweather|lora|baskerville|book antiqua|palatino|average|tinos|caladea", re.IGNORECASE)
+_MONO_FONT = re.compile(r"mono|courier|consolas|code|typewriter", re.IGNORECASE)
+
+
+def split_font(typeface: str | None) -> tuple[str | None, int | None]:
+    """('Josefin Sans SemiBold') → ('Josefin Sans', 600)."""
+    if not typeface:
+        return None, None
+    name = typeface.strip()
+    if name.lower() in _FONT_ALIASES:
+        return _FONT_ALIASES[name.lower()], None
+    lowered = name.lower()
+    for suffix, weight in sorted(_WEIGHT_SUFFIXES.items(), key=lambda item: -len(item[0])):
+        if lowered.endswith(" " + suffix):
+            return name[: -len(suffix) - 1].strip(), weight
+    return name, None
+
+
+def css_font(family: str) -> str:
+    fallback = _FONT_FALLBACKS.get(family.lower())
+    if fallback is None:
+        fallback = "serif" if _SERIF_FONT.search(family) and "sans" not in family.lower() else "monospace" if _MONO_FONT.search(family) else "sans-serif"
+    return f"'{family}', {fallback}"
 
 
 # ── inherited text styles ──────────────────────────────────────────────────────────────────
@@ -139,6 +255,35 @@ def _placeholder_info(shape: Any) -> tuple[str | None, int | None]:
     except Exception:
         pass
     return None, None
+
+
+def inherited_body_properties(shape: Any, slide: Any) -> list[Any]:
+    """a:bodyPr of the shape and of its layout/master placeholders, highest priority first."""
+    chain: list[Any] = []
+    own = shape._element.find(".//" + qn("a:bodyPr"))
+    if own is not None:
+        chain.append(own)
+    ph_type, idx = _placeholder_info(shape)
+    if ph_type is None:
+        return chain
+    try:
+        layout = slide.slide_layout
+        owners = [layout, layout.slide_master]
+    except Exception:
+        return chain
+    for owner in owners:
+        match = _matching_placeholder(owner.placeholders, ph_type, idx)
+        body = match._element.find(".//" + qn("a:bodyPr")) if match is not None else None
+        if body is not None:
+            chain.append(body)
+    return chain
+
+
+def body_attr(chain: list[Any], name: str) -> str | None:
+    for body in chain:
+        if body.get(name) is not None:
+            return body.get(name)
+    return None
 
 
 def _matching_placeholder(shapes: Any, ph_type: str | None, idx: int | None) -> Any | None:
@@ -205,6 +350,8 @@ def level_styles(shape: Any, slide: Any, presentation: Any, level: int) -> list[
 class ParagraphContext:
     chain: list[Any]  # lvlNpPr + paragraph pPr, lowest priority first
     theme: Theme
+    default_color: str | None = None  # p:style/a:fontRef, table style…
+    default_bold: bool = False
 
     def run_attr(self, run_properties: Any, name: str) -> str | None:
         value = run_properties.get(name) if run_properties is not None else None
@@ -225,7 +372,7 @@ class ParagraphContext:
             color = color_of(default, self.theme) if default is not None else None
             if color:
                 return color
-        return None
+        return self.default_color
 
     def run_font(self, run_properties: Any) -> str | None:
         sources = [run_properties] + [level.find(qn("a:defRPr")) for level in reversed(self.chain)]
@@ -254,6 +401,78 @@ class ParagraphContext:
                 return "ul"
         return None
 
+    def list_style(self) -> tuple[str | None, int | None]:
+        """(CSS list-style-type, first number) of the bullet that applies."""
+        font = None
+        for level in reversed(self.chain):
+            if font is None and level.find(qn("a:buFont")) is not None:
+                font = level.find(qn("a:buFont")).get("typeface")
+            numbered = level.find(qn("a:buAutoNum"))
+            if numbered is not None:
+                kind = numbered.get("type", "arabicPeriod")
+                css = next((value for prefix, value in AUTO_NUMBER_STYLES.items() if kind.startswith(prefix)), "decimal")
+                start = numbered.get("startAt")
+                return css, int(start) if start and start.isdigit() else None
+            char = level.find(qn("a:buChar"))
+            if char is not None:
+                return _bullet_css(char.get("char", "•"), font), None
+        return None, None
+
+    def spacing(self, tag: str, font_px: float) -> float | None:
+        """lnSpc → unitless CSS line-height is handled by line_height(); spcBef/spcAft → px."""
+        for level in reversed(self.chain):
+            element = level.find(qn(f"a:{tag}"))
+            if element is None:
+                continue
+            percent = element.find(qn("a:spcPct"))
+            points = element.find(qn("a:spcPts"))
+            if percent is not None and percent.get("val", "").lstrip("-").isdigit():
+                return int(percent.get("val")) / 100000 * font_px * 1.2
+            if points is not None and points.get("val", "").lstrip("-").isdigit():
+                return int(points.get("val")) / 100
+        return None
+
+    def line_height(self) -> tuple[float | None, float | None]:
+        """(multiple of single spacing, exact points) from a:lnSpc."""
+        for level in reversed(self.chain):
+            element = level.find(qn("a:lnSpc"))
+            if element is None:
+                continue
+            percent = element.find(qn("a:spcPct"))
+            points = element.find(qn("a:spcPts"))
+            if percent is not None and percent.get("val", "").isdigit():
+                return int(percent.get("val")) / 100000, None
+            if points is not None and points.get("val", "").isdigit():
+                return None, int(points.get("val")) / 100
+        return None, None
+
+    def indents(self) -> tuple[int | None, int | None]:
+        """(marL, indent) in EMU."""
+        left = indent = None
+        for level in reversed(self.chain):
+            if left is None and (level.get("marL") or "").lstrip("-").isdigit():
+                left = int(level.get("marL"))
+            if indent is None and (level.get("indent") or "").lstrip("-").isdigit():
+                indent = int(level.get("indent"))
+        return left, indent
+
+
+AUTO_NUMBER_STYLES = {
+    "arabic": "decimal", "alphaLc": "lower-alpha", "alphaUc": "upper-alpha", "romanLc": "lower-roman", "romanUc": "upper-roman",
+}
+# Symbol fonts map letters to pictograms: "§" in Wingdings is the square bullet.
+_SYMBOL_BULLETS = {"§": "▪", "q": "❑", "n": "■", "l": "●", "Ø": "➢", "ü": "✓", "v": "❖", "Ÿ": "•", "o": "◦", "\uf0a7": "▪", "\uf0b7": "•", "\uf0d8": "➢", "\uf0fc": "✓"}
+
+
+def _bullet_css(char: str, font: str | None) -> str:
+    if font and re.search(r"wingdings|symbol|webdings", font, re.IGNORECASE):
+        char = _SYMBOL_BULLETS.get(char, "•")
+    elif char == "o" and font and "courier" in font.lower():
+        return "circle"
+    if char in {'"', "'", "\\", ";"}:
+        return "disc"
+    return f"'{char}  '"
+
 
 # ── PPTX text frame → editor HTML ─────────────────────────────────────────────────────────
 
@@ -268,58 +487,163 @@ class TextImport:
     bold: bool
 
 
-def text_frame_to_html(shape: Any, slide: Any, presentation: Any, theme: Theme, pt_to_px: float) -> TextImport:
+@dataclass(frozen=True)
+class TextScale:
+    """a:normAutofit: PowerPoint stores the shrink it computed instead of smaller font sizes."""
+    font: float = 1.0
+    line_reduction: float = 0.0
+
+
+def autofit_scale(body_chain: list[Any]) -> TextScale:
+    for body in body_chain:
+        fit = body.find(qn("a:normAutofit"))
+        if fit is not None:
+            try:
+                return TextScale(int(fit.get("fontScale", "100000")) / 100000, int(fit.get("lnSpcReduction", "0")) / 100000)
+            except ValueError:
+                return TextScale()
+        if body.find(qn("a:noAutofit")) is not None or body.find(qn("a:spAutoFit")) is not None:
+            return TextScale()
+    return TextScale()
+
+
+def shape_font_color(shape: Any, theme: Theme) -> str | None:
+    reference = shape._element.find(qn("p:style") + "/" + qn("a:fontRef"))
+    return resolve_color(reference[0], theme) if reference is not None and len(reference) else None
+
+
+def text_frame_to_html(shape: Any, slide: Any, presentation: Any, theme: Theme, pt_to_px: float, scale: TextScale = TextScale()) -> TextImport:
     frame = shape.text_frame
+
+    def chain_for(level: int, p_pr: Any) -> list[Any]:
+        return level_styles(shape, slide, presentation, level) + ([p_pr] if p_pr is not None else [])
+
+    return paragraphs_to_html(frame.paragraphs, chain_for, theme, pt_to_px, scale, shape_font_color(shape, theme))
+
+
+def paragraphs_to_html(
+    paragraphs: Any,
+    chain_for: Any,
+    theme: Theme,
+    pt_to_px: float,
+    scale: TextScale = TextScale(),
+    default_color: str | None = None,
+    default_bold: bool = False,
+) -> TextImport:
     sizes: Counter[float] = Counter()
     colors: Counter[str] = Counter()
     fonts: Counter[str] = Counter()
     aligns: Counter[str] = Counter()
     bold_chars = total_chars = 0
-    items: list[tuple[str | None, int, str, str | None]] = []  # (list tag, level, inner html, align)
+    # (list tag, level, inner html, align, paragraph CSS, list CSS, list start)
+    items: list[tuple[str | None, int, str, str | None, list[str], list[str], int | None]] = []
+    plain_lines: list[str] = []
 
-    for paragraph in frame.paragraphs:
+    for paragraph_index, paragraph in enumerate(paragraphs):
         p_pr = paragraph._p.find(qn("a:pPr"))
         level = int(p_pr.get("lvl", "0")) if p_pr is not None and p_pr.get("lvl", "0").isdigit() else 0
-        chain = level_styles(shape, slide, presentation, level) + ([p_pr] if p_pr is not None else [])
-        context = ParagraphContext(chain, theme)
+        context = ParagraphContext(chain_for(level, p_pr), theme, default_color, default_bold)
         fragments: list[str] = []
+        line_text = ""
+        largest_size = 0.0
         for child in paragraph._p:
             name = etree.QName(child).localname
             if name == "br":
                 fragments.append("<br>")
+                line_text += "\n"
                 continue
             if name not in {"r", "fld"}:
                 continue
             text = "".join(t.text or "" for t in child.iter(qn("a:t")))
+            if not fragments and context.bullet():
+                text = text.lstrip("\t ")  # hand-made gap after the bullet: the list indent already does it
             if not text:
                 continue
             r_pr = child.find(qn("a:rPr"))
             size_raw = context.run_attr(r_pr, "sz")
-            size_pt = int(size_raw) / 100 if size_raw and size_raw.isdigit() else 18.0
+            size_pt = (int(size_raw) / 100 if size_raw and size_raw.isdigit() else 18.0) * scale.font
             color = context.run_color(r_pr)
-            font = context.run_font(r_pr)
-            bold = context.run_attr(r_pr, "b") in {"1", "true"}
+            family, weight = split_font(context.run_font(r_pr))
+            bold_attr = context.run_attr(r_pr, "b")
+            bold = bold_attr in {"1", "true"} if bold_attr is not None else context.default_bold
             italic = context.run_attr(r_pr, "i") in {"1", "true"}
             underline = (context.run_attr(r_pr, "u") or "none") != "none"
             strike = (context.run_attr(r_pr, "strike") or "noStrike") != "noStrike"
-            weight = len(text)
-            sizes[round(size_pt * pt_to_px, 1)] += weight
+            caps = context.run_attr(r_pr, "cap")
+            if caps == "all":
+                text = text.upper()
+            spacing_raw = context.run_attr(r_pr, "spc")
+            letter_spacing = int(spacing_raw) / 100 * pt_to_px if spacing_raw and spacing_raw.lstrip("-").isdigit() else 0
+            baseline_raw = context.run_attr(r_pr, "baseline")
+            baseline = int(baseline_raw) if baseline_raw and baseline_raw.lstrip("-").isdigit() else 0
+            highlight = color_of(r_pr.find(qn("a:highlight")), theme) if r_pr is not None and r_pr.find(qn("a:highlight")) is not None else None
+            if highlight is None and r_pr is not None and r_pr.find(qn("a:highlight")) is not None and len(r_pr.find(qn("a:highlight"))):
+                highlight = resolve_color(r_pr.find(qn("a:highlight"))[0], theme)
+            weight_chars = len(text)
+            size_px = round(size_pt * pt_to_px, 1)
+            largest_size = max(largest_size, size_px)
+            sizes[size_px] += weight_chars
             if color:
-                colors[color] += weight
-            if font:
-                fonts[font] += weight
-            total_chars += weight
-            bold_chars += weight if bold else 0
-            fragments.append(_run_html(text, size_pt * pt_to_px, color, font, bold, italic, underline, strike))
+                colors[color] += weight_chars
+            if family:
+                fonts[family] += weight_chars
+            total_chars += weight_chars
+            bold_chars += weight_chars if bold else 0
+            fragments.append(_run_html(text, size_pt * pt_to_px, color, family, bold, italic, underline, strike, weight, letter_spacing, baseline, highlight))
+            line_text += text
+        plain_lines.append(line_text)
+
+        end_props = paragraph._p.find(qn("a:endParaRPr"))
+        if not largest_size:
+            size_raw = context.run_attr(end_props, "sz")
+            largest_size = round((int(size_raw) / 100 if size_raw and size_raw.isdigit() else 18.0) * scale.font * pt_to_px, 1)
+
         align = ALIGN_TO_CSS.get(p_pr.get("algn")) if p_pr is not None and p_pr.get("algn") else context.alignment()
         if align:
             aligns[align] += 1
+
+        paragraph_css: list[str] = []
+        multiple, exact = context.line_height()
+        if exact is not None:
+            paragraph_css.append(f"line-height: {round(exact * pt_to_px, 1):g}px")
+        elif multiple is not None:
+            paragraph_css.append(f"line-height: {round(max(0.5, multiple - scale.line_reduction) * 1.2, 3):g}")
+        elif not fragments:
+            paragraph_css.append(f"line-height: {round(largest_size * 1.2, 1):g}px")
+        if not fragments and exact is None and multiple is not None:
+            paragraph_css[-1] = f"line-height: {round(largest_size * 1.2 * multiple, 1):g}px"
+        before = context.spacing("spcBef", largest_size / pt_to_px)
+        after = context.spacing("spcAft", largest_size / pt_to_px)
+        # PowerPoint ignores the space before the first line of a text frame.
+        if before and paragraph_index > 0:
+            paragraph_css.append(f"margin-top: {round(before * pt_to_px, 1):g}px")
+        if after:
+            paragraph_css.append(f"margin-bottom: {round(after * pt_to_px, 1):g}px")
+
+        left, indent = context.indents()
+        emu_to_px = pt_to_px / 12700
         list_tag = context.bullet() if fragments else None
-        items.append((list_tag, level, "".join(fragments), align))
+        list_css: list[str] = []
+        list_start: int | None = None
+        if list_tag:
+            style_type, list_start = context.list_style()
+            if style_type:
+                list_css.append(f"list-style-type: {style_type}")
+            list_css.append(f"padding-left: {round((left or 0) * emu_to_px, 1):g}px")
+        else:
+            if left:
+                paragraph_css.append(f"margin-left: {round(left * emu_to_px, 1):g}px")
+            if indent:
+                paragraph_css.append(f"text-indent: {round(indent * emu_to_px, 1):g}px")
+        right_margin = p_pr.get("marR") if p_pr is not None else None
+        if right_margin and right_margin.isdigit() and int(right_margin):
+            paragraph_css.append(f"margin-right: {round(int(right_margin) * emu_to_px, 1):g}px")
+        items.append((list_tag, level, "".join(fragments), align, paragraph_css, list_css, list_start))
 
     dominant_size = sizes.most_common(1)[0][0] if sizes else None
     dominant_color = colors.most_common(1)[0][0] if colors else None
     dominant_font = fonts.most_common(1)[0][0] if fonts else None
+    dominant_font_css = css_font(dominant_font) if dominant_font else None
     block_bold = total_chars > 0 and bold_chars / total_chars > 0.6
     block_align = aligns.most_common(1)[0][0] if aligns else None
 
@@ -336,7 +660,7 @@ def text_frame_to_html(shape: Any, slide: Any, presentation: Any, theme: Theme, 
                     continue
                 if prop == "color" and dominant_color and value.lower() == f"#{dominant_color.lower()}":
                     continue
-                if prop == "font-family" and dominant_font and value.strip("'\"") == dominant_font:
+                if prop == "font-family" and dominant_font_css and value == dominant_font_css:
                     continue
                 kept.append(f"{prop}: {value}")
             if kept:
@@ -348,44 +672,70 @@ def text_frame_to_html(shape: Any, slide: Any, presentation: Any, theme: Theme, 
                 strong.unwrap()
         return str(soup)
 
+    def paragraph_style(align: str | None, css: list[str]) -> str:
+        declarations = list(css)
+        if align and align != block_align:
+            declarations.insert(0, f"text-align: {align}")
+        return f' style="{"; ".join(declarations)}"' if declarations else ""
+
     output: list[str] = []
     open_lists: list[tuple[int, str]] = []
-    for list_tag, level, inner, align in items:
+    open_paddings: list[tuple[float, int]] = []
+    for list_tag, level, inner, align, paragraph_css, list_css, list_start in items:
         inner = simplify(inner) or "<br>"
-        style = f' style="text-align: {align}"' if align and align != block_align else ""
+        style = paragraph_style(align, paragraph_css)
         if list_tag is None:
             while open_lists:
                 output.append(f"</li></{open_lists.pop()[1]}>")
+                open_paddings.pop()
             output.append(f"<p{style}>{inner}</p>")
             continue
         while open_lists and (open_lists[-1][0] > level or (open_lists[-1][0] == level and open_lists[-1][1] != list_tag)):
             output.append(f"</li></{open_lists.pop()[1]}>")
+            open_paddings.pop()
         if open_lists and open_lists[-1][0] == level:
             output.append(f"</li><li><p{style}>{inner}</p>")
         else:
-            output.append(f"<{list_tag}><li><p{style}>{inner}</p>")
+            start_attr = f' start="{list_start}"' if list_tag == "ol" and list_start and list_start != 1 else ""
+            # Nested lists sit inside the parent's padding, while marL counts from the frame edge.
+            left_px = float(next(c.split(":")[1].strip().rstrip("px") for c in list_css if c.startswith("padding-left")))
+            relative = max(0.0, left_px - sum(padding for padding, _ in open_paddings))
+            declarations = [c for c in list_css if not c.startswith("padding-left")] + [f"padding-left: {round(relative, 1):g}px"]
+            output.append(f'<{list_tag}{start_attr} style="{"; ".join(declarations)}"><li><p{style}>{inner}</p>')
             open_lists.append((level, list_tag))
+            open_paddings.append((relative, level))
     while open_lists:
         output.append(f"</li></{open_lists.pop()[1]}>")
 
     return TextImport(
         html="".join(output) or "<p></p>",
-        plain=frame.text,
+        plain="\n".join(plain_lines),
         font_px=dominant_size,
         color=f"#{dominant_color}" if dominant_color else None,
-        font_family=dominant_font,
+        font_family=dominant_font_css,
         align=block_align,
         bold=block_bold,
     )
 
 
-def _run_html(text: str, size_px: float, color: str | None, font: str | None, bold: bool, italic: bool, underline: bool, strike: bool) -> str:
-    escaped = html.escape(text).replace("\v", "<br>")
+def _run_html(
+    text: str, size_px: float, color: str | None, font: str | None, bold: bool, italic: bool, underline: bool, strike: bool,
+    weight: int | None = None, letter_spacing: float = 0, baseline: int = 0, highlight: str | None = None,
+) -> str:
+    escaped = html.escape(text).replace("\v", "<br>").replace("\t", "\u00a0\u00a0\u00a0\u00a0").replace("  ", " \u00a0")
     styles = [f"font-size: {round(size_px, 1):g}px"]
     if color:
         styles.append(f"color: #{color.lower()}")
     if font:
-        styles.append(f"font-family: {font}")
+        styles.append(f"font-family: {css_font(font)}")
+    if weight and not bold:
+        styles.append(f"font-weight: {weight}")
+    if letter_spacing:
+        styles.append(f"letter-spacing: {round(letter_spacing, 2):g}px")
+    if baseline:
+        styles.append(f"vertical-align: {'super' if baseline > 0 else 'sub'}")
+    if highlight:
+        styles.append(f"background-color: #{highlight.lower()}")
     content = f'<span style="{"; ".join(styles)}">{escaped}</span>'
     for enabled, tag in ((strike, "s"), (underline, "u"), (italic, "em"), (bold, "strong")):
         if enabled:
@@ -404,6 +754,7 @@ class _Fmt:
     color: str | None = None
     size_px: float | None = None
     font: str | None = None
+    letter_spacing_px: float | None = None
 
 
 def _css(tag: Tag) -> dict[str, str]:
@@ -454,6 +805,8 @@ def _derive(fmt: _Fmt, tag: Tag) -> _Fmt:
         changes["color"] = _hex(css.get("color"))
     if _px(css.get("font-size")):
         changes["size_px"] = _px(css.get("font-size"))
+    if _px(css.get("letter-spacing")):
+        changes["letter_spacing_px"] = _px(css.get("letter-spacing"))
     if css.get("font-family"):
         changes["font"] = css["font-family"].split(",")[0].strip().strip("'\"")
     weight = css.get("font-weight", "")
@@ -489,8 +842,8 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
     line_height = block_style.get("lineHeight")
 
     if not _looks_like_html(content or ""):
-        paragraphs: list[tuple[list[tuple[str, _Fmt]], str | None, int, str | None]] = [
-            ([(line, base)], None, 0, None) for line in (content or "").split("\n")
+        paragraphs: list[tuple[list[tuple[str, _Fmt]], str | None, int, str | None, dict[str, str]]] = [
+            ([(line, base)], None, 0, None, {}) for line in (content or "").split("\n")
         ]
     else:
         paragraphs = []
@@ -517,15 +870,17 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
             for item in node.find_all("li", recursive=False):
                 runs: list[tuple[str, _Fmt]] = []
                 align = None
+                css: dict[str, str] = {}
                 for child in item.children:
                     if isinstance(child, Tag) and child.name in {"ul", "ol"}:
                         continue
                     if isinstance(child, Tag) and child.name == "p":
                         align = _css(child).get("text-align") or align
+                        css = _css(child)
                         if runs:
                             runs.append(("\v", base))
                     inline_runs(child, base, runs)
-                paragraphs.append((runs, node.name, level, align))
+                paragraphs.append((runs, node.name, level, align, css))
                 for nested in item.find_all(["ul", "ol"], recursive=False):
                     walk_list(nested, level + 1)
 
@@ -536,21 +891,30 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
                 runs: list[tuple[str, _Fmt]] = []
                 for child in node.children:
                     inline_runs(child, base, runs)
-                paragraphs.append((runs, None, 0, _css(node).get("text-align")))
+                paragraphs.append((runs, None, 0, _css(node).get("text-align"), _css(node)))
             else:
                 runs = []
                 inline_runs(node, base, runs)
                 if any(text.strip() for text, _ in runs):
-                    paragraphs.append((runs, None, 0, None))
+                    paragraphs.append((runs, None, 0, None, {}))
         if not paragraphs:
-            paragraphs = [([("", base)], None, 0, None)]
+            paragraphs = [([("", base)], None, 0, None, {})]
 
     frame.clear()
-    for index, (runs, list_tag, level, align) in enumerate(paragraphs):
+    for index, (runs, list_tag, level, align, css) in enumerate(paragraphs):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
         paragraph.alignment = CSS_TO_ALIGN.get(align or "", block_align)
         if isinstance(line_height, (int, float)) and line_height > 0:
             paragraph.line_spacing = float(line_height)
+        paragraph_line = css.get("line-height", "")
+        if re.fullmatch(r"[\d.]+", paragraph_line):
+            paragraph.line_spacing = float(paragraph_line) / 1.2  # CSS 1.2 is PowerPoint's single spacing
+        elif _px(paragraph_line):
+            paragraph.line_spacing = Pt(_px(paragraph_line) * px_to_pt)
+        if _px(css.get("margin-top")):
+            paragraph.space_before = Pt(_px(css.get("margin-top")) * px_to_pt)
+        if _px(css.get("margin-bottom")):
+            paragraph.space_after = Pt(_px(css.get("margin-bottom")) * px_to_pt)
         p_pr = paragraph._p.get_or_add_pPr()
         if list_tag:
             p_pr.set("lvl", str(min(8, level)))
@@ -579,6 +943,8 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
             font.underline = fmt.underline
             if fmt.strike:
                 run._r.get_or_add_rPr().set("strike", "sngStrike")
+            if fmt.letter_spacing_px:
+                run._r.get_or_add_rPr().set("spc", str(round(fmt.letter_spacing_px * px_to_pt * 100)))
             if fmt.font:
                 font.name = fmt.font
             if fmt.color:

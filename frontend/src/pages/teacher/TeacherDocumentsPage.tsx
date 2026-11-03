@@ -2257,6 +2257,7 @@ export default function TeacherDocumentsPage() {
                          >
                            <SlideEditor
                              blocks={slide.blocks}
+                             backgroundColor={slide.backgroundColor}
                              onChange={() => undefined}
                              selectedBlockId={null}
                              onSelectBlock={() => undefined}
@@ -2425,7 +2426,7 @@ export default function TeacherDocumentsPage() {
                  onClick={(e) => e.stopPropagation()} // Prevent deselection when clicking slide background
                >
                   {!currentSlide.blocks.some(block => (
-                    block.type === 'text'
+                    block.type === 'text' || block.type === 'image'
                   )) && <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
                        value={currentSlide.title}
@@ -2442,6 +2443,7 @@ export default function TeacherDocumentsPage() {
                   <div className="flex-1 relative">
                     <SlideEditor
                       blocks={currentSlide.blocks}
+                      backgroundColor={currentSlide.backgroundColor}
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}

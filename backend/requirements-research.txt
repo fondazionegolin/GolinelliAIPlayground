@@ -1,0 +1,2 @@
+# Kept in a separate Docker layer from the large ML/office dependency set.
+ddgs==9.16.1
