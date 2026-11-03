@@ -48,6 +48,14 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - PXT_COMPILER_URL=http://pxt-compiler:8090
       - TOY_LM_CHECKPOINT_DIR=/app/toy_lm_checkpoints
+    # The RTX 4090 trains Toy LM and runs its generation; only the gateway owns that queue.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       postgres:
         condition: service_healthy
