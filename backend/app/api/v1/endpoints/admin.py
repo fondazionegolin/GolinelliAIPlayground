@@ -10,7 +10,7 @@ import csv
 import io
 
 from app.core.database import get_db
-from app.core.security import get_password_hash, verify_password, create_student_join_token
+from app.core.security import hash_password_async, verify_password_async, create_student_join_token
 from app.core.config import settings
 from app.core.legal_documents import STUDENT_CONSENTS, current_legal_documents, refresh_legal_overrides
 from app.core.url_utils import resolve_frontend_url
@@ -324,7 +324,7 @@ async def create_school_tenant(
     owner = User(
         tenant_id=tenant.id,
         email=owner_email,
-        password_hash=get_password_hash(temp_password),
+        password_hash=await hash_password_async(temp_password),
         role=UserRole.TEACHER,
         first_name=payload.owner_first_name,
         last_name=payload.owner_last_name,
@@ -421,7 +421,7 @@ async def approve_teacher_request(
     user = User(
         tenant_id=teacher_request.tenant_id,
         email=teacher_request.email,
-        password_hash=get_password_hash(temp_password),
+        password_hash=await hash_password_async(temp_password),
         role=UserRole.TEACHER,
         first_name=teacher_request.first_name,
         last_name=teacher_request.last_name,
@@ -713,10 +713,10 @@ async def admin_change_password(
     result = await db.execute(select(User).where(User.id == admin.id))
     user = result.scalar_one()
 
-    if not verify_password(current_password, user.password_hash):
+    if not await verify_password_async(current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Password attuale non corretta")
 
-    user.password_hash = get_password_hash(new_password)
+    user.password_hash = await hash_password_async(new_password)
     await db.commit()
     return {"message": "Password aggiornata con successo"}
 

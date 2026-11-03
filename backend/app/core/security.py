@@ -1,20 +1,40 @@
 from datetime import datetime, timedelta
 from typing import Optional, Any
-from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
+import jwt
+from starlette.concurrency import run_in_threadpool
 from app.core.config import settings
 import secrets
 import hashlib
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt only reads the first 72 bytes; truncate explicitly (as passlib did)
+# so newer bcrypt releases, which raise on longer input, behave the same.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _password_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_password_bytes(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("utf-8")
+
+
+# bcrypt costs ~200ms of CPU per call: run it off the event loop so a class
+# logging in at once doesn't stall every other request on the worker.
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    return await run_in_threadpool(verify_password, plain_password, hashed_password)
+
+
+async def hash_password_async(password: str) -> str:
+    return await run_in_threadpool(get_password_hash, password)
 
 
 def create_access_token(
@@ -44,7 +64,7 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 

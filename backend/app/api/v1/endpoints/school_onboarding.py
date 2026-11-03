@@ -31,7 +31,7 @@ from app.core.school_documents import (
     family_notice_html,
     legal_doc_html,
 )
-from app.core.security import create_access_token, get_password_hash
+from app.core.security import create_access_token, hash_password_async
 from app.core.url_utils import resolve_frontend_url
 from app.models.enums import TenantType, UserRole
 from app.models.school_onboarding import ItalianSchool, SchoolOnboardingInvite
@@ -632,7 +632,7 @@ async def complete_invite(
     owner = User(
         tenant_id=tenant.id,
         email=email,
-        password_hash=get_password_hash(body.password),
+        password_hash=await hash_password_async(body.password),
         role=UserRole.TEACHER,
         first_name=body.first_name.strip(),
         last_name=body.last_name.strip(),
@@ -790,7 +790,7 @@ async def owner_invite_teacher(
 
     temp_password = secrets.token_urlsafe(12)
     teacher = User(
-        tenant_id=tenant.id, email=email, password_hash=get_password_hash(temp_password),
+        tenant_id=tenant.id, email=email, password_hash=await hash_password_async(temp_password),
         role=UserRole.TEACHER, first_name=body.first_name.strip(), last_name=body.last_name.strip(),
         institution=tenant.name, is_verified=True,
     )

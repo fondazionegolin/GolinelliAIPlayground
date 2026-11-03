@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.core.security import create_student_join_token, get_password_hash, verify_password
+from app.core.security import create_student_join_token, hash_password_async, verify_password_async
 from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule, StudentConsent
 from app.core.legal_documents import STUDENT_CONSENTS
@@ -207,13 +207,13 @@ async def join_session(
 
         password = _validate_student_password(request.password)
         if existing.password_hash:
-            if not verify_password(password, existing.password_hash):
+            if not await verify_password_async(password, existing.password_hash):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Password non corretta",
                 )
         else:
-            existing.password_hash = get_password_hash(password)
+            existing.password_hash = await hash_password_async(password)
 
         existing.last_seen_at = datetime.utcnow()
         response = _build_student_join_response(existing, session)
@@ -233,7 +233,7 @@ async def join_session(
         session_id=session.id,
         nickname=nickname,
         join_token=join_token_placeholder,
-        password_hash=get_password_hash(password),
+        password_hash=await hash_password_async(password),
         last_seen_at=datetime.utcnow(),
     )
     db.add(student)

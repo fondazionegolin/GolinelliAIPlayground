@@ -10,7 +10,7 @@ import re
 import unicodedata
 
 from app.core.database import get_db
-from app.core.security import verify_password, create_access_token, get_password_hash
+from app.core.security import verify_password_async, create_access_token, hash_password_async
 from app.core.config import settings
 from app.core.legal_documents import LEGAL_DOCUMENTS, refresh_legal_overrides, required_legal_documents
 from app.core.url_utils import resolve_frontend_url
@@ -164,7 +164,7 @@ async def login(
             detail="Account disattivato. Contatta l'amministratore.",
         )
     
-    if not verify_password(request.password, user.password_hash):
+    if not await verify_password_async(request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -375,7 +375,7 @@ async def request_teacher_account(
         user = User(
             tenant_id=tenant_id,
             email=request.email,
-            password_hash=get_password_hash(temp_password),
+            password_hash=await hash_password_async(temp_password),
             role=UserRole.TEACHER,
             first_name=request.first_name,
             last_name=request.last_name,
@@ -508,7 +508,7 @@ async def change_password_with_token(
             detail="Utente non trovato",
         )
     
-    user.password_hash = get_password_hash(request.new_password)
+    user.password_hash = await hash_password_async(request.new_password)
     
     # Mark token as used
     token_record.is_used = True
@@ -662,7 +662,7 @@ async def set_new_password(
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
 
-    user.password_hash = get_password_hash(request.new_password)
+    user.password_hash = await hash_password_async(request.new_password)
     token_record.is_used = True
     token_record.used_at = datetime.now(timezone.utc)
 

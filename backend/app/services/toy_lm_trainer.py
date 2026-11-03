@@ -29,6 +29,11 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
+# Without a GPU, torch would spread every training step over all cores and starve
+# the API's event loop and thread pool. Cap its threads (env must be set before import).
+CPU_THREADS = int(os.environ.get("TOY_LM_CPU_THREADS") or max(1, min(4, (os.cpu_count() or 2) // 4)))
+os.environ.setdefault("OMP_NUM_THREADS", str(CPU_THREADS))
+
 import torch
 import torch.nn as nn
 
@@ -202,6 +207,8 @@ class ToyLMService:
         self._active: Dict[str, ActiveJob] = {}    # currently running/paused jobs
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="toy-lm")
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self._device.type == "cpu":
+            torch.set_num_threads(CPU_THREADS)
         self._queue_task: Optional[asyncio.Task] = None
         logger.info("ToyLMService initialised — device: %s", self._device)
 

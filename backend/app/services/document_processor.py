@@ -2,7 +2,7 @@
 Multi-step document processor.
 
 Pipeline:
-  1. Extract text (PyMuPDF → PyPDF2 fallback, python-docx, plain text)
+  1. Extract text (PyMuPDF → pypdf fallback, python-docx, plain text)
   2. Detect visual-heavy pages (charts, diagrams, images)
   3. Analyze visual pages with vision LLM (GPT-4o)
   4. Generate structured summary (summary, key_concepts, entities)
@@ -411,15 +411,15 @@ class DocumentProcessor:
             return full_text, page_count, visual_pages, segments
 
         except ImportError:
-            steps.append("PyMuPDF non disponibile, uso PyPDF2")
+            steps.append("PyMuPDF non disponibile, uso pypdf")
             return await self._extract_pdf_fallback(file_bytes, steps)
         except Exception as e:
-            steps.append(f"Errore PyMuPDF ({e}), uso PyPDF2")
+            steps.append(f"Errore PyMuPDF ({e}), uso pypdf")
             return await self._extract_pdf_fallback(file_bytes, steps)
 
     async def _extract_pdf_fallback(self, file_bytes: bytes, steps: list) -> tuple:
         try:
-            from PyPDF2 import PdfReader
+            from pypdf import PdfReader
             reader = PdfReader(io.BytesIO(file_bytes))
             parts: list[str] = []
             segments: list[DocumentSegment] = []
@@ -438,10 +438,10 @@ class DocumentProcessor:
                     )
                 )
             text = "\n\n".join(parts)
-            steps.append(f"PDF estratto con PyPDF2: {len(reader.pages)} pagine")
+            steps.append(f"PDF estratto con pypdf: {len(reader.pages)} pagine")
             return text, len(reader.pages), [], segments
         except Exception as e:
-            steps.append(f"Errore PyPDF2: {e}")
+            steps.append(f"Errore pypdf: {e}")
             return "", 0, [], []
 
     def _extract_docx(self, file_bytes: bytes, steps: list) -> tuple[str, list[DocumentSegment]]:

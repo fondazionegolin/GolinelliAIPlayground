@@ -20,6 +20,10 @@ const MODEL_PATH = '/models/mobilenet_v1_050_224/model.json'
 export const INPUT_SIZE = 160
 const INPUT = INPUT_SIZE
 
+// Pass tensor shapes as uniforms: the head is retrained on a different number of samples every time, and without
+// this WebGL recompiles every shader program for each new shape.
+tf.env().set('WEBGL_USE_SHAPES_UNIFORMS', true)
+
 // ── embedder ──────────────────────────────────────────────────────────────────
 
 let embedderPromise: Promise<tf.LayersModel> | null = null
@@ -71,19 +75,22 @@ function l2(vector: Float32Array): Float32Array {
   return out
 }
 
-/** Embeddings of one image: the plain view plus the augmented variants (L2-normalised). */
+/**
+ * Embeddings of one image: the plain view plus the augmented variants (L2-normalised).
+ * The frame is uploaded once and all variants go through MobileNet as one batch, so there is a single GPU→CPU readback.
+ */
 export async function embedImage(source: Source, augmentations: Augmentation[] = [{}]): Promise<Float32Array[]> {
   const embedder = await loadEmbedder()
-  const out: Float32Array[] = []
-  for (const aug of augmentations) {
-    const data = tf.tidy(() => {
-      const pixels = tf.browser.fromPixels(source as HTMLCanvasElement)
-      return (embedder.predict(preprocess(pixels, aug)) as tf.Tensor).squeeze()
-    })
-    out.push(l2(await data.data() as Float32Array))
-    data.dispose()
+  const batch = tf.tidy(() => {
+    const pixels = tf.browser.fromPixels(source as HTMLCanvasElement)
+    return embedder.predict(tf.concat(augmentations.map((aug) => preprocess(pixels, aug)))) as tf.Tensor2D
+  })
+  try {
+    const flat = (await batch.data()) as Float32Array
+    return augmentations.map((_aug, row) => l2(flat.subarray(row * EMBED_DIM, (row + 1) * EMBED_DIM)))
+  } finally {
+    batch.dispose()
   }
-  return out
 }
 
 export function cosine(a: Float32Array, b: Float32Array): number {
@@ -212,13 +219,17 @@ export async function trainHead(samples: TrainingSample[], numClasses: number, e
   }
 
   const classWeight = counts.map((count) => (count ? samples.length / (numClasses * count) : 0))
+  // One flat typed array: boxing every value into JS arrays was slow and memory-hungry for large sample sets.
+  const flat = new Float32Array(prepared.length * dim)
+  prepared.forEach((vector, row) => flat.set(vector, row * dim))
   const result = tf.tidy(() => ({
-    x: tf.tensor2d(prepared.map((v) => Array.from(v))),
+    x: tf.tensor2d(flat, [prepared.length, dim]),
     y: tf.oneHot(tf.tensor1d(samples.map((s) => s.classIndex), 'int32'), numClasses),
     w: tf.tensor1d(samples.map((s) => classWeight[s.classIndex])),
   }))
-  const W = tf.variable(tf.tensor2d(init, [dim, numClasses]))
-  const b = tf.variable(tf.tensor1d(initBias))
+  // tidy frees the initial-value tensors (variables are kept): otherwise every training run leaked two of them.
+  const W = tf.tidy(() => tf.variable(tf.tensor2d(init, [dim, numClasses])))
+  const b = tf.tidy(() => tf.variable(tf.tensor1d(initBias)))
   const optimizer = tf.train.adam(kind === 'cosine' ? 0.05 : 0.02)
   const reg = kind === 'cosine' ? 2e-4 : 5e-5
   try {
@@ -230,7 +241,14 @@ export async function trainHead(samples: TrainingSample[], numClasses: number, e
       })
       if (epoch % 15 === 14) await tf.nextFrame() // keep the UI responsive
     }
-    return { kind, dim, numClasses, mean, std, weights: (await W.data()) as Float32Array, bias: (await b.data()) as Float32Array, classCounts: counts }
+    const weights = (await W.data()) as Float32Array
+    const bias = (await b.data()) as Float32Array
+    // A diverged run (lost WebGL context, degenerate data) must not ship NaNs: the prototype classifier is still sound.
+    if (!weights.every(Number.isFinite) || !bias.every(Number.isFinite)) {
+      console.warn('ML Lab: head training diverged, using the prototype classifier')
+      return { kind, dim, numClasses, mean, std, weights: init, bias: initBias, classCounts: counts }
+    }
+    return { kind, dim, numClasses, mean, std, weights, bias, classCounts: counts }
   } finally {
     result.x.dispose(); result.y.dispose(); result.w.dispose(); W.dispose(); b.dispose()
     optimizer.dispose()

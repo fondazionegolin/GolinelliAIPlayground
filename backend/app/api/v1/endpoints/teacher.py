@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.database import get_db
-from app.core.security import generate_join_code, verify_password, get_password_hash, create_student_join_token
+from app.core.security import generate_join_code, verify_password_async, hash_password_async, create_student_join_token
 from app.core.permissions import (
     teacher_can_access_class,
     teacher_can_access_session,
@@ -4761,7 +4761,7 @@ async def change_password(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    if not teacher.password_hash or not verify_password(request.current_password, teacher.password_hash):
+    if not teacher.password_hash or not await verify_password_async(request.current_password, teacher.password_hash):
         raise HTTPException(status_code=400, detail="Password attuale non corretta")
 
     if request.new_password != request.confirm_password:
@@ -4770,7 +4770,7 @@ async def change_password(
     if len(request.new_password) < 8:
         raise HTTPException(status_code=400, detail="La password deve essere di almeno 8 caratteri")
 
-    teacher.password_hash = get_password_hash(request.new_password)
+    teacher.password_hash = await hash_password_async(request.new_password)
     await db.commit()
     return {"message": "Password aggiornata con successo"}
 
@@ -4845,7 +4845,7 @@ async def invite_colleague(
     new_teacher = User(
         tenant_id=teacher.tenant_id,
         email=email,
-        password_hash=get_password_hash(temp_password),
+        password_hash=await hash_password_async(temp_password),
         role=UserRole.TEACHER,
         first_name=payload.first_name,
         last_name=payload.last_name,

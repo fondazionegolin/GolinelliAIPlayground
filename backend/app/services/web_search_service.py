@@ -1,6 +1,6 @@
 """
 Web Search Service - Provides web search capabilities for the teacher agent.
-Uses DuckDuckGo Search (via duckduckgo_search library).
+Uses DuckDuckGo Search (via the ddgs library).
 """
 
 import logging
@@ -12,7 +12,7 @@ import socket
 from typing import List, Optional
 from dataclasses import dataclass
 from urllib.parse import urlparse, urljoin
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 
@@ -360,19 +360,17 @@ class WebSearchService:
         """
         results = []
         try:
-            # DDGS is synchronous but fast enough for this context, 
-            # or we can run it in an executor if needed. 
-            # For now, running directly.
-            with DDGS() as ddgs:
-                # region="it-it" for Italian results
-                ddgs_results = list(ddgs.text(query, region="it-it", max_results=num_results))
-                
-                for r in ddgs_results:
-                    results.append(SearchResult(
-                        title=r.get('title', ''),
-                        url=r.get('href', ''),
-                        snippet=r.get('body', '')
-                    ))
+            # DDGS is synchronous network I/O: keep it off the event loop.
+            # region="it-it" for Italian results
+            ddgs_results = await asyncio.to_thread(
+                lambda: list(DDGS(timeout=10).text(query, region="it-it", max_results=num_results))
+            )
+            for r in ddgs_results:
+                results.append(SearchResult(
+                    title=r.get('title', ''),
+                    url=r.get('href', ''),
+                    snippet=r.get('body', '')
+                ))
 
             # Optionally fetch full content
             if fetch_content and results:

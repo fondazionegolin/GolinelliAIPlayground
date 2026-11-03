@@ -11,7 +11,7 @@ import secrets
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
-from app.core.security import get_password_hash
+from app.core.security import hash_password_async
 from app.api.deps import get_current_admin, get_current_user
 from app.services.email_service import email_service
 from app.models.user import User, ActivationToken
@@ -66,7 +66,7 @@ async def _create_activation_token_for_user(db: AsyncSession, user: User) -> tup
         temporary_password=temp_password,
         expires_at=datetime.utcnow() + timedelta(hours=72),
     )
-    user.password_hash = get_password_hash(temp_password)
+    user.password_hash = await hash_password_async(temp_password)
     db.add(activation)
     await db.flush()
     return activation, activation_token
@@ -1105,7 +1105,7 @@ async def bulk_invite_teachers(
         if existing_user and not existing_user.is_active:
             user = existing_user
             user.tenant_id = admin.tenant_id
-            user.password_hash = get_password_hash(temp_password)
+            user.password_hash = await hash_password_async(temp_password)
             user.role = UserRole.TEACHER
             user.first_name = row.get("first_name")
             user.last_name = row.get("last_name")
@@ -1119,7 +1119,7 @@ async def bulk_invite_teachers(
             user = User(
                 tenant_id=admin.tenant_id,
                 email=email,
-                password_hash=get_password_hash(temp_password),
+                password_hash=await hash_password_async(temp_password),
                 role=UserRole.TEACHER,
                 first_name=row.get("first_name"),
                 last_name=row.get("last_name"),
@@ -1215,7 +1215,7 @@ async def bulk_invite_teachers_json(
         if existing_user and not existing_user.is_active:
             user = existing_user
             user.tenant_id = admin.tenant_id
-            user.password_hash = get_password_hash(temp_password)
+            user.password_hash = await hash_password_async(temp_password)
             user.role = UserRole.TEACHER
             user.first_name = item.first_name
             user.last_name = item.last_name
@@ -1229,7 +1229,7 @@ async def bulk_invite_teachers_json(
             user = User(
                 tenant_id=admin.tenant_id,
                 email=email,
-                password_hash=get_password_hash(temp_password),
+                password_hash=await hash_password_async(temp_password),
                 role=UserRole.TEACHER,
                 first_name=item.first_name,
                 last_name=item.last_name,

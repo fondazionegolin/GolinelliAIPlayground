@@ -135,7 +135,7 @@ class Crawler:
             return FetchedPage(url, current, error=str(exc)[:160] or exc.__class__.__name__)
 
     def _parse_pdf(self, url: str, final_url: str, body: bytes, max_chars: int) -> FetchedPage:
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(body))
         chunks = []
         for page in reader.pages[:25]:
