@@ -388,28 +388,28 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     ] },
     { id: 'classes', label: t('navbar.nav_classes'), icon: Users, items: [
       { path: '/teacher/classes', details: tl("Crea e organizza le tue classi, avvia le sessioni di lavoro con gli studenti, condividi il codice di accesso e gestisci gli inviti dei colleghi."), label: t('navbar.nav_classes_sessions'), description: t('navbar.desc_classes'), icon: Users, badgeCount: invitationCount, recents: { queryKey: ['classes'], limit: 3, entries: sessionRecents } },
-      { path: '/teacher/smart-canvas', isNew: true, details: tl("Lavagna in stile Figma: importa immagini, disegna e modifica insieme all'AI, poi condividila con la classe."), label: tl("Canvas intelligente"), description: tl("Lavagna in stile Figma: l'AI legge immagini e modifiche e disegna con te"), icon: CanvasEaselIcon },
+      { path: '/teacher/smart-canvas', isNew: true, details: tl("Lavagna in stile Figma: importa immagini, disegna e modifica insieme all'AI, poi condividila con la classe."), label: tl("Canvas intelligente"), description: tl("Lavagna in stile Figma: l'AI legge immagini e modifiche e disegna con te"), icon: CanvasEaselIcon, recents: { queryKey: ['smart-canvases'], limit: 3, fetch: navRecentFetchers.canvases } },
       { path: '/teacher/live-interaction', details: tl("Lancia quiz, sondaggi, word wall ed escape room in diretta: gli studenti rispondono dal telefono e tu segui risultati e classifica in tempo reale."), label: 'Live', description: t('navbar.desc_live'), icon: Zap, recents: { queryKey: ['live', sid], limit: 3, fetch: navRecentFetchers.live(sid) } },
       { path: '/teacher/boards', details: tl("Organizza il lavoro con lavagne Kanban o Scrum condivise con la classe: puoi generare il backlog con l'AI da un prompt o da un file."), label: 'Board', description: t('navbar.desc_boards'), icon: KanbanSquare, recents: { queryKey: ['boards', sid], limit: 3, fetch: navRecentFetchers.boards(sid) } },
+      { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
       ...(ownerStatus?.is_school_owner ? [{ path: '/teacher/school', label: tl("Istituto"), description: tl("Docenti e informativa famiglie"), icon: Building2 }] : []),
     ] },
     { id: 'create', label: t('navbar.nav_create'), icon: Sparkles, items: [
       { path: '/teacher/documents', details: tl("Scrivi documenti, presentazioni, tabelle e lavagne con l'assistente AI, poi pubblicali alla classe come materiali o compiti da consegnare."), label: t('navbar.nav_documents'), description: t('navbar.desc_documents'), icon: FileText, recents: { queryKey: ['documents'], limit: 3, fetch: navRecentFetchers.documents } },
-      { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
-      { path: '/teacher/voice-lab', label: 'Voice Lab', description: tl("Voci, audio e registrazioni"), details: tl("Genera audio da un testo, clona e progetta voci, crea dialoghi, trascrivi, isola il parlato, componi musica ed effetti e doppia le registrazioni. I risultati restano nella tua libreria e nei Files."), icon: Mic, isNew: true,
-        recents: { queryKey: ['voice-lab-items'], limit: 3, fetch: async () => (await voiceLabApi.items()).data.filter((item) => item.kind !== 'voice').slice(0, 3).map((item) => ({ id: item.id, title: item.title, to: `/teacher/voice-lab?item=${item.id}` })) } },
+      { path: '/teacher/audio-lab', label: 'Audio Lab', description: tl("Voci, audio e registrazioni"), details: tl("Genera audio da un testo, clona e progetta voci, crea dialoghi, trascrivi, isola il parlato, componi musica ed effetti e doppia le registrazioni. I risultati restano nella tua libreria e nei Files."), icon: Mic, isNew: true,
+        recents: { queryKey: ['voice-lab-items'], limit: 3, fetch: async () => (await voiceLabApi.items()).data.filter((item) => item.kind !== 'voice').slice(0, 3).map((item) => ({ id: item.id, title: item.title, to: `/teacher/audio-lab?item=${item.id}` })) } },
       { path: '/teacher/video-studio', label: tl("Video Studio"), description: tl("Video didattici da un testo, con voce"), details: tl("Parti da un testo o da un documento: l'AI scrive la sceneggiatura, genera immagini, clip e voce narrante. Poi monta il video su una timeline, aggiungi clip e scaricalo in MP4."), icon: Film, isNew: true, recents: { queryKey: ['video-studio-projects'], limit: 3, fetch: navRecentFetchers.videos } },
-      { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon },
-      { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Cube3DIcon },
+      { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon, recents: { queryKey: ['ai3d-assets'], limit: 3, fetch: navRecentFetchers.aiModels } },
+      { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Cube3DIcon, recents: { queryKey: ['solid-models'], limit: 3, fetch: navRecentFetchers.solidModels } },
     ] },
     { id: 'labs', label: t('navbar.nav_labs'), icon: FlaskConical, items: [
       { path: '/teacher/coding', details: tl("Crea app, giochi e pagine web dialogando con l'AI: anteprima in diretta, versioni salvate e condivisione del progetto con la classe."), label: t('navbar.nav_coding_lab'), description: t('navbar.desc_coding'), icon: Code2, recents: { queryKey: ['coding', sid], limit: 1, fetch: navRecentFetchers.coding(sid) } },
       { path: '/teacher/notebooks', details: tl("Quaderni di codice con Python, p5.js, micro:bit e altro: esegui il codice nel browser e chiedi aiuto al tutor AI mentre lavori."), label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2, recents: { queryKey: ['notebooks'], limit: 3, fetch: navRecentFetchers.notebooks } },
-      { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain },
-      { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network },
+      { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain, recents: { queryKey: ['ml-lab-projects'], limit: 3, fetch: navRecentFetchers.mlProjects } },
+      { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network, recents: { queryKey: ['toy-lm-jobs'], limit: 3, fetch: navRecentFetchers.toyModels } },
     ] },
     { id: 'files', label: t('navbar.nav_files'), icon: FolderOpen, items: [
-      { path: '/teacher/files', label: t('navbar.nav_files'), description: t('navbar.desc_files'), icon: FolderOpen },
+      { path: '/teacher/files', label: t('navbar.nav_files'), description: t('navbar.desc_files'), icon: FolderOpen, recents: { queryKey: ['drive-recent'], limit: 3, fetch: navRecentFetchers.files } },
     ] },
     ...(betaItems.length ? [{ id: 'beta', label: t('navbar.nav_beta'), icon: Rocket, items: betaItems }] : []),
   ]
@@ -445,7 +445,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     <>
       <nav className="ds-navbar fixed top-0 left-0 right-0 z-50" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex h-16 items-center justify-between gap-2">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <div className="relative shrink-0">
@@ -460,7 +460,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 </button>
               </div>
               {/* Between xl and 2xl the always-labelled cluster bar needs the room: keep only the logo mark. */}
-              <div className="flex items-center gap-1.5 pt-0.5 xl:hidden 2xl:flex">
+              <div className="hidden items-center gap-1.5 pt-0.5 md:flex xl:hidden 2xl:flex">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
@@ -474,8 +474,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
             <div className="ds-divider hidden xl:block h-8 w-px mx-1" />
 
-            <div className="flex items-center gap-3">
-              <div className="ds-cluster hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
+              <div className="ds-cluster flex h-11 min-w-0 items-center gap-1 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {/* Date/time + mini calendar */}
               <NavbarCalendarClock
                 sessionId={currentSession?.id}
@@ -502,7 +502,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     aria-expanded={showSessionsMenu}
                   >
                     <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
-                    <div className="min-w-0 text-left">
+                    <div className="hidden min-w-0 text-left md:block">
                       <span
                         className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
                         title={currentSession ? currentSession.name : t('navbar.no_session')}
@@ -522,7 +522,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                         setShowSessionsMenu(false)
                         navigate(`/teacher/sessions/${currentSession.id}`)
                       }}
-                      className="flex w-8 shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-800"
+                      className="hidden w-8 shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-white/70 md:flex hover:text-slate-800"
                       title={t('navbar.configure_session')}
                       aria-label={t('navbar.configure_session')}
                     >
@@ -561,7 +561,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="ds-popover nav-cluster-unroll absolute top-full right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)]">
+                  <div className="ds-popover nav-cluster-unroll absolute top-full right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:left-3 max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 max-md:w-auto max-md:max-w-none">
                     {/* Header */}
                     <div className="px-5 py-4 bg-slate-50/65">
                       <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
@@ -647,7 +647,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5 sm:gap-1">
                 <NavbarMusicButton sessionId={currentSession?.id} />
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
@@ -679,7 +679,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="ds-popover absolute right-0 mt-2 w-64 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
+                  <div className="ds-popover absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 mb-1 bg-slate-50/55">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}

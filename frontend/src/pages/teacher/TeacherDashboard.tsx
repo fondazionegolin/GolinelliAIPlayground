@@ -2,7 +2,7 @@ import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen, Mic } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
@@ -239,7 +239,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/files', label: t('navbar.nav_files'), icon: FolderOpen },
     { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
-    { path: '/teacher/voice-lab', label: 'Voice Lab', icon: Mic },
+    { path: '/teacher/audio-lab', label: 'Audio Lab', icon: Mic },
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
@@ -453,7 +453,8 @@ export default function TeacherDashboard() {
               <Route path="documents" element={<TeacherDocumentsPage />} />
               <Route path="files" element={<TeacherFilesPage />} />
               <Route path="teacherbots" element={<TeacherbotsPage />} />
-              <Route path="voice-lab" element={<VoiceLabPage />} />
+              <Route path="audio-lab" element={<VoiceLabPage />} />
+              <Route path="voice-lab" element={<Navigate to={`/teacher/audio-lab${location.search}`} replace />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
               <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} view="modeler" />} />
@@ -706,7 +707,7 @@ function MobileTeacherHome({
     { to: '/teacher/classes', title: tl("Classi"), description: tl("Gestisci studenti e gruppi"), icon: Users, tone: 'bg-sky-50 text-sky-700' },
     { to: '/teacher/sessions', title: tl("Sessioni"), description: tl("Prepara e avvia una lezione"), icon: PlayCircle, tone: 'bg-rose-50 text-rose-600' },
     { to: '/teacher/documents', title: tl("Documenti"), description: tl("Materiali e risorse didattiche"), icon: FileText, tone: 'bg-amber-50 text-amber-700' },
-    { to: '/teacher/voice-lab', title: 'Voice Lab', description: tl("Crea voci, audio e registrazioni"), icon: Mic, tone: 'bg-pink-50 text-pink-700' },
+    { to: '/teacher/audio-lab', title: 'Audio Lab', description: tl("Crea voci, audio e registrazioni"), icon: Mic, tone: 'bg-pink-50 text-pink-700' },
     { to: '/teacher/teacherbots', title: 'Teacherbot', description: tl("Crea assistenti per la classe"), icon: Bot, tone: 'bg-violet-50 text-violet-700' },
   ]
 

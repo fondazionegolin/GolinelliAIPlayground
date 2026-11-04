@@ -180,6 +180,19 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     if (editorPath) navigate(editorPath)
     else setPreview(item)
   }
+  const linkedItem = useRef(searchParams.get('open'))
+  useEffect(() => { // deep link from the navbar quick menu: open the file once the list is loaded
+    const id = linkedItem.current
+    if (!id || !isTeacher) return
+    const item = items.find((x) => x.id === id)
+    if (!item) return
+    linkedItem.current = null
+    const next = new URLSearchParams(searchParams)
+    next.delete('open')
+    setSearchParams(next, { replace: true })
+    open(item)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items])
   const doTrash = async (targets: DriveItem[]) => {
     if (!targets.length) return
     try {

@@ -399,8 +399,8 @@ export function StudentNavbar({
 
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
-            <div className="flex items-center gap-3">
-              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
+              <div className="flex h-11 min-w-0 items-center gap-1 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                 {/* Date/time + mini calendar */}
                 <NavbarCalendarClock
                   sessionId={sessionId}
@@ -411,11 +411,11 @@ export function StudentNavbar({
                 {/* Session Info - Always visible */}
                 {sessionTitle && (
                   <div
-                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
+                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-2.5 md:px-3"
                     style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   >
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
-                    <div className="text-left min-w-0">
+                    <div className="hidden text-left min-w-0 md:block">
                       <span className="block max-w-[150px] truncate text-[11px] font-bold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
                       {joinCode && (
                         <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{joinCode}</span>

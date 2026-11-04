@@ -15,13 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_teacher
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.user import User
 from app.models.voice_lab import VoiceLabItem
 from app.models.file import File
 from app.models.drive import DriveItem
 from app.models.enums import OwnerType, Scope
-from app.services import drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
+from app.services import background_jobs, drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
 from app.services.credit_service import credit_service
 
 router = APIRouter()
@@ -226,86 +226,106 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
     upload = await read_upload(file) if body.action in {"convert", "transcribe", "isolate", "alignment", "dubbing"} else None
     seconds = await billing.duration(upload[1]) if upload else body.seconds
     price = billing.quote(body.action, characters=character_count, seconds=seconds, model=body.model_id or settings.ELEVENLABS_TTS_MODEL)
-    tx = None
-
-    async def paid_request(*args, **kwargs):
-        nonlocal tx
-        tx = await billing.reserve(db, teacher, price, body.model_id or body.action)
-        try:
-            result = await eleven.request(*args, **kwargs)
-        except eleven.UncertainGeneration as exc:
-            raise eleven.UncertainGeneration(504, "Esito ElevenLabs da verificare: la quota resta prenotata. Controlla prima di riprovare.") from exc
-        except Exception:
-            await billing.settle(db, tx.id, status="refunded")
-            raise
-        if body.action != "dubbing":
-            await billing.settle(db, tx.id, price)
-        return result
     if body.voice_id or body.dialogue:
         await require_voices(db, teacher, {body.voice_id} if body.voice_id else {v.voice_id for v in body.dialogue})
-    params = {"output_format": body.output_format}
-    details = {"text": body.text, "language": body.language, "characters": character_count, "duration_seconds": seconds if upload or body.action in {"music", "sound_effects"} else None}
-    response = None
-    if body.action == "tts":
-        model = body.model_id or settings.ELEVENLABS_TTS_MODEL
-        catalogue = await eleven.models()
-        selected = next((m for m in catalogue if m["model_id"] == model and m["tts"]), None)
-        if not selected:
-            raise HTTPException(422, "Scegli un modello di sintesi vocale disponibile")
-        if len(body.text) > (selected.get("max_characters") or 5000):
-            raise HTTPException(422, "Il testo supera il limite per richiesta di questo modello: dividilo in più parti")
-        response = await paid_request("POST", f"/v1/text-to-speech/{eleven.identifier(body.voice_id)}", params=params,
-            json={"text": body.text, "model_id": model, "language_code": body.language,
-                  "voice_settings": {"stability": body.stability, "similarity_boost": body.similarity, "speed": body.speed}})
-    elif body.action == "dialogue":
-        response = await paid_request("POST", "/v1/text-to-dialogue", params=params,
-            json={"inputs": [v.model_dump() for v in body.dialogue], "model_id": "eleven_v3", "language_code": body.language})
-    elif body.action in {"sound_effects", "music"}:
-        data = {"text": body.text, "duration_seconds": body.seconds, "model_id": "eleven_text_to_sound_v2"} if body.action == "sound_effects" else {
-            "prompt": body.text, "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}
-        response = await paid_request("POST", "/v1/sound-generation" if body.action == "sound_effects" else "/v1/music", json=data, params=params)
-    else:
-        if body.action == "dubbing":
-            response = await paid_request("POST", "/v1/dubbing", files={"file": upload},
-                data={"name": body.title, "source_lang": body.source_language, "target_lang": body.language, "watermark": "false"})
-            item = VoiceLabItem(tenant_id=teacher.tenant_id, owner_id=teacher.id, title=body.title, kind="dubbing", service="dubbing",
-                provider_id=response.json()["dubbing_id"], details={**details, **billing.details(tx, price), "status": "processing"})
-            db.add(item)
+    teacher_id, tenant_id = teacher.id, teacher.tenant_id
+    label = {"tts": "Voce", "dialogue": "Dialogo", "convert": "Cambio voce", "transcribe": "Trascrizione", "isolate": "Isolamento voce",
+             "sound_effects": "Effetto sonoro", "music": "Brano musicale", "alignment": "Allineamento", "dubbing": "Doppiaggio"}[body.action]
+
+    async def work(ctx: background_jobs.JobContext):
+        # The request session is closed once the response is sent: the job owns its own session.
+        async with AsyncSessionLocal() as db:
+            teacher = await db.get(User, teacher_id)
+            tx = None
+            async def paid_request(*args, **kwargs):
+                nonlocal tx
+                tx = await billing.reserve(db, teacher, price, body.model_id or body.action)
+                await ctx.progress(0.1, "Richiesta inviata a ElevenLabs…", force=True)
+                try:
+                    result = await eleven.request(*args, **kwargs)
+                except eleven.UncertainGeneration as exc:
+                    raise eleven.UncertainGeneration(504, "Esito ElevenLabs da verificare: la quota resta prenotata. Controlla prima di riprovare.") from exc
+                except Exception:
+                    await billing.settle(db, tx.id, status="refunded")
+                    raise
+                except asyncio.CancelledError:
+                    # The user stopped the job: give the reservation back.
+                    await asyncio.shield(billing.settle(db, tx.id, status="refunded"))
+                    raise
+                if body.action != "dubbing":
+                    await billing.settle(db, tx.id, price)
+                return result
+            params = {"output_format": body.output_format}
+            details = {"text": body.text, "language": body.language, "characters": character_count, "duration_seconds": seconds if upload or body.action in {"music", "sound_effects"} else None}
+            response = None
+            if body.action == "tts":
+                model = body.model_id or settings.ELEVENLABS_TTS_MODEL
+                catalogue = await eleven.models()
+                selected = next((m for m in catalogue if m["model_id"] == model and m["tts"]), None)
+                if not selected:
+                    raise HTTPException(422, "Scegli un modello di sintesi vocale disponibile")
+                if len(body.text) > (selected.get("max_characters") or 5000):
+                    raise HTTPException(422, "Il testo supera il limite per richiesta di questo modello: dividilo in più parti")
+                response = await paid_request("POST", f"/v1/text-to-speech/{eleven.identifier(body.voice_id)}", params=params,
+                    json={"text": body.text, "model_id": model, "language_code": body.language,
+                          "voice_settings": {"stability": body.stability, "similarity_boost": body.similarity, "speed": body.speed}})
+            elif body.action == "dialogue":
+                response = await paid_request("POST", "/v1/text-to-dialogue", params=params,
+                    json={"inputs": [v.model_dump() for v in body.dialogue], "model_id": "eleven_v3", "language_code": body.language})
+            elif body.action in {"sound_effects", "music"}:
+                data = {"text": body.text, "duration_seconds": body.seconds, "model_id": "eleven_text_to_sound_v2"} if body.action == "sound_effects" else {
+                    "prompt": body.text, "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}
+                response = await paid_request("POST", "/v1/sound-generation" if body.action == "sound_effects" else "/v1/music", json=data, params=params)
+            else:
+                if body.action == "dubbing":
+                    response = await paid_request("POST", "/v1/dubbing", files={"file": upload},
+                        data={"name": body.title, "source_lang": body.source_language, "target_lang": body.language, "watermark": "false"})
+                    item = VoiceLabItem(tenant_id=teacher.tenant_id, owner_id=teacher.id, title=body.title, kind="dubbing", service="dubbing",
+                        provider_id=response.json()["dubbing_id"], details={**details, **billing.details(tx, price), "status": "processing"})
+                    db.add(item)
+                    await db.commit()
+                    await db.refresh(item)
+                    return {"item": serialize(item, True)}
+                if body.action == "convert":
+                    model = body.model_id or "eleven_multilingual_sts_v2"
+                    catalogue = await eleven.models()
+                    if not any(m["model_id"] == model and m["conversion"] for m in catalogue):
+                        raise HTTPException(422, "Scegli un modello di cambio voce disponibile")
+                    response = await paid_request("POST", f"/v1/voice-changer/{eleven.identifier(body.voice_id)}", params=params,
+                        files={"audio": upload}, data={"model_id": model, "remove_background_noise": str(body.remove_noise).lower()})
+                elif body.action == "isolate":
+                    response = await paid_request("POST", "/v1/audio-isolation", files={"audio": upload})
+                else:
+                    data = {"model_id": body.model_id or "scribe_v2", "diarize": str(body.diarize).lower(), "language_code": body.language} if body.action == "transcribe" else {"text": body.text}
+                    response = await paid_request("POST", "/v1/speech-to-text" if body.action == "transcribe" else "/v1/forced-alignment", files={"file": upload}, data=data)
+                    result = response.json()
+                    item = await save_blob(db, teacher, body.title, body.action, json.dumps(result, ensure_ascii=False).encode(),
+                        "application/json", "json", {**details, **billing.details(tx, price), "transcript": result}, kind="transcript")
+                    await db.commit()
+                    await db.refresh(item)
+                    return {"item": serialize(item, True)}
+            audio = eleven.audio(response)
+            mime, ext = eleven.OUTPUT_FORMATS[body.output_format] if body.action in {"tts", "dialogue", "convert", "music", "sound_effects"} else ("audio/mpeg", "mp3")
+            actual_mime = response.headers.get("content-type", "").split(";")[0]
+            known_mimes = {"audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/opus": "ogg", "audio/flac": "flac"}
+            if actual_mime in known_mimes:
+                mime, ext = actual_mime, known_mimes[actual_mime]
+            try:
+                details["provider_credit_units"] = float(response.headers.get("character-cost") or character_count)
+            except (ValueError, OverflowError):
+                details["characters"] = character_count
+            item = await save_blob(db, teacher, body.title, body.action, audio, mime, ext, {**details, **billing.details(tx, price)})
             await db.commit()
             await db.refresh(item)
-            return serialize(item, True)
-        if body.action == "convert":
-            model = body.model_id or "eleven_multilingual_sts_v2"
-            catalogue = await eleven.models()
-            if not any(m["model_id"] == model and m["conversion"] for m in catalogue):
-                raise HTTPException(422, "Scegli un modello di cambio voce disponibile")
-            response = await paid_request("POST", f"/v1/voice-changer/{eleven.identifier(body.voice_id)}", params=params,
-                files={"audio": upload}, data={"model_id": model, "remove_background_noise": str(body.remove_noise).lower()})
-        elif body.action == "isolate":
-            response = await paid_request("POST", "/v1/audio-isolation", files={"audio": upload})
-        else:
-            data = {"model_id": body.model_id or "scribe_v2", "diarize": str(body.diarize).lower(), "language_code": body.language} if body.action == "transcribe" else {"text": body.text}
-            response = await paid_request("POST", "/v1/speech-to-text" if body.action == "transcribe" else "/v1/forced-alignment", files={"file": upload}, data=data)
-            result = response.json()
-            item = await save_blob(db, teacher, body.title, body.action, json.dumps(result, ensure_ascii=False).encode(),
-                "application/json", "json", {**details, **billing.details(tx, price), "transcript": result}, kind="transcript")
-            await db.commit()
-            await db.refresh(item)
-            return serialize(item, True)
-    audio = eleven.audio(response)
-    mime, ext = eleven.OUTPUT_FORMATS[body.output_format] if body.action in {"tts", "dialogue", "convert", "music", "sound_effects"} else ("audio/mpeg", "mp3")
-    actual_mime = response.headers.get("content-type", "").split(";")[0]
-    known_mimes = {"audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/opus": "ogg", "audio/flac": "flac"}
-    if actual_mime in known_mimes:
-        mime, ext = actual_mime, known_mimes[actual_mime]
-    try:
-        details["provider_credit_units"] = float(response.headers.get("character-cost") or character_count)
-    except (ValueError, OverflowError):
-        details["characters"] = character_count
-    item = await save_blob(db, teacher, body.title, body.action, audio, mime, ext, {**details, **billing.details(tx, price)})
-    await db.commit()
-    await db.refresh(item)
-    return serialize(item, True)
+            return {"item": serialize(item, True)}
+
+    job_id = await background_jobs.start_task_job(
+        background_jobs.JobOwner(tenant_id=tenant_id, user_id=teacher_id),
+        kind=f"audio_lab_{body.action}", title=f"Audio Lab · {label}: {body.title}"[:200],
+        description=(body.text or "")[:300] or None, route="/teacher/audio-lab",
+        expected_seconds=float(min(300, 20 + (body.seconds * 0.8 if body.action in {"music", "sound_effects"} else seconds * 0.3))),
+        work=work)
+    return {"job_id": str(job_id), "status": "running"}
 
 
 @router.post("/voices/clone")

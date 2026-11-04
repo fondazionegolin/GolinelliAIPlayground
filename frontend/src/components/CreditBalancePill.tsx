@@ -200,7 +200,7 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[640px] max-w-[calc(100vw-24px)] ds-popover nav-cluster-unroll overflow-hidden rounded-[var(--ds-radius-panel)]">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[640px] max-w-[calc(100vw-24px)] max-md:fixed max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 ds-popover nav-cluster-unroll overflow-hidden rounded-[var(--ds-radius-panel)]">
           <div className="border-b border-slate-100 px-4 py-3.5">
             <div className="flex items-center gap-3">
               <CreditRing value={remainingRatio} color={ringColor} size={38} />

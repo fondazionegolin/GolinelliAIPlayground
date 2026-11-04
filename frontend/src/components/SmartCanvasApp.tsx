@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { useOpenParam } from '@/lib/useOpenParam'
 import { Check, ChevronRight, Clock3, Loader2, MoreVertical, Pencil, Plus, Search, Send, Sparkles, Trash2, Users, X } from '@/components/icons'
 import { CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Select } from '@/design'
@@ -88,12 +89,13 @@ function errorMessage(err: unknown, fallback: string) {
 
 
 export default function SmartCanvasApp({ role }: { role: Role }) {
+  const linkedBoard = useOpenParam('board')
   const userId = useAuthStore(s => s.user?.id) || useAuthStore.getState().studentSession?.student_id || 'me'
   const lastKey = `smart-canvas-open:${role}:${userId}`
   const [boards, setBoards] = useState<Board[]>([])
   const [sessions, setSessions] = useState<SessionOption[]>([])
   const [loading, setLoading] = useState(true)
-  const [openId, setOpenId] = useState<string | null>(() => { try { return localStorage.getItem(lastKey) } catch { return null } })
+  const [openId, setOpenId] = useState<string | null>(() => { try { return linkedBoard || localStorage.getItem(lastKey) } catch { return null } })
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)

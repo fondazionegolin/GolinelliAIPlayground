@@ -158,7 +158,7 @@ export default function TeacherNotifications({
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-[var(--ds-radius-panel)]">
+        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:left-3 max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 max-md:w-auto max-md:max-w-none">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 shadow-[0_1px_0_rgba(120,120,124,0.12)]">
             <span className="text-sm font-medium text-gray-700">{tl("Notifiche (")}{notifications.length})</span>

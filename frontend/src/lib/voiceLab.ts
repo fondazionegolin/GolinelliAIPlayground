@@ -38,7 +38,8 @@ export const voiceLabApi = {
     const form = new FormData()
     form.append('payload', JSON.stringify(data))
     if (file) form.append('file', file)
-    return api.post<LabItem>('/voice-lab/generate', form, { timeout: 360000 })
+    // Generation runs as a background job: the answer is the job to follow, the item arrives in its result.
+    return api.post<{ job_id: string; status: string }>('/voice-lab/generate', form, { timeout: 60000 })
   },
   clone: (name: string, description: string, consent: boolean, removeNoise: boolean, files: File[]) => {
     const form = new FormData()

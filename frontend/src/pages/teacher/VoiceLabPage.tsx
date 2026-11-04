@@ -1,6 +1,6 @@
 import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Mic, Headphones, Music, Download, Loader2, Plus, RefreshCw, Share2, Library, Trash2 } from '@/components/icons'
@@ -8,6 +8,8 @@ import { Button, IconButton, Input, Select, Textarea } from '@/design'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useToast } from '@/components/ui/use-toast'
 import { voiceLabApi, type LabItem } from '@/lib/voiceLab'
+import { jobsApi, type BackgroundJob } from '@/lib/api'
+import { cancelJob, notifyJobsChanged, useTicker, waitForJob } from '@/lib/backgroundJobs'
 import { AudioPlayer, type AudioLoader } from '@/components/voice-lab/AudioPlayer'
 import { AudioShareDialog } from '@/components/voice-lab/AudioShareDialog'
 import { PlaylistWorkspace } from '@/components/voice-lab/PlaylistWorkspace'
@@ -56,6 +58,8 @@ export default function VoiceLabPage() {
   const [sharing, setSharing] = useState(false)
   const [playlistCandidate, setPlaylistCandidate] = useState('')
   const [librarySearch, setLibrarySearch] = useState('')
+  const [job, setJob] = useState<BackgroundJob | null>(null)
+  const leaving = useRef(new AbortController())
   const [previewName, setPreviewName] = useState('')
   const selectedId = params.get('item') || ''
   const qc = useQueryClient()
@@ -74,6 +78,7 @@ export default function VoiceLabPage() {
     for (const key of ['voice-lab-items', 'voice-lab-voices', 'voice-lab-item', 'drive', 'credit-balance']) void qc.invalidateQueries({ queryKey: [key] })
   }
   const fail = (error: unknown) => {
+    if ((error as { name?: string })?.name === 'AbortError') return // left the page: the job keeps running in the background
     const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
     toast({ variant: 'destructive', title: tl('Operazione non completata'), description: typeof detail === 'string' ? detail : tl('Controlla i dati e riprova.') })
   }
@@ -88,15 +93,38 @@ export default function VoiceLabPage() {
   const chosenVoice = voices.data?.find(v => v.voice_id === voice)
   const quote = useVoiceLabQuote({ tool, text: workspace === 'music' ? musicPrompt : text, dialogue: [],
     model: workspace === 'voice' ? activeModel?.model_id || '' : '', seconds: workspace === 'music' ? seconds : 1, file: tool === 'convert' ? file : null, previewText: '', enabled: configured })
-  const generate = useMutation({ mutationFn: async () => (await voiceLabApi.generate(workspace === 'music' ? {
+  // Wait for a background job and hand back the item it produced.
+  const follow = async (jobId: string): Promise<LabItem> => {
+    const finished = await waitForJob(jobId, setJob, { signal: leaving.current.signal, intervalMs: 1500 })
+    setJob(null); notifyJobsChanged()
+    const item = finished.result?.item as LabItem | undefined
+    if (finished.status === 'succeeded' && item) return item
+    throw { response: { data: { detail: finished.status === 'cancelled' ? tl('Generazione annullata.') : finished.error || tl('La generazione non è stata completata.') } } }
+  }
+  useEffect(() => {
+    const controller = leaving.current = new AbortController()
+    void (async () => {
+      try {
+        const jobs = (await jobsApi.list()).data.filter(j => j.kind.startsWith('audio_lab_'))
+        const running = jobs.find(j => j.status === 'running' && j.live)
+        if (running) { setJob(running); done(await follow(running.id)); return }
+        const finished = jobs.find(j => j.status === 'succeeded' && !j.seen_at && j.result?.item)
+        if (finished) { void jobsApi.markSeen([finished.id]); done(finished.result!.item as LabItem) }
+      } catch (error) { if (!controller.signal.aborted) fail(error) }
+    })()
+    return () => controller.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const generate = useMutation({ mutationFn: async () => follow((await voiceLabApi.generate(workspace === 'music' ? {
     action: 'music', title: musicTitle.trim() || tl('Nuovo brano'), text: musicPrompt, seconds, instrumental,
   } : {
     action: source === 'text' ? 'tts' : 'convert', title: voiceTitle.trim() || tl('Nuovo audio'), text: source === 'text' ? text : '',
     voice_id: voice, model_id: activeModel?.model_id, language, output_format: format, speed, stability, similarity, remove_noise: removeNoise,
-  }, workspace === 'voice' && source === 'recording' ? file : null)).data, onSuccess: done, onError: fail })
+  }, workspace === 'voice' && source === 'recording' ? file : null)).data.job_id), onSuccess: done, onError: fail })
   const savePreview = useMutation({ mutationFn: async () => (await voiceLabApi.saveVoice(selectedId, previewName.trim())).data, onSuccess: done, onError: fail })
   const deleteVoice = useMutation({ mutationFn: (id: string) => voiceLabApi.deleteVoice(id), onSuccess: () => { setVoice(''); refresh() }, onError: fail })
-  const busy = generate.isPending || savePreview.isPending
+  const generating = generate.isPending || !!job
+  const busy = generating || savePreview.isPending
   const ready = configured && !busy && !!quote.data && !quote.loading && !quote.error && (workspace === 'music'
     ? !!musicPrompt.trim() && seconds >= 3 && seconds <= 600
     : !!chosenVoice && !!activeModel && (source === 'text' ? !!text.trim() && text.length <= Math.min(activeModel.max_characters || 5000, 20000) : !!file && file.size <= 50 * 1024 * 1024))
@@ -112,10 +140,10 @@ export default function VoiceLabPage() {
 
   return <div className="voice-lab-workspace mx-auto max-w-[1280px] space-y-5 p-4 pb-12 md:p-7">
     <header className="flex flex-wrap items-center justify-between gap-4">
-      <div><SectionHeading section="/teacher/voice-lab" className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl" subtitle={<>{tl('Crea una voce, genera musica e raccogli i tuoi audio in playlist.')}</>} subtitleClassName={`mt-1 ${hint}`}>Voice Lab</SectionHeading></div>
+      <div><SectionHeading section="/teacher/audio-lab" className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl" subtitle={<>{tl('Crea una voce, genera musica e raccogli i tuoi audio in playlist.')}</>} subtitleClassName={`mt-1 ${hint}`}>Audio Lab</SectionHeading></div>
       <Button tone="neutral" surface="outline" aria-pressed={workspace === 'library'} disabled={busy} onClick={() => setWorkspace(workspace === 'library' ? 'voice' : 'library')}><Library className="h-4 w-4" />{tl('La mia libreria')}</Button>
     </header>
-    <nav aria-label={tl('Strumenti Voice Lab')} className="voice-lab-tabs grid grid-cols-3 gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>
+    <nav aria-label={tl('Strumenti Audio Lab')} className="voice-lab-tabs grid grid-cols-3 gap-1.5 p-1.5" style={buildAccentNavClusterStyle()}>
       {WORKSPACES.map(tab => <Button key={tab.id} tone="neutral" surface="ghost" disabled={busy} aria-current={workspace === tab.id ? 'page' : undefined}
         className={`!h-auto min-h-12 gap-2 py-3 ${workspace === tab.id ? 'ds-selected' : ''}`} onClick={() => setWorkspace(tab.id)}><tab.icon className="h-4 w-4" />{tl(tab.label)}</Button>)}
     </nav>
@@ -181,13 +209,13 @@ export default function VoiceLabPage() {
         </>}
         {(workspace === 'voice' || workspace === 'music') && <div className="space-y-3">
           <QuoteDisplay quote={quote} />
-          <Button tone="accent" surface="solid" disabled={!ready} onClick={() => generate.mutate()}>{generate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : workspace === 'music' ? <Music className="h-4 w-4" /> : <Mic className="h-4 w-4" />}{tl(generate.isPending ? 'Generazione in corso…' : workspace === 'music' ? 'Genera musica' : 'Genera voce')}</Button>
+          <Button tone="accent" surface="solid" disabled={!ready} onClick={() => generate.mutate()}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : workspace === 'music' ? <Music className="h-4 w-4" /> : <Mic className="h-4 w-4" />}{tl(generating ? 'Generazione in corso…' : workspace === 'music' ? 'Genera musica' : 'Genera voce')}</Button>
           <p className="text-xs leading-5 text-[var(--text-muted)]">{tl('L’audio viene salvato automaticamente nei tuoi Files. Ascolto e download non consumano crediti.')}</p>
         </div>}
       </section>
-      {(workspace === 'voice' || workspace === 'music') && <aside className={`${panel} space-y-4 lg:sticky lg:top-5`} aria-label={tl('Risultato Voice Lab')}>
+      {(workspace === 'voice' || workspace === 'music') && <aside className={`${panel} space-y-4 lg:sticky lg:top-5`} aria-label={tl('Risultato Audio Lab')}>
         <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{tl('Il tuo audio')}</h2>{selectedId && <IconButton tone="neutral" surface="ghost" aria-label={tl('Aggiorna risultato')} onClick={() => void selected.refetch()}><RefreshCw className={`h-4 w-4 ${selected.isFetching ? 'animate-spin' : ''}`} /></IconButton>}</div>
-        {generate.isPending && <p role="status" className={hint}>{tl('Sto creando il tuo audio. Il risultato apparirà qui.')}</p>}
+        {generating && <GenerationProgress job={job} />}
         {selected.isLoading && <Loader2 aria-label={tl('Caricamento audio')} className="h-5 w-5 animate-spin" />}
         {selected.isError && <p role="alert" className={hint}>{tl('Audio non disponibile. Prova ad aprirlo dalla libreria.')}</p>}
         {selected.data ? <>
@@ -215,4 +243,20 @@ export default function VoiceLabPage() {
 function QuoteDisplay({ quote }: { quote: ReturnType<typeof useVoiceLabQuote> }) {
   return <div aria-live="polite" className="text-sm text-[var(--text-secondary)]">{quote.loading ? tl('Calcolo dei crediti…') : quote.error ? <span role="alert">{quote.error}</span> : quote.data
     ? tl('Costo stimato: {0} crediti', quote.data.credits.toLocaleString('it-IT', { maximumFractionDigits: 2 })) : tl('Completa i dati per calcolare i crediti.')}</div>
+}
+
+/** Live feedback while a generation runs in the background (the navbar indicator shows the same job). */
+function GenerationProgress({ job }: { job: BackgroundJob | null }) {
+  const [started] = useState(() => Date.now())
+  useTicker(true)
+  const elapsed = Math.max(0, Math.round((Date.now() - (job ? new Date(job.created_at).getTime() : started)) / 1000))
+  const progress = Math.min(0.97, Math.max(0.04, job?.progress_display ?? job?.progress ?? 0.04))
+  return <div role="status" className="space-y-3 rounded-[var(--control-radius)] p-4 voice-lab-options">
+    <div className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" />{job?.progress_label || tl('Preparo la generazione…')}</div>
+    <div className="h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]" aria-hidden="true">
+      <div className="h-full rounded-full bg-[var(--text-secondary)] transition-[width] duration-700" style={{ width: `${Math.round(progress * 100)}%` }} />
+    </div>
+    <p className={`${hint} text-xs`}>{tl('{0} s · Puoi cambiare pagina: la generazione continua in background e la trovi nell’indicatore in alto.', elapsed)}</p>
+    {job && <Button tone="neutral" surface="ghost" density="compact" onClick={() => void cancelJob(job.id)}>{tl('Annulla')}</Button>}
+  </div>
 }

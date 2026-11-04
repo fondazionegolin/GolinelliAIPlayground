@@ -43,6 +43,28 @@ def billing_spies(monkeypatch):
     return reserve, settle
 
 
+@pytest.fixture
+def inline_jobs(monkeypatch):
+    """Generation is a background job: run its work inline with the stub session and expose its result."""
+    ran = SimpleNamespace(result=None, kwargs=None)
+
+    class Session:
+        def __init__(self, teacher): self.teacher = teacher
+        async def __aenter__(self):
+            return SimpleNamespace(**vars(db_stub()), get=AsyncMock(return_value=self.teacher))
+        async def __aexit__(self, *exc): return False
+
+    def install(teacher):
+        async def start(owner, **kwargs):
+            ran.kwargs = kwargs
+            ran.result = await kwargs["work"](SimpleNamespace(progress=AsyncMock()))
+            return uuid4()
+        monkeypatch.setattr(routes.background_jobs, "start_task_job", start)
+        monkeypatch.setattr(routes, "AsyncSessionLocal", lambda: Session(teacher))
+        return ran
+    return install
+
+
 @pytest.mark.parametrize("data", [
     {"action": "tts", "text": "ciao"}, {"action": "tts", "voice_id": "voice123"},
     {"action": "dialogue", "dialogue": []}, {"action": "music", "text": "Jazz", "seconds": 2},
@@ -90,8 +112,9 @@ async def test_other_teachers_private_voices_are_hidden(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch, billing_spies):
+async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch, billing_spies, inline_jobs):
     teacher, db = actor(), db_stub()
+    ran = inline_jobs(teacher)
     monkeypatch.setattr(routes, "budget", AsyncMock(return_value=0))
     monkeypatch.setattr(routes, "require_voices", AsyncMock())
     monkeypatch.setattr(eleven, "models", AsyncMock(return_value=[{"model_id": "tts-model", "tts": True, "max_characters": 5000}]))
@@ -102,7 +125,9 @@ async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch
     monkeypatch.setattr(routes, "save_blob", save)
     monkeypatch.setattr(routes.credit_service, "track_usage", AsyncMock())
     result = await routes.generate(db, teacher, json.dumps({"action": "tts", "text": "Ciao", "voice_id": "voice123", "model_id": "tts-model"}), None)
-    assert result["id"] == str(item.id)
+    assert result["status"] == "running" and result["job_id"]
+    assert ran.kwargs["route"] == "/teacher/audio-lab" and ran.kwargs["kind"] == "audio_lab_tts"
+    assert ran.result["item"]["id"] == str(item.id)
     assert request.call_args.args == ("POST", "/v1/text-to-speech/voice123")
     assert request.call_args.kwargs["json"]["text"] == "Ciao"
     assert save.call_args.args[4] == b"ID3audio"
@@ -112,8 +137,9 @@ async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_transcription_upload_uses_real_multipart_field_names(monkeypatch, billing_spies):
+async def test_transcription_upload_uses_real_multipart_field_names(monkeypatch, billing_spies, inline_jobs):
     teacher, db = actor(), db_stub()
+    inline_jobs(teacher)
     monkeypatch.setattr(routes, "budget", AsyncMock(return_value=0))
     request = AsyncMock(return_value=httpx.Response(200, json={"text": "Lezione", "words": []}))
     monkeypatch.setattr(eleven, "request", request)

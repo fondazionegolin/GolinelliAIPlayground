@@ -55,17 +55,17 @@ export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = fal
   const mm = now.getMinutes().toString().padStart(2, '0')
 
   return (
-    <div ref={ref} className="relative hidden lg:flex">
+    <div ref={ref} className="relative flex">
       <button
         onClick={() => setOpen(v => !v)}
-        className={`${inNavCluster ? 'navbar-inline-control h-9' : 'navbar-widget-control navbar-widget-control-inset h-auto'} flex cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 transition-colors`}
+        className={`${inNavCluster ? 'navbar-inline-control h-9' : 'navbar-widget-control navbar-widget-control-inset h-auto'} flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 sm:px-3 transition-colors`}
         style={{ '--btn-tone': accentColor } as CSSProperties}
       >
         <div className="text-[13px] font-semibold leading-tight text-slate-700 tabular-nums">{hh}:{mm}</div>
       </button>
 
       {open && (
-        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--ds-radius-panel)]">
+        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:right-3 max-md:top-[4.25rem] max-md:mt-0">
           {/* Month nav */}
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <button

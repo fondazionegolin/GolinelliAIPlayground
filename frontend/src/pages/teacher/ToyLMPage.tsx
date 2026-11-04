@@ -32,6 +32,7 @@ import ToyLMCorpusPicker, { type ToyLMCorpusSelection } from '@/components/toy-l
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
+import { useOpenParam } from '@/lib/useOpenParam'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -165,7 +166,8 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
 export default function ToyLMPage() {
   // Job list
   const [jobs, setJobs] = useState<Job[]>([])
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const linkedJob = useOpenParam('model')
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(linkedJob)
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
 
   // Rename

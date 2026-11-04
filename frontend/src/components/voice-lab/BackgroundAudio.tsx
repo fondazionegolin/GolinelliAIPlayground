@@ -85,7 +85,9 @@ export function BackgroundAudioProvider({ children }: { children: ReactNode }) {
   const personalRef = useRef(personal); personalRef.current = personal
   const classQuery = useQuery({ queryKey: ['class-playback', identity, classId, studentSession?.session_id || sessionId],
     queryFn: async () => (await voiceLabApi.classPlayback(classId ? { class_id: classId } : { session_id: studentSession?.session_id || sessionId })).data,
-    enabled: !!identity && (!!studentSession || !!sessionId || !!classId), refetchInterval: 1500, refetchIntervalInBackground: true, retry: false })
+    enabled: !!identity && (!!studentSession || !!sessionId || !!classId), retry: false,
+    // Position is extrapolated from server_time, so a slow poll is enough; idle (no class audio) polls even less, hidden tabs not at all.
+    refetchInterval: q => document.hidden ? false : q.state.data ? 3000 : 10000, refetchIntervalInBackground: false })
   const denied = [401, 403, 404].includes((classQuery.error as any)?.response?.status)
   const playback = denied ? null : classQuery.data || null
   const classActive = following && !!playback
@@ -304,8 +306,9 @@ function NavbarAudioPanel() {
       {(player.active?.tracks.length || 0) > 1 && <ol aria-label={tl('Tracce in riproduzione')} className="max-h-32 space-y-1 overflow-y-auto">{player.active!.tracks.map((entry, i) => <li key={entry.id}><Button tone="neutral" surface="ghost" fullWidth className={`!justify-start text-left ${i === player.index ? 'ds-selected' : ''}`} aria-label={tl('Riproduci {0}', entry.title)} aria-current={i === player.index ? 'true' : undefined} disabled={!mayChoose} onClick={() => player.choose(i)}><span className="truncate">{entry.title}</span></Button></li>)}</ol>}
     </> : <p className="text-sm text-[var(--text-secondary)]">{tl('Scegli un brano o carica una playlist per iniziare.')}</p>}
     {player.error && <div role="alert" className="text-xs text-[var(--text-secondary)]">{player.error}<Button tone="neutral" surface="ghost" onClick={player.retry}>{tl('Riprova audio')}</Button></div>}
-    <SearchableSelect label={tl('Riproduci un brano')} value={selectedFile} options={(library.data || []).map(v => ({ value: v.id, label: v.title }))} onChange={id => { const file = library.data?.find(v => v.id === id); if (file) { setSelectedFile(id); player.playFile(file) } }} />
-    <SearchableSelect label={tl('Carica una playlist')} value={player.personal?.id || ''} options={(lists.data || []).map(v => ({ value: v.id, label: v.title }))} onChange={id => { const playlist = lists.data?.find(v => v.id === id); if (playlist) { setSelectedFile(''); player.listen(playlist) } }} />
+    {/* menuClassName: the list opens inline; an absolute menu was clipped by the panel's overflow-y-auto. */}
+    <SearchableSelect menuClassName="!static !mt-2 w-full" label={tl('Riproduci un brano')} value={selectedFile} options={(library.data || []).map(v => ({ value: v.id, label: v.title }))} onChange={id => { const file = library.data?.find(v => v.id === id); if (file) { setSelectedFile(id); player.playFile(file) } }} />
+    <SearchableSelect menuClassName="!static !mt-2 w-full" label={tl('Carica una playlist')} value={player.personal?.id || ''} options={(lists.data || []).map(v => ({ value: v.id, label: v.title }))} onChange={id => { const playlist = lists.data?.find(v => v.id === id); if (playlist) { setSelectedFile(''); player.listen(playlist) } }} />
     {(library.isError || lists.isError) && <Button tone="neutral" surface="ghost" onClick={() => { void library.refetch(); void lists.refetch() }}>{tl('Ricarica brani e playlist')}</Button>}
     <input ref={fileInput} type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" className="hidden" onChange={e => { if (e.target.files?.length) void player.addFiles(Array.from(e.target.files)); e.target.value = '' }} />
     <Button tone="neutral" surface="ghost" density="compact" disabled={player.busy} onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" />{tl('Apri audio dal computer')}</Button>

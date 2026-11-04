@@ -139,7 +139,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-24px)] max-md:fixed max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div>
               <p className="text-sm font-black text-slate-900">{tl("Generazioni in background")}</p>

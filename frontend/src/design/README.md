@@ -25,8 +25,8 @@ Use the existing section asset instead of adding another header icon or generati
 ```tsx
 import { SectionHeading, SectionIllustration } from '@/design'
 
-<SectionHeading section="/teacher/voice-lab" className="text-2xl font-bold">
-  Voice Lab
+<SectionHeading section="/teacher/audio-lab" className="text-2xl font-bold">
+  Audio Lab
 </SectionHeading>
 
 // Compact editor or a title that is an input rather than a heading:
@@ -37,7 +37,7 @@ import { SectionHeading, SectionIllustration } from '@/design'
 
 ## Audio playback
 
-The navbar widget is the single persistent audio player for authenticated teachers and students. Double-clicking an audio file in Files or pressing play in Voice Lab, a chat attachment or a podcast starts that same player and opens its popup. Use `useBackgroundAudio().playFile(...)`, `playTracks(...)` or `listen(...)`; feature components must not mount another audio element for ordinary listening. Video editing, voice recording and live calls keep their own transport.
+The navbar widget is the single persistent audio player for authenticated teachers and students. Double-clicking an audio file in Files or pressing play in Audio Lab, a chat attachment or a podcast starts that same player and opens its popup. Use `useBackgroundAudio().playFile(...)`, `playTracks(...)` or `listen(...)`; feature components must not mount another audio element for ordinary listening. Video editing, voice recording and live calls keep their own transport.
 
 Keep the popup compact and focused on listening: current track, play/pause, previous/next when there is a queue, local mute and progress. Selecting «Riproduci un brano» or «Carica una playlist» starts playback immediately. Playlist names, saving, reordering, sharing and class broadcast configuration belong in the dedicated playlist section, not the navbar popup. Playback continues after closing the popup or changing page.
 

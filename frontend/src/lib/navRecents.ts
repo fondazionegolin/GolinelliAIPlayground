@@ -1,4 +1,4 @@
-import { adminApi, agenticApi, boardsApi, codingApi, liveInteractionApi, notebooksApi, teacherApi, teacherbotsApi } from '@/lib/api'
+import api, { adminApi, agenticApi, driveApi, mlLabApi, solidModelerApi, boardsApi, codingApi, liveInteractionApi, notebooksApi, teacherApi, teacherbotsApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
 
 /** One quick-access entry shown on the right of a navbar submenu row. */
@@ -122,6 +122,66 @@ export const navRecentFetchers = {
       meta: row.shot_count ? tl("{0} clip", row.shot_count) : undefined,
       at: at(row),
       to: `/teacher/video-studio/${row.id}`,
+    })),
+
+  solidModels: async (): Promise<NavRecent[]> =>
+    newest((await solidModelerApi.list()).data as Row[]).map((row) => ({
+      id: row.id,
+      title: row.name || tl("Senza titolo"),
+      meta: tl("{0} oggetti", row.object_count ?? 0),
+      at: at(row),
+      to: `/teacher/3d-lab?model=${row.id}`,
+    })),
+
+  /** AI 3D results live in this browser (localStorage), written by the generator. */
+  aiModels: async (): Promise<NavRecent[]> => {
+    let assets: Row[] = []
+    try { const parsed = JSON.parse(localStorage.getItem('teacher_3d_assets') || '[]'); if (Array.isArray(parsed)) assets = parsed } catch { /* empty */ }
+    return assets.filter((a) => a.glbUrl).map((a) => ({
+      id: String(a.id),
+      title: a.label || tl("Modello 3D"),
+      meta: a.mode === 'img23d' ? tl("Da immagine") : tl("Da testo"),
+      at: a.createdAt ?? null,
+      to: `/teacher/ai-3d?asset=${encodeURIComponent(String(a.id))}`,
+    }))
+  },
+
+  mlProjects: async (): Promise<NavRecent[]> =>
+    newest((await mlLabApi.list()).data.projects as Row[]).map((row) => ({
+      id: row.id,
+      title: row.name || tl("Senza titolo"),
+      meta: tl("{0} classi · {1} esempi", row.class_count ?? 0, row.sample_count ?? 0),
+      at: at(row),
+      to: `/teacher/ml-lab?project=${row.id}`,
+    })),
+
+  canvases: async (): Promise<NavRecent[]> =>
+    newest(((await api.get('/smart-canvases')).data as Row[]).filter((row) => row.mine !== false)).map((row) => ({
+      id: row.id,
+      title: row.title || tl("Senza titolo"),
+      meta: row.session_title || undefined,
+      at: at(row),
+      to: `/teacher/smart-canvas?board=${row.id}`,
+    })),
+
+  toyModels: async (): Promise<NavRecent[]> => {
+    const jobs = (await api.get('/toy-lm/jobs')).data as Row[]
+    const when = (row: Row) => new Date(row.completedAt || row.startedAt || row.createdAt || 0).getTime()
+    return [...jobs].sort((a, b) => when(b) - when(a)).map((row) => ({
+      id: row.id,
+      title: row.name || 'ToyGPT',
+      meta: row.status === 'completed' ? tl("Addestrato") : row.status === 'running' ? tl("In addestramento") : row.status === 'queued' ? tl("In coda") : undefined,
+      at: row.completedAt || row.startedAt || row.createdAt || null,
+      to: `/teacher/toy-lm?model=${row.id}`,
+    }))
+  },
+
+  files: async (): Promise<NavRecent[]> =>
+    ((await driveApi.list({ view: 'recent' })).data as Row[]).map((row) => ({
+      id: row.id,
+      title: row.name,
+      at: row.updated_at || row.created_at || null,
+      to: `/teacher/files?view=recent&open=${row.id}`,
     })),
 
   workflows: async (): Promise<NavRecent[]> =>

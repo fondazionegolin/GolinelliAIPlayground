@@ -64,7 +64,7 @@ async def reserve(db, teacher, price, model=""):
         limits = list((await db.scalars(select(CreditLimit).where(CreditLimit.id.in_([v.id for v in limits])).order_by(CreditLimit.id).with_for_update().execution_options(populate_existing=True))).all())
     if not await credit_service.check_availability(db, teacher.tenant_id, price["cost"], teacher_id=teacher.id):
         raise HTTPException(402, "Crediti insufficienti per questa generazione")
-    details = {"type": "voice_lab", "service": "Voice Lab", "action": price["action"],
+    details = {"type": "voice_lab", "service": "Audio Lab", "action": price["action"],
                "billing_status": "reserved", "pricing": price,
                "limit_periods": {str(v.id): v.period_start.isoformat() for v in limits}}
     tx = await credit_service.track_usage(db, teacher.tenant_id, "elevenlabs", model or price["action"], price["cost"], details, teacher_id=teacher.id)

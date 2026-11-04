@@ -1,4 +1,5 @@
 import { SectionHeading } from '@/design/primitives/SectionHeading'
+import { useOpenParam } from '@/lib/useOpenParam'
 import '@google/model-viewer'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -110,7 +111,8 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [assets, setAssets] = useState<Asset3D[]>(() => loadAssets(assetKey))
-  const [viewingAsset, setViewingAsset] = useState<Asset3D | null>(null)
+  const linkedAsset = useOpenParam('asset')
+  const [viewingAsset, setViewingAsset] = useState<Asset3D | null>(() => (linkedAsset ? loadAssets(assetKey).find(a => a.id === linkedAsset) ?? null : null))
   const [toast, setToast] = useState<string | null>(null)
   // Background job following the Meshy task: phase label, elapsed time and the stop button.
   const [jobId, setJobId] = useState<string | null>(null)

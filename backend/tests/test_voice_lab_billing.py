@@ -39,6 +39,18 @@ async def test_duration_is_measured_from_media_not_client_claim():
         await billing.duration(b"not media")
 
 
+def run_jobs_inline(monkeypatch, teacher):
+    """Generation runs as a background job: execute its work inline so a failure surfaces as an exception."""
+    class Session:
+        async def __aenter__(self): return SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock(), get=AsyncMock(return_value=teacher))
+        async def __aexit__(self, *exc): return False
+
+    async def start(owner, **kwargs):
+        await kwargs["work"](SimpleNamespace(progress=AsyncMock()))
+    monkeypatch.setattr(routes.background_jobs, "start_task_job", start)
+    monkeypatch.setattr(routes, "AsyncSessionLocal", lambda: Session())
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure,refund", [(HTTPException(422, "Invalid"), True), (eleven.UncertainGeneration(504, "Uncertain"), False)])
 async def test_failed_generation_refunds_known_failure_but_preserves_uncertain_charge(monkeypatch, failure, refund):
@@ -50,6 +62,7 @@ async def test_failed_generation_refunds_known_failure_but_preserves_uncertain_c
     monkeypatch.setattr(billing, "reserve", reserve)
     monkeypatch.setattr(billing, "settle", settle)
     monkeypatch.setattr(eleven, "request", AsyncMock(side_effect=failure))
+    run_jobs_inline(monkeypatch, teacher)
     with pytest.raises(HTTPException):
         await routes.generate(db, teacher, json.dumps({"action": "music", "text": "Piano", "seconds": 30}), None)
     assert reserve.await_count == 1
@@ -66,6 +79,7 @@ async def test_insufficient_credits_does_not_contact_provider(monkeypatch):
     monkeypatch.setattr(routes, "budget", AsyncMock())
     monkeypatch.setattr(billing, "reserve", AsyncMock(side_effect=HTTPException(402, "No credit")))
     monkeypatch.setattr(eleven, "request", request)
+    run_jobs_inline(monkeypatch, teacher)
     with pytest.raises(HTTPException) as exc:
         await routes.generate(db, teacher, '{"action":"music","text":"Piano"}', None)
     assert exc.value.status_code == 402
