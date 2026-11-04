@@ -1,3 +1,4 @@
+import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { voiceLabApi } from '@/lib/voiceLab'
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
@@ -371,7 +372,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   const betaItems = [
     ...(isAdmin ? [{ path: '/teacher/agentic', details: tl("Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo."), label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
-    ...(isAdmin ? [{ path: '/teacher/video-studio', label: tl("Video Studio"), description: tl("Video didattici da un testo, shot da 5 secondi"), icon: Film }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   // Classes row: the session being worked on first, then the other running sessions.
@@ -398,6 +398,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       { path: '/teacher/teacherbots', details: tl("Configura assistenti AI personalizzati con le tue istruzioni e i tuoi materiali, e pubblicali agli studenti come tutor, esaminatori o escape room."), label: t('navbar.nav_teacherbots'), description: t('navbar.desc_teacherbots'), icon: Bot, recents: { queryKey: ['teacherbots'], limit: 3, fetch: navRecentFetchers.teacherbots } },
       { path: '/teacher/voice-lab', label: 'Voice Lab', description: tl("Voci, audio e registrazioni"), details: tl("Genera audio da un testo, clona e progetta voci, crea dialoghi, trascrivi, isola il parlato, componi musica ed effetti e doppia le registrazioni. I risultati restano nella tua libreria e nei Files."), icon: Mic, isNew: true,
         recents: { queryKey: ['voice-lab-items'], limit: 3, fetch: async () => (await voiceLabApi.items()).data.filter((item) => item.kind !== 'voice').slice(0, 3).map((item) => ({ id: item.id, title: item.title, to: `/teacher/voice-lab?item=${item.id}` })) } },
+      { path: '/teacher/video-studio', label: tl("Video Studio"), description: tl("Video didattici da un testo, con voce"), details: tl("Parti da un testo o da un documento: l'AI scrive la sceneggiatura, genera immagini, clip e voce narrante. Poi monta il video su una timeline, aggiungi clip e scaricalo in MP4."), icon: Film, isNew: true, recents: { queryKey: ['video-studio-projects'], limit: 3, fetch: navRecentFetchers.videos } },
       { path: '/teacher/ai-3d', label: tl("AI 3D"), description: t('navbar.desc_ai3d'), icon: MushroomIcon },
       { path: '/teacher/3d-lab', label: '3D Lab', description: t('navbar.desc_3dlab'), icon: Cube3DIcon },
     ] },
@@ -647,6 +648,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <NavbarMusicButton sessionId={currentSession?.id} />
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />

@@ -222,7 +222,8 @@ async def _folder_for_write(db: AsyncSession, principal: drive.DrivePrincipal, p
     """Target folder (None = drive root) and the drive owner new items belong to."""
     if parent_id is None:
         if not principal.is_teacher:
-            raise HTTPException(status_code=403, detail="Seleziona una cartella condivisa")
+            root = await drive.student_root(db, principal.student)
+            return root, root.owner_teacher_id
         return None, principal.teacher.id
     folder = await _load(db, parent_id)
     if folder.kind != "folder" or folder.trashed_at:
@@ -245,7 +246,7 @@ async def _get_or_create_folder(db: AsyncSession, owner: UUID, tenant_id, parent
     if existing:
         return existing
     class_id, session_id = await drive.context_of(db, parent)
-    folder = DriveItem(owner_teacher_id=owner, tenant_id=tenant_id, parent_id=parent_id, kind="folder", name=name,
+    folder = DriveItem(owner_teacher_id=owner, owner_student_id=parent.owner_student_id if parent else None, tenant_id=tenant_id, parent_id=parent_id, kind="folder", name=name,
                        class_id=class_id, session_id=session_id)
     db.add(folder)
     await db.flush()
@@ -291,7 +292,7 @@ async def folder_tree(
     await drive.sync_teacher_drive(db, teacher)
     folders = (await db.execute(
         _visible(select(DriveItem))
-        .where(DriveItem.owner_teacher_id == teacher.id)
+        .where(DriveItem.owner_teacher_id == teacher.id, DriveItem.owner_student_id.is_(None))
         .where(DriveItem.kind == "folder")
         .where(DriveItem.trashed_at.is_(None))
         .order_by(DriveItem.is_system.desc(), DriveItem.name)
@@ -324,7 +325,11 @@ async def list_items(
         await drive.sync_teacher_drive(db, principal.teacher, force=sync)
 
     breadcrumb: list[dict] = []
-    role: str | None = "owner" if principal.is_teacher else None
+    role: str | None = "owner"
+    if not principal.is_teacher and view == "folder" and not parent_id:
+        root = await drive.sync_student_audio(db, principal.student)
+        parent_id = root.id
+        await db.commit()
 
     if view == "folder" and parent_id:
         folder = await _load(db, parent_id)
@@ -359,10 +364,10 @@ async def list_items(
             items.extend(await _serialize(db, [row], best[row.id]))
         return {"items": items, "breadcrumb": [], "role": None}
 
-    if not principal.is_teacher:
-        raise HTTPException(status_code=403, detail="Vista disponibile solo ai docenti")
-    owner = principal.teacher.id
-    base = _visible(select(DriveItem)).where(DriveItem.owner_teacher_id == owner)
+    if principal.is_teacher:
+        base = _visible(select(DriveItem)).where(DriveItem.owner_teacher_id == principal.teacher.id, DriveItem.owner_student_id.is_(None))
+    else:
+        base = _visible(select(DriveItem)).where(DriveItem.owner_student_id == principal.student.id)
     if view == "folder":
         query = base.where(DriveItem.parent_id.is_(None)).where(DriveItem.trashed_at.is_(None))
     elif view == "recent":
@@ -544,7 +549,7 @@ async def create_folder(
     class_id, session_id = await drive.context_of(db, parent)
     owner_user = await db.get(User, owner)
     folder = DriveItem(
-        owner_teacher_id=owner, tenant_id=owner_user.tenant_id if owner_user else None,
+        owner_teacher_id=owner, owner_student_id=parent.owner_student_id if parent else None, tenant_id=owner_user.tenant_id if owner_user else None,
         parent_id=parent.id if parent else None, kind="folder", name=_clean_name(body.name),
         class_id=class_id, session_id=session_id,
         created_by_student_id=principal.student.id if principal.student else None,
@@ -608,6 +613,8 @@ async def upload(
             mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
         if name.lower().endswith(".glb"):
             mime = "model/gltf-binary"
+        if target is None or (target.owner_student_id and (target.system_key or "").startswith("student:")):
+            target = await drive.type_folder(db, owner, owner_user.tenant_id, drive.file_category(name, mime), parent=target, student_id=target.owner_student_id if target else None)
         file_id = uuid4()
         suffix = PurePosixPath(name).suffix[:16]
         storage_key = f"{drive.DRIVE_PREFIX}{owner_user.tenant_id}/{owner}/{file_id}{suffix}"
@@ -624,7 +631,7 @@ async def upload(
         db.add(stored)
         await db.flush()
         item = DriveItem(
-            owner_teacher_id=owner, tenant_id=owner_user.tenant_id, parent_id=target.id if target else None,
+            owner_teacher_id=owner, owner_student_id=target.owner_student_id if target else None, tenant_id=owner_user.tenant_id, parent_id=target.id if target else None,
             kind="file", name=name, file_id=file_id, source_type="upload", mime_type=mime, size_bytes=len(data),
             class_id=class_id, session_id=session_id,
             created_by_student_id=principal.student.id if principal.student else None,
@@ -634,7 +641,7 @@ async def upload(
     await db.commit()
     for item in created:
         await db.refresh(item)
-    role = "owner" if principal.is_teacher and principal.teacher.id == owner else "editor"
+    role = "owner" if (principal.is_teacher and principal.teacher.id == owner) or (principal.student and parent and parent.owner_student_id == principal.student.id) else "editor"
     return {"items": await _serialize(db, created, role)}
 
 
@@ -647,6 +654,11 @@ async def _sync_source_name(db: AsyncSession, item: DriveItem, name: str) -> Non
         draft = await db.get(DocumentDraft, item.source_id)
         if draft:
             draft.title = name
+    elif item.source_type == "voice_playlist" and item.source_id:
+        from app.models.voice_lab import VoiceLabPlaylist
+        playlist = await db.get(VoiceLabPlaylist, item.source_id)
+        if playlist:
+            playlist.title = name[:200]
     elif item.source_type == "solid_model" and item.source_id:
         model = await db.get(SolidModel, item.source_id)
         if model:
@@ -772,7 +784,7 @@ async def empty_trash(
 
 async def _owned(db: AsyncSession, teacher: User, item_id: UUID) -> DriveItem:
     item = await _load(db, item_id)
-    if item.owner_teacher_id != teacher.id:
+    if item.owner_teacher_id != teacher.id or item.owner_student_id is not None:
         raise HTTPException(status_code=404, detail="Elemento non trovato")
     return item
 

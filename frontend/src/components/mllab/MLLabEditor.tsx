@@ -1,3 +1,4 @@
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, Check, Download, Loader2, Play, Plus, Share2, Square, Trash2, Upload, X } from '@/components/icons'
@@ -522,6 +523,7 @@ export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: {
       {/* top bar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => { stopCapture(); onBack() }} className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10"><ArrowLeft className="h-4 w-4" /> {tl("Progetti")}</button>
+        <SectionIllustration section="/teacher/ml-lab" compact />
         <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label={tl("Nome del progetto")} className="h-10 min-w-[12rem] flex-1 rounded-xl bg-transparent px-2 text-xl font-bold text-slate-900 sm:max-w-md" />
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-white/10">{MODE_LABEL[mode]}</span>
         <span className="flex items-center gap-1.5 text-xs text-slate-400" role="status">

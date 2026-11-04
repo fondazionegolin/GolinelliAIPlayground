@@ -13,6 +13,7 @@ import { Button } from '@/design/primitives/Button'
 import { useMobile } from '@/hooks/useMobile'
 import UnifiedMeshyLab from '@/components/meshy/UnifiedMeshyLab'
 import { tl } from '@/i18n/tl'
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 
 const SolidModeler = lazy(() => import('@/components/solidModeler/SolidModeler'))
 
@@ -159,7 +160,7 @@ export default function Teacher3DLabPage({ sessionId, view = 'modeler' }: Props 
   if (isMobile) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <Box className="h-10 w-10 text-slate-300" />
+        <SectionIllustration section="/teacher/3d-lab" />
         <p className="text-sm font-bold text-slate-700">{tl("Il modellatore 3D si usa da computer.")}</p>
         <Link to="/teacher/ai-3d" className="inline-flex items-center gap-1.5 rounded-full bg-[var(--logo-violet)] px-4 py-2 text-xs font-bold text-white">
           <Sparkles className="h-3.5 w-3.5" /> {tl("Apri AI 3D")}

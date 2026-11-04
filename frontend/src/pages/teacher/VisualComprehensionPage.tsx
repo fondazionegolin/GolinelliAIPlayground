@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { v4 as uuid } from 'uuid'
 import ReactMarkdown from 'react-markdown'
@@ -341,7 +342,7 @@ export default function VisualComprehensionPage() {
 
   return <div className="vc-page">
     <header className="vc-header">
-      <div className="vc-header-left"><button className="vc-sessions-button" aria-expanded={drawer} onClick={() => setDrawer(v => !v)}><History />{tl("Sessioni")}</button><span className="vc-header-divider" /><h1>{tl("Comprensione visuale")} <span>Beta</span></h1></div>
+      <div className="vc-header-left"><button className="vc-sessions-button" aria-expanded={drawer} onClick={() => setDrawer(v => !v)}><History />{tl("Sessioni")}</button><span className="vc-header-divider" /><SectionHeading section="/teacher/visual-comprehension" compact>{tl("Comprensione visuale")} <span className="vc-beta">Beta</span></SectionHeading></div>
       <div className="vc-header-actions"><span className="vc-save-status" role="status">{current && (saveStatus === 'saving' || busy ? <><Loader2 className="animate-spin" />{tl("Salvataggio…")}</> : saveStatus === 'local' ? tl("Bozza sul dispositivo") : <><Check />{tl("Salvata")}</>)}</span><button aria-label={tl("Nuova sessione")} disabled={reading} onClick={newSession}><Plus /></button><button className="vc-upload-button" disabled={reading} onClick={() => fileInput.current?.click()}><Upload /><span>{tl("Carica immagine")}</span></button></div>
     </header>
     <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label={tl("Carica screenshot o immagine")} className="sr-only" disabled={reading} onChange={e => void upload(e.target.files?.[0])} />

@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -103,13 +104,12 @@ export default function SchoolOwnerPanelPage() {
       <header className="flex items-start gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white"><Building2 className="h-5 w-5" /></div>
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-slate-900">{panel.school.name}</h1>
-          <p className="text-sm text-slate-500">
+          <SectionHeading section="/teacher/school" className="text-xl font-bold text-slate-900" subtitle={<>
             {panel.school.mechanographic_code
               ? <>{tl("Codice meccanografico")} <span className="font-mono font-semibold">{panel.school.mechanographic_code}</span>
                   {panel.school.registry_verified && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{tl("verificato MIM")}</span>}</>
               : tl("Codice meccanografico non ancora associato")}
-          </p>
+          </>} subtitleClassName="text-sm text-slate-500">{panel.school.name}</SectionHeading>
         </div>
       </header>
 

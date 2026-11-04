@@ -2464,7 +2464,8 @@ REGOLE IMPORTANTI:
   }
 
   useEffect(() => {
-    if (!initialTeacherbotId || allAvailableTeacherbots.length === 0) return
+    if (!initialTeacherbotId) { lastAppliedTeacherbotIdRef.current = null; return }
+    if (allAvailableTeacherbots.length === 0) return
     if (selectedTeacherbot?.id === initialTeacherbotId) return
     if (lastAppliedTeacherbotIdRef.current === initialTeacherbotId) return
 

@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useMemo, useState, useRef, type DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
@@ -706,8 +707,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
     }`}>
       <header className="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 shadow-[var(--shadow-sm)] sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <h1 className="truncate text-base font-bold text-[var(--text-primary)]">{config?.title || tl("Board di sviluppo")}</h1>
-          <p className="text-xs text-[var(--text-secondary)]">{cards.length} task · {columns.length} colonne</p>
+          <SectionHeading section="/teacher/feedback-board" compact className="truncate text-base font-bold text-[var(--text-primary)]" subtitle={<>{cards.length} task · {columns.length} colonne</>} subtitleClassName="text-xs text-[var(--text-secondary)]">{config?.title || tl("Board di sviluppo")}</SectionHeading>
         </div>
         <SearchPill
           value={searchQuery}

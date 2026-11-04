@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, ForeignKey, BigInteger, func
+from sqlalchemy import Column, String, Enum, DateTime, ForeignKey, BigInteger, Float, func
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
@@ -21,5 +21,6 @@ class File(Base):
     filename = Column(String, nullable=False)
     mime_type = Column(String, nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
+    audio_duration = Column(Float, nullable=True)
     checksum_sha256 = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -1,9 +1,12 @@
+import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import { teacherbotsApi } from '@/lib/api'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { clipboardFiles } from '@/lib/clipboardFiles'
 import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { PodcastPanel } from '@/components/chat/PodcastPanel'
+import { TeachingProtocolPanel } from '@/components/chat/TeachingProtocolPanel'
+import { isProtocolRequest, protocolApi, type ProtocolMessage, type ProtocolState } from '@/lib/teachingProtocol'
 import { isPodcastRequest, podcastApi, type PodcastState, type PodcastMessage } from '@/lib/podcasts'
 import { isDeepResearchRequest } from '@/lib/research'
 import { mediaKind } from '@/lib/media'
@@ -73,6 +76,7 @@ import { tl } from '@/i18n/tl'
 
 const AGENT_MODES = [
   { id: 'default', label: tl("Chat") },
+  { id: 'protocol', label: tl('Modalità agentica') },
   { id: 'podcast', label: 'Podcast' },
   // { id: 'web_search', label: 'Web Search' },  // Hidden - not mature yet
   { id: 'report', label: 'Report' },
@@ -151,6 +155,7 @@ interface Message {
   content: string
   attachments?: MessageAttachment[]
   podcast?: PodcastState
+  protocol?: ProtocolState
   timestamp: Date
   provider?: string
   model?: string
@@ -1029,15 +1034,16 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
             model: m.model,
             token_usage_json: m.token_usage_json,
             podcast: m.podcast,
+            protocol: m.protocol,
             attachments: attachmentsFromContentJson(m.attachments_json),
           }))
           const localMessageCount = cachedMessages?.length || 0
           const hasLocalPendingMessages = localMessageCount > 0 && serverMessages.length <= localMessageCount
-          if (hasLocalPendingMessages && serverMessages.some((message: Message) => message.podcast)) {
+          if (hasLocalPendingMessages && serverMessages.some((message: Message) => message.podcast || message.protocol)) {
             // A podcast can finish while this chat is closed. Refresh its persisted state
             // even when the message count is unchanged, preserving any local pending turns.
             setMessages((previous) => previous.map((message) => {
-              const saved = serverMessages.find((item: Message) => item.id === message.id && item.podcast)
+              const saved = serverMessages.find((item: Message) => item.id === message.id && (item.podcast || item.protocol))
               return saved ? { ...message, ...saved } : message
             }))
           }
@@ -1099,6 +1105,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           model: m.model,
           token_usage_json: m.token_usage_json,
           podcast: m.podcast,
+          protocol: m.protocol,
           attachments: attachmentsFromContentJson(m.attachments_json),
         }))
         setMessages(prev => [...older, ...prev])
@@ -2190,24 +2197,61 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     } finally { setIsLoading(false) }
   }
 
+  const updateProtocolMessage = (message: ProtocolMessage, conversationId = currentConversationId) => {
+    const update = (items: Message[]) => items.map(item => item.id === message.id
+      ? { ...item, content: message.content, protocol: message.protocol } : item)
+    if (currentConversationId_ref.current === conversationId) setMessages(update)
+    if (conversationId) {
+      conversationCacheRef.current = { ...conversationCacheRef.current,
+        [conversationId]: update(conversationCacheRef.current[conversationId] || []) }
+      setConversationCache(conversationCacheRef.current)
+    }
+  }
+
+  const startProtocol = async (prompt: string) => {
+    if (isLoading) return
+    setIsLoading(true)
+    setStreamingStatus(tl('Analizzo il protocollo e organizzo gli agenti…'))
+    try {
+      const convId = await ensureConversation(prompt)
+      if (!convId) return
+      const { data } = await protocolApi.plan(convId, prompt, attachedFiles.map(f => f.file))
+      const newMessages: Message[] = [
+        { ...data.user_message, role: 'user', timestamp: new Date(data.user_message.created_at) },
+        { ...data.assistant_message, role: 'assistant', timestamp: new Date(data.assistant_message.created_at) },
+      ]
+      if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
+      conversationCacheRef.current = { ...conversationCacheRef.current,
+        [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
+      setConversationCache(conversationCacheRef.current)
+      setInputText(''); setAttachedFiles([])
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail
+      toast({ title: tl('Modalità agentica'), description: typeof detail === 'string' ? detail : tl('Impossibile analizzare il protocollo. Controlla la lunghezza del testo e gli allegati, poi riprova.'), variant: 'destructive' })
+    } finally { setIsLoading(false); setStreamingStatus(null) }
+  }
+
   // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
   // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
     const text = (overrideInput ?? inputText).trim()
     if (overrideInput === undefined && text) rememberPrompt(text)
     if (isLoading) return
+    if ((text || attachedFiles.length > 0) && (agentMode === 'protocol' || agentMode === 'default' && isProtocolRequest(text, attachedFiles.length > 0))) {
+      return startProtocol(text || tl('Analizza il protocollo allegato e prepara tutti i materiali necessari.'))
+    }
     if ((text || attachedFiles.length > 0) && (agentMode === 'podcast' || agentMode === 'default' && isPodcastRequest(text))) return startPodcast(text || tl("Crea un podcast dai documenti allegati"))
     if (agentMode === 'default' && isDeepResearchRequest(text)) {
       return runSend(overrideInput, 'deep_research', false, { tool: 'deep_research', action: 'create', top: 'deep_research', confidence: 1, alternatives: [], routed: true })
     }
     const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
-      && attachedFiles.length === 0 && !attachedYoutube && text.length >= 8
+      && !attachedYoutube && text.length >= 8
     if (canRoute) {
       try {
         setStreamingStatus(tl("Analizzo la richiesta…"))
         const { data } = await llmApi.decideTool(
-          text,
-          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research'],
+          attachedFiles.length ? `${text}\nDocumenti allegati: ${attachedFiles.map(f => f.file.name).join(', ')}` : text,
+          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol'],
           collectRoutingArtifacts(),
           messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
         )
@@ -2216,6 +2260,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
         }
         if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text)
+        if (data.tool === 'teaching_protocol' && data.action === 'create') return await startProtocol(text)
         const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
         if (data.tool === 'chat' || !intent) return await runSend(overrideInput, agentMode, false, routing)
         if (data.tool === 'presentation') {
@@ -3064,6 +3109,9 @@ REGOLE IMPORTANTI:
   }
 
   const buildModeInvitation = (mode: AgentMode): string | null => {
+    if (mode === 'protocol') {
+      return tl('Sei in **modalità agentica**. Allega un protocollo didattico, incollalo qui oppure usa quello già scritto in questa chat. Ti proporrò un piano modificabile con quiz, teacherbot, documenti, fogli, presentazioni, dispense, immagini e pagine interattive. Dopo la tua approvazione, gli agenti lavoreranno in parallelo. Potrai rivedere, correggere o rigenerare ogni materiale prima di salvarlo o pubblicarlo.')
+    }
     if (mode === 'podcast') {
       return tl("Sei in modalità **Podcast**. Descrivi l’argomento oppure allega PDF, documenti o appunti. Scegli voce, durata, lingua e tono, rivedi il copione e genera l’audio da ascoltare o scaricare in MP3.")
     }
@@ -3481,7 +3529,7 @@ REGOLE IMPORTANTI:
                         </button>
 
                         <div className="flex items-center gap-1.5">
-                          <AcademicAiIcon className="h-4 w-4" style={{ color: accentTheme.accent }} />
+                          <SectionIllustration section="/teacher" compact />
                           <span className="text-sm font-bold text-slate-800">{tl("Assistente")}</span>
                         </div>
 
@@ -3510,8 +3558,7 @@ REGOLE IMPORTANTI:
                       <>
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="min-w-0">
-                        <h1 className="truncate text-sm font-bold text-slate-800">{tl("Supporto Docente AI")}</h1>
-                        <p className="truncate text-xs text-slate-500">
+                        <SectionHeading section="/teacher" compact className="truncate text-sm font-bold text-slate-800" subtitle={<>
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
@@ -3519,7 +3566,7 @@ REGOLE IMPORTANTI:
                             : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
-                        </p>
+                        </>} subtitleClassName="truncate text-xs text-slate-500">{tl("Supporto Docente AI")}</SectionHeading>
                       </div>
                       {/* Reopen canvas button — shown when a doc exists for this conversation but canvas is closed */}
                       {!sidebarMode && currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
@@ -3835,6 +3882,9 @@ REGOLE IMPORTANTI:
                                 </>
                               )}
                               {msg.podcast && <PodcastPanel messageId={msg.id} state={msg.podcast} onUpdate={message => updatePodcastMessage(message)} />}
+                              {msg.protocol && <TeachingProtocolPanel messageId={msg.id} state={msg.protocol}
+                                onUpdate={message => updateProtocolMessage(message)}
+                                onPublishQuiz={data => { setPublishMode('draft'); setPublishModal({ isOpen: true, type: 'quiz', data }) }} />}
                               {msg.role === 'assistant' && ocrOverlays[msg.id] && (
                                 <OcrImageOverlay overlay={ocrOverlays[msg.id]} />
                               )}
@@ -4490,6 +4540,7 @@ REGOLE IMPORTANTI:
                           placeholder={
                             agentMode === 'analysis'
                               ? (analysisTaskId ? tl("Domanda specifica (opzionale)...") : tl("Seleziona prima sessione e compito..."))
+                              : agentMode === 'protocol' ? tl('Allega il protocollo o chiedimi di produrre i materiali dell’attività…')
                               : agentMode === 'podcast' ? tl("Descrivi il podcast o allega i documenti da trasformare in audio…")
                               : isMobile ? tl("Scrivi...") : tl("Scrivi o trascina file qui...")
                           }

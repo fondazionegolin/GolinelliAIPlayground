@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-03T09:18:37.698548+00:00",
-  "version_label": "2026.11.03-ce84f5fa",
+  "generated_at": "2026-11-03T14:41:23.919500+00:00",
+  "version_label": "2026.11.03-620229c3",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 9 commit dall'ultima release pubblicata.",
-  "git_ref": "ce84f5fa3a20f9487941623a69f89282cd516293",
+  "summary": "Bozza generata automaticamente da 12 commit dall'ultima release pubblicata.",
+  "git_ref": "620229c35f42e416f656fab8a5b0a5c76b7e2d38",
   "items": [
     {
       "category": "new",
@@ -49,6 +49,21 @@
       "category": "improved",
       "title": "Off-loop password hashing, leaner deps, ML Lab training fixes",
       "description": "Off-loop password hashing, leaner deps, ML Lab training fixes"
+    },
+    {
+      "category": "new",
+      "title": "Infra: multi-worker API pool for stateless routes",
+      "description": "Infra: multi-worker API pool for stateless routes"
+    },
+    {
+      "category": "new",
+      "title": "Infra: give the RTX 4090 to the api gateway for Toy LM",
+      "description": "Infra: give the RTX 4090 to the api gateway for Toy LM"
+    },
+    {
+      "category": "new",
+      "title": "Per-section model catalogue, admin panel redesign, Voice Lab",
+      "description": "Per-section model catalogue, admin panel redesign, Voice Lab"
     }
   ]
 }

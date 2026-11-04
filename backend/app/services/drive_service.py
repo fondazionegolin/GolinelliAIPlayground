@@ -17,10 +17,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID
+import mimetypes
+from uuid import UUID, uuid4
 
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document_draft import DocumentDraft
@@ -116,9 +118,15 @@ async def resolve_role(db: AsyncSession, principal: DrivePrincipal, item: DriveI
     """Effective role on ``item`` and the item that grants it (the share root, or the drive root for owners)."""
     if item.is_hidden:
         return None, None
-    if principal.teacher and item.owner_teacher_id == principal.teacher.id:
+    if principal.student and item.owner_student_id == principal.student.id:
+        return "owner", None
+    if principal.student and item.created_by_student_id == principal.student.id and item.kind == "file" and (item.mime_type or "").startswith("audio/"):
+        return "owner", None
+    if principal.teacher and item.owner_teacher_id == principal.teacher.id and item.owner_student_id is None:
         return "owner", None
     chain = await ancestors(db, item)
+    if any(node.trashed_at or node.is_hidden for node in chain):
+        return None, None
     targets = principal.share_targets()
     target_filter = or_(*[and_(DriveShare.target_type == kind, DriveShare.target_id == target_id) for kind, target_id in targets])
     shares = (await db.execute(
@@ -261,17 +269,18 @@ async def _sync(db: AsyncSession, teacher: User) -> None:
     session_class = {session.id: session.class_id for session in sessions}
 
     # Session files: chat attachments and AI 3D models posted to the class chat.
+    file_filter = File.owner_teacher_id == teacher.id
     if session_ids:
-        files = (await db.execute(
-            select(File).where(File.session_id.in_(session_ids)).where(~File.storage_key.startswith(DRIVE_PREFIX))
-        )).scalars().all()
-        for stored in files:
-            ensure(
-                f"file:{stored.id}", kind="file", name=stored.filename, file_id=stored.id, source_type="chat",
-                mime_type=stored.mime_type, size_bytes=stored.size_bytes, parent_id=session_folders[stored.session_id].id,
-                class_id=session_class.get(stored.session_id), session_id=stored.session_id,
-                created_by_student_id=stored.owner_student_id,
-            )
+        file_filter = or_(file_filter, File.session_id.in_(session_ids))
+    files = (await db.scalars(select(File).where(file_filter, ~File.storage_key.startswith(DRIVE_PREFIX)))).all()
+    for stored in files:
+        folder = session_folders.get(stored.session_id)
+        ensure(
+            f"file:{stored.id}", kind="file", name=stored.filename, file_id=stored.id, source_type="chat",
+            mime_type=stored.mime_type, size_bytes=stored.size_bytes, parent_id=(folder or mine).id,
+            class_id=session_class.get(stored.session_id), session_id=stored.session_id if folder else None,
+            created_by_student_id=stored.owner_student_id,
+        )
 
     # Documents and presentations: session drafts (teacher's and students') plus the teacher's own drafts.
     draft_filter = DocumentDraft.owner_teacher_id == teacher.id
@@ -327,9 +336,91 @@ async def _sync(db: AsyncSession, teacher: User) -> None:
             existing.pop(key)
     await db.flush()
 
+    await organize_loose_files(db, teacher)
+
 
 def _doc_source(doc_type: str | None) -> str:
     return "presentation" if doc_type == "presentation" else "document"
+
+
+def file_category(name: str, mime: str | None = None, source: str | None = None, service: str | None = None) -> str:
+    mime = mime or mimetypes.guess_type(name)[0] or ""
+    ext = Path(name).suffix.lower()
+    if source == "voice_playlist": return "Playlist"
+    if mime.startswith("audio/"):
+        return "Voci" if service in {"tts", "dialogue", "convert", "voice_design", "voice_clone", "dubbing"} else "Musica"
+    if mime == "application/pdf" or ext == ".pdf": return "PDF"
+    if source == "presentation" or "presentation" in mime or "powerpoint" in mime or ext in {".ppt", ".pptx", ".odp"}: return "Presentazioni"
+    if "sheet" in mime or "excel" in mime or ext in {".csv", ".xls", ".xlsx", ".ods"}: return "Fogli di calcolo"
+    if mime.startswith("image/"): return "Immagini"
+    if mime.startswith("video/"): return "Video"
+    if source == "solid_model" or mime.startswith("model/") or ext in {".stl", ".obj", ".glb", ".gltf"}: return "Modelli 3D"
+    if ext in {".zip", ".rar", ".7z", ".tar", ".gz"}: return "Archivi"
+    if ext in {".py", ".js", ".ts", ".tsx", ".html", ".css", ".json", ".ipynb", ".sb3"}: return "Codice"
+    if source == "document" or mime.startswith("text/") or "word" in mime or ext in {".doc", ".docx", ".odt", ".rtf"}: return "Documenti"
+    return "Altri file"
+
+
+async def type_folder(db, owner, tenant_id, category, *, parent=None, student_id=None):
+    key = f"type:{student_id or 'teacher'}:{parent.id if parent else 'root'}:{category}"
+    folder = await db.scalar(select(DriveItem).where(DriveItem.owner_teacher_id == owner, DriveItem.system_key == key))
+    if not folder:
+        await db.execute(pg_insert(DriveItem).values(id=uuid4(), owner_teacher_id=owner, owner_student_id=student_id, tenant_id=tenant_id,
+            parent_id=parent.id if parent else None, kind="folder", name=category, system_key=key, is_system=True,
+            session_id=parent.session_id if parent else None, class_id=parent.class_id if parent else None
+        ).on_conflict_do_nothing(constraint="uq_drive_items_owner_system_key"))
+        folder = await db.scalar(select(DriveItem).where(DriveItem.owner_teacher_id == owner, DriveItem.system_key == key))
+    return folder
+
+
+async def student_root(db, student):
+    session = await db.get(Session, student.session_id)
+    cls = await db.get(Class, session.class_id)
+    key = f"student:{student.id}"
+    folder = await db.scalar(select(DriveItem).where(DriveItem.owner_teacher_id == cls.teacher_id, DriveItem.system_key == key))
+    if not folder:
+        await db.execute(pg_insert(DriveItem).values(id=uuid4(), owner_teacher_id=cls.teacher_id, owner_student_id=student.id, tenant_id=cls.tenant_id,
+            kind="folder", name="I miei file", system_key=key, is_system=True
+        ).on_conflict_do_nothing(constraint="uq_drive_items_owner_system_key"))
+        folder = await db.scalar(select(DriveItem).where(DriveItem.owner_teacher_id == cls.teacher_id, DriveItem.system_key == key))
+    return folder
+
+
+async def sync_student_audio(db, student):
+    """Mirror generated audio into personal Files without granting classmates access."""
+    root = await student_root(db, student)
+    existing = select(DriveItem.file_id).where(DriveItem.owner_student_id == student.id, DriveItem.file_id.isnot(None))
+    files = (await db.scalars(select(File).where(File.owner_student_id == student.id,
+        File.mime_type.startswith("audio/"), File.id.not_in(existing)))).all()
+    if files:
+        folder = await type_folder(db, root.owner_teacher_id, root.tenant_id, "Musica", parent=root, student_id=student.id)
+        for stored in files:
+            await db.execute(pg_insert(DriveItem).values(id=uuid4(), owner_teacher_id=root.owner_teacher_id,
+                owner_student_id=student.id, tenant_id=root.tenant_id, parent_id=folder.id, kind="file", name=stored.filename,
+                file_id=stored.id, source_type="chat", mime_type=stored.mime_type, size_bytes=stored.size_bytes,
+                system_key=f"student-audio:{student.id}:{stored.id}", created_by_student_id=student.id
+            ).on_conflict_do_nothing(constraint="uq_drive_items_owner_system_key"))
+    return root
+
+
+async def organize_loose_files(db, teacher):
+    rows = (await db.scalars(select(DriveItem).where(DriveItem.owner_teacher_id == teacher.id,
+        DriveItem.owner_student_id.is_(None), DriveItem.kind != "folder", DriveItem.is_hidden.is_(False),
+        DriveItem.trashed_at.is_(None), or_(DriveItem.source_type.is_(None), DriveItem.source_type != "voice_track")))).all()
+    from app.models.voice_lab import VoiceLabItem
+    lab = (await db.scalars(select(VoiceLabItem).where(VoiceLabItem.owner_id == teacher.id))).all()
+    services = {v.details.get("drive_item_id"): v.service for v in lab}
+    parents = {v.id: v for v in (await db.scalars(select(DriveItem).where(DriveItem.owner_teacher_id == teacher.id, DriveItem.kind == "folder"))).all()}
+    category_folders = {}
+    for item in rows:
+        parent = parents.get(item.parent_id) if item.parent_id else None
+        if parent and not (parent.system_key == "mine" or (parent.system_key or "").startswith("session:")):
+            continue
+        category = file_category(item.name, item.mime_type, item.source_type, services.get(str(item.id)))
+        key = (item.parent_id, category)
+        if key not in category_folders:
+            category_folders[key] = await type_folder(db, teacher.id, teacher.tenant_id, category, parent=parent)
+        item.parent_id = category_folders[key].id
 
 
 # ── Mutations shared by endpoints ─────────────────────────────────────────────
@@ -382,6 +473,8 @@ async def purge_items(db: AsyncSession, items: list[DriveItem]) -> None:
             row.public_token = None
         elif row.kind == "file" and row.file_id and row.source_type == "upload":
             blob_files.append(row.file_id)
+        elif row.source_type == "voice_track":
+            await db.delete(row)  # Playlist reference only; preserve the original File.
     await db.flush()
     if blob_files:
         stored = (await db.execute(select(File).where(File.id.in_(blob_files)))).scalars().all()

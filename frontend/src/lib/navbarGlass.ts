@@ -16,7 +16,7 @@ export function buildAccentNavbarStyle(
   }
 }
 
-export function buildAccentNavClusterStyle(theme: AccentTheme): CSSProperties {
+export function buildAccentNavClusterStyle(theme?: AccentTheme): CSSProperties {
   void theme
   return {
     borderRadius: 'var(--selection-radius)',

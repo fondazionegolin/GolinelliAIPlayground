@@ -1,7 +1,10 @@
+import asyncio
 import json
+import re
+import unicodedata
 from html import escape
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -61,6 +64,7 @@ from app.services.credit_service import credit_service
 from app.services.ocr_service import OCRUnavailableError, SUPPORTED_IMAGE_TYPES, ocr_service
 from app.services.email_service import email_service
 from app.services.slide_sanitizer import sanitize_document_draft_content_json
+from app.services.teaching_protocol import public_state as public_protocol_state
 from app.core.config import settings
 
 router = APIRouter()
@@ -2403,12 +2407,12 @@ async def create_task(
             sender_type=SenderType.TEACHER,
             sender_teacher_id=teacher.id,
             message_text=msg_text,
-            attachments=json.dumps([{
+            attachments=[{
                 "type": "task_link",
                 "task_id": str(task.id),
                 "task_type": type_label,
                 "title": task.title
-            }])
+            }]
         )
         db.add(chat_message)
         await db.commit()
@@ -2684,6 +2688,85 @@ async def get_task_submissions(
             "correction": _submission_correction(sub),
         })
     return response
+
+
+async def _load_task_results(db: AsyncSession, teacher: User, session_id: UUID, task_id: UUID):
+    from app.services.task_results import build_task_results
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session = (await db.execute(select(Session).where(Session.id == session_id))).scalar_one_or_none()
+    task = (
+        await db.execute(select(Task).where(Task.id == task_id).where(Task.session_id == session_id))
+    ).scalar_one_or_none()
+    if not session or not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    students = (
+        await db.execute(select(SessionStudent).where(SessionStudent.session_id == session_id))
+    ).scalars().all()
+    submissions = (
+        await db.execute(select(TaskSubmission).where(TaskSubmission.task_id == task_id))
+    ).scalars().all()
+    results = build_task_results(task, students, _latest_submissions_by_student(list(submissions)))
+    return session, task, results
+
+
+@router.get("/sessions/{session_id}/tasks/{task_id}/results")
+async def get_task_results(
+    session_id: UUID,
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Students × questions matrix (all session students, submitted or not) plus per-question stats."""
+    _, _, results = await _load_task_results(db, teacher, session_id, task_id)
+    return results
+
+
+def _download_filename(title: str, ext: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()).strip("_")
+    return f"{safe or 'compito'}.{ext}"
+
+
+@router.get("/sessions/{session_id}/tasks/{task_id}/results.csv")
+async def export_task_results_csv(
+    session_id: UUID,
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    from app.services.task_results import results_csv
+
+    _, task, results = await _load_task_results(db, teacher, session_id, task_id)
+    return Response(
+        content=results_csv(results),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_download_filename(task.title, "csv")}"'},
+    )
+
+
+class TaskReportRequest(BaseModel):
+    # Result of a previous /analyze call; passing it avoids spending credits twice.
+    analysis: Optional[dict] = None
+
+
+@router.post("/sessions/{session_id}/tasks/{task_id}/report.pdf")
+async def export_task_report_pdf(
+    session_id: UUID,
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    body: TaskReportRequest = TaskReportRequest(),
+):
+    from app.services.task_results import results_report_pdf
+
+    session, task, results = await _load_task_results(db, teacher, session_id, task_id)
+    pdf = await asyncio.to_thread(results_report_pdf, results, session.title, body.analysis)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{_download_filename(task.title, "pdf")}"'},
+    )
 
 
 @router.put("/sessions/{session_id}/tasks/{task_id}/submissions/{submission_id}/correction")
@@ -4375,6 +4458,7 @@ async def get_teacher_conversation(
                 "token_usage_json": (m.attachments_json or {}).get("token_usage_json"),
                 "attachments_json": {"files": (m.attachments_json or {}).get("files", [])},
                 "podcast": (m.attachments_json or {}).get("podcast"),
+                "protocol": public_protocol_state(m.id, (m.attachments_json or {}).get("protocol")),
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages

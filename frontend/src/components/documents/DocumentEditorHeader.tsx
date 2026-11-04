@@ -1,18 +1,10 @@
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, Download, FileSpreadsheet, FileText, Globe, Loader2, Presentation, RectangleHorizontal, RectangleVertical, Shapes, Ruler } from '@/components/icons'
+import { ChevronLeft, Download, Loader2, RectangleHorizontal, RectangleVertical, Ruler } from '@/components/icons'
 import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
 import { tl } from '@/i18n/tl'
 
 export type DocumentEditorMode = 'document' | 'slides' | 'sheet' | 'canvas' | 'web' | 'pdf'
-
-const MODE_ICON: Record<DocumentEditorMode, typeof FileText> = {
-  document: FileText,
-  slides: Presentation,
-  sheet: FileSpreadsheet,
-  canvas: Shapes,
-  web: Globe,
-  pdf: FileText,
-}
 
 export type DocumentSaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -48,7 +40,6 @@ export function DocumentEditorHeader({
   tools?: ReactNode
   primary?: ReactNode
 }) {
-  const ModeIcon = MODE_ICON[mode] ?? FileText
   const dotClass = saveState === 'error'
     ? 'bg-red-500'
     : saveState === 'saving'
@@ -62,9 +53,7 @@ export function DocumentEditorHeader({
       </HeaderIconButton>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--ds-control)] text-slate-500 shadow-[var(--ds-shadow-inset)]" aria-hidden>
-          <ModeIcon className="h-3.5 w-3.5" />
-        </span>
+        <span data-document-mode={mode}><SectionIllustration section="/teacher/documents" compact /></span>
         <input
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}

@@ -359,8 +359,15 @@ export const adminApi = {
     },
     generateScript: (id: string) => api.post(`/admin/video-studio/projects/${id}/script`, undefined, { timeout: 180000 }),
     saveScript: (id: string, script: unknown) => api.put(`/admin/video-studio/projects/${id}/script`, { script }),
-    storyboard: (id: string, shots?: number[]) => api.post(`/admin/video-studio/projects/${id}/storyboard`, { shots: shots ?? null }),
-    render: (id: string, shots?: number[], options?: { provider: 'local' | 'openrouter'; model?: string; duration?: number; resolution?: string }) => api.post(`/admin/video-studio/projects/${id}/render`, { shots: shots ?? null, ...options }),
+    storyboard: (id: string, shots?: string[]) => api.post(`/admin/video-studio/projects/${id}/storyboard`, { shots: shots ?? null }),
+    voices: () => api.get('/admin/video-studio/voices'),
+    render: (id: string, shots?: string[], options?: { provider: 'local' | 'openrouter'; model?: string; duration?: number | null; resolution?: string; voice?: { voice_id: string; name: string } | null }) => api.post(`/admin/video-studio/projects/${id}/render`, { shots: shots ?? null, ...options }),
+    uploadClip: (id: string, file: File | Blob, name: string, position?: number) => {
+      const form = new FormData()
+      form.append('file', file, name)
+      return api.post(`/admin/video-studio/projects/${id}/clips`, form, { timeout: 0, params: position === undefined ? undefined : { position } })
+    },
+    generateClip: (id: string, prompt: string, position?: number) => api.post(`/admin/video-studio/projects/${id}/clips/generate`, { prompt, position }, { timeout: 120000 }),
     assemble: (id: string) => api.post(`/admin/video-studio/projects/${id}/assemble`),
     file: (id: string, name: string) => api.get(`/admin/video-studio/projects/${id}/files/${name}`, { responseType: 'blob' }),
   },
@@ -820,6 +827,12 @@ export const teacherApi = {
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}`, null, { params: data }),
   updateSubmissionFeedback: (sessionId: string, taskId: string, submissionId: string, data: { overall_feedback: string; answer_feedback: Record<string, string>; score?: string; publish: boolean }) =>
     api.put(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}/feedback`, data),
+  getTaskResults: (sessionId: string, taskId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/tasks/${taskId}/results`),
+  downloadTaskResultsCsv: (sessionId: string, taskId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/tasks/${taskId}/results.csv`, { responseType: 'blob' }),
+  downloadTaskReportPdf: (sessionId: string, taskId: string, analysis?: unknown) =>
+    api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/report.pdf`, { analysis: analysis ?? null }, { responseType: 'blob' }),
   analyzeTask: (sessionId: string, taskId: string, question?: string, signal?: AbortSignal) =>
     api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }, { signal }),
   // Profile
@@ -1325,7 +1338,7 @@ export const driveApi = {
   restore: (ids: string[]) => api.post('/drive/restore', { ids }),
   purge: (ids: string[]) => api.post('/drive/purge', { ids }),
   emptyTrash: () => api.delete('/drive/trash'),
-  content: (itemId: string) => api.get(`/drive/items/${itemId}/content`, { responseType: 'blob' }),
+  content: (itemId: string, signal?: AbortSignal) => api.get<Blob>(`/drive/items/${itemId}/content`, { responseType: 'blob', signal }),
   document: (itemId: string) => api.get(`/drive/items/${itemId}/document`),
   exportItem: (itemId: string, format?: string) =>
     api.get(`/drive/items/${itemId}/export`, { params: { format }, responseType: 'blob', timeout: 0 }),

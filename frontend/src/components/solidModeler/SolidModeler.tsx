@@ -1,3 +1,4 @@
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/design/primitives/Button'
@@ -301,6 +302,7 @@ export default function SolidModeler({ leading, student = false }: { leading?: R
         {leading && <><div className="flex shrink-0 items-center gap-1">{leading}</div><Divider /></>}
         <div className="relative flex min-w-0 items-center gap-1">
           <ToolButton icon={FolderOpen} label={tl("Progetti")} onClick={() => setProjectsOpen(o => !o)} />
+          <SectionIllustration section="/teacher/3d-lab" compact />
           <input
             value={project.name}
             onChange={e => project.setName(e.target.value)}

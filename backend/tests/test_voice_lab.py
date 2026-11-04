@@ -32,6 +32,17 @@ def db_stub():
     return SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock(), flush=AsyncMock(), delete=AsyncMock(), add=lambda item: None)
 
 
+@pytest.fixture
+def billing_spies(monkeypatch):
+    from app.services import voice_lab_billing as billing
+    reserve = AsyncMock(return_value=SimpleNamespace(id=uuid4(), usage_details={"billing_status": "reserved"}))
+    settle = AsyncMock()
+    monkeypatch.setattr(billing, "reserve", reserve)
+    monkeypatch.setattr(billing, "settle", settle)
+    monkeypatch.setattr(billing, "duration", AsyncMock(return_value=60))
+    return reserve, settle
+
+
 @pytest.mark.parametrize("data", [
     {"action": "tts", "text": "ciao"}, {"action": "tts", "voice_id": "voice123"},
     {"action": "dialogue", "dialogue": []}, {"action": "music", "text": "Jazz", "seconds": 2},
@@ -79,7 +90,7 @@ async def test_other_teachers_private_voices_are_hidden(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch):
+async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch, billing_spies):
     teacher, db = actor(), db_stub()
     monkeypatch.setattr(routes, "budget", AsyncMock(return_value=0))
     monkeypatch.setattr(routes, "require_voices", AsyncMock())
@@ -96,10 +107,12 @@ async def test_speech_generation_uses_fixed_endpoint_and_saves_usage(monkeypatch
     assert request.call_args.kwargs["json"]["text"] == "Ciao"
     assert save.call_args.args[4] == b"ID3audio"
     assert save.call_args.args[7]["characters"] == 4
+    assert billing_spies[0].call_args.args[2]["cost"] > 0
+    assert billing_spies[1].await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_transcription_upload_uses_real_multipart_field_names(monkeypatch):
+async def test_transcription_upload_uses_real_multipart_field_names(monkeypatch, billing_spies):
     teacher, db = actor(), db_stub()
     monkeypatch.setattr(routes, "budget", AsyncMock(return_value=0))
     request = AsyncMock(return_value=httpx.Response(200, json={"text": "Lezione", "words": []}))
@@ -112,6 +125,8 @@ async def test_transcription_upload_uses_real_multipart_field_names(monkeypatch)
     assert request.call_args.kwargs["data"]["diarize"] == "true"
     assert request.call_args.kwargs["files"]["file"][1] == b"audio"
     assert json.loads(save.call_args.args[4])["text"] == "Lezione"
+    assert billing_spies[0].call_args.args[2]["cost"] > 0
+    assert save.call_args.args[7]["credits"] == pytest.approx(.32)
 
 
 @pytest.mark.asyncio
@@ -125,7 +140,7 @@ async def test_clone_requires_consent_without_contacting_provider(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_voice_design_produces_private_saveable_previews(monkeypatch):
+async def test_voice_design_produces_private_saveable_previews(monkeypatch, billing_spies):
     teacher, db = actor(), db_stub()
     monkeypatch.setattr(routes, "budget", AsyncMock(return_value=0))
     request = AsyncMock(return_value=httpx.Response(200, json={"text": "Preview text", "previews": [
@@ -165,3 +180,13 @@ async def test_foreign_item_never_reaches_provider_or_storage(monkeypatch):
         await routes.item_content(uuid4(), db, actor())
     assert exc.value.status_code == 404
     request.assert_not_called()
+
+
+def test_playlist_names_are_safe_drive_folder_names_and_tracks_are_unique():
+    from app.api.v1.endpoints.voice_playlists import PlaylistWrite
+    assert PlaylistWrite(title="Musica/voce\\classe").title == "Musica_voce_classe"
+    with pytest.raises(ValidationError):
+        PlaylistWrite(title=" ... ")
+    track_id = uuid4()
+    with pytest.raises(ValidationError):
+        PlaylistWrite(title="Test", track_ids=[track_id, track_id])

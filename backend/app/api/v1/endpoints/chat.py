@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -16,6 +17,19 @@ from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
 from app.schemas.chat import ChatRoomResponse, ChatMessageCreate, ChatMessageResponse, DMRoomCreate, SessionMessageCreate
 from app.realtime.gateway import sio
+
+
+def _decode_attachments(value):
+    """Older notification rows were saved with json.dumps() into a JSONB column, so they come back as a
+    string. Decode them so notification links (teacher bots, quizzes, tasks) keep working after a reload."""
+    for _ in range(2):
+        if not isinstance(value, str):
+            break
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return []
+    return value
 
 router = APIRouter()
 
@@ -144,6 +158,7 @@ async def get_session_messages(
     
     def extract_notification_info(attachments):
         """Extract notification info from attachments"""
+        attachments = _decode_attachments(attachments)
         if isinstance(attachments, dict):
             return (
                 attachments.get("is_notification", False),
@@ -180,7 +195,7 @@ async def get_session_messages(
             "text": compact_text,
             "text_truncated": text_truncated,
             "text_length": text_length,
-            "attachments": m.attachments,
+            "attachments": _decode_attachments(m.attachments),
             "reply_to_id": str(m.reply_to_id) if m.reply_to_id else None,
             "reply_preview": m.reply_preview,
             "created_at": m.created_at.isoformat(),

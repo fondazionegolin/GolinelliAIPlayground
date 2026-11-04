@@ -1,6 +1,7 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Film, Loader2, Plus, Sparkles, Trash2 } from '@/components/icons'
+import { Loader2, Plus, Sparkles, Trash2 } from '@/components/icons'
 import { Button, IconButton } from '@/design'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -36,15 +37,13 @@ export default function VideoStudioLibraryPage() {
         <header className="mb-8 flex flex-wrap items-end gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] text-white"><Film className="h-5 w-5" /></span>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[.18em] text-[var(--app-accent)]">{tl("Video Studio · Beta · Admin")}</p>
-                <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">{tl("Video didattici")}</h1>
+                                <SectionHeading section="/teacher/video-studio" className="text-2xl font-black tracking-tight text-[var(--text-primary)]" subtitle={<>
+              {tl("Parti da un testo o da un documento, scrivi la regia: il sistema prepara la sceneggiatura, uno storyboard coerente e un montaggio animato di shot da")} {config.data?.shot_seconds ?? 5} secondi.
+            </>} subtitleClassName="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]">{tl("Video didattici")}</SectionHeading>
               </div>
             </div>
-            <p className="mt-3 max-w-2xl text-sm text-[var(--text-secondary)]">
-              {tl("Parti da un testo o da un documento, scrivi la regia: il sistema prepara la sceneggiatura, uno storyboard coerente e un montaggio animato di shot da")} {config.data?.shot_seconds ?? 5} secondi.
-            </p>
+
           </div>
           <Button tone="accent" surface="solid" density="roomy" onClick={() => create.mutate()} disabled={create.isPending}>
             {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />} {tl("Nuovo video")}
@@ -80,7 +79,7 @@ export default function VideoStudioLibraryPage() {
                   </div>
                   <div className="px-4 pb-3 pt-3">
                     <h2 className="truncate text-sm font-black text-[var(--text-primary)]">{p.title}</h2>
-                    <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{p.shot_count || 0} shot · {p.aspect} · ${p.cost_usd.toFixed(2)}</p>
+                    <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{p.shot_count || 0} clip · {p.aspect} · {p.cost_credits.toLocaleString('it-IT', { maximumFractionDigits: 1 })} crediti</p>
                   </div>
                 </button>
                 <div className="flex justify-end px-3 pb-3">

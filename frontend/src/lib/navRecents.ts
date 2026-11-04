@@ -1,4 +1,4 @@
-import { agenticApi, boardsApi, codingApi, liveInteractionApi, notebooksApi, teacherApi, teacherbotsApi } from '@/lib/api'
+import { adminApi, agenticApi, boardsApi, codingApi, liveInteractionApi, notebooksApi, teacherApi, teacherbotsApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
 
 /** One quick-access entry shown on the right of a navbar submenu row. */
@@ -113,6 +113,15 @@ export const navRecentFetchers = {
       meta: row.framework ? String(row.framework).replace(/^./, (c) => c.toUpperCase()) : 'Board',
       at: at(row),
       to: `/teacher/boards?board=${row.id}`,
+    })),
+
+  videos: async (): Promise<NavRecent[]> =>
+    newest((await adminApi.videoStudio.list()).data as Row[]).map((row) => ({
+      id: row.id,
+      title: row.title || tl("Senza titolo"),
+      meta: row.shot_count ? tl("{0} clip", row.shot_count) : undefined,
+      at: at(row),
+      to: `/teacher/video-studio/${row.id}`,
     })),
 
   workflows: async (): Promise<NavRecent[]> =>

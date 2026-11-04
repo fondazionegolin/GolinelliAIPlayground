@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { Search, X } from '@/components/icons'
 import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 
@@ -13,6 +14,7 @@ export function WorkspaceExplorerSidebar({ children, className = '' }: { childre
 export function WorkspaceExplorerHeader({
   eyebrow,
   title,
+  section,
   description,
   action,
   searchValue,
@@ -22,6 +24,7 @@ export function WorkspaceExplorerHeader({
 }: {
   eyebrow: string
   title: string
+  section?: string
   description: string
   action?: ReactNode
   searchValue?: string
@@ -36,8 +39,9 @@ export function WorkspaceExplorerHeader({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 max-w-[14rem]">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{eyebrow}</p>
-          <h1 className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950">{title}</h1>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+          {section ? <SectionHeading section={section} compact className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950" subtitle={description} subtitleClassName="mt-1 text-xs leading-5 text-slate-500">{title}</SectionHeading>
+            : <h1 className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950">{title}</h1>}
+          {!section && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
         </div>
         {action}
       </div>

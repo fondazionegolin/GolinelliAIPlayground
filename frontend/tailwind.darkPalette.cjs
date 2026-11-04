@@ -77,6 +77,13 @@ function darkChromaticSurface(scale, shade) {
 }
 
 function darkChromaticText(scale, shade) {
+  // Legacy blue/celeste text follows the same rose-violet ink as semantic secondary text.
+  // Surface/fill palettes remain unchanged, as do authored document and code islands.
+  if (['sky', 'blue', 'cyan'].includes(scale)) {
+    const roseViolet = { 50: '#fcf4ff', 100: '#f6e8fa', 200: '#eed5f3', 300: '#e5c3ec', 400: '#ddb7e6',
+      500: '#ddb7e6', 600: '#ddb7e6', 700: '#e5c3ec', 800: '#eed5f3', 900: '#f6e8fa', 950: '#fcf4ff' }
+    return channels(roseViolet[shade])
+  }
   const s = defaultColors[scale]
   const lighter = { 500: '400', 600: '400', 700: '300', 800: '200', 900: '100', 950: '50' }[shade]
   return channels(s[lighter ?? shade])

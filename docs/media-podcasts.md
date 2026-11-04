@@ -12,7 +12,7 @@ Il podcast completato è trascinabile nella chat di classe. Il rilascio carica u
 
 - `ELEVENLABS_API_KEY`: chiave privata nel `.env` del backend.
 - `ELEVENLABS_TTS_MODEL`: default `eleven_multilingual_v2`.
-- `ELEVENLABS_COST_PER_1000_CHARS`: costo interno per 1.000 caratteri, da configurare secondo il proprio contratto ElevenLabs. Il default `0` registra i caratteri utilizzati senza addebitare un prezzo stimato alla piattaforma. La fatturazione ElevenLabs resta separata.
+- I costi di sintesi sono ora convertiti automaticamente dalle tariffe API standard ElevenLabs ai crediti Golinelli.ai, anche per i podcast. `ELEVENLABS_COST_PER_1000_CHARS` è deprecata. Vedi [Voice Lab](voice-lab.md) per tariffe e conversione.
 - Il modello del copione è assegnabile dal pannello amministrativo, ruolo `podcast.script`.
 
 La chiave non viene inviata al browser. Le chiamate al provider e gli errori sono gestiti dal server. Nessun nuovo schema database è necessario: configurazione e testo sono persistiti nei metadati del messaggio docente; l’MP3 diventa un file privato nel Drive del docente. Il testo estratto dalle fonti rimane nel backend e non viene incluso nella risposta della cronologia. Un retry della generazione già completata restituisce il file esistente, senza un secondo addebito TTS. La sintesi serializza richieste concorrenti sullo stesso messaggio. I podcast lunghi vengono sintetizzati in segmenti e ricomposti con FFmpeg, preservando durata e ricerca temporale.

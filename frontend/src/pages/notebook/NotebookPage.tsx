@@ -1,3 +1,4 @@
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { ScopedModelSelect, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -1084,6 +1085,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
           >
             <ArrowLeft />
           </IconButton>
+          <SectionIllustration section="/teacher/notebooks" compact />
           {editingTitle ? (
             <input
               ref={titleRef}

@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 /**
  * Toy Language Model Lab — server-side training
  *
@@ -683,9 +684,9 @@ export default function ToyLMPage() {
 
         {/* Top bar */}
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-4 py-3 backdrop-blur-md md:px-5 md:py-2.5">
-          <h1 className="truncate text-sm font-black tracking-tight">
+          <SectionHeading section="/teacher/toy-lm" compact className="truncate text-sm font-black tracking-tight">
             {showCreate ? tl("Nuovo modello") : selectedJob ? selectedJob.name : 'ToyGPT'}
-          </h1>
+          </SectionHeading>
           {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {selectedJob && !showCreate && (

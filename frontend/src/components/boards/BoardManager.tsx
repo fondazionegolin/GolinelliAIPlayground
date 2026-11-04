@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -517,6 +518,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       )}
       {(isMobile ? !board : !sidebarCollapsed) && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
+          section="/teacher/boards"
           eyebrow={isStudent ? tl("Spazio studente") : tl("Pannello docente")}
           title="Board"
           description={isMobile ? '' : (isStudent ? tl("Board personali e condivise in un unico explorer.") : tl("Crea e condividi board nella sessione attiva."))}
@@ -675,7 +677,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 border-b border-slate-200 bg-white px-3 py-1.5 md:flex md:flex-wrap md:justify-between md:gap-2 md:px-4 md:py-2">
               <div className="flex min-w-0 items-center gap-2">
                 {isMobile && <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Torna alle board")}><ArrowLeft className="h-5 w-5" /></button>}
-                <h2 className="truncate text-lg font-bold">{board.title}</h2>
+                <SectionHeading section="/teacher/boards" as="h2" compact className="truncate text-lg font-bold">{board.title}</SectionHeading>
               </div>
               <div className="col-span-2 flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 md:col-span-1">
                 <div className="inline-flex h-11 shrink-0 items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:h-9" role="tablist" aria-label={tl("Vista")}>

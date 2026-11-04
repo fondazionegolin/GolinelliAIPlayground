@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -301,12 +302,11 @@ export default function TeacherbotsPage() {
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
               {t('navbar.nav_teacherbots', 'Teacherbot')}
             </p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
-              {tl("Crea, condividi, osserva")}
-            </h2>
-            <p className="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
+            <SectionHeading section="/teacher/teacherbots" as="h2" className="mt-2 justify-center text-2xl font-black tracking-tight text-slate-950 md:text-3xl" subtitle={<>
               {tl("Un teacherbot è un assistente AI personalizzato: gli dai un nome, una personalità e istruzioni (system prompt), e opzionalmente una base di conoscenza. Condividilo con un'intera classe, con singoli studenti, oppure genera un link pubblico utilizzabile anche fuori dalla piattaforma.")}
-            </p>
+            </>} subtitleClassName="mx-auto mt-3 hidden max-w-2xl text-sm leading-6 text-slate-600 md:block">
+              {tl("Crea, condividi, osserva")}
+            </SectionHeading>
             <Button size="lg" className="mt-6 min-h-12 w-full rounded-2xl sm:w-auto" onClick={() => setFormTarget('create')}>
               <Plus className="h-4 w-4 mr-2" />
               {tl("Nuovo teacherbot")}

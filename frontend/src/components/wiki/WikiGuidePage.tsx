@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2, Layers3, Search, X } from '@/components/icons
 import { useTranslation } from 'react-i18next'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 
 export interface WikiFeature {
   title: string
@@ -26,6 +27,7 @@ export interface WikiSection {
 
 interface WikiGuidePageProps {
   roleLabel: string
+  section?: string
   title: string
   intro: string
   sections: WikiSection[]
@@ -72,6 +74,7 @@ function filterSections(sections: WikiSection[], query: string) {
 
 export default function WikiGuidePage({
   roleLabel,
+  section,
   title,
   intro,
   sections,
@@ -153,7 +156,8 @@ export default function WikiGuidePage({
               <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: accentText }}>
                 {roleLabel}
               </p>
-              <h1 className="truncate text-sm font-bold text-slate-950">{title}</h1>
+              {section ? <SectionHeading section={section} compact className="truncate text-sm font-bold text-slate-950">{title}</SectionHeading>
+                : <h1 className="truncate text-sm font-bold text-slate-950">{title}</h1>}
             </div>
             <span className="ml-auto">
               <SidebarCollapseButton onClick={() => setSidebarCollapsed(true)} label={tl("Comprimi indice")} />

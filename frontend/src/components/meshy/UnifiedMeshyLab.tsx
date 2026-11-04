@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import '@google/model-viewer'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -328,8 +329,7 @@ export default function UnifiedMeshyLab({ sessionId, student = false }: Props) {
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-600">{tl("AI generativa 3D")}</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">{tl("Crea un modello con Meshy")}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">{tl("Descrivi l’oggetto e, se vuoi, aggiungi un’immagine di riferimento.")}</p>
+            <SectionHeading section="/teacher/ai-3d" className="mt-1 text-2xl font-black tracking-tight text-slate-950" subtitle={<>{tl("Descrivi l’oggetto e, se vuoi, aggiungi un’immagine di riferimento.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Crea un modello con Meshy")}</SectionHeading>
           </div>
           <div className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-800">
             {tl("Modello effettivo:")} {actualModel === 'latest' ? 'latest → Meshy 7.1' : actualModel}

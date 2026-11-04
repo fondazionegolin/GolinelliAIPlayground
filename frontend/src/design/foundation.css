@@ -19,6 +19,15 @@
   --ds-surface-tint: rgba(244, 241, 255, 0.92);
   --ds-control: rgba(248, 250, 255, 0.96);
   --ds-control-hover: rgba(255, 255, 255, 0.99);
+  /* Editable fields need their own material: distinct from cards and buttons. */
+  --ds-field-bg: #f1f3f5;
+  --ds-field-hover: #e9ecef;
+  --ds-field-focus: #e4e8ec;
+  --ds-field-ink: #202020;
+  --ds-field-placeholder: #5b5b5b;
+  --ds-field-focus-ink: #616161;
+  --ds-field-shadow: none;
+  --ds-field-radius: 1.125rem;
   --ds-cluster: rgba(238, 242, 248, 0.94);
   --ds-cluster-bg:
     radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.40) 0%, transparent 58%),
@@ -99,6 +108,12 @@
   --ds-surface-tint: rgba(50, 47, 68, 0.92);
   --ds-control: rgba(40, 43, 49, 0.96);
   --ds-control-hover: rgba(46, 49, 55, 0.99);
+  --ds-field-bg: #191b1e;
+  --ds-field-hover: #202328;
+  --ds-field-focus: #25292e;
+  --ds-field-ink: #f2f2f2;
+  --ds-field-placeholder: #bdbdbd;
+  --ds-field-focus-ink: #c5c5c5;
   --ds-cluster: rgba(34, 36, 41, 0.96);
   --ds-cluster-bg: linear-gradient(#222429, #222429);
   --ds-navbar-cluster: rgba(32, 34, 38, 0.98);
@@ -700,5 +715,11 @@
   --border: 214 32% 91%;
   --logo-blue-strong: #1278bd;
   --logo-violet-strong: #55449c;
+  --ds-field-bg: #f1f3f5;
+  --ds-field-hover: #e9ecef;
+  --ds-field-focus: #e4e8ec;
+  --ds-field-ink: #202020;
+  --ds-field-placeholder: #5b5b5b;
+  --ds-field-focus-ink: #616161;
   --canvas-dot: #d6d6d6;
 }

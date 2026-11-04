@@ -597,6 +597,7 @@ export default function TeacherWikiPage({ accentId = DEFAULT_TEACHER_ACCENT }: T
 
   return (
     <WikiGuidePage
+      section="/teacher/wiki"
       roleLabel={isEnglish ? 'Teacher Wiki' : 'Wiki Docente'}
       title={isEnglish ? 'Operational guide for the teacher platform' : 'Guida operativa per la piattaforma docente'}
       intro={isEnglish

@@ -1,3 +1,4 @@
+import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -45,6 +46,7 @@ const CHAT_SIDEBAR_GUTTER = 28
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { PageFrame } from '@/components/ui/PageFrame'
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
@@ -472,8 +474,8 @@ export default function TeacherDashboard() {
               <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="smart-canvas" element={<SmartCanvasPage />} />
               <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
-              <Route path="video-studio" element={authStore.user?.role === 'ADMIN' ? <VideoStudioLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
-              <Route path="video-studio/:projectId" element={authStore.user?.role === 'ADMIN' ? <VideoStudioEditorPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="video-studio" element={<VideoStudioLibraryPage />} />
+              <Route path="video-studio/:projectId" element={<VideoStudioEditorPage />} />
               <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
@@ -485,11 +487,9 @@ export default function TeacherDashboard() {
                 ) : (
                   <div className="flex h-full items-center justify-center p-8">
                     <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-                      <Code2 className="mx-auto h-8 w-8 text-slate-400" />
-                      <h2 className="mt-3 text-sm font-bold text-slate-900">{tl("Seleziona una sessione")}</h2>
-                      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                      <SectionHeading section="/teacher/coding" as="h2" compact className="justify-center text-sm font-bold text-slate-900" subtitle={<>
                         {tl("Il Vibe Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.")}
-                      </p>
+                      </>} subtitleClassName="mt-2 text-xs leading-relaxed text-slate-500">{tl("Seleziona una sessione")}</SectionHeading>
                     </div>
                   </div>
                 )
@@ -653,6 +653,7 @@ function TeacherMobileNavigation({
               <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
             </button>
           )}
+          <div className="ml-auto"><NavbarMusicButton sessionId={currentSession?.id} /></div>
           <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
             <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
             <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>

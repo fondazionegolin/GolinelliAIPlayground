@@ -19,6 +19,7 @@ import TermsPage from '@/pages/TermsPage'
 
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'))
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'))
+import { BackgroundAudioProvider } from '@/components/voice-lab/BackgroundAudio'
 import { GlobalDictation } from '@/components/GlobalDictation'
 const StudentDashboard = lazy(() => import('@/pages/student/StudentDashboard'))
 const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
@@ -55,7 +56,7 @@ function App() {
   }
   
   return (
-    <>
+    <BackgroundAudioProvider>
       <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-white/70" /></div>}>
         <Routes>
           <Route path="/login" element={<LandingPage />} />
@@ -109,7 +110,7 @@ function App() {
       <Toaster />
       <CookieBanner />
       <GlobalDictation />
-    </>
+    </BackgroundAudioProvider>
   )
 }
 

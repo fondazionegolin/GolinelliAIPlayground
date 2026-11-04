@@ -1,3 +1,7 @@
+import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
+import { useAuthStore } from '@/stores/auth'
+import { loadAudioUrl } from '@/lib/audioPlayback'
+import { Button } from '@/design'
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, PictureInPicture2, Play, X } from '@/components/icons'
@@ -152,7 +156,7 @@ export function VideoPreview({ src, title, poster, blob }: VideoSource) {
   </button>
 }
 
-export function AudioPlayer({ src, title }: { src: string; title: string }) {
+function PublicAudioPlayer({ src, title }: { src: string; title: string }) {
   const media = useMediaSource(src)
   const [error, setError] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
@@ -186,4 +190,14 @@ export function AudioPlayer({ src, title }: { src: string; title: string }) {
         </div>
       </>}
   </div>
+}
+
+/** All authenticated audio opens the same persistent player in the navbar. */
+export function AudioPlayer({ src, title }: { src: string; title: string }) {
+  const player = useBackgroundAudio()
+  const hasAccount = useAuthStore(s => !!s.user || !!s.studentSession)
+  if (!hasAccount) return <PublicAudioPlayer src={src} title={title} />
+  return <Button tone="neutral" surface="solid" className="max-w-full !justify-start" aria-label={tl('Riproduci {0}', title)} onClick={() => player.playTracks([{ id: src, title }], loadAudioUrl)}>
+    <Play className="h-4 w-4 shrink-0" /><span className="truncate">{title}</span>
+  </Button>
 }

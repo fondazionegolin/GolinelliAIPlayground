@@ -14,6 +14,7 @@ export interface ToolRouting {
 
 export const TOOL_LABELS: Record<string, string> = {
   chat: tl("Chat"),
+  teaching_protocol: tl('Modalità agentica'),
   image: tl("Immagine"),
   presentation: tl("Presentazione"),
   brochure: 'Brochure',

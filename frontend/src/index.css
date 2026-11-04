@@ -214,8 +214,7 @@
     --surface-logo-blue: var(--logo-blue-10);
     --surface-logo-violet: var(--logo-violet-10);
     --text-primary: #17151b;
-    /* Secondary text keeps the brand blue, using its accessible ink value. */
-    --text-secondary: var(--brand-celeste-ink);
+    --text-secondary: #6f477d;
     --text-muted: #6e6679;
     /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
     --border-subtle: transparent;
@@ -265,13 +264,13 @@
     --ring: 250 70% 78%;
 
     /* Readable brand inks on dark surfaces (solid fills keep the light values). */
-    --logo-blue-strong: #86c3ef;
+    --logo-blue-strong: #ddb7e6;
     --logo-violet-strong: #ab9ff0;
     --icon-tint: #b9a8ff;
     --icon-tint-amount: 28%;
     --brand-red-text: #ff6b93;
     --brand-orange-text: #fb923c;
-    --brand-celeste-ink: #86c3ef;
+    --brand-celeste-ink: #ddb7e6;
     --brand-pill-lavender: rgba(171, 159, 240, 0.14);
     --brand-pill-lavender-hover: rgba(171, 159, 240, 0.20);
     --brand-pill-lavender-border: rgba(171, 159, 240, 0.30);
@@ -283,8 +282,8 @@
 
     --surface-muted: rgba(171, 159, 240, 0.07);
     --text-primary: #e4e6ea;
-    --text-secondary: var(--brand-celeste-ink);
-    --text-muted: #9a9ea8;
+    --text-secondary: #ddb7e6;
+    --text-muted: #b8adbf;
     --overlay-soft: rgba(0, 0, 0, 0.30);
     --overlay-modal: rgba(0, 0, 0, 0.62);
 
@@ -827,26 +826,49 @@
 /* ── Form focus and validation ──────────────────────────────────────────── */
 /* Keep the interaction colour consistent even in legacy screens that still
    declare a local Tailwind focus colour. Red is reserved for invalid fields. */
-/* Text fields never draw a focus box: the caret is the only indicator (no ring, no outline, no inner rectangle).
-   Selects keep the standard ring. The :not(#x) trick lifts specificity above every legacy local focus style. */
-html:not(#x) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']), textarea):is(:focus, :focus-visible):not([aria-invalid='true']):not([data-invalid='true']) {
-  outline: none !important;
-  box-shadow: none !important;
+/* Covers shared primitives and legacy forms across every section. Editor internals and
+   explicitly plain controls retain their own rendering. Fields stay flat and rounded. */
+html:not(#x) :is(.ds-field, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='image']), textarea, select):not(:where(.cm-editor *, .monaco-editor *, .theme-keep :not(.ds-field), [data-field-appearance='plain'])) {
+  background-color: var(--ds-field-bg) !important;
+  background-image: none !important;
+  color: var(--ds-field-ink) !important;
+  caret-color: var(--ds-field-ink);
+  box-shadow: var(--ds-field-shadow) !important;
+  border: 0 !important;
+  border-radius: var(--ds-field-radius) !important;
+}
+
+html:not(#x) :is(input, textarea)::placeholder {
+  color: var(--ds-field-placeholder) !important;
+  opacity: 1;
+}
+
+html:not(#x) :is(.ds-field, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='image']), textarea, select):not(:where(.cm-editor *, .monaco-editor *, .theme-keep :not(.ds-field), [data-field-appearance='plain'])):hover:not(:disabled) {
+  background-color: var(--ds-field-hover) !important;
+}
+
+html:not(#x) :is(.ds-field, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='image']), textarea, select):not(:where(.cm-editor *, .monaco-editor *, .theme-keep :not(.ds-field), [data-field-appearance='plain'])):is(:focus, :focus-visible):not([aria-invalid='true'], [data-invalid='true']) {
+  background-color: var(--ds-field-focus) !important;
+  outline: 2px solid var(--ds-field-focus-ink) !important;
+  outline-offset: 2px;
+  box-shadow: var(--ds-field-shadow) !important;
   --tw-ring-shadow: 0 0 #0000 !important;
   --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
 
-:where(select):focus-visible:not([aria-invalid='true']):not([data-invalid='true']) {
-  border-color: transparent !important;
-  outline: none !important;
-  box-shadow: var(--focus-shadow) !important;
+html:not(#x) :is(input, textarea, select, .ds-field):is([aria-invalid='true'], [data-invalid='true']) {
+  --ds-field-focus-ink: var(--brand-red-text);
+  box-shadow: inset 0 0 0 2px var(--brand-red-text) !important;
 }
 
-:where(input, textarea, select)[aria-invalid='true']:focus-visible,
-:where(input, textarea, select)[data-invalid='true']:focus-visible {
-  border-color: transparent !important;
-  outline: none !important;
-  box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.2) !important;
+html:not(#x) :is(input, textarea, select, .ds-field):is([aria-invalid='true'], [data-invalid='true']):focus-visible {
+  outline: 2px solid var(--brand-red-text) !important;
+  outline-offset: 2px;
+}
+
+html:not(#x) input:-webkit-autofill {
+  -webkit-text-fill-color: var(--ds-field-ink) !important;
+  box-shadow: var(--ds-field-shadow), inset 0 0 0 1000px var(--ds-field-bg) !important;
 }
 .ProseMirror {
   caret-color: #737373;  /* slate-500 */
@@ -1085,3 +1107,62 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     font-size: max(16px, 1em);
   }
 }
+
+/* Sliders: flat, borderless and light. The filled part is drawn by the thumb's spread shadow (WebKit) or
+   ::-moz-range-progress (Firefox), so no JS is needed. Opt out with data-field-appearance='plain'. */
+input[type='range']:not([data-field-appearance='plain']) {
+  --range-track: color-mix(in srgb, var(--logo-violet) 14%, transparent);
+  --range-fill: color-mix(in srgb, var(--logo-violet) 52%, transparent);
+  --range-thumb: color-mix(in srgb, var(--logo-violet) 78%, transparent);
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  border-radius: 999px;
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+  accent-color: var(--logo-violet);
+}
+input[type='range']:not([data-field-appearance='plain'])::-webkit-slider-runnable-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--range-track);
+}
+input[type='range']:not([data-field-appearance='plain'])::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--range-thumb);
+  box-shadow: -2000px 0 0 1998px var(--range-fill);
+  transition: transform 120ms ease;
+}
+input[type='range']:not([data-field-appearance='plain']):hover::-webkit-slider-thumb,
+input[type='range']:not([data-field-appearance='plain']):focus-visible::-webkit-slider-thumb { transform: scale(1.18); }
+input[type='range']:not([data-field-appearance='plain'])::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--range-track);
+}
+input[type='range']:not([data-field-appearance='plain'])::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--range-fill);
+}
+input[type='range']:not([data-field-appearance='plain'])::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--range-thumb);
+}
+input[type='range']:not([data-field-appearance='plain']):disabled { opacity: 0.45; cursor: not-allowed; }

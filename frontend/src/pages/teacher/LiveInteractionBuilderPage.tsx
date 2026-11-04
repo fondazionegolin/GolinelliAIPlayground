@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import AchievementIcon, { ACHIEVEMENT_ICON_KEYS } from '@/components/live/AchievementIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -1677,7 +1678,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       <div className="mb-8 flex flex-col gap-5 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-800">Live Interaction</h1>
+            <SectionHeading section="/teacher/live-interaction" className="text-2xl font-bold text-slate-800">Live Interaction</SectionHeading>
             <button
               onClick={() => setShowTutorial(v => !v)}
               className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"

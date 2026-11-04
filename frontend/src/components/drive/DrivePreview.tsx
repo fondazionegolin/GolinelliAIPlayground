@@ -1,9 +1,10 @@
+import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, Share2, X } from '@/components/icons'
 import { driveApi } from '@/lib/api'
 import { CATEGORY_META, categoryOf, editorPathFor, filenameFromDisposition, formatBytes, formatDate, saveBlob, type DriveItem } from './driveTypes'
-import { AudioPlayer, VideoPreview } from '@/components/media/MediaPlayer'
+import { VideoPreview } from '@/components/media/MediaPlayer'
 import { GlbViewer } from './GlbViewer'
 import { tl } from '@/i18n/tl'
 
@@ -67,6 +68,7 @@ export function DrivePreview({
   isTeacher: boolean
 }) {
   const navigate = useNavigate()
+  const music = useBackgroundAudio()
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -79,6 +81,14 @@ export function DrivePreview({
   const editorPath = isTeacher ? editorPathFor(item) : null
 
   useEffect(() => {
+    if (category === 'audio') {
+      music.playFile({ id: item.id, title: item.name, mime_type: item.mime_type || undefined })
+      onClose()
+    }
+  }, [category, item.id, item.name, item.mime_type, music.playFile, onClose])
+
+  useEffect(() => {
+    if (category === 'audio') return
     let cancelled = false
     let url: string | null = null
     setLoaded(null)
@@ -121,6 +131,7 @@ export function DrivePreview({
   }
 
   const Icon = meta.icon
+  if (category === 'audio') return null
   return (
     <div className="fixed inset-0 z-[1000] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-label={item.name}>
       <header className="flex h-14 shrink-0 items-center gap-3 px-4 text-white">
@@ -172,8 +183,6 @@ export function DrivePreview({
           <img src={loaded.url} alt={item.name} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
         ) : loaded.kind === 'media' && category === 'video' ? (
           <VideoPreview src={loaded.url} title={item.name} />
-        ) : loaded.kind === 'media' && category === 'audio' ? (
-          <AudioPlayer src={loaded.url} title={item.name} />
         ) : loaded.kind === 'url' ? (
           <iframe src={loaded.url} title={item.name} className="h-full w-full max-w-5xl rounded-lg bg-white shadow-2xl" />
         ) : loaded.kind === 'text' ? (

@@ -156,7 +156,8 @@ async def generate(message_id: UUID, request: GenerateAudio, db: Db, teacher: Te
     if state.get("phase") != "draft":
         raise HTTPException(409, "Prepara prima il testo del podcast.")
     options = podcasts.PodcastOptions.model_validate(state["options"])
-    estimated_cost = len(request.script) / 1000 * settings.ELEVENLABS_COST_PER_1000_CHARS
+    from app.services.voice_lab_billing import quote
+    estimated_cost = quote("tts", characters=len(request.script), model=settings.ELEVENLABS_TTS_MODEL)["cost"]
     if not await credit_service.check_availability(db, teacher.tenant_id, estimated_cost, teacher.id):
         raise HTTPException(402, "Crediti insufficienti per generare l’audio.")
     used = await drive.drive_usage_bytes(db, teacher.id)
@@ -183,6 +184,6 @@ async def generate(message_id: UUID, request: GenerateAudio, db: Db, teacher: Te
     conv = await db.get(TeacherConversation, message.conversation_id); conv.updated_at = datetime.now(timezone.utc)
     await credit_service.track_usage(db, teacher.tenant_id, "elevenlabs", settings.ELEVENLABS_TTS_MODEL, estimated_cost,
         {"type": "podcast_audio", "characters": len(request.script), "voice_id": options.voice_id,
-         "pricing_configured": settings.ELEVENLABS_COST_PER_1000_CHARS > 0}, teacher_id=teacher.id)
+         "service": "Podcast", "pricing": quote("tts", characters=len(request.script), model=settings.ELEVENLABS_TTS_MODEL)}, teacher_id=teacher.id)
     await db.refresh(message)
     return serialize(message)

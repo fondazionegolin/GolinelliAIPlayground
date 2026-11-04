@@ -14,13 +14,19 @@ def identifier(value: str) -> str:
     return value
 
 
+class UncertainGeneration(HTTPException):
+    """The provider may have processed a request before the connection failed."""
+
+
 async def request(method: str, path: str, **kwargs) -> httpx.Response:
     key = podcasts.api_key()
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=20)) as client:
             response = await client.request(method, podcasts.BASE_URL + path, headers={"xi-api-key": key}, **kwargs)
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+        raise HTTPException(503, "Impossibile connettersi a ElevenLabs. Riprova tra poco.") from exc
     except httpx.HTTPError as exc:
-        raise HTTPException(502, "ElevenLabs non raggiungibile o richiesta interrotta. Controlla la libreria prima di ripetere una generazione.") from exc
+        raise UncertainGeneration(504, "Connessione ElevenLabs interrotta: controlla la libreria prima di ripetere una generazione.") from exc
     if response.status_code == 422:
         raise HTTPException(422, "ElevenLabs non accetta questi parametri: verifica il modello, il formato del file e i limiti del tuo piano.")
     podcasts.provider_error(response)

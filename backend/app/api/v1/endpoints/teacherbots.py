@@ -922,7 +922,9 @@ async def publish_teacherbot(
             room_id=room.id,
             sender_type=SenderType.SYSTEM,
             message_text=notification_text,
-            attachments=json.dumps({
+            # JSONB column: store the object itself. json.dumps() would store a JSON *string*, and on reload the
+            # message would lose its notification type (and with it the clickable link).
+            attachments={
                 "is_notification": True,
                 "notification_type": "teacherbot_published",
                 "notification_data": {
@@ -932,7 +934,7 @@ async def publish_teacherbot(
                     "color": bot.color,
                     "synopsis": bot.synopsis,
                 },
-            }),
+            },
         )
         db.add(chat_message)
         await db.flush()

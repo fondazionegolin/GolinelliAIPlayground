@@ -1,0 +1,39 @@
+.voice-lab-check {
+  appearance: none;
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: .125rem;
+  border: 0;
+  border-radius: min(.3rem, var(--control-radius));
+  background: var(--ds-field-bg);
+  box-shadow: var(--ds-field-shadow);
+  cursor: pointer;
+}
+.voice-lab-check:checked {
+  background-image: var(--selection-active-bg);
+  color: var(--selection-active-text);
+}
+.voice-lab-check:checked::after {
+  content: '✓';
+  display: block;
+  text-align: center;
+  font-size: .85rem;
+  line-height: 1.125rem;
+  font-weight: 700;
+}
+.voice-lab-check:focus-visible, .voice-lab-range:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-shadow);
+}
+.voice-lab-range {
+  accent-color: var(--app-accent);
+  cursor: pointer;
+  min-height: 1.5rem;
+  border-radius: var(--control-radius);
+}
+
+
+.voice-lab-options {
+  background: var(--ds-surface-muted);
+}

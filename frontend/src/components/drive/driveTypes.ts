@@ -11,7 +11,7 @@ export interface DriveItem {
   parent_id: string | null
   kind: 'folder' | 'file' | 'link'
   name: string
-  source_type: 'upload' | 'chat' | 'document' | 'presentation' | 'solid_model' | null
+  source_type: 'upload' | 'chat' | 'document' | 'presentation' | 'solid_model' | 'voice_playlist' | 'voice_track' | null
   source_id: string | null
   mime_type: string | null
   size_bytes: number | null

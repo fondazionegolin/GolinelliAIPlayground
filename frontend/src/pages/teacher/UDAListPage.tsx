@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -69,8 +70,7 @@ export default function UDAListPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">{tl("Unità Didattiche")}</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{tl("Crea e gestisci le UDA della tua classe")}</p>
+              <SectionHeading section="/teacher/classes" className="text-2xl font-bold text-slate-900" subtitle={<>{tl("Crea e gestisci le UDA della tua classe")}</>} subtitleClassName="text-sm text-slate-500 mt-0.5">{tl("Unità Didattiche")}</SectionHeading>
             </div>
           </div>
           <Button tone="neutral" surface="solid" size="sm" onClick={() => setShowCreate(true)}>

@@ -21,7 +21,7 @@ from app.models.voice_lab import VoiceLabItem
 from app.models.file import File
 from app.models.drive import DriveItem
 from app.models.enums import OwnerType, Scope
-from app.services import drive_service as drive, voice_lab as eleven
+from app.services import drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
 from app.services.credit_service import credit_service
 
 router = APIRouter()
@@ -96,7 +96,7 @@ def serialize(item: VoiceLabItem, full: bool = False):
             "status": details.get("status", "ready"), "mime_type": item.mime_type,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "content_url": f"/api/v1/voice-lab/items/{item.id}/content" if item.storage_key else None,
-            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id"}}}
+            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id", "credits", "pricing", "duration_seconds"}}}
 
 
 async def owned(db: AsyncSession, teacher: User, item_id: UUID, *, lock=False) -> VoiceLabItem:
@@ -128,7 +128,8 @@ async def save_blob(db, teacher, title, service, data: bytes, mime: str, ext: st
     db.add(File(id=file_id, tenant_id=teacher.tenant_id, owner_type=OwnerType.TEACHER, owner_teacher_id=teacher.id,
                 scope=Scope.USER, storage_key=key, filename=name, mime_type=mime, size_bytes=len(data), checksum_sha256=hashlib.sha256(data).hexdigest()))
     await db.flush()
-    db.add(DriveItem(id=drive_id, tenant_id=teacher.tenant_id, owner_teacher_id=teacher.id, kind="file", name=name,
+    folder = await drive.type_folder(db, teacher.id, teacher.tenant_id, drive.file_category(name, mime, service=service))
+    db.add(DriveItem(id=drive_id, tenant_id=teacher.tenant_id, owner_teacher_id=teacher.id, parent_id=folder.id, kind="file", name=name,
                      file_id=file_id, source_type="upload", mime_type=mime, size_bytes=len(data)))
     item = VoiceLabItem(id=item_id, tenant_id=teacher.tenant_id, owner_id=teacher.id, title=title, kind=kind,
                         service=service, provider_id=provider_id, storage_key=key, mime_type=mime,
@@ -152,9 +153,7 @@ async def read_upload(file: UploadFile | None, *, media=True) -> tuple[str, byte
 
 
 async def budget(db, teacher, characters=0):
-    estimate = characters / 1000 * settings.ELEVENLABS_COST_PER_1000_CHARS
-    if not await credit_service.check_availability(db, teacher.tenant_id, max(estimate, 0.0001), teacher_id=teacher.id):
-        raise HTTPException(402, "Credito docente insufficiente")
+    estimate = billing.quote("tts", characters=characters, model=settings.ELEVENLABS_TTS_MODEL)["cost"]
     used = await drive.drive_usage_bytes(db, teacher.id)
     if used + 20 * 1024 * 1024 > settings.DRIVE_QUOTA_MB * 1024 * 1024:
         raise HTTPException(413, "Libera spazio nei Files prima di avviare una generazione")
@@ -164,7 +163,19 @@ async def budget(db, teacher, characters=0):
 @router.get("/config")
 async def config(_: Teacher):
     return {"configured": bool(settings.ELEVENLABS_API_KEY), "default_model": settings.ELEVENLABS_TTS_MODEL,
-            "max_upload_mb": MAX_BYTES // (1024 * 1024), "output_formats": list(eleven.OUTPUT_FORMATS)}
+            "max_upload_mb": MAX_BYTES // (1024 * 1024), "output_formats": list(eleven.OUTPUT_FORMATS), "pricing_rates": billing.RATES, "usd_to_eur": billing.USD_TO_EUR, "pricing_source": billing.SOURCE}
+
+
+class QuoteRequest(BaseModel):
+    action: Literal["tts", "dialogue", "convert", "transcribe", "isolate", "sound_effects", "music", "alignment", "dubbing", "voice_design"]
+    characters: int = Field(default=0, ge=0, le=100000)
+    seconds: float = Field(default=0, ge=0, le=10800)
+    model: str = Field(default="", max_length=120)
+
+
+@router.post("/quote")
+async def generation_quote(body: QuoteRequest, _: Teacher):
+    return billing.quote(**body.model_dump())
 
 
 @router.get("/voices")
@@ -211,11 +222,29 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
     except ValidationError as exc:
         raise HTTPException(422, "; ".join(error["msg"] for error in exc.errors())) from exc
     character_count = len(body.text) if body.action == "tts" else sum(len(v.text) for v in body.dialogue) if body.action == "dialogue" else 0
-    estimate = await budget(db, teacher, character_count)
+    await budget(db, teacher, character_count)
+    upload = await read_upload(file) if body.action in {"convert", "transcribe", "isolate", "alignment", "dubbing"} else None
+    seconds = await billing.duration(upload[1]) if upload else body.seconds
+    price = billing.quote(body.action, characters=character_count, seconds=seconds, model=body.model_id or settings.ELEVENLABS_TTS_MODEL)
+    tx = None
+
+    async def paid_request(*args, **kwargs):
+        nonlocal tx
+        tx = await billing.reserve(db, teacher, price, body.model_id or body.action)
+        try:
+            result = await eleven.request(*args, **kwargs)
+        except eleven.UncertainGeneration as exc:
+            raise eleven.UncertainGeneration(504, "Esito ElevenLabs da verificare: la quota resta prenotata. Controlla prima di riprovare.") from exc
+        except Exception:
+            await billing.settle(db, tx.id, status="refunded")
+            raise
+        if body.action != "dubbing":
+            await billing.settle(db, tx.id, price)
+        return result
     if body.voice_id or body.dialogue:
         await require_voices(db, teacher, {body.voice_id} if body.voice_id else {v.voice_id for v in body.dialogue})
     params = {"output_format": body.output_format}
-    details = {"text": body.text, "language": body.language, "characters": character_count}
+    details = {"text": body.text, "language": body.language, "characters": character_count, "duration_seconds": seconds if upload or body.action in {"music", "sound_effects"} else None}
     response = None
     if body.action == "tts":
         model = body.model_id or settings.ELEVENLABS_TTS_MODEL
@@ -225,23 +254,22 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
             raise HTTPException(422, "Scegli un modello di sintesi vocale disponibile")
         if len(body.text) > (selected.get("max_characters") or 5000):
             raise HTTPException(422, "Il testo supera il limite per richiesta di questo modello: dividilo in più parti")
-        response = await eleven.request("POST", f"/v1/text-to-speech/{eleven.identifier(body.voice_id)}", params=params,
+        response = await paid_request("POST", f"/v1/text-to-speech/{eleven.identifier(body.voice_id)}", params=params,
             json={"text": body.text, "model_id": model, "language_code": body.language,
                   "voice_settings": {"stability": body.stability, "similarity_boost": body.similarity, "speed": body.speed}})
     elif body.action == "dialogue":
-        response = await eleven.request("POST", "/v1/text-to-dialogue", params=params,
+        response = await paid_request("POST", "/v1/text-to-dialogue", params=params,
             json={"inputs": [v.model_dump() for v in body.dialogue], "model_id": "eleven_v3", "language_code": body.language})
     elif body.action in {"sound_effects", "music"}:
         data = {"text": body.text, "duration_seconds": body.seconds, "model_id": "eleven_text_to_sound_v2"} if body.action == "sound_effects" else {
             "prompt": body.text, "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}
-        response = await eleven.request("POST", "/v1/sound-generation" if body.action == "sound_effects" else "/v1/music", json=data, params=params)
+        response = await paid_request("POST", "/v1/sound-generation" if body.action == "sound_effects" else "/v1/music", json=data, params=params)
     else:
-        upload = await read_upload(file)
         if body.action == "dubbing":
-            response = await eleven.request("POST", "/v1/dubbing", files={"file": upload},
-                data={"name": body.title, "source_lang": body.source_language, "target_lang": body.language})
+            response = await paid_request("POST", "/v1/dubbing", files={"file": upload},
+                data={"name": body.title, "source_lang": body.source_language, "target_lang": body.language, "watermark": "false"})
             item = VoiceLabItem(tenant_id=teacher.tenant_id, owner_id=teacher.id, title=body.title, kind="dubbing", service="dubbing",
-                provider_id=response.json()["dubbing_id"], details={"status": "processing", "language": body.language})
+                provider_id=response.json()["dubbing_id"], details={**details, **billing.details(tx, price), "status": "processing"})
             db.add(item)
             await db.commit()
             await db.refresh(item)
@@ -251,16 +279,16 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
             catalogue = await eleven.models()
             if not any(m["model_id"] == model and m["conversion"] for m in catalogue):
                 raise HTTPException(422, "Scegli un modello di cambio voce disponibile")
-            response = await eleven.request("POST", f"/v1/voice-changer/{eleven.identifier(body.voice_id)}", params=params,
+            response = await paid_request("POST", f"/v1/voice-changer/{eleven.identifier(body.voice_id)}", params=params,
                 files={"audio": upload}, data={"model_id": model, "remove_background_noise": str(body.remove_noise).lower()})
         elif body.action == "isolate":
-            response = await eleven.request("POST", "/v1/audio-isolation", files={"audio": upload})
+            response = await paid_request("POST", "/v1/audio-isolation", files={"audio": upload})
         else:
             data = {"model_id": body.model_id or "scribe_v2", "diarize": str(body.diarize).lower(), "language_code": body.language} if body.action == "transcribe" else {"text": body.text}
-            response = await eleven.request("POST", "/v1/speech-to-text" if body.action == "transcribe" else "/v1/forced-alignment", files={"file": upload}, data=data)
+            response = await paid_request("POST", "/v1/speech-to-text" if body.action == "transcribe" else "/v1/forced-alignment", files={"file": upload}, data=data)
             result = response.json()
             item = await save_blob(db, teacher, body.title, body.action, json.dumps(result, ensure_ascii=False).encode(),
-                "application/json", "json", {**details, "transcript": result}, kind="transcript")
+                "application/json", "json", {**details, **billing.details(tx, price), "transcript": result}, kind="transcript")
             await db.commit()
             await db.refresh(item)
             return serialize(item, True)
@@ -271,12 +299,10 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
     if actual_mime in known_mimes:
         mime, ext = actual_mime, known_mimes[actual_mime]
     try:
-        details["characters"] = int(float(response.headers.get("character-cost") or character_count))
+        details["provider_credit_units"] = float(response.headers.get("character-cost") or character_count)
     except (ValueError, OverflowError):
         details["characters"] = character_count
-    item = await save_blob(db, teacher, body.title, body.action, audio, mime, ext, details)
-    await credit_service.track_usage(db, teacher.tenant_id, "elevenlabs", body.model_id or body.action, estimate,
-        {"type": "voice_lab", "service": body.action, "characters": details["characters"], "pricing_configured": settings.ELEVENLABS_COST_PER_1000_CHARS > 0}, teacher_id=teacher.id)
+    item = await save_blob(db, teacher, body.title, body.action, audio, mime, ext, {**details, **billing.details(tx, price)})
     await db.commit()
     await db.refresh(item)
     return serialize(item, True)
@@ -310,7 +336,17 @@ async def design_voice(body: VoiceDesign, db: Db, teacher: Teacher):
     if body.remix_voice_id:
         await require_voices(db, teacher, {body.remix_voice_id})
     path = f"/v1/text-to-voice/{eleven.identifier(body.remix_voice_id)}/remix" if body.remix_voice_id else "/v1/text-to-voice/design"
-    result = (await eleven.request("POST", path, json={"voice_description": body.description, "text": body.text or None, "auto_generate_text": not bool(body.text)})).json()
+    price = billing.quote("voice_design", characters=3 * (len(body.text) or 1000))
+    tx = await billing.reserve(db, teacher, price, "voice_design")
+    try:
+        result = (await eleven.request("POST", path, json={"voice_description": body.description, "text": body.text or None, "auto_generate_text": not bool(body.text)})).json()
+    except eleven.UncertainGeneration as exc:
+        raise eleven.UncertainGeneration(504, "Esito ElevenLabs da verificare: la quota resta prenotata. Controlla prima di riprovare.") from exc
+    except Exception:
+        await billing.settle(db, tx.id, status="refunded")
+        raise
+    price = billing.quote("voice_design", characters=len(result.get("text") or body.text or " " * 1000) * len(result.get("previews", [])))
+    await billing.settle(db, tx.id, price)
     previews = []
     for index, preview in enumerate(result.get("previews", []), 1):
         try:
@@ -318,7 +354,7 @@ async def design_voice(body: VoiceDesign, db: Db, teacher: Teacher):
         except (ValueError, KeyError) as exc:
             raise HTTPException(502, "Anteprima vocale non valida") from exc
         item = await save_blob(db, teacher, f"Anteprima voce {index}", "voice_design", data, "audio/mpeg", "mp3",
-            {"description": body.description, "text": result.get("text", body.text)}, kind="preview", provider_id=preview["generated_voice_id"])
+            {**billing.details(tx, {**price, "credits": round(price["credits"] / max(1, len(result.get("previews", []))), 2)}), "description": body.description, "text": result.get("text", body.text)}, kind="preview", provider_id=preview["generated_voice_id"])
         previews.append(item)
     if not previews:
         raise HTTPException(502, "ElevenLabs non ha restituito anteprime")
@@ -364,16 +400,25 @@ async def refresh_dubbing(item_id: UUID, db: Db, teacher: Teacher):
     status = job.get("status")
     if status in {"dubbed", "completed"}:
         language = item.details["language"]
+        if item.details.get("billing_transaction_id"):
+            await billing.settle(db, item.details["billing_transaction_id"], item.details["pricing"], commit=False)
+            item = await owned(db, teacher, item_id, lock=True)
         response = await eleven.request("GET", f"/v1/dubbing/{eleven.identifier(item.provider_id)}/audio/{language}")
         # Preserve the job record and link it to a private saved audio file.
         audio_item = await save_blob(db, teacher, item.title, "dubbing", eleven.audio(response), "audio/mpeg", "mp3", {"language": language})
         item.kind, item.storage_key, item.mime_type = "audio", audio_item.storage_key, audio_item.mime_type
-        item.details = {**audio_item.details, "status": "ready"}
+        item.details = {**item.details, **audio_item.details, "status": "ready"}
         await db.delete(audio_item)
     elif status in {"failed", "error"}:
-        item.details = {**item.details, "status": "failed"}
+        if item.details.get("billing_transaction_id"):
+            await billing.settle(db, item.details["billing_transaction_id"], status="refunded", commit=False)
+        item.details = {**item.details, "status": "failed", "credits": 0}
     else:
         item.details = {**item.details, "status": "processing"}
     await db.commit()
     await db.refresh(item)
     return serialize(item, True)
+
+
+from app.api.v1.endpoints.voice_playlists import router as playlists_router
+router.include_router(playlists_router)

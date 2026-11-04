@@ -1,6 +1,10 @@
 /** Contextual character illustrations for every teacher navigation section. */
 const ART: Record<string, string> = {
   '/teacher': 'support',
+  '/teacher/assistant': 'support',
+  '/teacher/sessions': 'classes',
+  '/teacher/demo': 'teacherbots',
+  '/teacher/wiki': 'support',
   '/teacher/classes': 'classes',
   '/teacher/live-interaction': 'live-interaction',
   '/teacher/boards': 'boards',
@@ -26,13 +30,14 @@ export function hasSectionArt(path: string) {
   return Object.prototype.hasOwnProperty.call(ART, path)
 }
 
-export function NavSectionArt({ path, className = '' }: { path: string; className?: string }) {
+export function NavSectionArt({ path, className = '', variant = 'navigation' }: { path: string; className?: string; variant?: 'navigation' | 'heading' }) {
   const art = ART[path]
   if (!art) return null
   return (
     <span
       className={`flex shrink-0 items-center justify-center ${className}`}
       aria-hidden="true"
+      data-section-illustration={variant === 'heading' ? path : undefined}
     >
       <img
         src={`/illustrations/nav/${art}.webp`}
@@ -41,7 +46,7 @@ export function NavSectionArt({ path, className = '' }: { path: string; classNam
         height={320}
         decoding="async"
         draggable={false}
-        className="h-full w-full scale-[0.8] object-contain"
+        className={`h-full w-full object-contain ${variant === 'navigation' ? 'scale-[0.8]' : ''}`}
       />
     </span>
   )

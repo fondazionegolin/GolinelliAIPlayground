@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -308,8 +309,7 @@ export default function UDACreatorPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-slate-800 truncate">{uda.title}</h1>
-          <p className="text-xs text-slate-500">{tl("Unità Didattica")}</p>
+          <SectionHeading section="/teacher/classes" compact className="text-lg font-bold text-slate-800 truncate" subtitle={<>{tl("Unità Didattica")}</>} subtitleClassName="text-xs text-slate-500">{uda.title}</SectionHeading>
         </div>
         {/* Phase stepper — flat, minimal */}
         <div className="hidden md:flex items-center gap-1">

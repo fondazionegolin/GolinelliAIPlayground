@@ -1,3 +1,4 @@
+import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { useEffect, useState, useCallback, useRef, lazy, memo, Suspense, type ComponentType, type SVGProps } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -397,7 +398,11 @@ export default function StudentDashboard() {
       if (notifType === 'teacherbot_published') {
         const teacherbotId = data?.teacherbot_id
         if (teacherbotId) {
-          setSelectedTeacherbotId(teacherbotId)
+          // Re-select even when the same bot is clicked again (after leaving the chat), and refresh the list in
+          // case the bot was published after the page loaded.
+          queryClient.invalidateQueries({ queryKey: ['student-teacherbots'] })
+          setSelectedTeacherbotId(null)
+          setTimeout(() => setSelectedTeacherbotId(teacherbotId), 0)
           setActiveModule('chatbot')
         }
         return
@@ -1004,6 +1009,7 @@ function StudentMobileShell({
                 <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{sessionInfo.session.title}</span>
               </span>
             </button>
+            <div className="ml-auto"><NavbarMusicButton sessionId={sessionInfo.session.id} /></div>
             <button
               type="button"
               onClick={() => setClassChatOpen(true)}

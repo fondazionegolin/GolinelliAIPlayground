@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -488,8 +489,7 @@ export default function TeacherClassesSessionsManager({
             <header className="flex items-start justify-between gap-4 px-1">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">{tl("Area docente")}</p>
-                <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">{tl("Le tue classi")}</h1>
-                <p className="mt-1 text-sm font-medium text-slate-500">{tl("Scegli una classe per vedere e gestire le sessioni.")}</p>
+                <SectionHeading section="/teacher/classes" className="mt-1 text-3xl font-black tracking-tight text-slate-950" subtitle={<>{tl("Scegli una classe per vedere e gestire le sessioni.")}</>} subtitleClassName="mt-1 text-sm font-medium text-slate-500">{tl("Le tue classi")}</SectionHeading>
               </div>
               <InvitationsPanel />
             </header>
@@ -584,8 +584,7 @@ export default function TeacherClassesSessionsManager({
                 </button>
                 <div className="min-w-0 flex-1 pt-1">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">{isEnglish ? 'Selected class' : 'Classe selezionata'}</p>
-                  <h1 className="truncate text-2xl font-black text-slate-950">{selectedClass.name}</h1>
-                  <p className="truncate text-sm font-semibold text-slate-400">{selectedClass.school_grade || t('classes.not_set')}</p>
+                  <SectionHeading section="/teacher/classes" className="truncate text-2xl font-black text-slate-950" subtitle={<>{selectedClass.school_grade || t('classes.not_set')}</>} subtitleClassName="truncate text-sm font-semibold text-slate-400">{selectedClass.name}</SectionHeading>
                 </div>
               </div>
               {selectedClass.role !== 'session_shared' && <div className="mt-4 grid grid-cols-2 gap-2">
@@ -845,12 +844,11 @@ export default function TeacherClassesSessionsManager({
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               {isEnglish ? 'Teacher panel' : 'Pannello docente'}
             </p>
-            <h1 className="mt-1 text-[22px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{t('classes.title')}</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <SectionHeading section="/teacher/classes" className="mt-1 text-[22px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950" subtitle={<>
               {isEnglish
                 ? 'Each folder is a class: open it to see and run its sessions.'
                 : 'Ogni cartella è una classe: aprila per vedere e gestire le sue sessioni.'}
-            </p>
+            </>} subtitleClassName="mt-1 text-sm text-slate-500">{t('classes.title')}</SectionHeading>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <InvitationsPanel />

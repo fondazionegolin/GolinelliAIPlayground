@@ -1,3 +1,4 @@
+import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import { ScopedModelSelect, storedModelChoice, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { v4 as uuid } from 'uuid'
@@ -206,11 +207,10 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
       <header className="mb-7 flex flex-wrap items-end gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white"><CanvasEaselIcon className="h-5 w-5" /></span>
             <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[var(--logo-pink)]">{tl("Lavagne intelligenti · Beta")}</p>
-              <h1 className="text-2xl font-black tracking-tight text-slate-950">{role === 'teacher' ? tl("Le tue lavagne") : tl("Le lavagne della sessione")}</h1></div>
+              <SectionHeading section="/teacher/smart-canvas" className="text-2xl font-black tracking-tight text-slate-950" subtitle={<>{role === 'teacher' ? tl("Crea una lavagna, condividila con una sessione e lavorate insieme in tempo reale, con l’assistente che legge tutto.") : tl("Le lavagne condivise dal docente e quelle che crei tu, in questa sessione.")}</>} subtitleClassName="mt-3 max-w-2xl text-sm text-slate-500">{role === 'teacher' ? tl("Le tue lavagne") : tl("Le lavagne della sessione")}</SectionHeading></div>
           </div>
-          <p className="mt-3 max-w-2xl text-sm text-slate-500">{role === 'teacher' ? tl("Crea una lavagna, condividila con una sessione e lavorate insieme in tempo reale, con l’assistente che legge tutto.") : tl("Le lavagne condivise dal docente e quelle che crei tu, in questa sessione.")}</p>
+
         </div>
         <button type="button" onClick={() => setCreating(true)} className="ui-cta flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-black"><Plus className="h-4 w-4" />{tl("Nuova lavagna")}</button>
       </header>
@@ -455,7 +455,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       <CollaborativeCanvas key={`${board.id}:${board.session_id || 'private'}`} ref={handle} fill role={role} title={board.title}
         onTitleChange={board.mine ? t => void rename(t) : undefined} readOnly={false}
         {...(shared ? { sessionId: board.session_id!, canvasName: board.canvas_key! } : { initialContent: board.content_json })}
-        onContentChange={onContentChange} chrome={chrome} leading={leading} tutorial
+        onContentChange={onContentChange} chrome={chrome} leading={<>{leading}<SectionIllustration section="/teacher/smart-canvas" compact /></>} tutorial
         onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onPermissionChange={setLiveCanWrite} />
     </div>
     {panelOpen && <aside className="flex w-[380px] max-w-[45vw] shrink-0 flex-col border-l border-slate-200 bg-slate-50" aria-label={tl("Assistente della lavagna")}>

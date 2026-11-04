@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -548,10 +549,9 @@ export default function TeacherDemoPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">Studentbot</h1>
-        <p className="text-slate-500 text-sm">
+        <SectionHeading section="/teacher/teacherbots" className="text-2xl font-bold text-slate-800 mb-1" subtitle={<>
           {tl("Entra nell'interfaccia studente in modalità anteprima, oppure personalizza i chatbot per sessione.")}
-        </p>
+        </>} subtitleClassName="text-slate-500 text-sm">Studentbot</SectionHeading>
       </div>
 
       {/* Student preview CTA */}

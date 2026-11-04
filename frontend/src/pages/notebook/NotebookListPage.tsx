@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -358,7 +359,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
           {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} />}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</h1>
+            <SectionHeading section="/teacher/notebooks" className="text-2xl font-black tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</SectionHeading>
           </div>
           {!isEmpty && (
             <label className="ui-search flex h-10 w-full items-center gap-2 px-3 sm:w-64">

@@ -34,6 +34,7 @@ ACTIONS = [
 ]
 
 ARTIFACTS = [
+    {"value": "teaching_protocol", "description": "Execute a teaching/activity protocol or produce a coordinated set of teaching materials with multiple specialized agents (quiz, teacherbot, documents, slides, sheet, image, interactive page). Requests to discuss, design or explain agentic systems are plain conversation."},
     {"value": "deep_research", "description": "An in-depth investigation / deep research / ricerca approfondita: search and read multiple online sources, compare evidence and produce a cited research report. Explicit requests for deep research always concern this artifact, not plain chat."},
     {"value": "podcast", "description": "An audio summary, narrated explanation, educational podcast or spoken version of attached documents."},
     {"value": "none", "description": "No artifact is involved: plain conversation."},
@@ -55,7 +56,9 @@ ACTION_INSTRUCTIONS = (
 ARTIFACT_INSTRUCTIONS = (
     "Which kind of artifact does the LAST user message concern? For edit/ask_about pick the EXISTING artifact it refers to: "
     "an explicit noun wins ('la pagina' = html_page, 'l'immagine/foto' = image, 'le slide' = presentation); otherwise the MOST RECENT artifact listed. "
-    "For create pick the kind to produce. Use none for plain conversation."
+    "For create pick the kind to produce. Choose teaching_protocol when the user asks to execute a teaching/activity protocol, "
+    "create a teacherbot, or produce multiple coordinated kinds of materials (such as quiz AND slides AND teacherbot). "
+    "Writing a protocol document or discussing agentic behavior without asking to execute it is plain conversation. Use none for plain conversation."
 )
 
 

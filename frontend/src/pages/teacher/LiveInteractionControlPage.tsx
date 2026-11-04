@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -573,7 +574,7 @@ export default function LiveInteractionControlPage() {
         >
           <ArrowLeft className="h-4 w-4" /> {tl("Lista")}
         </button>
-        <h1 className="flex-1 text-xl font-bold text-slate-800 truncate">{interaction.title}</h1>
+        <SectionHeading section="/teacher/live-interaction" compact className="flex-1 text-xl font-bold text-slate-800 truncate">{interaction.title}</SectionHeading>
         {isActive && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold flex-shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> LIVE

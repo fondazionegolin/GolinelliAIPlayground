@@ -12,8 +12,10 @@ from app.api.v1.endpoints import jobs
 from app.api.v1.endpoints import drive
 from app.api.v1.endpoints import platform_api
 from app.api.v1.endpoints import presentation_studio
+from app.api.v1.endpoints import teaching_protocol
 
 api_router = APIRouter()
+api_router.include_router(teaching_protocol.router, prefix="/llm/teacher/protocol", tags=["teaching-protocol"])
 api_router.include_router(voice_lab.router, prefix="/voice-lab", tags=["voice-lab"])
 api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"])
 
@@ -26,7 +28,7 @@ api_router.include_router(admin_backend.router, tags=["admin-backend"])
 api_router.include_router(admin_models.router, prefix="/admin/models", tags=["admin-models"])
 api_router.include_router(admin_chatbots.router, prefix="/admin/chatbots", tags=["admin-chatbots"])
 api_router.include_router(admin_activity.router, prefix="/admin/activity", tags=["admin-activity"])
-api_router.include_router(video_studio.router, prefix="/admin/video-studio", tags=["admin-video-studio"])
+api_router.include_router(video_studio.router, prefix="/admin/video-studio", tags=["video-studio"])
 api_router.include_router(visual_comprehension.router, prefix="/admin/visual-comprehension", tags=["admin-visual-comprehension"])
 api_router.include_router(visual_sessions.router, prefix="/admin/visual-comprehension/sessions", tags=["admin-visual-sessions"])
 api_router.include_router(smart_canvas.router, prefix="/smart-canvases", tags=["admin-smart-canvases"])

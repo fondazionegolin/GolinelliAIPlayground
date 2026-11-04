@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -50,7 +51,7 @@ export default function AgenticWorkflowLibraryPage({ sessionId }: { sessionId?: 
   return <div className="h-full overflow-y-auto bg-transparent">
     <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8">
       <header className="mb-7 flex flex-wrap items-end gap-4">
-        <div className="min-w-0 flex-1"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white"><Network className="h-5 w-5" /></span><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-600">{tl("Dataflow Studio · Beta")}</p><h1 className="text-2xl font-black tracking-tight text-slate-950">{tl("I tuoi workflow")}</h1></div></div><p className="mt-3 max-w-2xl text-sm text-slate-500">{tl("Costruisci pipeline di dati, machine learning, matematica e chatbot. Ogni modifica viene salvata automaticamente sul server.")}</p></div>
+        <div className="min-w-0 flex-1"><div className="flex items-center gap-3"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-600">{tl("Dataflow Studio · Beta")}</p><SectionHeading section="/teacher/agentic" className="text-2xl font-black tracking-tight text-slate-950" subtitle={<>{tl("Costruisci pipeline di dati, machine learning, matematica e chatbot. Ogni modifica viene salvata automaticamente sul server.")}</>} subtitleClassName="mt-3 max-w-2xl text-sm text-slate-500">{tl("I tuoi workflow")}</SectionHeading></div></div></div>
         <button onClick={() => navigate('/teacher/agentic/new')} className="ui-cta flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-black"><Plus className="h-4 w-4" /> {tl("Nuovo workflow")}</button>
       </header>
 

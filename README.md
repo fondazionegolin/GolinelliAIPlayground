@@ -138,7 +138,7 @@ Teachers and admins can open **Crea → Voice Lab** (`/teacher/voice-lab`); stud
 accounts cannot call its APIs. Set `ELEVENLABS_API_KEY` in the root `.env` and recreate
 `api` and `api-pool` with the explicit development project `dev_golinelli_ai` to load it.
 The API key stays on the server. `ELEVENLABS_TTS_MODEL` selects the initial speech model;
-`ELEVENLABS_COST_PER_1000_CHARS` optionally maps speech usage into platform credits.
+Standard ElevenLabs API rates are converted automatically into platform credits; see [Voice Lab](docs/voice-lab.md). `ELEVENLABS_COST_PER_1000_CHARS` is deprecated.
 Other services depend on the connected ElevenLabs plan and consume its quota.
 
 The workspace includes text-to-speech, multi-voice dialogue, instant voice cloning,

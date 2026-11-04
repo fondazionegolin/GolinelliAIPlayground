@@ -1,3 +1,4 @@
+import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import inspectorSparkles from '@/components/icons/inspector-sparkles.generated'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -1978,6 +1979,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       )}
       {!isMobile && !explorerCollapsed && <WorkspaceExplorerSidebar>
         <WorkspaceExplorerHeader
+          section="/teacher/coding"
           eyebrow={isTeacher ? tl("Pannello docente") : tl("Spazio studente")}
           title="Vibe Lab"
           description={tl("Progetti, versioni e condivisioni in un unico explorer.")}
@@ -2080,6 +2082,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         {isMobile && (
           <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2">
             <div className="flex items-center gap-2">
+              <SectionIllustration section="/teacher/coding" compact />
               <select
                 value={selectedProjectId || ''}
                 onChange={(event) => {
@@ -2171,8 +2174,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {createPanelOpen && (
               <div>
                 <div className="mb-8 text-center">
-                  <h2 className="text-xl font-black text-[var(--text-primary)]">{tl("Cosa vuoi creare?")}</h2>
-                  <p className="mt-1 hidden text-sm text-[var(--text-muted)] md:block">{tl("Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.")}</p>
+                  <SectionHeading section="/teacher/coding" as="h2" className="justify-center text-xl font-black text-[var(--text-primary)]" subtitle={<>{tl("Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.")}</>} subtitleClassName="mt-1 hidden text-sm text-[var(--text-muted)] md:block">{tl("Cosa vuoi creare?")}</SectionHeading>
                 </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">

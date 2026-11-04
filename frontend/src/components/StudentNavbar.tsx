@@ -1,3 +1,4 @@
+import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { queryClient } from '@/lib/queryClient'
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -455,11 +456,13 @@ export function StudentNavbar({
 
                 <StudentNotificationBell accentColor={accentTheme.accent} onNavigate={onNavigate} />
 
+                <NavbarMusicButton sessionId={sessionId} />
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} student />
                 <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
               </div>
 
               <div className="flex items-center gap-1 lg:hidden">
+                <NavbarMusicButton sessionId={sessionId} />
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} student />
                 <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
               </div>

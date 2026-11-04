@@ -19,6 +19,7 @@ class DriveItem(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
     owner_teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("drive_items.id", ondelete="CASCADE"), nullable=True, index=True)
     kind = Column(String(16), nullable=False)  # folder | file | link
     name = Column(String(255), nullable=False)

@@ -63,12 +63,13 @@ class Settings(BaseSettings):
     BFL_API_KEY: Optional[str] = None
     ELEVENLABS_API_KEY: Optional[str] = None
     ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
-    ELEVENLABS_COST_PER_1000_CHARS: float = 0.0
+    ELEVENLABS_COST_PER_1000_CHARS: float = 0.0  # Deprecated: standard rates live in voice_lab_billing.py
     MESHY_API_KEY: Optional[str] = None
     # Video Studio (admin testing): Runware API, https://runware.ai/docs
     RUNWARE_API_KEY: Optional[str] = None
     RUNWARE_IMAGE_MODEL: str = "google:nano-banana@2.1"
     VIDEO_STUDIO_IMAGE_QUALITY: str = "medium"  # gpt-image quality: low | medium | high
+    VIDEO_STUDIO_TTS_MODEL: str = "eleven_flash_v2_5"  # half the price of multilingual_v2, supports Italian
     RUNWARE_VIDEO_MODEL: str = "xai:grok-imagine@video-1.5-lite"
     OPENAI_IMAGE_MODEL: str = "gpt-image-2-2026-04-21"
     # Decisions API model for chat tool routing (image / slides / brochure / page)

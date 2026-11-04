@@ -1,3 +1,4 @@
+import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Smile, Brain, Camera, Copy, Download, Hand, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Sparkles, Trash2, Upload, User, X, Zap } from '@/components/icons'
@@ -162,8 +163,7 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
           <span className="ds-squircle relative z-10 flex h-24 w-24 items-center justify-center text-white shadow-xl" style={{ background: '#7b69c9' }}><Brain className="h-11 w-11" strokeWidth={1.6} /></span>
           <span className="ds-squircle -ml-3 flex h-16 w-16 rotate-6 items-center justify-center text-white shadow-lg" style={{ background: '#e85c8d' }}><Sparkles className="h-7 w-7" strokeWidth={1.7} /></span>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">{tl("Insegna al computer a riconoscere immagini, pose e gesti")}</h1>
-        <p className="mt-3 max-w-xl text-base text-slate-500">{tl("Crea il tuo primo classificatore: oggetti, posizioni del corpo o gesti delle mani. Mostragli alcuni esempi e vedrai l'intelligenza artificiale imparare in tempo reale. I progetti che crei restano salvati qui.")}</p>
+        <SectionHeading section="/teacher/ml-lab" className="text-3xl font-bold tracking-tight text-slate-900" subtitle={<>{tl("Crea il tuo primo classificatore: oggetti, posizioni del corpo o gesti delle mani. Mostragli alcuni esempi e vedrai l'intelligenza artificiale imparare in tempo reale. I progetti che crei restano salvati qui.")}</>} subtitleClassName="mt-3 max-w-xl text-base text-slate-500">{tl("Insegna al computer a riconoscere immagini, pose e gesti")}</SectionHeading>
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <Button tone="accent" surface="solid" size="lg" className="h-12 rounded-2xl px-7 text-base" onClick={startNew}><Plus className="h-5 w-5" /> {tl("Crea il primo progetto")}</Button>
           <Button tone="neutral" surface="outline" size="lg" className="h-12 rounded-2xl px-6" onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" /> {tl("Importa un progetto")}</Button>
@@ -189,8 +189,7 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
       {importInput}
       <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{tl("Lab ML · Immagini, pose e gesti")}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">{tl("I tuoi progetti: aprine uno per continuare ad addestrarlo o per provarlo dal vivo, oppure creane uno nuovo.")}</p>
+          <SectionHeading section="/teacher/ml-lab" className="text-2xl font-bold text-slate-900" subtitle={<>{tl("I tuoi progetti: aprine uno per continuare ad addestrarlo o per provarlo dal vivo, oppure creane uno nuovo.")}</>} subtitleClassName="mt-1 max-w-2xl text-sm text-slate-500">{tl("Lab ML · Immagini, pose e gesti")}</SectionHeading>
         </div>
         <div className="flex items-center gap-2">
           <Button tone="neutral" surface="outline" onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" /> {tl("Importa")}</Button>

@@ -1,3 +1,6 @@
+import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
+import { voiceLabApi } from '@/lib/voiceLab'
+import { SectionIllustration } from '@/design/primitives/SectionHeading'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -67,13 +70,14 @@ async function collectDropped(dataTransfer: DataTransfer): Promise<PickedFile[]>
 
 export function DriveBrowser({ mode }: { mode: Mode }) {
   const isTeacher = mode === 'teacher'
+  const music = useBackgroundAudio()
   const { toast } = useToast()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   // Teachers navigate through the URL (back/forward, shareable); students keep it local because the
   // student dashboard reacts to every query-string change.
   const [searchParams, setSearchParams] = useSearchParams()
-  const [localNav, setLocalNav] = useState<{ view: DriveView; folder: string | null }>({ view: 'shared', folder: null })
+  const [localNav, setLocalNav] = useState<{ view: DriveView; folder: string | null }>({ view: 'folder', folder: null })
   const view = isTeacher ? ((searchParams.get('view') as DriveView) || 'folder') : localNav.view
   const folderId = isTeacher ? searchParams.get('folder') : localNav.folder
   const [query, setQuery] = useState('')
@@ -135,7 +139,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   }, [sessionParam, tree.data, setSearchParams])
   const role = listing.data?.role ?? (isTeacher ? 'owner' : null)
   const inTrash = effectiveView === 'trash'
-  const writable = !inTrash && canEdit(role) && (effectiveView === 'folder' || effectiveView === 'search') && (isTeacher || !!folderId)
+  const writable = !inTrash && canEdit(role) && (effectiveView === 'folder' || effectiveView === 'search') && true
 
   const items = useMemo(() => {
     const raw = listing.data?.items ?? []
@@ -150,7 +154,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   const go = (next: { view?: DriveView; folder?: string | null }) => {
     setQuery('')
     if (!isTeacher) {
-      setLocalNav({ view: next.view ?? 'shared', folder: next.folder ?? null })
+      setLocalNav({ view: next.view ?? 'folder', folder: next.folder ?? null })
       return
     }
     const params = new URLSearchParams()
@@ -164,6 +168,11 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   // ── Actions ──────────────────────────────────────────────────────────────
   const open = (item: DriveItem) => {
     if (inTrash) return
+    if (categoryOf(item) === 'audio') { music.playFile({ id: item.id, title: item.name, mime_type: item.mime_type || undefined }); return }
+    if (item.source_type === 'voice_playlist' && item.source_id) {
+      void voiceLabApi.playlist(item.source_id).then(({data}) => music.listen(data)).catch(fail(tl('Playlist non disponibile')))
+      return
+    }
     if (item.kind === 'folder') { go({ folder: item.id }); return }
     // Platform artifacts (documents, presentations, 3D models) open in their native editor; the
     // preview modal is only for plain uploaded files that have no editor.
@@ -295,13 +304,13 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     }
     if (hasUniversalFileDrag(event.dataTransfer) && !Array.from(event.dataTransfer.types).includes(DRIVE_ITEM_MIME)) {
       // Attachments / items dragged in from chats, chatbots or other sections land as uploads.
-      if (!isTeacher && !targetFolderId) return
+      if (!isTeacher && effectiveView === 'shared' && !targetFolderId) return
       const dropped = await filesFromUniversalDrag(event.dataTransfer)
       await uploadFiles(dropped.map((file) => ({ file, path: file.name })), targetFolderId)
       return
     }
     if (isFileDrag(event)) {
-      if (!isTeacher && !targetFolderId) return
+      if (!isTeacher && effectiveView === 'shared' && !targetFolderId) return
       const picked = await collectDropped(event.dataTransfer)
       await uploadFiles(picked, targetFolderId)
     }
@@ -376,8 +385,8 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   // ── Rendering helpers ────────────────────────────────────────────────────
   const breadcrumb = listing.data?.breadcrumb ?? []
   const sharedLabel = isTeacher ? VIEW_LABEL.shared : tl("Condivisi con la classe")
-  const rootLabel = isTeacher ? (folderId && breadcrumb.length && listing.data?.role !== 'owner' ? sharedLabel : VIEW_LABEL[folderId ? 'folder' : effectiveView]) : sharedLabel
-  const rootView: DriveView = isTeacher ? (folderId && listing.data?.role !== 'owner' ? 'shared' : folderId ? 'folder' : effectiveView) : 'shared'
+  const rootLabel = isTeacher ? (folderId && breadcrumb.length && listing.data?.role !== 'owner' ? sharedLabel : VIEW_LABEL[folderId ? 'folder' : effectiveView]) : listing.data?.role === 'owner' ? tl('I miei file') : sharedLabel
+  const rootView: DriveView = folderId && listing.data?.role !== 'owner' ? 'shared' : folderId ? 'folder' : effectiveView
   const title = debounced && isTeacher ? tl("Risultati per «{0}»", debounced) : folderId ? breadcrumb[breadcrumb.length - 1]?.name ?? '' : effectiveView === 'shared' ? sharedLabel : VIEW_LABEL[effectiveView]
 
   const menuActions = (item: DriveItem) => {
@@ -395,6 +404,8 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
     }
     return [
       single && { icon: item.kind === 'folder' ? Folder : Eye, label: item.kind === 'folder' ? 'Apri' : editorPath ? 'Apri' : 'Anteprima', run: () => open(item) },
+      targets.every(v => v.mime_type?.startsWith('audio/')) && { icon: Plus, label: tl('Aggiungi alla playlist'), run: () => music.addIds(targets.map(v => v.id)) },
+      single && !isTeacher && owned && item.mime_type?.startsWith('audio/') && { icon: Share2, label: tl('Condividi audio con la classe'), run: () => voiceLabApi.shareAudioClass(item.id).then(() => { toast({ title: tl('Audio condiviso con la classe') }); void refresh() }).catch(fail(tl('Condivisione non riuscita'))) },
       { icon: Download, label: targets.length > 1 || item.kind === 'folder' ? tl("Scarica come zip") : tl("Scarica"), run: () => doDownload(targets) },
       single && isDoc && { icon: FileUp, label: 'Esporta in PDF', run: () => doDownload(targets, 'pdf') },
       single && isDoc && { icon: FileUp, label: item.source_type === 'presentation' ? 'Esporta in PowerPoint' : 'Esporta in Word', run: () => doDownload(targets, item.source_type === 'presentation' ? 'pptx' : 'docx') },
@@ -501,6 +512,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
         <header className="flex flex-col gap-3 px-4 pb-2 pt-4 md:px-5" onClick={(event) => event.stopPropagation()}>
           <div className="flex flex-wrap items-center gap-3">
             <nav className="flex min-w-0 flex-1 items-center gap-1 text-sm" aria-label={tl("Percorso")}>
+              <SectionIllustration section="/teacher/files" compact />
               <button
                 type="button"
                 onClick={() => go({ view: rootView })}
@@ -528,6 +540,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
             )}
           </div>
 
+          {!isTeacher && <div className="flex gap-2 py-2"><Button tone="neutral" surface="ghost" className={rootView === 'folder' ? 'ds-selected' : ''} onClick={() => go({view: 'folder'})}>{tl('I miei file')}</Button><Button tone="neutral" surface="ghost" className={rootView === 'shared' ? 'ds-selected' : ''} onClick={() => go({view: 'shared'})}>{tl('Condivisi con la classe')}</Button><Button tone="neutral" surface="ghost" onClick={music.open}>{tl('Musica e playlist')}</Button></div>}
           <div className="flex flex-wrap items-center gap-2">
             {selectedItems.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[var(--app-accent-soft)] px-2 py-1">
@@ -585,6 +598,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
                   </div>
                 )}
               </div>
+              {listing.data?.folder?.source_type === 'voice_playlist' && listing.data.folder.source_id && <Button tone="accent" density="compact" onClick={() => void voiceLabApi.playlist(listing.data!.folder!.source_id!).then(({data}) => music.listen(data)).catch(fail(tl('Playlist non disponibile')))}>{tl('Apri player')}</Button>}
               <IconTool icon={layout === 'grid' ? List : LayoutGrid} label={layout === 'grid' ? tl("Vista elenco") : tl("Vista griglia")}
                 onClick={() => { const next = layout === 'grid' ? 'list' : 'grid'; setLayout(next); writeStored('drive:layout', next) }} />
               <IconTool icon={RefreshCw} label={tl("Aggiorna")} spinning={listing.isFetching}
