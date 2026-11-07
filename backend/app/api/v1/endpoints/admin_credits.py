@@ -840,6 +840,18 @@ async def admin_credit_badge(
 
 # ==================== INVITATIONS ====================
 
+def _apply_invite_license(user: User, inv: PlatformInvitation, expires_on) -> None:
+    """A fixed end date chosen at invite time replaces the default 12-month auto-renewing licence."""
+    if not expires_on:
+        return
+    from datetime import time as dtime
+    from zoneinfo import ZoneInfo
+    from app.services import license as licensing
+    end = datetime.combine(expires_on, dtime(23, 59, 59), tzinfo=ZoneInfo("Europe/Rome"))
+    inv.license_expires_at = end
+    licensing.start_default(user, fixed_end=end)
+
+
 @router.post("/invitations", response_model=PlatformInvitationResponse)
 async def invite_teacher(
     invitation: PlatformInvitationCreate,
@@ -933,6 +945,7 @@ async def invite_teacher(
         invited_by_id=admin.id,
         expires_at=datetime.utcnow() + timedelta(days=7)
     )
+    _apply_invite_license(user, inv, invitation.license_expires_on)
     db.add(inv)
     await db.commit()
     await db.refresh(inv)
@@ -1261,6 +1274,7 @@ async def bulk_invite_teachers_json(
             invited_by_id=admin.id,
             expires_at=datetime.utcnow() + timedelta(days=7),
         )
+        _apply_invite_license(user, inv, item.license_expires_on or payload.license_expires_on)
         db.add(inv)
         created.append((inv, activation_token))
 

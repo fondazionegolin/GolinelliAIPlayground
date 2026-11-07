@@ -4,23 +4,23 @@ export type VoiceLabAction = 'tts' | 'dialogue' | 'convert' | 'transcribe' | 'is
 export interface LabVoice { voice_id: string; name: string; description: string; category?: string; preview_url?: string; owned: boolean; item_id?: string }
 export interface LabModel { model_id: string; name: string; tts: boolean; conversion: boolean; max_characters: number }
 export interface LabItem {
-  id: string; title: string; kind: 'audio' | 'transcript' | 'preview' | 'voice' | 'dubbing'; service: string
-  voice_id?: string; status: string; mime_type?: string; created_at: string; content_url?: string
+  id: string; title: string; artist_name?: string | null; kind: 'audio' | 'transcript' | 'preview' | 'voice' | 'dubbing'; service: string
+  voice_id?: string; status: string; mime_type?: string; created_at: string; content_url?: string; cover_url?: string | null
   details: { drive_item_id?: string; credits?: number; duration_seconds?: number; pricing?: LabQuote; text?: string; description?: string; characters?: number; requires_verification?: boolean; saved_voice_id?: string
     transcript?: { text?: string; words?: { text: string; start: number; end: number; speaker_id?: string }[] } }
 }
 export interface LabQuote { credits: number; quantity: number; unit: 'characters' | 'seconds'; pricing_basis: string; source: string }
-export interface LabPlaylist { id: string; title: string; folder_id: string; tracks: { id: string; source_item_id: string; title: string; mime_type: string }[] }
-export interface AudioFile { id: string; title: string; mime_type: string; owned: boolean; shared: boolean }
-export interface ClassPlayback { class_id: string; teacher_id: string; playlist: LabPlaylist; index: number; position: number; paused: boolean; updated_at: number; server_time: number; revision: string }
-export interface LabConfig { configured: boolean; default_model: string; max_upload_mb: number; output_formats: string[] }
+export interface LabPlaylist { id: string; title: string; folder_id: string; tracks: { id: string; source_item_id: string; title: string; artist_name?: string | null; mime_type: string; cover_url?: string | null }[] }
+export interface AudioFile { id: string; title: string; artist_name?: string | null; mime_type: string; owned: boolean; shared: boolean; cover_url?: string | null }
+export interface ClassPlayback { session_id: string; teacher_id: string; playlist: LabPlaylist; index: number; position: number; paused: boolean; updated_at: number; server_time: number; revision: string }
+export interface LabConfig { configured: boolean; cover_credits: number; default_model: string; max_upload_mb: number; output_formats: string[] }
 
 export const voiceLabApi = {
   audioFiles: () => api.get<AudioFile[]>('/voice-lab/audio-files'),
   shareAudioClass: (id: string) => api.post(`/voice-lab/audio-files/${id}/share-class`),
-  classPlayback: (params: { class_id?: string; session_id?: string }) => api.get<ClassPlayback | null>('/voice-lab/class-playback', { params }),
-  setClassPlayback: (classId: string, data: { playlist_id: string | null; index?: number; position?: number; paused?: boolean; expected_revision?: string }) => api.put<ClassPlayback | null>(`/voice-lab/class-playback/${classId}`, data),
-  classContent: (classId: string, trackId: string, signal?: AbortSignal) => api.get<Blob>(`/voice-lab/class-playback/${classId}/tracks/${trackId}/content`, { responseType: 'blob', signal }),
+  sessionPlayback: (params: { session_id?: string }) => api.get<ClassPlayback | null>('/voice-lab/session-playback', { params }),
+  setSessionPlayback: (sessionId: string, data: { playlist_id: string | null; index?: number; position?: number; paused?: boolean; expected_revision?: string }) => api.put<ClassPlayback | null>(`/voice-lab/session-playback/${sessionId}`, data),
+  sessionContent: (sessionId: string, trackId: string, signal?: AbortSignal) => api.get<Blob>(`/voice-lab/session-playback/${sessionId}/tracks/${trackId}/content`, { responseType: 'blob', signal }),
   quote: (data: { action: string; characters: number; seconds: number; model: string }, signal?: AbortSignal) => api.post<LabQuote>('/voice-lab/quote', data, { signal }),
   playlists: () => api.get<LabPlaylist[]>('/voice-lab/playlists'),
   playlist: (id: string) => api.get<LabPlaylist>(`/voice-lab/playlists/${id}`),
@@ -31,6 +31,11 @@ export const voiceLabApi = {
   voices: () => api.get<LabVoice[]>('/voice-lab/voices'),
   models: () => api.get<LabModel[]>('/voice-lab/models'),
   items: () => api.get<LabItem[]>('/voice-lab/items'),
+  cover: (url: string) => api.get<Blob>(url, { responseType: 'blob' }),
+  generateCover: (id: string) => api.post<LabItem>(`/voice-lab/items/${id}/cover/generate`, undefined, { timeout: 120000 }),
+  uploadCover: (id: string, file: File) => { const form = new FormData(); form.append('file', file); return api.post<LabItem>(`/voice-lab/items/${id}/cover`, form) },
+  deleteCover: (id: string) => api.delete<LabItem>(`/voice-lab/items/${id}/cover`),
+  rename: (id: string, title: string) => api.patch<LabItem>(`/voice-lab/items/${id}`, { title }),
   item: (id: string) => api.get<LabItem>(`/voice-lab/items/${id}`),
   content: (id: string, signal?: AbortSignal) => api.get<Blob>(`/voice-lab/items/${id}/content`, { responseType: 'blob', signal }),
   refresh: (id: string) => api.post<LabItem>(`/voice-lab/items/${id}/refresh`, undefined, { timeout: 360000 }),

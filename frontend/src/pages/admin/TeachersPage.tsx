@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react'
 import { formatInternalCredits, toCredits, fromCredits } from '@/lib/credits'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, creditsApi } from '@/lib/api'
+import { adminApi, creditsApi, type LicenseChange } from '@/lib/api'
+import { LicenseBadge, LicenseDialog, type LicenseInfo } from '@/components/admin/LicenseDialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/design'
@@ -9,9 +10,9 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   Check, X, Clock, Key, UserPlus, Mail, Trash2,
   GraduationCap, Search, ChevronDown, ChevronUp, ChevronsUpDown,
-  Users, BookOpen, Zap, LogIn, Pencil, ShieldCheck,
+  Zap, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
-  Building2, UserMinus,
+  Building2, UserMinus, MoreVertical,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 import { AdminBadge, AdminEmpty, AdminNotice, AdminPageHeader } from '@/components/admin/AdminUI'
@@ -45,6 +46,9 @@ interface TeacherStatus {
   monthly_usage: number
   limit_id?: string | null
   tenant_id?: string | null
+  tenant_name?: string | null
+  tenant_type?: string | null
+  license?: LicenseInfo
   schools: Array<{ id: string; name: string; slug: string }>
 }
 
@@ -91,7 +95,9 @@ const escapeCsv = (value: string | number) => {
   return `"${raw.replace(/"/g, '""')}"`
 }
 
-type TeacherSortField = 'name' | 'institution' | 'last_login_at' | 'session_count' | 'total_student_count'
+type TeacherSortField = 'name' | 'institution' | 'license' | 'last_login_at' | 'session_count' | 'total_student_count'
+type TeacherFilter = 'all' | 'no_school' | 'expired' | 'expiring' | 'no_license'
+const hasSchool = (t: TeacherStatus) => (t.schools || []).length > 0
 
 function SortIcon({ field, sortField, sortDirection }: { field: TeacherSortField; sortField: TeacherSortField; sortDirection: 'asc' | 'desc' }) {
   if (sortField !== field) return <ChevronsUpDown className="h-3 w-3 opacity-40" />
@@ -110,6 +116,7 @@ export default function TeachersPage() {
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
   const [inviteSchool, setInviteSchool] = useState('')
+  const [licenseEnd, setLicenseEnd] = useState('') // optional fixed licence end for new invites; empty = 12 months, auto-renewing
   const [resetResult, setResetResult] = useState<ResetResult | null>(null)
   // CSV import flow
   const [csvRows, setCsvRows] = useState<CsvRow[]>([])
@@ -130,6 +137,10 @@ export default function TeachersPage() {
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
   const [bulkSchoolId, setBulkSchoolId] = useState('')
   const [bulkCap, setBulkCap] = useState('')
+  const [filter, setFilter] = useState<TeacherFilter>('all')
+  const [licenseTarget, setLicenseTarget] = useState<{ ids: string[]; title: string; subtitle?: string; current?: LicenseInfo | null } | null>(null)
+  const [assignRowId, setAssignRowId] = useState<string | null>(null)
+  const [menuId, setMenuId] = useState<string | null>(null)
 
   const toggleSort = (field: TeacherSortField) => {
     if (sortField === field) {
@@ -225,7 +236,7 @@ export default function TeachersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: (p: { email: string; firstName?: string; lastName?: string; school?: string }) =>
-      creditsApi.inviteTeacher(p.email, p.firstName, p.lastName, p.school),
+      creditsApi.inviteTeacher(p.email, p.firstName, p.lastName, p.school, undefined, undefined, licenseEnd || undefined),
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
       if (res?.data?.email_sent === false) {
@@ -316,6 +327,26 @@ export default function TeachersPage() {
     }),
   })
 
+  const licenseMutation = useMutation({
+    mutationFn: ({ ids, change }: { ids: string[]; change: LicenseChange }) => adminApi.setUserLicenses(ids, change),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      setLicenseTarget(null)
+      toast({ title: tl("Licenza aggiornata"), description: tl("{0} docenti aggiornati", res.data.changed) })
+    },
+    onError: (error: any) => toast({ variant: 'destructive', title: tl("Operazione non riuscita"), description: error.response?.data?.detail || tl("Errore aggiornamento licenza") }),
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: ({ ids, schoolId }: { ids: string[]; schoolId: string }) => adminApi.updateTeacherSchoolsBulk(ids, schoolId, 'assign'),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      setAssignRowId(null)
+      toast({ title: tl("Istituto assegnato"), description: tl("{0} docenti aggiornati", res.data.selected) })
+    },
+    onError: (error: any) => toast({ variant: 'destructive', title: tl("Operazione non riuscita"), description: error.response?.data?.detail || tl("Errore assegnazione istituto") }),
+  })
+
   const bulkCapMutation = useMutation({
     mutationFn: (cap: number) =>
       adminApi.setTeacherCreditLimitsBulk(Array.from(selectedTeacherIds), fromCredits(cap)),
@@ -396,7 +427,7 @@ export default function TeachersPage() {
   const sendSingleRow = async (row: CsvRow) => {
     updateRow(row.id, { status: 'sending' })
     try {
-      await creditsApi.inviteTeacher(row.email, row.firstName || undefined, row.lastName || undefined, row.school || undefined, groupTag || undefined, customMessage || undefined)
+      await creditsApi.inviteTeacher(row.email, row.firstName || undefined, row.lastName || undefined, row.school || undefined, groupTag || undefined, customMessage || undefined, licenseEnd || undefined)
       updateRow(row.id, { status: 'sent' })
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
     } catch (err: any) {
@@ -420,8 +451,20 @@ export default function TeachersPage() {
 
   /* ── derived ── */
   const pending = requests?.filter((r) => r.status === 'pending') || []
-  const teachers = (teachersStatus?.items || [])
+  const allTeachers = teachersStatus?.items || []
+  const filterCounts: Record<TeacherFilter, number> = {
+    all: allTeachers.length,
+    no_school: allTeachers.filter(t => (t.role || '').toUpperCase() !== 'ADMIN' && !hasSchool(t)).length,
+    expired: allTeachers.filter(t => t.license?.state === 'expired').length,
+    expiring: allTeachers.filter(t => t.license?.state === 'expiring').length,
+    no_license: allTeachers.filter(t => (t.role || '').toUpperCase() !== 'ADMIN' && (!t.license || t.license.state === 'none')).length,
+  }
+  const teachers = allTeachers
     .filter((t) => {
+      if (filter === 'no_school' && (hasSchool(t) || (t.role || '').toUpperCase() === 'ADMIN')) return false
+      if (filter === 'expired' && t.license?.state !== 'expired') return false
+      if (filter === 'expiring' && t.license?.state !== 'expiring') return false
+      if (filter === 'no_license' && !((t.role || '').toUpperCase() !== 'ADMIN' && (!t.license || t.license.state === 'none'))) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       return [t.first_name, t.last_name, t.email, t.institution, ...(t.schools || []).map(s => s.name)].join(' ').toLowerCase().includes(q)
@@ -431,6 +474,11 @@ export default function TeachersPage() {
       switch (sortField) {
         case 'institution':
           return dir * ((a.schools || []).map(s => s.name).join(', ') || a.institution || '').localeCompare((b.schools || []).map(s => s.name).join(', ') || b.institution || '')
+        case 'license': {
+          const ta = a.license?.expires_at ? new Date(a.license.expires_at).getTime() : Infinity
+          const tb = b.license?.expires_at ? new Date(b.license.expires_at).getTime() : Infinity
+          return dir * (ta === tb ? 0 : ta < tb ? -1 : 1)
+        }
         case 'last_login_at':
           return dir * ((a.last_login_at ? new Date(a.last_login_at).getTime() : 0) - (b.last_login_at ? new Date(b.last_login_at).getTime() : 0))
         case 'session_count':
@@ -451,7 +499,7 @@ export default function TeachersPage() {
     const header = [
       'nome', 'cognome', 'email', tl("ruolo"), 'verificato', 'scuola',
       'ultimo_accesso', 'data_registrazione', tl("sessioni"), tl("studenti"),
-      'limite_mensile_crediti', 'utilizzo_mensile_crediti', 'consumo_periodo_crediti', 'chiamate_periodo',
+      'scadenza_licenza', 'rinnovo_automatico', 'limite_mensile_crediti', 'utilizzo_mensile_crediti', 'consumo_periodo_crediti', 'chiamate_periodo',
     ]
     const body = teachers.map((t) => [
       t.first_name || '',
@@ -464,6 +512,8 @@ export default function TeachersPage() {
       t.created_at || '',
       t.session_count,
       t.total_student_count,
+      t.license?.expires_at ? t.license.expires_at.slice(0, 10) : '',
+      t.license?.expires_at ? (t.license.auto_renew ? 'si' : 'no') : '',
       toCredits(t.monthly_cap).toFixed(0),
       toCredits(t.monthly_usage).toFixed(1),
       toCredits(t.period_cost).toFixed(1),
@@ -588,7 +638,7 @@ export default function TeachersPage() {
           {/* ── single invite row ── */}
           <div className="space-y-3 rounded-md border border-[var(--admin-line)] bg-[var(--admin-surface-2)] p-4">
             <p className="admin-eyebrow">{tl("Invito singolo")}</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5">
               <div className="space-y-1">
                 <Label className="text-xs">{tl("Email *")}</Label>
                 <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" className="h-8 text-sm" />
@@ -604,6 +654,10 @@ export default function TeachersPage() {
               <div className="space-y-1">
                 <Label className="text-xs">{tl("Scuola")}</Label>
                 <Input value={inviteSchool} onChange={e => setInviteSchool(e.target.value)} placeholder={tl("Istituto…")} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{tl("Scadenza licenza")}</Label>
+                <Input type="date" value={licenseEnd} onChange={e => setLicenseEnd(e.target.value)} className="h-8 text-sm" title={tl("Vuoto = 12 mesi con rinnovo automatico")} />
               </div>
             </div>
             {inviteTargetTeacher ? (
@@ -702,6 +756,10 @@ export default function TeachersPage() {
                         placeholder={tl("Gruppo / tag (es. sperimentazione torino)")}
                         className="h-8 text-sm flex-1"
                       />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      <Input type="date" value={licenseEnd} onChange={e => setLicenseEnd(e.target.value)} className="h-8 w-40 text-sm" title={tl("Scadenza licenza (vuoto = 12 mesi con rinnovo automatico)")} aria-label={tl("Scadenza licenza")} />
                     </div>
                     <button
                       onClick={() => setShowMessage(v => !v)}
@@ -962,415 +1020,248 @@ export default function TeachersPage() {
 
       {/* ── TEACHERS TABLE ─────────────────────────────── */}
       <div className="space-y-3">
+        {/* Clusters: filter the list, then act on the whole group with the header checkbox */}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tl("Filtra i docenti")}>
+          {([
+            ['all', tl("Tutti")], ['no_school', tl("Senza istituto")], ['expiring', tl("In scadenza (30 gg)")],
+            ['expired', tl("Scaduti")], ['no_license', tl("Senza scadenza")],
+          ] as Array<[TeacherFilter, string]>).map(([id, label]) => (
+            <Button key={id} tone="neutral" surface="ghost" density="compact" aria-pressed={filter === id}
+              className={filter === id ? 'ds-selected' : ''} onClick={() => setFilter(id)}>
+              {label}<span className="ml-1.5 text-[10px] tabular-nums text-slate-500">{filterCounts[id]}</span>
+            </Button>
+          ))}
+        </div>
+
         {selectedTeachersCount > 0 && (
           <div className="admin-panel border-[var(--admin-accent)] bg-[var(--admin-accent-soft)] p-3">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-sm font-semibold text-[var(--admin-accent)]">
                 {selectedTeachersCount} {selectedTeachersCount === 1 ? tl("docente selezionato") : tl("docenti selezionati")}
               </span>
-              <div className="hidden h-6 w-px bg-[var(--admin-line-strong)] sm:block" />
-              <select
-                value={bulkSchoolId}
-                onChange={(e) => setBulkSchoolId(e.target.value)}
-                className="h-8 min-w-[220px] rounded-md border border-[var(--admin-line-strong)] bg-white px-2 text-xs text-slate-900"
-              >
-                <option value="">{tl("Scegli un istituto…")}</option>
-                {schoolTenants.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}
-              </select>
-              <Button
-                tone="accent"
-                surface="solid"
-                density="compact"
-                disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
-                onClick={() => bulkSchoolMutation.mutate('add')}
-              >
-                <Building2 className="mr-1.5 h-3.5 w-3.5" /> {tl("Invita nell'istituto")}
+              <Button tone="accent" surface="solid" density="compact"
+                onClick={() => setLicenseTarget({ ids: Array.from(selectedTeacherIds), title: tl("Licenza di {0} docenti", selectedTeachersCount), subtitle: tl("La stessa scadenza verrà applicata a tutti i docenti selezionati.") })}>
+                <Clock className="mr-1.5 h-3.5 w-3.5" />{tl("Imposta scadenza")}
               </Button>
-              <Button
-                tone="neutral"
-                surface="outline"
-                density="compact"
-                disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
-                onClick={() => bulkSchoolMutation.mutate('remove')}
-              >
-                {tl("Rimuovi dall'istituto")}
-              </Button>
-              <div className="hidden h-6 w-px bg-[var(--admin-line-strong)] lg:block" />
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-slate-500">cr.</span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={bulkCap}
-                  onChange={(e) => setBulkCap(e.target.value)}
-                  placeholder={"Limite/mese"}
-                  className="h-8 w-28 bg-white text-xs"
-                />
-                <Button
-                  tone="neutral"
-                  surface="outline"
-                  density="compact"
-                  disabled={bulkCap === '' || Number.isNaN(Number(bulkCap)) || Number(bulkCap) < 0 || bulkCapMutation.isPending}
-                  onClick={() => bulkCapMutation.mutate(Number(bulkCap))}
-                >
-                  {tl("Applica limite")}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select value={bulkSchoolId} onChange={(e) => setBulkSchoolId(e.target.value)} aria-label={tl("Istituto")}
+                  className="h-8 min-w-[200px] rounded-md border border-[var(--admin-line-strong)] bg-white px-2 text-xs text-slate-900">
+                  <option value="">{tl("Istituto…")}</option>
+                  {schoolTenants.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}
+                </select>
+                <Button tone="accent" surface="solid" density="compact" disabled={!bulkSchoolId || assignMutation.isPending}
+                  title={tl("Aggiunge subito i docenti all'istituto, senza invito da accettare")}
+                  onClick={() => assignMutation.mutate({ ids: Array.from(selectedTeacherIds), schoolId: bulkSchoolId })}>
+                  <Building2 className="mr-1.5 h-3.5 w-3.5" />{tl("Assegna")}
+                </Button>
+                <Button tone="neutral" surface="outline" density="compact" disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
+                  title={tl("Invia un invito che il docente deve accettare")} onClick={() => bulkSchoolMutation.mutate('add')}>
+                  {tl("Invita")}
+                </Button>
+                <Button tone="neutral" surface="ghost" density="compact" disabled={!bulkSchoolId || bulkSchoolMutation.isPending} onClick={() => bulkSchoolMutation.mutate('remove')}>
+                  {tl("Rimuovi")}
                 </Button>
               </div>
-              <button
-                type="button"
-                className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-900"
-                onClick={() => setSelectedTeacherIds(new Set())}
-              >
-                {tl("Deseleziona tutti")}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-slate-500">cr.</span>
+                <Input type="number" min="0" step="10" value={bulkCap} onChange={(e) => setBulkCap(e.target.value)} placeholder={tl("Limite/mese")} className="h-8 w-28 bg-white text-xs" />
+                <Button tone="neutral" surface="outline" density="compact"
+                  disabled={bulkCap === '' || Number.isNaN(Number(bulkCap)) || Number(bulkCap) < 0 || bulkCapMutation.isPending}
+                  onClick={() => bulkCapMutation.mutate(Number(bulkCap))}>{tl("Applica")}</Button>
+              </div>
+              <button type="button" className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-900" onClick={() => setSelectedTeacherIds(new Set())}>
+                {tl("Deseleziona")}
               </button>
             </div>
           </div>
         )}
+
         <div className="admin-panel">
-          <div>
-            {loadingTeachers ? (
-              <AdminEmpty>{tl("Caricamento…")}</AdminEmpty>
-            ) : teachers.length === 0 ? (
-              <AdminEmpty>{tl("Nessun docente trovato")}</AdminEmpty>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] table-fixed text-sm">
-                  <thead>
-                    <tr>
-                      <th className="w-10 px-4 py-3 text-left font-medium">
-                        <input
-                          type="checkbox"
-                          className="rounded"
-                          checked={allVisibleTeachersSelected}
-                          onChange={(e) => {
-                            const next = new Set(selectedTeacherIds)
-                            selectableTeachers.forEach(teacher => e.target.checked ? next.add(teacher.id) : next.delete(teacher.id))
-                            setSelectedTeacherIds(next)
-                          }}
-                          aria-label={tl("Seleziona tutti i docenti visibili")}
-                        />
-                      </th>
-                      <th className="w-[250px] px-4 py-3 text-left font-semibold">
-                        <button type="button" onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-slate-600">
-                          {tl("Docente")}
-                          <SortIcon field="name" sortField={sortField} sortDirection={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="w-[210px] px-3 py-3 text-left font-semibold">
-                        <button type="button" onClick={() => toggleSort('institution')} className="flex items-center gap-1 hover:text-slate-600">
-                          {tl("Scuola")}
-                          <SortIcon field="institution" sortField={sortField} sortDirection={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="w-[145px] px-3 py-3 text-left font-semibold">
-                        <button type="button" onClick={() => toggleSort('last_login_at')} className="flex items-center gap-1 hover:text-slate-600">
-                          <LogIn className="h-3.5 w-3.5" />
-                          {tl("Ultimo accesso")}
-                          <SortIcon field="last_login_at" sortField={sortField} sortDirection={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-3 py-3 text-center font-medium">
-                        <button type="button" onClick={() => toggleSort('session_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
-                          <BookOpen className="h-3.5 w-3.5" />
-                          {tl("Sessioni")}
-                          <SortIcon field="session_count" sortField={sortField} sortDirection={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-3 py-3 text-center font-medium">
-                        <button type="button" onClick={() => toggleSort('total_student_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
-                          <Users className="h-3.5 w-3.5" />
-                          {tl("Studenti")}
-                          <SortIcon field="total_student_count" sortField={sortField} sortDirection={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-3 py-3 text-left font-medium">
-                        <span className="flex items-center gap-1">
-                          <Zap className="h-3.5 w-3.5" />
-                          {tl("Crediti mensili")}
-                        </span>
-                      </th>
-                      <th className="w-[170px] px-3 py-3 text-right font-medium">{tl("Azioni")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teachers.map((teacher) => (
-                      <tr
-                        key={teacher.id}
-                        className="transition-colors"
-                      >
-                        <td className="px-4 py-3">
-                          {(teacher.role || '').toUpperCase() !== 'ADMIN' && (
-                            <input
-                              type="checkbox"
-                              className="rounded"
-                              checked={selectedTeacherIds.has(teacher.id)}
-                              onChange={(e) => {
-                                const next = new Set(selectedTeacherIds)
-                                e.target.checked ? next.add(teacher.id) : next.delete(teacher.id)
-                                setSelectedTeacherIds(next)
-                              }}
-                              aria-label={tl("Seleziona {0}", teacher.email)}
-                            />
-                          )}
+          {loadingTeachers ? (
+            <AdminEmpty>{tl("Caricamento…")}</AdminEmpty>
+          ) : teachers.length === 0 ? (
+            <AdminEmpty>{tl("Nessun docente trovato")}</AdminEmpty>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] table-fixed text-[13px]">
+                <thead>
+                  <tr className="text-left text-xs">
+                    <th className="w-9 py-2.5 pl-3 font-medium">
+                      <input type="checkbox" className="rounded" checked={allVisibleTeachersSelected}
+                        onChange={(e) => {
+                          const next = new Set(selectedTeacherIds)
+                          selectableTeachers.forEach(teacher => e.target.checked ? next.add(teacher.id) : next.delete(teacher.id))
+                          setSelectedTeacherIds(next)
+                        }}
+                        aria-label={tl("Seleziona tutti i docenti visibili")} />
+                    </th>
+                    <th className="px-3 py-2.5 font-semibold">
+                      <button type="button" onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-slate-600">{tl("Docente")}<SortIcon field="name" sortField={sortField} sortDirection={sortDirection} /></button>
+                    </th>
+                    <th className="w-[22%] px-3 py-2.5 font-semibold">
+                      <button type="button" onClick={() => toggleSort('institution')} className="flex items-center gap-1 hover:text-slate-600">{tl("Istituto")}<SortIcon field="institution" sortField={sortField} sortDirection={sortDirection} /></button>
+                    </th>
+                    <th className="w-[150px] px-3 py-2.5 font-semibold">
+                      <button type="button" onClick={() => toggleSort('license')} className="flex items-center gap-1 hover:text-slate-600"><Clock className="h-3.5 w-3.5" />{tl("Scadenza")}<SortIcon field="license" sortField={sortField} sortDirection={sortDirection} /></button>
+                    </th>
+                    <th className="w-[150px] px-3 py-2.5 font-semibold">
+                      <button type="button" onClick={() => toggleSort('last_login_at')} className="flex items-center gap-1 hover:text-slate-600"><LogIn className="h-3.5 w-3.5" />{tl("Attività")}<SortIcon field="last_login_at" sortField={sortField} sortDirection={sortDirection} /></button>
+                    </th>
+                    <th className="w-[150px] px-3 py-2.5 font-semibold"><span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" />{tl("Crediti/mese")}</span></th>
+                    <th className="w-[96px] px-3 py-2.5 text-right font-medium">{tl("Azioni")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teachers.map((teacher) => {
+                    const isAdmin = (teacher.role || '').toUpperCase() === 'ADMIN'
+                    const name = [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || '—'
+                    const ratio = teacher.monthly_cap > 0 ? teacher.monthly_usage / teacher.monthly_cap : 0
+                    return (
+                      <tr key={teacher.id} className="align-middle transition-colors">
+                        <td className="py-2 pl-3">
+                          {!isAdmin && <input type="checkbox" className="rounded" checked={selectedTeacherIds.has(teacher.id)}
+                            onChange={(e) => { const next = new Set(selectedTeacherIds); e.target.checked ? next.add(teacher.id) : next.delete(teacher.id); setSelectedTeacherIds(next) }}
+                            aria-label={tl("Seleziona {0}", teacher.email)} />}
                         </td>
-                        {/* Name / email / badge */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-[var(--admin-line)] bg-[var(--admin-surface-2)]">
-                              {(teacher.role || '').toUpperCase() === 'ADMIN'
-                                ? <ShieldCheck className="h-4 w-4 text-[var(--admin-accent)]" />
-                                : <GraduationCap className="h-4 w-4 text-slate-500" />
-                              }
-                            </div>
-                            <div>
-                              <p className="font-semibold text-slate-900 leading-tight">
-                                {[teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || '—'}
-                              </p>
-                              <p className="text-xs text-slate-500">{teacher.email}</p>
-                            </div>
-                            {(teacher.role || '').toUpperCase() === 'ADMIN' && (
-                              <AdminBadge tone="accent" className="ml-1 hidden sm:inline-flex">admin</AdminBadge>
-                            )}
-                            {(teacher.role || '').toUpperCase() !== 'ADMIN' && teacher.is_verified && (
-                              <AdminBadge tone="success" className="ml-1 hidden sm:inline-flex">verificato</AdminBadge>
-                            )}
-                            {(teacher.role || '').toUpperCase() !== 'ADMIN' && !teacher.is_verified && (
-                              <AdminBadge className="ml-1 hidden sm:inline-flex">{tl("non verificato")}</AdminBadge>
-                            )}
-                          </div>
+
+                        {/* Teacher */}
+                        <td className="min-w-0 px-3 py-2">
+                          <p className="flex min-w-0 items-center gap-1.5 font-semibold leading-tight text-slate-900">
+                            <span className="truncate" title={name}>{name}</span>
+                            {isAdmin && <AdminBadge tone="accent">admin</AdminBadge>}
+                            {!isAdmin && !teacher.is_verified && <AdminBadge title={tl("Account non ancora verificato")}>{tl("non verificato")}</AdminBadge>}
+                          </p>
+                          <p className="truncate text-xs text-slate-500" title={teacher.email}>{teacher.email}</p>
                         </td>
 
                         {/* School */}
-                        <td className="px-3 py-3 text-slate-600 text-xs max-w-[220px]">
-                          {(teacher.schools || []).length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {teacher.schools.map(school => (
-                                <span key={school.id} className="admin-badge admin-badge-neutral" title={school.name}>
-                                  {school.name}
-                                </span>
-                              ))}
+                        <td className="min-w-0 px-3 py-2 text-xs text-slate-600">
+                          {assignRowId === teacher.id ? (
+                            <div className="flex items-center gap-1">
+                              <select autoFocus defaultValue="" aria-label={tl("Assegna istituto a {0}", name)}
+                                onChange={(e) => { if (e.target.value) assignMutation.mutate({ ids: [teacher.id], schoolId: e.target.value }) }}
+                                onKeyDown={(e) => { if (e.key === 'Escape') setAssignRowId(null) }}
+                                className="h-7 min-w-0 flex-1 rounded-md border border-[var(--admin-line-strong)] bg-white px-1.5 text-xs text-slate-900">
+                                <option value="">{tl("Scegli istituto…")}</option>
+                                {schoolTenants.filter(sc => !(teacher.schools || []).some(x => x.id === sc.id)).map(sc => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
+                              </select>
+                              <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => setAssignRowId(null)} aria-label={tl("Annulla")}><X className="h-3.5 w-3.5" /></button>
                             </div>
-                          ) : teacher.institution ? (
-                            <span title={tl("Testo storico, non ancora collegato a un istituto")}>{teacher.institution}</span>
                           ) : (
-                            <span className="text-slate-400">{tl("Nessun istituto")}</span>
+                            <div className="flex min-w-0 flex-wrap items-center gap-1">
+                              {hasSchool(teacher) ? teacher.schools.map(school => <span key={school.id} className="admin-badge admin-badge-neutral max-w-full truncate" title={school.name}>{school.name}</span>)
+                                : teacher.institution ? <span className="truncate" title={tl("Testo storico, non ancora collegato a un istituto")}>{teacher.institution}</span>
+                                : <span className="text-slate-400">{tl("Nessun istituto")}</span>}
+                              {!isAdmin && <button type="button" onClick={() => setAssignRowId(teacher.id)}
+                                className="inline-flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-semibold text-[var(--admin-accent)] hover:bg-[var(--admin-accent-soft)]"
+                                title={hasSchool(teacher) ? tl("Aggiungi un altro istituto") : tl("Assegna un istituto")}>
+                                <UserPlus className="h-3 w-3" />{hasSchool(teacher) ? '' : tl("Assegna")}
+                              </button>}
+                            </div>
                           )}
                         </td>
 
-                        {/* Last login */}
-                        <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">
-                          {formatDateTime(teacher.last_login_at)}
+                        {/* Licence */}
+                        <td className="px-3 py-2">
+                          {isAdmin ? <span className="text-xs text-slate-400">—</span> : (
+                            <button type="button" className="group flex items-center gap-1.5 text-left" title={tl("Modifica scadenza")}
+                              onClick={() => setLicenseTarget({ ids: [teacher.id], title: tl("Licenza di {0}", name), subtitle: teacher.license?.source === 'school' ? tl("Ora vale la scadenza dell'istituto, che è più vicina. Questa modifica riguarda solo la licenza personale.") : undefined, current: teacher.license?.own ?? teacher.license })}>
+                              <LicenseBadge license={teacher.license} />
+                              <Pencil className="h-3 w-3 text-slate-300 group-hover:text-slate-600" />
+                            </button>
+                          )}
                         </td>
 
-                        {/* Sessions */}
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                            {teacher.session_count}
-                          </span>
+                        {/* Activity */}
+                        <td className="px-3 py-2 text-xs leading-tight">
+                          <p className="whitespace-nowrap text-slate-700">{formatDateTime(teacher.last_login_at)}</p>
+                          <p className="whitespace-nowrap tabular-nums text-slate-500" title={tl("Sessioni · studenti")}>{teacher.session_count} {tl("sess.")} · {teacher.total_student_count} {tl("stud.")}</p>
                         </td>
 
-                        {/* Students */}
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                            {teacher.total_student_count}
-                          </span>
-                        </td>
-
-                        {/* Credits with limit editing */}
-                        <td className="w-[190px] px-3 py-3">
+                        {/* Credits */}
+                        <td className="px-3 py-2">
                           {editingCapId === teacher.id ? (
                             <div className="flex items-center gap-1">
-                              <span className="text-xs text-slate-400">cr.</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="10"
-                                className="w-16 h-6 border border-slate-300 rounded px-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
-                                value={editingCapValue}
-                                onChange={(e) => setEditingCapValue(e.target.value)}
-                                autoFocus
-                              />
-                              <button
-                                className="text-[var(--admin-accent)] hover:opacity-80"
-                                onClick={() => {
-                                  const cap = parseFloat(editingCapValue)
-                                  if (!isNaN(cap) && cap >= 0) {
-                                    setCreditLimitMutation.mutate({ teacherId: teacher.id, cap })
-                                  }
-                                }}
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                className="text-slate-400 hover:text-slate-700"
-                                onClick={() => setEditingCapId(null)}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
+                              <input type="number" min="0" step="10" autoFocus value={editingCapValue} onChange={(e) => setEditingCapValue(e.target.value)}
+                                className="h-6 w-16 rounded border border-slate-300 px-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400" />
+                              <button className="text-[var(--admin-accent)] hover:opacity-80" aria-label={tl("Salva")}
+                                onClick={() => { const cap = parseFloat(editingCapValue); if (!isNaN(cap) && cap >= 0) setCreditLimitMutation.mutate({ teacherId: teacher.id, cap }) }}><Check className="h-3.5 w-3.5" /></button>
+                              <button className="text-slate-400 hover:text-slate-700" aria-label={tl("Annulla")} onClick={() => setEditingCapId(null)}><X className="h-3.5 w-3.5" /></button>
                             </div>
                           ) : (
-                            <div className="space-y-1">
-                              <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
-                                <span className="text-xs font-medium text-slate-700">
-                                  {formatCurrency(teacher.monthly_usage)}
-                                </span>
-                                <span className="text-[10px] text-slate-400">/</span>
-                                <span className="text-xs text-slate-500">{formatCurrency(teacher.monthly_cap)}</span>
-                                {teacher.period_cost > 0 && (
-                                  <span className="text-[10px] text-slate-500 font-medium ml-1" title={tl("Spesa effettiva ({0} chiamate)", teacher.period_calls)}>
-                                    ({formatCurrency(teacher.period_cost)})
-                                  </span>
-                                )}
-                                <button
-                                  className="ml-0.5 text-slate-400 hover:text-slate-700 transition-colors"
-                                  onClick={() => {
-                                    setEditingCapId(teacher.id)
-                                    setEditingCapValue(String(toCredits(teacher.monthly_cap)))
-                                  }}
-                                  title={tl("Modifica limite")}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                              </div>
-                              <div className="h-1.5 rounded-full bg-[#eceef1] overflow-hidden w-24">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    teacher.monthly_cap > 0 && teacher.monthly_usage / teacher.monthly_cap > 0.85
-                                      ? 'bg-red-600'
-                                      : teacher.monthly_cap > 0 && teacher.monthly_usage / teacher.monthly_cap > 0.6
-                                      ? 'bg-amber-500'
-                                      : 'bg-[var(--admin-accent)]'
-                                  }`}
-                                  style={{
-                                    width: teacher.monthly_cap > 0
-                                      ? `${Math.min(100, (teacher.monthly_usage / teacher.monthly_cap) * 100)}%`
-                                      : '0%'
-                                  }}
-                                />
-                              </div>
-                            </div>
+                            <button type="button" className="group w-full text-left" title={teacher.period_cost > 0 ? tl("Spesa effettiva ({0} chiamate): {1}", teacher.period_calls, formatCurrency(teacher.period_cost)) : tl("Modifica limite")}
+                              onClick={() => { setEditingCapId(teacher.id); setEditingCapValue(String(toCredits(teacher.monthly_cap))) }}>
+                              <span className="flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-slate-700">
+                                {formatCurrency(teacher.monthly_usage)} <span className="text-slate-400">/</span> {formatCurrency(teacher.monthly_cap)}
+                                <Pencil className="h-3 w-3 text-slate-300 group-hover:text-slate-600" />
+                              </span>
+                              <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-[#eceef1]">
+                                <span className={`block h-full rounded-full ${ratio > 0.85 ? 'bg-red-600' : ratio > 0.6 ? 'bg-amber-500' : 'bg-[var(--admin-accent)]'}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+                              </span>
+                            </button>
                           )}
                         </td>
 
                         {/* Actions */}
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2">
                           {hardDeleteId === teacher.id ? (
-                            <div className="flex items-center gap-1 justify-end flex-wrap">
-                              <span className="text-[10px] text-red-700 font-medium mr-1">{tl("Digita email per confermare:")}</span>
-                              <input
-                                type="email"
-                                autoFocus
-                                value={hardDeleteEmail}
-                                onChange={(e) => setHardDeleteEmail(e.target.value)}
+                            <div className="flex flex-wrap items-center justify-end gap-1">
+                              <span className="mr-1 text-[10px] font-medium text-red-700">{tl("Digita email per confermare:")}</span>
+                              <input type="email" autoFocus value={hardDeleteEmail} onChange={(e) => setHardDeleteEmail(e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Escape') { setHardDeleteId(null); setHardDeleteEmail('') }
-                                  if (e.key === 'Enter' && hardDeleteEmail.trim().toLowerCase() === teacher.email.toLowerCase()) {
-                                    hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })
-                                  }
+                                  if (e.key === 'Enter' && hardDeleteEmail.trim().toLowerCase() === teacher.email.toLowerCase()) hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })
                                 }}
-                                className="h-6 w-36 border border-red-300 rounded px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-400"
-                                placeholder={teacher.email}
-                              />
-                              <button
-                                onClick={() => hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })}
+                                className="h-6 w-36 rounded border border-red-300 px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-400" placeholder={teacher.email} />
+                              <button onClick={() => hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })}
                                 disabled={hardDeleteEmail.trim().toLowerCase() !== teacher.email.toLowerCase() || hardDeleteMutation.isPending}
-                                className="h-6 px-2 rounded bg-red-600 text-white text-[10px] font-medium disabled:opacity-40 hover:bg-red-700"
-                              >
-                                {tl("Elimina")}
-                              </button>
-                              <button
-                                onClick={() => { setHardDeleteId(null); setHardDeleteEmail('') }}
-                                className="h-6 px-1.5 rounded border border-slate-200 text-slate-500 text-[10px] hover:bg-slate-50"
-                              >
-                                {tl("Annulla")}
-                              </button>
+                                className="h-6 rounded bg-red-600 px-2 text-[10px] font-medium text-white hover:bg-red-700 disabled:opacity-40">{tl("Elimina")}</button>
+                              <button onClick={() => { setHardDeleteId(null); setHardDeleteEmail('') }} className="h-6 rounded border border-slate-200 px-1.5 text-[10px] text-slate-500 hover:bg-slate-50">{tl("Annulla")}</button>
                             </div>
                           ) : (
-                            <div className="flex flex-nowrap items-center justify-end gap-0.5">
-                              <Button
-                                tone="neutral"
-                                surface="ghost"
-                                density="icon"
-                                className="h-7 w-7 shrink-0"
-                                onClick={() => resetMutation.mutate(teacher.id)}
-                                disabled={resetMutation.isPending}
-                                title={tl("Invia link reset password")}
-                                aria-label={tl("Invia link reset password")}
-                              >
-                                <Key className="h-3.5 w-3.5" />
-                              </Button>
-                              {(teacher.role || '').toUpperCase() !== 'ADMIN' ? (
-                                <Button
-                                  tone="neutral"
-                                  surface="ghost"
-                                  density="icon"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={() => {
-                                    if (confirm(tl("Promuovere {0} ad amministratore? Non sarà più un docente.", teacher.email)))
-                                      promoteMutation.mutate(teacher.id)
-                                  }}
-                                  disabled={promoteMutation.isPending}
-                                  title={tl("Promuovi ad amministratore")}
-                                  aria-label={tl("Promuovi ad amministratore")}
-                                >
-                                  <ShieldCheck className="h-3.5 w-3.5" />
-                                </Button>
-                              ) : (
-                                <Button
-                                  tone="neutral"
-                                  surface="ghost"
-                                  density="icon"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={() => {
-                                    if (confirm(tl("Rimuovere i permessi di amministratore a {0}? Tornerà ad essere un docente.", teacher.email)))
-                                      demoteMutation.mutate(teacher.id)
-                                  }}
-                                  disabled={demoteMutation.isPending}
-                                  title={tl("Rimuovi permessi di amministratore")}
-                                  aria-label={tl("Rimuovi permessi di amministratore")}
-                                >
-                                  <UserMinus className="h-3.5 w-3.5" />
-                                </Button>
+                            <div className="relative flex items-center justify-end gap-0.5">
+                              <Button tone="neutral" surface="ghost" density="icon" className="h-7 w-7 shrink-0" onClick={() => resetMutation.mutate(teacher.id)} disabled={resetMutation.isPending}
+                                title={tl("Invia link reset password")} aria-label={tl("Invia link reset password")}><Key className="h-3.5 w-3.5" /></Button>
+                              <Button tone="neutral" surface="ghost" density="icon" className="h-7 w-7 shrink-0" aria-haspopup="menu" aria-expanded={menuId === teacher.id}
+                                title={tl("Altre azioni")} aria-label={tl("Altre azioni")} onClick={() => setMenuId(menuId === teacher.id ? null : teacher.id)}><MoreVertical className="h-3.5 w-3.5" /></Button>
+                              {menuId === teacher.id && (
+                                <>
+                                  <div className="fixed inset-0 z-20" onClick={() => setMenuId(null)} />
+                                  <div role="menu" className="ds-popover absolute right-0 top-8 z-30 w-60 rounded-xl p-1 text-left text-xs">
+                                    {!isAdmin ? (
+                                      <button role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 hover:bg-[var(--ds-control-hover)]" disabled={promoteMutation.isPending}
+                                        onClick={() => { setMenuId(null); if (confirm(tl("Promuovere {0} ad amministratore? Non sarà più un docente.", teacher.email))) promoteMutation.mutate(teacher.id) }}>
+                                        <ShieldCheck className="h-3.5 w-3.5" />{tl("Promuovi ad amministratore")}</button>
+                                    ) : (
+                                      <button role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 hover:bg-[var(--ds-control-hover)]" disabled={demoteMutation.isPending}
+                                        onClick={() => { setMenuId(null); if (confirm(tl("Rimuovere i permessi di amministratore a {0}? Tornerà ad essere un docente.", teacher.email))) demoteMutation.mutate(teacher.id) }}>
+                                        <UserMinus className="h-3.5 w-3.5" />{tl("Rimuovi permessi di amministratore")}</button>
+                                    )}
+                                    <button role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 hover:bg-[var(--ds-control-hover)]" disabled={deleteMutation.isPending}
+                                      onClick={() => { setMenuId(null); if (confirm(tl("Disattivare {0}? L'account verrà nascosto ma resterà nel database.", teacher.email))) deleteMutation.mutate(teacher.id) }}>
+                                      <X className="h-3.5 w-3.5" />{tl("Disattiva account")}</button>
+                                    <button role="menuitem" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-red-700 hover:bg-red-50"
+                                      onClick={() => { setMenuId(null); setHardDeleteId(teacher.id); setHardDeleteEmail('') }}>
+                                      <Trash2 className="h-3.5 w-3.5" />{tl("Elimina definitivamente…")}</button>
+                                  </div>
+                                </>
                               )}
-                              <Button
-                                tone="neutral"
-                                surface="ghost"
-                                density="icon"
-                                className="h-7 w-7 shrink-0"
-                                onClick={() => {
-                                  if (confirm(tl("Disattivare {0}? L'account verrà nascosto ma resterà nel database.", teacher.email)))
-                                    deleteMutation.mutate(teacher.id)
-                                }}
-                                disabled={deleteMutation.isPending}
-                                title={tl("Disattiva account (soft-delete)")}
-                                aria-label={tl("Disattiva account (soft-delete)")}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                tone="danger"
-                                surface="ghost"
-                                density="icon"
-                                className="h-7 w-7 shrink-0"
-                                onClick={() => { setHardDeleteId(teacher.id); setHardDeleteEmail('') }}
-                                title={tl("Elimina definitivamente dal database")}
-                                aria-label={tl("Elimina definitivamente dal database")}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
                             </div>
                           )}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
+
+      <LicenseDialog open={!!licenseTarget} title={licenseTarget?.title || ''} subtitle={licenseTarget?.subtitle} current={licenseTarget?.current}
+        pending={licenseMutation.isPending} onClose={() => setLicenseTarget(null)}
+        onSubmit={change => licenseTarget && licenseMutation.mutate({ ids: licenseTarget.ids, change })} />
     </div>
   )
 }

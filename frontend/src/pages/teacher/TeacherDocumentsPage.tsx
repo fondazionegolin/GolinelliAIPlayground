@@ -383,7 +383,15 @@ export default function TeacherDocumentsPage() {
         kind: 'slide_block',
         label: isEnglish ? 'Slide object' : 'Oggetto della slide',
         detail,
-        target: { block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title },
+        target: {
+          block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title,
+          // An image is regenerated/edited from what the slide says, in the deck's style.
+          ...(selectedBlock.type === 'image' ? {
+            deck_title: document.title,
+            theme: document.theme,
+            slide_context: currentSlide.blocks.filter(b => b.type === 'text').map(b => b.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ').slice(0, 1500),
+          } : {}),
+        },
         beforePreview: selectedBlock.content || selectedBlock.type,
       }
     }
@@ -1433,11 +1441,6 @@ export default function TeacherDocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVersionPanel, draftId])
 
-  useEffect(() => {
-    if (mode !== 'slides' || !currentSlide.id || selectedSlideIds.length > 0) return
-    setSelectedSlideIds([currentSlide.id])
-  }, [mode, currentSlide.id, selectedSlideIds.length])
-
   // Fit canvas
   useEffect(() => {
     const handleResize = () => {
@@ -1465,7 +1468,7 @@ export default function TeacherDocumentsPage() {
     }
     setDocument(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
     setCurrentSlideIndex(document.slides.length)
-    setSelectedSlideIds([newSlide.id])
+    setSelectedSlideIds([])
   }
 
   // Shift+click ranges start from a fixed anchor (the last plain/Ctrl click), not from the slide
@@ -1483,37 +1486,68 @@ export default function TeacherDocumentsPage() {
       const range = document.slides.slice(start, end + 1).map(item => item.id)
       setSelectedSlideIds(previous => (event.metaKey || event.ctrlKey) ? Array.from(new Set([...previous, ...range])) : range)
     } else if (event.metaKey || event.ctrlKey) {
-      setSelectedSlideIds(previous => (
-        previous.includes(slide.id)
-          ? previous.filter(id => id !== slide.id)
-          : [...previous, slide.id]
-      ))
+      toggleSlideInSelection(slide.id)
     } else {
-      setSelectedSlideIds([slide.id])
+      setSelectedSlideIds([]) // plain click = just open the slide; the tick marks only an explicit selection
     }
     setCurrentSlideIndex(index)
     setSelectedBlockId(null)
   }
 
+  /** Add/remove a slide from the explicit selection; the slide currently open joins it when the selection starts. */
+  const toggleSlideInSelection = (slideId: string) => {
+    setSelectedSlideIds(previous => {
+      const base = previous.length > 0 || !currentSlide.id ? previous : [currentSlide.id]
+      return base.includes(slideId) ? base.filter(id => id !== slideId) : [...base, slideId]
+    })
+  }
+
+  /** Slides the toolbar acts on: the ticked ones, or the open slide when nothing is ticked. */
+  const actionSlideIds = selectedSlideIds.length > 0 ? selectedSlideIds : (currentSlide.id ? [currentSlide.id] : [])
+
+  // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
+  const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
+    event.preventDefault()
+    const last = document.slides.length - 1
+    const target = event.key === 'Home' ? 0 : event.key === 'End' ? last
+      : Math.max(0, Math.min(last, currentSlideIndex + (event.key === 'ArrowDown' ? 1 : -1)))
+    if (target === currentSlideIndex) return
+    if (event.shiftKey) {
+      const anchorIndex = Math.max(0, document.slides.findIndex(item => item.id === slideAnchorRef.current))
+      const anchor = slideAnchorRef.current ? anchorIndex : currentSlideIndex
+      slideAnchorRef.current = document.slides[anchor]?.id ?? null
+      setSelectedSlideIds(document.slides.slice(Math.min(anchor, target), Math.max(anchor, target) + 1).map(item => item.id))
+    } else {
+      slideAnchorRef.current = document.slides[target]?.id ?? null
+      setSelectedSlideIds([])
+    }
+    setCurrentSlideIndex(target)
+    setSelectedBlockId(null)
+    window.requestAnimationFrame(() => event.currentTarget.querySelector(`[data-slide-index="${target}"]`)?.scrollIntoView({ block: 'nearest' }))
+  }
+
   const deleteSelectedSlides = () => {
-    if (selectedSlideIds.length === 0) return
-    if (document.slides.length - selectedSlideIds.length < 1) {
+    const ids = actionSlideIds
+    if (ids.length === 0) return
+    if (document.slides.length - ids.length < 1) {
       toast({ title: isEnglish ? 'Keep at least one slide' : 'Mantieni almeno una slide', variant: 'destructive' })
       return
     }
-    if (!window.confirm(isEnglish ? `Delete ${selectedSlideIds.length} selected slides?` : `Eliminare ${selectedSlideIds.length} slide selezionate?`)) return
+    if (ids.length > 1 && !window.confirm(isEnglish ? `Delete ${ids.length} selected slides?` : `Eliminare ${ids.length} slide selezionate?`)) return
     const currentId = currentSlide.id
-    const remaining = document.slides.filter(slide => !selectedSlideIds.includes(slide.id))
-    const nextIndex = Math.max(0, remaining.findIndex(slide => slide.id === currentId))
+    const remaining = document.slides.filter(slide => !ids.includes(slide.id))
+    const keptIndex = remaining.findIndex(slide => slide.id === currentId)
+    const nextIndex = keptIndex >= 0 ? keptIndex : Math.min(currentSlideIndex, remaining.length - 1)
     setDocument(previous => ({ ...previous, slides: remaining }))
     setCurrentSlideIndex(nextIndex)
-    setSelectedSlideIds([remaining[nextIndex].id])
+    setSelectedSlideIds([])
     setSelectedBlockId(null)
   }
 
   const moveSelectedSlides = (direction: -1 | 1) => {
-    if (selectedSlideIds.length === 0) return
-    const selectedSet = new Set(selectedSlideIds)
+    if (actionSlideIds.length === 0) return
+    const selectedSet = new Set(actionSlideIds)
     const slides = [...document.slides]
     if (direction < 0) {
       for (let index = 1; index < slides.length; index += 1) {
@@ -1582,7 +1616,8 @@ export default function TeacherDocumentsPage() {
         y: dims.height / 2 - 150,
         width: 200,
         height: 300,
-        style: {}
+        style: {},
+        fitToImage: true,
       }
     } else {
       newBlock = createShapeBlock(type, dims)
@@ -1601,7 +1636,8 @@ export default function TeacherDocumentsPage() {
       y: dims.height / 2 - 100,
       width: 300,
       height: 200,
-      style: {}
+      style: {},
+      fitToImage: true,
     }
     updateSlideBlocks([...currentSlide.blocks, newBlock])
     setSelectedBlockId(newBlock.id)
@@ -1669,7 +1705,8 @@ export default function TeacherDocumentsPage() {
         title: document.title,
         description: tl("Documento creato con Golinelli AI Editor ({0})", mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Tabelle' : mode === 'canvas' ? 'Lavagna' : 'Testo'),
         task_type: taskType,
-        content_json: contentJson
+        content_json: contentJson,
+        ...(publishMode === 'draft' ? { status: 'draft' as const } : {}),
       })
 
       const taskId = response.data?.id
@@ -2206,27 +2243,36 @@ export default function TeacherDocumentsPage() {
                    </div>
                    <div className="flex items-center gap-0.5">
                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSelectedSlideIds(ids => ids.length === document.slides.length ? [] : document.slides.map(item => item.id))} title={selectedSlideIds.length === document.slides.length ? tl("Deseleziona tutte") : tl("Seleziona tutte")}><CheckSquare className="h-3.5 w-3.5" /></Button>
-                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(-1)} title={isEnglish ? 'Move up' : 'Sposta su'}><ArrowUp className="h-3.5 w-3.5" /></Button>
-                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(1)} title={isEnglish ? 'Move down' : 'Sposta giù'}><ArrowDown className="h-3.5 w-3.5" /></Button>
-                     <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-500 hover:text-red-600" disabled={selectedSlideIds.length === 0} onClick={deleteSelectedSlides} title={isEnglish ? 'Delete selected' : 'Elimina selezionate'}><Trash2 className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={actionSlideIds.length === 0} onClick={() => moveSelectedSlides(-1)} title={isEnglish ? 'Move up' : 'Sposta su'}><ArrowUp className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={actionSlideIds.length === 0} onClick={() => moveSelectedSlides(1)} title={isEnglish ? 'Move down' : 'Sposta giù'}><ArrowDown className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-500 hover:text-red-600" disabled={actionSlideIds.length === 0} onClick={deleteSelectedSlides} title={isEnglish ? 'Delete selected' : 'Elimina selezionate'}><Trash2 className="h-3.5 w-3.5" /></Button>
                      <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600" onClick={addSlide} title={isEnglish ? 'Add slide' : 'Aggiungi slide'}><Plus className="h-4 w-4" /></Button>
                    </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide">
+                 <div
+                   className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide outline-none"
+                   tabIndex={0}
+                   role="listbox"
+                   aria-label={isEnglish ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
+                   onKeyDown={handleSlideListKeyDown}
+                 >
                    {document.slides.map((slide, idx) => (
                      <div 
                        key={slide.id}
+                       data-slide-index={idx}
+                       role="option"
+                       aria-selected={idx === currentSlideIndex}
                        draggable
                        onDragStart={() => {
                          const ids = selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id]
-                         setSelectedSlideIds(ids)
                          setDraggedSlideIds(ids)
                        }}
                        onDragOver={(event) => event.preventDefault()}
                        onDrop={(event) => { event.preventDefault(); dropSelectedSlidesAt(idx) }}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
-                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${selectedSlideIds.includes(slide.id)
+                       title={isEnglish ? 'Ctrl/⌘+click or Shift+click to select several slides' : 'Ctrl/⌘+clic o Shift+clic per selezionare più slide'}
+                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${(selectedSlideIds.includes(slide.id) || idx === currentSlideIndex)
                          ? 'border-indigo-300 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-100'
                          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
                      >
@@ -2234,17 +2280,6 @@ export default function TeacherDocumentsPage() {
                          <GripVertical className="h-3.5 w-3.5 text-slate-300" />
                          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{idx + 1}</span>
                          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{slide.title}</span>
-                         <button
-                           type="button"
-                           role="checkbox"
-                           aria-checked={selectedSlideIds.includes(slide.id)}
-                           aria-label={tl("Seleziona slide")}
-                           title={tl("Aggiungi o togli dalla selezione (anche Ctrl/Cmd+clic, Shift+clic per un intervallo)")}
-                           onClick={(event) => { event.stopPropagation(); setSelectedSlideIds(previous => previous.includes(slide.id) ? previous.filter(id => id !== slide.id) : [...previous, slide.id]) }}
-                           className="rounded p-0.5 hover:bg-indigo-100"
-                         >
-                           <CheckSquare className={`h-4 w-4 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-400'}`} />
-                         </button>
                        </div>
                        <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-inner pointer-events-none">
                          <div
@@ -2526,6 +2561,13 @@ export default function TeacherDocumentsPage() {
                 onApplyOperations={applyDocumentAssistOperations}
                 getWritingContext={getDocumentWritingContext}
                 onApply={applyDocumentAgentProposal}
+                onPatchImage={(blockId, url) => setDocument((current) => ({
+                  ...current,
+                  slides: current.slides.map((slide) => slide.blocks.some((block) => block.id === blockId)
+                    ? { ...slide, blocks: slide.blocks.map((block) => block.id === blockId && block.type === 'image' ? { ...block, content: url } : block) }
+                    : slide),
+                }))}
+                deckTheme={document.theme}
                 onClose={() => setDocumentAgentOpen(false)}
               />
             </>

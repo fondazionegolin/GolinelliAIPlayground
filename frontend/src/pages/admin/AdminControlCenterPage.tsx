@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts'
-import { Activity, DollarSign, Zap, Wifi } from '@/components/icons'
+import { Activity, Zap, Wifi } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 type OverviewData = {
@@ -114,7 +114,7 @@ export default function AdminOverviewPage() {
           label={tl("Costo periodo")}
           value={formatCurrency(summary?.total_cost_period || 0)}
           hint={tl("Docenti attivi: {0}", summary?.active_teachers_period || 0)}
-          icon={DollarSign}
+          icon={Zap}
         />
       </AdminStatGrid>
 

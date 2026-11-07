@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   SandpackProvider,
   SandpackPreview,
@@ -19,7 +19,8 @@ export type SandpackRuntimeError = {
   path?: string
   line?: number
   column?: number
-  kind: 'compile' | 'runtime' | 'console'
+  /** `infra` = the Sandpack bundler itself could not start (network/CDN/timeout): never a bug in the generated code. */
+  kind: 'compile' | 'runtime' | 'console' | 'infra'
 }
 
 import { buildMlStub, ML_RUNTIME_VERSION, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
@@ -398,6 +399,8 @@ function reportRuntimeError(message: string) {
   reportedErrors.add(text)
   window.parent.postMessage({ source: 'golinelli-coding-preview', id: 'err_' + Date.now() + '_' + reportedErrors.size, action: 'reportError', payload: { message: text } }, '*')
 }
+// The platform ErrorBoundary / blank-page detector (index.tsx) report through this hook.
+;(window as any).__golinelliReport = reportRuntimeError
 window.addEventListener('error', (event: ErrorEvent) => {
   const where = event.filename ? ' (' + event.filename.split('/').pop() + ':' + event.lineno + ')' : ''
   reportRuntimeError((event.message || 'Errore JavaScript') + where)
@@ -412,20 +415,96 @@ export {}
 `
 }
 
+// Platform-owned bootstrap. Two guarantees the model cannot break:
+// 1) a render exception shows a readable panel (and is reported to the fix loop) instead of a white page;
+// 2) a page that mounts but paints nothing is reported as "blank" after a short grace period.
+const PLATFORM_ENTRY = `import './golinelli-bridge'
+import './styles.css'
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+
+const report = (message: string) => { try { (window as any).__golinelliReport?.(message) } catch (e) { /* ignore */ } }
+
+class PlatformErrorBoundary extends React.Component<{ children?: React.ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    const where = (info && info.componentStack ? info.componentStack : '').split('\\n').slice(0, 4).join(' ').trim()
+    report('Errore durante il rendering: ' + (error && error.message ? error.message : String(error)) + (where ? ' | ' + where : ''))
+  }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', color: '#7f1d1d', background: '#fef2f2', minHeight: '100vh', boxSizing: 'border-box' }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>L'app si è fermata per un errore</h2>
+        <p style={{ margin: '0 0 12px', fontSize: 14 }}>Sto cercando di correggerla in automatico.</p>
+        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: '#fee2e2', padding: 12, borderRadius: 8, margin: 0 }}>{String(this.state.error && this.state.error.message || this.state.error)}</pre>
+      </div>
+    )
+  }
+}
+
+const rootEl = document.getElementById('root')!
+createRoot(rootEl).render(<React.StrictMode><PlatformErrorBoundary><App /></PlatformErrorBoundary></React.StrictMode>)
+
+function looksBlank(): boolean {
+  if (rootEl.querySelector('canvas,svg,img,video,iframe,input,textarea,select,button')) return false
+  return !(rootEl.innerText || '').trim()
+}
+let blankReported = false
+const checkBlank = () => {
+  if (blankReported || !looksBlank()) return
+  blankReported = true
+  report("Pagina bianca: l'app si monta ma non mostra nessun contenuto visibile (App restituisce null/vuoto, un caricamento che non finisce, oppure dati mancanti al primo render). Il primo render deve mostrare subito contenuto con dati di esempio.")
+}
+window.setTimeout(checkBlank, 3500)
+window.setTimeout(checkBlank, 9000)
+`
+
+// Sandpack's default bundler timeout is 40s; a cold start with a heavy dependency (three, tensorflow,
+// phaser...) needs longer. Mirrors HEAVY_PACKAGES in backend/app/services/vibe_contract.py.
+const HEAVY_PACKAGES = new Set([
+  'three', '@react-three/fiber', '@react-three/drei', 'phaser', 'pixi.js', 'p5', 'tone', 'ml5', 'onnxruntime-web',
+  '@xenova/transformers', '@mediapipe/tasks-vision', '@vladmandic/face-api', 'mathjs', 'd3', 'leaflet', 'react-leaflet',
+])
+const isHeavyDependency = (name: string) => HEAVY_PACKAGES.has(name) || name.startsWith('@tensorflow')
+const INFRA_ERROR = /couldn.?t connect to server|sandpack cannot connect|TIME_OUT|bundler.*time|failed to fetch dynamically imported|network ?error/i
+const MAX_INFRA_RETRIES = 2
+
 function normalizePath(path: string): string {
   const trimmed = path.trim().replace(/^\.\//, '')
   return trimmed.startsWith('/') ? trimmed : '/' + trimmed
 }
 
+const BARE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'".\/][^'"]*)['"]/g
+const NPM_NAME = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
+const NOT_PACKAGES = new Set(['react', 'react-dom', 'fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'net', 'stream', 'zlib', 'util', 'url', 'events', 'buffer', 'process'])
+
+// Declared dependencies (package.json) plus every npm package the code imports but package.json forgot:
+// a missing library must never break the preview, so undeclared imports are installed automatically.
 function parseDependencies(files: GeneratedFile[]): Record<string, string> {
+  let declared: Record<string, string> = {}
   const pkg = files.find((f) => normalizePath(f.path) === '/package.json')
-  if (!pkg) return {}
-  try {
-    const parsed = JSON.parse(pkg.content)
-    return { ...(parsed.dependencies || {}), ...(parsed.devDependencies || {}) }
-  } catch {
-    return {}
+  if (pkg) {
+    try {
+      const parsed = JSON.parse(pkg.content)
+      declared = { ...(parsed.dependencies || {}), ...(parsed.devDependencies || {}) }
+    } catch {
+      declared = {}
+    }
   }
+  const inferred: Record<string, string> = {}
+  for (const file of files) {
+    if (!/\.(tsx?|jsx?)$/i.test(file.path)) continue
+    for (const match of file.content.matchAll(BARE_IMPORT)) {
+      const parts = match[1].split('/')
+      const name = match[1].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
+      if (!NPM_NAME.test(name) || NOT_PACKAGES.has(name) || name.startsWith('node:') || name in declared) continue
+      inferred[name] = 'latest'
+    }
+  }
+  return { ...inferred, ...declared }
 }
 
 // Listens to the running bundler and forwards real compile/runtime errors to the parent so the
@@ -433,9 +512,11 @@ function parseDependencies(files: GeneratedFile[]): Record<string, string> {
 function ErrorReporter({
   onErrors,
   onReady,
+  onInfra,
 }: {
   onErrors?: (errors: SandpackRuntimeError[]) => void
   onReady?: () => void
+  onInfra?: (message: string) => void
 }) {
   const { listen } = useSandpack()
   const reportedReady = useRef(false)
@@ -444,9 +525,16 @@ function ErrorReporter({
     const unsubscribe = listen((message: any) => {
       if (message.type === 'action' && message.action === 'show-error') {
         reportedReady.current = false
+        const text = String(message.message || message.title || '')
+        // "Couldn't connect to server / TIME_OUT" is the bundler failing to boot (network, CDN, heavy
+        // dependencies), not a bug in the generated code: retry the runtime, never ask the model to "fix" it.
+        if (INFRA_ERROR.test(`${message.title || ''} ${text}`)) {
+          onInfra?.(text || String(message.title || ''))
+          return
+        }
         onErrors?.([
           {
-            message: message.message || message.title || tl("Errore di compilazione."),
+            message: text || tl("Errore di compilazione."),
             path: message.path,
             line: message.line,
             column: message.column,
@@ -474,7 +562,7 @@ function ErrorReporter({
       }
     })
     return unsubscribe
-  }, [listen, onErrors, onReady])
+  }, [listen, onErrors, onReady, onInfra])
 
   return null
 }
@@ -491,6 +579,33 @@ export default function CodingSandpackPreview({
   className,
 }: Props) {
   const dependencies = useMemo(() => parseDependencies(files), [files])
+  const heavy = useMemo(() => Object.keys(dependencies).some(isHeavyDependency), [dependencies])
+  const bundlerTimeOut = heavy ? 150_000 : 75_000
+  // Bundler boot failures are retried by remounting the Sandpack provider (fresh iframe + fresh connection).
+  const attempts = useRef(0)
+  const [mountKey, setMountKey] = useState(0)
+  const [infraFailure, setInfraFailure] = useState<string | null>(null)
+  const retryTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (retryTimer.current) window.clearTimeout(retryTimer.current) }, [])
+  const handleInfra = useCallback((message: string) => {
+    if (attempts.current < MAX_INFRA_RETRIES) {
+      attempts.current += 1
+      if (retryTimer.current) window.clearTimeout(retryTimer.current)
+      retryTimer.current = window.setTimeout(() => setMountKey((k) => k + 1), 1500)
+    } else {
+      setInfraFailure(message || 'TIME_OUT')
+    }
+  }, [])
+  const handleReady = useCallback(() => {
+    attempts.current = 0
+    setInfraFailure(null)
+    onReady?.()
+  }, [onReady])
+  const retryNow = () => {
+    attempts.current = 0
+    setInfraFailure(null)
+    setMountKey((k) => k + 1)
+  }
 
   const staticFiles = useMemo<SandpackFiles>(() => ({
     '/index.html': { code: forceVerticalScroll
@@ -512,17 +627,7 @@ export default function CodingSandpackPreview({
     map[HTML_PATH] = { code: buildHtmlDocument(forceVerticalScroll), hidden: true }
     // styles.css is always present so the entry can import it unconditionally.
     if (!map['/styles.css']) map['/styles.css'] = { code: '', hidden: true }
-    map[ENTRY_PATH] = {
-      code: `import './golinelli-bridge'
-import './styles.css'
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App'
-const root = createRoot(document.getElementById('root')!)
-root.render(<React.StrictMode><App /></React.StrictMode>)
-`,
-      hidden: true,
-    }
+    map[ENTRY_PATH] = { code: PLATFORM_ENTRY, hidden: true }
     return map
   }, [files, enableInspector, forceVerticalScroll, mlModels])
 
@@ -530,13 +635,27 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
     <div className={`golinelli-sp ${className || ''}`}>
       {/* Sandpack ships a fixed default layout height; force the whole chain to fill our container. */}
       <style>{SANDPACK_FILL_CSS}</style>
+      {infraFailure && (
+        <div role="alert" style={{ position: 'absolute', inset: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(15,23,42,0.88)' }}>
+          <div style={{ maxWidth: 420, textAlign: 'center', color: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 800, fontSize: 16 }}>{tl("L'anteprima non riesce ad avviarsi")}</p>
+            <p style={{ margin: '0 0 14px', fontSize: 13, lineHeight: 1.5, color: '#cbd5e1' }}>
+              {heavy
+                ? tl("Il progetto usa librerie pesanti che il motore dell'anteprima scarica da internet: con una connessione lenta può non bastare il tempo. Non è un errore del tuo codice.")
+                : tl("Il motore dell'anteprima non riesce a collegarsi alla rete. Non è un errore del tuo codice: controlla la connessione e riprova.")}
+            </p>
+            <button type="button" onClick={retryNow} style={{ border: 0, borderRadius: 999, padding: '10px 20px', fontWeight: 800, cursor: 'pointer', background: '#e85c8d', color: '#fff' }}>{tl("Riprova ad avviare")}</button>
+          </div>
+        </div>
+      )}
       {staticHtml !== undefined ? (
         <SandpackProvider
+          key={`static-${mountKey}`}
           template="static"
           files={staticFiles}
-          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+          options={{ recompileMode: 'delayed', recompileDelay: 400, bundlerTimeOut }}
         >
-          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <ErrorReporter onErrors={onErrors} onReady={handleReady} onInfra={handleInfra} />
           <SandpackLayout>
             <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
             {showConsole && <SandpackConsole />}
@@ -544,6 +663,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
         </SandpackProvider>
       ) : (
         <SandpackProvider
+          key={`react-${mountKey}`}
           template="react-ts"
           files={sandpackFiles}
           customSetup={{
@@ -556,9 +676,9 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
               ...dependencies,
             },
           }}
-          options={{ recompileMode: 'delayed', recompileDelay: 400 }}
+          options={{ recompileMode: 'delayed', recompileDelay: 400, bundlerTimeOut }}
         >
-          <ErrorReporter onErrors={onErrors} onReady={onReady} />
+          <ErrorReporter onErrors={onErrors} onReady={handleReady} onInfra={handleInfra} />
           <SandpackLayout>
             <SandpackPreview showOpenInCodeSandbox={false} showRefreshButton />
             {showConsole && <SandpackConsole />}
@@ -572,7 +692,7 @@ root.render(<React.StrictMode><App /></React.StrictMode>)
 // Sandpack defaults the layout to ~300px (--sp-layout-height). These rules make the wrapper, layout,
 // stack and preview iframe fill the parent so the preview is actually usable full-height.
 const SANDPACK_FILL_CSS = `
-.golinelli-sp { display: flex; flex-direction: column; min-height: 0; }
+.golinelli-sp { position: relative; display: flex; flex-direction: column; min-height: 0; }
 .golinelli-sp .sp-wrapper { flex: 1; min-height: 0; display: flex; }
 .golinelli-sp .sp-layout { flex: 1; min-height: 0; height: 100%; border: none; border-radius: 0; flex-direction: column; }
 .golinelli-sp .sp-stack { min-height: 0; height: 100%; flex: 1; }

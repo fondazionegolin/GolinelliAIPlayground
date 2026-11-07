@@ -216,3 +216,14 @@ def test_playlist_names_are_safe_drive_folder_names_and_tracks_are_unique():
     track_id = uuid4()
     with pytest.raises(ValidationError):
         PlaylistWrite(title="Test", track_ids=[track_id, track_id])
+
+
+@pytest.mark.parametrize('title', ['', '   ', 'Nome\nnuovo', 'Nome\x00', 'x' * 201])
+def test_track_title_validation_rejects_empty_controls_and_oversize(title):
+    with pytest.raises(ValidationError):
+        routes.TrackUpdate(title=title)
+
+
+def test_artist_credit_is_server_controlled():
+    with pytest.raises(ValidationError):
+        routes.TrackUpdate(title='Jazz', artist_name='Un altro autore')

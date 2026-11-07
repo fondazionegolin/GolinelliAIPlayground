@@ -200,9 +200,14 @@ async def list_tenants(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
+    from app.services import license as licensing
     result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
-    tenants = result.scalars().all()
-    return tenants
+    out = []
+    for tenant in result.scalars().all():
+        row = TenantResponse.model_validate(tenant)
+        row.license = licensing.describe(tenant)
+        out.append(row)
+    return out
 
 
 @router.post("/tenants", response_model=TenantResponse)
@@ -2376,10 +2381,16 @@ async def get_teachers_status(
             "slug": school.slug,
         })
 
+    from app.services import license as licensing
+    tenant_ids = {t.tenant_id for t in teachers if t.tenant_id}
+    tenants_by_id = {tn.id: tn for tn in (await db.scalars(select(Tenant).where(Tenant.id.in_(tenant_ids)))).all()} if tenant_ids else {}
     return {
         "items": [
             {
                 "id": str(t.id),
+                "license": licensing.effective(t, tenants_by_id.get(t.tenant_id)),
+                "tenant_name": tenants_by_id[t.tenant_id].name if t.tenant_id in tenants_by_id else None,
+                "tenant_type": str(getattr(tenants_by_id[t.tenant_id].tenant_type, "value", tenants_by_id[t.tenant_id].tenant_type)) if t.tenant_id in tenants_by_id else None,
                 "first_name": t.first_name,
                 "last_name": t.last_name,
                 "email": t.email,
@@ -2715,8 +2726,8 @@ async def update_teacher_schools_bulk(
     admin: Annotated[User, Depends(get_current_admin)],
 ):
     """Add or remove several teachers from one school without moving their data tenant."""
-    if payload.action not in {"add", "remove"}:
-        raise HTTPException(status_code=422, detail="action deve essere 'add' oppure 'remove'")
+    if payload.action not in {"add", "remove", "assign"}:
+        raise HTTPException(status_code=422, detail="action deve essere 'add', 'assign' oppure 'remove'")
 
     school = (
         await db.execute(select(Tenant).where(Tenant.id == payload.school_tenant_id))
@@ -2732,7 +2743,25 @@ async def update_teacher_schools_bulk(
     if len(valid_teacher_ids) != len(teacher_ids):
         raise HTTPException(status_code=404, detail="Uno o più docenti non sono stati trovati")
 
-    if payload.action == "add":
+    if payload.action == "assign":
+        # Direct assignment by the admin: no invitation to accept. For teachers who have no school yet.
+        existing_ids = set((await db.execute(
+            select(TeacherSchoolMembership.teacher_id).where(
+                TeacherSchoolMembership.teacher_id.in_(teacher_ids),
+                TeacherSchoolMembership.school_tenant_id == school.id,
+            )
+        )).scalars().all())
+        for teacher in valid_teachers:
+            if teacher.id not in existing_ids:
+                db.add(TeacherSchoolMembership(teacher_id=teacher.id, school_tenant_id=school.id, added_by_admin_id=admin.id))
+            if not (teacher.institution or "").strip():
+                teacher.institution = school.name
+        await db.execute(sa_delete(TeacherSchoolInvitation).where(
+            TeacherSchoolInvitation.teacher_id.in_(teacher_ids),
+            TeacherSchoolInvitation.school_tenant_id == school.id,
+        ))
+        changed = len(valid_teacher_ids - existing_ids)
+    elif payload.action == "add":
         existing_ids = set((await db.execute(
             select(TeacherSchoolMembership.teacher_id).where(
                 TeacherSchoolMembership.teacher_id.in_(teacher_ids),

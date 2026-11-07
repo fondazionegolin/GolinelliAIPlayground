@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border border-transparent font-[var(--button-font-weight)] transition-all duration-150 focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--focus-shadow)] active:translate-y-px active:scale-[0.995] disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-transparent disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border border-transparent font-[var(--button-font-weight)] transition-all duration-150 focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--focus-shadow)] active:translate-y-px active:scale-[0.995] disabled:pointer-events-none disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
   {
     variants: {
       tone: {
@@ -20,6 +20,7 @@ const buttonVariants = cva(
         soft: '',
         outline: '',
         ghost: '',
+        glass: 'ds-media-button',
         link: 'rounded-none px-0 shadow-none underline-offset-4 hover:underline',
       },
       density: {
@@ -34,6 +35,15 @@ const buttonVariants = cva(
       },
     },
     compoundVariants: [
+      {
+        surface: ['solid', 'soft', 'outline', 'ghost', 'link'],
+        className: 'disabled:!border-transparent disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none',
+      },
+      {
+        tone: 'accent',
+        surface: 'glass',
+        className: 'ds-media-button-primary',
+      },
       {
         tone: 'neutral',
         surface: 'solid',

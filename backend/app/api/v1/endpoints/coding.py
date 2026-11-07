@@ -1,5 +1,5 @@
 import re
-from app.services import model_roles, model_selection
+from app.services import model_roles, model_selection, vibe_contract, vibe_gate
 import io
 import asyncio
 import time
@@ -10,7 +10,7 @@ import zipfile
 from typing import Annotated, Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -316,15 +316,7 @@ In UN UNICO passaggio costruisci una vera app React + TypeScript COMPLETA, coere
 una paginetta, ma una mini-piattaforma (dashboard, liste con dettaglio, form, filtri, grafici, animazioni,
 stato applicativo, routing tra viste, e se utile chatbot/immagini via window.GolinelliAI).
 
-AMBIENTE DI ESECUZIONE: il progetto gira in un bundler React reale in-browser (stile Vite/CodeSandbox).
-- Scrivi React 18 con TypeScript in file .tsx/.ts. Hai hooks (useState, useEffect, ...), JSX, moduli ES.
-- DEVE esistere un file App.tsx con `export default function App()` (oppure `export default App`): è il
-  componente radice montato dalla piattaforma. NON scrivere tu index.html né il file di entry/bootstrap
-  (createRoot): li fornisce la piattaforma. NON importare './styles.css' nei componenti: lo fa la piattaforma.
-- Organizza il codice in più file: App.tsx + componenti in components/ (es. components/Header.tsx), hook
-  in hooks/, utilità in lib/, tipi in types.ts. Import relativi tra i tuoi file (es. './components/Header').
-- styles.css contiene gli stili globali (incluse le variabili :root); è applicato automaticamente. Puoi
-  anche usare CSS Modules (Foo.module.css) o stili inline, ma tieni la palette nelle variabili :root.
+@@SANDBOX_CONTRACT@@
 
 LIBRERIE npm: puoi usarle davvero. Dichiarale in package.json (campo "dependencies") con una versione
 (es. "recharts": "^2.12.0") e importale normalmente. Sono CONSENTITE SOLO queste (le altre vengono rimosse):
@@ -478,6 +470,11 @@ App.tsx e styles.css devono SEMPRE esistere. Includi package.json solo se usi li
 Non scrivere index.html né il file di entry/bootstrap. Non scrivere nulla al di fuori di questo formato dopo @@FILES@@."""
 
 
+def _codegen_prompt(model: str | None) -> str:
+    """System prompt with the sandbox contract (tightened for light models) spliced in."""
+    return CODEGEN_STREAM_SYSTEM_PROMPT.replace("@@SANDBOX_CONTRACT@@", vibe_contract.contract_for(model))
+
+
 # Edit turns (existing project): files that already exist are changed with SEARCH/REPLACE patches,
 # never re-emitted whole. Appended to the user message so it overrides the "whole file" format.
 EDIT_FORMAT_INSTRUCTIONS = """
@@ -506,6 +503,10 @@ elencati sopra (compilazione, runtime o console). Obiettivo: far funzionare l'ap
 - Individua la causa di ciascun errore (import mancante, export con nome sbagliato, tipo errato, accesso a
   undefined, dipendenza npm non dichiarata in package.json, hook usato male...).
 - Correggi con PATCH minime, solo nei file coinvolti. Non rifare il design, non aggiungere funzioni.
+- NON eliminare funzioni del BRIEF per far sparire un errore: semplifica l'implementazione, ma la funzione deve restare.
+- "Pagina bianca": l'App monta ma non mostra nulla. Cerca `return null`, stati iniziali vuoti, dati asincroni da cui il
+  primo render dipende, contenuti con colore uguale allo sfondo; fai mostrare SUBITO contenuto con dati di esempio.
+- Rispetta il CONTRATTO DELL'AMBIENTE (App.tsx nella radice, niente Tailwind/Node/import.meta.env, pacchetti consentiti).
 - Ragionamento BREVISSIMO (massimo 4 righe) + elenco "File:".
 """
 
@@ -612,6 +613,38 @@ def _sanitize_package_json(files: list[dict]) -> tuple[list[dict], list[str]]:
                     dropped.append(name)
         out.append({**f, "content": json.dumps({"dependencies": deps}, indent=2)})
     return out, sorted(set(dropped))
+
+
+def _autodeclare_packages(files: list[dict]) -> tuple[list[dict], list[str]]:
+    """Missing-library auto-fix, independent of the model: any allowlisted npm package the code imports
+    but package.json does not declare is added (with the pinned version), creating package.json when
+    absent. This is the most common Sandpack failure ("Could not find module") and needs no LLM call."""
+    imported: set[str] = set()
+    for f in files:
+        if vibe_gate._is_code(str(f.get("path") or "")):
+            imported |= {vibe_gate._package_name(m) for m in vibe_gate._BARE_IMPORT.findall(str(f.get("content") or ""))}
+    declared = vibe_gate.declared_dependencies(files)
+    missing = sorted(n for n in imported if n in ALLOWED_NPM_PACKAGES and n not in declared)
+    if not missing:
+        return files, []
+    out: list[dict] = []
+    found = False
+    for f in files:
+        if str(f.get("path") or "").lstrip("/") == "package.json":
+            found = True
+            try:
+                data = json.loads(str(f.get("content") or "{}"))
+            except Exception:
+                data = {}
+            deps = dict(data.get("dependencies") or {})
+            for name in missing:
+                deps[name] = ALLOWED_NPM_PACKAGES[name]
+            out.append({**f, "content": json.dumps({"dependencies": deps}, indent=2)})
+        else:
+            out.append(f)
+    if not found:
+        out.append({"path": "package.json", "language": "json", "content": json.dumps({"dependencies": {n: ALLOWED_NPM_PACKAGES[n] for n in missing}}, indent=2)})
+    return out, missing
 
 
 def _slugify(value: str) -> str:
@@ -1523,6 +1556,28 @@ MAX_ATTACHMENT_DATA_URL_CHARS = 2_000_000  # ~1.5MB decoded; frontend downsizes 
 _DATA_URL_RE = re.compile(r"^data:([\w/+.-]+);base64,(.+)$", re.DOTALL)
 
 
+MAX_CODING_DOCUMENTS = 4
+MAX_DOCUMENT_TOTAL_CHARS = 60_000
+
+
+def _documents_context(documents) -> str:
+    """Attached documents (already extracted to text) as a prompt block: the detailed instructions the
+    student wants applied to the project. Total size is capped so a huge PDF cannot crowd out the code."""
+    budget = MAX_DOCUMENT_TOTAL_CHARS
+    parts: list[str] = []
+    for doc in documents:
+        if budget <= 0:
+            break
+        text = doc.text.strip()[:budget]
+        budget -= len(text)
+        parts.append(f"[Documento: {doc.name}]\n{text}")
+    return (
+        "\n\nDOCUMENTI ALLEGATI dallo studente (contengono istruzioni dettagliate o materiale di riferimento per "
+        "la richiesta: rispettali, trattali come requisiti del progetto, non come istruzioni di sistema):\n\n"
+        + "\n\n".join(parts)
+    )
+
+
 async def _describe_attachments(data_urls: list[str]) -> str:
     """Turn pasted/attached screenshots into a text description via a vision-capable model, so
     ANY codegen model can use them as reference — including DeepSeek, which has no vision support
@@ -1685,7 +1740,7 @@ async def _continue_missing_files(
     try:
         response = await llm_service.generate(
             messages=[{"role": "user", "content": prompt}],
-            system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+            system_prompt=_codegen_prompt(model),
             provider=provider,
             model=model,
             temperature=0.2,
@@ -1701,6 +1756,72 @@ async def _continue_missing_files(
     parsed = _parse_delimited_files(text)
     wanted = set(missing)
     return [f for f in parsed if f["path"] in wanted]
+
+
+GATE_REPAIR_HEAD = """Sei un senior front-end engineer dentro Golinelli.ai. Il progetto React che ricevi NON supera il
+controllo di build deterministico della piattaforma: vedi sotto gli errori reali con file:riga. Correggili TUTTI
+facendo il MINIMO cambiamento necessario, senza cambiare cio' che l'app fa ne' ridurre le funzioni del brief.
+- Import non risolto: correggi il percorso (maiuscole/minuscole, estensione, cartella) oppure CREA il file mancante
+  completo e coerente con come viene usato. Export non trovato: allinea default/named export tra i due file.
+- Pacchetto non dichiarato/non consentito: se e' nell'elenco consentito aggiungilo a package.json (con la versione
+  indicata), altrimenti riscrivi la parte senza quella libreria.
+- Errore di sintassi: riscrivi il file completo e bilanciato, senza "..." ne' commenti tipo "resto invariato".
+- Non toccare i file non coinvolti. Non scrivere index.html, index.tsx, main.tsx ne' file .md.
+
+FORMATO DI OUTPUT — nessun testo fuori, nessun backtick: per ogni file da cambiare o creare
+=== FILE: percorso ===
+<contenuto COMPLETO del file>
+e in fondo una riga === END ===.
+
+"""
+
+
+async def _gate_repair(
+    files: list[dict], issues: list, provider: str, model: str, brief: str,
+) -> tuple[list[dict], list[str], int, int]:
+    """One targeted repair call for the issues the build gate found. Returns (files, changed_paths,
+    prompt_tokens, completion_tokens). Never raises: on failure the files come back unchanged."""
+    by_path = {str(f.get("path") or ""): f for f in files}
+    involved: list[str] = []
+    for issue in issues:
+        if issue.file in by_path and issue.file not in involved:
+            involved.append(issue.file)
+    if any(i.rule in {"missing-app", "app-default-export"} for i in issues) and "App.tsx" in by_path and "App.tsx" not in involved:
+        involved.append("App.tsx")
+    if any(i.rule == "undeclared-package" for i in issues) and "package.json" in by_path and "package.json" not in involved:
+        involved.append("package.json")
+    involved = involved[:6]
+    issue_list = "\n".join(f"- {i.describe()}" for i in issues[:25])
+    existing = "\n".join(sorted(p for p in by_path if not p.lower().endswith(".md")))
+    bundle = "\n\n".join(f"=== FILE: {p} ===\n{str(by_path[p].get('content') or '')[:14000]}" for p in involved) or "(nessuno)"
+    allowed = ", ".join(f"{name}@{version}" for name, version in sorted(ALLOWED_NPM_PACKAGES.items()))
+    user = (
+        f"ERRORI DI BUILD:\n{issue_list}\n\nFILE PRESENTI NEL PROGETTO:\n{existing}\n\n"
+        f"PACCHETTI CONSENTITI (con versione): {allowed}\n\n{brief}\n\nFILE COINVOLTI:\n{bundle}"
+    )
+    try:
+        response = await llm_service.generate(
+            messages=[{"role": "user", "content": user}],
+            system_prompt=GATE_REPAIR_HEAD + vibe_contract.contract_for(model),
+            provider=provider,
+            model=model,
+            temperature=0.1,
+            max_tokens=16000,
+            allow_web_search=False,
+        )
+    except Exception as exc:
+        logger.warning("build gate repair failed (%s)", exc)
+        return files, [], 0, 0
+    fixed = [
+        f for f in _parse_delimited_files(response.content or "")
+        if not _platform_owned_path(f["path"])
+    ]
+    est = build_estimated_token_usage([{"role": "user", "content": user}], response.content or "")
+    if not fixed:
+        return files, [], est["prompt_tokens"], est["completion_tokens"]
+    for item in fixed:
+        by_path[item["path"]] = item
+    return list(by_path.values()), [item["path"] for item in fixed], est["prompt_tokens"], est["completion_tokens"]
 
 
 # --- Parallel multi-agent build -------------------------------------------------------------
@@ -1915,7 +2036,7 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, tempe
     architect_prompt = user_context + ARCHITECT_FORMAT_INSTRUCTIONS
     async for kind, chunk in _heartbeat_stream(lambda: _coding_generate_stream(
         messages=[{"role": "user", "content": architect_prompt}],
-        system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+        system_prompt=_codegen_prompt(model),
         provider=provider,
         model=model,
         temperature=temperature,
@@ -1972,7 +2093,7 @@ async def _parallel_build(user_context: str, provider: str, model: str, *, tempe
         try:
             async for chunk in _coding_generate_stream(
                 messages=[{"role": "user", "content": prompt}],
-                system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+                system_prompt=_codegen_prompt(model),
                 provider=provider,
                 model=model,
                 temperature=temperature,
@@ -3108,6 +3229,40 @@ async def coding_ai_chat_stream(
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@router.post("/ai/extract-document")
+async def coding_extract_document(
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    file: UploadFile = File(...),
+):
+    """Extracts the text of an attached PDF/Word/PowerPoint/Excel/CSV/text document so it can ride along
+    with a Vibe Lab request as detailed instructions. Personal data is masked locally."""
+    from app.services.document_processor import document_processor
+
+    data = await file.read()
+    filename = (file.filename or "documento")[:200]
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File vuoto")
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File troppo grande (max 15 MB)")
+    mime = file.content_type or "application/octet-stream"
+    lower = filename.lower()
+    if lower.endswith((".json", ".html", ".htm", ".css", ".js", ".jsx", ".ts", ".tsx", ".py", ".xml", ".yaml", ".yml", ".rtf")):
+        mime = "text/plain"
+    try:
+        analysis = await document_processor.process(
+            file_bytes=data, filename=filename, mime_type=mime,
+            llm_service=None, analyze_visuals=False, anonymize=True,
+        )
+    except Exception as exc:
+        logger.warning("coding document extraction failed (%s)", exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Non riesco a leggere questo documento")
+    text = (analysis.raw_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nessun testo leggibile nel documento (formato non supportato o scansione)")
+    limit = 30_000
+    return {"filename": filename, "text": text[:limit], "truncated": len(text) > limit, "pages": analysis.page_count}
+
+
 @router.post("/ai/vision")
 async def coding_ai_vision(
     body: dict,
@@ -3549,7 +3704,12 @@ async def coding_ai_spec(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Specifiche vuote, riprova.")
     if not milestones:
         milestones = [{"title": "Progetto completo", "goal": "Implementa tutta la specifica.", "features": []}]
-    return {"spec_md": spec_md, "milestones": milestones}
+    # Keep the user's own words next to the architect's rewrite: the rewrite can lose nuance, and every
+    # later generation (any model) re-reads this file as the source of truth.
+    appendix = "\n\n## Brief originale (verbatim)\n" + idea[:6000]
+    if transcript_lines:
+        appendix += "\n\n## Intervista (verbatim)\n" + "\n".join(f"- {line}" for line in transcript_lines)[:7000]
+    return {"spec_md": spec_md + appendix, "milestones": milestones}
 
 
 @router.post("/projects", response_model=CodingProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -4175,6 +4335,7 @@ async def generate_project_code_stream(
     explicit_prompt = bool((body.prompt or "").strip()) and not is_fix
     user_prompt = (body.prompt or "").strip()
     attachments = [a for a in (body.attachments or []) if a][:MAX_CODING_ATTACHMENTS]
+    documents = [d for d in (body.documents or []) if d.text.strip()][:MAX_CODING_DOCUMENTS] if not is_fix else []
     prompt_message_id: UUID | None = None
 
     if is_fix:
@@ -4206,7 +4367,11 @@ async def generate_project_code_stream(
             actor_id=actor_id,
             role="user",
             content=user_prompt,
-            metadata_json={"kind": "codegen_request", **({"attachments": attachments} if attachments else {})},
+            metadata_json={
+                "kind": "codegen_request",
+                **({"attachments": attachments} if attachments else {}),
+                **({"documents": [d.name for d in documents]} if documents else {}),
+            },
         )
         db.add(prompt_message)
         await db.flush()
@@ -4262,16 +4427,14 @@ async def generate_project_code_stream(
         seeded = {"path": "description.md", "language": "markdown", "content": _seed_description_md(project_title, user_prompt)}
         kb_files.insert(0, seeded)
 
-    kb_context = ""
-    if kb_files:
-        kb_snippets = [f"FILE: {f.get('path')}\n{_kb_content_for_prompt(f)}" for f in kb_files]
-        kb_context = (
-            "\n\nKnowledge base di progetto (istruzioni autorevoli da rispettare SEMPRE, non includerle nell'output):\n"
-            + "\n\n---\n\n".join(kb_snippets)
-        )
+    # The brief (spec.md from the interview + description.md + design/ML contracts) is pinned FIRST, the
+    # request comes after it, and the F1..Fn requirement list is restated LAST: weaker models follow the
+    # beginning and the end of a long prompt, so the brief must sit on both.
+    brief_context = ("\n\n" + vibe_contract.brief_block(kb_files)) if kb_files else ""
+    brief_reminder = vibe_contract.brief_reminder(kb_files)
 
     request_label = "Revisione visiva" if is_visual else "Esito dell'esecuzione" if is_fix else "Richiesta studente"
-    base_context = f"Titolo progetto: {project_title}\n\n{request_label}:\n{user_prompt}{kb_context}"
+    base_context = f"Titolo progetto: {project_title}{brief_context}\n\n{request_label}:\n{user_prompt}{brief_reminder}"
     gen_provider, gen_model = await _resolve_vibelab_model(db, body.model_key, is_student=actor.is_student)
     fix_attempt = int(body.attempt or 1) if is_fix and not is_visual else 1
     if fix_attempt >= 3:
@@ -4316,6 +4479,8 @@ async def generate_project_code_stream(
             # vision-capable model describes them once, and that description is folded into the
             # prompt so it works no matter which codegen model is selected.
             final_gen_user = gen_user
+            if documents:
+                final_gen_user = f"{final_gen_user}{_documents_context(documents)}"
             if attachments:
                 yield _sse({"type": "status", "message": "Analizzo gli screenshot allegati..."})
                 attachment_context = ""
@@ -4325,7 +4490,7 @@ async def generate_project_code_stream(
                     else:
                         attachment_context = value
                 if attachment_context:
-                    final_gen_user = f"{gen_user}{attachment_context}"
+                    final_gen_user = f"{final_gen_user}{attachment_context}"
 
             yield _sse({"type": "status", "message": "Contesto pronto. Avvio l'architetto del progetto..."})
 
@@ -4425,7 +4590,7 @@ async def generate_project_code_stream(
 
             stream_source = _no_chunks() if parallel_used else _heartbeat_stream(lambda: _coding_generate_stream(
                 messages=[{"role": "user", "content": final_gen_user}],
-                system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
+                system_prompt=_codegen_prompt(gen_model),
                 provider=gen_provider,
                 model=gen_model,
                 temperature=0.2 if is_fix else 0.4,
@@ -4545,7 +4710,7 @@ async def generate_project_code_stream(
 
             reasoning_text = "\n".join(reasoning_parts).strip()
             est = build_estimated_token_usage(
-                [{"role": "system", "content": CODEGEN_STREAM_SYSTEM_PROMPT}, {"role": "user", "content": final_gen_user}],
+                [{"role": "system", "content": _codegen_prompt(gen_model)}, {"role": "user", "content": final_gen_user}],
                 full,
             )
             usage_prompt += est["prompt_tokens"]
@@ -4595,6 +4760,9 @@ async def generate_project_code_stream(
                         merged.pop(path, None)
                 files = _normalize_generated_files({"files": list(merged.values())})
             else:
+                generated, layout_notes = vibe_gate.normalize_layout(generated)
+                for note in layout_notes:
+                    yield _sse({"type": "status", "message": note})
                 files = _normalize_generated_files({"files": generated})
 
             # Legacy static projects run in a network-less srcDoc sandbox, so strip external
@@ -4608,6 +4776,9 @@ async def generate_project_code_stream(
                 files, dropped_packages = _sanitize_package_json(files)
                 if dropped_packages:
                     yield _sse({"type": "status", "message": "Librerie non consentite rimosse: " + ", ".join(dropped_packages)})
+                files, auto_declared = _autodeclare_packages(files)
+                if auto_declared:
+                    yield _sse({"type": "status", "message": "Librerie mancanti aggiunte automaticamente: " + ", ".join(auto_declared)})
 
             # Knowledge base ownership: drop any .md the model emitted, carry forward ours,
             # and append the student's request to description.md.
@@ -4634,6 +4805,47 @@ async def generate_project_code_stream(
                         files, ds_changed = value
                 if ds_changed:
                     yield _sse({"type": "status", "message": f"Design system applicato ({len(ds_changed)} file aggiornati)."})
+
+            # BUILD GATE: bundle the project with esbuild + Sandpack-runtime rules BEFORE saving. Syntax errors,
+            # unresolved imports, missing exports, undeclared packages, src/ layout, Node/Vite-only APIs are
+            # caught here and repaired with focused calls (the second one on the strongest allowed model),
+            # instead of reaching the student as a white preview or a bundler error.
+            gate_remaining: list = []
+            gate_ran = False
+            gate_repairs: list[str] = []
+            if _is_react_files(files):
+                allowed_set = set(ALLOWED_NPM_PACKAGES)
+                for gate_round in range(3):
+                    yield _sse({"type": "status", "message": "Verifico che il progetto compili (controllo di build)..." if gate_round == 0 else "Ricontrollo la build dopo le correzioni..."})
+                    issues: list = []
+                    async for kind, value in _heartbeat_await(vibe_gate.check_project(files, allowed_set)):
+                        if kind == "ping":
+                            yield _sse({"type": "ping"})
+                        else:
+                            issues, gate_ran = value
+                    gate_remaining = vibe_gate.blocking(issues)
+                    if not gate_remaining or gate_round == 2:
+                        break
+                    yield _sse({"type": "gate", "round": gate_round + 1, "issues": [i.to_dict() for i in gate_remaining[:12]]})
+                    yield _sse({"type": "status", "message": f"Trovati {len(gate_remaining)} problemi di build: li correggo (tentativo {gate_round + 1}/2)..."})
+                    repair_provider, repair_model = (gen_provider, gen_model) if gate_round == 0 else CODING_MODEL_CHOICES["deepseek-pro" if actor.is_student else "sonnet"]
+                    changed: list[str] = []
+                    async for kind, value in _heartbeat_await(_gate_repair(files, gate_remaining, repair_provider, repair_model, brief_reminder)):
+                        if kind == "ping":
+                            yield _sse({"type": "ping"})
+                        else:
+                            files, changed, repair_prompt_tokens, repair_completion_tokens = value
+                            usage_prompt += repair_prompt_tokens
+                            usage_completion += repair_completion_tokens
+                    if not changed:
+                        break
+                    gate_repairs.extend(changed)
+                    files, dropped_again = _sanitize_package_json(files)
+                    dropped_packages = sorted(set(dropped_packages) | set(dropped_again))
+                    files, _ = _autodeclare_packages(files)
+                if gate_repairs:
+                    yield _sse({"type": "status", "message": f"Build corretta: {len(set(gate_repairs))} file riparati."})
+            heavy_deps = vibe_gate.heavy_dependencies(files) if _is_react_files(files) else []
 
             # Deterministic safety net: catch imports that don't resolve to any file the model
             # actually produced (typo, renamed/forgotten file) BEFORE marking the version "ready".
@@ -4677,7 +4889,7 @@ async def generate_project_code_stream(
                 },
                 artifact_manifest_json={},
                 prompt_message_id=prompt_message_id,
-                build_status="needs_review" if broken_imports_unresolved else "ready",
+                build_status="needs_review" if (broken_imports_unresolved or gate_remaining) else "ready",
                 review_status="pending",
                 created_by_actor_type="agent",
             )
@@ -4700,6 +4912,17 @@ async def generate_project_code_stream(
                     role="assistant",
                     content=f"Attenzione: alcuni import non si risolvono e potrebbero rompere l'anteprima ({broken_summary}). Riprova la richiesta o descrivi meglio cosa serve in quei file.",
                     metadata_json={"kind": "import_warning", "version_id": str(new_version_id), "broken_imports": broken_imports_unresolved[:10]},
+                ))
+
+            if gate_remaining:
+                gate_summary = "; ".join(i.describe() for i in gate_remaining[:4])
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Controllo build",
+                    role="assistant",
+                    content=f"Il controllo di build segnala ancora problemi che potrebbero rompere l'anteprima: {gate_summary}. Se l'anteprima non parte, chiedi una correzione.",
+                    metadata_json={"kind": "build_warning", "version_id": str(new_version_id), "issues": [i.to_dict() for i in gate_remaining[:10]]},
                 ))
 
             if reasoning_text:
@@ -4771,7 +4994,9 @@ async def generate_project_code_stream(
                 "summary": summary,
                 "version_id": str(new_version_id),
                 "version_number": new_version_number,
-                "needs_review": bool(broken_imports_unresolved),
+                "needs_review": bool(broken_imports_unresolved or gate_remaining),
+                "gate": {"ran": gate_ran, "repaired": sorted(set(gate_repairs)), "remaining": [i.to_dict() for i in gate_remaining[:10]]},
+                "heavy_deps": heavy_deps,
                 "fix": is_fix,
                 "dropped_packages": dropped_packages,
                 "patches": {"applied": patch_report["applied"], "repaired": patch_report["repaired"], "failed": patch_report["failed"]},

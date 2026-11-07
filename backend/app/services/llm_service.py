@@ -429,19 +429,48 @@ class LLMService:
                            prompt_tokens=usage.prompt_tokens if usage else 0,
                            completion_tokens=usage.completion_tokens if usage else 0)
 
-    async def _stream_openrouter(self, messages, system_prompt, model, temperature, max_tokens):
+    async def _stream_openrouter(self, messages, system_prompt, model, temperature, max_tokens, reasoning_sink=None, thinking=None):
         if not self.openrouter_client:
             raise RuntimeError("OPENROUTER_API_KEY non configurata nel file .env")
         formatted = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + messages
-        stream = await self.openrouter_client.chat.completions.create(
-            model=model, messages=formatted, temperature=temperature, max_tokens=max_tokens, stream=True,
-        )
+        # Reasoning models on OpenRouter (GLM, Qwen, ...) spend max_tokens on hidden thinking and can
+        # finish with zero answer text. thinking=False asks for minimal effort (some models refuse to
+        # fully disable reasoning, so "low" rather than "enabled: false").
+        extras = [{"reasoning": {"effort": "low"}}, {}] if thinking is False else [{}]
+        stream = None
+        for i, extra in enumerate(extras):
+            try:
+                stream = await self.openrouter_client.chat.completions.create(
+                    model=model, messages=formatted, temperature=temperature, max_tokens=max_tokens,
+                    stream=True, **({"extra_body": extra} if extra else {}),
+                )
+                break
+            except Exception as exc:
+                if i == len(extras) - 1:
+                    raise
+                logger.info("openrouter %s rejected reasoning option (%s); retrying without", model, exc)
+        emitted = False
+        finish = None
         try:
             async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if choice.finish_reason:
+                    finish = choice.finish_reason
+                reasoning = getattr(delta, "reasoning", None) or (getattr(delta, "model_extra", None) or {}).get("reasoning")
+                if reasoning and reasoning_sink:
+                    reasoning_sink(reasoning)
+                if delta.content:
+                    emitted = True
+                    yield delta.content
         finally:
             await stream.close()
+        if finish == "length":
+            logger.warning("openrouter %s hit max_tokens (emitted_text=%s)", model, emitted)
+        if not emitted:
+            raise RuntimeError(f"OpenRouter {model} returned no answer text (finish_reason={finish}); the reasoning budget probably consumed max_tokens")
 
     async def _resolve_ollama_model_name(self, model: str) -> str:
         """Resolve short model aliases (e.g. mistral-nemo) to installed Ollama tags."""
@@ -509,7 +538,7 @@ class LLMService:
             async for chunk in self._stream_gemini(messages, system_prompt, model, temperature, max_tokens):
                 yield chunk
         elif provider == "openrouter":
-            async for chunk in self._stream_openrouter(messages, system_prompt, model, temperature, max_tokens):
+            async for chunk in self._stream_openrouter(messages, system_prompt, model, temperature, max_tokens, reasoning_sink, thinking):
                 yield chunk
         else:
             response = await self.generate(messages, system_prompt, provider, model, temperature, max_tokens)

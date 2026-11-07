@@ -1,3 +1,4 @@
+import { useCoverUrl } from '@/components/voice-lab/AudioCover'
 import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
 import { voiceLabApi } from '@/lib/voiceLab'
 import { SectionIllustration } from '@/design/primitives/SectionHeading'
@@ -168,7 +169,7 @@ export function DriveBrowser({ mode }: { mode: Mode }) {
   // ── Actions ──────────────────────────────────────────────────────────────
   const open = (item: DriveItem) => {
     if (inTrash) return
-    if (categoryOf(item) === 'audio') { music.playFile({ id: item.id, title: item.name, mime_type: item.mime_type || undefined }); return }
+    if (categoryOf(item) === 'audio') { music.playFile({ id: item.id, title: item.name, mime_type: item.mime_type || undefined, cover_url: item.cover_url }); return }
     if (item.source_type === 'voice_playlist' && item.source_id) {
       void voiceLabApi.playlist(item.source_id).then(({data}) => music.listen(data)).catch(fail(tl('Playlist non disponibile')))
       return
@@ -755,6 +756,8 @@ function ItemIcon({ item, size }: { item: DriveItem; size: 'sm' | 'lg' }) {
   const Icon = iconFor(item)
   // Automatic class/session folders are tinted violet, like in the sidebar tree.
   const tone = item.kind === 'folder' && item.is_system ? 'var(--logo-violet)' : CATEGORY_META[categoryOf(item)].tone
+  const cover = useCoverUrl(item.cover_url)
+  if (cover) return <img src={cover} alt="" draggable={false} className={`shrink-0 object-cover ${size === 'lg' ? 'h-full w-full' : 'h-6 w-6 rounded-md'}`} />
   return <Icon className={size === 'lg' ? 'h-10 w-10' : 'h-5 w-5 shrink-0'} style={{ color: tone }} strokeWidth={size === 'lg' ? 1.5 : 2} />
 }
 

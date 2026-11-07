@@ -722,7 +722,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className="flex flex-1 overflow-hidden md:pl-16 xl:pl-0">
         {/* Main Content Area */}
-        <main className={`min-h-0 min-w-0 relative overflow-hidden flex flex-col ${activeModule === 'chatbot' ? 'hidden' : 'flex-1'}`}>
+        <main className={`min-h-0 min-w-0 relative overflow-hidden flex flex-col ${activeModule === 'chatbot' ? 'hidden' : 'ml-auto max-w-[calc(1800px+2*var(--ds-frame-gutter))] flex-1'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -823,7 +823,7 @@ export default function StudentDashboard() {
         {sessionInfo ? (
           <div
             ref={chatColumnRef}
-            className={`hidden h-full flex-shrink-0 overflow-hidden bg-transparent box-border lg:block ${
+            className={`hidden h-full flex-shrink-0 mr-auto overflow-hidden bg-transparent box-border lg:block ${
               isResizingChat ? '' : 'transition-[width,opacity] duration-200'
             } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0, height: '100%' }}

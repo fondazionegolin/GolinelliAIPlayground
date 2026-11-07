@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 from app.models.enums import CreditTransactionType, LimitLevel, CreditRequestStatus, InvitationStatus
 
@@ -108,11 +108,14 @@ class PlatformInvitationCreate(BaseModel):
     school: Optional[str] = None
     group_tag: Optional[str] = None
     custom_message: Optional[str] = None
+    # Fixed licence end (inclusive). Omitted = standard 12 months, auto-renewing.
+    license_expires_on: Optional[date] = None
 
 class BulkInvitationCreate(BaseModel):
     teachers: List["PlatformInvitationCreate"]
     group_tag: Optional[str] = None
     custom_message: Optional[str] = None
+    license_expires_on: Optional[date] = None
 
 class PlatformInvitationResponse(BaseModel):
     id: UUID

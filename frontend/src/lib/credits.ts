@@ -26,3 +26,14 @@ export function formatInternalCredits(internal: number | null | undefined, maxDe
 export function formatCredits(credits: number | null | undefined, maxDecimals = 1): string {
   return `${formatCreditAmount(credits, maxDecimals)} cr.`
 }
+
+/** Same rate as backend `core/pricing.USD_TO_EUR`. Provider list prices are in USD; the platform only shows credits. */
+export const USD_TO_EUR = 0.86
+export const usdToCredits = (usd: number | null | undefined): number | null =>
+  usd === null || usd === undefined ? null : Math.round(Number(usd) * USD_TO_EUR * CREDITS_PER_UNIT * 100) / 100
+export const creditsToUsd = (credits: number): number => Math.round((credits / (USD_TO_EUR * CREDITS_PER_UNIT)) * 1e6) / 1e6
+/** «43 cr.» for a provider price given in USD. */
+export const priceInCredits = (usd: number | null | undefined): string => {
+  const credits = usdToCredits(usd)
+  return credits === null ? '—' : formatCredits(credits, 2)
+}

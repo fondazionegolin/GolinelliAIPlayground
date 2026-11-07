@@ -8,11 +8,12 @@ import {
 } from '@/components/icons'
 import {
   DEFAULT_THEME_OPTIONS, LAYOUT_FIELDS, LAYOUT_LABELS, STYLE_QUESTIONS, emptyOutlineSlide, generateDeckImages, optionsFromAnswers,
-  pendingImageSlots, presentationStudioApi, rankThemes, withImage,
-  type OutlineSlide, type RenderedDeck, type ResolvedTheme, type StudioBrief, type StudioLayout, type StudioOutline,
+  pendingImageSlots, presentationStudioApi, rankThemes, streamOutline, withImage,
+  type OutlineSlide, type OutlineStreamEvent, type RenderedDeck, type ResolvedTheme, type StudioBrief, type StudioLayout, type StudioOutline,
   type StudioSlide, type StyleAnswers, type ThemeOptions,
 } from '@/lib/presentationStudio'
 import { StudioSlidePreview } from './StudioSlidePreview'
+import { cancelJob, findActiveJob } from '@/lib/backgroundJobs'
 import { tl } from '@/i18n/tl'
 
 type Step = 'brief' | 'outline' | 'style'
@@ -42,6 +43,11 @@ const EMPTY_BRIEF: StudioBrief = {
   topic: '', audience: '', goal: '', tone: '', slide_count: 8, density: 'bilanciata', source_text: '',
 }
 
+/** Live state of the multi-agent outline generation (read → plan → write slides in parallel). */
+type GenProgress = { label: string; value: number; plan: { layout: StudioLayout; title: string }[]; written: Record<number, string> }
+const START_PROGRESS: GenProgress = { label: tl("Avvio…"), value: 0.01, plan: [], written: {} }
+const AUTO_SLIDES_FROM_CHARS = 8000
+
 type Props = {
   onClose: () => void
   onCreate: (deck: RenderedDeck) => void
@@ -70,6 +76,38 @@ const slideProblems = (slide: OutlineSlide): string[] => {
   return problems
 }
 
+function GenerationProgress({ progress, onStop }: { progress: GenProgress; onStop: () => void }) {
+  return (
+    <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm" role="status" aria-live="polite">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+        <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{progress.label}</p>
+        <button type="button" onClick={onStop} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100">{tl("Ferma")}</button>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-500" style={{ width: `${Math.round(Math.min(1, progress.value) * 100)}%` }} />
+      </div>
+      {progress.plan.length > 0 && (
+        <ol className="mt-3 grid gap-1 sm:grid-cols-2">
+          {progress.plan.map((item, index) => {
+            const written = progress.written[index]
+            return (
+              <li key={index} className="flex items-center gap-2 text-xs">
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${written !== undefined ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                  {written !== undefined ? <Check className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}
+                </span>
+                <span className={`min-w-0 flex-1 truncate ${written !== undefined ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>{written || item.title}</span>
+                <span className="shrink-0 text-[10px] text-slate-400">{LAYOUT_LABELS[item.layout]}</span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+      <p className="mt-3 text-xs text-slate-500">{tl("L'IA legge il materiale, progetta struttura e layout e scrive le slide in parallelo. Puoi anche uscire: la generazione continua in background.")}</p>
+    </div>
+  )
+}
+
 export default function PresentationStudio({ onClose, onCreate, onBlank, initialTopic }: Props) {
   const { toast } = useToast()
   const restored = useMemo(() => {
@@ -87,6 +125,8 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
   const [reviseText, setReviseText] = useState('')
   const [slideInstruction, setSlideInstruction] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const jobIdRef = useRef<string | null>(null)
+  const [progress, setProgress] = useState<GenProgress | null>(null)
 
   // Style step
   const [themes, setThemes] = useState<ResolvedTheme[]>([])
@@ -115,32 +155,90 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
 
   // ── Outline (AI) ──────────────────────────────────────────────────────────
   const modelChoice = useScopedModelChoice('documents')
+
+  /** Apply the events of the streamed pipeline (a new run or the replay of a running job). */
+  const applyStreamEvent = (event: OutlineStreamEvent, mode: 'create' | 'revise', previous: StudioOutline | null) => {
+    if (event.type === 'phase') {
+      setProgress(current => ({ ...(current || START_PROGRESS), label: event.label, value: event.progress }))
+    } else if (event.type === 'plan') {
+      setProgress(current => ({
+        ...(current || START_PROGRESS), label: event.label, value: event.progress,
+        plan: event.slides.map(item => ({ layout: item.layout, title: item.title })), written: {},
+      }))
+    } else if (event.type === 'slide') {
+      setProgress(current => current && ({
+        ...current, label: event.label, value: event.progress,
+        written: { ...current.written, [event.index]: event.slide.title || event.slide.stat_value || event.slide.quote || '' },
+      }))
+    } else if (event.type === 'done') {
+      if (previous) setOutlineHistory(history => [...history.slice(-9), previous])
+      setOutline(event.outline)
+      if (mode === 'create') { setSelectedIndex(0); setStep('outline') }
+      else { setReviseText(''); setSelectedIndex(index => Math.min(index, event.outline.slides.length - 1)) }
+      if (event.degraded > 0) {
+        toast({ title: tl("{0} slide da rivedere", event.degraded), description: tl("Non sono riuscito a svilupparle del tutto: trovi solo uno schizzo da completare o riscrivere con l'IA.") })
+      }
+    }
+  }
+
   const runOutline = async (mode: 'create' | 'revise' | 'slide') => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setBusy(mode === 'create' ? 'outline' : mode)
     try {
-      const response = await presentationStudioApi.outline({
-        brief,
-        mode,
-        outline: mode === 'create' ? undefined : outline || undefined,
-        instruction: mode === 'revise' ? reviseText : mode === 'slide' ? slideInstruction : undefined,
-        slide_index: mode === 'slide' ? selectedIndex : undefined,
-        ...modelChoice.selection,
-      }, controller.signal)
-      if (outline) setOutlineHistory(history => [...history.slice(-9), outline])
-      setOutline(response.data)
-      if (mode === 'create') { setSelectedIndex(0); setStep('outline') }
-      if (mode === 'revise') { setReviseText(''); setSelectedIndex(index => Math.min(index, response.data.slides.length - 1)) }
-      if (mode === 'slide') setSlideInstruction('')
+      if (mode === 'slide') {
+        const response = await presentationStudioApi.outline({
+          brief, mode, outline: outline || undefined, instruction: slideInstruction, slide_index: selectedIndex, ...modelChoice.selection,
+        }, controller.signal)
+        if (outline) setOutlineHistory(history => [...history.slice(-9), outline])
+        setOutline(response.data)
+        setSlideInstruction('')
+        return
+      }
+      setProgress(START_PROGRESS)
+      const previous = outline
+      await streamOutline(
+        { brief, mode, outline: mode === 'revise' ? outline || undefined : undefined, instruction: mode === 'revise' ? reviseText : undefined, ...modelChoice.selection },
+        event => applyStreamEvent(event, mode, previous),
+        { signal: controller.signal, onJobId: id => { jobIdRef.current = id } },
+      )
     } catch (error: any) {
-      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return
-      toast({ title: tl("Scaletta non generata"), description: errorMessage(error, tl("Riprova tra poco.")), variant: 'destructive' })
+      if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return
+      toast({ title: tl("Scaletta non generata"), description: error?.message || errorMessage(error, tl("Riprova tra poco.")), variant: 'destructive' })
     } finally {
       setBusy(null)
+      setProgress(null)
+      jobIdRef.current = null
     }
   }
+
+  const stopOutline = () => {
+    const jobId = jobIdRef.current
+    abortRef.current?.abort()
+    void cancelJob(jobId)
+  }
+
+  // Back on the Studio while a generation is still running server-side: replay it and keep following.
+  useEffect(() => {
+    if (initialTopic) return
+    let cancelled = false
+    void findActiveJob('presentation_outline').then(async job => {
+      if (!job || cancelled) return
+      const controller = new AbortController()
+      abortRef.current = controller
+      setBusy('outline'); setProgress(START_PROGRESS)
+      try {
+        await streamOutline({ brief, mode: 'create' }, event => applyStreamEvent(event, 'create', null), { signal: controller.signal, replayJobId: job.id, onJobId: id => { jobIdRef.current = id } })
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') toast({ title: tl("Scaletta non generata"), description: error?.message || tl("Riprova tra poco."), variant: 'destructive' })
+      } finally {
+        setBusy(null); setProgress(null); jobIdRef.current = null
+      }
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const undoOutline = () => {
     const previous = outlineHistory[outlineHistory.length - 1]
@@ -333,7 +431,12 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               <textarea
                 id="studio-source"
                 value={brief.source_text}
-                onChange={(event) => setBrief({ ...brief, source_text: event.target.value.slice(0, 60000) })}
+                onChange={(event) => {
+                  const source_text = event.target.value.slice(0, 200000)
+                  // A long text pasted over the default count: let the AI size the deck from the material.
+                  const auto = source_text.length > AUTO_SLIDES_FROM_CHARS && brief.source_text.length <= AUTO_SLIDES_FROM_CHARS && brief.slide_count === EMPTY_BRIEF.slide_count
+                  setBrief({ ...brief, source_text, slide_count: auto ? 0 : brief.slide_count })
+                }}
                 rows={5}
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
@@ -344,8 +447,12 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
             </section>
             <section className="grid gap-5 sm:grid-cols-2">
               <div>
-                <span className="text-sm font-bold text-slate-900">{tl("Numero di slide:")} {brief.slide_count}</span>
-                <input type="range" min={4} max={16} value={brief.slide_count} onChange={(event) => setBrief({ ...brief, slide_count: Number(event.target.value) })} className="mt-3 w-full accent-indigo-600" aria-label={tl("Numero di slide")} />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-slate-900">{tl("Numero di slide:")} {brief.slide_count === 0 ? tl("lo decide l'IA") : brief.slide_count}</span>
+                  <button type="button" onClick={() => setBrief({ ...brief, slide_count: brief.slide_count === 0 ? EMPTY_BRIEF.slide_count : 0 })}
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${brief.slide_count === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tl("Automatico")}</button>
+                </div>
+                <input type="range" min={4} max={20} value={brief.slide_count || 8} disabled={brief.slide_count === 0} onChange={(event) => setBrief({ ...brief, slide_count: Number(event.target.value) })} className="mt-3 w-full accent-indigo-600 disabled:opacity-40" aria-label={tl("Numero di slide")} />
               </div>
               <div>
                 <span className="text-sm font-bold text-slate-900">{tl("Quanto testo per slide")}</span>
@@ -368,12 +475,12 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               {onBlank && <button type="button" onClick={onBlank} className="mr-auto text-xs font-semibold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">{tl("Inizia da una presentazione vuota")}</button>}
               {outline && <Button tone="neutral" surface="soft" onClick={() => setStep('outline')}>{tl("Torna alla scaletta")}</Button>}
               <ScopedModelSelect scope="documents" value={modelChoice.value} onChange={modelChoice.setValue} className="w-56" label={tl("Modello per la scaletta")} />
-              <Button tone="accent" disabled={brief.topic.trim().length < 3 || busy === 'outline'} onClick={() => void runOutline('create')}>
+              <Button tone="accent" disabled={(brief.topic.trim().length < 3 && brief.source_text.trim().length < 20) || busy === 'outline'} onClick={() => void runOutline('create')}>
                 {busy === 'outline' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
                 {busy === 'outline' ? tl("Scrivo la scaletta…") : outline ? tl("Riscrivi la scaletta") : tl("Scrivi la scaletta")}
               </Button>
             </div>
-            {busy === 'outline' && <p className="text-right text-xs text-slate-500">{tl("Progetto i contenuti slide per slide: di solito servono 20–40 secondi.")}</p>}
+            {busy === 'outline' && progress && <GenerationProgress progress={progress} onStop={stopOutline} />}
           </div>
         </div>
       )}

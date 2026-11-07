@@ -113,6 +113,7 @@ class PlatformInvitation(Base):
     token = Column(String, unique=True, nullable=False, index=True)
     group_tag = Column(String(120), nullable=True)       # e.g. "sperimentazione torino"
     custom_message = Column(String, nullable=True)       # admin note shown in invite email
+    license_expires_at = Column(DateTime(timezone=True), nullable=True)  # fixed end date chosen at invite time
 
     # Kept as plain string for compatibility with legacy DB schema where this
     # column is VARCHAR (not PostgreSQL ENUM).

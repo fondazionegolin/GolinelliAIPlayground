@@ -32,6 +32,14 @@ class User(Base):
     support_chat_system_prompt = Column(Text, nullable=True)
     # Custom system prompt for teacher's own AI assistant (overrides default if set)
     is_school_owner = Column(Boolean, default=False, nullable=False, server_default="false")
+
+    # ── Licenza ──────────────────────────────────────────────────────────────
+    # expires_at NULL = nessuna scadenza. Con auto_renew la scadenza avanza di term_months alla volta;
+    # una data fissata dall'admin disattiva il rinnovo automatico.
+    license_started_at = Column(DateTime(timezone=True), nullable=True)
+    license_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    license_auto_renew = Column(Boolean, nullable=False, default=True, server_default="true")
+    license_term_months = Column(Integer, nullable=False, default=12, server_default="12")
     # True for the primary contact of a SCHOOL tenant — can invite colleagues
 
     # Relationships

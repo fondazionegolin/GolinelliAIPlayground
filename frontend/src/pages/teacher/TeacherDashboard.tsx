@@ -1,4 +1,5 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
+import BackgroundJobsIndicator from '@/components/BackgroundJobsIndicator'
 import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -294,7 +295,7 @@ export default function TeacherDashboard() {
 
         {/* ── Session Context Strip (left, desktop only) ── */}
         {!isMobile && currentSession && (
-          <div className="flex-shrink-0 flex items-center pl-2 py-2 z-10">
+          <div className="flex-shrink-0 flex items-center pl-2 py-2 z-10 mr-auto">
           <div
             className="flex flex-col items-center py-3 px-1.5 gap-1 rounded-2xl shadow-lg border backdrop-blur-md"
             style={{
@@ -436,7 +437,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : 'flex-1'} ${isMobile ? (selfScrollingRoute ? 'overflow-hidden flex flex-col' : 'overflow-y-auto') : 'overflow-hidden flex flex-col'}`}>
+        <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : `flex-1 ${isMobile ? '' : `max-w-[calc(1800px+2*var(--ds-frame-gutter))] ${currentSession ? '' : 'ml-auto'}`}`} ${isMobile ? (selfScrollingRoute ? 'overflow-hidden flex flex-col' : 'overflow-y-auto') : 'overflow-hidden flex flex-col'}`}>
           {showMobileHome && (
             <MobileTeacherHome
               teacherName={teacherProfile?.name}
@@ -535,7 +536,7 @@ export default function TeacherDashboard() {
         {!isMobile && (
           <div
             ref={chatColumnRef}
-            className={`h-full flex-shrink-0 overflow-hidden bg-transparent box-border ${
+            className={`h-full flex-shrink-0 mr-auto overflow-hidden bg-transparent box-border ${
               isResizingChat ? '' : 'transition-[width,opacity] duration-200'
             } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0 }}
@@ -654,7 +655,7 @@ function TeacherMobileNavigation({
               <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
             </button>
           )}
-          <div className="ml-auto"><NavbarMusicButton sessionId={currentSession?.id} /></div>
+          <div className="ml-auto flex items-center gap-1"><BackgroundJobsIndicator accentColor={accentColor} /><NavbarMusicButton sessionId={currentSession?.id} /></div>
           <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
             <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
             <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>

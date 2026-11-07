@@ -8,6 +8,7 @@ export type DriveRole = 'owner' | 'editor' | 'viewer'
 
 export interface DriveItem {
   id: string
+  cover_url?: string | null
   parent_id: string | null
   kind: 'folder' | 'file' | 'link'
   name: string

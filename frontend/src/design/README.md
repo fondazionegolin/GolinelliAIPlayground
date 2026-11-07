@@ -10,6 +10,7 @@ The following choices were explicitly approved by the product owner. Preserve th
 | --- | --- | --- |
 | Input, textarea, native select and searchable select | Flat, opaque, slightly cool grey; rounded corners; no border, outline or inset shadow at rest. Strong neutral text and readable grey placeholders. No pink, violet or yellow field fill. | `Input`, `Textarea`, `Select`, `SearchableSelect`; `ds-field` and `--ds-field-*` in `foundation.css` / `index.css`. Current resting fill: light `#f1f3f5`, dark `#191b1e`; radius `18px`. |
 | Buttons | Preserve the existing rounded material/pill shapes, spacing and shared variants. Do not add local gradients, borders, pressed edges, inset underlines or custom shadows. | `Button` / `IconButton` from `@/design`; shared `--button-*` and `--selection-*` tokens. |
+| Audio transport over cover art | Contrasting circular glass buttons: dark frosted secondary controls with white icons, larger luminous play/pause with dark ink, soft reflections and visible keyboard focus. Keep the same contrast in both themes and retain the glass surface for disabled controls with muted icons. | `IconButton surface="glass"`; `tone="neutral"` for mute/skip and `tone="accent"` for play/pause. Shared `--button-glass-*` tokens and `ds-media-button` in `index.css`; 44px secondary / 56px primary. This is the approved exception for glass blur and reflections over artwork. |
 | Switches and segmented selectors | Match the navbar: a shared rounded group and a flat selected item. Selected items have no added lower edge or pressed shadow. | `buildAccentNavClusterStyle()` for the group; neutral ghost `Button`s and `ds-selected` for the active item. Preserve keyboard focus and `aria-pressed` / `aria-current`. |
 | Dropdowns and menus | Match the same flat rounded control. Popup surfaces are opaque, readable, rounded and use only the shared popup shadow. | Native `Select` or searchable `SearchableSelect`; `ds-popover` and `--ds-popover-solid`. Preserve search, keyboard navigation, focus and selection semantics. |
 | Sliders (`input[type=range]`) | Flat and ethereal: 4px translucent violet track, translucent filled part, small flat round thumb; no border, outline or shadow. | Global rule at the end of `index.css`; native inputs inherit it, opt out with `data-field-appearance="plain"`. |
@@ -17,6 +18,10 @@ The following choices were explicitly approved by the product owner. Preserve th
 | Page identity | An illustration to the left of the combined title and subtitle, using the same artwork as the navigation. Apply this also to detail/editor headers. | `SectionHeading`, or `SectionIllustration` beside an editable title; source of truth: `components/NavSectionArt.tsx`. |
 
 Authored document, slide, canvas and code content keeps its own colors. UI changes must remain legible in both themes and at mobile widths. Focus and validation feedback remain meaningful exceptions to the resting borderless appearance.
+
+## Admin panel
+
+The admin shell (`frontend/src/pages/admin/admin.css`) is a denser variant of the product UI. By explicit request, admin tables carry hairline column dividers (`th + th`, `td + td`) and admin native fields share the flat `--ds-field-*` look. Admin tab strips (`.admin-tabs .admin-tab`) must keep a real selector specificity: `:where()` rules lose to the browser button reset and flatten the tabs. Keep admin text at 11px or above.
 
 ## Section illustrations
 
@@ -39,7 +44,11 @@ import { SectionHeading, SectionIllustration } from '@/design'
 
 The navbar widget is the single persistent audio player for authenticated teachers and students. Double-clicking an audio file in Files or pressing play in Audio Lab, a chat attachment or a podcast starts that same player and opens its popup. Use `useBackgroundAudio().playFile(...)`, `playTracks(...)` or `listen(...)`; feature components must not mount another audio element for ordinary listening. Video editing, voice recording and live calls keep their own transport.
 
-Keep the popup compact and focused on listening: current track, play/pause, previous/next when there is a queue, local mute and progress. Selecting «Riproduci un brano» or «Carica una playlist» starts playback immediately. Playlist names, saving, reordering, sharing and class broadcast configuration belong in the dedicated playlist section, not the navbar popup. Playback continues after closing the popup or changing page.
+Keep the popup a compact two-column widget (stacked on mobile): left the cover with progress and transport (mute, previous, play/pause, next); right the playlist dropdown («Tutti i brani» or a playlist) above the track list. Clicking a track or choosing a playlist starts playback immediately. Playlist names, saving, reordering, sharing and class broadcast configuration belong in the dedicated playlist section, not the navbar popup. Playback continues after closing the popup or changing page.
+
+The teacher popup offers «Crea musica» with a prompt and duration instead of a computer-upload section. Use the shared `MusicPromptEditor` in the popup and Audio Lab: genre, instrument, rhythm/BPM and timbre terms have semantic text colors and clickable affinity suggestions. Keep its field surface and focus consistent with shared fields. Generated tracks appear in the music workspace library, including actions to create missing cover art. Album art is always square, both in stored images (center crop) and every cover display. Music generation continues as a background job when the popup closes.
+
+Keep Audio Lab essential: prompt, title/duration, cover, artist credit and listening are the primary content. Put generation options, cover editing and secondary track actions behind compact disclosures. Avoid always-visible legends, prompt counters, repeated descriptions and credit explanations. Keyword alternatives open as a vertical dropdown anchored directly to the selected word; preserve arrow-key navigation, Escape, outside dismissal and viewport clamping. Track titles can be renamed from the library and result; the original artist credit comes from the author’s signed-in profile and follows the track into playlists and the navbar.
 
 ## Rules
 
@@ -50,6 +59,7 @@ Keep the popup compact and focused on listening: current track, play/pause, prev
 - Secondary UI text uses muted violet in light mode and rose-violet in dark mode. Dark-mode legacy `text-blue-*`, `text-sky-*` and `text-cyan-*` classes follow that ink palette; logo fills and authored document colors keep their palette.
 - Product pages use `ui-card`, `ui-card-interactive`, `ui-search`, `ui-cta`, and `ui-segment`. These utilities keep legacy feature screens aligned while they migrate to the React primitives.
 - Do not use backdrop blur for ordinary chrome. Transparency must remain slight enough to preserve contrast without glassmorphism.
+- Audio transport over cover art uses the approved shared `surface="glass"` exception above; keep it scoped to media controls.
 - Use primitives exported from `@/design` for buttons, cards, inputs, badges, dialogs, tabs, and spinners.
 - Do not copy primary button styles into feature components. Use `<Button tone="accent" surface="solid">`.
 - Do not introduce new dominant UI colors in feature screens. Use the logo palette:

@@ -1,6 +1,10 @@
 import api from '@/lib/api'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { tl } from '@/i18n/tl'
+import { getApiAuthHeaders } from '@/lib/api'
+import { LANG_STORAGE_KEY, normalizeLanguageCode } from '@/i18n/i18n'
+import { getResponseLength } from '@/lib/responseLength'
+import { followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backgroundJobs'
 
 /** Presentation Studio: outline (AI) → style (curated templates) → deterministic render.
  * See backend/app/services/presentation_studio.py. */
@@ -137,6 +141,59 @@ export const emptyOutlineSlide = (layout: StudioLayout = 'title_bullets'): Outli
 })
 
 type Dims = { width: number; height: number }
+
+/** Events of the multi-agent outline pipeline (backend presentation_agents.py), NDJSON. */
+export type OutlineStreamEvent =
+  | { type: 'phase'; phase: 'read' | 'plan' | 'revise'; label: string; progress: number }
+  | { type: 'plan'; label: string; progress: number; title: string; slides: { index: number; layout: StudioLayout; title: string }[] }
+  | { type: 'slide'; index: number; slide: OutlineSlide; degraded: boolean; label: string; progress: number }
+  | { type: 'done'; progress: number; outline: StudioOutline; degraded: number }
+  | { type: 'error'; detail?: string; message?: string }
+
+export class OutlineStreamError extends Error {
+  constructor(message: string, readonly status?: number) { super(message) }
+}
+
+const streamHeaders = (): Record<string, string> => {
+  let bearer: Record<string, string> = {}
+  try {
+    const token = JSON.parse(localStorage.getItem('eduai-auth') || 'null')?.state?.accessToken
+    if (token) bearer = { Authorization: `Bearer ${token}` }
+  } catch { /* no teacher session */ }
+  const language = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
+  return {
+    'Content-Type': 'application/json', ...bearer, ...getApiAuthHeaders(),
+    'Accept-Language': language, 'X-App-Language': language, 'X-Response-Length': getResponseLength(),
+  }
+}
+
+/** Start (or, with `replayJobId`, re-attach to) the streamed outline job and feed every event to `onEvent`.
+ * The job keeps running server-side if the user leaves; the stream stays alive so proxies never time out. */
+export async function streamOutline(
+  data: { brief: StudioBrief; mode: 'create' | 'revise'; outline?: StudioOutline; instruction?: string; llm_provider?: string; llm_model?: string },
+  onEvent: (event: OutlineStreamEvent) => void,
+  opts: { signal?: AbortSignal; replayJobId?: string; onJobId?: (id: string) => void } = {},
+): Promise<void> {
+  const response = opts.replayJobId
+    ? await followJobStream(opts.replayJobId, opts.signal)
+    : await fetch('/api/v1/presentation-studio/outline-stream', {
+      method: 'POST', credentials: 'include', signal: opts.signal, headers: streamHeaders(), body: JSON.stringify(data),
+    })
+  if (!response.ok || !response.body) {
+    const body = await response.json().catch(() => null)
+    throw new OutlineStreamError(typeof body?.detail === 'string' ? body.detail : tl("Errore {0}", response.status), response.status)
+  }
+  const jobId = response.headers.get('X-Job-Id')
+  if (jobId) { opts.onJobId?.(jobId); notifyJobsChanged() }
+  let finished = false
+  await readEventStream(response, 'ndjson', (event) => {
+    if (event?.type === 'error') throw new OutlineStreamError(String(event.detail || event.message || tl("Errore")))
+    if (event?.type === 'done') finished = true
+    onEvent(event as OutlineStreamEvent)
+  })
+  notifyJobsChanged()
+  if (!finished) throw new OutlineStreamError(tl("Connessione interrotta: la generazione continua in background, riprova a riaprire tra poco."))
+}
 
 export const presentationStudioApi = {
   templates: () =>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { toCredits, fromCredits, formatCreditAmount } from '@/lib/credits'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi } from '@/lib/api'
+import { adminApi, type LicenseChange } from '@/lib/api'
+import { LicenseBadge, LicenseDialog, type LicenseInfo } from '@/components/admin/LicenseDialog'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Pencil, Check, X, ChevronDown, ChevronUp,
@@ -31,6 +32,7 @@ interface Tenant {
   teacher_monthly_cap: number
   mechanographic_code?: string | null
   registry_verified?: boolean
+  license?: LicenseInfo
 }
 
 interface EditLimitsState {
@@ -95,6 +97,12 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
   const { toast } = useToast()
   const isSchool = tenant.tenant_type === 'SCHOOL'
 
+  const [licenseOpen, setLicenseOpen] = useState(false)
+  const licenseMutation = useMutation({
+    mutationFn: (change: LicenseChange) => adminApi.setTenantLicense(tenant.id, change),
+    onSuccess: () => { toast({ title: tl("Licenza dell'istituto aggiornata") }); setLicenseOpen(false); onRefresh() },
+    onError: (error: any) => toast({ title: tl("Errore salvataggio"), description: error.response?.data?.detail, variant: 'destructive' }),
+  })
   const saveMutation = useMutation({
     mutationFn: () => adminApi.updateTenantLimits(tenant.id, {
       max_teachers: parseInt(limits.max_teachers) || undefined,
@@ -145,11 +153,19 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
             {!isSchool && <LimitsBadge label={tl("crediti docente/mese")} value={formatCreditAmount(toCredits(tenant.teacher_monthly_cap))} />}
           </div>
         </div>
+        <button type="button" className="group flex flex-shrink-0 items-center gap-1.5 text-left" title={tl("Modifica scadenza della licenza dell'istituto")}
+          onClick={(e) => { e.stopPropagation(); setLicenseOpen(true) }}>
+          <LicenseBadge license={tenant.license} />
+          <Pencil className="h-3 w-3 text-slate-300 group-hover:text-slate-600" />
+        </button>
         <span className="flex-shrink-0 text-xs text-slate-500 tabular-nums">
           {new Date(tenant.created_at).toLocaleDateString('it-IT')}
         </span>
         {expanded ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />}
       </div>
+
+      <LicenseDialog open={licenseOpen} title={tl("Licenza di {0}", tenant.name)} subtitle={isSchool ? tl("Quando scade, tutti i docenti dell'istituto perdono l'accesso, anche se la loro licenza personale è ancora valida.") : undefined}
+        current={tenant.license} pending={licenseMutation.isPending} onClose={() => setLicenseOpen(false)} onSubmit={change => licenseMutation.mutate(change)} />
 
       {/* Expanded: limit editor */}
       {expanded && (

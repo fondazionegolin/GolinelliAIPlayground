@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File as UploadField, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +21,9 @@ from app.models.voice_lab import VoiceLabItem
 from app.models.file import File
 from app.models.drive import DriveItem
 from app.models.enums import OwnerType, Scope
-from app.services import background_jobs, drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
+from app.services import audio_cover, background_jobs, drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
 from app.services.credit_service import credit_service
+from app.services.audio_library import artist_name, rename_track
 
 router = APIRouter()
 Teacher = Annotated[User, Depends(get_current_teacher)]
@@ -51,6 +52,7 @@ class Generation(BaseModel):
     speed: float = Field(default=1, ge=0.7, le=1.2)
     seconds: int = Field(default=10, ge=1, le=600)
     instrumental: bool = True
+    cover: Literal["none", "ai"] = "none"
     diarize: bool = False
     remove_noise: bool = False
     dialogue: list[DialogueLine] = Field(default_factory=list, max_length=50)
@@ -89,14 +91,15 @@ class VoiceSave(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
 
-def serialize(item: VoiceLabItem, full: bool = False):
+def serialize(item: VoiceLabItem, full: bool = False, *, artist: str | None = None):
     details = item.details or {}
-    return {"id": str(item.id), "title": item.title, "kind": item.kind, "service": item.service,
+    return {"id": str(item.id), "title": item.title, "artist_name": details.get("artist_name") or artist, "kind": item.kind, "service": item.service,
             "voice_id": item.provider_id if item.kind == "voice" else None,
             "status": details.get("status", "ready"), "mime_type": item.mime_type,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "content_url": f"/api/v1/voice-lab/items/{item.id}/content" if item.storage_key else None,
-            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id", "credits", "pricing", "duration_seconds"}}}
+            "cover_url": f"/voice-lab/items/{item.id}/cover?v={details['cover_key'][-12:-4]}" if details.get("cover_key") else None,
+            "details": details if full else {k: v for k, v in details.items() if k in {"size_bytes", "characters", "status", "language", "requires_verification", "drive_item_id", "credits", "pricing", "duration_seconds", "text"}}}
 
 
 async def owned(db: AsyncSession, teacher: User, item_id: UUID, *, lock=False) -> VoiceLabItem:
@@ -133,7 +136,7 @@ async def save_blob(db, teacher, title, service, data: bytes, mime: str, ext: st
                      file_id=file_id, source_type="upload", mime_type=mime, size_bytes=len(data)))
     item = VoiceLabItem(id=item_id, tenant_id=teacher.tenant_id, owner_id=teacher.id, title=title, kind=kind,
                         service=service, provider_id=provider_id, storage_key=key, mime_type=mime,
-                        details={**details, "size_bytes": len(data), "drive_item_id": str(drive_id)})
+                        details={**details, "artist_name": artist_name(teacher), "size_bytes": len(data), "drive_item_id": str(drive_id)})
     db.add(item)
     await db.flush()
     return item
@@ -163,7 +166,7 @@ async def budget(db, teacher, characters=0):
 @router.get("/config")
 async def config(_: Teacher):
     return {"configured": bool(settings.ELEVENLABS_API_KEY), "default_model": settings.ELEVENLABS_TTS_MODEL,
-            "max_upload_mb": MAX_BYTES // (1024 * 1024), "output_formats": list(eleven.OUTPUT_FORMATS), "pricing_rates": billing.RATES, "usd_to_eur": billing.USD_TO_EUR, "pricing_source": billing.SOURCE}
+            "max_upload_mb": MAX_BYTES // (1024 * 1024), "output_formats": list(eleven.OUTPUT_FORMATS), "cover_credits": audio_cover.COVER_CREDITS, "pricing_rates": billing.RATES, "usd_to_eur": billing.USD_TO_EUR, "pricing_source": billing.SOURCE}
 
 
 class QuoteRequest(BaseModel):
@@ -192,12 +195,37 @@ async def models(_: Teacher):
 async def items(db: Db, teacher: Teacher):
     rows = (await db.execute(select(VoiceLabItem).where(VoiceLabItem.owner_id == teacher.id,
         VoiceLabItem.tenant_id == teacher.tenant_id).order_by(VoiceLabItem.created_at.desc()).limit(200))).scalars().all()
-    return [serialize(item) for item in rows]
+    return [serialize(item, artist=artist_name(teacher)) for item in rows]
 
 
 @router.get("/items/{item_id}")
 async def item_details(item_id: UUID, db: Db, teacher: Teacher):
-    return serialize(await owned(db, teacher, item_id), True)
+    return serialize(await owned(db, teacher, item_id), True, artist=artist_name(teacher))
+
+
+class TrackUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value):
+        value = value.strip()
+        if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("Inserisci un titolo valido")
+        return value
+
+
+@router.patch("/items/{item_id}")
+async def update_track(item_id: UUID, body: TrackUpdate, db: Db, teacher: Teacher):
+    item = await owned(db, teacher, item_id, lock=True)
+    if item.kind != "audio":
+        raise HTTPException(422, "Puoi rinominare solo gli audio salvati")
+    await rename_track(db, item, body.title)
+    item.details = {**(item.details or {}), "artist_name": (item.details or {}).get("artist_name") or artist_name(teacher)}
+    await db.commit()
+    await db.refresh(item)
+    return serialize(item, True, artist=artist_name(teacher))
 
 
 @router.get("/items/{item_id}/content")
@@ -213,6 +241,54 @@ async def item_content(item_id: UUID, db: Db, teacher: Teacher, download: bool =
     name = quote(f"{item.title}.{ext}", safe="")
     return Response(data, media_type=item.mime_type, headers={"Cache-Control": "private, no-store",
                     "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{name}"})
+
+
+def cover_key(item: VoiceLabItem) -> str:
+    key = (item.details or {}).get("cover_key")
+    if not key:
+        raise HTTPException(404, "Questo brano non ha una copertina")
+    return key
+
+
+@router.get("/items/{item_id}/cover")
+async def item_cover(item_id: UUID, db: Db, teacher: Teacher):
+    item = await owned(db, teacher, item_id)
+    try:
+        data = await asyncio.to_thread(drive.read_blob, cover_key(item))
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(404, "Copertina non disponibile") from exc
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/items/{item_id}/cover")
+async def upload_cover(item_id: UUID, db: Db, teacher: Teacher, file: UploadFile = UploadField(...)):
+    item = await owned(db, teacher, item_id, lock=True)
+    if item.kind != "audio":
+        raise HTTPException(422, "La copertina si può aggiungere solo a un audio")
+    data = await file.read(audio_cover.MAX_COVER_BYTES + 1)
+    if not data or len(data) > audio_cover.MAX_COVER_BYTES:
+        raise HTTPException(413, "L'immagine deve pesare al massimo 8 MB")
+    await audio_cover.store(db, teacher, item, data)
+    await db.refresh(item)
+    return serialize(item, True, artist=artist_name(teacher))
+
+
+@router.post("/items/{item_id}/cover/generate")
+async def generate_cover(item_id: UUID, db: Db, teacher: Teacher):
+    item = await owned(db, teacher, item_id, lock=True)
+    if item.kind != "audio":
+        raise HTTPException(422, "La copertina si può creare solo per un audio")
+    await audio_cover.generate(db, teacher, item)
+    await db.refresh(item)
+    return serialize(item, True, artist=artist_name(teacher))
+
+
+@router.delete("/items/{item_id}/cover")
+async def delete_cover(item_id: UUID, db: Db, teacher: Teacher):
+    item = await owned(db, teacher, item_id, lock=True)
+    await audio_cover.remove(db, item)
+    await db.refresh(item)
+    return serialize(item, True, artist=artist_name(teacher))
 
 
 @router.post("/generate")
@@ -285,7 +361,7 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
                     db.add(item)
                     await db.commit()
                     await db.refresh(item)
-                    return {"item": serialize(item, True)}
+                    return {"item": serialize(item, True, artist=artist_name(teacher))}
                 if body.action == "convert":
                     model = body.model_id or "eleven_multilingual_sts_v2"
                     catalogue = await eleven.models()
@@ -303,7 +379,7 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
                         "application/json", "json", {**details, **billing.details(tx, price), "transcript": result}, kind="transcript")
                     await db.commit()
                     await db.refresh(item)
-                    return {"item": serialize(item, True)}
+                    return {"item": serialize(item, True, artist=artist_name(teacher))}
             audio = eleven.audio(response)
             mime, ext = eleven.OUTPUT_FORMATS[body.output_format] if body.action in {"tts", "dialogue", "convert", "music", "sound_effects"} else ("audio/mpeg", "mp3")
             actual_mime = response.headers.get("content-type", "").split(";")[0]
@@ -317,7 +393,16 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
             item = await save_blob(db, teacher, body.title, body.action, audio, mime, ext, {**details, **billing.details(tx, price)})
             await db.commit()
             await db.refresh(item)
-            return {"item": serialize(item, True)}
+            if body.cover == "ai" and body.action == "music":
+                await ctx.progress(0.9, "Creo la copertina…", force=True)
+                try:
+                    await audio_cover.generate(db, teacher, item)
+                except HTTPException as exc:
+                    # The paid track is already saved: a missing cover must not fail the job.
+                    item.details = {**item.details, "cover_error": exc.detail}
+                    await db.commit()
+                await db.refresh(item)
+            return {"item": serialize(item, True, artist=artist_name(teacher))}
 
     job_id = await background_jobs.start_task_job(
         background_jobs.JobOwner(tenant_id=tenant_id, user_id=teacher_id),
@@ -347,7 +432,7 @@ async def clone_voice(db: Db, teacher: Teacher, name: Annotated[str, Form(min_le
     db.add(item)
     await db.commit()
     await db.refresh(item)
-    return serialize(item, True)
+    return serialize(item, True, artist=artist_name(teacher))
 
 
 @router.post("/voices/design")
@@ -379,7 +464,7 @@ async def design_voice(body: VoiceDesign, db: Db, teacher: Teacher):
     if not previews:
         raise HTTPException(502, "ElevenLabs non ha restituito anteprime")
     await db.commit()
-    return [serialize(item, True) for item in previews]
+    return [serialize(item, True, artist=artist_name(teacher)) for item in previews]
 
 
 @router.post("/voices/save")
@@ -397,7 +482,7 @@ async def save_voice(body: VoiceSave, db: Db, teacher: Teacher):
     preview.details = {**preview.details, "saved_voice_id": str(item.id)}
     await db.commit()
     await db.refresh(item)
-    return serialize(item, True)
+    return serialize(item, True, artist=artist_name(teacher))
 
 
 @router.delete("/voices/{item_id}")
@@ -415,7 +500,7 @@ async def delete_voice(item_id: UUID, db: Db, teacher: Teacher):
 async def refresh_dubbing(item_id: UUID, db: Db, teacher: Teacher):
     item = await owned(db, teacher, item_id, lock=True)
     if item.kind != "dubbing":
-        return serialize(item, True)
+        return serialize(item, True, artist=artist_name(teacher))
     job = (await eleven.request("GET", f"/v1/dubbing/{eleven.identifier(item.provider_id)}")).json()
     status = job.get("status")
     if status in {"dubbed", "completed"}:
@@ -437,7 +522,7 @@ async def refresh_dubbing(item_id: UUID, db: Db, teacher: Teacher):
         item.details = {**item.details, "status": "processing"}
     await db.commit()
     await db.refresh(item)
-    return serialize(item, True)
+    return serialize(item, True, artist=artist_name(teacher))
 
 
 from app.api.v1.endpoints.voice_playlists import router as playlists_router

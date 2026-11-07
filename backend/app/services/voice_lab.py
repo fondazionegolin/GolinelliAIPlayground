@@ -1,4 +1,5 @@
 """ElevenLabs audio tools. Fixed upstream, server-side key, no paid POST retries."""
+import logging
 import re
 import httpx
 from fastapi import HTTPException
@@ -12,6 +13,29 @@ def identifier(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", value):
         raise HTTPException(422, "Identificativo voce non valido")
     return value
+
+
+logger = logging.getLogger(__name__)
+PROMPT_REJECTED = {"bad_prompt", "bad_composition_plan", "content_against_policy", "copyright", "copyrighted_material"}
+
+
+def prompt_rejection(response: httpx.Response) -> HTTPException | None:
+    """ElevenLabs Music refuses prompts naming artists, songs or copyrighted material (HTTP 400)."""
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        return None
+    detail = detail if isinstance(detail, dict) else {}
+    status = str(detail.get("status") or detail.get("code") or "")
+    message = str(detail.get("message") or "").lower()
+    if status not in PROMPT_REJECTED and not any(word in message for word in ("copyright", "artist", "trademark", "lyrics")):
+        return None
+    suggestion = (detail.get("data") or {}).get("prompt_suggestion") if isinstance(detail.get("data"), dict) else None
+    text = ("ElevenLabs ha rifiutato la descrizione: non si possono citare artisti, band, canzoni o altri contenuti protetti da copyright. "
+            "Descrivi invece genere, strumenti, atmosfera e ritmo.")
+    if isinstance(suggestion, str) and suggestion.strip():
+        text += f" Suggerimento: «{suggestion.strip()[:400]}»"
+    return HTTPException(422, text)
 
 
 class UncertainGeneration(HTTPException):
@@ -29,6 +53,11 @@ async def request(method: str, path: str, **kwargs) -> httpx.Response:
         raise UncertainGeneration(504, "Connessione ElevenLabs interrotta: controlla la libreria prima di ripetere una generazione.") from exc
     if response.status_code == 422:
         raise HTTPException(422, "ElevenLabs non accetta questi parametri: verifica il modello, il formato del file e i limiti del tuo piano.")
+    if not response.is_success:
+        # The real reason stays in the logs only; the provider body is never relayed to the browser.
+        logger.warning("ElevenLabs %s %s -> HTTP %s: %s", method, path, response.status_code, response.text[:300])
+        if response.status_code == 400 and path == "/v1/music" and (rejection := prompt_rejection(response)):
+            raise rejection
     podcasts.provider_error(response)
     return response
 

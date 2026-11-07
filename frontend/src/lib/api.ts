@@ -481,12 +481,14 @@ export const adminApi = {
     api.get('/admin/email-templates/history', { params: { template_key: templateKey, limit } }),
   setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
     api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
-  updateTeacherSchoolsBulk: (teacherIds: string[], schoolTenantId: string, action: 'add' | 'remove') =>
+  updateTeacherSchoolsBulk: (teacherIds: string[], schoolTenantId: string, action: 'add' | 'assign' | 'remove') =>
     api.put('/admin/teachers/schools/bulk', {
       teacher_ids: teacherIds,
       school_tenant_id: schoolTenantId,
       action,
     }),
+  setUserLicenses: (userIds: string[], change: LicenseChange) => api.put('/admin/licenses/users', { user_ids: userIds, ...change }),
+  setTenantLicense: (tenantId: string, change: LicenseChange) => api.put(`/admin/licenses/tenants/${tenantId}`, change),
   setTeacherCreditLimitsBulk: (teacherIds: string[], amountCap: number) =>
     api.put('/admin/teachers/credit-limits/bulk', {
       teacher_ids: teacherIds,
@@ -678,6 +680,7 @@ export const schoolOnboardingAdminApi = {
     organization_name?: string
     organization_comune?: string
     organization_province?: string
+    license_expires_on?: string
   }) => api.post<SchoolInvite>('/admin/school-onboarding/invites', data),
   revokeInvite: (id: string) => api.post(`/admin/school-onboarding/invites/${id}/revoke`),
   resendInvite: (id: string) => api.post<{ email_sent: boolean; email_error: string | null }>(`/admin/school-onboarding/invites/${id}/resend`),
@@ -805,7 +808,7 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/audit`, { params: { cursor } }),
   getTasks: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/tasks`),
-  createTask: (sessionId: string, data: { title: string; description?: string; task_type?: string; points?: string; content_json?: string; due_at?: string | null }) =>
+  createTask: (sessionId: string, data: { title: string; description?: string; task_type?: string; points?: string; content_json?: string; due_at?: string | null; status?: 'draft' }) =>
     api.post(`/teacher/sessions/${sessionId}/tasks`, data),
   updateTask: (sessionId: string, taskId: string, data: { title?: string; description?: string; new_status?: string; points?: string; content_json?: string; due_at?: string | null }) => {
     const hasDueAt = Object.prototype.hasOwnProperty.call(data, 'due_at')
@@ -1430,6 +1433,7 @@ export const teacherbotsApi = {
   chatInfo: (id: string) => api.get(`/teacher/teacherbots/${id}/chat-info`),
   // Teacher endpoints
   list: () => api.get('/teacherbots'),
+  sharedWithMe: () => api.get('/teacherbots/shared-with-me'),
   listForSession: (sessionId: string) => api.get(`/teacher/sessions/${sessionId}/teacherbots`),
   create: (data: {
     name: string
@@ -1677,8 +1681,8 @@ export const creditsApi = {
     teacher_id?: string | null
     class_id?: string | null
   }) => api.post('/credits/admin/bundle', data),
-  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string, groupTag?: string, customMessage?: string) =>
-    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school, group_tag: groupTag, custom_message: customMessage }),
+  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string, groupTag?: string, customMessage?: string, licenseExpiresOn?: string) =>
+    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school, group_tag: groupTag, custom_message: customMessage, license_expires_on: licenseExpiresOn || undefined }),
   bulkInvite: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -1686,8 +1690,8 @@ export const creditsApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
-  bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string) =>
-    api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
+  bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string, licenseExpiresOn?: string) =>
+    api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage, license_expires_on: licenseExpiresOn || undefined }),
   getInvitations: () => api.get('/credits/invitations'),
   resendInvitation: (invitationId: string) =>
     api.post(`/credits/invitations/${invitationId}/resend`),
@@ -2222,3 +2226,11 @@ export const privacyApi = {
     })
   },
 }
+
+export interface LicenseChange {
+  mode: 'date' | 'extend' | 'renew' | 'none'
+  expires_on?: string // YYYY-MM-DD, inclusive
+  months?: number
+  auto_renew?: boolean
+}
+export const licenseApi = { me: () => api.get<{ state: 'none' | 'active' | 'expiring' | 'expired'; expires_at: string | null; auto_renew: boolean; source: 'user' | 'school' | null }>('/license/me') }

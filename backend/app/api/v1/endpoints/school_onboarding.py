@@ -7,7 +7,7 @@ Tre router:
 """
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from html import escape
 from typing import Annotated, Literal, Optional
 from uuid import UUID
@@ -37,7 +37,7 @@ from app.models.enums import TenantType, UserRole
 from app.models.school_onboarding import ItalianSchool, SchoolOnboardingInvite
 from app.models.tenant import Tenant
 from app.models.user import ActivationToken, LegalDocumentAcceptance, User
-from app.services import school_overview, school_registry
+from app.services import license as licensing, school_overview, school_registry
 from app.services.credit_service import credit_service
 from app.services.email_service import email_service
 
@@ -175,11 +175,18 @@ class InviteCreate(BaseModel):
     organization_name: Optional[str] = Field(default=None, max_length=255)
     organization_comune: Optional[str] = Field(default=None, max_length=128)
     organization_province: Optional[str] = Field(default=None, max_length=64)
+    # Scadenza fissa della licenza (inclusa). Omessa = 12 mesi con rinnovo automatico.
+    license_expires_on: Optional[date] = None
 
 
 def _clean(value: str | None) -> str | None:
     value = (value or "").strip()
     return value or None
+
+
+def _license_end(value: Optional[date]) -> Optional[datetime]:
+    from zoneinfo import ZoneInfo
+    return datetime.combine(value, dtime(23, 59, 59), tzinfo=ZoneInfo("Europe/Rome")) if value else None
 
 
 async def _manual_school_tenant(db: AsyncSession, name: str) -> Tenant:
@@ -361,7 +368,10 @@ async def create_school_invite(
         organization_name=None if code else _clean(body.organization_name),
         organization_comune=None if code else _clean(body.organization_comune),
         organization_province=None if code else _clean(body.organization_province),
+        license_expires_at=_license_end(body.license_expires_on),
     )
+    if tenant and inv.license_expires_at:
+        licensing.start_default(tenant, inv.license_expires_at)
     db.add(inv)
     await db.commit()
     await db.refresh(inv)
@@ -628,6 +638,8 @@ async def complete_invite(
         inv.organization_province = _clean(body.organization_province)
     if tenant.owner_user_id:
         raise HTTPException(status_code=409, detail="Per questo istituto è già stato attivato un dirigente")
+    if inv.license_expires_at:
+        licensing.start_default(tenant, inv.license_expires_at)
 
     owner = User(
         tenant_id=tenant.id,

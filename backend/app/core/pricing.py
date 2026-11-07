@@ -134,3 +134,25 @@ def calculate_cost(provider: str, model: str, input_tokens: int = 0, output_toke
         # Cost = (Input * InputPrice + Output * OutputPrice) / 1,000,000
         cost = (input_tokens * pricing.input_price + output_tokens * pricing.output_price) / 1_000_000.0
         return round(cost, 6) # Precision
+
+
+# ── Display helpers: the platform shows costs in credits, never in dollars ──
+import re as _re
+
+CREDITS_PER_EUR = 100
+
+
+def usd_to_credits(usd: float | None) -> float | None:
+    return None if usd is None else round(float(usd) * USD_TO_EUR * CREDITS_PER_EUR, 2)
+
+
+def credits_label(usd: float | None) -> str:
+    credits = usd_to_credits(usd)
+    return "—" if credits is None else f"{credits:,.2f}".rstrip("0").rstrip(".").replace(",", "") + " cr."
+
+
+def credits_in_text(text: str | None) -> str | None:
+    """Rewrite every «$12.5» in a free-text price note as credits («1075 cr.»)."""
+    if not text:
+        return text
+    return _re.sub(r"\$\s?(\d+(?:[.,]\d+)?)", lambda m: credits_label(float(m.group(1).replace(",", "."))), text)

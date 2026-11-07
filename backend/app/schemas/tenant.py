@@ -62,6 +62,7 @@ class TenantResponse(BaseModel):
     teacher_monthly_cap: float = 3.0
     mechanographic_code: Optional[str] = None
     registry_verified: bool = False
+    license: Optional[dict] = None  # filled by the admin list (see services.license.describe)
 
     class Config:
         from_attributes = True

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
-  CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp, PanelTop } from '@/components/icons'
+  Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp, PanelTop } from '@/components/icons'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
@@ -89,7 +89,7 @@ interface LessonDocument {
   id: string
   taskId: string
   title: string
-  type: 'presentation' | 'document' | 'canvas' | 'pdf' | 'web'
+  type: 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'
   updatedAt: string
   contentJson: string
   authorName: string
@@ -219,6 +219,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
+  const [lessonsLoaded, setLessonsLoaded] = useState(false)
   const [submittedDocuments, setSubmittedDocuments] = useState<SubmittedDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
   const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'document' | 'presentation' | 'sheet' | 'canvas' | 'pdf' | 'web'>('all')
@@ -353,7 +354,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         kind: 'slide_block',
         label: isEnglishUi ? 'Slide object' : 'Oggetto della slide',
         detail,
-        target: { block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title },
+        target: {
+          block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title,
+          // An image is regenerated/edited from what the slide says, in the deck's style.
+          ...(selectedBlock.type === 'image' ? {
+            deck_title: document.title,
+            theme: document.theme,
+            slide_context: currentSlide.blocks.filter(b => b.type === 'text').map(b => b.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ').slice(0, 1500),
+          } : {}),
+        },
         beforePreview: selectedBlock.content || selectedBlock.type,
       }
     }
@@ -418,13 +427,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   useEffect(() => {
     if (mode !== 'slides' || !currentSlide.id) return
+    // Drop ids of deleted slides; an empty selection stays empty (the open slide is highlighted separately).
     setSelectedSlideIds((previous) => {
       const availableIds = new Set(document.slides.map((slide) => slide.id))
       const validIds = previous.filter((id) => availableIds.has(id))
-      if (validIds.length > 0) {
-        return validIds.length === previous.length ? previous : validIds
-      }
-      return [currentSlide.id]
+      return validIds.length === previous.length ? previous : validIds
     })
   }, [currentSlide.id, document.slides, mode])
 
@@ -824,11 +831,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             if (!task.content_json) return acc
             try {
               const parsed = JSON.parse(task.content_json)
-              const type: 'presentation' | 'document' | 'canvas' | null =
-                parsed?.type === 'presentation_v2'
+              // Never drop a published document silently: sheets are supported, and anything
+              // unrecognised falls back to the text viewer instead of vanishing from the session.
+              const type: 'presentation' | 'document' | 'sheet' | 'canvas' =
+                parsed?.type === 'presentation_v2' || (task.task_type === 'presentation' && Array.isArray(parsed?.slides))
                   ? 'presentation'
-                  : (parsed?.type === 'document_v1' ? 'document' : parsed?.type === 'canvas_v1' ? 'canvas' : null)
-              if (!type) return acc
+                  : parsed?.type === 'sheet_v1' || (!parsed?.type && Array.isArray(parsed?.data))
+                    ? 'sheet'
+                    : parsed?.type === 'canvas_v1' || (!parsed?.type && Array.isArray(parsed?.items))
+                      ? 'canvas'
+                      : 'document'
               const doc: LessonDocument = {
                 id: `lesson-${task.id}`,
                 taskId: task.id,
@@ -840,8 +852,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               }
               if (task.uda_folder) doc.udaFolder = task.uda_folder
               acc.push(doc)
-            } catch {
-              // skip malformed
+            } catch (error) {
+              console.error('Skipping malformed teacher document', task.id, error)
             }
             return acc
           }, [])
@@ -879,6 +891,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           })
 
         setLessonDocuments([...sharedSessionDocs, ...lessons].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()))
+        setLessonsLoaded(true)
       } catch (e) {
         console.error('Failed to load document sidebar data', e)
       }
@@ -1120,8 +1133,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     if (target) {
       setShowSidebar(true)
       loadLesson(target)
+    } else if (lessonsLoaded) {
+      toast({
+        title: isEnglishUi ? 'Document not available' : 'Documento non disponibile',
+        description: isEnglishUi ? 'This document is not available in the current session.' : 'Questo documento non è disponibile nella sessione corrente.',
+        variant: 'destructive',
+      })
     }
-  }, [openLessonTaskId, lessonDocuments])
+  }, [openLessonTaskId, lessonDocuments, lessonsLoaded])
 
   // Fit canvas
   useEffect(() => {
@@ -1168,7 +1187,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     setDocument(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
     setCurrentSlideIndex(document.slides.length)
-    setSelectedSlideIds([newSlide.id])
+    setSelectedSlideIds([])
   }
 
   // Shift+click ranges start from a fixed anchor (the last plain/Ctrl click), not from the slide
@@ -1186,14 +1205,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       const range = document.slides.slice(start, end + 1).map(item => item.id)
       setSelectedSlideIds(previous => (event.metaKey || event.ctrlKey) ? Array.from(new Set([...previous, ...range])) : range)
     } else if (event.metaKey || event.ctrlKey) {
-      setSelectedSlideIds((previous) => {
-        const next = previous.includes(slide.id)
-          ? previous.filter((id) => id !== slide.id)
-          : [...previous, slide.id]
-        return next.length > 0 ? next : [slide.id]
-      })
+      toggleSlideSelection(slide.id)
     } else {
-      setSelectedSlideIds([slide.id])
+      setSelectedSlideIds([]) // plain click = open the slide; the tick marks only an explicit selection
     }
     setCurrentSlideIndex(index)
     setSelectedBlockId(null)
@@ -1201,12 +1215,31 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   const toggleSlideSelection = (slideId: string) => {
     setSelectedSlideIds((previous) => {
-      if (previous.includes(slideId)) {
-        const next = previous.filter((id) => id !== slideId)
-        return next.length > 0 ? next : [slideId]
-      }
-      return [...previous, slideId]
+      const base = previous.length > 0 || !currentSlide.id ? previous : [currentSlide.id]
+      return base.includes(slideId) ? base.filter((id) => id !== slideId) : [...base, slideId]
     })
+  }
+
+  // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
+  const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
+    event.preventDefault()
+    const last = document.slides.length - 1
+    const target = event.key === 'Home' ? 0 : event.key === 'End' ? last
+      : Math.max(0, Math.min(last, currentSlideIndex + (event.key === 'ArrowDown' ? 1 : -1)))
+    if (target === currentSlideIndex) return
+    if (event.shiftKey) {
+      const found = document.slides.findIndex(item => item.id === slideAnchorRef.current)
+      const anchor = found >= 0 ? found : currentSlideIndex
+      slideAnchorRef.current = document.slides[anchor]?.id ?? null
+      setSelectedSlideIds(document.slides.slice(Math.min(anchor, target), Math.max(anchor, target) + 1).map(item => item.id))
+    } else {
+      slideAnchorRef.current = document.slides[target]?.id ?? null
+      setSelectedSlideIds([])
+    }
+    setCurrentSlideIndex(target)
+    setSelectedBlockId(null)
+    window.requestAnimationFrame(() => event.currentTarget.querySelector(`[data-slide-index="${target}"]`)?.scrollIntoView({ block: 'nearest' }))
   }
 
   const deleteSlide = (index: number) => {
@@ -1272,7 +1305,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         y: position ? Math.min(position.y, dims.height - 320) : dims.height / 2 - 150,
         width: 200,
         height: 300,
-        style: {}
+        style: {},
+        fitToImage: true,
       }
     } else {
       newBlock = createShapeBlock(type, dims)
@@ -1343,7 +1377,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       y: dims.height / 2 - 100,
       width: 300,
       height: 200,
-      style: {}
+      style: {},
+      fitToImage: true,
     }
     updateSlideBlocks([...currentSlide.blocks, newBlock])
     setSelectedBlockId(newBlock.id)
@@ -2045,37 +2080,27 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                      <Plus className="h-4 w-4" />
                    </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide">
+                 <div
+                   className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide outline-none"
+                   tabIndex={0}
+                   role="listbox"
+                   aria-label={isEnglishUi ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
+                   onKeyDown={handleSlideListKeyDown}
+                 >
                    {document.slides.map((slide, idx) => (
                      <div
                        key={slide.id}
+                       data-slide-index={idx}
+                       role="option"
+                       aria-selected={idx === currentSlideIndex}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
-                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${selectedSlideIds.includes(slide.id)
+                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${(selectedSlideIds.includes(slide.id) || idx === currentSlideIndex)
                          ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
                          : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-400'}`}
                      >
                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
                        <div className="pr-12 text-sm truncate font-bold text-slate-800">{slide.title}</div>
-                       <button
-                         type="button"
-                         onClick={(event) => { event.stopPropagation(); toggleSlideSelection(slide.id) }}
-                         className="absolute right-8 top-2 text-indigo-600"
-                         aria-label={isEnglishUi ? `Select slide ${idx + 1}` : `Seleziona slide ${idx + 1}`}
-                         aria-pressed={selectedSlideIds.includes(slide.id)}
-                       >
-                         <button
-                           type="button"
-                           role="checkbox"
-                           aria-checked={selectedSlideIds.includes(slide.id)}
-                           aria-label={tl("Seleziona slide")}
-                           title={tl("Aggiungi o togli dalla selezione (anche Ctrl/Cmd+clic, Shift+clic per un intervallo)")}
-                           onClick={(event) => { event.stopPropagation(); setSelectedSlideIds(previous => previous.includes(slide.id) ? previous.filter(id => id !== slide.id) : [...previous, slide.id]) }}
-                           className="rounded p-0.5 hover:bg-indigo-100"
-                         >
-                           <CheckSquare className={`h-4 w-4 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-400'}`} />
-                         </button>
-                       </button>
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
@@ -2262,12 +2287,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                           doc.type === 'pdf' ? 'bg-red-100 text-red-700' :
                           doc.type === 'web' ? 'bg-fuchsia-100 text-fuchsia-700' :
                           doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' :
+                          doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' :
                           'bg-emerald-100 text-emerald-700'
                         }`}>
                           {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
                            doc.type === 'pdf' ? <FileText className="h-4 w-4" /> :
                            doc.type === 'web' ? <MonitorPlay className="h-4 w-4" /> :
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
+                           doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> :
                            <BookOpen className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -2572,6 +2599,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               onApplyOperations={applyDocumentAssistOperations}
               getWritingContext={getDocumentWritingContext}
               onApply={applyDocumentAgentProposal}
+              onPatchImage={(blockId, url) => setDocument((current) => ({
+                ...current,
+                slides: current.slides.map((slide) => slide.blocks.some((block) => block.id === blockId)
+                  ? { ...slide, blocks: slide.blocks.map((block) => block.id === blockId && block.type === 'image' ? { ...block, content: url } : block) }
+                  : slide),
+              }))}
+              deckTheme={document.theme}
               onClose={() => setPresentationChatOpen(false)}
             />
           )}

@@ -16,6 +16,8 @@ interface TeacherbotShareModalProps {
 interface TeacherClass {
   id: string
   name: string
+  role?: 'owner' | 'invited' | 'session_shared'
+  owner_name?: string | null
 }
 
 interface TeacherSession {
@@ -57,6 +59,9 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     queryKey: ['teacher-classes'],
     queryFn: async () => (await teacherApi.getClasses()).data as TeacherClass[],
   })
+  // Sharing is per class: classes reached only through a single shared session cannot receive a teacherbot.
+  const shareableClasses = (classesQuery.data || []).filter(c => c.role !== 'session_shared')
+  const refreshLists = () => { void queryClient.invalidateQueries({ queryKey: ['teacherbots'] }); void queryClient.invalidateQueries({ queryKey: ['teacherbots-shared-with-me'] }) }
 
   const sessionsQuery = useQuery({
     queryKey: ['teacher-sessions', studentClassId],
@@ -75,6 +80,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     onSuccess: () => {
       toast({ title: tl("Condiviso con la classe") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
+      refreshLists()
       setSelectedClassId(null)
     },
     onError: (error: any) => {
@@ -87,6 +93,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     onSuccess: () => {
       toast({ title: tl("Condiviso con lo studente") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
+      refreshLists()
     },
     onError: (error: any) => {
       toast({ title: tl("Errore"), description: error?.response?.data?.detail || tl("Condivisione non riuscita"), variant: 'destructive' })
@@ -98,6 +105,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
     onSuccess: () => {
       toast({ title: tl("Condivisione rimossa") })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
+      refreshLists()
     },
     onError: () => {
       toast({ title: tl("Errore"), description: tl("Impossibile rimuovere la condivisione"), variant: 'destructive' })
@@ -141,7 +149,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
           {tab === 'class' ? (
             <>
               <p className="text-sm text-slate-600 mb-4">
-                {tl("Rendi il teacherbot disponibile a tutti gli studenti di una classe, in tutte le sue sessioni.")}
+                {tl("Rendi il teacherbot disponibile a tutti gli studenti di una classe, in tutte le sue sessioni, passate e future. Anche i docenti della classe lo ritroveranno in «Condivisi con me».")}
               </p>
 
               {classPublications.length > 0 && (
@@ -164,7 +172,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                 <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
               ) : (
                 <div className="space-y-2 max-h-52 overflow-y-auto mb-4">
-                  {classesQuery.data?.filter(c => !publishedClassIds.has(c.id)).map(cls => (
+                  {shareableClasses.filter(c => !publishedClassIds.has(c.id)).map(cls => (
                     <button
                       key={cls.id}
                       type="button"
@@ -172,9 +180,10 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                       className={`w-full text-left p-3 rounded-xl border transition-all ${selectedClassId === cls.id ? 'border-slate-900/40 bg-slate-900/5' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
                     >
                       <div className="font-medium text-slate-800">{cls.name}</div>
+                      {cls.role === 'invited' && <div className="text-xs text-slate-500">{tl("Classe di {0}: i suoi studenti e i docenti invitati vedranno il teacherbot", cls.owner_name || tl("un collega"))}</div>}
                     </button>
                   ))}
-                  {classesQuery.data?.filter(c => !publishedClassIds.has(c.id)).length === 0 && (
+                  {!classesQuery.isLoading && shareableClasses.filter(c => !publishedClassIds.has(c.id)).length === 0 && (
                     <p className="text-center text-sm text-slate-400 py-4">{tl("Già condiviso con tutte le classi")}</p>
                   )}
                 </div>
@@ -219,7 +228,7 @@ export default function TeacherbotShareModal({ teacherbotId, teacherbotName, onC
                   className="text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white"
                 >
                   <option value="">{tl("Seleziona classe…")}</option>
-                  {classesQuery.data?.map(cls => (
+                  {(classesQuery.data || []).map(cls => (
                     <option key={cls.id} value={cls.id}>{cls.name}</option>
                   ))}
                 </select>

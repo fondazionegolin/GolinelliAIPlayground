@@ -2,6 +2,7 @@
 
 See app.services.presentation_studio for the workflow rationale.
 """
+import asyncio
 import json
 import logging
 from typing import Annotated, Literal, Optional
@@ -13,9 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.api.v1.endpoints.llm import _extract_json_object, get_ui_language, safe_track_usage
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.session import Class, Session
-from app.services import model_roles, model_selection
+from app.services import background_jobs, model_roles, model_selection
+from app.services import presentation_agents as agents
 from app.services import presentation_studio as studio
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
@@ -29,13 +31,13 @@ router = APIRouter()
 
 
 class StudioBrief(BaseModel):
-    topic: str = Field(min_length=3, max_length=4000)
+    topic: str = Field("", max_length=4000)
     audience: str = Field("", max_length=200)
     goal: str = Field("", max_length=400)
     tone: str = Field("", max_length=200)
-    slide_count: int = Field(8, ge=3, le=20)
+    slide_count: int = Field(8, ge=0, le=20)  # 0 = the AI decides from the material
     density: Literal["essenziale", "bilanciata", "dettagliata"] = "bilanciata"
-    source_text: str = Field("", max_length=60000)
+    source_text: str = Field("", max_length=200000)
 
 
 class OutlineRequest(BaseModel):
@@ -71,7 +73,7 @@ class PreviewRequest(BaseModel):
 
 
 class RethemeRequest(BaseModel):
-    slides: list[dict] = Field(max_length=60)
+    slides: list[dict] = Field(max_length=200)
     theme_id: str = "aula"
     options: dict = Field(default_factory=dict)
     dims: Dims = Field(default_factory=Dims)
@@ -85,7 +87,7 @@ class ImageRequest(BaseModel):
 
 
 class QualityRequest(BaseModel):
-    slides: list[dict] = Field(max_length=60)
+    slides: list[dict] = Field(max_length=200)
     theme: Optional[dict] = None
     dims: Dims = Field(default_factory=Dims)
     fix: bool = False
@@ -213,6 +215,120 @@ async def generate_outline(
     return parsed
 
 
+def _outline_stream_progress(event: dict, state: background_jobs.ProgressState) -> None:
+    if isinstance(event.get("progress"), (int, float)):
+        state.progress = float(event["progress"])
+    if event.get("label"):
+        state.label = str(event["label"])
+    if event.get("type") == "error":
+        state.label = str(event.get("detail") or "Errore")[:200]
+
+
+@router.post("/outline-stream")
+async def stream_outline(
+    payload: OutlineRequest,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Multi-agent outline (mode=create) or whole-outline revision (mode=revise), streamed as NDJSON.
+
+    Runs as a background job so it survives page changes, and keeps bytes flowing so proxies
+    (Cloudflare 524 after ~100 s of silence) never cut long-document generations.
+    Events: phase / plan / slide / done / error (see app.services.presentation_agents).
+    """
+    if payload.mode == "slide":
+        raise HTTPException(status_code=400, detail="Usa /outline per riscrivere una sola slide")
+    brief = payload.brief.model_dump()
+    language = get_ui_language(http_request)
+    billing = await _billing_context(db, auth)
+    if not await credit_service.check_availability(
+        db, billing["tenant_id"], 0.01, billing["teacher_id"], billing["class_id"], billing["session_id"], billing["student_id"]
+    ):
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+    grade_instruction = get_school_grade_instruction(billing["school_grade"]) if billing["school_grade"] else ""
+    previous = None
+    if payload.mode == "revise":
+        previous = studio.normalize_outline(payload.outline, brief["density"]) if _outline_slide_count(payload.outline) else None
+        if not previous:
+            raise HTTPException(status_code=400, detail="Serve la scaletta da modificare")
+        if not payload.instruction.strip():
+            raise HTTPException(status_code=400, detail="Scrivi cosa vuoi cambiare nella scaletta")
+    elif not brief["topic"].strip() and not brief["source_text"].strip():
+        raise HTTPException(status_code=400, detail="Descrivi l'argomento o incolla il materiale")
+    provider, model = await model_selection.resolve_scoped(db, "documents", payload.llm_provider, payload.llm_model)
+
+    usage = agents.UsageLog()
+
+    async def generate(prompt: str, system: str, max_tokens: int, temperature: float):
+        return await llm_service.generate(
+            messages=[{"role": "user", "content": prompt}],
+            system_prompt=system,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            allow_web_search=False,
+        )
+
+    async def bill() -> None:
+        if not usage.responses:
+            return
+        real_provider = usage.responses[-1].provider or provider
+        real_model = usage.responses[-1].model or model
+        try:
+            async with AsyncSessionLocal() as session:
+                await safe_track_usage(
+                    session, billing["tenant_id"], real_provider, real_model,
+                    credit_service.calculate_cost_for_model(real_provider, real_model, usage.prompt_tokens, usage.completion_tokens),
+                    enrich_usage_with_environmental_impact({
+                        "type": "presentation_outline",
+                        "mode": payload.mode,
+                        "calls": len(usage.responses),
+                        "prompt_tokens": usage.prompt_tokens,
+                        "completion_tokens": usage.completion_tokens,
+                        "total_tokens": usage.prompt_tokens + usage.completion_tokens,
+                    }, provider=real_provider, model=real_model),
+                    billing["teacher_id"], billing["class_id"], billing["session_id"], billing["student_id"],
+                    context="presentation_outline",
+                )
+        except Exception:
+            logger.exception("Presentation outline: usage tracking failed")
+
+    async def stream():
+        try:
+            if payload.mode == "create":
+                events = agents.run_create_pipeline(brief, language, generate, usage, grade_instruction)
+            else:
+                events = agents.run_revise(brief, previous, payload.instruction.strip(), language, generate, usage, grade_instruction)
+            async for event in events:
+                yield agents.event_line(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Presentation outline pipeline failed: %s", exc)
+            yield agents.event_line({
+                "type": "error",
+                "detail": "Non sono riuscito a scrivere la scaletta: riprova o semplifica la richiesta.",
+            })
+        finally:
+            await asyncio.shield(bill())
+
+    topic = (brief["topic"] or brief["source_text"]).strip()
+    job_id = await background_jobs.start_stream_job(
+        background_jobs.JobOwner.from_actor(auth),
+        kind="presentation_outline",
+        title="Presentazione con l'AI" if payload.mode == "create" else "Revisione della scaletta",
+        description=topic[:300],
+        route="module:documents" if auth.is_student else "/teacher/documents",
+        stream=stream(),
+        event_format="ndjson",
+        progress_fn=_outline_stream_progress,
+        expected_seconds=120.0 if len(brief["source_text"]) > 8000 else 60.0,
+    )
+    return background_jobs.stream_response(job_id, "application/x-ndjson")
+
+
 @router.post("/preview")
 async def preview_templates(payload: PreviewRequest, auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
     """Deterministic, free: render a few outline slides with several themes for the template gallery."""
@@ -267,17 +383,7 @@ async def generate_slide_image(
         db, billing["tenant_id"], 0.02, billing["teacher_id"], billing["class_id"], billing["session_id"], billing["student_id"]
     ):
         raise HTTPException(status_code=402, detail="Credit limit exceeded")
-    theme = theme_from_deck(payload.theme) or resolve_theme(None)
-    colors = theme["colors"]
-    prompt = (
-        f"Illustrazione didattica per una slide di una presentazione intitolata «{payload.deck_title}»"
-        + (f", slide «{payload.slide_title}»" if payload.slide_title else "")
-        + f". Soggetto: {payload.prompt}. "
-        "Stile: illustrazione editoriale moderna e pulita, composizione semplice con un soggetto chiaro, "
-        f"palette armonica coerente con i colori {colors['primary']} e {colors['accent']}, "
-        f"{'atmosfera scura' if theme['brightness'] == 'dark' else 'atmosfera luminosa'}. "
-        "Nessun testo, nessuna scritta, nessun numero, nessun logo nell'immagine. Adatta a un contesto scolastico."
-    )
+    prompt = studio.slide_image_prompt(payload.prompt, payload.deck_title, payload.slide_title, theme_from_deck(payload.theme))
     provider, model = model_roles.pair_for("image.generation")
     try:
         image_url = await llm_service.generate_image(prompt, provider=model)

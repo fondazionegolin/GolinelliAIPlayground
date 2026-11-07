@@ -91,9 +91,16 @@ async def get_current_teacher(
     if current_user.role == UserRole.TEACHER:
         from app.models.tenant import Tenant
         from app.models.enums import TenantType
-        tenant_type = (await db.execute(
-            select(Tenant.tenant_type).where(Tenant.id == current_user.tenant_id)
-        )).scalar_one_or_none()
+        tenant_row = (await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))).scalar_one_or_none()
+        tenant_type = tenant_row.tenant_type if tenant_row else None
+        from app.services import license as licensing
+        lic = licensing.effective(current_user, tenant_row)
+        if lic["state"] == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "license_expired", "expired_at": lic["expires_at"], "source": lic["source"],
+                        "message": "La licenza è scaduta. Contatta l'amministratore per rinnovarla."},
+            )
         await refresh_legal_overrides(db)
         required_docs = required_legal_documents(
             is_school_owner=bool(current_user.is_school_owner),

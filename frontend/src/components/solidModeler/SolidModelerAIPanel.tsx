@@ -3,6 +3,7 @@ import { cancelJob, findActiveJob, followJobStream, notifyJobsChanged, readEvent
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles, Square, XCircle } from '@/components/icons'
 import type { AgentStepEvent, SceneObject } from './types'
 import { tl } from '@/i18n/tl'
+import { formatInternalCredits } from '@/lib/credits'
 import { splitModelValue, useScopedModels, modelValue } from '@/components/models/ScopedModelSelect'
 
 
@@ -219,7 +220,7 @@ export default function SolidModelerAIPanel({ objects, selection, onRunStart, on
                 </p>
                 {turn.status === 'done' && (
                   <p className="mt-1 text-[10px] text-emerald-700">
-                    {turn.model} · {turn.steps.length} passi{turn.cost ? ` · $${turn.cost.toFixed(4)}` : ''} {tl("· Ctrl+Z per annullare")}
+                    {turn.model} · {turn.steps.length} passi{turn.cost ? ` · ${formatInternalCredits(turn.cost, 2)}` : ''} {tl("· Ctrl+Z per annullare")}
                   </p>
                 )}
               </div>

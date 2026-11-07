@@ -3,6 +3,9 @@ import { createIcon } from './createIcon'
 /** Compatibility names for lab shortcuts, using the shared Untitled UI collection. */
 export { Bot as TuringFaceRobotIcon } from './icons.generated'
 
+/** Plain pause bars for a transport button that already provides its circular surface. */
+export const MediaPauseIcon = createIcon('MediaPause', '<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/>')
+
 // Distinct glyphs for the 3D and canvas modules (24×24 grid, same stroke language as the Untitled UI set).
 
 /** Isometric cube: solid modeling (3D Lab). */

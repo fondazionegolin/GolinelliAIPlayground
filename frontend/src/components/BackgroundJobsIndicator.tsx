@@ -66,6 +66,9 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
     for (const job of jobs) {
       const before = seen.get(job.id)
       if (before === 'running' && job.status !== 'running') {
+        if (job.status === 'succeeded' && job.kind === 'audio_lab_music') {
+          for (const key of ['voice-lab-items', 'audio-files', 'drive', 'credit-balance']) void queryClient.invalidateQueries({ queryKey: [key] })
+        }
         toast({
           title: job.status === 'succeeded' ? tl("Pronto: {0}", job.title) : `${STATUS_TEXT[job.status]}: ${job.title}`,
           description: job.status === 'succeeded' ? (job.progress_label || undefined) : (job.error || undefined),
@@ -74,7 +77,7 @@ export default function BackgroundJobsIndicator({ accentColor, student = false }
       }
       seen.set(job.id, job.status)
     }
-  }, [jobs, toast])
+  }, [jobs, toast, queryClient])
 
   useEffect(() => {
     if (!open) return

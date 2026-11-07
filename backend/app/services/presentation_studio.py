@@ -18,6 +18,29 @@ from app.services.presentation_layouts import LAYOUTS, coerce_layout, normalize_
 from app.services.presentation_quality import check_and_fix_slides
 from app.services.presentation_themes import THEMES, THEMES_BY_ID, resolve_theme
 
+def slide_image_prompt(subject: str, deck_title: str, slide_title: str, theme: Optional[dict], *, edit: bool = False) -> str:
+    """Image-generation prompt for one slide illustration, consistent with the deck theme.
+
+    With ``edit`` the subject is an instruction applied to an existing picture (img2img)."""
+    theme = theme or resolve_theme(None)
+    colors = theme["colors"]
+    context = (f"una slide di una presentazione intitolata «{deck_title}»" if deck_title else "una slide di una presentazione")
+    context += f", slide «{slide_title}»" if slide_title else ""
+    if edit:
+        return (
+            f"Modifica questa illustrazione didattica per {context}. Modifica richiesta: {subject}. "
+            "Mantieni composizione, soggetto e stile dove la richiesta non li cambia. "
+            "Nessun testo, nessuna scritta, nessun numero, nessun logo nell'immagine."
+        )
+    return (
+        f"Illustrazione didattica per {context}. Soggetto: {subject}. "
+        "Stile: illustrazione editoriale moderna e pulita, composizione semplice con un soggetto chiaro, "
+        f"palette armonica coerente con i colori {colors['primary']} e {colors['accent']}, "
+        f"{'atmosfera scura' if theme.get('brightness') == 'dark' else 'atmosfera luminosa'}. "
+        "Nessun testo, nessuna scritta, nessun numero, nessun logo nell'immagine. Adatta a un contesto scolastico."
+    )
+
+
 DENSITY_RULES = {
     "essenziale": {"max_points": 3, "max_words": 10, "label": "poche parole chiave per slide, il resto nelle note"},
     "bilanciata": {"max_points": 4, "max_words": 16, "label": "frasi brevi e complete"},
@@ -62,21 +85,24 @@ def density_rules(density: Optional[str]) -> dict:
     return DENSITY_RULES.get(str(density or ""), DENSITY_RULES["bilanciata"])
 
 
-def build_brief_text(brief: dict, school_grade_instruction: str = "") -> str:
+def build_brief_text(brief: dict, school_grade_instruction: str = "", include_source: bool = True) -> str:
     rules = density_rules(brief.get("density"))
+    count = int(brief.get("slide_count") or 0)
+    count_line = (f"circa {count} (cover inclusa)" if count
+                  else "a tua scelta (tra 6 e 20, cover inclusa) in base alla quantità e alla struttura del materiale")
     lines = [
-        f"Argomento / richiesta: {brief.get('topic', '').strip()}",
+        f"Argomento / richiesta: {brief.get('topic', '').strip() or 'ricavalo dai materiali forniti'}",
         f"Pubblico: {brief.get('audience') or 'studenti'}",
         f"Obiettivo: {brief.get('goal') or 'spiegare l’argomento in modo chiaro'}",
         f"Tono: {brief.get('tone') or 'chiaro e coinvolgente'}",
-        f"Numero di slide: circa {brief.get('slide_count') or 8} (cover inclusa)",
+        f"Numero di slide: {count_line}",
         f"Densità del testo: {brief.get('density') or 'bilanciata'} → al massimo {rules['max_points']} punti per slide, "
         f"ciascuno di al massimo {rules['max_words']} parole ({rules['label']}).",
     ]
     if school_grade_instruction:
         lines.append(school_grade_instruction)
     source = str(brief.get("source_text") or "").strip()
-    if source:
+    if source and include_source:
         lines.append(f"\nMateriali di partenza forniti dall'utente (usali come fonte principale):\n<<<\n{source[:30000]}\n>>>")
     return "\n".join(lines)
 
@@ -205,7 +231,9 @@ def layout_catalog() -> list[dict]:
 
 def _recolor_block(block: dict, theme: dict) -> None:
     roles = block.get("themeRole") if isinstance(block.get("themeRole"), dict) else {}
-    style = block.setdefault("style", {})
+    if not isinstance(block.get("style"), dict):
+        block["style"] = {}
+    style = block["style"]
     colors = theme["colors"]
     for prop in ("fill", "stroke", "color"):
         role = roles.get(prop)
@@ -291,10 +319,10 @@ def apply_theme(slides: list[dict], theme: dict, width: float, height: float) ->
             result.append(rendered)
             continue
         copy = json.loads(json.dumps(slide))
+        copy["blocks"] = [b for b in copy.get("blocks") or [] if isinstance(b, dict)]
         infer_theme_roles(copy, width, height)
-        for block in copy.get("blocks") or []:
-            if isinstance(block, dict):
-                _recolor_block(block, theme)
+        for block in copy["blocks"]:
+            _recolor_block(block, theme)
         result.append(copy)
     issues = check_and_fix_slides(result, width, height, theme)
     return result, issues

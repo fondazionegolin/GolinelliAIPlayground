@@ -94,6 +94,30 @@ export interface WriteProposal {
   client_context?: { range?: Range } & Record<string, unknown>
 }
 
+/** Parses model HTML into block elements; bare text / inline runs at top level are wrapped in <p> (never dropped). */
+function normalizeBlocks(html: string): HTMLElement[] {
+  const body = new DOMParser().parseFromString(html, 'text/html').body
+  const doc = body.ownerDocument
+  const blocks: HTMLElement[] = []
+  const BLOCK = /^(P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|TABLE|HR|DIV|SECTION)$/
+  let run: HTMLElement | null = null
+  const flush = () => {
+    if (run && (run.textContent ?? '').trim()) blocks.push(run)
+    run = null
+  }
+  body.childNodes.forEach((node) => {
+    if (node.nodeType === 1 && BLOCK.test((node as HTMLElement).tagName)) {
+      flush()
+      blocks.push(node as HTMLElement)
+    } else if (node.nodeType === 1 || node.nodeType === 3) {
+      run = run ?? doc.createElement('p')
+      run.appendChild(node.cloneNode(true))
+    }
+  })
+  flush()
+  return blocks
+}
+
 /** Inserts generated HTML where the planner said, as one undoable step. Returns false when it could not apply. */
 export function applyWriteProposal(editor: Editor, proposal: WriteProposal): boolean {
   const { doc } = editor.state
@@ -101,9 +125,9 @@ export function applyWriteProposal(editor: Editor, proposal: WriteProposal): boo
   const recorded = proposal.client_context?.range
   const from = Math.max(0, Math.min(size, recorded?.from ?? editor.state.selection.from))
   const to = Math.max(from, Math.min(size, recorded?.to ?? editor.state.selection.to))
-  const parsed = new DOMParser().parseFromString(proposal.html, 'text/html').body
-  const blocks = Array.from(parsed.children) as HTMLElement[]
+  const blocks = normalizeBlocks(proposal.html)
   if (blocks.length === 0) return false
+  proposal = { ...proposal, html: blocks.map((block) => block.outerHTML).join('') }
   const singleParagraph = blocks.length === 1 && blocks[0].tagName === 'P'
 
   const chain = editor.chain().focus()

@@ -1,0 +1,18 @@
+.music-prompt-editor {
+  overflow: hidden;
+  border-radius: var(--ds-field-radius, 18px);
+  background: var(--ds-field-bg);
+  color: var(--ds-field-ink);
+}
+.music-prompt-editor:focus-within { box-shadow: var(--focus-shadow); }
+.music-prompt-editor .cm-editor { background: transparent; color: inherit; font-size: 14px; }
+.music-prompt-editor .cm-editor.cm-focused { outline: none; }
+.music-prompt-editor .cm-scroller { font-family: inherit; line-height: 1.65; }
+.music-prompt-editor .cm-content { padding: 12px; caret-color: var(--ds-field-ink); }
+.music-prompt-editor .cm-line { padding: 0; }
+.music-prompt-editor .cm-placeholder { color: var(--ds-field-placeholder, var(--text-secondary)); }
+.music-term { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.music-term-genre { color: color-mix(in srgb, var(--logo-violet) 72%, var(--text-primary)); }
+.music-term-instrument { color: color-mix(in srgb, var(--logo-blue) 62%, var(--text-primary)); }
+.music-term-rhythm { color: color-mix(in srgb, var(--logo-pink) 70%, var(--text-primary)); }
+.music-term-timbre { color: var(--text-secondary); }

@@ -1,3 +1,8 @@
+# Vibe Lab build gate: a single static esbuild binary bundles generated React projects to catch syntax
+# errors / unresolved imports before they reach the Sandpack preview (app/services/vibe_gate.py).
+FROM node:20-slim AS esbuild
+RUN npm install --prefix /esb esbuild@0.24.2 && mkdir /out && cp /esb/node_modules/@esbuild/*/bin/esbuild /out/esbuild
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -42,6 +47,8 @@ RUN pip install --no-cache-dir --default-timeout=300 --retries=10 \
 
 COPY requirements-research.txt .
 RUN pip install --no-cache-dir --default-timeout=300 --retries=10 -r requirements-research.txt
+
+COPY --from=esbuild /out/esbuild /usr/local/bin/esbuild
 
 COPY . .
 RUN chmod +x /app/entrypoint.sh

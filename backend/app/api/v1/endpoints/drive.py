@@ -129,9 +129,14 @@ async def _serialize(db: AsyncSession, items: list[DriveItem], role: str | None 
     model_ids = [item.source_id for item in items if item.source_type == "solid_model" and item.source_id]
     if model_ids:
         thumbs = dict((await db.execute(select(SolidModel.id, SolidModel.thumbnail).where(SolidModel.id.in_(model_ids)))).all())
+    from app.api.v1.endpoints.voice_playlists import cover_urls
+    audio = [item for item in items if item.kind == "file" and (item.mime_type or "").startswith("audio/")]
+    origin = {item.id: str(item.source_id) if item.source_type == "voice_track" and item.source_id else str(item.id) for item in audio}
+    covers = await cover_urls(db, list(set(origin.values()))) if audio else {}
     return [
         {
             "id": str(item.id),
+            "cover_url": f"/voice-lab/audio-files/{item.id}/cover?v={covers[origin[item.id]].rsplit('=', 1)[-1]}" if item.id in origin and origin[item.id] in covers else None,
             "parent_id": str(item.parent_id) if item.parent_id else None,
             "kind": item.kind,
             "name": item.name,

@@ -162,6 +162,9 @@ class TeacherbotListResponse(BaseModel):
     updated_at: datetime
     publication_count: int = 0
     conversation_count: int = 0
+    # Classes this bot is published to (sharing is per class). `shared_by` is set for colleagues' bots.
+    classes: list[dict] = []
+    shared_by: Optional[str] = None
 
     class Config:
         from_attributes = True

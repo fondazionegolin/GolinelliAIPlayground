@@ -50,6 +50,7 @@ class SchoolOnboardingInvite(Base):
     last_name = Column(String, nullable=True)
     custom_message = Column(Text, nullable=True)
     label = Column(String(160), nullable=True)  # appunto interno admin (es. "IC Rossi - via segreteria")
+    license_expires_at = Column(DateTime(timezone=True), nullable=True)  # scadenza fissa scelta all'invito
 
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     claimed_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

@@ -45,6 +45,14 @@ class Tenant(Base):
     # Solo per INDIVIDUAL: cap mensile del docente stesso (default €3)
     teacher_monthly_cap = Column(Float, nullable=False, default=3.0, server_default="3.0")
 
+    # ── Licenza ──────────────────────────────────────────────────────────────
+    # expires_at NULL = nessuna scadenza. Con auto_renew la scadenza avanza di term_months alla volta;
+    # una data fissata dall'admin disattiva il rinnovo automatico.
+    license_started_at = Column(DateTime(timezone=True), nullable=True)
+    license_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    license_auto_renew = Column(Boolean, nullable=False, default=True, server_default="true")
+    license_term_months = Column(Integer, nullable=False, default=12, server_default="12")
+
     # Relationships
     users = relationship("User", back_populates="tenant", lazy="dynamic",
                          foreign_keys="User.tenant_id")

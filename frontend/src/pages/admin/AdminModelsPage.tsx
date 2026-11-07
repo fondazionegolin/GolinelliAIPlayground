@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import ModelRolesPanel, { priceLabel } from '@/components/admin/ModelRolesPanel'
 import { tl } from '@/i18n/tl'
+import { creditsToUsd, priceInCredits, usdToCredits } from '@/lib/credits'
 import { AdminBadge, AdminEmpty, AdminNotice, AdminPageHeader, AdminSection, AdminStat, AdminStatGrid, AdminTabs } from '@/components/admin/AdminUI'
 
 type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama'
@@ -68,7 +69,8 @@ const vendorOf = (m: AiModel) => {
 const shortName = (m: AiModel) => (m.provider === 'openrouter' ? m.display_name.replace(/^[^:]{1,40}:\s*/, '') : m.display_name)
 
 const STATUS_LABEL = { active: tl("Attivo"), available: tl("Rilevato"), deprecated: tl("Dismesso") } as const
-const usd = (value: number | null | undefined, digits = 2) => (value === null || value === undefined ? '—' : `$${value.toFixed(value < 1 ? Math.max(digits, 3) : digits)}`)
+/** Provider list prices are USD, but the platform only shows credits. */
+const cr = (value: number | null | undefined) => priceInCredits(value)
 const dateLabel = (value?: string | null) => (value ? new Date(value).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 const priced = (m: AiModel) => m.input_usd !== null && m.output_usd !== null
 const inUse = (m: AiModel) => m.scopes.length > 0
@@ -96,6 +98,7 @@ export default function AdminModelsPage() {
   const [scope, setScope] = useState<ModelScope>('chat')
   const [sort, setSort] = useState<SortKey>('name')
   const [showDeprecated, setShowDeprecated] = useState(false)
+  const [show, setShow] = useState<'all' | 'on' | 'selectable' | 'noprice'>('all')
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
 
@@ -182,6 +185,11 @@ export default function AdminModelsPage() {
   const eligible = (m: AiModel) => m.kind === 'text' && m.status !== 'deprecated' && priced(m) && (!scopeMeta?.providers.length || scopeMeta.providers.includes(m.provider))
   const listedEligible = listed.filter(eligible)
   const listedOn = listedEligible.filter((m) => m.scopes.includes(scope))
+  const needsPrice = (m: AiModel) => m.kind === 'text' && m.status !== 'deprecated' && !priced(m)
+  const hasTextRows = listed.some((m) => m.kind === 'text')
+  const counts = { all: listed.length, on: listedOn.length, selectable: listedEligible.length, noprice: listed.filter(needsPrice).length }
+  const rows = listed.filter((m) => show === 'all' ? true : show === 'on' ? m.scopes.includes(scope) && m.kind === 'text' : show === 'selectable' ? eligible(m) : needsPrice(m))
+  const sectionCount = (id: string) => all.filter((m) => m.scopes.includes(id as ModelScope)).length
   const toggleFolder = (key: string) => setOpen((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })
   const pick = (key: string, expand = false) => {
     setFolder(key)
@@ -191,11 +199,19 @@ export default function AdminModelsPage() {
 
   const startEdit = (m: AiModel) => {
     setEditing(m.id)
-    setDraft({ input_usd: m.input_usd?.toString() ?? '', output_usd: m.output_usd?.toString() ?? '', quality_score: m.quality_score?.toString() ?? '', status: m.status })
+    setDraft({ input_usd: usdToCredits(m.input_usd)?.toString() ?? '', output_usd: usdToCredits(m.output_usd)?.toString() ?? '', quality_score: m.quality_score?.toString() ?? '', status: m.status })
   }
   const commit = (m: AiModel) => {
     if (!draft) return
-    const body: Record<string, unknown> = { input_usd: toNumber(draft.input_usd), output_usd: toNumber(draft.output_usd), quality_score: toNumber(draft.quality_score), status: draft.status }
+    // Prices are typed in credits; a field left untouched keeps its exact stored USD value (no rounding drift).
+    const price = (typed: string, original: number | null) => {
+      if (typed === (usdToCredits(original)?.toString() ?? '')) return original
+      const credits = toNumber(typed)
+      return credits === null ? null : creditsToUsd(credits)
+    }
+    const body: Record<string, unknown> = { input_usd: price(draft.input_usd, m.input_usd), output_usd: price(draft.output_usd, m.output_usd), quality_score: toNumber(draft.quality_score), status: draft.status }
+    // A detected model that just got a price is ready to use: no separate «activate» step.
+    if (m.status === 'available' && draft.status === 'available' && body.input_usd !== null && body.output_usd !== null) body.status = 'active'
     if (draft.quality_score !== (m.quality_score?.toString() ?? '') && !m.quality_source) body.quality_source = tl("Inserito manualmente")
     save.mutate({ id: m.id, data: body })
   }
@@ -208,7 +224,7 @@ export default function AdminModelsPage() {
     <div className="space-y-5">
       <AdminPageHeader
         title={tl("Modelli")}
-        description={<span className="block max-w-3xl">{tl("Catalogo dei modelli con il listino (USD per 1M token) usato per i crediti. Sfoglia le cartelle, scegli la sezione da configurare e spunta i modelli che quella sezione può offrire. Il controllo automatico gira ogni 24 ore: nuove uscite e variazioni di prezzo restano proposte finché non le approvi.")}</span>}
+        description={<span className="block max-w-3xl">{tl("Qui scegli quali modelli può usare ogni sezione della piattaforma e a che prezzo vengono contati i crediti.")}<br />{tl("Il controllo automatico gira ogni 24 ore: nuove uscite e variazioni di prezzo restano proposte finché non le approvi.")}</span>}
         actions={
           <Button tone="accent" surface="solid" onClick={() => scan.mutate()} disabled={scan.isPending}>
             {scan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} {tl("Controlla ora")}
@@ -226,7 +242,7 @@ export default function AdminModelsPage() {
       {summary?.auto_priced && summary.auto_priced.length > 0 && (
         <AdminNotice tone="success" className="text-xs">
           <b>{tl("Prezzo preso in automatico dal listino ufficiale (modelli che ne erano privi):")}</b>{' '}
-          {summary.auto_priced.map((item) => `${item.model_id} ${usd(item.new[0])}/${usd(item.new[1])}`).join(' · ')}
+          {summary.auto_priced.map((item) => `${item.model_id} ${cr(item.new[0])}/${cr(item.new[1])}`).join(' · ')}
         </AdminNotice>
       )}
       {summary && Object.keys(summary.errors).length > 0 && (
@@ -250,8 +266,8 @@ export default function AdminModelsPage() {
             {proposals.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-xs">
                 <span className="min-w-[10rem] font-semibold text-slate-900">{m.display_name}</span>
-                <span className="text-slate-500">attuale {usd(m.input_usd)} / {usd(m.output_usd)}</span>
-                <span className="font-semibold text-amber-700">{tl("→ nuovo")} {usd(m.proposed_input_usd)} / {usd(m.proposed_output_usd)}</span>
+                <span className="text-slate-500">attuale {cr(m.input_usd)} / {cr(m.output_usd)}</span>
+                <span className="font-semibold text-amber-700">{tl("→ nuovo")} {cr(m.proposed_input_usd)} / {cr(m.proposed_output_usd)}</span>
                 <span className="ml-auto flex gap-2">
                   <Button tone="accent" surface="solid" density="compact" onClick={() => act.mutate({ id: m.id, kind: 'apply' })} disabled={act.isPending}><Check className="h-3.5 w-3.5" /> {tl("Applica")}</Button>
                   <Button tone="neutral" surface="outline" density="compact" onClick={() => act.mutate({ id: m.id, kind: 'dismiss' })} disabled={act.isPending}>{tl("Ignora")}</Button>
@@ -313,39 +329,61 @@ export default function AdminModelsPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--admin-line)] px-4 py-2.5 text-xs">
-              <label className="flex items-center gap-2 font-medium text-slate-700">{tl("Sezione da configurare")}
-                <select value={scope} onChange={(e) => setScope(e.target.value as ModelScope)} className="h-8 rounded-md border border-[var(--admin-line-strong)] bg-white px-2 font-semibold text-[var(--admin-accent)]">
-                  {scopes.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                </select>
-              </label>
-              {scopeMeta?.hint && <span className="text-slate-500">{scopeMeta.hint}</span>}
-              <span className="ml-auto flex flex-wrap items-center gap-2">
-                <span className="tabular-nums text-slate-600">{listedOn.length} / {listedEligible.length} {tl("abilitati qui")}</span>
-                <Button tone="neutral" surface="outline" density="compact" disabled={enable.isPending || listedOn.length === listedEligible.length}
-                  onClick={() => enable.mutate({ ids: listedEligible.filter((m) => !m.scopes.includes(scope)).map((m) => m.id), scope, enabled: true })}>{tl("Abilita tutti")}</Button>
-                <Button tone="neutral" surface="outline" density="compact" disabled={enable.isPending || listedOn.length === 0}
-                  onClick={() => enable.mutate({ ids: listedOn.map((m) => m.id), scope, enabled: false })}>{tl("Disabilita tutti")}</Button>
-                <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label={tl("Ordina per")} className="h-8 rounded-md border border-[var(--admin-line-strong)] bg-white px-2">
-                  <option value="name">{tl("Nome")}</option><option value="value">{tl("Qualità / costo")}</option><option value="quality">{tl("Qualità")}</option><option value="cost">{tl("Più economici")}</option>
-                </select>
-              </span>
-            </div>
+            {hasTextRows ? (
+              <div className="space-y-3 border-b border-[var(--admin-line)] px-4 py-4 text-[13px]">
+                <ol className="flex flex-wrap gap-x-6 gap-y-1 text-[var(--admin-ink-2)]">
+                  <li><b className="text-[var(--admin-accent)]">1</b> {tl("Scegli la sezione")}</li>
+                  <li><b className="text-[var(--admin-accent)]">2</b> {tl("Spunta i modelli che può offrire")}</li>
+                  <li><b className="text-[var(--admin-accent)]">3</b> {tl("Se manca il prezzo, impostalo con la matita: il modello diventa subito selezionabile")}</li>
+                </ol>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <label className="flex items-center gap-2 font-semibold text-slate-800">{tl("Sezione")}
+                    <select value={scope} onChange={(e) => setScope(e.target.value as ModelScope)} className="h-9 rounded-lg px-3 font-semibold text-[var(--admin-accent)]">
+                      {scopes.map((s) => <option key={s.id} value={s.id}>{s.label} ({sectionCount(s.id)})</option>)}
+                    </select>
+                  </label>
+                  {scopeMeta?.hint && <span className="text-[var(--admin-ink-2)]">{scopeMeta.hint}</span>}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="admin-tabs" role="group" aria-label={tl("Filtra i modelli")}>
+                    {([['all', tl("Tutti")], ['on', tl("Abilitati qui")], ['selectable', tl("Selezionabili")], ['noprice', tl("Senza prezzo")]] as const).map(([id, label]) => (
+                      <button key={id} type="button" aria-pressed={show === id} aria-selected={show === id} onClick={() => setShow(id)} className="admin-tab">
+                        {label} <span className="ml-1 tabular-nums text-[var(--admin-ink-3)]">{counts[id]}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="ml-auto flex flex-wrap items-center gap-2">
+                    <Button tone="neutral" surface="outline" density="compact" disabled={enable.isPending || listedOn.length === listedEligible.length}
+                      title={tl("Agisce sui modelli selezionabili di questa cartella (con prezzo e provider adatto)")}
+                      onClick={() => enable.mutate({ ids: listedEligible.filter((m) => !m.scopes.includes(scope)).map((m) => m.id), scope, enabled: true })}>{tl("Abilita tutti")}</Button>
+                    <Button tone="neutral" surface="outline" density="compact" disabled={enable.isPending || listedOn.length === 0}
+                      onClick={() => enable.mutate({ ids: listedOn.map((m) => m.id), scope, enabled: false })}>{tl("Disabilita tutti")}</Button>
+                    <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label={tl("Ordina per")} className="h-8 rounded-lg px-2">
+                      <option value="name">{tl("Ordina: nome")}</option><option value="value">{tl("Ordina: qualità / costo")}</option><option value="quality">{tl("Ordina: qualità")}</option><option value="cost">{tl("Ordina: più economici")}</option>
+                    </select>
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="border-b border-[var(--admin-line)] px-4 py-3.5 text-[13px] text-[var(--admin-ink-2)]">
+                {tl("Voci di sola consultazione: questi modelli (immagini, voce, video) non compaiono nei menu e non si selezionano. Servono per il listino prezzi che calcola i crediti.")}
+              </p>
+            )}
 
             {query.isLoading ? <AdminEmpty><Loader2 className="mx-auto h-5 w-5 animate-spin" /></AdminEmpty>
-              : listed.length === 0 ? <AdminEmpty>{folder === IN_USE && !searching ? tl("Nessun modello abilitato: apri una cartella e spunta i modelli.") : tl("Nessun modello.")}</AdminEmpty>
+              : rows.length === 0 ? <AdminEmpty>{folder === IN_USE && !searching && show === 'all' ? tl("Nessun modello abilitato: apri una cartella e spunta i modelli.") : show !== 'all' ? tl("Nessun modello con questo filtro in questa cartella.") : tl("Nessun modello.")}</AdminEmpty>
               : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[56rem] text-left text-xs">
                     <thead>
                       <tr>
-                        <th className="w-10" title={scopeMeta?.label}>{tl("Qui")}</th>
-                        <th>{tl("Modello")}</th><th className="text-right">Input $/1M</th><th className="text-right">Output $/1M</th>
-                        <th className="text-right">{tl("Qualità")}</th><th className="text-right">{tl("Qualità/$")}</th><th>{tl("Stato")}</th><th>{tl("Abilitato in")}</th><th />
+                        {hasTextRows && <th className="w-32">{tl("Abilita in")}<span className="block text-[11px] font-normal normal-case tracking-normal text-[var(--admin-accent)]">{scopeMeta?.label}</span></th>}
+                        <th>{tl("Modello")}</th><th className="text-right">{tl("Input cr./1M")}</th><th className="text-right">{tl("Output cr./1M")}</th>
+                        <th className="text-right">{tl("Qualità")}</th><th className="text-right">{tl("Qualità/$")}</th><th>{tl("Stato")}</th>{hasTextRows && <th>{tl("Abilitato in")}</th>}<th />
                       </tr>
                     </thead>
                     <tbody>
-                      {listed.map((m) => {
+                      {rows.map((m) => {
                         const isEditing = editing === m.id && draft
                         const can = eligible(m)
                         const on = m.scopes.includes(scope)
@@ -353,17 +391,21 @@ export default function AdminModelsPage() {
                         return (
                           <Fragment key={m.id}>
                             <tr>
+                              {hasTextRows && <td>
+                                {can || on ? (
+                                  <input type="checkbox" className="h-4 w-4 accent-[var(--admin-accent)]" checked={on} disabled={enable.isPending}
+                                    onChange={(e) => enable.mutate({ ids: [m.id], scope, enabled: e.target.checked })}
+                                    aria-label={tl("Abilita {0} in {1}", m.display_name, scopeMeta?.label ?? scope)} />
+                                ) : needsPrice(m) ? (
+                                  <button type="button" onClick={() => startEdit(m)} className="admin-badge admin-badge-warning cursor-pointer hover:brightness-95" title={tl("Per usarlo serve il prezzo: clicca per impostarlo")}>{tl("Imposta prezzo")}</button>
+                                ) : <span className="text-xs text-[var(--admin-ink-3)]" title={why}>{m.kind !== 'text' ? tl("Solo listino") : m.status === 'deprecated' ? tl("Dismesso") : tl("Non per questa sezione")}</span>}
+                              </td>}
                               <td>
-                                <input type="checkbox" className="h-4 w-4 accent-[var(--admin-accent)] disabled:opacity-30" checked={on} disabled={enable.isPending || (!on && !can)}
-                                  title={!can && !on ? why : undefined} onChange={(e) => enable.mutate({ ids: [m.id], scope, enabled: e.target.checked })}
-                                  aria-label={tl("Abilita {0} in {1}", m.display_name, scopeMeta?.label ?? scope)} />
-                              </td>
-                              <td>
-                                <p className="font-semibold text-slate-900">{wide ? m.display_name : shortName(m)}
-                                  {m.is_new && <button onClick={() => act.mutate({ id: m.id, kind: 'ack' })} title={tl("Segna come visto")} className="admin-badge admin-badge-accent ml-2">{tl("Nuovo")}</button>}
-                                  {m.seen_in_api === false && m.status === 'active' && <span title={tl("Il provider non lo restituisce più: potrebbe essere stato ritirato")} className="admin-badge admin-badge-warning ml-2">{tl("Non in API")}</span>}
+                                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-slate-900"><span className="min-w-0 break-words">{wide ? m.display_name : shortName(m)}</span>
+                                  {m.is_new && <button onClick={() => act.mutate({ id: m.id, kind: 'ack' })} title={tl("Segna come visto")} className="admin-badge admin-badge-accent">{tl("Nuovo")}</button>}
+                                  {m.seen_in_api === false && m.status === 'active' && <span title={tl("Il provider non lo restituisce più: potrebbe essere stato ritirato")} className="admin-badge admin-badge-warning">{tl("Non in API")}</span>}
                                 </p>
-                                <p className="truncate font-mono text-[11px] text-slate-500">{wide && `${PROVIDERS[m.provider].label} · `}{m.model_id}</p>
+                                <p className="mt-0.5 truncate font-mono text-xs text-slate-500">{wide && `${PROVIDERS[m.provider].label} · `}{m.model_id}</p>
                               </td>
                               {isEditing ? (
                                 <>
@@ -373,7 +415,7 @@ export default function AdminModelsPage() {
                                   <td className="text-right text-slate-400">—</td>
                                   <td><select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as AiModel['status'] })} className="h-8 rounded-md border border-[var(--admin-line-strong)] bg-white px-1.5 text-xs">
                                     {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
-                                  <td />
+                                  {hasTextRows && <td />}
                                   <td className="whitespace-nowrap text-right">
                                     <button onClick={() => commit(m)} disabled={save.isPending} className="rounded-md p-1.5 text-[var(--admin-accent)] hover:bg-[var(--admin-accent-soft)]" aria-label={tl("Salva")}><Check className="h-4 w-4" /></button>
                                     <button onClick={() => { setEditing(null); setDraft(null) }} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100" aria-label={tl("Annulla")}><X className="h-4 w-4" /></button>
@@ -383,16 +425,16 @@ export default function AdminModelsPage() {
                                 <>
                                   {m.kind === 'text' ? (
                                     <>
-                                      <td className="text-right tabular-nums">{usd(m.input_usd)}</td>
-                                      <td className="text-right tabular-nums">{usd(m.output_usd)}</td>
+                                      <td className="text-right tabular-nums">{cr(m.input_usd)}</td>
+                                      <td className="text-right tabular-nums">{cr(m.output_usd)}</td>
                                       <td className="text-right tabular-nums" title={m.quality_source ?? undefined}>{m.quality_score ?? '—'}</td>
                                       <td className="text-right font-semibold tabular-nums">{m.value_score ?? '—'}</td>
                                     </>
                                   ) : <td colSpan={4} className="text-slate-500">{priceLabel(m)}</td>}
                                   <td><AdminBadge tone={m.status === 'active' ? 'success' : 'neutral'}>{STATUS_LABEL[m.status]}</AdminBadge></td>
-                                  <td className="max-w-[16rem]">
+                                  {hasTextRows && <td className="max-w-[16rem]">
                                     {m.scopes.length ? <span className="flex flex-wrap gap-1">{m.scopes.map((s) => <AdminBadge key={s} tone={s === scope ? 'accent' : 'neutral'}>{scopeLabel(s)}</AdminBadge>)}</span> : <span className="text-slate-400">—</span>}
-                                  </td>
+                                  </td>}
                                   <td className="whitespace-nowrap text-right">
                                     <button onClick={() => startEdit(m)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Modifica")} title={tl("Modifica listino, qualità e stato")}><Pencil className="h-3.5 w-3.5" /></button>
                                   </td>
@@ -400,8 +442,8 @@ export default function AdminModelsPage() {
                               )}
                             </tr>
                             {m.status === 'available' && m.input_usd === null && m.kind === 'text' && (
-                              <tr className="bg-[var(--admin-surface-2)]"><td colSpan={9} className="py-1.5 text-[11px] text-slate-700">
-                                {tl("Modello rilevato senza prezzo: inserisci il listino (matita) per poterlo abilitare")}
+                              <tr className="bg-[var(--admin-surface-2)]"><td colSpan={9} className="py-2 text-xs text-slate-700">
+                                {tl("Modello rilevato senza prezzo: inserisci il listino (matita) e sarà subito selezionabile")}
                                 {data && <> {tl("oppure consulta")} <a href={data.pricing_urls[m.provider]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 underline">{tl("il listino")} <ExternalLink className="h-3 w-3" /></a></>}.
                               </td></tr>
                             )}
@@ -434,7 +476,7 @@ export default function AdminModelsPage() {
                       <li key={m.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
                         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROVIDERS[m.provider].color }} title={PROVIDERS[m.provider].label} />
                         <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={m.model_id}>{m.display_name}</span>
-                        <span className="tabular-nums text-slate-500">{usd(m.input_usd)}/{usd(m.output_usd)}</span>
+                        <span className="tabular-nums text-slate-500">{cr(m.input_usd)}/{cr(m.output_usd)}</span>
                         <button type="button" onClick={() => enable.mutate({ ids: [m.id], scope: s.id, enabled: false })} disabled={enable.isPending} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Togli {0}", m.display_name)}><X className="h-3.5 w-3.5" /></button>
                       </li>
                     ))}
@@ -455,7 +497,7 @@ export default function AdminModelsPage() {
                   <span className="font-semibold tabular-nums text-slate-400">{index + 1}</span>
                   <span className="truncate font-semibold text-slate-800" title={m.model_id}>{m.display_name}</span>
                   <span className="h-1.5 overflow-hidden rounded-full bg-[#eceef1]"><span className="block h-full rounded-full bg-[var(--admin-accent)]" style={{ width: `${Math.max(4, (m.value_score! / bestValue) * 100)}%` }} /></span>
-                  <span className="whitespace-nowrap text-[11px] text-slate-500">Q{m.quality_score} · {usd(m.blended_usd)}/1M · <b className="text-slate-900">{m.value_score}</b></span>
+                  <span className="whitespace-nowrap text-[11px] text-slate-500">Q{m.quality_score} · {cr(m.blended_usd)}/1M · <b className="text-slate-900">{m.value_score}</b></span>
                 </div>
               ))}
             </div>

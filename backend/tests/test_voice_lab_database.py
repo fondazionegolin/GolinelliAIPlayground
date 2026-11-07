@@ -148,3 +148,46 @@ async def test_late_refund_preserves_usage_in_new_billing_period():
         await billing.settle(db, tx.id, status="refunded")
         assert limit.current_usage == pytest.approx(.02)
         assert tx.cost == 0
+
+
+async def test_rename_track_preserves_artist_and_syncs_file_playlist_and_library(monkeypatch):
+    from app.models.file import File
+    monkeypatch.setattr(drive, "write_blob", lambda key, data: None)
+    async with isolated() as (db, teacher):
+        teacher.first_name, teacher.last_name = "Ada", "Lovelace"
+        first = await voice_lab.save_blob(db, teacher, "Prima", "music", b"audio", "audio/mpeg", "mp3", {})
+        await db.commit()
+        playlist = await voice_playlists.create_playlist(voice_playlists.PlaylistWrite(title="Musica", track_ids=[first.id]), db, teacher)
+        assert first.details["artist_name"] == "Ada Lovelace"
+        teacher.first_name = "Nome aggiornato"
+        result = await voice_lab.update_track(first.id, voice_lab.TrackUpdate(title="  Notte / jazz  "), db, teacher)
+        assert result["title"] == "Notte / jazz"
+        assert result["artist_name"] == "Ada Lovelace"
+        original = await db.get(DriveItem, UUID(first.details["drive_item_id"]))
+        assert original.name == "Notte - jazz.mp3"
+        assert (await db.get(File, original.file_id)).filename == original.name
+        reference = await db.get(DriveItem, UUID(playlist["tracks"][0]["id"]))
+        assert reference.name == original.name
+        updated = await voice_playlists.playlist_details(UUID(playlist["id"]), db, teacher)
+        assert updated["tracks"][0]["title"] == "Notte / jazz"
+        assert updated["tracks"][0]["artist_name"] == "Ada Lovelace"
+        assert next(row for row in await voice_lab.items(db, teacher) if row["id"] == str(first.id))["title"] == "Notte / jazz"
+
+
+async def test_rename_is_owner_scoped_and_legacy_artist_uses_original_owner(monkeypatch):
+    monkeypatch.setattr(drive, "write_blob", lambda key, data: None)
+    async with isolated() as (db, teacher):
+        teacher.first_name, teacher.last_name = "Nina", "Simone"
+        first = await voice_lab.save_blob(db, teacher, "Vecchio brano", "music", b"audio", "audio/mpeg", "mp3", {})
+        first.details = {k: v for k, v in first.details.items() if k != "artist_name"}
+        other = User(id=uuid4(), tenant_id=teacher.tenant_id, email=f"{uuid4()}@example.invalid", role=UserRole.TEACHER, first_name="Altro", is_active=True)
+        db.add(other); await db.commit()
+        with pytest.raises(HTTPException) as exc:
+            await voice_lab.update_track(first.id, voice_lab.TrackUpdate(title="Non autorizzato"), db, other)
+        assert exc.value.status_code == 404
+        assert first.title == "Vecchio brano"
+        details = await voice_lab.item_details(first.id, db, teacher)
+        assert details["artist_name"] == "Nina Simone"
+        metadata = await voice_playlists.track_metadata(db, [str(first.id), first.details["drive_item_id"]])
+        assert metadata[first.details["drive_item_id"]]["artist_name"] == "Nina Simone"
+        assert metadata[str(first.id)]["title"] == "Vecchio brano"

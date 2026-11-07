@@ -66,7 +66,7 @@ export function RegistrySearch({ onPick, placeholder }: { onPick: (s: RegistrySc
 }
 
 type Source = 'registry' | 'manual'
-const EMPTY = { email: '', first_name: '', last_name: '', custom_message: '', label: '', organization_name: '', organization_comune: '', organization_province: '' }
+const EMPTY = { email: '', first_name: '', last_name: '', custom_message: '', label: '', organization_name: '', organization_comune: '', organization_province: '', license_expires_on: '' }
 
 function InviteForm({ onDone }: { onDone: () => void }) {
   const { toast } = useToast()
@@ -86,6 +86,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
       last_name: form.last_name.trim() || undefined,
       custom_message: form.custom_message.trim() || undefined,
       label: form.label.trim() || undefined,
+      license_expires_on: form.license_expires_on || undefined,
       send_email: mode === 'EMAIL',
       ...(source === 'manual' ? {
         organization_name: form.organization_name.trim(),
@@ -203,6 +204,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
         <div className="sm:col-span-2"><Label className="mb-1.5 block text-xs text-slate-500">{tl("Messaggio nell’invito")}</Label><Input value={form.custom_message} onChange={set('custom_message')} className="text-sm" /></div>
         <div className="sm:col-span-2"><Label className="mb-1.5 block text-xs text-slate-500">{tl("Etichetta interna")}</Label>
           <Input value={form.label} onChange={set('label')} placeholder={tl("es. richiesta dalla segreteria, bando 2026")} className="text-sm" /></div>
+        <div><Label className="mb-1.5 block text-xs text-slate-500">{tl("Scadenza licenza (facoltativa)")}</Label><Input type="date" value={form.license_expires_on} onChange={set('license_expires_on')} className="text-sm" title={tl("Vuoto = 12 mesi con rinnovo automatico")} /></div>
       </div>
 
       <div className="flex justify-end">

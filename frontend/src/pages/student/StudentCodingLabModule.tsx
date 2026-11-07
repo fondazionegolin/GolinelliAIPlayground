@@ -1,5 +1,6 @@
 import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import inspectorSparkles from '@/components/icons/inspector-sparkles.generated'
+import { imageToDataUrl, extractDocument, isImageFile, VIBE_DOC_ACCEPT, VIBE_MAX_DOCS, VIBE_MAX_IMAGES, type VibeDocument } from '@/lib/vibeAttachments'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EditorView } from '@codemirror/view'
@@ -27,6 +28,7 @@ import {
   MessageSquare,
   MonitorPlay,
   Palette,
+  Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -330,6 +332,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
+  // Screenshots (data URLs) and documents (extracted text) attached to the next chat request.
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const [attachedDocs, setAttachedDocs] = useState<VibeDocument[]>([])
+  const [attaching, setAttaching] = useState(false)
+  const attachInputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const queryClient = useQueryClient()
   // Identity exposed to generated apps through GolinelliAI.me(): display name + role only. Read from
@@ -1393,7 +1400,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return generatedFiles
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], fix?: { errors: string[]; mode?: 'fix' | 'visual'; attempt?: number }, extras?: { attachments?: string[]; documents?: VibeDocument[] }) => {
     const controller = new AbortController()
     generationAbortRef.current = controller
     setGenerating(true)
@@ -1430,6 +1437,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               prompt: nextPrompt ? constrainGenerationPrompt(nextPrompt) : nextPrompt,
               files: baseFiles.length ? baseFiles : undefined,
               model_key: modelKey,
+              attachments: extras?.attachments?.length ? extras.attachments : undefined,
+              documents: extras?.documents?.length ? extras.documents.map((d) => ({ name: d.name, text: d.text })) : undefined,
             }),
       })
       if (!response.ok || !response.body) throw new Error(tl("La generazione non è partita."))
@@ -1690,13 +1699,66 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewLoading(false)
   }
 
+  const addAttachments = async (incoming: File[]) => {
+    if (incoming.length === 0) return
+    setAttaching(true)
+    setError(null)
+    try {
+      for (const file of incoming) {
+        try {
+          if (isImageFile(file)) {
+            if (attachedImagesRef.current.length >= VIBE_MAX_IMAGES) { setError(tl("Massimo {0} screenshot per richiesta.", VIBE_MAX_IMAGES)); continue }
+            const url = await imageToDataUrl(file)
+            attachedImagesRef.current = [...attachedImagesRef.current, url]
+            setAttachedImages(attachedImagesRef.current)
+          } else {
+            if (attachedDocsRef.current.length >= VIBE_MAX_DOCS) { setError(tl("Massimo {0} documenti per richiesta.", VIBE_MAX_DOCS)); continue }
+            const doc = await extractDocument(file)
+            attachedDocsRef.current = [...attachedDocsRef.current, doc]
+            setAttachedDocs(attachedDocsRef.current)
+          }
+        } catch (err: any) {
+          setError(err?.response?.data?.detail || err?.message || tl("Impossibile allegare {0}.", file.name))
+        }
+      }
+    } finally {
+      setAttaching(false)
+    }
+  }
+  const attachedImagesRef = useRef<string[]>([])
+  const attachedDocsRef = useRef<VibeDocument[]>([])
+  const clearAttachments = () => {
+    attachedImagesRef.current = []
+    attachedDocsRef.current = []
+    setAttachedImages([])
+    setAttachedDocs([])
+  }
+  const handleComposerPaste = (event: React.ClipboardEvent) => {
+    const images = Array.from(event.clipboardData?.files || []).filter(isImageFile)
+    if (images.length === 0) return
+    event.preventDefault()
+    void addAttachments(images)
+  }
+  const handleComposerDrop = (event: React.DragEvent) => {
+    const dropped = Array.from(event.dataTransfer?.files || [])
+    if (dropped.length === 0) return
+    event.preventDefault()
+    void addAttachments(dropped)
+  }
+
   const handleSendMessage = async () => {
-    if (!selectedProjectId || !message.trim()) return
+    if (!selectedProjectId || sending || attaching) return
+    const hasAttachments = attachedImages.length > 0 || attachedDocs.length > 0
+    if (!message.trim() && !hasAttachments) return
     setSending(true)
     setError(null)
     try {
-      const nextPrompt = message.trim()
+      const nextPrompt = message.trim() || (attachedImages.length > 0
+        ? tl("Guarda gli screenshot allegati e correggi i problemi che mostrano.")
+        : tl("Applica le istruzioni dei documenti allegati al progetto."))
+      const extras = { attachments: attachedImages, documents: attachedDocs }
       setMessage('')
+      clearAttachments()
       // Show the student's message immediately; the generate-stream endpoint persists it as the
       // codegen request, and loadProjectDetail reconciles this optimistic bubble afterwards.
       const optimistic: CodingMessage = {
@@ -1704,10 +1766,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         actor_type: isTeacher ? 'teacher' : 'student',
         role: 'user',
         content: nextPrompt,
+        metadata_json: {
+          ...(extras.attachments.length ? { attachments: extras.attachments } : {}),
+          ...(extras.documents.length ? { documents: extras.documents.map((d) => d.name) } : {}),
+        },
         created_at: new Date().toISOString(),
       }
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
-      await generateCode(selectedProjectId, nextPrompt)
+      await generateCode(selectedProjectId, nextPrompt, undefined, undefined, extras)
     } catch (err: any) {
       setError(err?.response?.data?.detail || tl("Impossibile salvare il messaggio."))
     } finally {
@@ -2375,10 +2441,62 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               {showDeepSeekDisclaimer && deepSeekConsent && (
                 <DeepSeekDisclaimer consent={deepSeekConsent} onAccept={acceptDeepSeekConsent} className="mb-2" />
               )}
-              <div className="ui-search flex items-center gap-2 rounded-[24px] px-3 py-2">
+              <div
+                className="ui-search rounded-[24px] px-3 py-2"
+                onDrop={handleComposerDrop}
+                onDragOver={(event) => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault() }}
+              >
+                {(attachedImages.length > 0 || attachedDocs.length > 0 || attaching) && (
+                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                    {attachedImages.map((src, index) => (
+                      <span key={`img-${index}`} className="relative inline-block">
+                        <img src={src} alt={tl("Allegato {0}", index + 1)} className="h-12 w-12 rounded-lg object-cover" />
+                        <button
+                          type="button"
+                          aria-label={tl("Rimuovi allegato")}
+                          onClick={() => { attachedImagesRef.current = attachedImagesRef.current.filter((_, i) => i !== index); setAttachedImages(attachedImagesRef.current) }}
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-white"
+                        ><X className="h-3 w-3" /></button>
+                      </span>
+                    ))}
+                    {attachedDocs.map((doc, index) => (
+                      <span key={`doc-${index}`} className="inline-flex max-w-[11rem] items-center gap-1 rounded-full bg-[var(--logo-violet-10)] py-1 pl-2.5 pr-1 text-[11px] font-semibold text-[var(--logo-violet-strong)]" title={doc.truncated ? tl("Documento lungo: letto solo l’inizio") : doc.name}>
+                        <FileCode2 className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{doc.name}</span>
+                        <button
+                          type="button"
+                          aria-label={tl("Rimuovi allegato")}
+                          onClick={() => { attachedDocsRef.current = attachedDocsRef.current.filter((_, i) => i !== index); setAttachedDocs(attachedDocsRef.current) }}
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-[var(--logo-violet-22)]"
+                        ><X className="h-3 w-3" /></button>
+                      </span>
+                    ))}
+                    {attaching && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                <input
+                  ref={attachInputRef}
+                  type="file"
+                  multiple
+                  accept={`image/*,${VIBE_DOC_ACCEPT}`}
+                  className="hidden"
+                  onChange={(event) => { void addAttachments(Array.from(event.target.files || [])); event.target.value = '' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => attachInputRef.current?.click()}
+                  disabled={!selectedProjectId || attaching}
+                  title={tl("Allega screenshot o documenti (PDF, Word…) — puoi anche incollare o trascinare")}
+                  aria-label={tl("Allega file")}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition-colors hover:bg-[var(--logo-violet-10)] disabled:opacity-40"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
+                  onPaste={handleComposerPaste}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault()
@@ -2387,17 +2505,18 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   }}
                   disabled={!selectedProjectId}
                   rows={2}
-                  placeholder={tl("Chiedi una modifica al progetto...")}
+                  placeholder={tl("Chiedi una modifica al progetto…")}
                   className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
                 />
                 <button
                   type="button"
                   onClick={handleSendMessage}
-                  disabled={sending || !selectedProjectId || !message.trim()}
+                  disabled={sending || attaching || !selectedProjectId || (!message.trim() && attachedImages.length === 0 && attachedDocs.length === 0)}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)] transition-colors hover:bg-[var(--logo-violet-22)] disabled:opacity-40"
                 >
                   {sending || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
+                </div>
               </div>
             </div>}
             </>
@@ -3529,6 +3648,8 @@ type LiveFile = { path: string; lines: number; status: 'writing' | 'done'; op?: 
 const RUNTIME_NOISE = [/NotAllowedError|Permission denied|Permesso negato|getUserMedia|NotFoundError: Requested device/i, /^Warning:/i, /React DevTools/i, /Download the React/i, /ResizeObserver loop/i, /\[HMR\]/i, /sandpack/i, /favicon/i]
 function isActionableRuntimeError(error: SandpackRuntimeError) {
   if (!error.message?.trim()) return false
+  // Bundler boot failures (TIME_OUT) are retried by the preview itself; the model cannot fix the network.
+  if (error.kind === 'infra') return false
   // A refused camera/mic permission is the user's or the browser's choice, never a code bug to "fix".
   // (Compile errors are never permission refusals: they always block the app and must always be fixed.)
   if (error.kind === 'compile') return true
@@ -3592,7 +3713,7 @@ function MediaPermissionBanner({ status, onReload, onAllow, hostBlocked, onClose
   )
 }
 function describeRuntimeError(error: SandpackRuntimeError) {
-  const kind = error.kind === 'compile' ? tl("Compilazione") : error.kind === 'runtime' ? 'Runtime' : 'Console'
+  const kind = error.kind === 'compile' ? tl("Compilazione") : error.kind === 'runtime' ? 'Runtime' : error.kind === 'infra' ? tl("Anteprima") : 'Console'
   const where = error.path ? ` ${error.path}${error.line ? `:${error.line}` : ''}` : ''
   return `${kind}${where}: ${error.message.slice(0, 500)}`
 }
@@ -3764,6 +3885,13 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
           <div className="mb-2 flex flex-wrap gap-1.5">
             {item.metadata_json.attachments.map((src: string, idx: number) => (
               <img key={idx} src={src} alt={tl("Allegato {0}", idx + 1)} className="h-14 w-14 rounded-lg border border-white/40 object-cover" />
+            ))}
+          </div>
+        )}
+        {Array.isArray(item.metadata_json?.documents) && item.metadata_json.documents.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {item.metadata_json.documents.map((name: string, idx: number) => (
+              <span key={idx} className="inline-flex max-w-[12rem] items-center gap-1 rounded-full bg-white/50 px-2 py-0.5 text-[10px] font-semibold"><Paperclip className="h-3 w-3 shrink-0" /><span className="truncate">{name}</span></span>
             ))}
           </div>
         )}

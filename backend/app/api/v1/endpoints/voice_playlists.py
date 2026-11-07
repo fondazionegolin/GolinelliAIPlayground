@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import or_, select
+from sqlalchemy import String, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,8 @@ from app.models.file import File
 from app.models.invitation import ClassTeacher
 from app.models.session import Class, Session
 from app.models.user import User
-from app.models.voice_lab import VoiceLabItem, VoiceLabPlaylist, ClassAudioPlayback
+from app.models.voice_lab import VoiceLabItem, VoiceLabPlaylist, SessionAudioPlayback
+from app.services.audio_library import artist_name
 from app.services import drive_service as drive
 
 router = APIRouter()
@@ -61,12 +62,37 @@ async def accessible(db, playlist_id, auth, *, edit=False):
     return playlist, folder
 
 
+async def track_metadata(db, drive_ids: list[str]) -> dict[str, dict]:
+    if not drive_ids:
+        return {}
+    # Join the original owner, so shared tracks never acquire the listener's artist credit.
+    rows = (await db.execute(select(VoiceLabItem, User).join(User, VoiceLabItem.owner_id == User.id).where(
+        or_(VoiceLabItem.details["drive_item_id"].astext.in_(drive_ids), VoiceLabItem.id.cast(String).in_(drive_ids))))).all()
+    metadata = {}
+    for item, owner in rows:
+        details = item.details or {}
+        key = details.get("cover_key")
+        value = {"title": item.title, "artist_name": details.get("artist_name") or artist_name(owner),
+            "cover_url": f"/voice-lab/audio-files/{details['drive_item_id']}/cover?v={key[-12:-4]}" if key and details.get("drive_item_id") else None}
+        metadata[str(item.id)] = value
+        if details.get("drive_item_id"):
+            metadata[details["drive_item_id"]] = value
+    return metadata
+
+
+async def cover_urls(db, drive_ids: list[str]) -> dict[str, str]:
+    """Cover-only metadata for the Files browser."""
+    metadata = await track_metadata(db, drive_ids)
+    return {key: value["cover_url"] for key, value in metadata.items() if value.get("cover_url")}
+
+
 async def serialize(db, playlist):
     children = (await db.scalars(select(DriveItem).where(DriveItem.parent_id == playlist.folder_id,
         DriveItem.source_type == "voice_track", DriveItem.trashed_at.is_(None), DriveItem.is_hidden.is_(False)))).all()
     by_source = {str(v.source_id): v for v in children}
+    metadata = await track_metadata(db, [v for v in playlist.track_ids if v in by_source])
     tracks = [{"id": str(by_source[v].id), "source_item_id": v, "title": by_source[v].name,
-               "mime_type": by_source[v].mime_type} for v in playlist.track_ids if v in by_source]
+               "mime_type": by_source[v].mime_type, **metadata.get(v, {})} for v in playlist.track_ids if v in by_source]
     return {"id": str(playlist.id), "title": playlist.title, "folder_id": str(playlist.folder_id), "tracks": tracks}
 
 
@@ -151,14 +177,36 @@ async def audio_files(db: Db, auth: Auth):
         DriveItem.is_hidden.is_(False), DriveItem.source_type != "voice_track").order_by(DriveItem.created_at.desc()))).all()
     result = []
     seen = set()
+    metadata = await track_metadata(db, [str(v.id) for v in rows])
     for row in rows:
         # resolve_role also checks hidden/trashed ancestors of shared files.
         role, _ = await drive.resolve_role(db, principal, row)
         if role and row.file_id not in seen:
             seen.add(row.file_id)
             result.append({"id": str(row.id), "title": row.name, "mime_type": row.mime_type,
-                "owned": role == "owner", "shared": row.id in shared})
+                "owned": role == "owner", "shared": row.id in shared, **metadata.get(str(row.id), {})})
     return result
+
+
+@router.get("/audio-files/{item_id}/cover")
+async def audio_cover(item_id: UUID, db: Db, auth: Auth):
+    auth = as_auth(auth)
+    row = await db.get(DriveItem, item_id)
+    if not row or row.trashed_at or row.is_hidden:
+        raise HTTPException(404, "Copertina non disponibile")
+    principal = await drive.principal_for(db, auth.teacher, auth.student)
+    if (await drive.resolve_role(db, principal, row))[0] is None:
+        raise HTTPException(404, "Copertina non disponibile")
+    source = str(row.source_id) if row.source_type == "voice_track" and row.source_id else str(row.id)
+    item = await db.scalar(select(VoiceLabItem).where(VoiceLabItem.details["drive_item_id"].astext == source))
+    key = (item.details or {}).get("cover_key") if item else None
+    if not key:
+        raise HTTPException(404, "Copertina non disponibile")
+    try:
+        data = await asyncio.to_thread(drive.read_blob, key)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(404, "Copertina non disponibile") from exc
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/playlists")
@@ -201,7 +249,7 @@ async def playlist_details(playlist_id: UUID, db: Db, auth: Auth):
 @router.put("/playlists/{playlist_id}")
 async def update_playlist(playlist_id: UUID, body: PlaylistWrite, db: Db, auth: Auth):
     playlist, folder = await accessible(db, playlist_id, auth, edit=True)
-    broadcasts = (await db.scalars(select(ClassAudioPlayback).where(ClassAudioPlayback.playlist_id == playlist.id).with_for_update())).all()
+    broadcasts = (await db.scalars(select(SessionAudioPlayback).where(SessionAudioPlayback.playlist_id == playlist.id).with_for_update())).all()
     previous = [(row, await playback_payload(db, row)) for row in broadcasts]
     await write_tracks(db, auth, playlist, body)
     folder.name = body.title
@@ -254,18 +302,18 @@ class PlaybackWrite(BaseModel):
     expected_revision: str | None = None
 
 
-async def require_class(db, auth, class_id=None, session_id=None):
+async def require_session(db, auth, session_id=None):
+    """Shared audio belongs to one session: students only reach their own, teachers need access to its class."""
     if auth.student:
-        session = await db.get(Session, auth.student.session_id)
-        if session_id and session_id != session.id or class_id and class_id != session.class_id:
-            raise HTTPException(404, "Classe non disponibile")
-        return session.class_id
-    if session_id:
-        session = await db.get(Session, session_id)
-        class_id = session.class_id if session else None
-    if not class_id or not await teacher_can_access_class(db, auth.teacher, class_id):
-        raise HTTPException(404, "Classe non disponibile")
-    return class_id
+        if session_id and session_id != auth.student.session_id:
+            raise HTTPException(404, "Sessione non disponibile")
+        session_id = auth.student.session_id
+    session = await db.get(Session, session_id) if session_id else None
+    if not session or session.deleted_at:
+        raise HTTPException(404, "Sessione non disponibile")
+    if auth.teacher and not await teacher_can_access_class(db, auth.teacher, session.class_id):
+        raise HTTPException(404, "Sessione non disponibile")
+    return session.id
 
 
 async def playback_payload(db, playback):
@@ -292,23 +340,23 @@ async def playback_payload(db, playback):
         position -= duration
         index += 1
     return {**state, "index": index, "position": position, "updated_at": now,
-        "class_id": str(playback.class_id), "teacher_id": str(playback.teacher_id),
+        "session_id": str(playback.session_id), "teacher_id": str(playback.teacher_id),
         "playlist": value, "server_time": now}
 
 
-@router.get("/class-playback")
-async def class_playback(db: Db, auth: Auth, class_id: UUID | None = None, session_id: UUID | None = None):
-    if auth.teacher and not class_id and not session_id:
+@router.get("/session-playback")
+async def session_playback(db: Db, auth: Auth, session_id: UUID | None = None):
+    if auth.teacher and not session_id:
         return None
-    class_id = await require_class(db, auth, class_id, session_id)
-    return await playback_payload(db, await db.get(ClassAudioPlayback, class_id))
+    session_id = await require_session(db, auth, session_id)
+    return await playback_payload(db, await db.get(SessionAudioPlayback, session_id))
 
 
-@router.put("/class-playback/{class_id}")
-async def set_class_playback(class_id: UUID, body: PlaybackWrite, db: Db, teacher: Teacher):
-    await require_class(db, StudentOrTeacher(teacher=teacher), class_id)
-    await db.execute(insert(ClassAudioPlayback).values(class_id=class_id, teacher_id=teacher.id, state={}).on_conflict_do_nothing())
-    playback = await db.scalar(select(ClassAudioPlayback).where(ClassAudioPlayback.class_id == class_id).with_for_update())
+@router.put("/session-playback/{session_id}")
+async def set_session_playback(session_id: UUID, body: PlaybackWrite, db: Db, teacher: Teacher):
+    await require_session(db, StudentOrTeacher(teacher=teacher), session_id)
+    await db.execute(insert(SessionAudioPlayback).values(session_id=session_id, teacher_id=teacher.id, state={}).on_conflict_do_nothing())
+    playback = await db.scalar(select(SessionAudioPlayback).where(SessionAudioPlayback.session_id == session_id).with_for_update())
     if body.expected_revision and body.expected_revision != playback.state.get("revision"):
         raise HTTPException(409, "La riproduzione è stata aggiornata")
     durations = dict(playback.state.get("durations", {}))
@@ -326,10 +374,10 @@ async def set_class_playback(class_id: UUID, body: PlaybackWrite, db: Db, teache
     return await playback_payload(db, playback)
 
 
-@router.get("/class-playback/{class_id}/tracks/{track_id}/content")
-async def class_track_content(class_id: UUID, track_id: UUID, db: Db, auth: Auth):
-    await require_class(db, auth, class_id)
-    value = await playback_payload(db, await db.get(ClassAudioPlayback, class_id))
+@router.get("/session-playback/{session_id}/tracks/{track_id}/content")
+async def session_track_content(session_id: UUID, track_id: UUID, db: Db, auth: Auth):
+    await require_session(db, auth, session_id)
+    value = await playback_payload(db, await db.get(SessionAudioPlayback, session_id))
     if not value or str(track_id) not in {v["id"] for v in value["playlist"]["tracks"]}:
         raise HTTPException(404, "Traccia non disponibile")
     item = await db.get(DriveItem, track_id)

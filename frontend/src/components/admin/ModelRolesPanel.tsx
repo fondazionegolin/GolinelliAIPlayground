@@ -5,6 +5,7 @@ import { Check, Loader2, RotateCcw, Sparkles } from '@/components/icons'
 import { adminApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
+import { priceInCredits } from '@/lib/credits'
 import { tl } from '@/i18n/tl'
 
 type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama'
@@ -30,7 +31,7 @@ const GROUPS: Array<{ id: Role['group'][]; title: string; hint: string }> = [
   { id: ['voice'], title: tl("Voce e tempo reale"), hint: tl("Interrogazione vocale, indagine, trascrizione e dettatura") },
 ]
 
-const money = (value: number) => `$${value < 1 ? value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : value.toFixed(2).replace(/\.00$/, '')}`
+const money = (value: number) => priceInCredits(value)
 export function priceLabel(model: Pick<Candidate, 'kind' | 'input_usd' | 'output_usd' | 'price_note'> | null): string {
   if (!model) return '—'
   if (model.kind === 'text') return model.input_usd !== null && model.output_usd !== null ? tl("{0} / {1} per 1M token", money(model.input_usd), money(model.output_usd)) : tl("prezzo mancante")

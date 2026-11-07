@@ -5,6 +5,7 @@ import { useUiThemeRouteGuard } from '@/stores/uiTheme'
 import { Toaster } from '@/components/ui/toaster'
 import { CookieBanner } from '@/components/CookieBanner'
 import { LegalConsentGate } from '@/components/LegalConsentGate'
+import { LicenseGate } from '@/components/LicenseGate'
 import { Loader2 } from '@/components/icons'
 
 import LandingPage from '@/pages/LandingPage'
@@ -107,6 +108,7 @@ function App() {
         </Routes>
       </Suspense>
       <LegalConsentGate />
+      <LicenseGate />
       <Toaster />
       <CookieBanner />
       <GlobalDictation />

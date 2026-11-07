@@ -11,7 +11,7 @@
   --admin-line-strong: #cfd4dc;
   --admin-ink: #17151b;
   --admin-ink-2: #4b4f58;
-  --admin-ink-3: #7b808a;
+  --admin-ink-3: #666b76;
   --admin-accent: var(--logo-violet-strong);
   --admin-accent-soft: rgba(123, 105, 201, 0.09);
   --admin-radius: 0.625rem;
@@ -46,10 +46,10 @@
 :where(.admin-notice-warning > svg) { color: #b45309; }
 :where(.admin-notice-danger) { border-left-color: #b91c1c; background: #fff7f7; }
 :where(.admin-notice-danger > svg) { color: #b91c1c; }
-:where(.admin-tabs) { display: inline-flex; gap: .25rem; padding: .2rem; border: 1px solid var(--admin-line); border-radius: .5rem; background: var(--admin-surface); }
-:where(.admin-tab) { height: 1.85rem; padding: 0 .85rem; border-radius: .35rem; font-size: 12.5px; font-weight: 500; color: var(--admin-ink-2); transition: background-color 120ms ease, color 120ms ease; }
-:where(.admin-tab:hover) { color: var(--admin-ink); background: var(--admin-surface-2); }
-:where(.admin-tab[aria-selected="true"]) { background: var(--admin-accent-soft); color: var(--admin-accent); font-weight: 600; }
+.admin-tabs { display: inline-flex; flex-wrap: wrap; gap: .25rem; padding: .2rem; border: 1px solid var(--admin-line); border-radius: .5rem; background: var(--admin-surface); }
+.admin-tabs .admin-tab { height: 1.85rem; padding: 0 .85rem; border-radius: .35rem; font-size: 12.5px; font-weight: 500; color: var(--admin-ink-2); transition: background-color 120ms ease, color 120ms ease; }
+.admin-tabs .admin-tab:hover { color: var(--admin-ink); background: var(--admin-surface-2); }
+.admin-tabs .admin-tab[aria-selected="true"] { background: var(--admin-accent-soft); color: var(--admin-accent); font-weight: 600; }
 :where(.admin-badge) {display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; border-radius: .375rem; padding: .125rem .45rem; font-size: 11px; font-weight: 600; line-height: 1.35; border: 1px solid transparent; }
 :where(.admin-badge-neutral) { background: #f1f2f4; color: var(--admin-ink-2); border-color: var(--admin-line); }
 :where(.admin-badge-accent) { background: var(--admin-accent-soft); color: var(--admin-accent); border-color: rgba(85, 68, 156, .18); }
@@ -66,7 +66,7 @@
 .admin-shell .shadow-lg, .admin-shell .shadow-xl, .admin-shell .shadow-md { box-shadow: 0 1px 2px rgba(23, 21, 27, .06); }
 /* Muted greys read too faint on white: lift them one step for contrast. */
 .admin-shell .text-slate-400 { color: var(--admin-ink-3); }
-.admin-shell .text-slate-500 { color: #5f6470; }
+.admin-shell .text-slate-500 { color: #565b67; }
 .admin-shell .border-slate-100 { border-color: #eceef1; }
 .admin-shell .border-slate-200 { border-color: var(--admin-line); }
 
@@ -89,3 +89,25 @@
 .admin-shell td.nowrap, .admin-shell .admin-nowrap { white-space: nowrap; overflow-wrap: normal; }
 /* Long tokens (e-mails, links, codes) wrap within their cell instead of pushing the table wider. */
 .admin-shell td a, .admin-shell td .font-mono { overflow-wrap: anywhere; }
+
+/* ── Tables: hairline column dividers ────────────────────── */
+.admin-shell th + th, .admin-shell td + td { border-left: 1px solid #eceef2; }
+.admin-shell thead th + th { border-left-color: var(--admin-line); }
+.admin-shell tbody tr td[colspan] { border-left: 0; }
+.admin-shell th, .admin-shell td { padding-top: .75rem; padding-bottom: .75rem; }
+
+/* ── Fields: same flat, borderless look as the platform ───── */
+.admin-shell select,
+.admin-shell textarea,
+.admin-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]) {
+  background-color: var(--ds-field-bg, #f1f3f5);
+  border-color: transparent;
+  border-radius: .75rem;
+  color: var(--ds-field-ink, var(--admin-ink));
+}
+.admin-shell select:focus-visible, .admin-shell textarea:focus-visible, .admin-shell input:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 1px; }
+
+/* ── Readability: nothing below 11px, small print spaced out ── */
+.admin-shell .text-\[10px\] { font-size: 11px; line-height: 1.45; }
+.admin-shell .text-\[11px\] { font-size: 12px; line-height: 1.55; }
+.admin-shell p + p { margin-top: .35rem; }

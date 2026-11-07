@@ -205,7 +205,7 @@ async def create_room(
             .where(Teacherbot.id == request.teacherbot_id)
             .where(TeacherbotPublication.class_id == session.class_id)
             .where(TeacherbotPublication.is_active == True)
-            .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
+            .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
         )
         bot = bot_result.scalar_one_or_none()
         if not bot:

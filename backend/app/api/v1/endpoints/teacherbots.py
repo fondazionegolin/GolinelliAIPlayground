@@ -21,6 +21,7 @@ from app.models.enums import SessionStatus
 from app.api.deps import get_current_teacher, get_current_student
 from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
+from app.models.invitation import ClassTeacher
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
 from app.models.teacherbot import (
@@ -181,6 +182,8 @@ async def teacher_starter_bots(db: Annotated[AsyncSession, Depends(get_db)], tea
 async def teacherbot_chat_info(teacherbot_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], teacher: Annotated[User, Depends(get_current_teacher)]):
     bot = await db.scalar(select(Teacherbot).where(Teacherbot.id == teacherbot_id, Teacherbot.teacher_id == teacher.id))
     if not bot:
+        bot = await _shared_bot_for_teacher(db, teacher, teacherbot_id)
+    if not bot:
         bot = next((candidate for candidate in await default_teacherbots.list_bots(db, "teacher") if candidate.id == teacherbot_id), None)
     if not bot:
         raise HTTPException(404, "Teacherbot non disponibile")
@@ -260,6 +263,7 @@ async def list_teacherbots(
         .order_by(Teacherbot.updated_at.desc())
     )
     rows = result.all()
+    classes = await _published_classes(db, [bot.id for bot, _, _ in rows])
 
     return [
         TeacherbotListResponse(
@@ -275,10 +279,88 @@ async def list_teacherbots(
             created_at=bot.created_at,
             updated_at=bot.updated_at,
             publication_count=pub_count,
-            conversation_count=conv_count
+            conversation_count=conv_count,
+            classes=classes.get(bot.id, []),
         )
         for bot, pub_count, conv_count in rows
     ]
+
+
+async def _published_classes(db: AsyncSession, bot_ids: list[UUID]) -> dict[UUID, list[dict]]:
+    """Active class publications per bot. Sharing is per class: every session of the class inherits it."""
+    if not bot_ids:
+        return {}
+    rows = (await db.execute(
+        select(TeacherbotPublication.teacherbot_id, Class.id, Class.name, Class.teacher_id, User.first_name, User.last_name, User.email)
+        .join(Class, Class.id == TeacherbotPublication.class_id)
+        .join(User, User.id == Class.teacher_id)
+        .where(TeacherbotPublication.teacherbot_id.in_(bot_ids))
+        .where(TeacherbotPublication.is_active == True)
+        .where(TeacherbotPublication.class_id.is_not(None))
+        .order_by(Class.name)
+    )).all()
+    result: dict[UUID, list[dict]] = {}
+    for bot_id, class_id, name, owner_id, first, last, email in rows:
+        owner_name = f"{first or ''} {last or ''}".strip() or email
+        result.setdefault(bot_id, []).append({"id": class_id, "name": name, "owner_id": owner_id, "owner_name": owner_name})
+    return result
+
+
+async def _accessible_class_ids(db: AsyncSession, teacher: User) -> set[UUID]:
+    """Classes the teacher owns or was invited to (whole class)."""
+    owned = (await db.scalars(select(Class.id).where(Class.teacher_id == teacher.id, Class.archived_at.is_(None)))).all()
+    invited = (await db.scalars(select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id))).all()
+    return {*owned, *invited}
+
+
+async def _shared_bot_for_teacher(db: AsyncSession, teacher: User, teacherbot_id: UUID) -> Optional[Teacherbot]:
+    """A colleague's bot that is actively published to a class this teacher belongs to."""
+    class_ids = await _accessible_class_ids(db, teacher)
+    if not class_ids:
+        return None
+    return await db.scalar(
+        select(Teacherbot)
+        .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(TeacherbotPublication.class_id.in_(class_ids))
+        .where(TeacherbotPublication.is_active == True)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+        .limit(1)
+    )
+
+
+@router.get("/teacherbots/shared-with-me", response_model=list[TeacherbotListResponse])
+async def list_shared_teacherbots(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Colleagues' teacherbots published to the classes this teacher owns or was invited to."""
+    class_ids = await _accessible_class_ids(db, teacher)
+    if not class_ids:
+        return []
+    bots = (await db.scalars(
+        select(Teacherbot)
+        .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
+        .where(TeacherbotPublication.class_id.in_(class_ids))
+        .where(TeacherbotPublication.is_active == True)
+        .where(Teacherbot.teacher_id.is_not(None))
+        .where(Teacherbot.teacher_id != teacher.id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+        .distinct()
+    )).all()
+    classes = await _published_classes(db, [bot.id for bot in bots])
+    authors = {u.id: u for u in (await db.scalars(select(User).where(User.id.in_({b.teacher_id for b in bots})))).all()} if bots else {}
+    out = []
+    for bot in sorted(bots, key=lambda b: b.name.lower()):
+        mine = [c for c in classes.get(bot.id, []) if c["id"] in class_ids]
+        author = authors.get(bot.teacher_id)
+        out.append(TeacherbotListResponse(
+            id=bot.id, name=bot.name, synopsis=bot.synopsis, icon=bot.icon, color=bot.color, status=bot.status.value,
+            is_proactive=bot.is_proactive, enable_reporting=bot.enable_reporting, enable_escape_room=bot.enable_escape_room,
+            created_at=bot.created_at, updated_at=bot.updated_at, publication_count=len(mine), conversation_count=0,
+            classes=mine, shared_by=(f"{author.first_name or ''} {author.last_name or ''}".strip() or author.email) if author else None,
+        ))
+    return out
 
 
 @router.post("/teacherbots", response_model=TeacherbotResponse)
@@ -541,6 +623,10 @@ async def test_teacherbot(
     )
     bot = result.scalar_one_or_none()
     if not bot:
+        bot = await _shared_bot_for_teacher(db, teacher, teacherbot_id)
+        if bot and any(value is not None for value in (request.system_prompt, request.temperature)):
+            raise HTTPException(403, "Puoi provare questo teacherbot, ma solo l'autore può modificarlo")
+    if not bot:
         bot = next((candidate for candidate in await default_teacherbots.list_bots(db, "teacher") if candidate.id == teacherbot_id), None)
         if bot and (request.llm_provider or request.llm_model):
             await validate_selection(db, request.llm_provider, request.llm_model)
@@ -765,7 +851,6 @@ async def list_session_teacherbots(
         .outerjoin(TeacherbotConversation, TeacherbotConversation.teacherbot_id == Teacherbot.id)
         .where(TeacherbotPublication.class_id == session.class_id)
         .where(TeacherbotPublication.is_active == True)
-        .where(Teacherbot.tenant_id == teacher.tenant_id)
         .group_by(Teacherbot.id)
         .order_by(Teacherbot.name)
     )
@@ -1551,7 +1636,7 @@ async def list_available_teacherbots(
             TeacherbotPublication.student_id == student.id,
         ))
         .where(TeacherbotPublication.is_active == True)
-        .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
     )
     published_bots = result.scalars().all()
     own_result = await db.execute(
@@ -1617,7 +1702,7 @@ async def start_teacherbot_conversation(
             TeacherbotPublication.student_id == student.id,
         ))
         .where(TeacherbotPublication.is_active == True)
-        .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
         )
         bot = result.scalar_one_or_none()
     if not bot:

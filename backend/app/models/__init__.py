@@ -152,3 +152,4 @@ from app.models.platform_setting import PlatformSetting
 from app.models.school_onboarding import ItalianSchool, SchoolOnboardingInvite  # noqa: F401
 
 from app.models.voice_lab import VoiceLabItem, VoiceLabPlaylist
+from app.models import license_defaults  # noqa: F401

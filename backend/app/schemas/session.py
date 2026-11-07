@@ -112,3 +112,5 @@ class TaskCreate(BaseModel):
     due_at: Optional[datetime] = None
     points: Optional[str] = None
     content_json: Optional[str] = None
+    # "draft" keeps a lesson/presentation hidden from students (they are published on creation by default).
+    status: Optional[str] = None

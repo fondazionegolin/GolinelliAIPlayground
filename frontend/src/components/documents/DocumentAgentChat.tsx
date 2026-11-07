@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
-import { Bot, Check, Loader2, MousePointer2, Send, Sparkles, X } from '@/components/icons'
+import { Bot, Check, ImageIcon, Loader2, MousePointer2, Send, Sparkles, Undo2, X } from '@/components/icons'
+import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { generateDeckImages, pendingImageSlots, type DeckTheme, type StudioSlide } from '@/lib/presentationStudio'
 import { llmApi } from '@/lib/api'
 import { useServerHealth } from '@/components/ServerHealthIndicator'
 import type { FormatOperation } from '@/lib/documentFormatOps'
 import { PLACEMENT_LABEL, type WritePlacement, type WriteSpec } from '@/lib/documentWriting'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 import { tl } from '@/i18n/tl'
+import { IconButton } from '@/design'
 
 export type DocumentAssistContext = {
   id: string
@@ -32,6 +35,8 @@ type ChatMessage = {
   proposal?: Proposal
   beforePreview?: string
   status?: 'pending' | 'applied' | 'rejected'
+  /** Progress of the illustrations generated after a slide/presentation proposal was applied. */
+  images?: { done: number; total: number; failed: number }
   plan?: Plan
   planPrompt?: string
   planTarget?: DocumentAssistContext
@@ -56,8 +61,22 @@ type Props = {
   /** Title, outline and the text around the insertion point, for writing tasks. */
   getWritingContext?: (target: DocumentAssistContext) => Record<string, unknown>
   onApply: (proposal: Proposal) => void
+  /** Puts a generated illustration into the image block with this id (block ids are unique in the deck). */
+  onPatchImage?: (blockId: string, url: string) => void
+  /** Deck theme, so generated illustrations match the presentation's palette. */
+  deckTheme?: DeckTheme | null
   onClose: () => void
 }
+
+/** Slides of a slide/presentation proposal, to find the image slots it asks to generate. */
+function proposalSlides(proposal: Proposal): StudioSlide[] {
+  if (proposal.replacement_slide && typeof proposal.replacement_slide === 'object') return [proposal.replacement_slide as StudioSlide]
+  const deck = proposal.replacement_presentation as { slides?: StudioSlide[] } | undefined
+  return Array.isArray(deck?.slides) ? deck.slides : []
+}
+
+const isImageBlockTarget = (target: DocumentAssistContext) =>
+  target.kind === 'slide_block' && (target.target.block as { type?: string } | undefined)?.type === 'image'
 
 function htmlToPlainText(html: string) {
   const container = window.document.createElement('div')
@@ -78,10 +97,12 @@ function proposalPreview(proposal: Proposal) {
     const texts = group.map(item => typeof item.content === 'string' && item.type === 'text' ? htmlToPlainText(item.content) : String(item.type || 'oggetto'))
     return `${group.length} oggetti\n${texts.join(' · ')}`
   }
+  const images = pendingImageSlots(proposalSlides(proposal)).length
+  const imageLine = images ? `\n+ ${images === 1 ? tl("1 immagine da generare") : tl("{0} immagini da generare", images)}` : ''
   const slide = proposal.replacement_slide as { title?: string; blocks?: unknown[] } | undefined
-  if (slide) return `${slide.title || 'Slide'}\n${slide.blocks?.length || 0} oggetti`
+  if (slide) return `${slide.title || 'Slide'}\n${slide.blocks?.length || 0} oggetti${imageLine}`
   const presentation = proposal.replacement_presentation as { title?: string; slides?: unknown[] } | undefined
-  if (presentation) return `${presentation.title || 'Presentazione'}\n${presentation.slides?.length || 0} slide`
+  if (presentation) return `${presentation.title || 'Presentazione'}\n${presentation.slides?.length || 0} slide${imageLine}`
   return tl("Modifica pronta")
 }
 
@@ -101,7 +122,7 @@ const CURSOR_SUGGESTIONS: Array<[string, string]> = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, onClose }: Props) {
   const [input, setInput] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, input)
@@ -191,17 +212,21 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     setRetryNotice('')
     try {
       const resolvedTarget = { ...target.target, ...(target.resolveTarget?.() ?? {}) }
+      const imageTarget = isImageBlockTarget(target)
       const response = await callAssist({
         prompt,
         target: { kind: target.kind, ...resolvedTarget },
         document_context: documentContext,
         dims,
-      })
+      }, imageTarget ? { timeout: 300000, retries: false } : {})
       const data = response.data as { summary?: string; proposal?: Proposal; agent_steps?: AgentStep[] }
       const steps = (data.agent_steps || []).filter((step) => step.summary)
-      const contextualProposal = data.proposal
+      const contextualProposal: Proposal | undefined = data.proposal
         ? { ...data.proposal, client_context: resolvedTarget, client_context_id: target.id }
         : undefined
+      // A picture the user asked to change is generated and swapped straight away (it can be restored).
+      const autoApplied = Boolean(contextualProposal?.auto_apply)
+      if (contextualProposal && autoApplied) onApply(contextualProposal)
       setMessages((current) => [
         ...current,
         ...steps.map<ChatMessage>((step) => ({
@@ -217,7 +242,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           content: data.summary || tl("Ho preparato una proposta contestuale."),
           proposal: contextualProposal,
           beforePreview: target.beforePreview,
-          status: 'pending',
+          status: autoApplied ? 'applied' : 'pending',
         },
       ])
     } catch (error: any) {
@@ -226,6 +251,33 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
       setRetryNotice('')
       setLoading(false)
     }
+  }
+
+  /** Applies a reviewed proposal; slide image slots it introduced are then illustrated in the background. */
+  const applyProposal = (message: ChatMessage) => {
+    const proposal = message.proposal!
+    onApply(proposal)
+    updateProposalStatus(message.id, 'applied')
+    const slots = onPatchImage ? pendingImageSlots(proposalSlides(proposal)) : []
+    if (!slots.length) return
+    const setProgress = (images: ChatMessage['images']) =>
+      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, images } : item))
+    let failed = 0
+    setProgress({ done: 0, total: slots.length, failed: 0 })
+    void generateDeckImages(
+      proposalSlides(proposal),
+      { deckTitle: String(documentContext.title || ''), theme: deckTheme },
+      (slot, url) => onPatchImage!(slot.blockId, url),
+      (done, total) => setProgress({ done, total, failed }),
+    ).then((result) => { failed = result.failed; setProgress({ done: slots.length, total: slots.length, failed: result.failed }) })
+  }
+
+  /** Puts back the picture replaced by an automatic image edit. */
+  const restorePreviousImage = (message: ChatMessage) => {
+    const proposal = message.proposal
+    if (!proposal?.previous_block) return
+    onApply({ ...proposal, replacement_block: proposal.previous_block, auto_apply: false })
+    updateProposalStatus(message.id, 'rejected')
   }
 
   /** Document mode, step 1: the agent says what it understood and waits for the user's confirmation. */
@@ -471,6 +523,27 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                       <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Testo inserito · Ctrl+Z per annullare") : tl("Proposta scartata")}</p>
                     )}
                   </div>
+                ) : message.proposal && message.proposal.auto_apply ? (
+                  <div className="mt-3 overflow-hidden rounded-xl border border-violet-200 bg-white text-slate-700">
+                    <div className="flex items-center gap-1.5 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-700">
+                      <ImageIcon className="h-3.5 w-3.5" />{message.proposal.image_mode === 'edit' ? tl("Immagine modificata") : tl("Nuova immagine")}
+                    </div>
+                    <img
+                      src={String((message.proposal.replacement_block as { content?: string } | undefined)?.content || '')}
+                      alt=""
+                      className="max-h-48 w-full bg-slate-100 object-contain"
+                    />
+                    {message.status === 'applied' ? (
+                      <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-3 py-2">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-emerald-700">{tl("Sostituita nella slide")}</span>
+                        <button type="button" onClick={() => restorePreviousImage(message)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100">
+                          <Undo2 className="h-3.5 w-3.5" />{tl("Ripristina precedente")}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400">{tl("Immagine precedente ripristinata")}</p>
+                    )}
+                  </div>
                 ) : message.proposal && (
                   <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
                     <div className="grid grid-cols-2 divide-x divide-slate-200">
@@ -480,10 +553,19 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                     {message.status === 'pending' ? (
                       <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
                         <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>
-                        <button type="button" onClick={() => { onApply(message.proposal!); updateProposalStatus(message.id, 'applied') }} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Applica")}</button>
+                        <button type="button" onClick={() => applyProposal(message)} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-bold text-white hover:bg-slate-800"><Check className="h-3.5 w-3.5" />{tl("Applica")}</button>
                       </div>
                     ) : (
                       <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Modifica applicata") : tl("Proposta rifiutata")}</p>
+                    )}
+                    {message.images && (
+                      <p className="flex items-center gap-1.5 border-t border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600">
+                        {message.images.done < message.images.total
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600" />{tl("Genero le immagini {0}/{1}…", message.images.done, message.images.total)}</>
+                          : <><ImageIcon className="h-3.5 w-3.5 text-emerald-600" />{message.images.failed
+                            ? tl("{0} immagini inserite, {1} non generate (resta il segnaposto)", message.images.total - message.images.failed, message.images.failed)
+                            : tl("{0} immagini inserite nelle slide", message.images.total)}</>}
+                      </p>
                     )}
                   </div>
                 )}
@@ -491,7 +573,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
             </div>
           )
         })}
-        {loading && <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900"><Loader2 className="h-4 w-4 animate-spin" />{retryNotice || (isDocument ? tl("Sto lavorando sul documento… i testi lunghi richiedono un po’ di tempo") : tl("Gli agenti stanno preparando la proposta…"))}</div>}
+        {loading && <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900"><Loader2 className="h-4 w-4 animate-spin" />{retryNotice || (isDocument ? tl("Sto lavorando sul documento… i testi lunghi richiedono un po’ di tempo") : activeContext && isImageBlockTarget(activeContext) ? tl("Sto preparando l’immagine… può richiedere fino a un minuto") : tl("Gli agenti stanno preparando la proposta…"))}</div>}
         <div ref={bottomRef} />
       </div>
 
@@ -505,7 +587,7 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:border-violet-300">
+        <div className="relative rounded-[22px] border border-slate-200 bg-white shadow-sm focus-within:border-violet-300">
           <textarea
             ref={composerRef}
             value={input}
@@ -514,14 +596,18 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
               if (onHistoryKey(event)) return
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() }
             }}
-            rows={2}
+            rows={3}
             placeholder={activeContext ? (isDocument ? (selectionContext ? tl("Es. «Espandi con un esempio concreto»") : tl("Es. «Continua» o «Scrivi una conclusione»")) : tl("Chiedi una modifica…")) : tl("Seleziona prima un contenuto…")}
-            className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400"
+            className="block max-h-60 w-full resize-none border-0 bg-transparent pb-12 pl-4 pr-4 pt-3 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400"
           />
-          <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-violet-300 bg-violet-600 px-3 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-40" title={tl("Invia modifica")}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            <span className="hidden sm:inline">{isDocument ? tl("Invia") : tl("Invia modifica")}</span>
-          </button>
+          {/* Own mic beside Send: the global dictation mic skips composers that ship one, so they never overlap. */}
+          <div className="absolute bottom-2 right-2 flex items-center gap-1">
+            <VoiceRecorder compact onInsertText={(text) => { setInput((current) => current.trim() ? `${current.trimEnd()} ${text}` : text); composerRef.current?.focus() }} />
+            <IconButton tone="accent" surface="solid" size="sm" onClick={() => void send()} disabled={loading || !input.trim()}
+              title={isDocument ? tl("Invia") : tl("Invia modifica")} aria-label={isDocument ? tl("Invia") : tl("Invia modifica")}>
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            </IconButton>
+          </div>
         </div>
       </footer>
     </aside>

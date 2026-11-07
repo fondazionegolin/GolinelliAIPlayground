@@ -5,7 +5,7 @@ from app.api.v1.endpoints import visual_sessions
 from app.api.v1.endpoints import smart_canvas
 from app.api.v1.endpoints import legal_docs
 
-from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research, school_onboarding, privacy, video_studio
+from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research, school_onboarding, privacy, video_studio, licenses
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
@@ -76,3 +76,5 @@ api_router.include_router(school_onboarding.admin_router, prefix="/admin/school-
 api_router.include_router(school_onboarding.public_router, prefix="/school-onboarding", tags=["school-onboarding"])
 api_router.include_router(school_onboarding.owner_router, prefix="/school-owner", tags=["school-owner"])
 api_router.include_router(privacy.router, prefix="/privacy", tags=["privacy"])
+api_router.include_router(licenses.admin_router, prefix="/admin/licenses", tags=["licenses-admin"])
+api_router.include_router(licenses.me_router, prefix="/license", tags=["license"])

@@ -42,6 +42,11 @@ class CodingGeneratedFile(BaseModel):
     language: Optional[str] = None
 
 
+class CodingAttachedDocument(BaseModel):
+    name: str = Field(max_length=200)
+    text: str = Field(max_length=60000)
+
+
 class CodingGenerateRequest(BaseModel):
     prompt: Optional[str] = Field(default=None, min_length=1, max_length=20000)
     # Current editor files (edits + knowledge-base .md). When provided, they are the base
@@ -54,6 +59,9 @@ class CodingGenerateRequest(BaseModel):
     # vision model server-side and folded into the prompt, so they work regardless of which
     # codegen model is selected (some, like DeepSeek, have no vision support at all).
     attachments: Optional[list[str]] = Field(default=None, max_length=3)
+    # Text extracted from attached PDF/Word/etc. documents (via /coding/ai/extract-document): detailed
+    # instructions for the change. Folded into the prompt as plain text, so any model can use them.
+    documents: Optional[list[CodingAttachedDocument]] = Field(default=None, max_length=4)
     # "fix" = automatic repair turn of the observe->fix loop: `errors` are the real compile/runtime
     # errors the preview reported; the agent patches only what they require.
     mode: Optional[str] = Field(default=None, max_length=20)

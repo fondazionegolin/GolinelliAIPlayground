@@ -16,6 +16,7 @@ import TeacherbotShareModal from '@/components/teacher/TeacherbotShareModal'
 import {
   Bot, Plus, Settings, Eye, Trash2, FileText, Loader2, Wand2, Link2, Share2,
   LayoutGrid, List, X, Search, Sparkles, Globe, PencilLine, MessagesSquare,
+  Users,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
@@ -34,6 +35,8 @@ interface Teacherbot {
   updated_at: string
   publication_count: number
   conversation_count: number
+  classes?: { id: string; name: string; owner_name?: string }[]
+  shared_by?: string | null
 }
 
 type DisplayMode = 'grid' | 'list'
@@ -105,6 +108,12 @@ export default function TeacherbotsPage() {
     },
   })
 
+  const { data: sharedBots = [] } = useQuery({
+    queryKey: ['teacherbots-shared-with-me'],
+    queryFn: async () => (await teacherbotsApi.sharedWithMe()).data as Teacherbot[],
+    refetchInterval: 60_000,
+  })
+
   const { data: starters = [] } = useQuery<{ id: string; name: string; synopsis?: string }[]>({
     queryKey: ['teacher-default-teacherbots'], queryFn: async () => (await teacherbotsApi.defaults()).data,
     staleTime: 30_000, refetchInterval: 30_000,
@@ -133,14 +142,19 @@ export default function TeacherbotsPage() {
     const matching = q
       ? all.filter(bot => bot.name.toLowerCase().includes(q) || (bot.synopsis || '').toLowerCase().includes(q))
       : all
+    const sharedMatching = q
+      ? sharedBots.filter(bot => bot.name.toLowerCase().includes(q) || (bot.synopsis || '').toLowerCase().includes(q))
+      : sharedBots
     return {
-      published: matching.filter(bot => bot.status === 'published'),
-      other: matching.filter(bot => bot.status !== 'published'),
+      // A bot actively shared with a class is live for students whatever its status flag says.
+      published: matching.filter(bot => bot.status === 'published' || (bot.classes?.length ?? 0) > 0),
+      other: matching.filter(bot => bot.status !== 'published' && !(bot.classes?.length ?? 0)),
+      shared: sharedMatching,
     }
-  }, [teacherbots, search])
+  }, [teacherbots, sharedBots, search])
 
   const totalCount = teacherbots?.length || 0
-  const visibleCount = filtered.published.length + filtered.other.length
+  const visibleCount = filtered.published.length + filtered.other.length + filtered.shared.length
 
   const renderBotIcon = (icon: string) => {
     const resolved = resolveTeacherbotIcon(icon)
@@ -198,13 +212,26 @@ export default function TeacherbotsPage() {
     </div>
   )
 
-  const renderCard = (bot: Teacherbot) => {
+  // Sharing is per class: every session of the class inherits it, so the tags list classes, never sessions.
+  const renderClassTags = (bot: Teacherbot, shared = false) => {
+    const classes = bot.classes || []
+    const open = (event: React.MouseEvent) => { event.stopPropagation(); if (!shared) setShareBot({ id: bot.id, name: bot.name }) }
+    if (!classes.length) return <button type="button" onClick={open} className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-200" title={tl("Condividi con una classe")}><Users className="h-3 w-3" />{tl("Non condiviso con nessuna classe")}</button>
+    const shown = classes.slice(0, 3)
+    return <div className="mt-2 flex flex-wrap items-center gap-1" aria-label={tl("Classi con cui è condiviso")}>
+      {shown.map(cls => <button type="button" key={cls.id} onClick={open} title={cls.owner_name ? `${cls.name} · ${cls.owner_name}` : cls.name}
+        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-200"><Users className="h-3 w-3 shrink-0" /><span className="truncate">{cls.name}</span></button>)}
+      {classes.length > shown.length && <button type="button" onClick={open} title={classes.slice(3).map(c => c.name).join(', ')} className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-200">+{classes.length - shown.length}</button>}
+    </div>
+  }
+
+  const renderCard = (bot: Teacherbot, shared = false) => {
     const status = statusMeta(bot.status)
     const updatedLabel = formatDistanceToNow(new Date(bot.updated_at), { addSuffix: true, locale: it })
     return (
       <div
         key={bot.id}
-        onClick={() => setFormTarget(bot.id)}
+        onClick={() => shared ? setTestTarget(bot.id) : setFormTarget(bot.id)}
         className={`ui-card ui-card-interactive mobile-card-standard group flex cursor-pointer flex-col justify-between overflow-hidden p-4 md:min-h-[220px] md:max-h-none md:overflow-visible md:p-5 ${getCardBg(bot.color)}`}
       >
         <div>
@@ -220,6 +247,8 @@ export default function TeacherbotsPage() {
           <p className="mt-1.5 hidden line-clamp-1 text-xs leading-5 text-slate-600 md:block md:line-clamp-2">
             {bot.synopsis || tl("Nessuna descrizione")}
           </p>
+          {shared && bot.shared_by && <p className="mt-1 text-[11px] font-semibold text-slate-500">{tl("Di {0}", bot.shared_by)}</p>}
+          {renderClassTags(bot, shared)}
         </div>
 
         <div>
@@ -230,19 +259,19 @@ export default function TeacherbotsPage() {
             </span>
             <span className="truncate">{updatedLabel}</span>
           </div>
-          <div className="mt-3 hidden md:block">{renderActions(bot)}</div>
+          {!shared && <div className="mt-3 hidden md:block">{renderActions(bot)}</div>}
         </div>
       </div>
     )
   }
 
-  const renderRow = (bot: Teacherbot) => {
+  const renderRow = (bot: Teacherbot, shared = false) => {
     const status = statusMeta(bot.status)
     const updatedLabel = formatDistanceToNow(new Date(bot.updated_at), { addSuffix: true, locale: it })
     return (
       <div
         key={bot.id}
-        onClick={() => setFormTarget(bot.id)}
+        onClick={() => shared ? setTestTarget(bot.id) : setFormTarget(bot.id)}
         className={`ui-card ui-card-interactive group flex cursor-pointer items-center gap-4 p-4 ${getCardBg(bot.color)}`}
       >
         <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${getIconColor(bot.color)}`}>
@@ -255,18 +284,19 @@ export default function TeacherbotsPage() {
               {status.label}
             </span>
           </div>
-          <p className="truncate text-xs text-slate-600">{bot.synopsis || tl("Nessuna descrizione")}</p>
+          <p className="truncate text-xs text-slate-600">{shared && bot.shared_by ? `${tl("Di {0}", bot.shared_by)} · ` : ''}{bot.synopsis || tl("Nessuna descrizione")}</p>
+          {renderClassTags(bot, shared)}
         </div>
         <div className="hidden shrink-0 items-center gap-3 text-xs text-slate-500 sm:flex">
           <span className="flex items-center gap-1"><MessagesSquare className="h-3 w-3" />{bot.conversation_count}</span>
           <span className="w-24 truncate text-right">{updatedLabel}</span>
         </div>
-        {renderActions(bot)}
+        {!shared && renderActions(bot)}
       </div>
     )
   }
 
-  const renderSection = (title: string, icon: React.ReactNode, bots: Teacherbot[]) => {
+  const renderSection = (title: string, icon: React.ReactNode, bots: Teacherbot[], shared = false) => {
     if (bots.length === 0) return null
     return (
       <section className="mb-7">
@@ -277,11 +307,11 @@ export default function TeacherbotsPage() {
         </div>
         {display === 'grid' ? (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            {bots.map(renderCard)}
+            {bots.map(bot => renderCard(bot, shared))}
           </div>
         ) : (
           <div className="space-y-2">
-            {bots.map(renderRow)}
+            {bots.map(bot => renderRow(bot, shared))}
           </div>
         )}
       </section>
@@ -364,7 +394,7 @@ export default function TeacherbotsPage() {
             <div className="flex items-center justify-center py-24">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
             </div>
-          ) : totalCount === 0 ? (
+          ) : totalCount === 0 && sharedBots.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-[28px] bg-white py-24 text-center shadow-sm">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-indigo-50 ring-1 ring-indigo-100">
                 <Sparkles className="h-8 w-8 text-indigo-500" />
@@ -387,6 +417,7 @@ export default function TeacherbotsPage() {
             <>
               {renderSection(tl("Pubblicati"), <Globe className="h-4 w-4 text-emerald-600" />, filtered.published)}
               {renderSection(tl("Bozze e in lavorazione"), <PencilLine className="h-4 w-4 text-slate-500" />, filtered.other)}
+              {renderSection(tl("Condivisi con me dai colleghi"), <Users className="h-4 w-4 text-sky-600" />, filtered.shared, true)}
             </>
           )}
         </div>

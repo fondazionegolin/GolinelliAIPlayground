@@ -18,6 +18,7 @@ import asyncio
 
 from app.services import model_catalog, model_roles
 from app.services import model_selection
+from app.core.pricing import credits_in_text
 from app.services.model_selection import SCOPES, provider_keys
 
 router = APIRouter()
@@ -69,7 +70,7 @@ def _serialize(model: AIModel) -> dict:
     blended = model_catalog.blended_usd(model.input_usd, model.output_usd)
     return {
         "id": str(model.id), "kind": model.kind, "offered": model.offered,
-        "scopes": (["chat"] if model.offered else []) + [s for s in (model.scopes or []) if s in SCOPES and s != "chat"], "price_note": model.price_note, "provider": model.provider, "model_id": model.model_id, "display_name": model.display_name, "status": model.status,
+        "scopes": (["chat"] if model.offered else []) + [s for s in (model.scopes or []) if s in SCOPES and s != "chat"], "price_note": credits_in_text(model.price_note), "provider": model.provider, "model_id": model.model_id, "display_name": model.display_name, "status": model.status,
         "input_usd": model.input_usd, "output_usd": model.output_usd, "cached_input_usd": model.cached_input_usd,
         "context_window": model.context_window, "quality_score": model.quality_score, "quality_source": model.quality_source,
         "pricing_url": model.pricing_url, "notes": model.notes, "blended_usd": blended,

@@ -64,6 +64,8 @@ export interface TextSlideBlock extends BaseSlideBlock {
 export interface ImageSlideBlock extends BaseSlideBlock {
   type: 'image'
   content: string
+  /** Newly inserted: once the picture loads, reshape the box to the image's real proportions. */
+  fitToImage?: boolean
   style: {
     borderRadius?: number
     padding?: number
@@ -475,6 +477,42 @@ export function SlideEditor({
             y = Math.min(y, Math.max(0, slideHeight - height))
           }
 
+          // Images scale proportionally (the visible picture really grows/shrinks instead of the
+          // crop changing); hold Shift to resize the frame freely and crop.
+          if (init.type === 'image' && !e.shiftKey && init.width > 0 && init.height > 0) {
+            const handle = dragState.handle
+            const scaleW = width / init.width
+            const scaleH = height / init.height
+            let factor = handle === 'n' || handle === 's' ? scaleH
+              : handle === 'e' || handle === 'w' ? scaleW
+              : Math.abs(localDeltaX) * init.height >= Math.abs(localDeltaY) * init.width ? scaleW : scaleH
+            factor = Math.max(factor, 20 / Math.min(init.width, init.height))
+            const anchorX = (w: number) => handle.includes('w') ? init.x + init.width - w
+              : handle.includes('e') ? init.x : init.x + (init.width - w) / 2
+            const anchorY = (h: number) => handle.includes('n') ? init.y + init.height - h
+              : handle.includes('s') ? init.y : init.y + (init.height - h) / 2
+            // Largest factor that keeps the anchored box inside the slide.
+            const limits = [factor]
+            const centerX = init.x + init.width / 2
+            const centerY = init.y + init.height / 2
+            if (slideWidth) {
+              const room = handle.includes('w') ? init.x + init.width
+                : handle.includes('e') ? slideWidth - init.x : 2 * Math.min(centerX, slideWidth - centerX)
+              limits.push(room / init.width)
+            }
+            if (slideHeight) {
+              const room = handle.includes('n') ? init.y + init.height
+                : handle.includes('s') ? slideHeight - init.y : 2 * Math.min(centerY, slideHeight - centerY)
+              limits.push(room / init.height)
+            }
+            factor = Math.max(0.01, Math.min(...limits))
+            const w = init.width * factor
+            const h = init.height * factor
+            const nx = slideWidth ? Math.min(Math.max(0, anchorX(w)), Math.max(0, slideWidth - w)) : anchorX(w)
+            const ny = slideHeight ? Math.min(Math.max(0, anchorY(h)), Math.max(0, slideHeight - h)) : anchorY(h)
+            return { ...b, x: nx, y: ny, width: w, height: h }
+          }
+
           return { ...b, x, y, width, height }
         }
         return b
@@ -502,6 +540,28 @@ export function SlideEditor({
     }
   }, [dragState, blocks, onChange, scale, slideWidth, slideHeight, snapOptions])
 
+  /** First load of a newly inserted image: give its frame the picture's real aspect ratio
+   * (same area, centred, kept inside the slide) so nothing is cropped. */
+  const fitImageBlock = (blockId: string, img: HTMLImageElement) => {
+    const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0
+    onChange(blocks.map(b => {
+      if (b.id !== blockId || b.type !== 'image') return b
+      const { fitToImage: _done, ...rest } = b
+      if (!ratio) return rest as SlideBlock
+      const area = b.width * b.height
+      let width = Math.sqrt(area * ratio)
+      let height = width / ratio
+      const shrink = Math.min(1, slideWidth ? slideWidth * 0.9 / width : 1, slideHeight ? slideHeight * 0.9 / height : 1)
+      width *= shrink
+      height *= shrink
+      const cx = b.x + b.width / 2
+      const cy = b.y + b.height / 2
+      const x = slideWidth ? Math.min(Math.max(0, cx - width / 2), Math.max(0, slideWidth - width)) : cx - width / 2
+      const y = slideHeight ? Math.min(Math.max(0, cy - height / 2), Math.max(0, slideHeight - height)) : cy - height / 2
+      return { ...rest, x, y, width, height } as SlideBlock
+    }))
+  }
+
   // Handle file drop for images
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -525,7 +585,8 @@ export function SlideEditor({
             y: slideHeight ? Math.min(Math.max(0, rawY), Math.max(0, slideHeight - height)) : rawY,
             width,
             height,
-            style: {}
+            style: {},
+            fitToImage: true,
           }
           onChange([...blocks, newBlock])
           onSelectBlock(newBlock.id)
@@ -661,6 +722,7 @@ export function SlideEditor({
               src={block.content}
               alt="Block"
               className="w-full h-full object-cover pointer-events-none select-none"
+              onLoad={block.fitToImage && !readOnly ? (event) => fitImageBlock(block.id, event.currentTarget) : undefined}
             />
           ) : block.type === 'line' ? (
             <svg className="w-full h-full pointer-events-none overflow-visible">

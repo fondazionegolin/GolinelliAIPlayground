@@ -2353,7 +2353,7 @@ async def create_task(
 
     # Determine if this should be auto-published (lessons and presentations)
     task_type = TaskType(request.task_type) if request.task_type in [t.value for t in TaskType] else TaskType.EXERCISE
-    auto_publish = task_type in [TaskType.LESSON, TaskType.PRESENTATION]
+    auto_publish = task_type in [TaskType.LESSON, TaskType.PRESENTATION] and request.status != TaskStatus.DRAFT.value
 
     task = Task(
         tenant_id=session.tenant_id,

@@ -32,9 +32,10 @@ class VoiceLabPlaylist(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class ClassAudioPlayback(Base):
-    __tablename__ = "class_audio_playback"
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"), primary_key=True)
+class SessionAudioPlayback(Base):
+    """Shared playlist timeline of one class session (never of a whole class)."""
+    __tablename__ = "session_audio_playback"
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     playlist_id = Column(UUID(as_uuid=True), ForeignKey("voice_lab_playlists.id", ondelete="SET NULL"), nullable=True)
     state = Column(JSONB, nullable=False, default=dict)

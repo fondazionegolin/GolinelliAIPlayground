@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-03T14:41:23.919500+00:00",
-  "version_label": "2026.11.03-620229c3",
+  "generated_at": "2026-11-04T20:40:03.374395+00:00",
+  "version_label": "2026.11.04-c4fa7e41",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 12 commit dall'ultima release pubblicata.",
-  "git_ref": "620229c35f42e416f656fab8a5b0a5c76b7e2d38",
+  "summary": "Bozza generata automaticamente da 14 commit dall'ultima release pubblicata.",
+  "git_ref": "c4fa7e41934a5c50e716df256bfe662885f9e4c4",
   "items": [
     {
       "category": "new",
@@ -64,6 +64,16 @@
       "category": "new",
       "title": "Per-section model catalogue, admin panel redesign, Voice Lab",
       "description": "Per-section model catalogue, admin panel redesign, Voice Lab"
+    },
+    {
+      "category": "new",
+      "title": "Release Video Studio to all teachers, ripple timeline, AI clip insertion",
+      "description": "Release Video Studio to all teachers, ripple timeline, AI clip insertion"
+    },
+    {
+      "category": "new",
+      "title": "Audio Lab rename, background audio generation, recents everywhere, responsive navbar",
+      "description": "Audio Lab rename, background audio generation, recents everywhere, responsive navbar"
     }
   ]
 }

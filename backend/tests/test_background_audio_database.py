@@ -20,7 +20,7 @@ from app.models.enums import UserRole, SessionStatus
 from app.models.session import Class, Session, SessionStudent
 from app.models.drive import DriveItem
 from app.models.file import File
-from app.models.voice_lab import ClassAudioPlayback
+from app.models.voice_lab import SessionAudioPlayback
 from app.services import drive_service as drive
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(os.getenv('VOICE_LAB_DB_TESTS') != '1', reason='Development PostgreSQL only')]
@@ -91,33 +91,33 @@ async def test_class_timeline_continues_without_teacher_and_rejects_other_classe
         auth = StudentOrTeacher(teacher=teacher)
         tracks = [await uploaded(db, auth, name=f'track-{i}.mp3') for i in range(2)]
         playlist = await audio.create_playlist(audio.PlaylistWrite(title='Class', track_ids=[v.id for v in tracks]), db, auth)
-        start = await audio.set_class_playback(cls.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id'])), db, teacher)
-        state = await db.get(ClassAudioPlayback, cls.id)
+        start = await audio.set_session_playback(session.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id'])), db, teacher)
+        state = await db.get(SessionAudioPlayback, session.id)
         started = state.state['updated_at']
         monkeypatch.setattr(audio.time, 'time', lambda: started + 14)
         student = StudentOrTeacher(student=students[0])
-        value = await audio.class_playback(db, student, None, session.id)
+        value = await audio.session_playback(db, student, session.id)
         assert value['index'] == 1
         assert value['position'] == pytest.approx(4)
         assert value['paused'] is False
-        content = await audio.class_track_content(cls.id, UUID(value['playlist']['tracks'][1]['id']), db, student)
+        content = await audio.session_track_content(session.id, UUID(value['playlist']['tracks'][1]['id']), db, student)
         assert content.body == b'test-audio'
         assert 'no-store' in content.headers['cache-control']
         with pytest.raises(HTTPException) as exc:
-            await audio.class_playback(db, student, uuid4(), None)
+            await audio.session_playback(db, student, uuid4())
         assert exc.value.status_code == 404
         with pytest.raises(HTTPException):
-            await audio.class_track_content(cls.id, tracks[0].id, db, student)
+            await audio.session_track_content(session.id, tracks[0].id, db, student)
         monkeypatch.setattr(audio.time, 'time', lambda: started + 24)
-        ended = await audio.class_playback(db, student, cls.id, None)
+        ended = await audio.session_playback(db, student, session.id)
         assert ended['paused'] is True
         assert ended['position'] == 10
-        await audio.set_class_playback(cls.id, audio.PlaybackWrite(playlist_id=None, expected_revision=start['revision']), db, teacher)
-        assert await audio.class_playback(db, student, cls.id, None) is None
+        await audio.set_session_playback(session.id, audio.PlaybackWrite(playlist_id=None, expected_revision=start['revision']), db, teacher)
+        assert await audio.session_playback(db, student, session.id) is None
         with pytest.raises(HTTPException):
-            await audio.class_track_content(cls.id, UUID(value['playlist']['tracks'][0]['id']), db, student)
+            await audio.session_track_content(session.id, UUID(value['playlist']['tracks'][0]['id']), db, student)
         with pytest.raises(HTTPException) as exc:
-            await audio.set_class_playback(cls.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id']), expected_revision=start['revision']), db, teacher)
+            await audio.set_session_playback(session.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id']), expected_revision=start['revision']), db, teacher)
         assert exc.value.status_code == 409
 
 
@@ -146,16 +146,16 @@ async def test_enriching_live_playlist_preserves_position_and_generated_audio_is
         first = await uploaded(db, auth, 'first.mp3')
         second = await uploaded(db, auth, 'second.mp3')
         playlist = await audio.create_playlist(audio.PlaylistWrite(title='Live', track_ids=[first.id]), db, auth)
-        started = await audio.set_class_playback(cls.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id'])), db, teacher)
-        start = (await db.get(ClassAudioPlayback, cls.id)).state['updated_at']
+        started = await audio.set_session_playback(session.id, audio.PlaybackWrite(playlist_id=UUID(playlist['id'])), db, teacher)
+        start = (await db.get(SessionAudioPlayback, session.id)).state['updated_at']
         monkeypatch.setattr(audio.time, 'time', lambda: start + 4)
         await audio.update_playlist(UUID(playlist['id']), audio.PlaylistWrite(title='Live', track_ids=[first.id, second.id]), db, auth)
-        current = await audio.class_playback(db, StudentOrTeacher(student=students[0]), cls.id, None)
+        current = await audio.session_playback(db, StudentOrTeacher(student=students[0]), session.id)
         assert current['index'] == 0
         assert current['position'] == pytest.approx(4)
         assert current['revision'] != started['revision']
         monkeypatch.setattr(audio.time, 'time', lambda: start + 14)
-        current = await audio.class_playback(db, StudentOrTeacher(student=students[0]), cls.id, None)
+        current = await audio.session_playback(db, StudentOrTeacher(student=students[0]), session.id)
         assert current['index'] == 1
         assert current['position'] == pytest.approx(4)
         from app.models.enums import OwnerType, Scope
