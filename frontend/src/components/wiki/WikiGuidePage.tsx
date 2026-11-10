@@ -1,6 +1,7 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { LucideIcon } from '@/components/icons'
-import { ArrowRight, CheckCircle2, Layers3, Search, X } from '@/components/icons'
+import { ArrowRight, CheckCircle2, Layers3 } from '@/components/icons'
 import { useTranslation } from 'react-i18next'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
@@ -167,20 +168,7 @@ export default function WikiGuidePage({
         </div>
 
         <div className="border-b border-slate-200 px-3 py-3">
-          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('wiki.search_placeholder')}
-              className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-            />
-            {query && (
-              <button onClick={() => setQuery('')} className="text-slate-400 transition hover:text-slate-700">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchPill value={query} placeholder={t('wiki.search_placeholder')} onValueChange={setQuery} />
           <div className="mt-2 flex items-center justify-between text-[10px] font-medium text-slate-400">
             <span>{t('wiki.sections_count', { count: filteredSections.length })}</span>
             <span>{t('wiki.features_count', { visible: visibleFeatures, total: totalFeatures })}</span>
@@ -244,15 +232,7 @@ export default function WikiGuidePage({
       <main ref={contentRef} className="flex-1 overflow-y-auto">
         <div className="w-full px-4 py-0 md:px-6 md:py-0">
           <div className="sticky top-0 z-10 -mx-4 border-b border-slate-200 bg-white/96 px-4 py-3 backdrop-blur md:hidden">
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={t('wiki.search_placeholder')}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-              />
-            </div>
+            <SearchPill value={query} placeholder={t('wiki.search_placeholder')} onValueChange={setQuery} className="mb-3" />
             <div className="flex gap-2 overflow-x-auto pb-1">
               {filteredSections.map((section) => (
                 <button

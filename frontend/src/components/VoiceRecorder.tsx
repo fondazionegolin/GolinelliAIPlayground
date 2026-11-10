@@ -5,7 +5,7 @@
  *   idle      → mic button
  *   recording → live waveform bars + timer + stop + cancel
  *   processing→ spinner while Whisper transcribes
- *   review    → bottom-sheet with editable transcription, playback, translation controls
+ *   review    → compact panel anchored to the prompt, with editable transcription
  *
  * Props:
  *   onInsertText  – called with the final (possibly edited/translated) text.
@@ -13,7 +13,7 @@
  *   compact       – smaller mic icon (for chat sidebar)
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, type CSSProperties } from 'react'
 import {
   Mic,
   Square,
@@ -24,7 +24,7 @@ import {
   Languages,
   RotateCcw,
 } from '@/components/icons'
-import { Button } from '@/components/ui/button'
+import { Button, Dialog, DialogContent, DialogTitle, IconButton, Select, Textarea, zIndexTokens } from '@/design'
 import { useTranslation } from 'react-i18next'
 import { getApiAuthHeaders } from '@/lib/api'
 import { tl } from '@/i18n/tl'
@@ -32,6 +32,8 @@ import { tl } from '@/i18n/tl'
 interface VoiceRecorderProps {
   onInsertText: (text: string) => void
   compact?: boolean
+  /** Explicit target for dictation controls rendered outside the prompt (e.g. GlobalDictation). */
+  anchorElement?: HTMLElement | null
   /** Override the transcription endpoint — used by the anonymous public teacherbot share-link
    *  page, which has no student/teacher auth token and hits a link-scoped public route instead. */
   transcribeUrl?: string
@@ -58,7 +60,7 @@ const LANGUAGES = [
 
 const NUM_BARS = 12
 
-export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '/api/v1/stt/transcribe', allowTranslate = true, onStateChange }: VoiceRecorderProps) {
+export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '/api/v1/stt/transcribe', allowTranslate = true, onStateChange, anchorElement }: VoiceRecorderProps) {
   const { t } = useTranslation()
   const [recorderState, setRecorderState] = useState<RecorderState>('idle')
   useEffect(() => { onStateChange?.(recorderState) }, [recorderState, onStateChange])
@@ -66,6 +68,8 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   const [detectedLanguage, setDetectedLanguage] = useState('')
   const [translateTarget, setTranslateTarget] = useState('en')
   const [translating, setTranslating] = useState(false)
+  const [showTranslation, setShowTranslation] = useState(false)
+  const [reviewPosition, setReviewPosition] = useState<CSSProperties>({ width: 'min(40rem, calc(100vw - 24px))' })
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +77,13 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
     Array.from({ length: NUM_BARS }, () => 4)
   )
 
+  const micRef = useRef<HTMLButtonElement>(null)
+  const anchorRef = useRef<HTMLElement | null>(null)
+  const reviewTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const canceledRef = useRef(false)
+  const startingRef = useRef(false)
+  const transcriptionAbortRef = useRef<AbortController | null>(null)
+  const translationAbortRef = useRef<AbortController | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -80,6 +91,60 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   const animFrameRef = useRef<number | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+
+  // The dialog lives in a portal; its width and position follow the actual prompt,
+  // including sidebar layouts and the mobile visual viewport/keyboard.
+  useLayoutEffect(() => {
+    if (recorderState !== 'review') return
+    const update = () => {
+      const viewport = window.visualViewport
+      const top = viewport?.offsetTop || 0
+      const left = viewport?.offsetLeft || 0
+      const width = viewport?.width || window.innerWidth
+      const height = viewport?.height || window.innerHeight
+      const anchor = anchorRef.current
+      const rect = anchor?.isConnected ? anchor.getBoundingClientRect() : null
+      const gutter = rect ? Math.max(0, Math.min(12, rect.left - left, left + width - rect.right)) : 12
+      const panelWidth = Math.min(rect?.width || 640, width - gutter * 2)
+      const panelLeft = Math.max(left + gutter, Math.min(rect?.left ?? left + (width - panelWidth) / 2, left + width - panelWidth - gutter))
+      const above = rect ? rect.top - top - 20 : height - 32
+      const below = rect ? top + height - rect.bottom - 20 : 0
+      const placeAbove = above >= 200 || above >= below
+      setReviewPosition({
+        position: 'fixed', left: panelLeft, width: panelWidth, maxWidth: 'none', transform: 'none',
+        ...(placeAbove ? {
+          top: 'auto', bottom: window.innerHeight - (rect?.top ?? top + height - 12) + 8,
+          maxHeight: Math.max(100, above),
+        } : {
+          top: (rect?.bottom ?? top) + 8, bottom: 'auto', maxHeight: Math.max(100, below),
+        }),
+      })
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    if (anchorRef.current) observer.observe(anchorRef.current)
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    window.visualViewport?.addEventListener('resize', update)
+    window.visualViewport?.addEventListener('scroll', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+      window.visualViewport?.removeEventListener('resize', update)
+      window.visualViewport?.removeEventListener('scroll', update)
+    }
+  }, [recorderState])
+
+  useEffect(() => () => {
+    canceledRef.current = true
+    transcriptionAbortRef.current?.abort()
+    translationAbortRef.current?.abort()
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop()
+    void audioCtxRef.current?.close().catch(() => {})
+  }, [])
 
   // Same auth the rest of the app uses (cookie session or student token); a legacy bearer token is added when present.
   const authHeaders = (): Record<string, string> => {
@@ -90,9 +155,19 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   // ─── recording ──────────────────────────────────────────────────────────────
 
   const startRecording = async () => {
+    if (startingRef.current) return
+    startingRef.current = true
+    canceledRef.current = false
+    setShowTranslation(false)
+    let anchor = anchorElement || micRef.current?.closest<HTMLElement>('[data-prompt-composer]') || micRef.current?.parentElement
+    if (!anchorElement) {
+      while (anchor && !anchor.querySelector('textarea, input:not([type="file"]):not([type="hidden"])')) anchor = anchor.parentElement
+    }
+    anchorRef.current = anchor || null
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      if (canceledRef.current) { stream.getTracks().forEach(track => track.stop()); return }
 
       // Analyser for live waveform
       const ctx = new AudioContext()
@@ -120,6 +195,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
         ctx.close().catch(() => {})
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
 
+        if (canceledRef.current) return
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' })
         setAudioUrl(URL.createObjectURL(blob))
         await transcribeBlob(blob, mimeType || 'audio/webm')
@@ -146,7 +222,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
       drawWave()
     } catch {
       setError(t('voice_recorder.mic_error'))
-    }
+    } finally { startingRef.current = false }
   }
 
   const stopRecording = () => {
@@ -156,17 +232,21 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   }
 
   const cancelRecording = () => {
+    canceledRef.current = true
+    transcriptionAbortRef.current?.abort()
     if (timerRef.current) clearInterval(timerRef.current)
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     mediaRecorderRef.current?.stop()
-    // suppress the onstop → just reset
-    setTimeout(() => setRecorderState('idle'), 50)
+    setRecorderState('idle')
     chunksRef.current = []
   }
 
   // ─── transcription ──────────────────────────────────────────────────────────
 
   const transcribeBlob = async (blob: Blob, mimeType: string) => {
+    const controller = new AbortController()
+    transcriptionAbortRef.current?.abort()
+    transcriptionAbortRef.current = controller
     try {
       const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       const fd = new FormData()
@@ -177,6 +257,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
         headers: authHeaders(),
         credentials: 'include',
         body: fd,
+        signal: controller.signal,
       })
 
       if (!resp.ok) {
@@ -185,10 +266,12 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
       }
 
       const data = await resp.json()
+      controller.signal.throwIfAborted()
       setTranscription(data.text || '')
       setDetectedLanguage(data.language || '')
       setRecorderState('review')
     } catch (e: any) {
+      if (controller.signal.aborted) return
       setError(e.message || tl("Errore nella trascrizione. Riprova."))
       setRecorderState('idle')
     }
@@ -198,12 +281,16 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
 
   const handleTranslate = async () => {
     if (!transcription.trim()) return
+    const controller = new AbortController()
+    translationAbortRef.current?.abort()
+    translationAbortRef.current = controller
     setTranslating(true)
     try {
       const resp = await fetch('/api/v1/stt/translate', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({
           text: transcription,
           source_language: detectedLanguage,
@@ -211,6 +298,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
         }),
       })
       const data = await resp.json()
+      controller.signal.throwIfAborted()
       if (data.translated_text) {
         setTranscription(data.translated_text)
         setDetectedLanguage(translateTarget)
@@ -230,6 +318,9 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   }
 
   const handleClose = () => {
+    transcriptionAbortRef.current?.abort()
+    translationAbortRef.current?.abort()
+    setTranslating(false)
     setRecorderState('idle')
     setTranscription('')
     setDetectedLanguage('')
@@ -246,120 +337,64 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
 
   // ─── render ─────────────────────────────────────────────────────────────────
 
-  // Review: bottom sheet
+  // Review: a light, non-modal panel matching the prompt's width.
   if (recorderState === 'review') {
     return (
-      <>
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/25 z-40 backdrop-blur-[1px]" onClick={handleClose} />
-
-        {/* Sheet */}
-        <div
-          className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl border-t border-slate-100 z-50 p-5"
-          style={{ animation: 'voiceSheetIn 0.25s ease-out' }}
+      <Dialog open modal={false} onOpenChange={(open) => { if (!open) handleClose() }}>
+        <DialogContent
+          showClose={false}
+          aria-describedby={undefined}
+          data-voice-review
+          data-no-dictation
+          className="gap-3 overflow-y-auto rounded-[var(--card-radius)] p-4"
+          style={{ ...reviewPosition, zIndex: zIndexTokens.dictation }}
+          onOpenAutoFocus={(event) => { event.preventDefault(); reviewTextareaRef.current?.focus() }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const anchor = anchorRef.current
+            const input = anchor?.matches('input, textarea') ? anchor : anchor?.querySelector<HTMLElement>('textarea, input:not([type="file"])')
+            input?.focus()
+          }}
         >
-          {/* Drag handle */}
-          <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
-
-          {/* Header row */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center">
-                <Mic className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">{t('voice_recorder.header')}</p>
-                {detectedLanguage && (
-                  <p className="text-[11px] text-slate-400">
-                    {t('voice_recorder.detected_lang', { lang: langLabel })}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Playback button */}
-            {audioUrl && (
-              <button
-                onClick={() => audioRef.current?.play()}
-                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 px-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-200 transition-colors"
-              >
-                <Volume2 className="h-3.5 w-3.5" />
-                {t('voice_recorder.listen')}
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <Mic className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+            <DialogTitle className="min-w-0 flex-1 text-sm font-semibold">{t('voice_recorder.header')}</DialogTitle>
+            {detectedLanguage && <span className="text-xs text-[var(--text-secondary)]">{langLabel}</span>}
+            {audioUrl && <IconButton tone="neutral" surface="ghost" size="sm" aria-label={t('voice_recorder.listen')} title={t('voice_recorder.listen')} onClick={() => { void audioRef.current?.play() }}><Volume2 /></IconButton>}
+            <IconButton tone="neutral" surface="ghost" size="sm" aria-label={tl('Chiudi trascrizione')} onClick={handleClose}><X /></IconButton>
             <audio ref={audioRef} src={audioUrl ?? ''} className="hidden" />
           </div>
 
-          {/* Editable transcription */}
-          <textarea
+          <Textarea
+            ref={reviewTextareaRef}
             value={transcription}
-            onChange={(e) => setTranscription(e.target.value)}
-            className="w-full text-sm border border-slate-200 rounded-2xl p-3.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 min-h-[96px] max-h-[220px] text-slate-800 leading-relaxed placeholder:text-slate-400"
+            onChange={(event) => setTranscription(event.target.value)}
+            aria-label={t('voice_recorder.header')}
             placeholder={t('voice_recorder.transcript_placeholder')}
-            autoFocus
+            data-no-dictation
+            rows={3}
+            className="min-h-[80px] max-h-48 resize-y text-sm leading-relaxed"
           />
 
-          {/* Translation controls */}
-          {allowTranslate && (
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              <Languages className="h-4 w-4 text-slate-400 flex-shrink-0" />
-              <span className="text-xs text-slate-500">{t('voice_recorder.translate_label')}</span>
-              <select
-                value={translateTarget}
-                onChange={(e) => setTranslateTarget(e.target.value)}
-                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700"
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.flag} {l.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleTranslate}
-                disabled={translating || !transcription.trim()}
-                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {translating ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
+          {allowTranslate && showTranslation && (
+            <div className="flex items-center gap-2">
+              <Select aria-label={t('voice_recorder.translate_label')} value={translateTarget} onChange={(event) => setTranslateTarget(event.target.value)} density="compact" className="min-w-0 flex-1">
+                {LANGUAGES.map((language) => <option key={language.code} value={language.code}>{language.label}</option>)}
+              </Select>
+              <Button tone="neutral" surface="solid" density="compact" onClick={handleTranslate} disabled={translating || !transcription.trim()}>
+                {translating ? <RefreshCw className="animate-spin" /> : <RotateCcw />}
                 {translating ? t('voice_recorder.translating') : t('voice_recorder.translate_btn')}
-              </button>
+              </Button>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClose}
-              className="text-slate-500 hover:text-slate-700 gap-1"
-            >
-              <X className="h-4 w-4" />
-              {t('voice_recorder.discard')}
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleInsert}
-              disabled={!transcription.trim()}
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 px-4"
-            >
-              <Send className="h-3.5 w-3.5" />
-              {t('voice_recorder.use_text')}
-            </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {allowTranslate && <IconButton tone="neutral" surface="ghost" size="sm" className="mr-auto" aria-label={t('voice_recorder.translate_label')} title={t('voice_recorder.translate_label')} aria-expanded={showTranslation} onClick={() => setShowTranslation(value => !value)}><Languages /></IconButton>}
+            <Button tone="neutral" surface="ghost" density="compact" onClick={handleClose}>{t('voice_recorder.discard')}</Button>
+            <Button tone="accent" surface="solid" density="compact" onClick={handleInsert} disabled={!transcription.trim()}><Send />{t('voice_recorder.use_text')}</Button>
           </div>
-        </div>
-
-        <style>{`
-          @keyframes voiceSheetIn {
-            from { transform: translateY(100%); opacity: 0; }
-            to   { transform: translateY(0);    opacity: 1; }
-          }
-        `}</style>
-      </>
+        </DialogContent>
+      </Dialog>
     )
   }
 
@@ -420,6 +455,7 @@ export function VoiceRecorder({ onInsertText, compact = false, transcribeUrl = '
   return (
     <div className="relative flex-shrink-0" data-voice-recorder="">
       <button
+        ref={micRef}
         onClick={startRecording}
         className={`${
           compact ? 'h-8 w-8' : 'h-9 w-9'

@@ -125,11 +125,14 @@ export class CallRecorder {
       this.onError?.('Il browser non riesce a registrare questa traccia audio')
       return
     }
+    // Each recorder writes into its own array: the old recorder's last chunk arrives after the next segment
+    // started, and must not land at the head of the new file (a webm without header is unreadable).
+    const chunks: Blob[] = []
     entry.recorder = recorder
-    entry.chunks = []
+    entry.chunks = chunks
     entry.segmentStart = Date.now()
     entry.voiced = !this.context
-    recorder.ondataavailable = (event) => { if (event.data.size) entry.chunks.push(event.data) }
+    recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data) }
     recorder.start(5000)
     entry.timer = setTimeout(() => {
       this.closeSegment(entry, true)

@@ -19,11 +19,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from app.services import presentation_studio as studio
 from app.services.json_extract import extract_json
+from app.services.presentation_sources import MAX_SOURCE_CHARS, MAX_SLIDES
 from app.services.presentation_layouts import LAYOUTS
 from app.services.presentation_themes import THEMES_BY_ID
 
@@ -31,13 +33,11 @@ logger = logging.getLogger(__name__)
 
 DIRECT_SOURCE_LIMIT = 14_000   # up to this many chars the architect reads the source as is
 SECTION_CHARS = 5_500          # size of a source section (digest unit and writer excerpt unit)
-MAX_SOURCE_CHARS = 200_000
-MAX_SECTIONS = 40
+MAX_SECTIONS = 200
 DIGEST_CONCURRENCY = 6
 WRITER_CONCURRENCY = 5
 WRITER_EXCERPT_CHARS = 9_000
 CALL_TIMEOUT = 150.0
-MAX_SLIDES = 24
 MAX_IMAGE_SLIDES = 3
 MAX_SAME_LAYOUT_RUN = 3
 
@@ -53,7 +53,7 @@ _VARIETY_SWAPS = {
 READER_SYSTEM_PROMPT = (
     "Sei un lettore attento che prepara appunti per chi costruirà una presentazione. Riassumi la sezione "
     "mantenendo fatti, definizioni, numeri, nomi, date, esempi e citazioni importanti, nell'ordine in cui compaiono. "
-    "Non aggiungere nulla che non sia nel testo. Rispondi con testo semplice, senza introduzioni."
+    "Conserva i titoli Markdown e gli identificativi [SLIDE]; distingui contenuti delle slide, note docente, materiali riservati e handout/template. Le istruzioni editoriali del documento vanno riferite fedelmente. Non aggiungere nulla che non sia nel testo. Rispondi con testo semplice, senza introduzioni."
 )
 
 ARCHITECT_SYSTEM_PROMPT = (
@@ -61,7 +61,7 @@ ARCHITECT_SYSTEM_PROMPT = (
     "ordine, con quale layout e quale messaggio ciascuna. Non scrivi i testi finali (lo faranno altri redattori, "
     "uno per slide) e non scegli colori o caratteri. Costruisci un filo narrativo (apertura, sviluppo a blocchi "
     "coerenti, chiusura), copri tutto il materiale importante senza ripetizioni e dividi gli argomenti grandi in "
-    "più slide. Rispondi solo con JSON valido."
+    "più slide. Rispetta la struttura Markdown e le indicazioni editoriali del materiale: titoli, slide già identificate, note docente e allegati hanno ruoli diversi. Il numero richiesto nel brief ha priorità; in automatico adatta la selezione fino a 60 slide. Note riservate e handout non diventano slide proiettate. Rispondi solo con JSON valido."
 )
 
 WRITER_SYSTEM_PROMPT = (
@@ -69,42 +69,37 @@ WRITER_SYSTEM_PROMPT = (
     "rispetta il layout e il messaggio assegnati, mantieni il registro e la terminologia del resto della presentazione, "
     "non anticipare né ripetere ciò che dicono le altre slide. Titoli che dicono il messaggio (max 9 parole); "
     "testo sintetizzato, non copiato; i dettagli vanno nelle note per chi presenta; dati e citazioni solo se presenti "
-    "nelle fonti, mai inventati. Rispondi solo con JSON valido."
+    "nelle fonti, mai inventati. Le note docente e i dettagli riservati vanno SOLO nelle note del relatore, mai nei punti proiettati. Non trasformare i delimitatori Markdown in contenuto. Rispondi solo con JSON valido."
 )
 
 
 # ── Source handling ──────────────────────────────────────────────────────────
 
 def split_source(text: str, size: int = SECTION_CHARS) -> list[str]:
-    """Cut a long text in sections of about `size` chars on paragraph / sentence boundaries."""
-    text = (text or "").strip()[:MAX_SOURCE_CHARS]
-    if not text:
-        return []
-    paragraphs = [p.strip() for p in text.replace("\r\n", "\n").split("\n") if p.strip()]
-    sections: list[str] = []
-    current = ""
-    for paragraph in paragraphs:
-        pieces = [paragraph]
-        if len(paragraph) > size:  # one huge paragraph: cut on sentence ends, then hard
-            pieces, buffer = [], ""
-            for sentence in paragraph.replace(". ", ".\n").split("\n"):
-                while len(sentence) > size:
-                    pieces.append(sentence[:size]); sentence = sentence[size:]
-                if len(buffer) + len(sentence) + 1 > size and buffer:
-                    pieces.append(buffer); buffer = ""
-                buffer = f"{buffer} {sentence}".strip()
-            if buffer:
-                pieces.append(buffer)
-        for piece in pieces:
-            if current and len(current) + len(piece) + 1 > size:
-                sections.append(current); current = ""
-            current = f"{current}\n{piece}".strip()
-    if current:
-        sections.append(current)
-    if len(sections) > MAX_SECTIONS:  # very long source: merge neighbours instead of dropping the tail
-        factor = -(-len(sections) // MAX_SECTIONS)
-        sections = ["\n".join(sections[i:i + factor]) for i in range(0, len(sections), factor)]
+    """Partition without deleting, reordering or rewriting Markdown (including its tail)."""
+    text = (text or "").strip()
+    if len(text) > MAX_SOURCE_CHARS:
+        raise ValueError("I materiali superano il limite di un milione di caratteri")
+    sections = []
+    # Keep the section count bounded even with a non-default chunk size.
+    size = max(size, -(-len(text) // MAX_SECTIONS))
+    while text:
+        end = min(size, len(text))
+        if end < len(text):
+            boundary = text.rfind("\n", end // 2, end)
+            if boundary >= 0 and len(sections) + -(-len(text[end:]) // size) + 2 < MAX_SECTIONS:
+                end = boundary + 1
+        sections.append(text[:end])
+        text = text[end:]
     return sections
+
+
+def source_excerpt(text: str, budget: int) -> str:
+    """A bounded excerpt includes the end too, rather than silently discarding it."""
+    if len(text) <= budget:
+        return text
+    half = max(1, (budget - 25) // 2)
+    return text[:half] + "\n[… estratto …]\n" + text[-half:]
 
 
 def build_digest_prompt(section: str, index: int, total: int, language: str) -> str:
@@ -168,7 +163,7 @@ def harmonize_plan(raw_slides: list[dict], title: str, subtitle: str, slide_cap:
             "layout": layout if layout in LAYOUTS else "title_bullets",
             "title": str(item.get("title") or "").strip()[:140],
             "brief": str(item.get("brief") or item.get("message") or "").strip()[:500],
-            "sources": [str(s).strip() for s in sources if str(s).strip()][:8],
+            "sources": [str(s).strip() for s in sources if str(s).strip()][:MAX_SECTIONS],
         })
     slides = slides[:slide_cap]
     if not slides:
@@ -211,6 +206,25 @@ def harmonize_plan(raw_slides: list[dict], title: str, subtitle: str, slide_cap:
         if not slide["title"]:
             slide["title"] = f"Slide {index + 1}"
     return slides
+
+
+def source_plan(brief: dict, sections: list[tuple[str, str]]) -> dict:
+    """Ordered, source-grounded scaffold when the architect returns invalid JSON twice."""
+    wanted = min(MAX_SLIDES, max(4, int(brief.get("slide_count") or min(MAX_SLIDES, len(sections) + 2))))
+    title = str(brief.get("topic") or "Presentazione")[:140]
+    body_count = wanted - 2
+    slides = [{"layout": "cover", "title": title, "brief": "Introduci il tema e gli obiettivi del materiale", "sources": []}]
+    for i in range(body_count):
+        group = sections[i * len(sections) // body_count:(i + 1) * len(sections) // body_count]
+        if not group:
+            group = [sections[min(i, len(sections) - 1)]]
+        heading = next((line.lstrip("# ").strip() for _, text in group for line in text.splitlines()
+                        if line.startswith("#")), f"Parte {i + 1}")
+        slides.append({"layout": "title_bullets", "title": heading[:140],
+                       "brief": "Sviluppa i contenuti proiettabili delle fonti, mantenendo le note docente nelle note del relatore.",
+                       "sources": [sid for sid, _ in group]})
+    slides.append({"layout": "summary", "title": "In sintesi", "brief": "Riepiloga i messaggi e i passi conclusivi", "sources": [sections[-1][0]]})
+    return {"title": title, "slides": slides}
 
 
 def fallback_slide(spec: dict, density: Optional[str]) -> dict:
@@ -257,7 +271,7 @@ async def _json_call(generate: Generate, usage: UsageLog, prompt: str, system: s
         try:
             response = await asyncio.wait_for(
                 generate(prompt if attempt == 0 else prompt + "\n\nIMPORTANTE: rispondi esclusivamente con JSON valido e completo, senza testo prima o dopo.",
-                         system, max_tokens, 0.5 if attempt == 0 else 0.2),
+                         system, min(32_000, max_tokens * (attempt + 1)), 0.5 if attempt == 0 else 0.2),
                 timeout=CALL_TIMEOUT,
             )
             usage.add(response)
@@ -329,9 +343,9 @@ async def run_create_pipeline(
             async with semaphore:
                 try:
                     result = await _text_call(generate, usage, build_digest_prompt(text, i, len(sections), language),
-                                              READER_SYSTEM_PROMPT, 700)
+                                              READER_SYSTEM_PROMPT, 1400)
                 except Exception:
-                    result = text[:900]  # keep going with a plain excerpt
+                    result = source_excerpt(text, 1800)  # preserve both ends if a reader fails
                 await queue.put((sid, result))
 
         tasks = [asyncio.create_task(digest(i, sid, text)) for i, (sid, text) in enumerate(section_map.items())]
@@ -340,17 +354,29 @@ async def run_create_pipeline(
             digests[sid] = result
             yield {"type": "phase", "phase": "read", "label": f"Leggo il materiale ({len(digests)}/{len(tasks)} sezioni)",
                    "progress": 0.02 + 0.23 * len(digests) / len(tasks)}
-        plan_sections = [(sid, digests[sid]) for sid in section_map]
+        plan_sections = [(sid, "\n".join(line for line in section_map[sid].splitlines()
+                                       if re.match(r"^#{1,6}\s", line)) + "\n" + digests[sid]) for sid in section_map]
 
     # 2. Plan ────────────────────────────────────────────────────────────────
     yield {"type": "phase", "phase": "plan", "progress": 0.27, "label": "Progetto struttura e layout delle slide"}
     wanted = int(brief.get("slide_count") or 0)
-    plan_tokens = 2500 + 120 * (wanted or 16)
-    raw_plan = await _json_call(
-        generate, usage,
-        build_plan_prompt(brief, plan_sections, digested, language, school_grade_instruction),
-        ARCHITECT_SYSTEM_PROMPT, min(plan_tokens, 7000),
-    )
+    plan_tokens = 4000 + 250 * (wanted or MAX_SLIDES)
+    # A malformed plan must not discard a successfully read source. Writers can still
+    # develop a source-based scaffold, which remains reviewable before rendering.
+    recovered_plan = False
+    try:
+        raw_plan = await _json_call(
+            generate, usage,
+            build_plan_prompt(brief, plan_sections, digested, language, school_grade_instruction),
+            ARCHITECT_SYSTEM_PROMPT, plan_tokens,
+        )
+        if not isinstance(raw_plan.get("slides"), list) or not any(isinstance(slide, dict) for slide in raw_plan["slides"]):
+            raise ValueError("Piano vuoto")
+    except (ValueError, json.JSONDecodeError):
+        if not plan_sections:
+            raise
+        recovered_plan = True
+        raw_plan = source_plan(brief, plan_sections)
     title = str(raw_plan.get("title") or brief.get("topic") or "Presentazione").strip()[:140]
     subtitle = str(raw_plan.get("subtitle") or "").strip()[:200]
     core_message = str(raw_plan.get("core_message") or "").strip()[:300]
@@ -358,6 +384,11 @@ async def run_create_pipeline(
 
     # 3. Harmonise ───────────────────────────────────────────────────────────
     plan = harmonize_plan(raw_plan.get("slides") if isinstance(raw_plan.get("slides"), list) else [], title, subtitle, slide_cap)
+    assigned = {sid for spec in plan for sid in spec["sources"]}
+    body = plan[1:-1] or plan
+    for i, sid in enumerate(section_map):
+        if sid not in assigned:
+            body[min(len(body) - 1, i * len(body) // max(1, len(section_map)))]["sources"].append(sid)
     recommended = []
     for item in raw_plan.get("recommended_templates") or []:
         theme_id = item.get("id") if isinstance(item, dict) else item
@@ -376,8 +407,8 @@ async def run_create_pipeline(
         chosen = [section_map[s] for s in spec["sources"] if s in section_map]
         if not chosen:
             return first_section[:2500] if spec["layout"] != "cover" and len(section_map) == 1 else ""
-        text = "\n\n".join(chosen)
-        return text[:WRITER_EXCERPT_CHARS]
+        budget = max(100, WRITER_EXCERPT_CHARS // len(chosen))
+        return "\n\n".join(source_excerpt(text, budget) for text in chosen)
 
     async def write(spec: dict) -> None:
         async with semaphore:
@@ -415,7 +446,7 @@ async def run_create_pipeline(
         "title": title, "subtitle": subtitle, "audience": raw_plan.get("audience") or brief.get("audience"),
         "core_message": core_message, "recommended_templates": recommended, "slides": slides,
     }, "dettagliata")  # slides are already density-trimmed: don't trim twice
-    yield {"type": "done", "progress": 1.0, "outline": outline, "degraded": degraded_count}
+    yield {"type": "done", "progress": 1.0, "outline": outline, "degraded": degraded_count, "recovered_plan": recovered_plan}
 
 
 async def run_revise(
@@ -424,7 +455,7 @@ async def run_revise(
 ) -> AsyncIterator[dict]:
     yield {"type": "phase", "phase": "revise", "progress": 0.1, "label": "Applico le modifiche alla scaletta"}
     prompt = studio.build_revise_prompt(brief, previous, instruction, language, school_grade_instruction)
-    candidate = await _json_call(generate, usage, prompt, studio.OUTLINE_SYSTEM_PROMPT, 9000)
+    candidate = await _json_call(generate, usage, prompt, studio.OUTLINE_SYSTEM_PROMPT, max(9000, len(previous.get("slides", [])) * 650))
     outline = studio.normalize_outline(candidate, brief.get("density"), previous)
     yield {"type": "done", "progress": 1.0, "outline": outline, "degraded": 0}
 

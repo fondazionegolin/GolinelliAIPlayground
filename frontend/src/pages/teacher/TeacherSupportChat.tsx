@@ -170,6 +170,13 @@ interface Message {
   routing?: ToolRouting
 }
 
+interface ChatSubmission {
+  controller: AbortController
+  message: Message
+  committed: boolean
+  restoreDraft: () => void
+}
+
 interface Conversation {
   id: string
   title: string
@@ -472,6 +479,12 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   const messagesRef = useRef<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [pendingUserMessage, setPendingUserMessage] = useState<Message | null>(null)
+  const submissionRef = useRef<ChatSubmission | null>(null)
+  const isBusy = isLoading || isSubmitting
+  const visibleMessages = messages.filter(message => message.role !== 'assistant' || message.content.trim() || message.attachments?.length || message.podcast || message.protocol || message.calendar)
+  const displayedMessages = pendingUserMessage ? [...visibleMessages, pendingUserMessage] : visibleMessages
   const activeGenerationAbortRef = useRef<AbortController | null>(null)
   const lastEscapeKeyAtRef = useRef(0)
   // Model choice is derived, never copied: in-session pick → the teacher's explicitly pinned default → the platform default
@@ -632,11 +645,9 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleSetDefaultModel = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    // User wants "choose default via checkbox". 
-    // Let's assume radio behavior for default (only one default).
-    setPinnedModel(id) // Always set the clicked one as default
+  const handleSetDefaultModel = (id: string) => {
+    setSelectedModel(selectedModel)
+    setPinnedModel(id)
     localStorage.setItem('default_model', id)
     localStorage.setItem('default_model_pinned', '1')
     toast({
@@ -757,6 +768,12 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stopActiveGeneration = () => {
+    const request = submissionRef.current
+    request?.controller.abort()
+    if (request && !request.committed) request.restoreDraft()
+    submissionRef.current = null
+    setIsSubmitting(false)
+    setPendingUserMessage(null)
     activeGenerationAbortRef.current?.abort()
     activeGenerationAbortRef.current = null
     setIsLoading(false)
@@ -766,7 +783,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   }
 
   useEffect(() => {
-    if (!isLoading) return
+    if (!isBusy) return
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -782,7 +799,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isLoading])
+  }, [isBusy])
 
   // Publish Modal State
   const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: PublishContentType, data: any }>({
@@ -856,7 +873,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
 
   useEffect(() => {
     if (stickToBottomRef.current) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight })
-  }, [messages, genProgress, streamingStatus])
+  }, [messages, pendingUserMessage, genProgress, streamingStatus])
 
   // Load conversations from server
   useEffect(() => {
@@ -1296,13 +1313,15 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     }
   }
 
-  const ensureConversation = async (titleSeed: string) => {
+  const ensureConversation = async (titleSeed: string, signal?: AbortSignal) => {
+    signal?.throwIfAborted()
     if (currentConversationId) return currentConversationId
     try {
       const response = await teacherApi.createConversation({
         title: titleSeed.substring(0, 50) + (titleSeed.length > 50 ? '...' : ''),
         agent_mode: agentMode
-      })
+      }, signal)
+      signal?.throwIfAborted()
       const convId = response.data.id
       justCreatedConvRef.current.add(convId)
       setCurrentConversationId(convId)
@@ -1315,7 +1334,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       }, ...prev])
       return convId
     } catch (e) {
-      console.error('Failed to create conversation:', e)
+      if (!signal?.aborted) console.error('Failed to create conversation:', e)
       return null
     }
   }
@@ -1564,6 +1583,14 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
         '',
         'SCHEMA JSON OBBLIGATORIO:',
         `{
+  "language": "codice lingua dei contenuti (it, en, ...)",
+  "labels": {
+    "overview": "Panoramica", "features": "Caratteristiche", "featuresTitle": "Elementi distintivi",
+    "benefits": "Vantaggi", "benefitsTitle": "Perché conta", "benefit": "Beneficio",
+    "method": "Metodo", "methodTitle": "Come funziona", "step": "Passaggio",
+    "stats": "Indicatori", "statsTitle": "Numeri e segnali", "faq": "FAQ", "faqTitle": "Domande frequenti",
+    "closing": "Prossimi passi", "footer": "Generato con AI · Fondazione Golinelli"
+  },
   "title": "titolo brochure",
   "subtitle": "sottotitolo",
   "palette": ["#1a1a2e", "#d97745", "#2c6b8a", "#7aa65a", "#f6efe7"],
@@ -1587,6 +1614,8 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
 }`,
         '',
         tl("VINCOLI DI COMPILAZIONE:"),
+        '- Tutti i testi, inclusi labels, intestazioni, pulsanti, prefissi e footer, seguono la lingua richiesta dall’utente; gli esempi italiani nello schema NON sono valori fissi.',
+        '- Se traduci, aggiorna language e TUTTE le labels insieme al contenuto. Se il docente modifica un’intestazione, aggiorna la relativa label. Mantieni palette e sezioni non coinvolte.',
         '- Massimo 6 keyPoints',
         '- Massimo 6 features',
         '- Massimo 8 benefits',
@@ -2129,24 +2158,27 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     }
   }
 
-  const startPodcast = async (prompt: string) => {
-    if (isLoading) return
+  const startPodcast = async (prompt: string, request: ChatSubmission) => {
+    request.controller.signal.throwIfAborted()
     setIsLoading(true)
     try {
-      const convId = await ensureConversation(prompt)
-      if (!convId) return
-      const { data } = await podcastApi.configure(convId, prompt, attachedFiles.map(f => f.file))
+      const convId = await ensureConversation(prompt, request.controller.signal)
+      if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
+      const { data } = await podcastApi.configure(convId, prompt, attachedFiles.map(f => f.file), request.controller.signal)
+      request.controller.signal.throwIfAborted()
       const newMessages: Message[] = [
         { ...data.user_message, role: 'user', timestamp: new Date(data.user_message.created_at) },
         { ...data.assistant_message, role: 'assistant', timestamp: new Date(data.assistant_message.created_at || Date.now()) },
       ]
+      request.committed = true
+      setPendingUserMessage(null)
       if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
       conversationCacheRef.current = { ...conversationCacheRef.current, [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
       setConversationCache(conversationCacheRef.current)
-      setInputText(''); setAttachedFiles([])
     } catch (error: any) {
+      if (request.controller.signal.aborted) return
       toast({ title: 'Podcast', description: error?.response?.data?.detail || tl("Impossibile preparare il podcast. Riprova."), variant: 'destructive' })
-    } finally { setIsLoading(false) }
+    } finally { if (submissionRef.current === request) setIsLoading(false) }
   }
 
   const updateProtocolMessage = (message: ProtocolMessage, conversationId = currentConversationId) => {
@@ -2160,42 +2192,46 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     }
   }
 
-  const startProtocol = async (prompt: string) => {
-    if (isLoading) return
+  const startProtocol = async (prompt: string, request: ChatSubmission) => {
+    request.controller.signal.throwIfAborted()
     setIsLoading(true)
     setStreamingStatus(tl('Analizzo il protocollo e organizzo gli agenti…'))
     try {
-      const convId = await ensureConversation(prompt)
-      if (!convId) return
-      const { data } = await protocolApi.plan(convId, prompt, attachedFiles.map(f => f.file))
+      const convId = await ensureConversation(prompt, request.controller.signal)
+      if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
+      const { data } = await protocolApi.plan(convId, prompt, attachedFiles.map(f => f.file), request.controller.signal)
+      request.controller.signal.throwIfAborted()
       const newMessages: Message[] = [
         { ...data.user_message, role: 'user', timestamp: new Date(data.user_message.created_at) },
         { ...data.assistant_message, role: 'assistant', timestamp: new Date(data.assistant_message.created_at) },
       ]
+      request.committed = true
+      setPendingUserMessage(null)
       if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
       conversationCacheRef.current = { ...conversationCacheRef.current,
         [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
       setConversationCache(conversationCacheRef.current)
-      setInputText(''); setAttachedFiles([])
     } catch (error: any) {
+      if (request.controller.signal.aborted) return
       const detail = error?.response?.data?.detail
       toast({ title: tl('Modalità agentica'), description: typeof detail === 'string' ? detail : tl('Impossibile analizzare il protocollo. Controlla la lunghezza del testo e gli allegati, poi riprova.'), variant: 'destructive' })
-    } finally { setIsLoading(false); setStreamingStatus(null) }
+    } finally { if (submissionRef.current === request) { setIsLoading(false); setStreamingStatus(null) } }
   }
 
   // Calendar agent: the Decisions router classified the message as a calendar edit (or it names the calendar).
   // It applies the changes right away and opens the calendar on the first touched day.
-  const startCalendarAgent = async (prompt: string) => {
-    if (isLoading) return
+  const startCalendarAgent = async (prompt: string, request: ChatSubmission) => {
+    request.controller.signal.throwIfAborted()
     setIsLoading(true)
     setStreamingStatus(tl('Aggiorno il calendario…'))
     try {
-      const convId = await ensureConversation(prompt)
-      if (!convId) return
+      const convId = await ensureConversation(prompt, request.controller.signal)
+      if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
       let sessionId: string | null = null
       try { sessionId = JSON.parse(localStorage.getItem('teacher_selected_session') || 'null')?.id ?? null } catch { sessionId = null }
-      const { data } = await calendarApi.agent(prompt, { conversationId: convId, sessionId, files: attachedFiles.map(f => f.file) })
+      const { data } = await calendarApi.agent(prompt, { conversationId: convId, sessionId, files: attachedFiles.map(f => f.file), signal: request.controller.signal })
       const now = new Date()
+      request.controller.signal.throwIfAborted()
       const newMessages: Message[] = [
         data.user_message
           ? { id: data.user_message.id, role: 'user', content: data.user_message.content, timestamp: new Date(data.user_message.created_at) }
@@ -2204,85 +2240,138 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           ? { id: data.assistant_message.id, role: 'assistant', content: data.assistant_message.content, calendar: data.assistant_message.calendar, timestamp: new Date(data.assistant_message.created_at) }
           : { id: `cal-a-${now.getTime()}`, role: 'assistant', content: data.content, calendar: data.calendar, timestamp: now },
       ]
+      request.committed = true
+      setPendingUserMessage(null)
       if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
       conversationCacheRef.current = { ...conversationCacheRef.current,
         [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
       setConversationCache(conversationCacheRef.current)
-      setInputText(''); setAttachedFiles([])
       publishRealtimeEvent('calendar_changed', { event_id: `calendar-agent:${now.getTime()}`, action: 'agent' })
       if (data.calendar.created + data.calendar.updated > 0) openCalendarAt(data.calendar.focus_date, 'week')
     } catch (error: any) {
+      if (request.controller.signal.aborted) return
       const detail = error?.response?.data?.detail
       toast({ title: tl('Calendario'), description: typeof detail === 'string' ? detail : tl('Non sono riuscito ad aggiornare il calendario. Riprova.'), variant: 'destructive' })
-    } finally { setIsLoading(false); setStreamingStatus(null) }
+    } finally { if (submissionRef.current === request) { setIsLoading(false); setStreamingStatus(null) } }
   }
 
   // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
   // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
     const text = (overrideInput ?? inputText).trim()
-    if (overrideInput === undefined && text) rememberPrompt(text)
-    if (isLoading) return
-    if ((text || attachedFiles.length > 0) && (agentMode === 'protocol' || agentMode === 'default' && isProtocolRequest(text, attachedFiles.length > 0))) {
-      return startProtocol(text || tl('Analizza il protocollo allegato e prepara tutti i materiali necessari.'))
+    if (submissionRef.current || isLoading || attachedYoutube?.status === 'loading') return
+    if (!text && !attachedFiles.length && !attachedYoutube && !(agentMode === 'analysis' && analysisTaskId)) return
+
+    const request: ChatSubmission = {
+      controller: new AbortController(),
+      message: {
+        id: `user-${crypto.randomUUID()}`, role: 'user',
+        content: text || attachedYoutube?.url || tl('Analizza questi documenti'), timestamp: new Date(),
+      },
+      committed: false,
+      restoreDraft: () => {
+        if (overrideInput === undefined) setInputText(current => current || inputText)
+        setAttachedFiles(current => current.length ? current : attachedFiles)
+        setAttachedYoutube(current => current || attachedYoutube)
+      },
     }
-    if ((text || attachedFiles.length > 0) && (agentMode === 'podcast' || agentMode === 'default' && isPodcastRequest(text))) return startPodcast(text || tl("Crea un podcast dai documenti allegati"))
-    if (agentMode === 'default' && text && isCalendarRequest(text)) return startCalendarAgent(text)
-    if (agentMode === 'default' && isDeepResearchRequest(text)) {
-      return runSend(overrideInput, 'deep_research', false, { tool: 'deep_research', action: 'create', top: 'deep_research', confidence: 1, alternatives: [], routed: true })
+    // Acquire synchronously: React state alone cannot guard two submissions in one render.
+    submissionRef.current = request
+    activeGenerationAbortRef.current = request.controller
+    stickToBottomRef.current = true
+    setIsSubmitting(true)
+    setPendingUserMessage(request.message)
+    setStreamingStatus(tl('Richiesta ricevuta. Analizzo come aiutarti…'))
+    if (overrideInput === undefined) {
+      if (text) rememberPrompt(text)
+      setInputText('')
     }
-    const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
-      && !attachedYoutube && text.length > 0
-    if (canRoute) {
-      try {
-        setStreamingStatus(tl("Analizzo la richiesta…"))
-        const { data } = await llmApi.decideTool(
-          attachedFiles.length ? `${text}\nDocumenti allegati: ${attachedFiles.map(f => f.file.name).join(', ')}` : text,
-          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol', 'calendar'],
-          collectRoutingArtifacts(),
-          messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
-        )
-        const routing: ToolRouting = {
-          tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
-          alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
+    setAttachedFiles([])
+    setAttachedYoutube(null)
+
+    const send = (mode: AgentMode, presentation = false, routing?: ToolRouting, intent?: 'create' | 'edit' | 'ask_about', artifact?: string) =>
+      runSend(overrideInput, mode, presentation, routing, intent, artifact, request)
+    try {
+      if ((text || attachedFiles.length > 0) && (agentMode === 'protocol' || agentMode === 'default' && isProtocolRequest(text, attachedFiles.length > 0))) {
+        return await startProtocol(text || tl('Analizza il protocollo allegato e prepara tutti i materiali necessari.'), request)
+      }
+      if ((text || attachedFiles.length > 0) && (agentMode === 'podcast' || agentMode === 'default' && isPodcastRequest(text))) {
+        return await startPodcast(text || tl('Crea un podcast dai documenti allegati'), request)
+      }
+      if (agentMode === 'default' && text && isCalendarRequest(text)) return await startCalendarAgent(text, request)
+      if (agentMode === 'default' && isDeepResearchRequest(text)) {
+        return await send('deep_research', false, { tool: 'deep_research', action: 'create', top: 'deep_research', confidence: 1, alternatives: [], routed: true })
+      }
+      const canRoute = overrideInput === undefined && agentMode === 'default' && !attachedYoutube && text.length > 0
+      if (canRoute) {
+        setStreamingStatus(tl('Richiesta ricevuta. Scelgo lo strumento più adatto…'))
+        // Only decision errors fall back to chat. An execution error must never resend the prompt.
+        let decision: Awaited<ReturnType<typeof llmApi.decideTool>>['data'] | undefined
+        try {
+          const response = await llmApi.decideTool(
+            attachedFiles.length ? `${text}\nDocumenti allegati: ${attachedFiles.map(f => f.file.name).join(', ')}` : text,
+            ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol', 'calendar'],
+            collectRoutingArtifacts(),
+            messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+            request.controller.signal,
+          )
+          decision = response.data
+        } catch (error) {
+          if (request.controller.signal.aborted) return
+          console.warn('Intent routing failed, using plain chat', error)
         }
-        if (data.tool === 'calendar') return await startCalendarAgent(text)
-        if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text)
-        if (data.tool === 'teaching_protocol' && data.action === 'create') return await startProtocol(text)
-        const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
-        if (data.tool === 'chat' || !intent) return await runSend(overrideInput, agentMode, false, routing)
-        if (data.tool === 'presentation') {
-          // creating/editing slides runs through the presentation agent; asking about them is plain chat
-          return await runSend(overrideInput, 'default', intent !== 'ask_about', routing, intent, data.tool)
+        request.controller.signal.throwIfAborted()
+        if (decision) {
+          const data = decision
+          const routing: ToolRouting = {
+            tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
+            alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
+          }
+          setStreamingStatus(tl('Preparo la risposta…'))
+          if (data.tool === 'calendar') return await startCalendarAgent(text, request)
+          if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text, request)
+          if (data.tool === 'teaching_protocol' && data.action === 'create') return await startProtocol(text, request)
+          const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
+          if (data.tool === 'chat' || !intent) return await send(agentMode, false, routing)
+          if (data.tool === 'presentation') return await send('default', intent !== 'ask_about', routing, intent, data.tool)
+          if (data.tool === 'image' && intent !== 'create' || intent === 'ask_about') return await send('default', false, routing, intent, data.tool)
+          return await send(TOOL_TO_MODE[data.tool] || agentMode, false, routing, intent, data.tool)
         }
-        if (data.tool === 'image' && intent !== 'create') {
-          // editing/asking about a picture: stay in chat so the previous image is re-attached (img2img / vision)
-          return await runSend(overrideInput, 'default', false, routing, intent, data.tool)
-        }
-        if (intent === 'ask_about') return await runSend(overrideInput, 'default', false, routing, intent, data.tool)
-        const routed = TOOL_TO_MODE[data.tool]
-        if (routed) return await runSend(overrideInput, routed, false, routing, intent, data.tool)
-        return await runSend(overrideInput, agentMode, false, routing)
-      } catch (err) {
-        console.warn('Intent routing failed, using plain chat', err)
-      } finally {
+      }
+      setStreamingStatus(tl('Preparo la risposta…'))
+      return await send(agentMode)
+    } catch (error: any) {
+      if (!request.controller.signal.aborted) {
+        toast({ title: tl('Invio non riuscito'), description: error?.message || tl('Riprova a inviare la richiesta.'), variant: 'destructive' })
+      }
+    } finally {
+      if (submissionRef.current === request) {
+        if (!request.committed) request.restoreDraft()
+        submissionRef.current = null
+        if (activeGenerationAbortRef.current === request.controller) activeGenerationAbortRef.current = null
+        setPendingUserMessage(null)
+        setIsSubmitting(false)
+        setIsLoading(false)
         setStreamingStatus(null)
       }
     }
-    return runSend(overrideInput, agentMode, false)
   }
 
-  const runSend = async (overrideInput: string | undefined, routedMode: AgentMode, routedPresentation: boolean, routing?: ToolRouting, intent?: 'create' | 'edit' | 'ask_about', artifact?: string) => {
+  const runSend = async (overrideInput: string | undefined, routedMode: AgentMode, routedPresentation: boolean, routing: ToolRouting | undefined, intent: 'create' | 'edit' | 'ask_about' | undefined, artifact: string | undefined, request: ChatSubmission) => {
+    const abortController = request.controller
+    const { signal } = abortController
+    signal.throwIfAborted()
     stickToBottomRef.current = true // sending always brings the view back to the live bottom
     const agentMode = routedMode // shadows the selected mode: the Decisions router may pick a tool per message
     const userInput = (overrideInput ?? inputText).trim()
 
     const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
-    if ((!userInput && attachedFiles.length === 0 && !attachedYoutube && !canSendAnalysis) || isLoading || attachedYoutube?.status === 'loading') return
+    if ((!userInput && attachedFiles.length === 0 && !attachedYoutube && !canSendAnalysis) || attachedYoutube?.status === 'loading') return
 
     let attachments: MessageAttachment[] | undefined
     try { attachments = attachedFiles.length > 0 ? await buildMessageAttachments(attachedFiles.map(f => f.file)) : undefined }
     catch { toast({ title: tl("Caricamento non riuscito"), description: tl("Riprova a inviare il file multimediale."), variant: 'destructive' }); return }
+    signal.throwIfAborted()
     const youtubeInfo = attachedYoutube ? `\n${attachedYoutube.url}` : ''
     let messageContent = userInput || (
       agentMode === 'analysis'
@@ -2310,8 +2399,9 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     const presentationRequested = routing?.routed ? routedPresentation : (routedPresentation || isPresentationCreationRequest(messageContent))
     const targetsPreviousImage = !!routing?.routed && artifact === 'image' && (intent === 'edit' || intent === 'ask_about')
 
-    const convId = await ensureConversation(messageContent)
-    if (!convId) return // Should not happen but safety first
+    const convId = await ensureConversation(messageContent, signal)
+    signal.throwIfAborted()
+    if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
 
     if (routedMode === 'deep_research') {
       setAgentMode('deep_research')
@@ -2319,14 +2409,16 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     }
 
     const userMessage: Message = {
-      id: `msg-${Date.now()}`,
+      id: request.message.id,
       role: 'user',
       content: messageContent + youtubeInfo,
       attachments,
-      timestamp: new Date(),
+      timestamp: request.message.timestamp,
       routing,
     }
 
+    request.committed = true
+    setPendingUserMessage(null)
     setMessages(prev => [...prev, userMessage])
 
     const existingCachedMessages = conversationCacheRef.current[convId] || []
@@ -2336,7 +2428,6 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     localStorage.setItem('teacher_support_messages_cache', JSON.stringify(nextConversationCache))
     setConversationCache(nextConversationCache)
 
-    if (overrideInput === undefined) setInputText('')
     const currentMedia = attachedFiles.filter(f => mediaKind(f.file.name, f.file.type))
     const currentFiles = attachedFiles.filter(f => !mediaKind(f.file.name, f.file.type))
     // Follow-up edit of the image just generated ("togli lo sfondo"): re-attach it silently so img2img continues in line
@@ -2345,14 +2436,9 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       const previous = await implicitEditImage(messages, userInput, targetsPreviousImage)
       if (previous) currentFiles.push({ file: previous, type: 'image' })
     }
-    setAttachedFiles([])
+    signal.throwIfAborted()
     const currentYoutube = attachedYoutube
-    setAttachedYoutube(null)
     setIsLoading(true)
-    const abortController = new AbortController()
-    activeGenerationAbortRef.current?.abort()
-    activeGenerationAbortRef.current = abortController
-    const { signal } = abortController
 
     // Build LLM content: append transcript if available
     let llmContent = messageContent + youtubeInfo
@@ -2387,10 +2473,11 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       } catch (kbError) {
         console.warn('Notebook RAG retrieval failed', kbError)
       } finally {
-        setStreamingStatus(null)
+        if (submissionRef.current === request) setStreamingStatus(null)
       }
     }
 
+    signal.throwIfAborted()
     try {
       if (currentMedia.length && !currentFiles.length && !userInput) {
         const assistantMessage: Message = { id: `media-${Date.now()}`, role: 'assistant', content: tl("I file sono pronti: usa il player per riprodurli. Per i video puoi scegliere finestra flottante, PiP e schermo intero."), timestamp: new Date() }
@@ -2813,7 +2900,7 @@ REGOLE IMPORTANTI:
             type: agentMode,
             content: parsedDocPayload ? JSON.stringify(parsedDocPayload, null, 2) : docContent,
             version: isEdit ? (baseDoc?.version ?? 0) + 1 : 1,
-            title: isEdit && baseDoc ? baseDoc.title : agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60),
+            title: parsedDocPayload?.title || (isEdit && baseDoc ? baseDoc.title : agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60)),
           }
           setActiveDoc(newDoc)
           setShowCanvas(true)
@@ -3004,12 +3091,7 @@ REGOLE IMPORTANTI:
         }
       }
     } catch (e: any) {
-      if (isAbortLikeError(e)) {
-        setImageGenerationProgress(null)
-        setStreamingStatus(null)
-        setIsGeneratingDoc(false)
-        return
-      }
+      if (isAbortLikeError(e)) return
       console.error("Teacher support chat error:", e)
       if (e.response) {
         console.error("Server Error Data:", e.response.data)
@@ -3041,6 +3123,7 @@ REGOLE IMPORTANTI:
   }
 
   const handleNewChat = () => {
+    stopActiveGeneration()
     setAgentMode('default')
     setMessages([])
     setCurrentConversationId(null)
@@ -3650,10 +3733,8 @@ REGOLE IMPORTANTI:
                             <div className="w-52 max-w-full">
                               <SearchableSelect value={selectedModel} label={tl("Seleziona modello")}
                                 disabled={!availableModels.length} onChange={setSelectedModel}
+                                favoriteValue={defaultModel} onFavoriteChange={handleSetDefaultModel}
                                 options={availableModels.map((m) => ({ value: m.id, label: m.name, description: m.provider, searchText: m.id }))} />
-                              {selectedModel && <button type="button" className="mt-1 text-[10px] text-slate-500" onClick={(event) => handleSetDefaultModel(selectedModel, event)}>
-                                {defaultModel === selectedModel ? tl("Modello preferito") : tl("Imposta come preferito")}
-                              </button>}
                             </div>
                           )
                         )}
@@ -3783,7 +3864,7 @@ REGOLE IMPORTANTI:
                       </div>
                     )}
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
-                    {messages.length === 0 ? (
+                    {displayedMessages.length === 0 ? (
                       (loadingConversations || loadingMessages) ? (
                         /* Buffering skeleton while conversations load */
                         <div className="h-full flex flex-col justify-end gap-4 pb-2 pointer-events-none select-none">
@@ -3831,7 +3912,7 @@ REGOLE IMPORTANTI:
                         </div>
                       )
                     ) : (
-                      messages.map((msg) => (
+                      displayedMessages.map((msg) => (
                         <div key={msg.id} className={`flex ${isMobile ? 'gap-2' : 'gap-4'} ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {msg.role === 'assistant' && !isMobile && (
                             <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
@@ -3854,9 +3935,7 @@ REGOLE IMPORTANTI:
                                   }}
                                   onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
                                   onInput={(text) => {
-                                    setInputText(text);
-                                    // Automatically trigger send after selection
-                                    setTimeout(() => handleSend(), 100);
+                                    void handleSend(text)
                                   }}
                                   toast={toast}
                                   darkMode={chatBgIsDark}
@@ -3923,7 +4002,7 @@ REGOLE IMPORTANTI:
                         </div>
                       </div>
                     )}
-                    {isLoading && !isGeneratingDoc && !genProgress && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
+                    {isBusy && !isGeneratingDoc && !genProgress && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <AcademicAiIcon className="h-4 w-4 text-red-500" />
@@ -3942,7 +4021,7 @@ REGOLE IMPORTANTI:
                       </div>
                     )}
                     {streamingStatus && !genProgress && (
-                      <div className="flex gap-4 justify-start">
+                      <div className="flex gap-4 justify-start" role="status" aria-live="polite" data-chat-stage>
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
                           <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                         </div>
@@ -4527,7 +4606,7 @@ REGOLE IMPORTANTI:
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => {
                             if (onHistoryKey(e)) return
-                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
+                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!e.repeat) void handleSend(); }
                           }}
                           onPaste={handleInputPaste}
                           placeholder={
@@ -4545,7 +4624,7 @@ REGOLE IMPORTANTI:
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
                         />}
 
-                        {isLoading ? (
+                        {isBusy ? (
                           <Button
                             onClick={stopActiveGeneration}
                             className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"

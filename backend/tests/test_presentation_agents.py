@@ -195,3 +195,56 @@ def test_slide_image_source_never_leaves_uploads():
     assert llm_module._slide_image_source_b64("data:image/png;base64,QUJD") == "QUJD"
     assert llm_module._slide_image_source_b64("/uploads/../../etc/passwd") is None
     assert llm_module._slide_image_source_b64("https://example.com/cat.png") is None
+
+
+def test_long_markdown_partition_is_lossless_and_keeps_tail():
+    source = ('# Capitolo\n\n- Un punto.\n\n**Note docente:** dettaglio\n\n' * 12000) + '# CONCLUSIONE'
+    sections = agents.split_source(source)
+    assert ''.join(sections) == source
+    assert len(sections) <= agents.MAX_SECTIONS
+    assert sections[-1].endswith('# CONCLUSIONE')
+
+
+def test_json_retry_gives_incomplete_response_more_output_space():
+    budgets = []
+
+    async def generate(prompt, system, max_tokens, temperature):
+        budgets.append(max_tokens)
+        return _response('{"slides": [' if len(budgets) == 1 else '{"slides": []}')
+
+    result = asyncio.run(agents._json_call(generate, agents.UsageLog(), 'prompt', 'system', 6000))
+    assert result == {'slides': []}
+    assert budgets == [6000, 12000]
+
+
+def test_invalid_architect_recovers_with_all_source_sections():
+    source = '\n\n'.join(f'# [SLIDE S{i}] Tema {i}\n' + 'contenuto ' * 550 for i in range(18))
+    read = []
+    writer_prompts = []
+
+    async def generate(prompt, system, max_tokens, temperature):
+        if system == agents.READER_SYSTEM_PROMPT:
+            read.append(prompt)
+            return _response('Riassunto dei contenuti. Note docente riservate.')
+        if system == agents.ARCHITECT_SYSTEM_PROMPT:
+            return _response('{"title":"Deck","slides":[')
+        writer_prompts.append(prompt)
+        return _response(json.dumps({'title': 'Tema XR', 'points': ['Un punto'], 'notes': 'Dettagli docente'}))
+
+    async def run():
+        return [event async for event in agents.run_create_pipeline(
+            {'topic': 'XR', 'source_text': source, 'slide_count': 20}, 'it', generate, agents.UsageLog())]
+
+    events = asyncio.run(run())
+    assert len(read) == len(agents.split_source(source))
+    assert events[-1]['type'] == 'done' and events[-1]['recovered_plan']
+    assert len(events[-1]['outline']['slides']) == 20
+    assert 'Tema 17' in '\n'.join(writer_prompts)
+    assert events[-1]['degraded'] == 0
+
+
+def test_normalize_keeps_large_deck():
+    result = agents.studio.normalize_outline({'title': 'XR', 'slides': [
+        {'layout': 'cover' if i == 0 else 'title_bullets', 'title': f'Slide {i}', 'points': ['Contenuto']} for i in range(60)
+    ]}, 'bilanciata')
+    assert len(result['slides']) == 60

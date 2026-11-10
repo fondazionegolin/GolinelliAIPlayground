@@ -1,6 +1,7 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import type { ReactNode } from 'react'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { Search, X } from '@/components/icons'
+
 import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 
 export function WorkspaceExplorerSidebar({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -47,26 +48,7 @@ export function WorkspaceExplorerHeader({
       </div>
 
       {showSearch && (
-        <div className="ui-search relative mt-4 px-3 py-2">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={searchPlaceholder}
-            className="w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
-          />
-          {searchValue && (
-            <button
-              type="button"
-              onClick={() => onSearchChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
-              aria-label={clearSearchLabel || 'Clear search'}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <SearchPill value={searchValue ?? ""} placeholder={searchPlaceholder} onValueChange={onSearchChange} className="mt-4" clearLabel={clearSearchLabel} />
       )}
     </div>
   )

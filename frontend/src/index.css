@@ -882,6 +882,24 @@ html:not(#x) input:-webkit-autofill {
   -webkit-text-fill-color: var(--ds-field-ink) !important;
   box-shadow: var(--ds-field-shadow), inset 0 0 0 1000px var(--ds-field-bg) !important;
 }
+
+/* Compound fields paint one surface on the wrapper. Their editable child must
+   stay transparent at rest, on hover, on focus and after browser autofill. */
+:is(.ui-search, .ds-field) :is(input, textarea) {
+  --ds-field-bg: transparent;
+  --ds-field-hover: transparent;
+  --ds-field-focus: transparent;
+  --ds-field-shadow: none;
+}
+
+html:not(#x) :is(.ui-search, .ds-field) :is(input, textarea):is(:focus, :focus-visible):not([aria-invalid='true'], [data-invalid='true']) {
+  outline: none !important;
+}
+
+html:not(#x) :is(.ui-search, .ds-field):has(:is(input, textarea):focus-visible) {
+  outline: 2px solid var(--ds-field-focus-ink) !important;
+  outline-offset: 2px;
+}
 .ProseMirror {
   caret-color: #737373;  /* slate-500 */
 }

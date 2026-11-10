@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1866,7 +1867,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100" onClick={() => sortByColumn(filterMenu.col, 1)}><ArrowUp className="h-3.5 w-3.5" /> {tl("Ordina A → Z / crescente")}</button>
           <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100" onClick={() => sortByColumn(filterMenu.col, -1)}><ArrowDown className="h-3.5 w-3.5" /> {tl("Ordina Z → A / decrescente")}</button>
           <div className="my-1 h-px bg-slate-100" />
-          <Input autoFocus value={filterSearch} onChange={event => setFilterSearch(event.target.value)} placeholder={tl("Cerca valore")} className="h-8 text-xs" />
+          <SearchPill autoFocus value={filterSearch} placeholder={tl("Cerca valore")} onValueChange={setFilterSearch} />
           <div className="mt-1 flex justify-between px-1 text-[11px] font-semibold">
             <button type="button" className="text-indigo-600 hover:underline" onClick={() => setFilterColumnValues(filterMenu.col, null)}>{tl("Seleziona tutto")}</button>
             <button type="button" className="text-indigo-600 hover:underline" onClick={() => setFilterColumnValues(filterMenu.col, new Set())}>{tl("Deseleziona tutto")}</button>

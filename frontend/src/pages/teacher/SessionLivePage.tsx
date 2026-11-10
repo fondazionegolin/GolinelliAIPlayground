@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { useState, useEffect, useMemo, useRef } from 'react'
@@ -723,27 +724,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
           </p>
         ) : (
           <>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={documentSearch}
-                onChange={(event) => setDocumentSearch(event.target.value)}
-                placeholder={tl("Cerca per titolo, autore o tipo…")}
-                aria-label={tl("Cerca documenti per titolo, autore o tipo")}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-              />
-              {documentSearch && (
-                <button
-                  type="button"
-                  onClick={() => setDocumentSearch('')}
-                  aria-label={tl("Cancella ricerca documenti")}
-                  className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            <SearchPill value={documentSearch} placeholder={tl("Cerca per titolo, autore o tipo…")} aria-label={tl("Cerca documenti per titolo, autore o tipo")} onValueChange={setDocumentSearch} clearLabel={tl("Cancella ricerca documenti")} />
 
             <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
               <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">

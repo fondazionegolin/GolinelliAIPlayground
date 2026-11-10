@@ -48,10 +48,10 @@ export function isPodcastRequest(text: string) {
 }
 export const podcastApi = {
   voices: () => api.get<{ voices: PodcastVoice[] }>('/podcasts/voices'),
-  configure: (conversationId: string, prompt: string, files: File[]) => {
+  configure: (conversationId: string, prompt: string, files: File[], signal?: AbortSignal) => {
     const form = new FormData(); form.append('conversation_id', conversationId); form.append('prompt', prompt)
     files.forEach(f => form.append('files', f))
-    return api.post<{ user_message: { id: string; content: string; created_at: string }; assistant_message: PodcastMessage }>('/podcasts/configure', form, { timeout: 120000 })
+    return api.post<{ user_message: { id: string; content: string; created_at: string }; assistant_message: PodcastMessage }>('/podcasts/configure', form, { timeout: 120000, signal })
   },
   draft: (messageId: string, options: PodcastOptions) => api.post<PodcastMessage>(`/podcasts/${messageId}/draft`, options, { timeout: 240000 }),
   generate: (messageId: string, script: string) => api.post<PodcastMessage>(`/podcasts/${messageId}/generate`, { script }, { timeout: 600000 }),

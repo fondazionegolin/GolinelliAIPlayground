@@ -1,10 +1,6 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark,
-  Languages, Leaf, Lightbulb, ListChecks, Lock, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Search, Share2, Shield,
-  Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown,
-  type LucideIcon,
-} from '@/components/icons'
+import { Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark, Languages, Leaf, Lightbulb, ListChecks, Lock, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Share2, Shield, Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown, type LucideIcon } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 export interface LiveSessionItem {
@@ -245,11 +241,7 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="ui-search flex h-10 min-w-[12rem] flex-1 items-center gap-2 px-3 sm:max-w-xs">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tl("Cerca per titolo o argomento")} aria-label={tl("Cerca sessioni")}
-            className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400" />
-        </label>
+        <SearchPill value={query} placeholder={tl("Cerca per titolo o argomento")} aria-label={tl("Cerca sessioni")} onValueChange={setQuery} className="min-w-[12rem] flex-1 sm:max-w-xs" />
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tl("Filtra per stato")}>
           {chips.map(([id, label]) => (
             <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}

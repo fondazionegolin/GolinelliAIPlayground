@@ -1,8 +1,10 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Globe2, Loader2, MonitorPlay, Pencil, PenTool, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { filesApi } from '@/lib/api'
 import DocumentThumbnail from './DocumentThumbnail'
+import { InteractiveHtmlFrame } from './InteractiveHtmlFrame'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
 
 export type OpenableDocument = {
@@ -13,6 +15,7 @@ export type OpenableDocument = {
 
 type ParsedContent = {
   slides?: unknown[]
+  html?: string
   htmlContent?: string
   content?: string
   data?: string[][]
@@ -74,8 +77,8 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
     return () => window.removeEventListener('keydown', onKey)
   }, [content.slides, onClose, viewing])
 
-  const html = content.htmlContent || content.content || ''
-  const isFullHtml = /^\s*(?:<!doctype\s+html|<html)/i.test(html)
+  const html = content.htmlContent || content.html || content.content || ''
+  const isFullHtml = Boolean(html) && (document.type === 'web' || /^\s*(?:<!doctype\s+html|<html)/i.test(html) || /<(?:script|style)\b/i.test(html))
   const safeHtml = useMemo(() => (html && !isFullHtml ? sanitizeDocumentHtml(html) : ''), [html, isFullHtml])
   const currentSlideJson = content.slides?.length
     ? JSON.stringify({ ...content, slides: [content.slides[slideIndex]] })
@@ -100,7 +103,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
           : documentType === 'pdf' ? 'PDF'
             : (isEnglish ? 'Document' : 'Documento')
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 md:backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={document.title} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={`flex w-full flex-col overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl h-[92vh] max-w-6xl`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-4">
@@ -133,15 +136,16 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
                   <table className="min-w-full table-fixed border-collapse text-sm"><colgroup>{Array.from({ length: Math.max(0, ...content.data.map(row => row.length)) }, (_, index) => <col key={index} style={{ width: content.dimensions?.columnWidths?.[index] || 120 }} />)}</colgroup><tbody>{content.data.map((row, rowIndex) => <tr key={rowIndex} style={{ height: content.dimensions?.rowHeights?.[rowIndex] || 36 }}>{row.map((cell, colIndex) => <td key={colIndex} style={content.styles?.[`${rowIndex}:${colIndex}`]} className="border border-slate-200 px-3 py-2 text-slate-700">{cell}</td>)}</tr>)}</tbody></table>
                 </div>
               ) : isFullHtml ? (
-                // Full HTML pages (AI-generated sites, student submissions) run isolated: no scripts, opaque origin.
-                <iframe srcDoc={html} title={document.title} sandbox="" className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
+                // Open the complete authored page with its interactions, isolated from the platform.
+                <InteractiveHtmlFrame srcDoc={html} title={document.title} className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
               ) : safeHtml ? (
                 <article className="prose prose-slate mx-auto min-h-full max-w-[794px] rounded-sm bg-white px-10 py-12 shadow-xl sm:px-16" dangerouslySetInnerHTML={{ __html: safeHtml }} />
-              ) : content.url ? <iframe src={content.url} title={document.title} sandbox="" className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
+              ) : content.url ? <InteractiveHtmlFrame src={content.url} title={document.title} className="h-full min-h-[70vh] w-full rounded-xl border-0 bg-white shadow" />
               : <div className="flex h-full flex-col items-center justify-center text-slate-400"><FileSpreadsheet className="mb-3 h-10 w-10" /><p>{isEnglish ? 'Preview unavailable' : 'Anteprima non disponibile'}</p></div>}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    window.document.body,
   )
 }

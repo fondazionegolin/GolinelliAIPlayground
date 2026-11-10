@@ -7,7 +7,8 @@ import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from '@/components/icons'
-import { Button } from '@/components/ui/button'
+import { Button, SectionIllustration } from '@/design'
+import { ChatWelcome } from '@/components/student/ChatWelcome'
 import { triggerHaptic } from '@/lib/haptics'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import ReactMarkdown from 'react-markdown'
@@ -39,6 +40,7 @@ interface ChatConversationViewProps {
   conversationId: string | null
   profileKey: string
   profileName: string
+  profileDescription?: string
   profileIcon?: React.ReactNode
   profileColor?: string
   messages: Message[]
@@ -57,6 +59,7 @@ export function ChatConversationView({
   conversationId: _conversationId,
   profileKey: _profileKey,
   profileName,
+  profileDescription,
   profileIcon,
   profileColor = 'bg-slate-700',
   messages,
@@ -177,11 +180,11 @@ export function ChatConversationView({
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-[80] flex min-h-0 flex-col overflow-hidden bg-slate-50"
+      className="fixed inset-x-0 top-0 z-[80] flex min-h-0 flex-col overflow-hidden bg-[var(--ds-canvas)]"
       style={{ height: `${viewport.height}px`, transform: `translateY(${viewport.offsetTop}px)` }}
     >
       {/* Mobile Header */}
-      <div className="flex h-16 flex-shrink-0 items-center gap-2.5 border-b border-slate-200 bg-white px-3 shadow-sm">
+      <div className="flex h-16 flex-shrink-0 items-center gap-2.5 bg-[var(--ds-surface-raised)] px-3">
         <Button
           variant="ghost"
           size="sm"
@@ -193,11 +196,7 @@ export function ChatConversationView({
         >
           <ArrowLeft className="h-4 w-4 text-slate-700" />
         </Button>
-        {profileIcon && (
-          <div className={`w-8 h-8 rounded-xl ${avatarColorClass} flex items-center justify-center shadow-sm`}>
-            <div className="text-white scale-75">{profileIcon}</div>
-          </div>
-        )}
+        <SectionIllustration section="/teacher/teacherbots" compact />
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-slate-900 text-sm truncate">{profileName}</h3>
           {isLoading && (
@@ -233,35 +232,17 @@ export function ChatConversationView({
       >
         {/* Empty state with suggestions */}
         {messages.length === 0 && (
-          <div className="text-center py-5">
-            <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl ${avatarColorClass} mb-3 shadow-md`}>
-              {profileIcon ? (
-                <div className="text-white scale-95">{profileIcon}</div>
-              ) : (
-                <Bot className="h-6 w-6 text-white" />
-              )}
-            </div>
-            <h3 className="font-bold text-base text-slate-900 mb-1.5">{tl("Sono")} {profileName}</h3>
-            <p className="text-slate-600 text-sm max-w-xs mx-auto mb-4">
-              {tl("Come posso aiutarti oggi?")}
-            </p>
-            {suggestedPrompts.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center max-w-sm mx-auto">
-                {suggestedPrompts.slice(0, 2).map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => {
-                      triggerHaptic('selection')
-                      setInput(prompt)
-                      inputRef.current?.focus()
-                    }}
-                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="py-3">
+            <ChatWelcome
+              name={profileName}
+              description={profileDescription}
+              suggestedPrompts={suggestedPrompts}
+              onSelectPrompt={(prompt) => {
+                triggerHaptic('selection')
+                setInput(prompt)
+                inputRef.current?.focus()
+              }}
+            />
           </div>
         )}
 

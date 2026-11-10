@@ -5277,6 +5277,8 @@ async def edit_brochure(
     Edit a brochure payload using tool-calling.
     Claude returns only the fields that need to change; they are merged with the original.
     """
+    from app.services.brochure import LABELS_IT, merge_brochure_patch
+
     client = llm_service.anthropic_client
     if not client:
         raise HTTPException(status_code=500, detail="Anthropic client non configurato")
@@ -5291,6 +5293,9 @@ async def edit_brochure(
         "input_schema": {
             "type": "object",
             "properties": {
+                "language": {"type": "string", "description": "Lingua dei contenuti e delle intestazioni (it, en, ...)"},
+                "labels": {"type": "object", "properties": {key: {"type": "string"} for key in LABELS_IT},
+                           "description": "Intestazioni, prefissi e footer del template: tutti modificabili e traducibili"},
                 "title": {"type": "string"},
                 "subtitle": {"type": "string"},
                 "palette": {"type": "array", "items": {"type": "string"}, "description": "Fino a 5 colori hex"},
@@ -5352,7 +5357,11 @@ async def edit_brochure(
         system=(
             "Sei un editor di contenuti per brochure. "
             "Applica la modifica richiesta specificando SOLO i campi che cambiano. "
-            "Non toccare i campi che non richiedono modifiche."
+            "Non toccare i campi che non richiedono modifiche. "
+            "Le intestazioni del template sono in labels: puoi modificarle tutte. "
+            "Quando traduci, aggiorna language e TUTTI i testi visibili: labels complete, titoli, pulsanti, prefissi, footer e contenuto. "
+            "Mantieni palette e struttura se non sono richieste modifiche grafiche. "
+            f"Per brochure precedenti, queste sono le labels italiane di partenza: {json.dumps(LABELS_IT, ensure_ascii=False)}"
         ),
         messages=[{
             "role": "user",
@@ -5371,5 +5380,5 @@ async def edit_brochure(
         raise HTTPException(status_code=422, detail="Nessuna modifica generata dal modello")
 
     # Merge: original payload + only the changed fields from the tool call
-    merged = {**request.payload, **tool_block.input}
+    merged = merge_brochure_patch(request.payload, tool_block.input)
     return {"payload": merged}

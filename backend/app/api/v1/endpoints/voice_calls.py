@@ -199,6 +199,10 @@ async def delete_call(
 ):
     teacher = _teacher(actor)
     call = await _owned(db, teacher, call_id)
+    from app.services import call_recordings as _rec
+    for orphan in (await db.execute(select(VoiceCallRecording).where(
+            VoiceCallRecording.call_id == call.id, VoiceCallRecording.session_id.is_(None)))).scalars().all():
+        await _rec.delete_recording(db, orphan)  # no session to keep it reachable from
     await _kick_non_owners(call, everyone=True)
     await db.delete(call)
     await db.commit()
@@ -294,12 +298,12 @@ async def _moderated_call(db: AsyncSession, actor: StudentOrTeacher, call_id: uu
     return call
 
 
-async def _recording_for_teacher(db: AsyncSession, actor: StudentOrTeacher, recording_id: uuid.UUID) -> tuple[VoiceCallRecording, VoiceCall]:
+async def _recording_for_teacher(db: AsyncSession, actor: StudentOrTeacher, recording_id: uuid.UUID) -> tuple[VoiceCallRecording, Optional[VoiceCall]]:
     teacher = _teacher(actor)
     recording = await db.get(VoiceCallRecording, recording_id)
     if not recording:
         raise HTTPException(status_code=404, detail="Registrazione non trovata")
-    call = await db.get(VoiceCall, recording.call_id)
+    call = await db.get(VoiceCall, recording.call_id) if recording.call_id else None
     allowed = (
         (recording.session_id and await teacher_can_access_session(db, teacher, recording.session_id))
         or (call is not None and await vc.call_role(db, call, teacher=teacher) == "moderator")
@@ -309,10 +313,14 @@ async def _recording_for_teacher(db: AsyncSession, actor: StudentOrTeacher, reco
     return recording, call
 
 
-async def _set_room_recording(call_id, value: Optional[dict]) -> None:
+def _room_key(recording: VoiceCallRecording) -> str:
+    """Voice room of a recording: the invite-link call's room, or the session's class voice room."""
+    return vc.call_key(recording.call_id) if recording.call_id else str(recording.session_id)
+
+
+async def _set_room_recording(key: str, value: Optional[dict]) -> None:
     try:
         from app.realtime.gateway import _broadcast_voice_state, voice_rooms
-        key = vc.call_key(call_id)
         state = voice_rooms.get(key)
         if state is not None:
             state["recording"] = value
@@ -343,8 +351,45 @@ async def start_recording(
     db.add(recording)
     await db.commit()
     await db.refresh(recording)
-    await _set_room_recording(call.id, {"id": str(recording.id), "started_at": started.isoformat()})
+    await _set_room_recording(_room_key(recording), {"id": str(recording.id), "started_at": started.isoformat()})
     return rec.serialize_recording(recording, call=call)
+
+
+class SessionRecordingStart(RecordingStart):
+    session_id: uuid.UUID
+
+
+@router.post("/session-recordings", status_code=201)
+async def start_session_recording(
+    body: SessionRecordingStart,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Record the class voice room of a session (a call started in the chat sidebar, without invite link)."""
+    from app.realtime.gateway import voice_rooms
+    teacher = _teacher(actor)
+    if not await teacher_can_access_session(db, teacher, body.session_id):
+        raise HTTPException(status_code=403, detail="Sessione non accessibile")
+    if not body.consent_confirmed:
+        raise HTTPException(status_code=400, detail="Conferma di aver informato i partecipanti della registrazione")
+    if not (voice_rooms.get(str(body.session_id)) or {}).get("active"):
+        raise HTTPException(status_code=409, detail="Avvia prima la chiamata")
+    session = await db.get(Session, body.session_id)
+    running = (await db.execute(select(VoiceCallRecording).where(
+        VoiceCallRecording.call_id.is_(None), VoiceCallRecording.session_id == body.session_id,
+        VoiceCallRecording.status == "recording"))).scalars().first()
+    if running:
+        return rec.serialize_recording(running)
+    started = rec.now_utc()
+    recording = VoiceCallRecording(
+        tenant_id=session.tenant_id, call_id=None, session_id=body.session_id, started_by_teacher_id=teacher.id,
+        title=f"Chiamata di classe · {started.astimezone().strftime('%d/%m %H:%M')}", status="recording", started_at=started,
+    )
+    db.add(recording)
+    await db.commit()
+    await db.refresh(recording)
+    await _set_room_recording(_room_key(recording), {"id": str(recording.id), "started_at": started.isoformat()})
+    return rec.serialize_recording(recording)
 
 
 @router.post("/recordings/{recording_id}/segments", status_code=201)
@@ -361,7 +406,10 @@ async def upload_segment(
     recording = await db.get(VoiceCallRecording, recording_id)
     if not recording:
         raise HTTPException(status_code=404, detail="Registrazione non trovata")
-    await _moderated_call(db, actor, recording.call_id)
+    if recording.call_id:
+        await _moderated_call(db, actor, recording.call_id)
+    elif not recording.session_id or not await teacher_can_access_session(db, _teacher(actor), recording.session_id):
+        raise HTTPException(status_code=403, detail="Registrazione non accessibile")
     if recording.status not in ("recording", "processing"):
         raise HTTPException(status_code=409, detail="La registrazione è già stata elaborata")
     data = await file.read()
@@ -392,8 +440,7 @@ async def stop_recording(
     recording.status = "processing"
     recording.error_message = None
     await db.commit()
-    if call:
-        await _set_room_recording(call.id, None)
+    await _set_room_recording(_room_key(recording), None)
     await background_jobs.start_task_job(
         background_jobs.JobOwner.from_actor(actor), kind="call_recording", title=f"Trascrizione · {recording.title}",
         work=lambda ctx, rid=recording.id: rec.process_recording(rid, ctx),
@@ -417,13 +464,13 @@ async def list_recordings(
         .order_by(VoiceCallRecording.started_at.desc()).limit(100)
     )).scalars().all()
     calls = {c.id: c for c in (await db.execute(
-        select(VoiceCall).where(VoiceCall.id.in_({r.call_id for r in recordings})))).scalars()} if recordings else {}
+        select(VoiceCall).where(VoiceCall.id.in_({r.call_id for r in recordings if r.call_id})))).scalars()} if recordings else {}
     analyses: dict = {}
     if recordings:
         for a in (await db.execute(select(VoiceCallAnalysis).where(
                 VoiceCallAnalysis.recording_id.in_([r.id for r in recordings])).order_by(VoiceCallAnalysis.created_at))).scalars():
             analyses.setdefault(a.recording_id, []).append(a)
-    return [rec.serialize_recording(r, call=calls.get(r.call_id), analyses=analyses.get(r.id, [])) for r in recordings]
+    return [rec.serialize_recording(r, call=calls.get(r.call_id) if r.call_id else None, analyses=analyses.get(r.id, [])) for r in recordings]
 
 
 @router.get("/recordings/{recording_id}")
@@ -481,6 +528,24 @@ async def add_analysis_to_knowledge(
     return {"in_knowledge": True}
 
 
+@router.post("/recordings/analyses/{analysis_id}/share")
+async def share_analysis(
+    analysis_id: uuid.UUID,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Publish a result in the class chat of the session, where students read it."""
+    analysis = await db.get(VoiceCallAnalysis, analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Risultato non trovato")
+    recording, _call = await _recording_for_teacher(db, actor, analysis.recording_id)
+    try:
+        await rec.share_to_session(db, recording, analysis, actor.teacher)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"shared": True}
+
+
 @router.delete("/recordings/analyses/{analysis_id}", status_code=204)
 async def delete_analysis(
     analysis_id: uuid.UUID,
@@ -505,6 +570,55 @@ async def delete_recording(
 ):
     """Delete audio, transcript, analyses and what they added to the session knowledge."""
     recording, call = await _recording_for_teacher(db, actor, recording_id)
-    if recording.status == "recording" and call:
-        await _set_room_recording(call.id, None)
+    if recording.status == "recording":
+        await _set_room_recording(_room_key(recording), None)
     await rec.delete_recording(db, recording)
+
+
+# ── Transcription engine (admin setting) ──────────────────────────────────────
+
+class TranscriptionSetting(BaseModel):
+    engine: str = Field(pattern="^(local|openai)$")
+    model: str = Field(min_length=1, max_length=60)
+    preload: bool = False
+
+
+def _is_admin(user: User) -> bool:
+    from app.models.enums import UserRole
+    return user.role == UserRole.ADMIN
+
+
+@router.get("/transcription-settings")
+async def get_transcription_settings(
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.services import local_stt
+    teacher = _teacher(actor)
+    return {
+        "current": await local_stt.get_setting(db),
+        "options": [{k: v for k, v in m.items() if k != "repo"} for m in local_stt.MODELS],
+        "can_edit": _is_admin(teacher),
+        **local_stt.status(),
+    }
+
+
+@router.put("/transcription-settings")
+async def update_transcription_settings(
+    body: TranscriptionSetting,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Admin: choose the speech-to-text model for call recordings; `preload` downloads/loads it now."""
+    import asyncio
+    from app.services import local_stt
+    teacher = _teacher(actor)
+    if not _is_admin(teacher):
+        raise HTTPException(status_code=403, detail="Solo gli amministratori scelgono il modello di trascrizione")
+    try:
+        current = await local_stt.set_setting(db, body.engine, body.model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if body.preload and body.engine == "local":
+        asyncio.get_running_loop().create_task(local_stt.preload(body.model))  # download in background
+    return {"current": current, **local_stt.status()}

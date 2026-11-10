@@ -26,6 +26,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { voiceApi, voiceCallsApi } from '@/lib/api'
 import { CallRecorder } from '@/lib/callRecorder'
+import { useToast } from '@/components/ui/use-toast'
+import { ToastAction } from '@/components/ui/toast'
 import { tl } from '@/i18n/tl'
 
 type VoiceQueueItem = {
@@ -144,7 +146,8 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const [videoQuality, setVideoQuality] = useState<'low' | 'hi'>('hi')
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null)
   const [sideTab, setSideTab] = useState<'chat' | 'people'>(chatPanel ? 'chat' : 'people')
-  const [sideOpen, setSideOpen] = useState(true)
+  // Right column (class chat / participants): open on wide screens, hidden on phones where it would cover the video.
+  const [sideOpen, setSideOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1024)
   /** Tile pinned by this viewer (`identity|source`): wins over the moderator's spotlight and the auto focus. */
   const [pinnedKey, setPinnedKey] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
@@ -161,6 +164,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const remoteAudioRef = useRef(new Map<string, { identity: string; name: string; track: MediaStreamTrack }>())
   const recorderRef = useRef<{ id: string; recorder: CallRecorder } | null>(null)
   const [recordingBusy, setRecordingBusy] = useState(false)
+  const { toast } = useToast()
+  /** Recording whose closing notice was already shown by this browser (avoids a second one from the room update). */
+  const closedNoticeRef = useRef<string | null>(null)
+  const prevRecordingRef = useRef<{ id: string } | null>(null)
   const [recordingClock, setRecordingClock] = useState(0)
   // WebAudio analyser for real-time local mic level (avoids LiveKit threshold issues)
   const levelMonitorRef = useRef<{ stop: () => void } | null>(null)
@@ -719,23 +726,40 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const recordingState = currentVoiceState.recording ?? null
   const capturingHere = !!recorderRef.current && recordingState?.id === recorderRef.current.id
 
+  /** «Registrazione terminata»: tells the teacher where the transcript will appear. */
+  const notifyRecordingClosed = useCallback((recording?: { id: string; session_id: string | null } | null) => {
+    if (recording) closedNoticeRef.current = recording.id
+    toast({
+      title: tl("Registrazione terminata"),
+      description: tl("La trascrizione sarà disponibile tra pochi minuti in Gestione sessione › Chiamate."),
+      duration: 14000,
+      action: recording?.session_id ? (
+        <ToastAction altText={tl("Apri Chiamate")} onClick={() => window.open(`/teacher/sessions/${recording.session_id}?tab=calls&recording=${recording.id}`, '_blank', 'noopener')}>
+          {tl("Apri")}
+        </ToastAction>
+      ) : undefined,
+    })
+  }, [toast])
+
   const stopRecording = useCallback(async () => {
     const current = recorderRef.current
     if (!current) return
     setRecordingBusy(true)
     recorderRef.current = null
+    closedNoticeRef.current = current.id // the room update that clears REC must not announce it twice
     try {
       await current.recorder.stop()
-      await voiceCallsApi.stopRecording(current.id)
+      const { data } = await voiceCallsApi.stopRecording(current.id)
+      notifyRecordingClosed(data)
     } catch (err: any) {
       setError(err?.response?.data?.detail || tl("Impossibile chiudere la registrazione"))
     } finally {
       setRecordingBusy(false)
     }
-  }, [])
+  }, [notifyRecordingClosed])
 
   const startRecording = useCallback(async () => {
-    if (!callId || recorderRef.current) return
+    if ((!callId && !sessionId) || recorderRef.current) return
     if (!CallRecorder.supported()) {
       setError(tl("Questo browser non supporta la registrazione audio"))
       return
@@ -746,7 +770,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     if (!consent) return
     setRecordingBusy(true)
     try {
-      const { data } = await voiceCallsApi.startRecording(callId)
+      const { data } = callId ? await voiceCallsApi.startRecording(callId) : await voiceCallsApi.startSessionRecording(sessionId)
       const recorder = new CallRecorder((blob, meta) => voiceCallsApi.uploadSegment(data.id, blob, meta).then(() => undefined))
       recorder.onError = (message) => setError(message)
       recorder.start(data.started_at ? Date.parse(data.started_at) : Date.now())
@@ -757,7 +781,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     } finally {
       setRecordingBusy(false)
     }
-  }, [callId, syncRecorderTracks])
+  }, [callId, sessionId, syncRecorderTracks])
 
   // Own mic published/muted: keep the recorder on the current track.
   useEffect(() => { syncRecorderTracks() }, [isPublishing, isConnected, syncRecorderTracks])
@@ -766,6 +790,16 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   useEffect(() => {
     if (recorderRef.current && (!isActive || recordingState?.id !== recorderRef.current.id)) void stopRecording()
   }, [isActive, recordingState?.id, stopRecording])
+
+  // Another moderator (or the end of the call) closed a recording this browser was not capturing.
+  useEffect(() => {
+    const previous = prevRecordingRef.current
+    prevRecordingRef.current = recordingState ? { id: recordingState.id } : null
+    if (previous && !recordingState && isModerator && !recorderRef.current && closedNoticeRef.current !== previous.id) {
+      closedNoticeRef.current = previous.id
+      notifyRecordingClosed(null)
+    }
+  }, [recordingState, isModerator, notifyRecordingClosed])
 
   useEffect(() => {
     if (!recordingState?.started_at) { setRecordingClock(0); return }
@@ -1108,11 +1142,11 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
                 <PictureInPicture2 className="h-5 w-5" />
               </button>
             )}
-            {isActive && callId && isModerator && (
+            {isActive && isModerator && (
               recordingState ? (
                 <button type="button" disabled={recordingBusy} onClick={() => {
                   if (capturingHere) void stopRecording()
-                  else if (window.confirm(tl("Un altro docente sta registrando dal suo browser. Fermare la registrazione per tutti?"))) void voiceCallsApi.stopRecording(recordingState.id).catch(() => setError(tl("Impossibile fermare la registrazione")))
+                  else if (window.confirm(tl("Un altro docente sta registrando dal suo browser. Fermare la registrazione per tutti?"))) void voiceCallsApi.stopRecording(recordingState.id).then(({ data }) => notifyRecordingClosed(data)).catch(() => setError(tl("Impossibile fermare la registrazione")))
                 }} className={controlButton(false, true)} title={tl("Ferma la registrazione: trascrizione e riassunto partono subito")}>
                   {recordingBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <span className="h-3 w-3 rounded-sm bg-white" />}
                   <span>{tl("Stop")} {recordingLabel}</span>
@@ -1125,7 +1159,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
               )
             )}
             <span className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
-            <button type="button" onClick={() => setSideOpen((open) => !open)} className={controlButton(sideOpen)} title={tl("Chat e partecipanti")} aria-pressed={sideOpen}>
+            <button type="button" onClick={() => setSideOpen((open) => !open)} className={controlButton(sideOpen)} title={sideOpen ? tl("Nascondi la chat") : tl("Mostra la chat")} aria-pressed={sideOpen}>
               <MessageSquare className="h-5 w-5" />
               {queued.length > 0 && isModerator && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-950">{queued.length}</span>}
             </button>
@@ -1142,9 +1176,12 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
           </div>
         </div>
 
-        {/* Right column: class chat / participants */}
-        {sideOpen && (
-          <aside className="flex w-full max-w-[380px] min-w-[300px] flex-col overflow-hidden rounded-3xl bg-[var(--ds-surface-raised)] shadow-[var(--shadow-sm)] max-lg:fixed max-lg:inset-y-3 max-lg:right-3 max-lg:z-40 max-lg:w-[calc(100%-1.5rem)]">
+        {/* Right column: class chat / participants. Kept mounted while hidden so the chat keeps receiving messages. */}
+        {(sideOpen || chatPanel) && (
+          <aside
+            aria-hidden={!sideOpen}
+            className={`${sideOpen ? 'flex' : 'hidden'} w-full max-w-[380px] min-w-[300px] flex-col overflow-hidden rounded-3xl bg-[var(--ds-surface-raised)] shadow-[var(--shadow-sm)] max-lg:fixed max-lg:inset-y-3 max-lg:right-3 max-lg:z-40 max-lg:w-[calc(100%-1.5rem)]`}
+          >
             <div className="flex flex-shrink-0 items-center gap-1 p-2">
               {chatPanel && (
                 <button type="button" onClick={() => setSideTab('chat')} aria-pressed={sideTab === 'chat'} className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-xs font-semibold ${sideTab === 'chat' ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)]'}`}>
@@ -1154,7 +1191,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
               <button type="button" onClick={() => setSideTab('people')} aria-pressed={sideTab === 'people' || !chatPanel} className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-xs font-semibold ${sideTab === 'people' || !chatPanel ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)]'}`}>
                 <Users className="h-4 w-4" />{tl("Partecipanti")} · {voiceParticipants.length}
               </button>
-              <button type="button" onClick={() => setSideOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)] lg:hidden" aria-label={tl("Chiudi")}>
+              <button type="button" onClick={() => setSideOpen(false)} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)]" title={tl("Nascondi la chat")} aria-label={tl("Nascondi la chat")}>
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -1196,6 +1233,9 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
+            {recordingState && (
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white" title={tl("La chiamata è registrata")}>● REC {recordingLabel}</span>
+            )}
             <p
               className="inline-flex rounded-full text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]"
               aria-label={tl("Chiamata: parla e condividi lo schermo con la tua classe.")}
@@ -1349,6 +1389,34 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
             <div className="space-y-2 rounded-xl border border-slate-100 bg-white p-2">
               {canPublishMedia && (
                 <div className="flex flex-wrap items-center gap-2">
+                  {isModerator && (
+                    recordingState ? (
+                      <button
+                        type="button"
+                        disabled={recordingBusy}
+                        onClick={() => {
+                          if (capturingHere) void stopRecording()
+                          else if (window.confirm(tl("Un altro docente sta registrando dal suo browser. Fermare la registrazione per tutti?"))) void voiceCallsApi.stopRecording(recordingState.id).then(({ data }) => notifyRecordingClosed(data)).catch(() => setError(tl("Impossibile fermare la registrazione")))
+                        }}
+                        title={tl("Ferma la registrazione: trascrizione e riassunto partono subito")}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                      >
+                        {recordingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-2.5 w-2.5 rounded-sm bg-red-600" />}
+                        {tl("Stop")} {recordingLabel}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={recordingBusy || !isConnected}
+                        onClick={() => void startRecording()}
+                        title={tl("Registra la chiamata: trascrizione con i nomi, riassunto e analisi nella scheda «Chiamate» della sessione")}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        {recordingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-2.5 w-2.5 rounded-full bg-red-500" />}
+                        {tl("Registra")}
+                      </button>
+                    )
+                  )}
                   <button
                     type="button"
                     onClick={() => void toggleCamera()}

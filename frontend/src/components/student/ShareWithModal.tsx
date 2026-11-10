@@ -1,5 +1,6 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useState } from 'react'
-import { X, Users, Loader2, Check, Search } from '@/components/icons'
+import { X, Users, Loader2, Check } from '@/components/icons'
 import { collaborationApi } from '@/lib/api'
 import type { SharedRoom, SharedParticipant } from './SharedChatPanel'
 
@@ -90,16 +91,7 @@ export default function ShareWithModal({ target, language, accent, seedMessages,
               : 'Scegli i compagni per aprire una chat condivisa. Il bot risponde a tutti; usa @nome per scrivere in privato a un compagno.'}
           </p>
 
-          <div className="relative mb-3">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={isEnglish ? 'Search…' : 'Cerca…'}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-            />
-          </div>
+          <SearchPill value={search} placeholder={isEnglish ? 'Search…' : 'Cerca…'} onValueChange={setSearch} className="mb-3" />
 
           <div className="max-h-64 space-y-1.5 overflow-y-auto">
             {loading ? (

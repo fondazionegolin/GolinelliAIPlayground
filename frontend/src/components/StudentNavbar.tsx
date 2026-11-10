@@ -494,7 +494,7 @@ export function StudentNavbar({
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 ds-popover nav-cluster-unroll z-50 w-64 rounded-[var(--ds-radius-panel)] py-2">
+                  <div className="absolute right-0 mt-2 ds-popover nav-cluster-unroll z-50 w-64 overflow-hidden rounded-[var(--ds-radius-panel)] py-2">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{t('navbar.role_student')}</p>

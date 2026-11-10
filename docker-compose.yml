@@ -38,6 +38,7 @@ services:
     volumes:
       - ./data/chat_uploads:/app/uploads
       - ./data/toy_lm_checkpoints:/app/toy_lm_checkpoints
+      - ./data/stt_models:/app/stt_models
     env_file:
       - .env
     environment:

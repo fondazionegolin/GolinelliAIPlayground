@@ -797,6 +797,9 @@ export const voiceCallsApi = {
   // Recordings: per-speaker segments captured by the moderator's browser, processed after stop.
   startRecording: (callId: string) =>
     api.post<CallRecording>(`/voice-calls/${callId}/recordings`, { consent_confirmed: true }),
+  /** Record the class voice room of a session (call started in the chat sidebar, no invite link). */
+  startSessionRecording: (sessionId: string) =>
+    api.post<CallRecording>('/voice-calls/session-recordings', { session_id: sessionId, consent_confirmed: true }),
   uploadSegment: (recordingId: string, blob: Blob, meta: { identity: string; name: string; offsetMs: number; durationMs: number }) => {
     const form = new FormData()
     form.append('file', blob, blob.type.includes('ogg') ? 'segment.ogg' : 'segment.webm')
@@ -811,9 +814,24 @@ export const voiceCallsApi = {
   getRecording: (recordingId: string) => api.get<CallRecording>(`/voice-calls/recordings/${recordingId}`),
   runTool: (recordingId: string, data: { kind: CallToolKind; prompt?: string; add_to_knowledge?: boolean }) =>
     api.post<CallAnalysis>(`/voice-calls/recordings/${recordingId}/tools`, data, { timeout: 180_000 }),
+  shareAnalysis: (analysisId: string) => api.post(`/voice-calls/recordings/analyses/${analysisId}/share`),
   analysisToKnowledge: (analysisId: string) => api.post(`/voice-calls/recordings/analyses/${analysisId}/knowledge`),
   deleteAnalysis: (analysisId: string) => api.delete(`/voice-calls/recordings/analyses/${analysisId}`),
   deleteRecording: (recordingId: string) => api.delete(`/voice-calls/recordings/${recordingId}`),
+  transcriptionSettings: () => api.get<TranscriptionSettings>('/voice-calls/transcription-settings'),
+  updateTranscriptionSettings: (data: { engine: 'local' | 'openai'; model: string; preload?: boolean }) =>
+    api.put<TranscriptionSettings>('/voice-calls/transcription-settings', data),
+}
+
+export interface TranscriptionSettings {
+  current: { engine: 'local' | 'openai'; model: string }
+  options?: { engine: 'local' | 'openai'; model: string; label: string; note: string }[]
+  can_edit?: boolean
+  local_available: boolean
+  local_note: string
+  loaded_model: string | null
+  device: string | null
+  downloaded: string[]
 }
 
 export type CallToolKind = 'summary' | 'synthesis' | 'analysis' | 'questions' | 'custom'
@@ -830,7 +848,7 @@ export interface CallAnalysis {
 
 export interface CallRecording {
   id: string
-  call_id: string
+  call_id: string | null
   call_title: string | null
   call_code: string | null
   session_id: string | null
@@ -843,6 +861,8 @@ export interface CallRecording {
   lines: number
   in_knowledge: boolean
   error_message: string | null
+  /** "local:large-v3-turbo" | "openai:whisper-1" */
+  transcription_model?: string | null
   analyses?: CallAnalysis[]
   transcript?: { speaker: string; identity: string; start: number; end: number; text: string }[]
 }
@@ -978,8 +998,8 @@ export const teacherApi = {
     api.delete(`/teacher/sessions/${sessionId}/teachers/${teacherId}`),
   // Teacher AI Conversations (server-side persistence)
   getConversations: () => api.get('/teacher/conversations'),
-  createConversation: (data: { title?: string; agent_mode?: string }) =>
-    api.post('/teacher/conversations', data),
+  createConversation: (data: { title?: string; agent_mode?: string }, signal?: AbortSignal) =>
+    api.post('/teacher/conversations', data, { signal }),
   getConversation: (conversationId: string, beforeId?: string) =>
     api.get(`/teacher/conversations/${conversationId}`, { params: beforeId ? { before_id: beforeId, limit: 30 } : { limit: 30 } }),
   deleteConversation: (conversationId: string) =>
@@ -1264,11 +1284,11 @@ export const llmApi = {
   },
   routeIntent: (text: string, history: { role: string; content: string }[]) =>
     api.post<{ intent: 'edit_image' | 'new_image' | 'analyze_image' | 'other'; image: 'attached' | 'previous' | 'none' }>('/llm/route-intent', { text, history }),
-  decideTool: (text: string, allowed?: string[], artifacts?: { type: string; detail?: string }[], recent?: { role: string; content: string }[]) =>
+  decideTool: (text: string, allowed?: string[], artifacts?: { type: string; detail?: string }[], recent?: { role: string; content: string }[], signal?: AbortSignal) =>
     api.post<{
       tool: string; action: 'chat' | 'create' | 'edit' | 'ask_about'; confidence: number; top: string
       alternatives: { tool: string; probability: number }[]; action_alternatives: { tool: string; probability: number }[]; routed: boolean
-    }>('/llm/decide-tool', { text, allowed, artifacts, recent }),
+    }>('/llm/decide-tool', { text, allowed, artifacts, recent }, { signal }),
   generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
@@ -1390,7 +1410,7 @@ export const filesApi = {
     return api.post('/files/documents/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   exportDocument: (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
-    api.post('/files/documents/export', data, { responseType: 'blob' }),
+    api.post('/files/documents/export', data, { responseType: 'blob', timeout: 120000 }),
   getContent: (fileId: string) =>
     api.get(`/files/${fileId}/content`, { responseType: 'blob' }),
   getUploadUrl: (data: { filename: string; mime_type: string; size_bytes: number; scope: string; session_id?: string }) =>
@@ -2049,13 +2069,13 @@ export const calendarApi = {
     api.patch<SharedCalendarEvent>(`/calendar/events/${eventId}`, data, { params: { scope } }),
   deleteShared: (eventId: string, scope: CalendarScope = 'one') => api.delete(`/calendar/events/${eventId}`, { params: { scope } }),
   /** Agentic calendar edits from the teacher chat (create/move/delete, recurrences, free slots, dates from documents). */
-  agent: (prompt: string, opts: { conversationId?: string | null; sessionId?: string | null; files?: File[] } = {}) => {
+  agent: (prompt: string, opts: { conversationId?: string | null; sessionId?: string | null; files?: File[]; signal?: AbortSignal } = {}) => {
     const form = new FormData()
     form.append('prompt', prompt)
     if (opts.conversationId) form.append('conversation_id', opts.conversationId)
     if (opts.sessionId) form.append('session_id', opts.sessionId)
     ;(opts.files || []).forEach((file) => form.append('files', file))
-    return api.post<CalendarAgentResponse>('/calendar/agent', form, { timeout: 240000 })
+    return api.post<CalendarAgentResponse>('/calendar/agent', form, { timeout: 240000, signal: opts.signal })
   },
 }
 

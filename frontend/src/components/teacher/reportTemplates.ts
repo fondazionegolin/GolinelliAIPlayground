@@ -1,3 +1,4 @@
+import { brochureLabels, type BrochureLabels } from './brochureLabels'
 import { tl } from '@/i18n/tl'
 export type ReportTemplateId =
   | 'dashboard_classe'
@@ -24,6 +25,8 @@ export interface BrochureFaq {
 }
 
 export interface BrochurePayload {
+  language?: string
+  labels?: Partial<BrochureLabels>
   title: string
   subtitle: string
   palette?: string[]
@@ -205,16 +208,20 @@ export function parseBrochurePayload(raw: string): BrochurePayload | null {
   const obj = parsePayloadBlock<Partial<BrochurePayload>>(raw, 'brochure_data')
   if (!obj || !obj.title || !obj.heroDescription) return null
 
+  const language = typeof obj.language === 'string' ? obj.language : 'it'
+  const labels = brochureLabels(language, obj.labels)
+  const english = language.toLowerCase().startsWith('en')
   return {
+    language, labels,
     title: obj.title,
     subtitle: obj.subtitle || obj.title,
     palette: Array.isArray(obj.palette) ? obj.palette.slice(0, 5).map(String) : [],
-    heroBadge: obj.heroBadge || tl("Brochure AI"),
+    heroBadge: obj.heroBadge || (english ? 'AI Brochure' : 'Brochure AI'),
     heroAccent: obj.heroAccent || '',
     heroDescription: obj.heroDescription,
-    ctaPrimary: obj.ctaPrimary || tl("Scopri di più"),
-    ctaSecondary: obj.ctaSecondary || tl("Approfondisci"),
-    overviewTitle: obj.overviewTitle || tl("Panoramica"),
+    ctaPrimary: obj.ctaPrimary || (english ? 'Discover more' : 'Scopri di più'),
+    ctaSecondary: obj.ctaSecondary || (english ? 'Learn more' : 'Approfondisci'),
+    overviewTitle: obj.overviewTitle || labels.overview,
     overviewLead: obj.overviewLead || '',
     keyPoints: Array.isArray(obj.keyPoints) ? obj.keyPoints.slice(0, 6).map(String) : [],
     features: Array.isArray(obj.features) ? obj.features.slice(0, 6).map((feature) => ({
@@ -233,7 +240,7 @@ export function parseBrochurePayload(raw: string): BrochurePayload | null {
       question: entry.question || tl("Domanda"),
       answer: entry.answer || '',
     })) : [],
-    closingTitle: obj.closingTitle || tl("Prossimi passi"),
+    closingTitle: obj.closingTitle || labels.closing,
     closingText: obj.closingText || '',
     closingQuote: obj.closingQuote || '',
     closingAuthor: obj.closingAuthor || '',

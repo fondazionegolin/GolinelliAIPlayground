@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useBackgroundAudio } from '@/components/voice-lab/BackgroundAudio'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -219,7 +220,7 @@ export default function VoiceLabPage() {
           <PlaylistWorkspace items={library.data || []} candidate={playlistCandidate} />
         </> : <>
           <div><h2 className="text-xl font-bold">{tl('La mia libreria')}</h2><p className={`mt-1 ${hint}`}>{tl('Ritrova le tue voci e gli audio salvati.')}</p></div>
-          <Input aria-label={tl('Cerca nella libreria')} placeholder={tl('Cerca un audio o una voce…')} value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} />
+          <SearchPill aria-label={tl('Cerca nella libreria')} placeholder={tl('Cerca un audio o una voce…')} value={librarySearch} onValueChange={setLibrarySearch} />
           {library.isLoading && <p role="status">{tl('Carico la libreria…')}</p>}
           {library.isError && <p role="alert">{tl('Impossibile caricare la libreria.')} <Button surface="ghost" onClick={() => void library.refetch()}>{tl('Riprova')}</Button></p>}
           <div className="grid gap-3 sm:grid-cols-2">{(library.data || []).filter(item => item.title.toLowerCase().includes(librarySearch.toLowerCase())).map(item => <article key={item.id} className="voice-lab-options space-y-3 rounded-[var(--control-radius)] p-4">

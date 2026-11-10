@@ -1,9 +1,10 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { agenticApi } from '@/lib/api'
-import { Activity, Clock3, MoreVertical, Network, Play, Plus, Search, Trash2 } from '@/components/icons'
+import { Activity, Clock3, MoreVertical, Network, Play, Plus, Trash2 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 type GraphNode = { id: string; instanceId: string; x?: number; y?: number }
@@ -55,7 +56,7 @@ export default function AgenticWorkflowLibraryPage({ sessionId }: { sessionId?: 
         <button onClick={() => navigate('/teacher/agentic/new')} className="ui-cta flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-black"><Plus className="h-4 w-4" /> {tl("Nuovo workflow")}</button>
       </header>
 
-      <div className="ui-search mb-5 flex items-center gap-3 p-3"><Search className="ml-1 h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tl("Cerca nei workflow…")} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" /><span className="rounded-lg bg-white/70 px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-[var(--ds-shadow-1)]">{workflows.length}</span></div>
+      <SearchPill value={query} placeholder={tl("Cerca nei workflow…")} onValueChange={setQuery} className="mb-5" endAdornment={<span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--text-secondary)]">{workflows.length}</span>} />
 
       {isLoading ? <div className="flex h-64 items-center justify-center"><Activity className="h-6 w-6 animate-spin text-violet-500" /></div> : workflows.length ? <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{workflows.map((workflow) => <article key={workflow.id} className="ui-card ui-card-interactive group overflow-hidden">
         <button onClick={() => navigate(`/teacher/agentic/${workflow.id}`)} className="block w-full text-left"><WorkflowPreview graph={workflow.graph} /><div className="px-4 pb-3 pt-4"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black text-slate-900">{workflow.title}</h2><p className="mt-1 text-[10px] text-slate-400">v{workflow.version} · {workflow.graph.nodes?.length || 0} {tl("nodi ·")} {workflow.graph.edges?.length || 0} connessioni</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[8px] font-black uppercase text-violet-700">workflow</span></div></div></button>

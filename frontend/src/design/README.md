@@ -23,6 +23,8 @@ The following choices were explicitly approved by the product owner. Preserve th
 
 Authored document, slide, canvas and code content keeps its own colors. UI changes must remain legible in both themes and at mobile widths. Focus and validation feedback remain meaningful exceptions to the resting borderless appearance.
 
+All teacher and student search/filter bars use `SearchPill` from `@/design`, including toolbars, sidebars, dialogs, searchable dropdowns and mobile views. Its `ds-search` style fixes height at 44px, horizontal padding at 12px, gap at 8px, icon at 16px and radius at `--ds-field-radius` (18px). Use the single outer `ui-search` surface, shared text/placeholder colors and the same clear button; the input stays transparent and keyboard focus outlines the wrapper. Local classes may set layout (width, margin, flex), never height, padding, radius, colors or shadows. Keep counts in `endAdornment`, input labels/keyboard handlers on the component, and optional specialized clearing through `onClear` / `clearLabel`. Standalone non-search fields retain their usual `--ds-field-*` appearance.
+
 ## Admin panel
 
 The admin shell (`frontend/src/pages/admin/admin.css`) is a denser variant of the product UI. By explicit request, admin tables carry hairline column dividers (`th + th`, `td + td`) and admin native fields share the flat `--ds-field-*` look. Admin tab strips (`.admin-tabs .admin-tab`) must keep a real selector specificity: `:where()` rules lose to the browser button reset and flatten the tabs. Keep admin text at 11px or above.
@@ -48,9 +50,27 @@ import { SectionHeading, SectionIllustration } from '@/design'
 
 The initial chat and chatbot library reuse the `/teacher/teacherbots` section illustration via `SectionHeading` / `SectionIllustration`. Use `ChatWelcome` for the illustrated greeting and prompt suggestions on desktop and mobile. Suggestions and toolbar actions use shared `Button` variants and their default rounded shape; do not override the radius or add local colored fills, borders or shadows. Built-in assistant identity uses logo violet, pink and blue; editable custom bot colors remain on avatars. Chat surfaces use theme tokens, and the category tabs use the navbar cluster with `ds-selected`.
 
+## Authored brochures and interactive pages
+
+Brochure headings, prefixes, calls to action and footer are document content: persist `language` and `labels` with the payload and let the chatbot edit or translate them independently of the platform's UI language. The PDF action exports the same rendered HTML through Chromium with screen media, exact colors and the preview viewport; avoid conversions through a word processor that discard CSS layout.
+
+Use `InteractiveHtmlFrame` for opening full authored HTML in documents, shared tasks, attachments and the teacher canvas. Keep JavaScript and controls enabled inside its opaque origin; never combine `allow-scripts` with `allow-same-origin` for these pages. Open document dialogs in a portal under `document.body`, outside page transitions and transformed containers, so embedded controls receive real pointer and keyboard events. Catalog thumbnails stay static, and ordinary rich text still uses sanitization.
+
+## Navbar clock and profile menus
+
+The shared `NavbarCalendarClock` centers its two-line date/time stack inside a 36px control, with no vertical padding. Use compact extra-bold text: 9px/11px line height for the date and 13px/15px for the time, separated by 2px. Keep the time in primary text ink and the date in the calendar's today color. The compact phone calendar retains its day badge.
+
+`ds-popover` provides the shared `--ds-radius-panel` corner radius by default. Teacher and student profile menus clip their header and row hover fills to those rounded corners with `overflow-hidden`.
+
 ## Chat model selectors
 
 Student and teacher chat toolbars keep the model selector on a single line, aligned with adjacent controls. `SearchableSelect` uses `favoriteValue` / `onFavoriteChange` to show a star beside each model inside the dropdown; the filled star marks the single default. Choosing a favorite preserves the current chat selection. The trigger also shows the star when the selected model is the default. Keep search, keyboard selection and independently focusable star buttons; use a grid popup when row actions are present. Do not add a separate “set as preferred” caption below the selector.
+
+## Prompt feedback and dictation
+
+`VoiceRecorder` reviews appear in a compact, non-modal shared dialog aligned to the prompt width, above or below it as space permits. Use `anchorElement` for controls rendered outside their target (global dictation); keep translation controls collapsed initially. Preserve editing, playback, insertion, Escape and focus restoration.
+
+Teacher chat acknowledges a submission immediately, displays its user message and initial routing status, and acquires a synchronous lock before any asynchronous work. Keep that lock through routing, conversation creation and execution; cancellation must abort preparation too, and an execution failure must never retry the prompt through the routing fallback.
 
 ## Audio playback
 

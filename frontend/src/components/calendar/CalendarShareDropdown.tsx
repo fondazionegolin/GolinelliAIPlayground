@@ -1,6 +1,7 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, GraduationCap, Loader2, Presentation, Search, Users, X } from '@/components/icons'
-import { Button, Input } from '@/design'
+import { Check, ChevronDown, GraduationCap, Loader2, Presentation, Users, X } from '@/components/icons'
+import { Button } from '@/design'
 import type { CalendarShareTargets, CalendarTargetType } from '@/lib/api'
 import { tl } from '@/i18n/tl'
 
@@ -97,11 +98,7 @@ export function CalendarShareDropdown({ targets, onChange, shareTargets, loading
 
       {open && (
         <div className="ds-popover absolute left-0 right-0 top-full z-[110] mt-1 rounded-[var(--card-radius)] p-2 text-[var(--text-primary)]">
-          <div className="mb-2 flex items-center gap-2">
-            <Search className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
-            <Input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tl("Cerca classe, sessione o collega…")} className="min-w-0 flex-1"
-              onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false) } }} />
-          </div>
+          <SearchPill autoFocus value={search} placeholder={tl("Cerca classe, sessione o collega…")} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false) } }} onValueChange={setSearch} className="mb-2" />
           <div role="listbox" aria-multiselectable="true" className="max-h-72 overflow-y-auto">
             {loading ? (
               <div className="flex items-center gap-2 px-3 py-4 text-xs text-[var(--text-secondary)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tl("Caricamento…")}</div>

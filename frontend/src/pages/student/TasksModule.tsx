@@ -1,3 +1,5 @@
+import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { Loader2 as LoaderIcon, ListChecks as ListChecksIcon } from '@/components/icons'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useMobile } from '@/hooks/useMobile'
@@ -7,13 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import {
-  ClipboardList, Check, Clock, Send, Lightbulb,
-  ChevronLeft, ChevronRight, X,
-  Award, CheckCircle2,
-  Monitor, PenTool, BookOpen,
-  Search, LayoutGrid, List
-} from '@/components/icons'
+import { ClipboardList, Check, Clock, Send, Lightbulb, ChevronLeft, ChevronRight, X, Award, CheckCircle2, Monitor, PenTool, BookOpen, LayoutGrid, List } from '@/components/icons'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 import { TrackedCorrectionText } from '@/components/tasks/TrackedCorrectionText'
 import ReactMarkdown from 'react-markdown'
@@ -57,6 +53,8 @@ interface TaskContent {
   response_mode?: 'free_text' | 'inline_blanks'
   slides?: any[]
   htmlContent?: string
+  html?: string
+  content?: string
 }
 
 interface TaskData {
@@ -278,26 +276,7 @@ export default function TasksModule({ openTaskId, studentId = 'anonymous', onOpe
                 </p>
               </div>
             </div>
-            <label className={`mx-auto flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm ${headerCollapsed ? 'py-2' : 'mt-6 py-2.5'}`}>
-              <Search className="h-4 w-4 shrink-0 text-slate-400" />
-              <input
-                type="text"
-                value={taskSearch}
-                onChange={e => setTaskSearch(e.target.value)}
-                placeholder={tl("Cerca compiti...")}
-                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
-              />
-              {taskSearch && (
-                <button
-                  type="button"
-                  onClick={() => setTaskSearch('')}
-                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                  aria-label={tl("Cancella ricerca")}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </label>
+            <SearchPill value={taskSearch} placeholder={tl("Cerca compiti...")} onValueChange={setTaskSearch} className={`mx-auto max-w-xl ${headerCollapsed ? "" : "mt-6"}`} />
             <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
               <div className="overflow-hidden">
                 <div className="mt-5 flex items-center justify-center gap-2">
@@ -777,6 +756,7 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
                 {task.description && (
                   <p className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-relaxed text-slate-600">{task.description}</p>
                 )}
+                {(content?.htmlContent || content?.html) && <InteractiveHtmlFrame srcDoc={content.htmlContent || content.html} title={task.title} className="h-[65dvh] min-h-96 w-full rounded-2xl border-0 bg-white" />}
                 {task.task_type === 'quiz' && content?.questions ? (
                   <QuizCarousel
                     questions={content.questions}
@@ -844,6 +824,10 @@ function TaskViewerOverlay({ task, studentId, onClose, accentTheme, onSuccess, o
 }
 
 function ReadOnlyTaskContent({ task, content }: { task: TaskData; content: TaskContent | null }) {
+  const html = content?.htmlContent || content?.html || content?.content
+  if (typeof html === 'string' && /<\/?[a-z][\s\S]*>/i.test(html)) {
+    return <InteractiveHtmlFrame srcDoc={html} title={task.title} className="h-[70dvh] min-h-96 w-full rounded-2xl border-0 bg-white" />
+  }
   const body = content?.instructions || content?.text || content?.description || task.description
   return (
     <div className="mx-auto max-w-2xl space-y-5">

@@ -1,6 +1,7 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion'
-import { MoreVertical, Pencil, Plus, Trash2, Search, MessageSquare, X } from '@/components/icons'
+import { MoreVertical, Pencil, Plus, Trash2, MessageSquare, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import PullToRefresh from '@/components/ui/PullToRefresh'
@@ -179,16 +180,7 @@ export function ChatConversationList({
         </div>
 
         {/* Search bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={tl("Cerca conversazioni...")}
-            className="w-full pl-9 pr-4 py-2 bg-slate-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-          />
-        </div>
+        <SearchPill value={searchQuery} placeholder={tl("Cerca conversazioni...")} onValueChange={setSearchQuery} />
       </div>
 
       {/* Conversation list with pull-to-refresh */}

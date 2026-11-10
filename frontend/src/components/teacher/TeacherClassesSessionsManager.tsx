@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -495,16 +496,7 @@ export default function TeacherClassesSessionsManager({
             </header>
 
             <div className="mt-5 flex gap-2">
-              <label className="relative min-w-0 flex-1">
-                <span className="sr-only">{isEnglish ? 'Search classes' : 'Cerca classi'}</span>
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={classSearch}
-                  onChange={(event) => setClassSearch(event.target.value)}
-                  placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold text-slate-800 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                />
-              </label>
+              <SearchPill value={classSearch} placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'} onValueChange={setClassSearch} className="min-w-0 flex-1" />
               <button
                 type="button"
                 onClick={() => setShowNewClassForm((open) => !open)}
@@ -612,11 +604,7 @@ export default function TeacherClassesSessionsManager({
             </header>
 
             <div className="mt-5 flex gap-2">
-              <label className="relative min-w-0 flex-1">
-                <span className="sr-only">{isEnglish ? 'Search sessions' : 'Cerca sessioni'}</span>
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                <input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'} className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base font-semibold shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100" />
-              </label>
+              <SearchPill value={sessionSearch} placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'} onValueChange={setSessionSearch} className="min-w-0 flex-1" />
               {selectedClass.role !== 'session_shared' && <button
                 type="button"
                 onClick={() => openNewSession(selectedClass.id)}
@@ -880,26 +868,7 @@ export default function TeacherClassesSessionsManager({
 
       {/* ── Toolbar: one search for classes and sessions, status filter ── */}
       <div className="flex flex-wrap items-center gap-3 px-6 pt-4">
-        <div className="ds-control relative h-10 w-full max-w-md rounded-[23px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#90a5ba]" />
-          <input
-            type="text"
-            value={classSearch}
-            onChange={(e) => setClassSearch(e.target.value)}
-            placeholder={isEnglish ? 'Search classes, sessions or codes...' : 'Cerca classi, sessioni o codici...'}
-            className="h-full w-full rounded-[23px] border-0 bg-transparent pl-9 pr-9 text-xs text-slate-700 placeholder:text-[#9ca3b0] focus:outline-none focus:shadow-[var(--ds-shadow-focus)]"
-          />
-          {classSearch && (
-            <button
-              type="button"
-              onClick={() => setClassSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
-              aria-label={isEnglish ? 'Clear search' : 'Cancella ricerca'}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <SearchPill value={classSearch} placeholder={isEnglish ? 'Search classes, sessions or codes...' : 'Cerca classi, sessioni o codici...'} onValueChange={setClassSearch} className="w-full max-w-md" />
 
         <div className="ds-control flex items-center gap-0.5 rounded-full p-1" role="group" aria-label={isEnglish ? 'Filter by status' : 'Filtra per stato'}>
           {statusFilterOptions.map((option) => (

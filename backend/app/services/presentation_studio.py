@@ -16,6 +16,7 @@ from typing import Optional
 
 from app.services.presentation_layouts import LAYOUTS, coerce_layout, normalize_content, render_outline_slide
 from app.services.presentation_quality import check_and_fix_slides
+from app.services.presentation_sources import MAX_SLIDES
 from app.services.presentation_themes import THEMES, THEMES_BY_ID, resolve_theme
 
 def slide_image_prompt(subject: str, deck_title: str, slide_title: str, theme: Optional[dict], *, edit: bool = False) -> str:
@@ -89,7 +90,7 @@ def build_brief_text(brief: dict, school_grade_instruction: str = "", include_so
     rules = density_rules(brief.get("density"))
     count = int(brief.get("slide_count") or 0)
     count_line = (f"circa {count} (cover inclusa)" if count
-                  else "a tua scelta (tra 6 e 20, cover inclusa) in base alla quantità e alla struttura del materiale")
+                  else "a tua scelta (tra 6 e 60, cover inclusa) in base alla quantità e alla struttura del materiale")
     lines = [
         f"Argomento / richiesta: {brief.get('topic', '').strip() or 'ricavalo dai materiali forniti'}",
         f"Pubblico: {brief.get('audience') or 'studenti'}",
@@ -181,7 +182,7 @@ def normalize_outline(raw: object, density: Optional[str] = None, previous: Opti
     slides_raw = raw.get("slides") if isinstance(raw.get("slides"), list) else []
     known_ids = {s.get("id") for s in (previous or {}).get("slides") or [] if isinstance(s, dict)}
     slides = []
-    for slide in slides_raw[:24]:
+    for slide in slides_raw[:MAX_SLIDES]:
         if not isinstance(slide, dict):
             continue
         slide_id = slide.get("id") if slide.get("id") in known_ids else None

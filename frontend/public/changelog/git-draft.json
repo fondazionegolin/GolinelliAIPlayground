@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-07T20:18:20.105117+00:00",
-  "version_label": "2026.11.07-e454c6ed",
+  "generated_at": "2026-11-10T14:07:10.107928+00:00",
+  "version_label": "2026.11.10-0639867d",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 15 commit dall'ultima release pubblicata.",
-  "git_ref": "e454c6edde3898bb8d33ee70250e9c11a5b5132d",
+  "summary": "Bozza generata automaticamente da 20 commit dall'ultima release pubblicata.",
+  "git_ref": "0639867d9cc3483e313e1755d5e59baffa82035b",
   "items": [
     {
       "category": "new",
@@ -79,6 +79,31 @@
       "category": "new",
       "title": "Licences, music library, presentation agents, vibe gate",
       "description": "Licences, music library, presentation agents, vibe gate"
+    },
+    {
+      "category": "new",
+      "title": "Shared calendar, class video calls with invite links, smart canvas learning boards",
+      "description": "Shared calendar, class video calls with invite links, smart canvas learning boards"
+    },
+    {
+      "category": "new",
+      "title": "Dataflow: release Dataflow Studio to all teachers, bill AI nodes to credits",
+      "description": "Dataflow: release Dataflow Studio to all teachers, bill AI nodes to credits"
+    },
+    {
+      "category": "new",
+      "title": "Calls: conference layout, shared focus, recording with AI tools, co-teacher calendar",
+      "description": "Calls: conference layout, shared focus, recording with AI tools, co-teacher calendar"
+    },
+    {
+      "category": "new",
+      "title": "Teacher-ui: declutter navbar, class chat dock and hover session rail",
+      "description": "Teacher-ui: declutter navbar, class chat dock and hover session rail"
+    },
+    {
+      "category": "fixed",
+      "title": "Teacher-ui: add MobileSessionsSheet imported by TeacherDashboard",
+      "description": "Teacher-ui: add MobileSessionsSheet imported by TeacherDashboard"
     }
   ]
 }

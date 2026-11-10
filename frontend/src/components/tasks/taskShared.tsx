@@ -1,3 +1,4 @@
+import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { teacherApi } from '@/lib/api'
@@ -129,9 +130,8 @@ export function TaskContentPreview({ task }: { task: TaskData }) {
  if (typeof html === 'string' && /<\/?[a-z][\s\S]*>/i.test(html)) {
  return (
  <div className="overflow-hidden rounded-lg bg-[var(--surface-base)]">
- <iframe
+ <InteractiveHtmlFrame
  srcDoc={html}
- sandbox="allow-same-origin"
  className="h-80 w-full border-0"
  title={tl("Contenuto {0}", task.title)}
  />

@@ -39,12 +39,12 @@ export function isProtocolRequest(text: string, hasFiles = false): boolean {
 }
 
 export const protocolApi = {
-  plan: (conversationId: string, prompt: string, files: File[]) => {
+  plan: (conversationId: string, prompt: string, files: File[], signal?: AbortSignal) => {
     const form = new FormData()
     form.append('conversation_id', conversationId); form.append('prompt', prompt)
     files.forEach(file => form.append('files', file))
     return api.post<{ user_message: { id: string; content: string; created_at: string }; assistant_message: ProtocolMessage }>(
-      '/llm/teacher/protocol/plan', form, { timeout: 240000 })
+      '/llm/teacher/protocol/plan', form, { timeout: 240000, signal })
   },
   get: (id: string) => api.get<ProtocolMessage>(`/llm/teacher/protocol/${id}`),
   run: (id: string, revision: number, plan?: ProtocolPlan, retryTaskId?: string, instructions?: string) =>

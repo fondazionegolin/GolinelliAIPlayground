@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { v4 as uuid } from 'uuid'
@@ -6,7 +7,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { Check, History, Loader2, Pencil, Plus, Search, Send, Sparkles, Trash2, Upload, X } from '@/components/icons'
+import { Check, History, Loader2, Pencil, Plus, Send, Sparkles, Trash2, Upload, X } from '@/components/icons'
 import api from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import VisualStage from '@/components/visual-comprehension/VisualStage'
@@ -347,7 +348,7 @@ export default function VisualComprehensionPage() {
     </header>
     <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label={tl("Carica screenshot o immagine")} className="sr-only" disabled={reading} onChange={e => void upload(e.target.files?.[0])} />
     {error && <div className="vc-error" role="alert"><span>{error}</span><button aria-label={tl("Chiudi errore")} onClick={() => setError('')}><X /></button></div>}
-    {drawer && <aside className="vc-session-drawer" aria-label={tl("Sessioni salvate")}><div className="vc-drawer-heading"><h2>{tl("Le tue sessioni")}</h2><button aria-label={tl("Chiudi sessioni")} onClick={() => setDrawer(false)}><X /></button></div><button className="vc-new-session" onClick={newSession}><Plus />{tl("Nuova sessione")}</button><label className="vc-session-search"><Search /><input aria-label={tl("Cerca sessioni")} placeholder={tl("Cerca una sessione…")} value={query} onChange={e => setQuery(e.target.value)} /></label><div className="vc-session-list">{sessions.length ? sessions.map(item => <div key={item.id} className={`vc-session-row ${current?.id === item.id ? 'vc-session-selected' : ''}`}><button className="vc-session-open" onClick={() => void openSession(item.id)}><strong>{item.title}</strong><span>{new Date(item.updated_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · {item.message_count} {tl("messaggi")}{item.busy ? ' · In elaborazione' : ''}</span></button><button aria-label={tl("Rinomina {0}", item.title)} onClick={() => void rename(item)}><Pencil /></button><button aria-label={tl("Elimina {0}", item.title)} disabled={item.busy} onClick={() => void remove(item)}><Trash2 /></button></div>) : <p className="vc-no-sessions">{query ? tl("Nessuna sessione trovata.") : tl("Le sessioni vengono salvate qui automaticamente quando carichi un’immagine.")}</p>}</div></aside>}
+    {drawer && <aside className="vc-session-drawer" aria-label={tl("Sessioni salvate")}><div className="vc-drawer-heading"><h2>{tl("Le tue sessioni")}</h2><button aria-label={tl("Chiudi sessioni")} onClick={() => setDrawer(false)}><X /></button></div><button className="vc-new-session" onClick={newSession}><Plus />{tl("Nuova sessione")}</button><SearchPill aria-label={tl("Cerca sessioni")} placeholder={tl("Cerca una sessione…")} value={query} onValueChange={setQuery} className="mx-4 my-2" /><div className="vc-session-list">{sessions.length ? sessions.map(item => <div key={item.id} className={`vc-session-row ${current?.id === item.id ? 'vc-session-selected' : ''}`}><button className="vc-session-open" onClick={() => void openSession(item.id)}><strong>{item.title}</strong><span>{new Date(item.updated_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · {item.message_count} {tl("messaggi")}{item.busy ? ' · In elaborazione' : ''}</span></button><button aria-label={tl("Rinomina {0}", item.title)} onClick={() => void rename(item)}><Pencil /></button><button aria-label={tl("Elimina {0}", item.title)} disabled={item.busy} onClick={() => void remove(item)}><Trash2 /></button></div>) : <p className="vc-no-sessions">{query ? tl("Nessuna sessione trovata.") : tl("Le sessioni vengono salvate qui automaticamente quando carichi un’immagine.")}</p>}</div></aside>}
     <div className="vc-workspace">
       <section className={`vc-canvas-panel ${dragging ? 'vc-is-dragging' : ''}`} aria-label={tl("Canvas immagine")}
         onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }}

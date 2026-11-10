@@ -1,5 +1,6 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useState } from 'react'
-import { Button, IconButton, Input } from '@/design'
+import { Button, IconButton } from '@/design'
 import { Edit3, Loader2, Play, Sparkles } from '@/components/icons'
 import { type LabItem } from '@/lib/voiceLab'
 import { tl } from '@/i18n/tl'
@@ -15,7 +16,7 @@ export function MusicLibrary({ items, loading, error, retry, onOpen, onPlay, onC
   const music = items.filter(item => item.kind === 'audio' && item.service === 'music')
   const rows = music.filter(item => `${item.title} ${item.artist_name || ''} ${item.details.text || ''}`.toLocaleLowerCase('it-IT').includes(search.toLocaleLowerCase('it-IT')))
   return <section className="ui-card space-y-4 rounded-[var(--card-radius)] p-5 sm:p-6" aria-label={tl('Libreria musicale')}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">{tl('I tuoi brani')}</h2><Input className="sm:!w-64" aria-label={tl('Cerca un brano musicale')} placeholder={tl('Cerca un brano…')} value={search} onChange={e => setSearch(e.target.value)} /></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">{tl('I tuoi brani')}</h2><SearchPill aria-label={tl('Cerca un brano musicale')} placeholder={tl('Cerca un brano…')} value={search} onValueChange={setSearch} className="w-full sm:w-64" /></div>
     {loading && <p role="status" className="text-sm">{tl('Caricamento…')}</p>}
     {error && <p role="alert" className="text-sm">{tl('Impossibile caricare i brani.')} <Button tone="neutral" surface="ghost" onClick={retry}>{tl('Riprova')}</Button></p>}
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{rows.map(item => <article key={item.id} className="min-w-0 space-y-3 rounded-2xl bg-[var(--ds-surface-muted)] p-3">

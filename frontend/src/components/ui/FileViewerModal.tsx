@@ -1,3 +1,4 @@
+import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -67,11 +68,10 @@ function FileViewerContent({ file, onClose }: { file: FileViewerFile; onClose: (
         )
       case 'html':
         return (
-          <iframe
+          <InteractiveHtmlFrame
             src={file.url}
             className="w-full h-[80vh] rounded-lg border-0 bg-white"
             title={file.filename}
-            sandbox="allow-scripts allow-popups allow-forms"
           />
         )
       case 'excel': {

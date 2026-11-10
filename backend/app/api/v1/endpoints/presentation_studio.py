@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.llm_service import llm_service
+from app.services.presentation_sources import MAX_SOURCE_BYTES, MAX_SOURCE_CHARS, MAX_SLIDES, extract_notes
 from app.services.presentation_quality import check_and_fix_slides
 from app.services.presentation_themes import FONT_CHOICES, resolve_theme, theme_catalog, theme_from_deck
 
@@ -35,9 +36,9 @@ class StudioBrief(BaseModel):
     audience: str = Field("", max_length=200)
     goal: str = Field("", max_length=400)
     tone: str = Field("", max_length=200)
-    slide_count: int = Field(8, ge=0, le=20)  # 0 = the AI decides from the material
+    slide_count: int = Field(8, ge=0, le=MAX_SLIDES)  # 0 = the AI decides from the material
     density: Literal["essenziale", "bilanciata", "dettagliata"] = "bilanciata"
-    source_text: str = Field("", max_length=200000)
+    source_text: str = Field("", max_length=MAX_SOURCE_CHARS)
 
 
 class OutlineRequest(BaseModel):
@@ -91,6 +92,26 @@ class QualityRequest(BaseModel):
     theme: Optional[dict] = None
     dims: Dims = Field(default_factory=Dims)
     fix: bool = False
+
+
+@router.post("/source")
+async def import_source(
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    file: UploadFile = File(...),
+):
+    """Read source notes without invoking a model, creating a document or storing the upload."""
+    data = await file.read(MAX_SOURCE_BYTES + 1)
+    if len(data) > MAX_SOURCE_BYTES:
+        raise HTTPException(413, "Il file supera il limite di 10 MB.")
+    filename = (file.filename or "appunti.txt").replace("\\", "/").rsplit("/", 1)[-1]
+    try:
+        text = await extract_notes(data, filename)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        logger.warning("Presentation source extraction failed: %s", type(exc).__name__)
+        raise HTTPException(422, "Non è stato possibile leggere il file. Prova a esportarlo come Markdown o TXT.") from exc
+    return {"filename": filename, "text": text, "char_count": len(text), "max_chars": MAX_SOURCE_CHARS}
 
 
 async def _billing_context(db: AsyncSession, auth: StudentOrTeacher) -> dict:
@@ -163,8 +184,24 @@ async def generate_outline(
     responses = []
     parsed: Optional[dict] = None
     last_error: Optional[Exception] = None
+    if payload.mode == "create":
+        usage = agents.UsageLog()
+
+        async def generate(prompt, system, tokens, temperature):
+            return await llm_service.generate(
+                messages=[{"role": "user", "content": prompt}], system_prompt=system,
+                provider=provider, model=model, temperature=temperature, max_tokens=tokens, allow_web_search=False,
+            )
+
+        try:
+            async for event in agents.run_create_pipeline(brief, language, generate, usage, grade_instruction):
+                if event["type"] == "done":
+                    parsed = event["outline"]
+        except Exception as exc:
+            last_error = exc
+        responses.extend(usage.responses)
     messages = [{"role": "user", "content": prompt}]
-    for attempt in range(2):
+    for attempt in range(0 if payload.mode == "create" else 2):
         try:
             response = await llm_service.generate(
                 messages=messages,
@@ -172,7 +209,7 @@ async def generate_outline(
                 provider=provider,
                 model=model,
                 temperature=0.5 if attempt == 0 else 0.2,
-                max_tokens=max_tokens,
+                max_tokens=min(32000, max_tokens * (attempt + 1)),
                 allow_web_search=False,
             )
             responses.append(response)
@@ -211,7 +248,7 @@ async def generate_outline(
     if parsed is None:
         logger.error("Presentation outline failed: %s", last_error)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="Non sono riuscito a scrivere la scaletta: riprova o semplifica la richiesta.")
+                            detail="Non è stato possibile completare la scaletta. I materiali sono conservati: riprova la generazione.")
     return parsed
 
 
@@ -309,7 +346,7 @@ async def stream_outline(
             logger.exception("Presentation outline pipeline failed: %s", exc)
             yield agents.event_line({
                 "type": "error",
-                "detail": "Non sono riuscito a scrivere la scaletta: riprova o semplifica la richiesta.",
+                "detail": "Non è stato possibile completare la scaletta. I materiali sono conservati: riprova la generazione.",
             })
         finally:
             await asyncio.shield(bill())

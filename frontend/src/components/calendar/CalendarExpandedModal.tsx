@@ -74,20 +74,26 @@ export function CalendarExpandedModal({
   const { data: items = [] } = useCalendarEvents(range.from, range.to, sessionId, open)
 
   const move = useMutation({
-    mutationFn: ({ item, start, end }: { item: CalendarItem; start: Date; end: Date }) =>
-      calendarApi.updateShared(item.id, { starts_at: start.toISOString(), ends_at: item.ends_at ? end.toISOString() : null }),
-    onMutate: ({ item, start, end }) => {
+    // `resize`: the user stretched the block, so the event gets an explicit end even if it had none.
+    mutationFn: ({ item, start, end, resize }: { item: CalendarItem; start: Date; end: Date; resize?: boolean }) =>
+      calendarApi.updateShared(item.id, { starts_at: start.toISOString(), ends_at: item.ends_at || resize ? end.toISOString() : null }),
+    onMutate: ({ item, start, end, resize }) => {
       // Optimistic: the block lands where it was dropped, the refetch confirms it.
       queryClient.setQueriesData<CalendarItem[]>({ queryKey: calendarQueryKey }, (old) => old?.map((i) => i.id === item.id
-        ? { ...i, start, end, starts_at: start.toISOString(), ends_at: i.ends_at ? end.toISOString() : null }
+        ? { ...i, start, end, starts_at: start.toISOString(), ends_at: i.ends_at || resize ? end.toISOString() : null }
         : i))
     },
-    onError: () => toast({ title: tl("Impossibile spostare l'evento"), variant: 'destructive' }),
+    onError: () => toast({ title: tl("Impossibile modificare l'evento"), variant: 'destructive' }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: calendarQueryKey }),
   })
   const moveEvent = (item: CalendarItem, start: Date) => {
     const end = new Date(start.getTime() + (item.end.getTime() - item.start.getTime()))
     if (start.getTime() !== item.start.getTime()) move.mutate({ item, start, end })
+  }
+
+  /** New end time from stretching the block's bottom edge (the start stays where it is). */
+  const resizeEvent = (item: CalendarItem, end: Date) => {
+    if (end.getTime() > item.start.getTime() && end.getTime() !== item.end.getTime()) move.mutate({ item, start: item.start, end, resize: true })
   }
 
   const step = (dir: 1 | -1) => {
@@ -169,7 +175,7 @@ export function CalendarExpandedModal({
         <div className="min-h-0 flex-1">
           {view === 'week'
             ? <WeekView from={range.from} items={items} now={now} accentColor={accentColor} canCreate={canCreate} workHours={workHours}
-                onCreate={onCreate} onOpenEvent={onOpenEvent} onMove={moveEvent} />
+                onCreate={onCreate} onOpenEvent={onOpenEvent} onMove={moveEvent} onResize={resizeEvent} />
             : <MonthView anchor={anchor} from={range.from} items={items} now={now} accentColor={accentColor} canCreate={canCreate} onCreate={onCreate} onOpenEvent={onOpenEvent}
                 onMove={moveEvent} onOpenDay={(day) => { onAnchorChange(day); onViewChange('week') }} />}
         </div>
@@ -325,9 +331,12 @@ const outsideHours = (items: CalendarItem[], day: Date, hours: WorkHours) => {
 
 type MoveDrag = { item: CalendarItem; offsetMin: number; dayIdx: number; minutes: number; moved: boolean; x: number; y: number }
 
-function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreate, onOpenEvent, onMove }: {
+type ResizeDrag = { item: CalendarItem; dayIdx: number; startMin: number; endMin: number }
+
+function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreate, onOpenEvent, onMove, onResize }: {
   from: Date; items: CalendarItem[]; now: Date; accentColor: string; canCreate: boolean; workHours: WorkHours
   onCreate: (draft: CalendarDraft) => void; onOpenEvent: (event: CalendarItem) => void; onMove: (item: CalendarItem, start: Date) => void
+  onResize: (item: CalendarItem, end: Date) => void
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i))
   const hourCount = workHours.end - workHours.start
@@ -337,6 +346,8 @@ function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreat
   const [create, setCreate] = useState<{ dayIdx: number; a: number; b: number } | null>(null)
   const [moving, setMoving] = useState<MoveDrag | null>(null)
   const movingRef = useRef<MoveDrag | null>(null)
+  const [resizing, setResizing] = useState<ResizeDrag | null>(null)
+  const resizingRef = useRef<ResizeDrag | null>(null)
 
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
   const nowVisible = nowMinutes >= workHours.start * 60 && nowMinutes <= workHours.end * 60
@@ -405,6 +416,43 @@ function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreat
       if (!cur.moved) { onOpenEvent(cur.item); return }
       const day = daysRef.current[cur.dayIdx]
       onMove(cur.item, new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, cur.minutes))
+    }
+    const onUp = () => finish(true)
+    const onCancel = () => finish(false)
+    window.addEventListener('pointermove', onMovePtr)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }
+
+  // Stretching an event: grab its bottom edge and drag; the end follows the pointer in 15-minute steps.
+  const startResize = (initial: ResizeDrag) => {
+    resizingRef.current = initial
+    setResizing(initial)
+    const previousCursor = document.body.style.cursor
+    document.body.style.cursor = 'ns-resize'
+    const onMovePtr = (e: PointerEvent) => {
+      const cur = resizingRef.current
+      const col = cur && columnRefs.current[cur.dayIdx]
+      if (!cur || !col) return
+      const raw = workHours.start * 60 + ((e.clientY - col.getBoundingClientRect().top) / HOUR_PX) * 60
+      const endMin = Math.max(cur.startMin + SNAP_MIN, Math.min(workHours.end * 60, Math.round(raw / SNAP_MIN) * SNAP_MIN))
+      if (endMin !== cur.endMin) {
+        const next = { ...cur, endMin }
+        resizingRef.current = next
+        setResizing(next)
+      }
+    }
+    const finish = (commit: boolean) => {
+      window.removeEventListener('pointermove', onMovePtr)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      document.body.style.cursor = previousCursor
+      const cur = resizingRef.current
+      resizingRef.current = null
+      setResizing(null)
+      if (!cur || !commit) return
+      const day = daysRef.current[cur.dayIdx]
+      onResize(cur.item, new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, cur.endMin))
     }
     const onUp = () => finish(true)
     const onCancel = () => finish(false)
@@ -525,8 +573,15 @@ function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreat
                       }}
                     />
                   )}
-                  {placed.map(({ item, top, height, col, cols }) => {
+                  {placed.map(({ item, top, height: baseHeight, col, cols }) => {
                     const isMoving = moving?.item.id === item.id && moving.moved
+                    const blockStartMin = workHours.start * 60 + (top / HOUR_PX) * 60
+                    const live = resizing?.item.id === item.id ? resizing : null
+                    const height = live ? Math.max(((live.endMin - blockStartMin) / 60) * HOUR_PX, 20) : baseHeight
+                    const shownEnd = live ? new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, live.endMin) : item.end
+                    // Only the block that shows the event's real end can be stretched (not a multi-day cut-off).
+                    const endMinOfDay = item.end.getHours() * 60 + item.end.getMinutes()
+                    const canStretch = item.can_edit && !item.all_day && sameDay(item.end, day) && endMinOfDay <= workHours.end * 60
                     return (
                       <button
                         key={item.id}
@@ -542,7 +597,7 @@ function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreat
                           startMove({ item, offsetMin: pointerMin - startMin, dayIdx: idx, minutes: startMin, moved: false, x: e.clientX, y: e.clientY })
                         }}
                         onClick={() => { if (!item.can_edit) onOpenEvent(item) }}
-                        className={`absolute z-10 overflow-hidden rounded-lg px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-[var(--ds-shadow-1)] hover:brightness-110 ${item.can_edit ? 'cursor-grab' : ''} ${isMoving ? 'opacity-30' : ''}`}
+                        className={`group absolute z-10 overflow-hidden rounded-lg px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow-[var(--ds-shadow-1)] hover:brightness-110 ${item.can_edit ? 'cursor-grab' : ''} ${isMoving ? 'opacity-30' : ''} ${live ? 'z-30 ring-2 ring-white/70' : ''}`}
                         style={{
                           top: top + 1,
                           height: height - 2,
@@ -553,7 +608,25 @@ function WeekView({ from, items, now, accentColor, canCreate, workHours, onCreat
                         title={item.title}
                       >
                         <span className="block truncate font-semibold">{item.title}</span>
-                        {height > 34 && <span className="block truncate opacity-90 tabular-nums">{hhmm(item.start)}{item.ends_at ? ` – ${hhmm(item.end)}` : ''}</span>}
+                        {(height > 34 || live) && <span className="block truncate opacity-90 tabular-nums">{hhmm(item.start)}{item.ends_at || live ? ` – ${hhmm(shownEnd)}` : ''}</span>}
+                        {canStretch && (
+                          <span
+                            role="separator"
+                            aria-orientation="horizontal"
+                            aria-label={tl("Trascina per cambiare l'ora di fine")}
+                            title={tl("Trascina per cambiare l'ora di fine")}
+                            className="absolute inset-x-0 bottom-0 flex h-3.5 cursor-ns-resize items-end justify-center pb-0.5"
+                            onPointerDown={(e) => {
+                              e.stopPropagation()
+                              if (e.button !== 0) return
+                              e.preventDefault()
+                              startResize({ item, dayIdx: idx, startMin: Math.round(blockStartMin), endMin: Math.max(endMinOfDay, Math.round(blockStartMin) + SNAP_MIN) })
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className={`h-1 w-7 rounded-full bg-white/70 transition-opacity ${live ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 max-md:opacity-70'}`} />
+                          </span>
+                        )}
                       </button>
                     )
                   })}

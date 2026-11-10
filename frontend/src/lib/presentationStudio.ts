@@ -147,7 +147,7 @@ export type OutlineStreamEvent =
   | { type: 'phase'; phase: 'read' | 'plan' | 'revise'; label: string; progress: number }
   | { type: 'plan'; label: string; progress: number; title: string; slides: { index: number; layout: StudioLayout; title: string }[] }
   | { type: 'slide'; index: number; slide: OutlineSlide; degraded: boolean; label: string; progress: number }
-  | { type: 'done'; progress: number; outline: StudioOutline; degraded: number }
+  | { type: 'done'; progress: number; outline: StudioOutline; degraded: number; recovered_plan?: boolean }
   | { type: 'error'; detail?: string; message?: string }
 
 export class OutlineStreamError extends Error {
@@ -195,7 +195,25 @@ export async function streamOutline(
   if (!finished) throw new OutlineStreamError(tl("Connessione interrotta: la generazione continua in background, riprova a riaprire tra poco."))
 }
 
+export const MAX_STUDIO_SOURCE_CHARS = 1_000_000
+export const MAX_STUDIO_SOURCE_BYTES = 10 * 1024 * 1024
+export const STUDIO_SOURCE_ACCEPT = '.md,.markdown,.txt,.text,.rst,.pdf,.docx'
+
+/** Append atomically: a rejected upload must never erase or silently truncate existing notes. */
+export function appendStudioSources(current: string, sources: { filename: string; text: string }[]): string {
+  const combined = [current.trim(), ...sources.map(source => `# File: ${source.filename}\n\n${source.text}`)].filter(Boolean).join('\n\n---\n\n')
+  if (combined.length > MAX_STUDIO_SOURCE_CHARS) throw new Error(tl("I materiali superano il limite di un milione di caratteri. Dividili in più presentazioni."))
+  return combined
+}
+
 export const presentationStudioApi = {
+  importSource: (file: File, signal?: AbortSignal) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ filename: string; text: string; char_count: number; max_chars: number }>('/presentation-studio/source', form, {
+      signal, timeout: 120000, headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   templates: () =>
     api.get<{ themes: ResolvedTheme[]; layouts: { id: StudioLayout; label: string; fields: string[] }[] }>('/presentation-studio/templates'),
   outline: (data: { brief: StudioBrief; mode?: 'create' | 'revise' | 'slide'; outline?: StudioOutline; instruction?: string; slide_index?: number; llm_provider?: string; llm_model?: string }, signal?: AbortSignal) =>

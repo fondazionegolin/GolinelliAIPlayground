@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading, SectionIllustration } from '@/design/primitives/SectionHeading'
 import { ScopedModelSelect, storedModelChoice, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -8,7 +9,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useOpenParam } from '@/lib/useOpenParam'
-import { Check, ChevronRight, Clock3, Download, FileText, Loader2, MoreVertical, Pencil, Plus, Search, Send, Sparkles, Trash2, Users, X } from '@/components/icons'
+import { Check, ChevronRight, Clock3, Download, FileText, Loader2, MoreVertical, Pencil, Plus, Send, Sparkles, Trash2, Users, X } from '@/components/icons'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Select } from '@/design'
@@ -241,11 +242,7 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
       </div>
 
       {/* One field: the icon and the count sit inside the input itself. */}
-      <div className="relative mb-5">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" aria-hidden="true" />
-        <Input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={tl("Cerca nelle lavagne…")} aria-label={tl("Cerca una lavagna")} className="h-12 w-full pl-11 pr-14 text-sm" />
-        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-black tabular-nums text-[var(--text-secondary)]" aria-label={tl("{0} lavagne", String(shown.length))}>{shown.length}</span>
-      </div>
+      <SearchPill value={query} placeholder={tl("Cerca nelle lavagne…")} onValueChange={setQuery} className="mb-5" endAdornment={<span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--text-secondary)]" aria-label={tl("{0} lavagne", String(shown.length))}>{shown.length}</span>} />
 
       {error && <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert"><span className="flex-1">{error}</span><button type="button" aria-label={tl("Chiudi errore")} onClick={() => setError('')}><X className="h-4 w-4" /></button></div>}
 

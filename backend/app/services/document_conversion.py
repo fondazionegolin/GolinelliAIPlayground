@@ -1488,7 +1488,12 @@ def export_document(content_json: str, title: str, target_format: str) -> Export
         docx = _native_to_docx(content, title)
         data = docx if target == "docx" else _run_libreoffice(docx, "docx", "doc")
     else:
-        if content.get("type") == "presentation_v2" or isinstance(content.get("slides"), list):
+        web_html = str(content.get("htmlContent") or content.get("html") or content.get("content") or "")
+        if content.get("type") == "html_v1" or re.match(r"\s*(?:<!doctype\s+html|<html)", web_html, re.I):
+            from app.services.html_pdf import html_to_pdf
+            viewport = content.get("viewport") if isinstance(content.get("viewport"), dict) else {}
+            data = html_to_pdf(web_html, viewport.get("width", 880), viewport.get("height", 900))
+        elif content.get("type") == "presentation_v2" or isinstance(content.get("slides"), list):
             native = _native_to_pptx(content, title)
             data = _run_libreoffice(native, "pptx", "pdf")
         elif content.get("type") == "sheet_v1" or isinstance(content.get("data"), list):

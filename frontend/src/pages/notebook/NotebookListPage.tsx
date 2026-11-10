@@ -1,11 +1,10 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ArrowLeft, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Loader2, Music2, Plus, Search, Share2, Sparkles, Trash2, X,
-} from '@/components/icons'
+import { ArrowLeft, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Loader2, Music2, Plus, Share2, Sparkles, Trash2, X } from '@/components/icons'
 import { notebooksApi, teacherApi, type NotebookAssignment } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { enUS, it } from 'date-fns/locale'
@@ -362,10 +361,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             <SectionHeading section="/teacher/notebooks" className="text-2xl font-black tracking-tight text-slate-950">{isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}</SectionHeading>
           </div>
           {!isEmpty && (
-            <label className="ui-search flex h-10 w-full items-center gap-2 px-3 sm:w-64">
-              <Search className="h-4 w-4 shrink-0 text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isEnglish ? 'Search projects…' : 'Cerca progetti…'} aria-label={isEnglish ? 'Search projects' : 'Cerca progetti'} className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400" />
-            </label>
+            <SearchPill value={search} placeholder={isEnglish ? 'Search projects…' : 'Cerca progetti…'} aria-label={isEnglish ? 'Search projects' : 'Cerca progetti'} onValueChange={setSearch} className="w-full sm:w-64" />
           )}
           <PrimaryCreateButton isEnglish={isEnglish} onClick={() => setShowCreate(true)} />
         </div>

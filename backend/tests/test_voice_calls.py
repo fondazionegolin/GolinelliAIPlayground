@@ -45,3 +45,20 @@ def test_hallucination_filter():
     from app.services.call_recordings import _HALLUCINATIONS
     assert _HALLUCINATIONS.search("Sottotitoli creati dalla comunità Amara.org")
     assert not _HALLUCINATIONS.search("Il numeratore sta sopra la linea")
+
+
+def test_clean_segments_drops_noise_and_keeps_speech():
+    from app.services.call_recordings import clean_segments
+    raw = [
+        {"start": 0, "end": 2, "text": " Sottotitoli a cura di QTSS "},
+        {"start": 2, "end": 5, "text": "  Apriamo il libro a pagina 12. "},
+        {"start": 5, "end": 6, "text": "mmh", "no_speech_prob": 0.9, "avg_logprob": -1.5},
+        {"start": 6, "end": 7, "text": "   "},
+    ]
+    assert clean_segments(raw) == [{"start": 2.0, "end": 5.0, "text": "Apriamo il libro a pagina 12."}]
+
+
+def test_transcription_options_have_a_valid_default():
+    from app.services import local_stt
+    assert local_stt.option(local_stt.DEFAULT["engine"], local_stt.DEFAULT["model"])
+    assert {m["engine"] for m in local_stt.MODELS} == {"local", "openai"}

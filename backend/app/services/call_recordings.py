@@ -121,31 +121,80 @@ async def save_segment(
     return segment
 
 
-async def _whisper_segments(path: Path) -> list[dict[str, Any]]:
-    api_key = getattr(settings, "OPENAI_API_KEY", None)
-    if not api_key:
-        raise RuntimeError("Trascrizione non configurata (manca la chiave OpenAI)")
-    async with httpx.AsyncClient(timeout=180.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            files={"file": (path.name, path.read_bytes(), "audio/webm")},
-            # whisper-1 is the model that returns segment timestamps (needed to place lines on the timeline).
-            data={"model": "whisper-1", "response_format": "verbose_json", "timestamp_granularities[]": "segment"},
-        )
-        response.raise_for_status()
-        payload = response.json()
+EBML_MAGIC = bytes.fromhex("1a45dfa3")
+CLUSTER_ID = bytes.fromhex("1f43b675")
+
+
+async def _ffmpeg_to_ogg(data: bytes) -> Optional[bytes]:
+    """Re-encode any browser recording to 16 kHz mono Opus (what speech models want). None if unreadable."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "1", "-ar", "16000",
+        "-c:a", "libopus", "-b:a", "32k", "-f", "ogg", "pipe:1",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    out, _err = await proc.communicate(data)
+    return out if proc.returncode == 0 and len(out) > 200 else None
+
+
+async def normalized_audio(path: Path, header_donor: Optional[Path] = None) -> bytes:
+    """Readable 16 kHz mono audio for a segment.
+
+    A segment that lost its webm header (older recorder bug: it starts straight with audio clusters) is
+    rebuilt by prefixing the header of a valid segment of the same speaker, which shares codec settings.
+    """
+    data = path.read_bytes()
+    out = await _ffmpeg_to_ogg(data)
+    if out:
+        return out
+    if not data.startswith(EBML_MAGIC) and header_donor is not None:
+        donor = header_donor.read_bytes()
+        cut = donor.find(CLUSTER_ID)
+        if cut > 0:
+            out = await _ffmpeg_to_ogg(donor[:cut] + data)
+            if out:
+                return out
+    raise ValueError("file audio illeggibile")
+
+
+def clean_segments(raw: list[dict[str, Any]], full_text: str = "", duration: float = 0.0) -> list[dict[str, Any]]:
+    """Drop empty lines, known silence hallucinations and low-confidence noise."""
     out = []
-    for seg in payload.get("segments") or []:
+    for seg in raw:
         text = (seg.get("text") or "").strip()
         if not text or _HALLUCINATIONS.search(text):
             continue
         if float(seg.get("no_speech_prob") or 0) > 0.6 and float(seg.get("avg_logprob") or 0) < -0.8:
             continue
         out.append({"start": float(seg.get("start") or 0), "end": float(seg.get("end") or 0), "text": text})
-    if not out and (payload.get("text") or "").strip() and not _HALLUCINATIONS.search(payload["text"]):
-        out.append({"start": 0.0, "end": float(payload.get("duration") or 0), "text": payload["text"].strip()})
+    if not out and full_text.strip() and not _HALLUCINATIONS.search(full_text):
+        out.append({"start": 0.0, "end": duration, "text": full_text.strip()})
     return out
+
+
+async def _openai_segments(audio: bytes, name: str) -> list[dict[str, Any]]:
+    api_key = getattr(settings, "OPENAI_API_KEY", None)
+    if not api_key:
+        raise RuntimeError("Trascrizione OpenAI non configurata (manca la chiave)")
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": (f"{name}.ogg", audio, "audio/ogg")},
+            # whisper-1 is the OpenAI model that returns segment timestamps (needed for the timeline).
+            data={"model": "whisper-1", "response_format": "verbose_json", "timestamp_granularities[]": "segment"},
+        )
+        if response.status_code >= 400:
+            raise ValueError(f"trascrizione rifiutata ({response.status_code}): {response.text[:200]}")
+        payload = response.json()
+    return clean_segments(payload.get("segments") or [], payload.get("text") or "", float(payload.get("duration") or 0))
+
+
+async def transcribe_segment(path: Path, header_donor: Optional[Path], engine: dict[str, str]) -> list[dict[str, Any]]:
+    from app.services import local_stt
+    audio = await normalized_audio(path, header_donor)
+    if engine["engine"] == "local":
+        return clean_segments(await local_stt.transcribe(engine["model"], audio, "it"))
+    return await _openai_segments(audio, path.stem)
 
 
 def merge_timeline(segments: list[VoiceCallRecordingSegment]) -> tuple[list[dict], list[dict]]:
@@ -200,7 +249,7 @@ async def add_to_knowledge(db: AsyncSession, recording: VoiceCallRecording, titl
     from app.services.rag_service import rag_service
     if not recording.session_id or not text.strip():
         return None
-    call = await db.get(VoiceCall, recording.call_id)
+    call = await db.get(VoiceCall, recording.call_id) if recording.call_id else None
     document = RAGDocument(
         tenant_id=recording.tenant_id, scope=Scope.SESSION, session_id=recording.session_id,
         owner_teacher_id=call.owner_teacher_id if call else recording.started_by_teacher_id,
@@ -267,6 +316,41 @@ async def run_tool(
     return analysis
 
 
+async def share_to_session(db: AsyncSession, recording: VoiceCallRecording, analysis: VoiceCallAnalysis, teacher: User) -> None:
+    """Post a result (summary, synthesis…) in the class chat of the recording's session as a readable card."""
+    from app.models.chat import ChatMessage
+    from app.models.enums import SenderType
+    from app.models.session import Session
+    from app.realtime.gateway import sio
+    from app.services.calendar_reminders import _public_room
+    from app.services.calendar_service import teacher_name
+
+    session = await db.get(Session, recording.session_id) if recording.session_id else None
+    if not session:
+        raise ValueError("La chiamata non è collegata a una sessione")
+    room = await _public_room(db, session)
+    data = {
+        "title": analysis.title, "recording_title": recording.title, "recording_id": str(recording.id),
+        "content": analysis.content[:8000],
+    }
+    text = f"📝 {analysis.title} · {recording.title}"
+    message = ChatMessage(
+        tenant_id=session.tenant_id, session_id=session.id, room_id=room.id,
+        sender_type=SenderType.TEACHER, sender_teacher_id=teacher.id, message_text=text[:300],
+        attachments={"is_notification": True, "notification_type": "call_summary", "notification_data": data},
+    )
+    db.add(message)
+    await db.commit()
+    await sio.emit("chat_message", {
+        "room_type": "PUBLIC", "session_id": str(session.id),
+        "message": {
+            "id": str(message.id), "sender_type": "TEACHER", "sender_id": str(teacher.id), "sender_name": teacher_name(teacher),
+            "text": text[:300], "attachments": [], "created_at": datetime.now(timezone.utc).isoformat(),
+            "is_notification": True, "notification_type": "call_summary", "notification_data": data,
+        },
+    }, room=f"session:{session.id}")
+
+
 async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
     """Background job: transcribe every segment, merge, summary, knowledge."""
     async with AsyncSessionLocal() as db:
@@ -275,12 +359,27 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
             return {"status": "missing"}
         teacher = await db.get(User, recording.started_by_teacher_id) if recording.started_by_teacher_id else None
         try:
+            from app.services import local_stt
+            engine = await local_stt.get_setting(db)
+            if engine["engine"] == "local" and not local_stt.available()[0]:
+                logger.warning("local STT unavailable, falling back to OpenAI for recording %s", recording_id)
+                engine = {"engine": "openai", "model": "whisper-1"}
+            recording.transcription_model = f"{engine['engine']}:{engine['model']}"
+            await db.commit()
             segments = list((await db.execute(
                 select(VoiceCallRecordingSegment).where(VoiceCallRecordingSegment.recording_id == recording.id)
                 .order_by(VoiceCallRecordingSegment.offset_ms)
             )).scalars().all())
-            semaphore = asyncio.Semaphore(3)
+            # One GPU model: local segments go one at a time (each takes a few seconds); the cloud takes 3 in parallel.
+            semaphore = asyncio.Semaphore(1 if engine["engine"] == "local" else 3)
             done = 0
+            failed: list[str] = []
+            # First segment of each speaker starts with a webm header: donor for segments that lost theirs.
+            donors: dict[str, Path] = {}
+            for segment in segments:
+                path = Path("uploads") / segment.storage_key
+                if segment.identity not in donors and path.exists() and path.read_bytes()[:4] == EBML_MAGIC:
+                    donors[segment.identity] = path
 
             async def transcribe(segment: VoiceCallRecordingSegment) -> None:
                 nonlocal done
@@ -288,16 +387,22 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
                     done += 1
                     return
                 async with semaphore:
-                    segment.transcript = await _whisper_segments(Path("uploads") / segment.storage_key)
+                    try:
+                        segment.transcript = await transcribe_segment(
+                            Path("uploads") / segment.storage_key, donors.get(segment.identity), engine)
+                    except Exception as exc:  # one bad segment must not sink the whole recording
+                        logger.warning("segment %s of recording %s not transcribed: %s", segment.id, recording_id, exc)
+                        failed.append(f"{segment.speaker_name} @ {fmt_clock(segment.offset_ms / 1000)}")
                 done += 1
                 if ctx is not None:
                     await ctx.progress(0.8 * done / max(1, len(segments)), f"Trascrizione {done}/{len(segments)}")
 
             await asyncio.gather(*(transcribe(segment) for segment in segments))
             await db.commit()
-            minutes = sum(segment.duration_ms for segment in segments) / 60000.0
-            await _charge(db, teacher, "openai", "whisper-1", round(minutes * WHISPER_USD_PER_MINUTE, 6),
-                          {"audio_minutes": round(minutes, 2), "type": "call_recording:transcription"})
+            if engine["engine"] == "openai":  # local transcription is free
+                minutes = sum(segment.duration_ms for segment in segments) / 60000.0
+                await _charge(db, teacher, "openai", "whisper-1", round(minutes * WHISPER_USD_PER_MINUTE, 6),
+                              {"audio_minutes": round(minutes, 2), "type": "call_recording:transcription"})
 
             recording.transcript, recording.participants = merge_timeline(segments)
             await db.commit()
@@ -305,6 +410,17 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
             if recording.transcript:
                 if ctx is not None:
                     await ctx.progress(0.85, "Indicizzazione nella knowledge di sessione", force=True)
+                # Re-processing (retry): replace the previous transcript and automatic summary, never duplicate them.
+                if recording.knowledge_document_id:
+                    await delete_knowledge_document(db, recording.knowledge_document_id)
+                    recording.knowledge_document_id = None
+                for old in (await db.execute(select(VoiceCallAnalysis).where(
+                        VoiceCallAnalysis.recording_id == recording.id, VoiceCallAnalysis.kind == "summary",
+                        VoiceCallAnalysis.created_by_teacher_id.is_(None) | (VoiceCallAnalysis.prompt.is_(None))))).scalars().all():
+                    if old.knowledge_document_id:
+                        await delete_knowledge_document(db, old.knowledge_document_id)
+                    await db.delete(old)
+                await db.commit()
                 header = f"Trascrizione della videochiamata «{recording.title}» del {when}\nPartecipanti:\n{participants_text(recording)}\n\n"
                 recording.knowledge_document_id = await add_to_knowledge(
                     db, recording, f"Trascrizione · {recording.title} ({when})", header + transcript_text(recording), "call_transcript")
@@ -316,7 +432,12 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
                 except Exception:
                     logger.exception("automatic summary failed for recording %s", recording.id)
             recording.status = "ready"
-            recording.error_message = None if recording.transcript else "Nessun parlato riconosciuto nella registrazione"
+            notes = []
+            if failed:
+                notes.append(f"{len(failed)} segmenti non trascritti ({', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}): usa «Riprova» per ritentarli")
+            if not recording.transcript:
+                notes.append("Nessun parlato riconosciuto nella registrazione")
+            recording.error_message = "; ".join(notes) or None
             await db.commit()
             return {"status": "ready", "lines": len(recording.transcript or [])}
         except Exception as exc:
@@ -356,7 +477,7 @@ def serialize_recording(recording: VoiceCallRecording, *, call: Optional[VoiceCa
                         analyses: Optional[list[VoiceCallAnalysis]] = None, full: bool = False) -> dict:
     out = {
         "id": str(recording.id),
-        "call_id": str(recording.call_id),
+        "call_id": str(recording.call_id) if recording.call_id else None,
         "call_title": call.title if call else None,
         "call_code": call.code if call else None,
         "session_id": str(recording.session_id) if recording.session_id else None,
@@ -369,6 +490,7 @@ def serialize_recording(recording: VoiceCallRecording, *, call: Optional[VoiceCa
         "lines": len(recording.transcript or []),
         "in_knowledge": bool(recording.knowledge_document_id),
         "error_message": recording.error_message,
+        "transcription_model": recording.transcription_model,
     }
     if analyses is not None:
         out["analyses"] = [{

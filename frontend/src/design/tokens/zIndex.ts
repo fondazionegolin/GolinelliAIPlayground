@@ -5,4 +5,5 @@ export const zIndexTokens = {
   overlay: 60,
   modal: 70,
   toast: 80,
+  dictation: 2100,
 } as const

@@ -1,9 +1,10 @@
+import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { Calendar } from '@/components/icons'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
-import {
-  Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, Loader2, FileUp, PanelTop } from '@/components/icons'
+import { Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, X, Loader2, FileUp, PanelTop } from '@/components/icons'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
@@ -1509,12 +1510,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   </div>
                 </div>
                 <div className={`mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row ${headerCollapsed ? '' : 'mt-6'}`}>
-                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-sm">
-                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                    <input type="text" value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none" />
-                    {docSearch && <button onClick={() => setDocSearch('')} className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
-                  </label>
-                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="h-[46px] rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none">
+                  <SearchPill value={docSearch} placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'} onValueChange={setDocSearch} className="min-w-0 flex-1" />
+                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} className="h-11 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none">
                     <option value="all">{isEnglishUi ? 'All types' : 'Tutti i tipi'}</option><option value="document">{tl("Documenti")}</option><option value="presentation">{tl("Presentazioni")}</option><option value="sheet">{tl("Tabelle")}</option><option value="canvas">{tl("Lavagne")}</option><option value="pdf">PDF</option><option value="web">Web</option>
                   </select>
                 </div>
@@ -1780,7 +1777,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           {mode === 'web' && (
             document.webUrl
               ? <iframe src={document.webUrl} className="h-full min-h-[70dvh] w-full rounded-2xl border-0 bg-white shadow-sm" title={document.title} />
-              : <iframe srcDoc={document.textContent || ''} sandbox="allow-same-origin allow-scripts" className="h-full min-h-[70dvh] w-full rounded-2xl border-0 bg-white shadow-sm" title={document.title} />
+              : <InteractiveHtmlFrame srcDoc={document.textContent || ''} className="h-full min-h-[70dvh] w-full rounded-2xl border-0 bg-white shadow-sm" title={document.title} />
           )}
           {mode === 'document' && (
             <article className="mx-auto min-h-full w-full max-w-3xl rounded-2xl bg-white px-5 py-7 text-[16px] leading-7 text-slate-800 shadow-sm [&_h1]:mb-5 [&_h1]:text-3xl [&_h1]:font-black [&_h2]:mb-4 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mb-3 [&_h3]:text-xl [&_h3]:font-bold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:my-4 [&_ol]:pl-6 [&_p]:mb-4 [&_table]:w-full [&_table]:overflow-x-auto [&_ul]:my-4 [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: document.textContent || '' }} />
@@ -2377,9 +2374,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                      title={document.title}
                    />
                  ) : (
-                   <iframe
+                   <InteractiveHtmlFrame
                      srcDoc={document.textContent || ''}
-                     sandbox="allow-same-origin allow-scripts"
                      className="w-full h-full border-0"
                      title={document.title}
                    />

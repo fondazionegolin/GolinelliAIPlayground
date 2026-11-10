@@ -1,14 +1,14 @@
 import { ScopedModelSelect, useScopedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ColorPicker } from '@/components/ui/ColorPicker'
-import { Button } from '@/components/ui/button'
+import { Button, Textarea } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Copy, Loader2, MonitorPlay, Plus, RotateCcw, Sparkles, Trash2, Wand2, X,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Copy, Loader2, MonitorPlay, Upload, Plus, RotateCcw, Sparkles, Trash2, Wand2, X,
 } from '@/components/icons'
 import {
   DEFAULT_THEME_OPTIONS, LAYOUT_FIELDS, LAYOUT_LABELS, STYLE_QUESTIONS, emptyOutlineSlide, generateDeckImages, optionsFromAnswers,
-  pendingImageSlots, presentationStudioApi, rankThemes, streamOutline, withImage,
+  MAX_STUDIO_SOURCE_BYTES, MAX_STUDIO_SOURCE_CHARS, STUDIO_SOURCE_ACCEPT, appendStudioSources, pendingImageSlots, presentationStudioApi, rankThemes, streamOutline, withImage,
   type OutlineSlide, type OutlineStreamEvent, type RenderedDeck, type ResolvedTheme, type StudioBrief, type StudioLayout, type StudioOutline,
   type StudioSlide, type StyleAnswers, type ThemeOptions,
 } from '@/lib/presentationStudio'
@@ -124,6 +124,11 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
   const [busy, setBusy] = useState<null | 'outline' | 'revise' | 'slide' | 'render'>(null)
   const [reviseText, setReviseText] = useState('')
   const [slideInstruction, setSlideInstruction] = useState('')
+  const sourceInputRef = useRef<HTMLInputElement | null>(null)
+  const sourceAbortRef = useRef<AbortController | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [sourceError, setSourceError] = useState('')
+  const [importedNames, setImportedNames] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const jobIdRef = useRef<string | null>(null)
   const [progress, setProgress] = useState<GenProgress | null>(null)
@@ -145,12 +150,42 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
     try { window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ brief, outline, step })) } catch { /* storage unavailable */ }
   }, [brief, outline, step])
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(() => () => { abortRef.current?.abort(); sourceAbortRef.current?.abort() }, [])
 
   const resetAll = () => {
     if (outline && !window.confirm(tl("Ricominciare da capo? La scaletta attuale andrà persa."))) return
+    sourceAbortRef.current?.abort(); setSourceError(''); setImportedNames([])
     setBrief(EMPTY_BRIEF); setOutline(null); setOutlineHistory([]); setStep('brief'); setSelectedIndex(0)
     try { window.localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+  }
+
+  const updateSource = (source_text: string) => {
+    setSourceError(source_text.length > MAX_STUDIO_SOURCE_CHARS ? tl("I materiali superano il limite di un milione di caratteri. Dividili in più presentazioni.") : '')
+    setBrief(current => ({ ...current, source_text,
+      slide_count: source_text.length > AUTO_SLIDES_FROM_CHARS && current.source_text.length <= AUTO_SLIDES_FROM_CHARS && current.slide_count === EMPTY_BRIEF.slide_count ? 0 : current.slide_count,
+    }))
+  }
+
+  const importSources = async (files: File[]) => {
+    if (!files.length || sourceAbortRef.current) return
+    const controller = new AbortController()
+    sourceAbortRef.current = controller
+    setImporting(true); setSourceError('')
+    try {
+      if (files.some(file => file.size > MAX_STUDIO_SOURCE_BYTES)) throw new Error(tl("Ogni file può pesare al massimo 10 MB."))
+      const imported = []
+      // Sequential uploads bound extraction work and keep the user's file order.
+      for (const file of files) imported.push((await presentationStudioApi.importSource(file, controller.signal)).data)
+      if (controller.signal.aborted) return
+      const combined = appendStudioSources(brief.source_text, imported)
+      updateSource(combined)
+      setImportedNames(imported.map(source => source.filename))
+    } catch (error: any) {
+      if (!controller.signal.aborted) setSourceError(errorMessage(error, error?.message || tl("Non è stato possibile leggere il file. Riprova.")))
+    } finally {
+      sourceAbortRef.current = null
+      setImporting(false)
+    }
   }
 
   // ── Outline (AI) ──────────────────────────────────────────────────────────
@@ -175,6 +210,9 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
       setOutline(event.outline)
       if (mode === 'create') { setSelectedIndex(0); setStep('outline') }
       else { setReviseText(''); setSelectedIndex(index => Math.min(index, event.outline.slides.length - 1)) }
+      if (event.recovered_plan) {
+        toast({ title: tl("Scaletta recuperata dai materiali"), description: tl("Verifica l'ordine degli argomenti prima di scegliere lo stile.") })
+      }
       if (event.degraded > 0) {
         toast({ title: tl("{0} slide da rivedere", event.degraded), description: tl("Non sono riuscito a svilupparle del tutto: trovi solo uno schizzo da completare o riscrivere con l'IA.") })
       }
@@ -182,6 +220,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
   }
 
   const runOutline = async (mode: 'create' | 'revise' | 'slide') => {
+    if (importing || brief.source_text.length > MAX_STUDIO_SOURCE_CHARS) return
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -427,19 +466,24 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
             </section>
             <section>
               <label className="text-sm font-bold text-slate-900" htmlFor="studio-source">{tl("Materiali di partenza")} <span className="font-normal text-slate-500">(facoltativo)</span></label>
-              <p className="text-xs text-slate-500">{tl("Incolla appunti, un testo o un indice: l'IA li userà come fonte principale invece di inventare.")}</p>
-              <textarea
-                id="studio-source"
-                value={brief.source_text}
-                onChange={(event) => {
-                  const source_text = event.target.value.slice(0, 200000)
-                  // A long text pasted over the default count: let the AI size the deck from the material.
-                  const auto = source_text.length > AUTO_SLIDES_FROM_CHARS && brief.source_text.length <= AUTO_SLIDES_FROM_CHARS && brief.slide_count === EMPTY_BRIEF.slide_count
-                  setBrief({ ...brief, source_text, slide_count: auto ? 0 : brief.slide_count })
-                }}
-                rows={5}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              />
+              <p id="studio-source-hint" className="mt-1 text-xs text-[var(--text-secondary)]">{tl("Incolla appunti o carica un file: titoli, elenchi e note docente guideranno la scaletta. Il testo resta modificabile.")}</p>
+              <input ref={sourceInputRef} type="file" multiple accept={STUDIO_SOURCE_ACCEPT} className="hidden" aria-label={tl("Carica materiali di partenza")}
+                onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void importSources(files) }} />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Button tone="neutral" surface="soft" density="compact" disabled={importing || Boolean(busy)} onClick={() => sourceInputRef.current?.click()}>
+                  {importing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
+                  {importing ? tl("Leggo i file…") : tl("Carica appunti")}
+                </Button>
+                <span className="text-xs text-[var(--text-secondary)]">{tl("MD, TXT, RST, PDF, DOCX · 10 MB per file")}</span>
+              </div>
+              <Textarea id="studio-source" value={brief.source_text} onChange={event => updateSource(event.target.value)}
+                disabled={importing || Boolean(busy)} rows={7} className="mt-3" aria-describedby="studio-source-hint studio-source-count" aria-invalid={Boolean(sourceError)} />
+              <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-[var(--text-secondary)]" aria-live="polite">
+                <span>{importedNames.length > 0 && tl("Importati: {0}", importedNames.join(', '))}</span>
+                <span id="studio-source-count">{brief.source_text.length.toLocaleString()} / {MAX_STUDIO_SOURCE_CHARS.toLocaleString()} {tl("caratteri")}</span>
+              </div>
+              {sourceError && <p role="alert" className="mt-2 text-sm text-[var(--logo-pink)]">{sourceError}</p>}
+
             </section>
             <section className="grid gap-5 sm:grid-cols-2">
               <ChipField label={tl("Per chi è")} value={brief.audience} options={AUDIENCES} onChange={(audience) => setBrief({ ...brief, audience })} />
@@ -452,7 +496,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                   <button type="button" onClick={() => setBrief({ ...brief, slide_count: brief.slide_count === 0 ? EMPTY_BRIEF.slide_count : 0 })}
                     className={`rounded-full px-2.5 py-1 text-xs font-bold ${brief.slide_count === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tl("Automatico")}</button>
                 </div>
-                <input type="range" min={4} max={20} value={brief.slide_count || 8} disabled={brief.slide_count === 0} onChange={(event) => setBrief({ ...brief, slide_count: Number(event.target.value) })} className="mt-3 w-full accent-indigo-600 disabled:opacity-40" aria-label={tl("Numero di slide")} />
+                <input type="range" min={4} max={60} value={brief.slide_count || 8} disabled={brief.slide_count === 0} onChange={(event) => setBrief({ ...brief, slide_count: Number(event.target.value) })} className="mt-3 w-full accent-indigo-600 disabled:opacity-40" aria-label={tl("Numero di slide")} />
               </div>
               <div>
                 <span className="text-sm font-bold text-slate-900">{tl("Quanto testo per slide")}</span>
@@ -475,7 +519,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
               {onBlank && <button type="button" onClick={onBlank} className="mr-auto text-xs font-semibold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">{tl("Inizia da una presentazione vuota")}</button>}
               {outline && <Button tone="neutral" surface="soft" onClick={() => setStep('outline')}>{tl("Torna alla scaletta")}</Button>}
               <ScopedModelSelect scope="documents" value={modelChoice.value} onChange={modelChoice.setValue} className="w-56" label={tl("Modello per la scaletta")} />
-              <Button tone="accent" disabled={(brief.topic.trim().length < 3 && brief.source_text.trim().length < 20) || busy === 'outline'} onClick={() => void runOutline('create')}>
+              <Button tone="accent" disabled={(brief.topic.trim().length < 3 && brief.source_text.trim().length < 20) || busy === 'outline' || importing || brief.source_text.length > MAX_STUDIO_SOURCE_CHARS} onClick={() => void runOutline('create')}>
                 {busy === 'outline' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
                 {busy === 'outline' ? tl("Scrivo la scaletta…") : outline ? tl("Riscrivi la scaletta") : tl("Scrivi la scaletta")}
               </Button>

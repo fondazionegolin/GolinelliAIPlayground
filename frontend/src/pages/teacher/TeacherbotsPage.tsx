@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -352,25 +353,7 @@ export default function TeacherbotsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="relative w-full md:w-64">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={tl("Cerca teacherbot...")}
-                  className="ui-search h-11 w-full py-2 pl-10 pr-10 text-base placeholder:text-slate-400 focus:outline-none md:text-sm"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                    title={tl("Pulisci ricerca")}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+              <SearchPill value={search} placeholder={tl("Cerca teacherbot...")} onValueChange={setSearch} className="w-full md:w-64" />
               <div className="ui-segment flex items-center gap-1 rounded-xl p-1">
                 <button
                   onClick={() => setDisplay('grid')}

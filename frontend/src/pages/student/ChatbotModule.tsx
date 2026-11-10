@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { clipboardFiles } from '@/lib/clipboardFiles'
 import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import { SearchableSelect } from '@/components/ui/searchable-select'
@@ -17,7 +18,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, studentbotsApi, teacherbotsApi } from '@/lib/api'
 import DataFileCard, { type DataFilePreview } from '@/components/DataFileCard'
-import { Button } from '@/components/ui/button'
+import { Button, SectionHeading, SectionIllustration, brandTokens } from '@/design'
+import { ChatWelcome } from '@/components/student/ChatWelcome'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import {
   Send, Bot, User, GraduationCap, BookOpen, Plus,
   Lightbulb, ClipboardCheck, Sparkles,
@@ -190,21 +193,21 @@ const BOT_ACCENT_COLORS: Record<string, string> = {
 }
 
 const PROFILE_ACCENT_COLORS: Record<string, string> = {
-  tutor: BOT_ACCENT_COLORS.teal,
-  quiz: BOT_ACCENT_COLORS.pink,
-  interview: BOT_ACCENT_COLORS.purple,
-  oral_exam: BOT_ACCENT_COLORS.orange,
-  dataset_generator: BOT_ACCENT_COLORS.cyan,
-  math_coach: BOT_ACCENT_COLORS.blue,
+  tutor: brandTokens.color.violet,
+  quiz: brandTokens.color.pink,
+  interview: brandTokens.color.violet,
+  oral_exam: brandTokens.color.pink,
+  dataset_generator: brandTokens.color.blue,
+  math_coach: brandTokens.color.blue,
 }
 
 const PROFILE_ACCENT_CLASSES: Record<string, string> = {
-  tutor: 'bg-teal-600',
-  quiz: 'bg-pink-600',
-  interview: 'bg-violet-600',
-  oral_exam: 'bg-orange-600',
-  dataset_generator: 'bg-cyan-600',
-  math_coach: 'bg-blue-600',
+  tutor: 'bg-[var(--logo-violet)]',
+  quiz: 'bg-[var(--logo-pink)]',
+  interview: 'bg-[var(--logo-violet)]',
+  oral_exam: 'bg-[var(--logo-pink)]',
+  dataset_generator: 'bg-[var(--logo-blue)]',
+  math_coach: 'bg-[var(--logo-blue)]',
 }
 
 function resolveBotAccent(teacherbotColor?: string, profileKey?: string | null): string {
@@ -2392,15 +2395,19 @@ REGOLE IMPORTANTI:
     [availableModels, defaultModelKey]
   )
   const effectiveSelectedModel = availableModels.find((m) => modelKey(m) === modelKey(selectedModel)) || savedDefaultModel || teacherDefaultModel || availableModels[0] || null
+  const handleSetDefaultModel = (key: string) => {
+    setSelectedModel(effectiveSelectedModel)
+    localStorage.setItem('student_default_model', key)
+    setDefaultModelKey(key)
+  }
   const modelSelector = !selectedTeacherbot?.enable_escape_room && !selectedTeacherbot?.enable_inquiry ? (
     <div className="w-48 max-w-full">
       <SearchableSelect value={modelKey(effectiveSelectedModel)} label={tl("Seleziona modello")}
         disabled={isGeneratingResponse || !availableModels.length}
         onChange={(value) => handleChangeModel(availableModels.find((m) => modelKey(m) === value) || null)}
+        favoriteValue={modelKey(savedDefaultModel || teacherDefaultModel || availableModels[0] || null)}
+        onFavoriteChange={handleSetDefaultModel}
         options={availableModels.map((m) => ({ value: modelKey(m), label: m.name, description: m.provider, searchText: m.model }))} />
-      {effectiveSelectedModel && <button type="button" className="mt-1 text-[10px] text-slate-500" onClick={(event) => handleSetDefaultModel(effectiveSelectedModel, event)}>
-        {defaultModelKey === modelKey(effectiveSelectedModel) ? tl("Modello preferito") : tl("Imposta come preferito")}
-      </button>}
     </div>
   ) : null
   const allAvailableTeacherbots = teacherbotsData || []
@@ -2440,13 +2447,6 @@ REGOLE IMPORTANTI:
     )
   }, [learningSessions, normalizedChatbotSearch])
   const lastAppliedTeacherbotIdRef = useRef<string | null>(null)
-
-  const handleSetDefaultModel = (model: LLMModel, e: React.MouseEvent) => {
-    e.stopPropagation()
-    const key = modelKey(model)
-    localStorage.setItem('student_default_model', key)
-    setDefaultModelKey(key)
-  }
 
   const getTeacherbotColorClass = (color: string) => {
     const colorMap: Record<string, string> = {
@@ -2801,6 +2801,7 @@ REGOLE IMPORTANTI:
         headerContent={modelSelector}
         profileKey={`teacherbot-${selectedTeacherbot.id}`}
         profileName={selectedTeacherbot.name}
+        profileDescription={selectedTeacherbot.synopsis || selectedTeacherbot.description}
         profileIcon={<Wand2 className="h-5 w-5" />}
         profileColor={getTeacherbotColorClass(selectedTeacherbot.color)}
         messages={messages}
@@ -2835,7 +2836,8 @@ REGOLE IMPORTANTI:
         profileKey={selectedProfile}
         profileName={currentProfile?.name || selectedProfile}
         profileIcon={PROFILE_ICONS[selectedProfile]}
-        profileColor={PROFILE_ACCENT_CLASSES[selectedProfile] || 'bg-indigo-600'}
+        profileColor={PROFILE_ACCENT_CLASSES[selectedProfile] || 'bg-[var(--logo-violet)]'}
+        profileDescription={currentProfile?.description}
         messages={messages}
         onSend={handleSend}
         onBack={() => {
@@ -3307,8 +3309,10 @@ REGOLE IMPORTANTI:
               onClick={() => handleSend()}
               disabled={(!input.trim() && attachedFiles.length === 0)}
               size="icon"
-              className={`h-9 w-9 flex-shrink-0 rounded-full transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-100 text-slate-300' : 'text-white shadow-md hover:-translate-y-0.5'}`}
-              style={(!input.trim() && attachedFiles.length === 0) ? undefined : activeBotSolidStyle}
+              tone="accent"
+              surface="solid"
+              aria-label={tl("Invia messaggio")}
+              className="h-9 w-9 flex-shrink-0"
             >
               <Send className="h-4 w-4 ml-0.5" />
             </Button>
@@ -3864,21 +3868,26 @@ REGOLE IMPORTANTI:
               { key: 'rag' as const, label: 'RAG', icon: Database, count: ragSessions.length, onClick: () => void openLibrary('rag') },
             ]
             return (
-              <div className="flex shrink-0 items-center gap-2 border-b border-slate-200/70 px-4 py-2.5" role="tablist" aria-label={tl("Spazio AI")}>
+              <div className="shrink-0 overflow-x-auto px-4 py-3">
+              <div className="flex w-max items-center gap-1 p-1" style={buildAccentNavClusterStyle()} role="tablist" aria-label={tl("Spazio AI")}>
                 {tabs.map(({ key, label, icon: Icon, count, onClick }) => (
-                  <button
+                  <Button
                     key={key}
                     type="button"
                     role="tab"
                     aria-selected={topTab === key}
                     onClick={onClick}
-                    className={`student-ai-filter flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${topTab === key ? 'ui-segment-active' : 'ds-control text-slate-600'}`}
+                    tone="neutral"
+                    surface="ghost"
+                    density="compact"
+                    className={topTab === key ? 'ds-selected' : ''}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span>{label}</span>
                     {count !== null && <span className="student-ai-filter-count rounded-full px-1.5 py-0.5 text-[9px]">{count}</span>}
-                  </button>
+                  </Button>
                 ))}
+              </div>
               </div>
             )
           })()}
@@ -3936,31 +3945,11 @@ REGOLE IMPORTANTI:
                   </Button>
                 )}
                 <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
-                  <div className="mx-auto max-w-3xl text-center">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
-                    <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{tl("Spazio AI")}</h2>
-                    <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                      {tl("Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.")}
-                    </p>
-                    <label className="ui-search mx-auto mt-6 flex max-w-xl items-center gap-2 px-4 py-2.5">
-                      <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                      <input
-                        value={chatbotSearch}
-                        onChange={(event) => setChatbotSearch(event.target.value)}
-                        placeholder={tl("Cerca chatbot o messaggi...")}
-                        className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                      />
-                      {chatbotSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setChatbotSearch('')}
-                          className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                          aria-label={tl("Cancella ricerca")}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </label>
+                  <div className="mx-auto max-w-3xl">
+                    <SectionHeading section="/teacher/teacherbots" as="h2" className="text-2xl font-bold tracking-tight text-[var(--text-primary)]" subtitle={tl("Teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.")} subtitleClassName="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                      {tl("Spazio AI")}
+                    </SectionHeading>
+                    <SearchPill value={chatbotSearch} placeholder={tl("Cerca chatbot o messaggi...")} onValueChange={setChatbotSearch} className="mx-auto mt-6 max-w-xl" />
                   </div>
                 </div>
               </section>
@@ -4191,23 +4180,9 @@ REGOLE IMPORTANTI:
           ) : (
             <>
 	              <div
-                  className="relative z-20 hidden shrink-0 items-center gap-3 border-b bg-white/95 px-4 py-2.5 shadow-[0_1px_0_rgba(23,23,23,0.03)] backdrop-blur-md md:flex"
-                  style={{
-                    borderBottomColor: `color-mix(in srgb, ${activeBotAccent} 24%, #e5e5e5)`,
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${activeBotAccent} 8%, var(--mix-base)), rgb(var(--c-white) / 0.96) 38%)`,
-                  }}
+                  className="relative z-20 hidden shrink-0 items-center gap-3 bg-[var(--ds-surface-raised)] px-4 py-3 md:flex"
                 >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={activeBotSolidStyle}>
-                  {selectedTeacherbot ? (
-                    <div className="text-white scale-90 w-full h-full flex items-center justify-center">
-                      <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-5 w-5" />
-                    </div>
-                  ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
-                    <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
-                  ) : (
-                    <AcademicAiIcon className="h-5 w-5 text-white" />
-                  )}
-                </div>
+                <SectionIllustration section="/teacher/teacherbots" compact className="h-14 w-14" />
                 <div className="flex-1 min-w-0">
                   <h3 className="truncate text-[15px] font-bold text-slate-900">
                     {learningMode && activeLearningSession ? activeLearningSession.topic : (selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name)}
@@ -4219,89 +4194,71 @@ REGOLE IMPORTANTI:
                   </p>
                 </div>
                 {!sidebarMode && (
-                  <label className="hidden w-56 shrink-0 items-center gap-2 rounded-xl border bg-white/90 px-3 py-2 shadow-sm xl:flex" style={{ borderColor: `color-mix(in srgb, ${activeBotAccent} 18%, #e5e5e5)` }}>
-                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <input
-                      value={chatbotSearch}
-                      onChange={(event) => setChatbotSearch(event.target.value)}
-                      placeholder={tl("Cerca nella chat...")}
-                      className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                    />
-                    {chatbotSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setChatbotSearch('')}
-                        className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        aria-label={tl("Cancella ricerca chat")}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </label>
+                  <SearchPill value={chatbotSearch} placeholder={tl("Cerca nella chat...")} onValueChange={setChatbotSearch} className="hidden w-56 shrink-0 xl:flex" />
                 )}
 
                 <div className="hidden lg:flex items-center gap-2 relative">
                   {!sidebarMode && (
-                    <button
+                    <Button
                       type="button"
                       onClick={returnToChatbotLibrary}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform hover:-translate-y-0.5"
-                      style={activeBotSoftStyle}
+                      density="icon"
+                      aria-label={tl("Torna ai chatbot")}
                       title={tl("Torna ai chatbot")}
                     >
                       <X className="h-4 w-4" />
-                    </button>
+                    </Button>
                   )}
                   {sidebarMode ? (
                     <>
                       {onExpand && (
-                        <button
+                        <Button
                           type="button"
                           onClick={onExpand}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm transition-transform hover:-translate-y-0.5"
-                          style={activeBotSoftStyle}
+                          density="icon"
+                          aria-label={tl("Espandi a schermo intero")}
                           title={tl("Espandi a schermo intero")}
                         >
                           <PanelRightOpen className="h-4 w-4" />
-                        </button>
+                        </Button>
                       )}
                       {onClose && (
-                        <button
+                        <Button
                           type="button"
                           onClick={onClose}
-                          className="app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)]"
+                          density="icon"
+                          aria-label={tl("Chiudi chatbot")}
                           title={tl("Chiudi chatbot")}
                         >
                           <X className="h-4 w-4" />
-                        </button>
+                        </Button>
                       )}
                     </>
                   ) : onMinimize && (
-                    <button
+                    <Button
                       type="button"
                       onClick={handleDockOrClose}
-                      className={isDockArmed
-                        ? 'dock-armed-glow flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-white shadow-sm'
-                        : 'app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)]'}
+                      density="icon"
+                      aria-label={tl("Apri in sidebar")}
+                      className={isDockArmed ? 'dock-armed-glow' : ''}
                       title={isDockArmed ? tl("Andrà in sidebar al prossimo cambio pagina") : tl("Apri in sidebar")}
                     >
-                      <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />
-                    </button>
+                      <PanelRightClose className="h-4 w-4" />
+                    </Button>
                   )}
                   {!sidebarMode && selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => { setVoiceSource(undefined); setShowVoiceInterrogation(true) }}
-                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
-                      style={activeBotSolidStyle}
+                      tone="accent" surface="solid"
                       title={uiLanguage === 'en' ? 'Voice oral exam' : 'Interrogazione vocale'}
                     >
                       <Mic className="h-3.5 w-3.5" />
                       {uiLanguage === 'en' ? 'Voice exam' : 'Interrogazione vocale'}
-                    </button>
+                    </Button>
                   )}
                   {!sidebarMode && selectedTeacherbot?.enable_live_voice && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => {
                         setVoiceSource({
@@ -4311,31 +4268,29 @@ REGOLE IMPORTANTI:
                         })
                         setShowVoiceInterrogation(true)
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
-                      style={activeBotSolidStyle}
+                      tone="accent" surface="solid"
                       title={selectedTeacherbot.enable_inquiry ? (uiLanguage === 'en' ? 'Start interview' : 'Avvia intervista') : (uiLanguage === 'en' ? 'Live voice' : 'Voce live')}
                     >
                       <Mic className="h-3.5 w-3.5" />
                       {selectedTeacherbot.enable_inquiry
                         ? (uiLanguage === 'en' ? 'Interview' : 'Intervista')
                         : (uiLanguage === 'en' ? 'Live voice' : 'Voce live')}
-                    </button>
+                    </Button>
                   )}
                   {collaborationEnabled && !isTeacherPreview && !activeSharedRoom && (selectedTeacherbot || (selectedProfile && !learningMode)) && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setSharePickerTarget(
                         selectedTeacherbot
                           ? { kind: 'teacherbot', teacherbotId: selectedTeacherbot.id, title: selectedTeacherbot.name }
                           : { kind: 'assistant', profileKey: selectedProfile!, title: currentProfile?.name || selectedProfile! }
                       )}
-                      className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold shadow-sm transition-transform hover:-translate-y-0.5"
-                      style={activeBotSoftStyle}
+                      tone="neutral" surface="solid"
                       title={uiLanguage === 'en' ? 'Share with classmates' : 'Condividi con i compagni'}
                     >
                       <Users className="h-3.5 w-3.5" />
                       <span className={sidebarMode ? 'sr-only' : ''}>{uiLanguage === 'en' ? 'Share with' : 'Condividi con'}</span>
-                    </button>
+                    </Button>
                   )}
                   {false && !sidebarMode && <div className="relative">
                     <Button
@@ -4450,45 +4405,28 @@ REGOLE IMPORTANTI:
               {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
-                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-neutral-50'} ${chatBgIsDark ? 'text-white' : ''}`}
+                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-[var(--ds-canvas)]'} ${chatBgIsDark ? 'text-white' : ''}`}
                 style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
               >
           <div className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl" style={activeBotSolidStyle}>
-                {selectedTeacherbot ? (
-                  <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-10 w-10 text-white" />
-                ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
-                  <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
-                ) : (
-                  <AcademicAiIcon className="h-10 w-10 text-white" />
+            <div className="py-6 sm:py-12 lg:py-16">
+              <ChatWelcome
+                name={selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name || tl("Tutor AI")}
+                description={selectedTeacherbot ? (selectedTeacherbot.synopsis || selectedTeacherbot.description) : currentProfile?.description}
+                suggestedPrompts={selectedTeacherbot ? [] : currentProfile?.suggested_prompts}
+                onSelectPrompt={(suggestion) => {
+                  setInput(suggestion)
+                  inputRef.current?.focus()
+                }}
+              >
+                {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
+                  <Button type="button" tone="accent" surface="solid" onClick={() => setShowVoiceInterrogation(true)}>
+                    <Mic className="h-4 w-4" />
+                    {uiLanguage === 'en' ? 'Start voice oral exam' : 'Avvia interrogazione vocale'}
+                  </Button>
                 )}
-              </div>
-              <h3 className={`font-bold text-xl mb-2 ${chatBgIsDark ? 'text-white' : 'text-slate-800'}`}>{t('chatbot.greeting', { name: selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name })}</h3>
-              <p className={`${chatBgIsDark ? 'text-white/70' : 'text-slate-500'} max-w-md mx-auto mb-8`}>{selectedTeacherbot ? '' : currentProfile?.description}</p>
-              <div className="flex flex-wrap gap-2 justify-center max-w-lg mx-auto">
-                {currentProfile?.suggested_prompts && !selectedTeacherbot && currentProfile.suggested_prompts.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => setInput(suggestion)}
-                    className={`rounded-xl px-4 py-2 text-sm shadow-sm transition-all hover:-translate-y-0.5 ${chatBgIsDark ? 'border border-white/15 bg-white/10 text-white hover:bg-white/15' : PASTEL_SURFACES.slate}`}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-              {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
-                <button
-                  type="button"
-                  onClick={() => setShowVoiceInterrogation(true)}
-                  className="mx-auto mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:-translate-y-0.5"
-                  style={activeBotSolidStyle}
-                >
-                  <Mic className="h-4 w-4" />
-                  {uiLanguage === 'en' ? 'Start voice oral exam' : 'Avvia interrogazione vocale'}
-                </button>
-              )}
+              </ChatWelcome>
             </div>
           ) : visibleMessages.length === 0 ? (
             <div className="flex h-full min-h-[280px] items-center justify-center text-center">

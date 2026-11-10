@@ -1,5 +1,6 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useMemo, useState } from 'react'
-import { Check, Search, Shuffle, X } from '@/components/icons'
+import { Check, Shuffle } from '@/components/icons'
 import {
   TEACHERBOT_ICON_LIBRARY, TEACHERBOT_EMOJI_LIBRARY,
   encodeLucideIcon, encodeEmojiIcon, resolveTeacherbotIcon,
@@ -54,25 +55,7 @@ export default function TeacherbotIconPicker({ value, onChange, swatchHex }: Tea
         </div>
 
         {tab === 'icons' && (
-          <div className="relative min-w-[160px] flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={tl("Cerca icona...")}
-              className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchPill value={search} placeholder={tl("Cerca icona...")} onValueChange={setSearch} className="min-w-[160px] flex-1" />
         )}
       </div>
 

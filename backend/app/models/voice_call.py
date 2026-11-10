@@ -41,7 +41,8 @@ class VoiceCallRecording(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    call_id = Column(UUID(as_uuid=True), ForeignKey("voice_calls.id", ondelete="CASCADE"), nullable=False, index=True)
+    # NULL for a plain session call (the class voice room, no invite link): the recording belongs to the session.
+    call_id = Column(UUID(as_uuid=True), ForeignKey("voice_calls.id", ondelete="SET NULL"), nullable=True, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     started_by_teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(200), nullable=False)
@@ -53,6 +54,7 @@ class VoiceCallRecording(Base):
     participants = Column(JSONB, nullable=True)     # [{name, identity, role, seconds, turns, words}]
     knowledge_document_id = Column(UUID(as_uuid=True), nullable=True)
     error_message = Column(Text, nullable=True)
+    transcription_model = Column(String(80), nullable=True)  # "local:large-v3-turbo" | "openai:whisper-1"
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

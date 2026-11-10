@@ -19,6 +19,7 @@ import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 import { SessionVoiceCalls } from '@/components/voice-calls/SessionVoiceCalls'
+import { CallSummaryCard } from '@/components/voice-calls/CallSummaryCard'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import TuringTestPanel from '@/components/TuringTestPanel'
 import { DropOverlay } from '@/components/ui/DropOverlay'
@@ -745,6 +746,11 @@ export default function ChatSidebar({
             </button>
           </div>
         )
+      }
+
+      if (msg.notification_type === 'call_summary' && msg.notification_data) {
+        const data = typeof msg.notification_data === 'string' ? JSON.parse(msg.notification_data) : msg.notification_data
+        return <CallSummaryCard key={msg.id} data={data} />
       }
 
       // Calendar reminders and «call started» notices: one click joins the video call when there is one.

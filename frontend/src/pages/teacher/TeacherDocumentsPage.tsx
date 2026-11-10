@@ -1,3 +1,4 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -1898,12 +1899,8 @@ export default function TeacherDocumentsPage() {
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
                 <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
-                  <div className="ui-search relative min-w-0 flex-1 px-3 py-2">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input type="text" placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'} value={docSearch} onChange={e => setDocSearch(e.target.value)} className="h-11 w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-base text-slate-700 focus:outline-none focus:ring-0 md:text-sm" />
-                    {docSearch && <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
-                  </div>
-                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} aria-label={isEnglish ? 'Filter by type' : 'Filtra per tipo'} className="ui-search h-[60px] px-4 text-sm font-semibold text-slate-700 focus:outline-none">
+                  <SearchPill placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'} value={docSearch} onValueChange={setDocSearch} className="min-w-0 flex-1" />
+                  <select value={docTypeFilter} onChange={event => setDocTypeFilter(event.target.value as typeof docTypeFilter)} aria-label={isEnglish ? 'Filter by type' : 'Filtra per tipo'} className="h-11 px-4 text-sm font-semibold text-slate-700 focus:outline-none">
                     <option value="all">{isEnglish ? 'All types' : 'Tutti i tipi'}</option><option value="document">{isEnglish ? 'Documents' : 'Documenti'}</option><option value="presentation">{isEnglish ? 'Presentations' : 'Presentazioni'}</option><option value="sheet">{isEnglish ? 'Tables' : 'Tabelle'}</option><option value="canvas">{isEnglish ? 'Boards' : 'Lavagne'}</option>
                   </select>
                 </div>

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { zIndexTokens } from '@/design/tokens/zIndex'
 
 type Field = HTMLInputElement | HTMLTextAreaElement
 type Box = { top: number; right: number }
@@ -116,11 +117,12 @@ export function GlobalDictation() {
   return createPortal(
     <div
       ref={rootRef}
-      style={{ position: 'fixed', top: box.top, right: box.right, zIndex: 2000 }}
+      style={{ position: 'fixed', top: box.top, right: box.right, zIndex: zIndexTokens.dictation - 1 }}
       // Keep the text field focused (and its caret) while the mic buttons are used.
       onMouseDown={(event) => { lockedRef.current = target; if ((event.target as HTMLElement).closest('button')) event.preventDefault() }}
     >
       <VoiceRecorder
+        anchorElement={target.closest<HTMLElement>('[data-prompt-composer], .ui-search, .ds-field') || target}
         compact
         onStateChange={(state) => { busyRef.current = state !== 'idle' }}
         onInsertText={(text) => {

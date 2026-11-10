@@ -1,5 +1,6 @@
+import { SearchPill } from '@/design/primitives/SearchPill'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Search, ScatterChart, Sigma } from '@/components/icons'
+import { RefreshCw, ScatterChart, Sigma } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { tl } from '@/i18n/tl'
 
@@ -174,15 +175,7 @@ export default function ToyLMEmbeddingPanel({
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">{tl("Cerca token")}</label>
-              <div className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-white px-2.5 py-1.5">
-                <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                <input
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--text-muted)]"
-                  placeholder={payload.tokenMode === 'char' ? tl("lettera, spazio, newline...") : tl("parola o punteggiatura...")}
-                />
-              </div>
+              <SearchPill value={query} placeholder={payload.tokenMode === 'char' ? tl("lettera, spazio, newline...") : tl("parola o punteggiatura...")} onValueChange={setQuery} aria-label={tl("Cerca token")} />
             </div>
           </div>
 
