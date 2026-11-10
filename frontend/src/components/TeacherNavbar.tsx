@@ -2,7 +2,7 @@ import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { voiceLabApi } from '@/lib/voiceLab'
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Users, Mic, FileText, Check, KeyRound, Loader2, ShieldCheck, BookOpen, Brain, FileCode2, Zap, Code2, KanbanSquare, Network, Bot, GitBranch, Sparkles, FlaskConical, FolderOpen, Rocket, Building2, Film } from '@/components/icons'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -59,12 +59,9 @@ interface ActiveSession {
 interface TeacherNavbarProps {
   currentSession?: SessionInfo | null
   onSessionChange?: (session: SessionInfo) => void
-  chatSidebarOpen?: boolean
-  onToggleChatSidebar?: () => void
-  onIncomingClassChat?: () => void
 }
 
-export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen = false, onToggleChatSidebar, onIncomingClassChat }: TeacherNavbarProps) {
+export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -80,11 +77,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
-  const [voiceActive, setVoiceActive] = useState(false)
-  const [chatBadge, setChatBadge] = useState(0)
-  const processedChatBadgeIdsRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => { if (chatSidebarOpen) setChatBadge(0) }, [chatSidebarOpen])
   const processedNotificationIdsRef = useRef<Set<string>>(new Set())
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
@@ -108,21 +100,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
   }, [accentTheme, accentText])
-
-  useEffect(() => {
-    setVoiceActive(false)
-    if (!currentSession?.id) return
-
-    const handleVoiceState = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string; active?: boolean }>).detail
-      if (detail?.sessionId === currentSession.id) {
-        setVoiceActive(Boolean(detail.active))
-      }
-    }
-
-    window.addEventListener('golinelli:voice-room-state', handleVoiceState)
-    return () => window.removeEventListener('golinelli:voice-room-state', handleVoiceState)
-  }, [currentSession?.id])
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
@@ -204,24 +181,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
     }
   }, [queryClient, socketNotifications])
-
-  // Count incoming class-chat messages on the chat icon, cleared when the chat sidebar is opened.
-  // Uses the same `teacher_notification` channel as the bell above (delivered to the teacher's
-  // personal `user:{id}` room) rather than the raw `chat_message` socket event, which only reaches
-  // sockets joined into a `session:{id}` room — this navbar's socket (useSocket('')) never joins one.
-  useEffect(() => {
-    if (socketNotifications.length === 0) return
-    const latestNotification = socketNotifications[socketNotifications.length - 1]
-    const chatData = latestNotification.notification_data as { type?: string; session_id?: string } | undefined
-    const type = chatData?.type
-    if (type !== 'public_chat') return
-    if (processedChatBadgeIdsRef.current.has(latestNotification.id)) return
-    processedChatBadgeIdsRef.current.add(latestNotification.id)
-    if (chatData?.session_id && chatData.session_id !== currentSession?.id) return
-    if (chatSidebarOpen) return
-    setChatBadge((n) => n + 1)
-    onIncomingClassChat?.()
-  }, [socketNotifications, chatSidebarOpen, currentSession?.id, onIncomingClassChat])
 
   const handleClearNotifications = () => setTeacherNotifications([])
   const handleMarkAsRead = (id: string) => {
@@ -484,16 +443,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 inNavCluster
               />
 
-              {/* Teacher Notifications (unified) */}
-              <TeacherNotifications
-                notifications={teacherNotifications}
-                onClearAll={handleClearNotifications}
-                onMarkAsRead={handleMarkAsRead}
-                onNotificationClick={handleNotificationClick}
-                onAlertAction={handleAlertAction}
-                inNavCluster
-              />
-
               {/* Session Selector */}
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <div className="ds-control flex h-9 items-stretch overflow-hidden rounded-[var(--selection-radius)]">
@@ -523,50 +472,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   >
                     <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                   </button>
-                  {currentSession && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSessionsMenu(false)
-                        navigate(`/teacher/sessions/${currentSession.id}`)
-                      }}
-                      className="hidden w-8 shrink-0 items-center justify-center text-slate-500 transition-colors hover:bg-white/70 md:flex hover:text-slate-800"
-                      title={t('navbar.configure_session')}
-                      aria-label={t('navbar.configure_session')}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                    </button>
-                  )}
                 </div>
-                <button
-                  className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
-                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
-                  onClick={onToggleChatSidebar}
-                  title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  {chatBadge > 0 && (
-                    <span
-                      className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-[var(--ds-shadow-1)]"
-                      style={{ backgroundColor: accentTheme.accent }}
-                    >
-                      {chatBadge > 9 ? '9+' : chatBadge}
-                    </span>
-                  )}
-                  {voiceActive && chatBadge === 0 && (
-                    <span
-                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white shadow-[var(--ds-shadow-1)]"
-                      style={{ backgroundColor: accentTheme.accent }}
-                    >
-                      <span
-                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
-                        style={{ backgroundColor: accentTheme.accent }}
-                      />
-                      <Mic className="relative h-2.5 w-2.5" />
-                    </span>
-                  )}
-                </button>
-
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
                   <div className="ds-popover nav-cluster-unroll absolute top-full right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:left-3 max-md:right-3 max-md:top-[4.25rem] max-md:mt-0 max-md:w-auto max-md:max-w-none">
@@ -660,6 +566,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />
+                {/* Teacher Notifications (unified) */}
+                <TeacherNotifications
+                  notifications={teacherNotifications}
+                  onClearAll={handleClearNotifications}
+                  onMarkAsRead={handleMarkAsRead}
+                  onNotificationClick={handleNotificationClick}
+                  onAlertAction={handleAlertAction}
+                  inNavCluster
+                />
               </div>
               </div>
 
@@ -687,7 +602,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="ds-popover absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
+                  <div className="ds-popover absolute right-0 mt-2 w-64 overflow-hidden rounded-[var(--ds-radius-panel)] max-w-[calc(100vw-1.5rem)] py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 mb-1 bg-slate-50/55">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}

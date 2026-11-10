@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
 import { Bell, ChevronLeft, ChevronRight, Columns3, LayoutGrid, Plus, Video } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth'
 import { CalendarEventDialog, type CalendarDraft } from '@/components/calendar/CalendarEventDialog'
 import { CalendarExpandedModal } from '@/components/calendar/CalendarExpandedModal'
@@ -17,12 +18,16 @@ export function NavbarCalendarClock({
   accentColor,
   inNavCluster = false,
   role = 'teacher',
+  compact = false,
 }: {
   sessionId?: string
   accentColor: string
   inNavCluster?: boolean
   role?: 'teacher' | 'student'
+  /** Phone header: just today's day number as the button (no clock), same calendar popover. */
+  compact?: boolean
 }) {
+  const { i18n } = useTranslation()
   const userId = useAuthStore((state) => state.user?.id)
   const studentId = useAuthStore((state) => state.studentSession?.student_id)
   const viewerId = role === 'teacher' ? userId : studentId
@@ -153,27 +158,40 @@ export function NavbarCalendarClock({
           }
           setOpen(v => !v)
         }}
-        className={`relative ${inNavCluster ? 'navbar-inline-control h-9' : 'navbar-widget-control navbar-widget-control-inset h-auto'} flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 sm:px-3 transition-colors`}
+        className={compact
+          ? 'relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors hover:bg-black/5'
+          : `relative ${inNavCluster ? 'navbar-inline-control' : 'navbar-widget-control navbar-widget-control-inset'} flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl px-2 py-0 sm:px-3 transition-colors`}
         style={{ '--btn-tone': accentColor } as CSSProperties}
         aria-label={unseen.length ? tl("Calendario: {0} nuovi eventi", unseen.length) : tl("Calendario")}
         title={unseen.length ? tl("{0} nuovi eventi in calendario", unseen.length) : undefined}
       >
-        <span
-          className="flex h-[22px] min-w-[22px] items-center justify-center rounded-md px-1 text-[11px] font-bold leading-none text-white tabular-nums"
-          style={{ backgroundColor: 'var(--ds-cal-today)' }}
-          title={now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-          aria-hidden="true"
-        >
-          {now.getDate()}
-        </span>
-        <div className="text-[13px] font-semibold leading-tight text-slate-700 tabular-nums">{hh}:{mm}</div>
+        {compact ? (
+          <span
+            className="flex h-[22px] min-w-[22px] items-center justify-center rounded-md px-1 text-[11px] font-bold leading-none text-white tabular-nums"
+            style={{ backgroundColor: 'var(--ds-cal-today)' }}
+            title={now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+            aria-hidden="true"
+          >
+            {now.getDate()}
+          </span>
+        ) : (
+          <span
+            className="flex flex-col items-start justify-center gap-0.5 text-left"
+            title={now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+          >
+            <span className="text-[9px] font-[800] uppercase leading-[11px] tracking-wide tabular-nums" style={{ color: 'var(--ds-cal-today)' }}>
+              {now.getDate()} {now.toLocaleDateString(i18n.resolvedLanguage || undefined, { weekday: 'short' }).replace('.', '').slice(0, 3)}
+            </span>
+            <span className="text-[13px] font-[800] leading-[15px] text-[var(--text-primary)] tabular-nums">{hh}:{mm}</span>
+          </span>
+        )}
         {unseen.length > 0 && (
-          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: accentColor }} aria-hidden="true" />
+          <span className={`h-2 w-2 flex-shrink-0 rounded-full ${compact ? 'absolute right-1 top-1 ring-2 ring-white' : ''}`} style={{ backgroundColor: accentColor }} aria-hidden="true" />
         )}
       </button>
 
       {open && (
-        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:right-3 max-md:top-[4.25rem] max-md:mt-0">
+        <div className="ds-popover nav-cluster-unroll absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-[var(--ds-radius-panel)] max-md:fixed max-md:right-3 max-md:top-[calc(4.25rem+env(safe-area-inset-top))] max-md:mt-0 max-md:max-w-[calc(100vw-1.5rem)]">
           {/* Month nav + enlarge */}
           <div className="flex items-center gap-1 px-3 pt-3 pb-2">
             <button

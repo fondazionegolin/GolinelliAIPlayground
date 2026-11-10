@@ -1,11 +1,13 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import BackgroundJobsIndicator from '@/components/BackgroundJobsIndicator'
+import { NavbarCalendarClock } from '@/components/NavbarCalendarClock'
+import { MobileSessionsSheet } from '@/components/teacher/MobileSessionsSheet'
 import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen, Mic } from '@/components/icons'
+import { ChevronDown, MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen, Mic } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
@@ -44,6 +46,8 @@ import TeacherSupportChat from './TeacherSupportChat'
 // Right padding (pr-4) around the class-chat card; added to the column width so the
 // card edge tracks the cursor exactly while dragging the resize grip.
 const CHAT_SIDEBAR_GUTTER = 28
+// Collapsed dock: 36px bar + the same 1rem gutter used around the page frame.
+const CHAT_DOCK_WIDTH = 52
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { PageFrame } from '@/components/ui/PageFrame'
@@ -57,7 +61,8 @@ import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { FloatingClassChat } from '@/components/FloatingClassChat'
-import { ClassChatNudge } from '@/components/ClassChatNudge'
+import { ClassChatDock } from '@/components/ClassChatDock'
+import { SessionRail, LiveSessionPreview, TasksPreview, HistoryPreview, FilesPreview } from '@/components/SessionRail'
 import { useClassChatSidebar } from '@/hooks/useClassChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
@@ -87,8 +92,6 @@ export default function TeacherDashboard() {
     if (chatColumnRef.current) chatColumnRef.current.style.width = `${width + CHAT_SIDEBAR_GUTTER}px`
   }, [])
   const [showSidebar, setShowSidebar] = useClassChatSidebar('teacher', authStore.user?.id)
-  const [chatNudge, setChatNudge] = useState(0)
-  const [showOnlineMenu, setShowOnlineMenu] = useState(false)
   const [teacherChatSidebarOpen, setTeacherChatSidebarOpen] = useState(false)
   const [subjectiveStudentId, setSubjectiveStudentId] = useState<string | null>(null)
   const [sessionStudents, setSessionStudents] = useState<SessionStudentSummary[]>([])
@@ -269,9 +272,6 @@ export default function TeacherDashboard() {
             setActiveSessionId(session.id)
             localStorage.setItem('teacher_selected_session', JSON.stringify(session))
           }}
-          chatSidebarOpen={showSidebar}
-          onToggleChatSidebar={() => setShowSidebar(v => !v)}
-          onIncomingClassChat={() => setChatNudge((value) => value + 1)}
         />
       )}
 
@@ -287,78 +287,64 @@ export default function TeacherDashboard() {
           onOpenChat={() => setClassChatOpen(true)}
           onOpenFeedback={() => setFeedbackOpen(true)}
           onLogout={handleMobileLogout}
+          onSessionChange={(session) => {
+            setCurrentSession(session)
+            setActiveSessionId(session.id)
+            localStorage.setItem('teacher_selected_session', JSON.stringify(session))
+          }}
         />
       )}
 
       {/* ── Main Content ── */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : 'pt-16 md:pl-16 xl:pl-0'}`}>
 
-        {/* ── Session Context Strip (left, desktop only) ── */}
+        {/* ── Session rail (left, desktop only): hover = preview, click = open ── */}
         {!isMobile && currentSession && (
-          <div className="flex-shrink-0 flex items-center pl-2 py-2 z-10 mr-auto">
+          <div className="flex-shrink-0 flex items-center pl-4 py-4 z-10 ml-auto">
           <div
-            className="flex flex-col items-center py-3 px-1.5 gap-1 rounded-2xl shadow-lg border backdrop-blur-md"
+            className="flex flex-col items-center py-1.5 px-1.5 gap-1.5 rounded-full shadow-lg border backdrop-blur-md"
             style={{
               backgroundColor: `${teacherTheme.soft}e0`,
               borderColor: `${teacherTheme.accent}30`,
             }}
           >
-            {/* Session live */}
-            <button
-              title={currentSession.name}
-              onClick={() => navigate(`/teacher/sessions/${currentSession.id}`)}
-              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search ? 'app-button-chrome-active' : ''}`}
+            <SessionRail
               style={railButtonStyle}
-            >
-              <Monitor className="h-4 w-4" />
-            </button>
-
-            {/* Tasks */}
-            <button
-              title={t('teacher_dashboard.session_tasks')}
-              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`)}
-              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.search === '?tab=tasks' ? 'app-button-chrome-active' : ''}`}
-              style={railButtonStyle}
-            >
-              <ClipboardList className="h-4 w-4" />
-            </button>
-
-            {/* History */}
-            <button
-              title={t('teacher_dashboard.chat_history')}
-              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=history`)}
-              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.search === '?tab=history' ? 'app-button-chrome-active' : ''}`}
-              style={railButtonStyle}
-            >
-              <History className="h-4 w-4" />
-            </button>
-
-            {/* Files of this session (drive) */}
-            <button
-              title={t('teacher_dashboard.session_files')}
-              onClick={() => navigate(`/teacher/files?session=${currentSession.id}`)}
-              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.pathname.startsWith('/teacher/files') ? 'app-button-chrome-active' : ''}`}
-              style={railButtonStyle}
-            >
-              <FolderOpen className="h-4 w-4" />
-            </button>
-
-            {/* Online students */}
-            <div className="relative">
-              <button
-                title={tl("Studenti connessi")}
-                onClick={() => setShowOnlineMenu(v => !v)}
-                className={`app-button-chrome relative flex h-9 w-9 items-center justify-center rounded-lg ${showOnlineMenu ? 'app-button-chrome-active' : ''}`}
-                style={railButtonStyle}
-              >
-                <UserRound className="h-4 w-4" />
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white">
-                  {onlineStudents.length}
-                </span>
-              </button>
-
-              {showOnlineMenu && (
-                <div className="absolute left-full top-0 z-[70] ml-3 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              items={[
+                {
+                  key: 'live', icon: Monitor, title: currentSession.name,
+                  onClick: () => navigate(`/teacher/sessions/${currentSession.id}`),
+                  active: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search,
+                  preview: <LiveSessionPreview name={currentSession.name} className={currentSession.className} joinCode={currentSession.joinCode} online={onlineStudents.length} enrolled={visibleSessionStudents.length} />,
+                },
+                {
+                  key: 'tasks', icon: ClipboardList, title: t('teacher_dashboard.session_tasks'),
+                  onClick: () => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`),
+                  active: location.search === '?tab=tasks',
+                  preview: <TasksPreview sessionId={currentSession.id} />,
+                },
+                {
+                  key: 'history', icon: History, title: t('teacher_dashboard.chat_history'),
+                  onClick: () => navigate(`/teacher/sessions/${currentSession.id}?tab=history`),
+                  active: location.search === '?tab=history',
+                  preview: <HistoryPreview sessionId={currentSession.id} />,
+                },
+                {
+                  key: 'files', icon: FolderOpen, title: t('teacher_dashboard.session_files'),
+                  onClick: () => navigate(`/teacher/files?session=${currentSession.id}`),
+                  active: location.pathname.startsWith('/teacher/files'),
+                  preview: <FilesPreview sessionId={currentSession.id} />,
+                },
+                {
+                  key: 'students', icon: UserRound, title: tl("Studenti connessi"),
+                  onClick: () => navigate(`/teacher/sessions/${currentSession.id}`),
+                  badge: (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white">
+                      {onlineStudents.length}
+                    </span>
+                  ),
+                  preview: (
+                    <div className="w-full">
                   <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-pill-lavender)] text-[var(--brand-pill-violet)]">
                       <UserRound className="h-4 w-4" />
@@ -418,21 +404,11 @@ export default function TeacherDashboard() {
                       )})
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex-1" />
-
-            {/* Toggle chat sidebar */}
-            <button
-              title={t('teacher_dashboard.class_chat')}
-              onClick={() => setShowSidebar(v => !v)}
-              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${showSidebar ? 'app-button-chrome-active' : ''}`}
-              style={railButtonStyle}
-            >
-              <MessageSquare className="h-4 w-4" />
-            </button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
           </div>
         )}
@@ -532,17 +508,30 @@ export default function TeacherDashboard() {
             dockArmed={teacherChatSidebarOpen}
           />
         </motion.div>
-        {/* Right chat sidebar — kept mounted so voice stays connected when hidden */}
+        {/* Right chat column — ChatSidebar stays mounted so voice survives collapsing.
+            Collapsed: a slim dock at the frame gutter's distance from the main frame. */}
         {!isMobile && (
           <div
             ref={chatColumnRef}
-            className={`h-full flex-shrink-0 mr-auto overflow-hidden bg-transparent box-border ${
-              isResizingChat ? '' : 'transition-[width,opacity] duration-200'
-            } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
-            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0 }}
-            aria-hidden={!showSidebar}
+            className={`h-full flex-shrink-0 mr-auto bg-transparent box-border relative ${showSidebar ? "overflow-hidden" : "overflow-visible"} ${
+              isResizingChat ? '' : 'transition-[width] duration-200'
+            } ${showSidebar ? 'py-4 pl-3 pr-4' : 'py-4 pr-4'}`}
+            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : CHAT_DOCK_WIDTH }}
           >
-            <div className="ds-page-frame h-full w-full overflow-hidden">
+            {!showSidebar && (
+              <ClassChatDock
+                sessionId={activeSessionId}
+                currentUserId={teacherProfile?.id}
+                accentColor={teacherTheme.accent}
+                chatOpen={showSidebar}
+                onOpen={() => setShowSidebar(true)}
+              />
+            )}
+            <div
+              className={`ds-page-frame h-full overflow-hidden ${showSidebar ? 'w-full' : 'invisible pointer-events-none absolute left-0 top-0'}`}
+              style={showSidebar ? undefined : { width: sidebarWidth }}
+              aria-hidden={!showSidebar}
+            >
               {activeSessionId && teacherProfile ? (
                 <ChatSidebar
                   sessionId={activeSessionId}
@@ -587,9 +576,6 @@ export default function TeacherDashboard() {
           onUnreadCountChange={setClassChatUnread}
         />
       )}
-      {!isMobile && !showSidebar && chatNudge > 0 && (
-        <ClassChatNudge key={chatNudge} showAt="md" onOpen={() => { setShowSidebar(true); setChatNudge(0) }} onDone={() => setChatNudge(0)} />
-      )}
     </AppBackground>
   )
 }
@@ -612,6 +598,7 @@ function TeacherMobileNavigation({
   onOpenChat,
   onOpenFeedback,
   onLogout,
+  onSessionChange,
 }: {
   currentSession: { id: string; name: string } | null
   teacherName?: string
@@ -623,9 +610,11 @@ function TeacherMobileNavigation({
   onOpenChat: () => void
   onOpenFeedback: () => void
   onLogout: () => void
+  onSessionChange: (session: { id: string; name: string; className: string; joinCode?: string }) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
   const isHome = currentPath === '/teacher' || currentPath === '/teacher/'
 
   useEffect(() => setOpen(false), [currentPath])
@@ -638,8 +627,9 @@ function TeacherMobileNavigation({
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <div className="relative flex h-12 items-center gap-2">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        {/* One flex row, nothing absolutely positioned: menu · session (takes the free space) · tools · user */}
+        <div className="flex h-12 items-center gap-1">
           <button type="button" onClick={() => setOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700" aria-label={tl("Apri menu")}>
             <Menu className="h-6 w-6" strokeWidth={2.5} />
           </button>
@@ -649,20 +639,49 @@ function TeacherMobileNavigation({
               {isHome ? 'Home' : items.find(item => currentPath.startsWith(item.path) && item.path !== '/teacher')?.label || 'Workspace'}
             </span>
           </button>
-          {currentSession && (
-            <button type="button" onClick={() => onNavigate(`/teacher/sessions/${currentSession.id}`)} className="absolute left-1/2 flex h-10 max-w-[8.5rem] -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200" title={currentSession.name}>
-              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
-              <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
+          <div className="min-w-0 flex-1 sm:flex-none">
+            {currentSession ? (
+              <button type="button" onClick={() => onNavigate(`/teacher/sessions/${currentSession.id}`)} className="flex h-10 max-w-full items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200 sm:max-w-[14rem]" title={currentSession.name}>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
+                <span className="min-w-0"><span className="block text-[8px] font-black uppercase leading-none tracking-wider text-emerald-600">Live</span><span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{currentSession.name}</span></span>
+              </button>
+            ) : (
+              // No session yet: the slot opens the list of available sessions right away.
+              <button type="button" onClick={() => setSessionsOpen(true)} className="flex h-10 max-w-full items-center gap-2 rounded-full bg-slate-100 px-3 text-left text-slate-600 ring-1 ring-slate-200 sm:max-w-[14rem]" aria-haspopup="dialog" aria-label={tl("Scegli una sessione")}>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-slate-300" />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-bold">{tl("Scegli sessione")}</span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              </button>
+            )}
+          </div>
+          <div className="ml-auto flex shrink-0 items-center">
+            <BackgroundJobsIndicator accentColor={accentColor} />
+            <NavbarMusicButton sessionId={currentSession?.id} />
+            <NavbarCalendarClock compact sessionId={currentSession?.id} accentColor={accentColor} />
+            <button type="button" onClick={onOpenChat} className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
+              <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
+              <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>
+              {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
             </button>
-          )}
-          <div className="ml-auto flex items-center gap-1"><BackgroundJobsIndicator accentColor={accentColor} /><NavbarMusicButton sessionId={currentSession?.id} /></div>
-          <button type="button" onClick={onOpenChat} className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
-            <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
-            <span className="relative -translate-y-px">{teacherName?.split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase() || 'D'}</span>
-            {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black text-white ring-2 ring-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-          </button>
+          </div>
         </div>
       </header>
+
+      <MobileSessionsSheet
+        open={sessionsOpen}
+        currentSessionId={currentSession?.id}
+        onClose={() => setSessionsOpen(false)}
+        onSelect={(session) => {
+          onSessionChange({ id: session.id, name: session.name, className: session.className, joinCode: session.joinCode })
+          setSessionsOpen(false)
+          onNavigate(`/teacher/sessions/${session.id}`)
+        }}
+        onManage={(session) => {
+          setSessionsOpen(false)
+          onNavigate(`/teacher/sessions/${session.id}`)
+        }}
+        onCreate={() => { setSessionsOpen(false); onNavigate('/teacher/sessions') }}
+      />
 
       {open && (
         <div className="fixed inset-0 z-[80]">
