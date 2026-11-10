@@ -20,7 +20,7 @@ export interface ChatMessage {
   is_private?: boolean
   target_id?: string
   is_notification?: boolean
-  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published' | 'task_feedback' | 'task_correction' | 'board_shared' | 'calendar_reminder'
+  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published' | 'task_feedback' | 'task_correction' | 'board_shared' | 'calendar_reminder' | 'voice_call_started'
   notification_data?: Record<string, unknown>
   reply_to_id?: string
   reply_preview?: string

@@ -1,5 +1,5 @@
 import socketio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import json
 
@@ -212,6 +212,8 @@ def _voice_public_state(session_id: str) -> dict:
         "call_id": session_id.split(":", 1)[1] if is_call else None,
         "active": bool(state.get("active")),
         "teacher_id": state.get("teacher_id"),
+        "spotlight": state.get("spotlight"),
+        "recording": state.get("recording"),
         "active_speaker_id": active_speaker_id,
         "active_speaker": {
             "student_id": active_speaker_id,
@@ -1178,8 +1180,14 @@ async def _mark_call_started(key: str) -> None:
         async with AsyncSessionLocal() as db:
             call = await db.get(VoiceCall, _uuid.UUID(key.split(":", 1)[1]))
             if call:
-                call.last_started_at = datetime.now(timezone.utc)
+                now = datetime.now(timezone.utc)
+                # Restarting within a few minutes (dropped connection, misclick) does not re-announce.
+                announce = not call.last_started_at or now - call.last_started_at > timedelta(minutes=10)
+                call.last_started_at = now
                 await db.commit()
+                if announce:
+                    from app.services.voice_calls import announce_started
+                    await announce_started(db, call)
     except Exception as exc:  # pragma: no cover - bookkeeping only
         print(f"[Gateway] could not mark call started: {exc}")
 
@@ -1217,6 +1225,25 @@ async def voice_room_end(sid, data):
         "queue": [],
         "ended_at": datetime.now(timezone.utc).isoformat(),
     }
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
+
+
+@sio.event
+async def voice_set_spotlight(sid, data):
+    """A moderator puts one tile (participant identity + track source) at the centre for everyone; null clears it."""
+    key, _user, error = await _voice_target(sid, data, moderator=True)
+    if error:
+        return error
+    state = voice_rooms.get(key)
+    if not state or not state.get("active"):
+        return {"error": "Voice room is not active"}
+    identity = (data or {}).get("identity")
+    state["spotlight"] = {
+        "identity": str(identity)[:200],
+        "source": "screen" if (data or {}).get("source") == "screen" else "camera",
+        "name": str((data or {}).get("name") or "")[:120],
+    } if identity else None
     await _broadcast_voice_state(key)
     return {"success": True, **_voice_public_state(key)}
 

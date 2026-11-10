@@ -33,7 +33,7 @@ export function SessionCodePill({ code, className = '', size = 'md' }: { code: s
       onClick={copy}
       title={tl("Copia il codice sessione")}
       aria-label={tl("Copia il codice sessione {0}", code)}
-      className={`flex shrink-0 items-center rounded-full bg-[var(--ds-session-code-bg)] font-mono font-black text-[var(--ds-session-code-ink)] transition-[filter,transform] hover:brightness-95 active:scale-95 ${size === 'sm' ? 'h-6 gap-1 px-2 text-[11px] tracking-[0.12em]' : 'h-9 gap-1.5 px-3 text-[15px] tracking-[0.18em]'} ${className}`}
+      className={`flex shrink-0 items-center rounded-full border-[1.5px] border-[var(--ds-session-code-line)] bg-[var(--ds-session-code-bg)] font-mono font-black text-[var(--ds-session-code-ink)] transition-[filter,transform] hover:bg-yellow-400/10 active:scale-95 ${size === 'sm' ? 'h-6 gap-1 px-2 text-[11px] tracking-[0.12em]' : 'h-9 gap-1.5 px-3 text-[15px] tracking-[0.18em]'} ${className}`}
     >
       {code}
       {copied ? <Check className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} /> : <Copy className={`${size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} opacity-60`} />}

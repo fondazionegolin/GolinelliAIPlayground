@@ -32,8 +32,10 @@
   --ds-cal-gutter: #dfe3e9;
   --ds-cal-today: #e5484d;
   /* Session join code pill in the navbar: yellow with black ink in both themes. */
-  --ds-session-code-bg: #facc15;
-  --ds-session-code-ink: #111111; /* today's date badge: red circle, bold white digits (both themes) */
+  /* Session join code: yellow outline + bold yellow digits on a transparent tag (no fill: less distracting). */
+  --ds-session-code-bg: transparent;
+  --ds-session-code-line: #eab308;
+  --ds-session-code-ink: #b48a00; /* today's date badge: red circle, bold white digits (both themes) */
   --ds-cal-day: #ffffff;
   --ds-cal-day-muted: #f5f6f8;
   --ds-cal-hour-line: #eef0f3;
@@ -106,6 +108,8 @@
    feathered patches are *lighter* (the light theme's grey patches, reversed); surfaces step up
    in small luminance increments, lifted by wide soft black shadows and a faint top highlight. */
 .dark {
+  --ds-session-code-line: #facc15;
+  --ds-session-code-ink: #facc15;
   --ds-canvas: #141518;
   --ds-canvas-base: #141518;
   --ds-canvas-mesh: none;

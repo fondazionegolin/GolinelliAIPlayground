@@ -54,7 +54,7 @@ export function VoiceCallCodeTag({ code, size = 'sm' }: { code: string; size?: '
       }}
       title={tl("Copia il link di invito")}
       aria-label={tl("Copia il link di invito della videochiamata {0}", code)}
-      className={`flex shrink-0 items-center rounded-full bg-[var(--ds-session-code-bg)] font-mono font-black text-[var(--ds-session-code-ink)] transition-[filter,transform] hover:brightness-95 active:scale-95 ${size === 'sm' ? 'h-6 gap-1 px-2 text-[11px] tracking-[0.08em]' : 'h-9 gap-1.5 px-3 text-[15px] tracking-[0.12em]'}`}
+      className={`flex shrink-0 items-center rounded-full border-[1.5px] border-[var(--ds-session-code-line)] bg-[var(--ds-session-code-bg)] font-mono font-black text-[var(--ds-session-code-ink)] transition-[filter,transform] hover:bg-yellow-400/10 active:scale-95 ${size === 'sm' ? 'h-6 gap-1 px-2 text-[11px] tracking-[0.08em]' : 'h-9 gap-1.5 px-3 text-[15px] tracking-[0.12em]'}`}
     >
       {code}
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3 opacity-60" />}

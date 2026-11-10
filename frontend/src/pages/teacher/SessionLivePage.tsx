@@ -22,7 +22,7 @@ import {
   Bot, Brain, MessageSquare,
   ClipboardList, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
   MonitorPlay, ChevronRight, FileCode2, Code2, FileText, Filter, ArrowUpDown,
-  ListChecks, SquareKanban
+  ListChecks, SquareKanban, Video
 } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { llmApi } from '@/lib/api'
@@ -37,6 +37,7 @@ import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
 import { Switch } from '@/components/ui/switch'
 import { tl } from '@/i18n/tl'
+import { SessionCallsPanel } from '@/components/voice-calls/SessionCallsPanel'
 
 interface StudentData {
   id: string
@@ -89,12 +90,12 @@ export default function SessionLivePage() {
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
-    return tab === 'tasks' || tab === 'history' || tab === 'documents' ? tab : 'modules'
+    return tab === 'tasks' || tab === 'history' || tab === 'documents' || tab === 'calls' ? tab : 'modules'
   })
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'tasks' || tab === 'history' || tab === 'documents') setActiveTab(tab)
+    if (tab === 'tasks' || tab === 'history' || tab === 'documents' || tab === 'calls') setActiveTab(tab)
   }, [searchParams])
   const [showPedagogicalAnalysis, setShowPedagogicalAnalysis] = useState(false)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
@@ -395,7 +396,7 @@ export default function SessionLivePage() {
               <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-5">
                 {/* Same material as the navbar selector: cluster track + ds-selected active tab. */}
                 <TabsList
-                  className="grid h-auto w-full grid-cols-2 gap-1 !border-0 p-1 sm:grid-cols-4"
+                  className="grid h-auto w-full grid-cols-2 gap-1 !border-0 p-1 sm:grid-cols-5"
                   style={{
                     borderRadius: 'var(--selection-radius)',
                     backgroundColor: 'var(--ds-navbar-cluster)',
@@ -408,6 +409,7 @@ export default function SessionLivePage() {
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
                     { key: 'documents', icon: FileText, label: tl("Documenti") },
                     { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
+                    { key: 'calls', icon: Video, label: tl("Chiamate") },
                   ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
                     <TabsTrigger
                       key={tab.key}
@@ -596,6 +598,9 @@ export default function SessionLivePage() {
               {activeTab === 'documents' && (
                 <SessionDocumentsPanel documents={documentsData} />
               )}
+
+              {/* ── Chiamate: log delle videochiamate, registrazioni e strumenti AI ── */}
+              {activeTab === 'calls' && <SessionCallsPanel sessionId={sessionId!} />}
 
               {/* ── Storico ── */}
               {activeTab === 'history' && (

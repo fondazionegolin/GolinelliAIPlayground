@@ -794,6 +794,57 @@ export const voiceCallsApi = {
   regenerateCode: (id: string) => api.post<VoiceCall>(`/voice-calls/${id}/regenerate-code`),
   remove: (id: string) => api.delete(`/voice-calls/${id}`),
   token: (id: string) => api.post(`/voice-calls/${id}/token`),
+  // Recordings: per-speaker segments captured by the moderator's browser, processed after stop.
+  startRecording: (callId: string) =>
+    api.post<CallRecording>(`/voice-calls/${callId}/recordings`, { consent_confirmed: true }),
+  uploadSegment: (recordingId: string, blob: Blob, meta: { identity: string; name: string; offsetMs: number; durationMs: number }) => {
+    const form = new FormData()
+    form.append('file', blob, blob.type.includes('ogg') ? 'segment.ogg' : 'segment.webm')
+    form.append('identity', meta.identity)
+    form.append('name', meta.name)
+    form.append('offset_ms', String(Math.round(meta.offsetMs)))
+    form.append('duration_ms', String(Math.round(meta.durationMs)))
+    return api.post(`/voice-calls/recordings/${recordingId}/segments`, form, { timeout: 120_000 })
+  },
+  stopRecording: (recordingId: string) => api.post<CallRecording>(`/voice-calls/recordings/${recordingId}/stop`),
+  listRecordings: (sessionId: string) => api.get<CallRecording[]>('/voice-calls/recordings', { params: { session_id: sessionId } }),
+  getRecording: (recordingId: string) => api.get<CallRecording>(`/voice-calls/recordings/${recordingId}`),
+  runTool: (recordingId: string, data: { kind: CallToolKind; prompt?: string; add_to_knowledge?: boolean }) =>
+    api.post<CallAnalysis>(`/voice-calls/recordings/${recordingId}/tools`, data, { timeout: 180_000 }),
+  analysisToKnowledge: (analysisId: string) => api.post(`/voice-calls/recordings/analyses/${analysisId}/knowledge`),
+  deleteAnalysis: (analysisId: string) => api.delete(`/voice-calls/recordings/analyses/${analysisId}`),
+  deleteRecording: (recordingId: string) => api.delete(`/voice-calls/recordings/${recordingId}`),
+}
+
+export type CallToolKind = 'summary' | 'synthesis' | 'analysis' | 'questions' | 'custom'
+
+export interface CallAnalysis {
+  id: string
+  kind: CallToolKind
+  title: string
+  prompt: string | null
+  content: string
+  in_knowledge: boolean
+  created_at: string | null
+}
+
+export interface CallRecording {
+  id: string
+  call_id: string
+  call_title: string | null
+  call_code: string | null
+  session_id: string | null
+  title: string
+  status: 'recording' | 'processing' | 'ready' | 'failed'
+  started_at: string | null
+  ended_at: string | null
+  duration_seconds: number | null
+  participants: { identity: string; name: string; role: 'teacher' | 'student'; seconds: number; turns: number; words: number }[]
+  lines: number
+  in_knowledge: boolean
+  error_message: string | null
+  analyses?: CallAnalysis[]
+  transcript?: { speaker: string; identity: string; start: number; end: number; text: string }[]
 }
 
 /** Absolute invite link for a call code. */

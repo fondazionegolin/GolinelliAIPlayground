@@ -168,12 +168,7 @@ export function NavbarCalendarClock({
         </span>
         <div className="text-[13px] font-semibold leading-tight text-slate-700 tabular-nums">{hh}:{mm}</div>
         {unseen.length > 0 && (
-          <span
-            className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center gap-0.5 rounded-full px-1 text-[10px] font-bold text-white shadow-[var(--ds-shadow-1)]"
-            style={{ backgroundColor: accentColor }}
-          >
-            <Bell className="h-2.5 w-2.5" />{unseen.length > 9 ? '9+' : unseen.length}
-          </span>
+          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: accentColor }} aria-hidden="true" />
         )}
       </button>
 

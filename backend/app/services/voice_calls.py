@@ -195,3 +195,56 @@ def calls_for_session(session: Session):
         VoiceCall.class_id == session.class_id,
         VoiceCall.id.in_(targeted),
     )
+
+
+async def audience_sessions(db: AsyncSession, call: VoiceCall) -> list[Session]:
+    """Live sessions whose students are invited: the bound session, the bound class, linked-event targets."""
+    from app.models.enums import SessionStatus
+    _, targets = await linked_events_audience(db, call.id)
+    session_ids = set(targets["session"]) | ({call.session_id} if call.session_id else set())
+    class_ids = set(targets["class"]) | ({call.class_id} if call.class_id else set())
+    clauses = []
+    if session_ids:
+        clauses.append(Session.id.in_(session_ids))
+    if class_ids:
+        clauses.append(Session.class_id.in_(class_ids) & (Session.status != SessionStatus.ENDED))
+    if not clauses:
+        return []
+    return list((await db.execute(
+        select(Session).where(or_(*clauses)).where(Session.deleted_at.is_(None))
+    )).scalars().all())
+
+
+async def announce_started(db: AsyncSession, call: VoiceCall) -> None:
+    """Post a clickable «videochiamata iniziata» notification in the class chat of every invited session."""
+    from app.models.chat import ChatMessage
+    from app.models.enums import SenderType
+    from app.realtime.gateway import sio
+    from app.services.calendar_reminders import _public_room
+
+    sessions = await audience_sessions(db, call)
+    if not sessions:
+        return
+    text = f"🎥 Videochiamata iniziata: {call.title}"
+    data = {"voice_call_code": call.code, "voice_call_id": str(call.id), "title": call.title}
+    posted = []
+    for session in sessions:
+        room = await _public_room(db, session)
+        message = ChatMessage(
+            tenant_id=session.tenant_id, session_id=session.id, room_id=room.id,
+            sender_type=SenderType.TEACHER, sender_teacher_id=call.owner_teacher_id, message_text=text,
+            attachments={"is_notification": True, "notification_type": "voice_call_started", "notification_data": data},
+        )
+        db.add(message)
+        posted.append((session, message))
+    await db.commit()
+    for session, message in posted:
+        await sio.emit("chat_message", {
+            "room_type": "PUBLIC",
+            "session_id": str(session.id),
+            "message": {
+                "id": str(message.id), "sender_type": "TEACHER", "sender_id": "system", "sender_name": "Videochiamata",
+                "text": text, "attachments": [], "created_at": datetime.now(timezone.utc).isoformat(),
+                "is_notification": True, "notification_type": "voice_call_started", "notification_data": data,
+            },
+        }, room=f"session:{session.id}")

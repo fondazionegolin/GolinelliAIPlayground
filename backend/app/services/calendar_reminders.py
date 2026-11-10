@@ -22,7 +22,8 @@ from app.core.database import AsyncSessionLocal
 from app.models.calendar import CalendarEvent, CalendarEventTarget
 from app.models.chat import ChatMessage, ChatRoom
 from app.models.enums import ChatRoomType, SenderType, SessionStatus
-from app.models.session import Session
+from app.models.invitation import ClassTeacher, SessionTeacher
+from app.models.session import Class, Session
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,20 @@ async def event_recipients(db: AsyncSession, event_id: uuid.UUID, owner_id: uuid
             .where(Session.status != SessionStatus.ENDED)
         )).scalars().all()
     unique = {session.id: session for session in sessions}
+    # Co-teachers of the targeted classes/sessions get the reminder (and live updates) like the owner.
+    all_class_ids = class_ids | {session.class_id for session in sessions}
+    direct_session_ids = session_ids | set(unique)
+    if all_class_ids:
+        teacher_ids += [str(tid) for tid in (await db.execute(
+            select(Class.teacher_id).where(Class.id.in_(all_class_ids))
+        )).scalars().all() if tid]
+        teacher_ids += [str(tid) for tid in (await db.execute(
+            select(ClassTeacher.teacher_id).where(ClassTeacher.class_id.in_(all_class_ids))
+        )).scalars().all()]
+    if direct_session_ids:
+        teacher_ids += [str(tid) for tid in (await db.execute(
+            select(SessionTeacher.teacher_id).where(SessionTeacher.session_id.in_(direct_session_ids))
+        )).scalars().all()]
     return list(dict.fromkeys(teacher_ids)), list(unique.values())
 
 

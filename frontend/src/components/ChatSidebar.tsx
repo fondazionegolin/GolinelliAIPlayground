@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, FolderOpen, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
+  File, Wand2, FolderOpen, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap, Video
 } from '@/components/icons'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -80,6 +80,8 @@ interface ChatSidebarProps {
    * mid-gesture; the committed value still arrives through `onWidthChange` on mouse up. */
   onResizePreview?: (width: number) => void
   initialWidth?: number
+  /** Embedded in another page (videoconference /call): no voice room, no resize grip, no header. */
+  embedded?: boolean
 }
 
 export default function ChatSidebar({
@@ -99,7 +101,8 @@ export default function ChatSidebar({
   onWidthChange,
   onResizingChange,
   onResizePreview,
-  initialWidth = 380
+  initialWidth = 380,
+  embedded = false,
 }: ChatSidebarProps) {
   const { t, i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
@@ -744,6 +747,38 @@ export default function ChatSidebar({
         )
       }
 
+      // Calendar reminders and «call started» notices: one click joins the video call when there is one.
+      if (msg.notification_type === 'calendar_reminder' || msg.notification_type === 'voice_call_started') {
+        const data = (typeof msg.notification_data === 'string' ? JSON.parse(msg.notification_data) : msg.notification_data) || {}
+        const callCode = typeof data.voice_call_code === 'string' ? data.voice_call_code : null
+        const started = msg.notification_type === 'voice_call_started'
+        const when = !started && data.starts_at ? new Date(String(data.starts_at)).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : null
+        return (
+          <div key={msg.id} className="ds-semantic-surface mx-2 rounded-xl bg-[rgba(123,105,201,0.065)] p-3">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white ${started ? 'bg-emerald-600' : 'bg-[#181b1e]'}`}>
+                {callCode ? <Video className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase text-neutral-900">
+                  {started ? tl("Videochiamata in corso") : when ? tl("Tra 10 minuti · ore {0}", when) : t('chat_sidebar.notification')}
+                </div>
+                <p className="truncate text-xs font-semibold text-slate-800">{String(data.title || content)}</p>
+              </div>
+            </div>
+            {callCode && (
+              <button
+                type="button"
+                onClick={() => window.open(`/call/${callCode}`, '_blank', 'noopener')}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[image:var(--selection-active-bg)] py-2 text-xs font-semibold text-[var(--selection-active-text)] transition-colors hover:bg-[image:var(--selection-active-bg-hover)]"
+              >
+                <Video className="h-3.5 w-3.5" />{tl("Entra in videochiamata")}
+              </button>
+            )}
+          </div>
+        )
+      }
+
       // Default notification rendering
       return (
         <div
@@ -1257,7 +1292,7 @@ export default function ChatSidebar({
     >
       {/* Resize handle — grip centrato verticalmente, non su tutta l'altezza */}
       <div
-        className={`${isMobileView ? 'hidden' : 'absolute'} group left-0 top-1/2 z-10 flex h-20 w-4 -translate-y-1/2 cursor-ew-resize items-center justify-center`}
+        className={`${isMobileView || embedded ? 'hidden' : 'absolute'} group left-0 top-1/2 z-10 flex h-20 w-4 -translate-y-1/2 cursor-ew-resize items-center justify-center`}
         onMouseDown={handleMouseDown}
         title={sidebarLabels.resize}
       >
@@ -1270,7 +1305,7 @@ export default function ChatSidebar({
       </div>
 
       {/* Header with connection status */}
-      <div className="flex items-center justify-between bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]">
+      <div className={`${embedded ? 'hidden' : 'flex'} items-center justify-between bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]`}>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
           <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
@@ -1365,13 +1400,17 @@ export default function ChatSidebar({
 
       {/* Tab content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <VoiceRoomPanel
-          sessionId={sessionId}
-          userType={userType}
-          currentUserId={currentUserId}
-          socket={socket}
-        />
-        <SessionVoiceCalls sessionId={sessionId} isTeacher={userType === 'teacher'} />
+        {!embedded && (
+          <>
+            <VoiceRoomPanel
+              sessionId={sessionId}
+              userType={userType}
+              currentUserId={currentUserId}
+              socket={socket}
+            />
+            <SessionVoiceCalls sessionId={sessionId} isTeacher={userType === 'teacher'} />
+          </>
+        )}
 
         {activeTab === 'session' && renderSessionChat()}
 

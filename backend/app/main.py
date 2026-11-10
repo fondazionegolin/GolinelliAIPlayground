@@ -107,11 +107,11 @@ uploads_dir.mkdir(exist_ok=True)
 
 
 class PublicUploads(StaticFiles):
-    """Chat uploads are public by URL; drive blobs share the volume but are served only via /api/v1/drive."""
+    """Chat uploads are public by URL; drive blobs and call recordings share the volume but are never served here."""
 
     async def get_response(self, path, scope):
         normalized = path.replace("\\", "/").lstrip("/")
-        if normalized == "drive" or normalized.startswith("drive/"):
+        if normalized.split("/", 1)[0] in ("drive", "call_recordings"):  # private: served only through the API
             from starlette.exceptions import HTTPException as StarletteHTTPException
             raise StarletteHTTPException(status_code=404)
         return await super().get_response(path, scope)

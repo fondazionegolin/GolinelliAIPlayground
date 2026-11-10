@@ -2,10 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { io, type Socket } from 'socket.io-client'
-import { ArrowLeft, Calendar, Loader2, LogIn, Plus, Users, Video } from '@/components/icons'
-import { Button, Card, Input } from '@/design'
+import { ArrowLeft, Loader2, LogIn, Plus, UserPlus, Video } from '@/components/icons'
+import { Button, Card, Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input } from '@/design'
 import { useToast } from '@/components/ui/use-toast'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
+import ChatSidebar from '@/components/ChatSidebar'
 import { CalendarEventDialog, type CalendarDraft } from '@/components/calendar/CalendarEventDialog'
 import { VoiceCallCodeTag, VoiceCallLinkCard, formatCallWhen, voiceCallsQueryKey } from '@/components/voice-calls/VoiceCallLinkCard'
 import { voiceCallsApi, type VoiceCall } from '@/lib/api'
@@ -25,8 +26,8 @@ function normalizeCode(raw: string): string | null {
 function useCallIdentity() {
   const { user, accessToken, studentSession } = useAuthStore()
   const studentToken = typeof window !== 'undefined' ? localStorage.getItem('student_token') : null
-  if (user && accessToken) return { kind: 'teacher' as const, token: accessToken, userId: user.id, home: '/teacher' }
-  if (studentSession && studentToken) return { kind: 'student' as const, token: studentToken, userId: studentSession.student_id, home: '/student' }
+  if (user && accessToken) return { kind: 'teacher' as const, token: accessToken, userId: user.id, name: tl("Docente"), sessionId: null, home: '/teacher' }
+  if (studentSession && studentToken) return { kind: 'student' as const, token: studentToken, userId: studentSession.student_id, name: studentSession.nickname, sessionId: studentSession.session_id, home: '/student' }
   return null
 }
 
@@ -168,6 +169,7 @@ function CallRoom({ code }: { code: string }) {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [join, setJoin] = useState<JoinState>({ status: 'connecting' })
   const [draft, setDraft] = useState<CalendarDraft | null>(null)
+  const [showInvite, setShowInvite] = useState(false)
 
   const { data: call, error, isLoading } = useQuery({
     queryKey: [...voiceCallsQueryKey, 'code', code],
@@ -261,83 +263,87 @@ function CallRoom({ code }: { code: string }) {
     )
   }
 
-  const audience = [call.session_label, call.class_label].filter(Boolean).join(' · ')
   const isModerator = join.status === 'joined' && join.role === 'moderator'
+  // Right column: the class chat of the call's session (students: always their own session's chat).
+  const chatSessionId = identity.kind === 'student' ? identity.sessionId : call.session_id
 
   return (
-    <PageShell
-      title={call.title}
-      subtitle={[audience, tl("organizzata da {0}", call.owner_name)].filter(Boolean).join(' · ')}
-      onBack={back}
-      right={<VoiceCallCodeTag code={call.code} size="md" />}
-    >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="grid min-w-0 content-start gap-3">
-          {join.status === 'connecting' && (
-            <Card className="flex items-center gap-2 p-4 text-sm text-[var(--text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />{tl("Connessione alla videochiamata…")}</Card>
-          )}
-          {(join.status === 'error' || join.status === 'closed') && (
-            <Card className="p-5">
-              <p className="text-sm font-semibold">{join.message}</p>
-              {join.status === 'closed' && <Button className="mt-3" tone="neutral" surface="soft" onClick={back}>{tl("Torna alla piattaforma")}</Button>}
-            </Card>
-          )}
-          {join.status === 'joined' && !join.active && (
-            <Card className="p-5">
-              <p className="text-sm font-bold">{isModerator ? tl("La videochiamata non è ancora avviata") : tl("In attesa che il docente avvii la videochiamata")}</p>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                {isModerator
-                  ? tl("Premi «Avvia» qui sotto: chi ha il link entra automaticamente. Gli studenti parlano quando dai loro la parola.")
-                  : call.next_event ? tl("Programmata per {0}. Resta su questa pagina: entri appena inizia.", formatCallWhen(call.next_event.starts_at)) : tl("Resta su questa pagina: entri appena inizia.")}
-              </p>
-            </Card>
-          )}
-          {join.status === 'joined' && socket && (
-            <VoiceRoomPanel
-              callId={call.id}
-              canModerate={isModerator}
-              variant="page"
+    <div className="flex h-[100dvh] flex-col gap-3 overflow-hidden bg-[var(--ds-canvas)] p-3 text-[var(--text-primary)]">
+      <header className="flex flex-shrink-0 items-center gap-3 px-1">
+        <Button type="button" tone="neutral" surface="ghost" density="icon" aria-label={tl("Indietro")} onClick={back}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="min-w-0 flex-1 truncate text-base font-bold">{call.title}</h1>
+        <VoiceCallCodeTag code={call.code} />
+        <Button type="button" tone="neutral" surface="soft" density="compact" onClick={() => setShowInvite(true)}>
+          <UserPlus className="mr-1.5 h-4 w-4" />{tl("Invita")}
+        </Button>
+      </header>
+
+      {join.status === 'joined' && socket ? (
+        <VoiceRoomPanel
+          callId={call.id}
+          canModerate={isModerator}
+          variant="page"
+          userType={identity.kind}
+          currentUserId={identity.userId}
+          socket={socket}
+          onLeave={back}
+          waitingHint={call.next_event ? tl("Programmata per {0}. Resta su questa pagina: entri appena inizia.", formatCallWhen(call.next_event.starts_at)) : undefined}
+          chatPanel={chatSessionId ? (
+            <ChatSidebar
+              key={chatSessionId}
+              sessionId={chatSessionId}
               userType={identity.kind}
               currentUserId={identity.userId}
-              socket={socket}
+              currentUserName={identity.name}
+              embedded
+              className="h-full w-full !bg-transparent !shadow-none"
             />
+          ) : undefined}
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded-3xl bg-slate-950 p-6 text-center text-white">
+          {join.status === 'connecting' ? (
+            <span className="flex items-center gap-2 text-sm text-white/70"><Loader2 className="h-4 w-4 animate-spin" />{tl("Connessione alla videochiamata…")}</span>
+          ) : (
+            <div className="grid gap-3">
+              <p className="text-sm font-semibold">{join.status === 'error' || join.status === 'closed' ? join.message : ''}</p>
+              <Button tone="neutral" surface="soft" onClick={back}>{tl("Torna alla piattaforma")}</Button>
+            </div>
           )}
-        </section>
+        </div>
+      )}
 
-        <aside className="grid content-start gap-3">
-          <Card className="grid gap-2 p-5 text-sm">
-            <div className="flex items-center gap-2 font-bold"><Users className="h-4 w-4 text-[var(--text-secondary)]" />{tl("Invitati")}</div>
-            <p className="text-xs text-[var(--text-secondary)]">
-              {audience || tl("Gli invitati degli eventi del calendario collegati")}
-              {call.is_owner && call.open_to_teachers ? ` · ${tl("anche altri docenti con il link")}` : ''}
-            </p>
-            {call.next_event && (
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><Calendar className="h-3.5 w-3.5" />{formatCallWhen(call.next_event.starts_at)} · {call.next_event.title}</p>
-            )}
-          </Card>
-          {call.is_owner && (
-            <Card className="p-5">
-              <div className="mb-3 text-sm font-bold">{tl("Link di invito")}</div>
-              <VoiceCallLinkCard
-                call={call}
-                hideJoin
-                onChanged={(next) => queryClient.setQueryData([...voiceCallsQueryKey, 'code', code], next)}
-                onDeleted={() => navigate('/call')}
-                onSchedule={(c) => {
-                  const start = new Date()
-                  start.setMinutes(0, 0, 0)
-                  start.setHours(start.getHours() + 1)
-                  setDraft({ start, end: new Date(start.getTime() + 60 * 60 * 1000), allDay: false, title: c.title, voiceCall: c })
-                }}
-              />
-            </Card>
-          )}
-        </aside>
-      </div>
+      <Dialog open={showInvite} onOpenChange={setShowInvite}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl">{tl("Invita alla videochiamata")}</DialogTitle>
+            <DialogDescription>
+              {[call.session_label || call.class_label, call.next_event ? formatCallWhen(call.next_event.starts_at) : null].filter(Boolean).join(' · ') || tl("Condividi il link o il codice.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <VoiceCallLinkCard
+              call={call}
+              hideJoin
+              onChanged={(next) => queryClient.setQueryData([...voiceCallsQueryKey, 'code', code], next)}
+              onDeleted={() => navigate('/call')}
+              onSchedule={call.is_owner ? (c) => {
+                const start = new Date()
+                start.setMinutes(0, 0, 0)
+                start.setHours(start.getHours() + 1)
+                setShowInvite(false)
+                setDraft({ start, end: new Date(start.getTime() + 60 * 60 * 1000), allDay: false, title: c.title, voiceCall: c })
+              } : undefined}
+            />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
       {call.is_owner && (
         <CalendarEventDialog open={!!draft} onOpenChange={(open) => { if (!open) setDraft(null) }} draft={draft} canCreate defaultSessionId={call.session_id ?? undefined} />
       )}
-    </PageShell>
+    </div>
   )
 }
 

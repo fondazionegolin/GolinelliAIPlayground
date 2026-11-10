@@ -30,7 +30,7 @@ from app.models.notebook_version import NotebookVersion
 from app.models.notebook_assignment import NotebookAssignment, NotebookFork
 from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import CalendarEvent, CalendarEventTarget, SessionCalendarEvent
-from app.models.voice_call import VoiceCall
+from app.models.voice_call import VoiceCall, VoiceCallAnalysis, VoiceCallRecording, VoiceCallRecordingSegment
 from app.models.changelog import PlatformChangelogRelease
 from app.models.live_interaction import LiveEscapeParticipant, LiveInteraction, LiveInteractionResponse
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
@@ -120,6 +120,9 @@ __all__ = [
     "SessionCalendarEvent",
     "CalendarEvent",
     "VoiceCall",
+    "VoiceCallRecording",
+    "VoiceCallRecordingSegment",
+    "VoiceCallAnalysis",
     "CalendarEventTarget",
     "PlatformChangelogRelease",
     "LiveInteraction",

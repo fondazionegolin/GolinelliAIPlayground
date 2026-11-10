@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import {
   Hand,
@@ -15,10 +15,17 @@ import {
   Volume2,
   VolumeX,
   X,
+  LogOut,
+  MessageSquare,
+  Users,
+  Pin,
+  PinOff,
+  Sparkles,
 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { voiceApi, voiceCallsApi } from '@/lib/api'
+import { CallRecorder } from '@/lib/callRecorder'
 import { tl } from '@/i18n/tl'
 
 type VoiceQueueItem = {
@@ -37,6 +44,10 @@ type VoiceRoomState = {
   active_speaker_ids?: string[]
   active_speakers?: VoiceQueueItem[]
   queue: VoiceQueueItem[]
+  /** Set while the call is being recorded (shown to everyone). */
+  recording?: { id: string; started_at: string } | null
+  /** Tile a moderator put in focus for everyone (LiveKit identity + track source). */
+  spotlight?: { identity: string; source: string; name?: string } | null
   updated_at?: string
 }
 
@@ -65,6 +76,12 @@ interface VoiceRoomPanelProps {
   canModerate?: boolean
   /** `page`: full-width videoconference layout used by /call/:code. */
   variant?: 'sidebar' | 'page'
+  /** Page variant: content of the «Chat» tab of the right column (e.g. the class chat). */
+  chatPanel?: ReactNode
+  /** Page variant: shown in the stage while the call has not started yet. */
+  waitingHint?: string
+  /** Page variant: «Esci» button. */
+  onLeave?: () => void
   userType: 'teacher' | 'student'
   currentUserId: string
   socket: Socket | null
@@ -109,7 +126,7 @@ function StreamVideo({ stream, className = 'h-full w-full object-cover', muted =
   return <video ref={videoRef} className={className} />
 }
 
-export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 'sidebar', userType, currentUserId, socket }: VoiceRoomPanelProps) {
+export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 'sidebar', chatPanel, waitingHint, onLeave, userType, currentUserId, socket }: VoiceRoomPanelProps) {
   const [voiceState, setVoiceState] = useState<VoiceRoomState | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
@@ -126,6 +143,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null)
   const [videoQuality, setVideoQuality] = useState<'low' | 'hi'>('hi')
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null)
+  const [sideTab, setSideTab] = useState<'chat' | 'people'>(chatPanel ? 'chat' : 'people')
+  const [sideOpen, setSideOpen] = useState(true)
+  /** Tile pinned by this viewer (`identity|source`): wins over the moderator's spotlight and the auto focus. */
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -136,6 +157,11 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const joiningRef = useRef(false)
   const publishingChangeRef = useRef<Promise<void> | null>(null)
   const remoteLevelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Recording (invite-link calls, moderators): remote audio tracks by key, and this browser's recorder if it captures.
+  const remoteAudioRef = useRef(new Map<string, { identity: string; name: string; track: MediaStreamTrack }>())
+  const recorderRef = useRef<{ id: string; recorder: CallRecorder } | null>(null)
+  const [recordingBusy, setRecordingBusy] = useState(false)
+  const [recordingClock, setRecordingClock] = useState(0)
   // WebAudio analyser for real-time local mic level (avoids LiveKit threshold issues)
   const levelMonitorRef = useRef<{ stop: () => void } | null>(null)
 
@@ -249,6 +275,26 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   }
 
   const readParticipantName = (participant: any) => participant?.name || participant?.identity || tl("Partecipante")
+
+  /** Align the recorder with the audio tracks present now (own mic + every remote participant). */
+  const syncRecorderTracks = useCallback(() => {
+    const capture = recorderRef.current?.recorder
+    if (!capture?.active) return
+    const wanted = new Map(remoteAudioRef.current)
+    const room = roomRef.current
+    const localTrack: MediaStreamTrack | undefined = localTrackRef.current?.mediaStreamTrack
+    if (room && localTrack) {
+      wanted.set(`local:${localTrack.id}`, {
+        identity: String(room.localParticipant?.identity || 'local'),
+        name: String(room.localParticipant?.name || room.localParticipant?.identity || tl("Docente")),
+        track: localTrack,
+      })
+    }
+    for (const [key, item] of wanted) capture.addTrack(key, item.identity, item.name, item.track)
+    for (const key of capture.trackKeys()) {
+      if (!wanted.has(key)) capture.removeTrack(key)
+    }
+  }, [])
 
   const getCameraOptions = useCallback(() => {
     if (videoQuality === 'low') {
@@ -515,6 +561,14 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
 
       room.on(RoomEvent.TrackSubscribed, (track: any, publication: any, participant: any) => {
         if (track.kind === Track.Kind.Audio) {
+        if (track.mediaStreamTrack) {
+          remoteAudioRef.current.set(`remote:${publication?.trackSid || track.sid}`, {
+            identity: String(participant?.identity || 'remote'),
+            name: readParticipantName(participant),
+            track: track.mediaStreamTrack,
+          })
+          syncRecorderTracks()
+        }
         const element = track.attach()
         element.autoplay = true
         element.playsInline = true
@@ -549,6 +603,10 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
       })
 
       room.on(RoomEvent.TrackUnsubscribed, (track: any, publication: any) => {
+        if (track.kind === Track.Kind.Audio) {
+          remoteAudioRef.current.delete(`remote:${publication?.trackSid || track.sid}`)
+          syncRecorderTracks()
+        }
         if (track.kind === Track.Kind.Video) {
           const sid = publication?.trackSid || track.sid
           setMediaTiles((prev) => prev.filter((tile) => tile.id !== sid))
@@ -657,6 +715,78 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     void disconnectRoom()
   }, [disconnectRoom])
 
+  // ── Recording (invite-link calls) ─────────────────────────────────────────
+  const recordingState = currentVoiceState.recording ?? null
+  const capturingHere = !!recorderRef.current && recordingState?.id === recorderRef.current.id
+
+  const stopRecording = useCallback(async () => {
+    const current = recorderRef.current
+    if (!current) return
+    setRecordingBusy(true)
+    recorderRef.current = null
+    try {
+      await current.recorder.stop()
+      await voiceCallsApi.stopRecording(current.id)
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || tl("Impossibile chiudere la registrazione"))
+    } finally {
+      setRecordingBusy(false)
+    }
+  }, [])
+
+  const startRecording = useCallback(async () => {
+    if (!callId || recorderRef.current) return
+    if (!CallRecorder.supported()) {
+      setError(tl("Questo browser non supporta la registrazione audio"))
+      return
+    }
+    const consent = window.confirm(tl(
+      "Avviare la registrazione?\n\nTutti i partecipanti vedranno l'indicatore REC. Conferma di averli informati e di rispettare le regole della scuola sulla registrazione (anche per gli studenti minorenni). Audio e trascrizione restano privati ai docenti della sessione."
+    ))
+    if (!consent) return
+    setRecordingBusy(true)
+    try {
+      const { data } = await voiceCallsApi.startRecording(callId)
+      const recorder = new CallRecorder((blob, meta) => voiceCallsApi.uploadSegment(data.id, blob, meta).then(() => undefined))
+      recorder.onError = (message) => setError(message)
+      recorder.start(data.started_at ? Date.parse(data.started_at) : Date.now())
+      recorderRef.current = { id: data.id, recorder }
+      syncRecorderTracks()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || tl("Impossibile avviare la registrazione"))
+    } finally {
+      setRecordingBusy(false)
+    }
+  }, [callId, syncRecorderTracks])
+
+  // Own mic published/muted: keep the recorder on the current track.
+  useEffect(() => { syncRecorderTracks() }, [isPublishing, isConnected, syncRecorderTracks])
+
+  // Call ended for everyone, or another moderator stopped the recording: close the capture here.
+  useEffect(() => {
+    if (recorderRef.current && (!isActive || recordingState?.id !== recorderRef.current.id)) void stopRecording()
+  }, [isActive, recordingState?.id, stopRecording])
+
+  useEffect(() => {
+    if (!recordingState?.started_at) { setRecordingClock(0); return }
+    const started = Date.parse(recordingState.started_at)
+    const tick = () => setRecordingClock(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+    tick()
+    const timer = setInterval(tick, 1000)
+    return () => clearInterval(timer)
+  }, [recordingState?.started_at])
+
+  useEffect(() => {
+    if (!capturingHere) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [capturingHere])
+
+  useEffect(() => () => { void recorderRef.current?.recorder.stop() }, [])
+
+  const recordingLabel = `${Math.floor(recordingClock / 60).toString().padStart(2, '0')}:${(recordingClock % 60).toString().padStart(2, '0')}`
+
   const emitVoice = (event: string, payload: Record<string, unknown> = {}) => {
     if (!socket) return
     socket.emit(event, { ...roomPayload, ...payload }, (response: { error?: string }) => {
@@ -675,6 +805,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
   const callTiles = [
     ...(localScreenStream ? [{
       id: 'local-screen',
+      participantIdentity: String(roomRef.current?.localParticipant?.identity || 'local'),
       participantName: tl("Il tuo schermo"),
       source: 'screen' as const,
       stream: localScreenStream,
@@ -682,6 +813,7 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     }] : []),
     ...(localCameraStream ? [{
       id: 'local-camera',
+      participantIdentity: String(roomRef.current?.localParticipant?.identity || 'local'),
       participantName: tl("La tua camera"),
       source: 'camera' as const,
       stream: localCameraStream,
@@ -689,7 +821,23 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     }] : []),
     ...mediaTiles,
   ]
-  const selectedTile = callTiles.find((tile) => tile.id === selectedTileId) ?? callTiles[0] ?? null
+  // Focus: what this viewer pinned › what a moderator put in evidence for everyone › a tile clicked in the
+  // sidebar › automatically, whoever shares a screen (then any remote camera).
+  const tileKey = (tile: { participantIdentity: string; source: string }) => `${tile.participantIdentity}|${tile.source}`
+  const spotlight = currentVoiceState.spotlight ?? null
+  const spotlightKey = spotlight ? `${spotlight.identity}|${spotlight.source}` : null
+  const autoTile = callTiles.find((tile) => tile.source === 'screen' && !tile.local)
+    ?? callTiles.find((tile) => tile.source === 'screen')
+    ?? callTiles.find((tile) => !tile.local)
+    ?? callTiles[0]
+  const selectedTile = (pinnedKey ? callTiles.find((tile) => tileKey(tile) === pinnedKey) : undefined)
+    ?? (spotlightKey ? callTiles.find((tile) => tileKey(tile) === spotlightKey) : undefined)
+    ?? callTiles.find((tile) => tile.id === selectedTileId)
+    ?? autoTile
+    ?? null
+  const focusReason: 'pinned' | 'spotlight' | 'auto' = selectedTile && pinnedKey === tileKey(selectedTile)
+    ? 'pinned'
+    : selectedTile && spotlightKey === tileKey(selectedTile) ? 'spotlight' : 'auto'
   const thumbnailTiles = selectedTile
     ? callTiles.filter((tile) => tile.id !== selectedTile.id)
     : callTiles
@@ -812,8 +960,235 @@ export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 
     return isTeacher || activeSpeakerIds.length === 0 ? tl("In ascolto.") : tl("Stai ascoltando la classe.")
   })()
 
+  if (isPage) {
+    const queued = voiceParticipants.filter((participant) => participant.queued)
+    const controlButton = (active: boolean, danger = false) =>
+      `flex h-12 min-w-12 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition-colors disabled:opacity-40 ${
+        danger ? 'bg-red-600 text-white hover:bg-red-700' : active ? 'bg-white text-slate-900 hover:bg-white/90' : 'bg-white/10 text-white hover:bg-white/20'
+      }`
+    const participantLabel = (participant: typeof voiceParticipants[number]) =>
+      participant.role === 'teacher' && participant.id === 'teacher' ? tl("Docente") : participant.name
+
+    return (
+      <div className="flex min-h-0 flex-1 gap-3">
+        <div ref={audioSinkRef} className="hidden" />
+
+        {/* Stage + controls */}
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-slate-950 text-white">
+          {recordingState && (
+            <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold tracking-wide shadow-lg">
+              ● REC {recordingLabel} · {tl("La chiamata è registrata")}
+            </div>
+          )}
+          {(error || audioBlocked) && (
+            <div className="absolute inset-x-0 top-0 z-10 flex flex-col gap-1 p-3">
+              {error && <div className="rounded-xl bg-red-600/90 px-3 py-2 text-xs font-semibold">{error}</div>}
+              {audioBlocked && (
+                <button type="button" onClick={unlockRemoteAudio} className="flex items-center gap-2 rounded-xl bg-amber-500/90 px-3 py-2 text-left text-xs font-semibold text-slate-950">
+                  <VolumeX className="h-4 w-4" />{tl("Tocca qui per abilitare l'audio")}
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+            {!isActive ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+                <Video className="h-12 w-12 text-white/30" />
+                <p className="max-w-md text-lg font-semibold">
+                  {isModerator ? tl("La videochiamata non è ancora iniziata") : tl("In attesa che il docente avvii la videochiamata")}
+                </p>
+                {waitingHint && <p className="max-w-md text-sm text-white/60">{waitingHint}</p>}
+                {isModerator && (
+                  <button type="button" onClick={() => emitVoice('voice_room_start')} className="flex h-12 items-center gap-2 rounded-full bg-emerald-500 px-6 text-sm font-bold text-white hover:bg-emerald-600">
+                    <Phone className="h-4 w-4" />{tl("Avvia la videochiamata")}
+                  </button>
+                )}
+              </div>
+            ) : selectedTile ? (
+              <>
+                <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
+                  <StreamVideo stream={selectedTile.stream} muted={selectedTile.local} className="h-full w-full object-contain" />
+                  <div className="absolute left-3 top-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold">
+                      {selectedTile.participantName} · {selectedTile.source === 'screen' ? tl("Schermo") : 'Video'}
+                    </span>
+                    {focusReason === 'spotlight' && (
+                      <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-[11px] font-bold text-slate-950"><Sparkles className="h-3.5 w-3.5" />{tl("In evidenza per tutti")}</span>
+                    )}
+                    {focusReason === 'pinned' && (
+                      <span className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-950"><Pin className="h-3.5 w-3.5" />{tl("Fissato da te")}</span>
+                    )}
+                  </div>
+                  <div className="absolute right-3 top-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPinnedKey(focusReason === 'pinned' ? null : tileKey(selectedTile))}
+                      className="flex h-9 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-semibold hover:bg-black/80"
+                      title={focusReason === 'pinned' ? tl("Torna alla vista automatica") : tl("Tieni questa vista al centro solo per te")}
+                    >
+                      {focusReason === 'pinned' ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                      {focusReason === 'pinned' ? tl("Sblocca") : tl("Fissa")}
+                    </button>
+                    {isModerator && (
+                      <button
+                        type="button"
+                        onClick={() => emitVoice('voice_set_spotlight', focusReason === 'spotlight'
+                          ? { identity: null }
+                          : { identity: selectedTile.participantIdentity, source: selectedTile.source, name: selectedTile.participantName })}
+                        className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold ${focusReason === 'spotlight' ? 'bg-amber-400 text-slate-950 hover:bg-amber-300' : 'bg-black/60 hover:bg-black/80'}`}
+                        title={tl("Mostra questa vista al centro a tutti i partecipanti")}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {focusReason === 'spotlight' ? tl("Togli evidenza") : tl("Evidenzia per tutti")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {thumbnailTiles.length > 0 && (
+                  <div className="flex flex-shrink-0 gap-2 overflow-x-auto">
+                    {thumbnailTiles.map((tile) => (
+                      <button key={tile.id} type="button" onClick={() => setPinnedKey(tileKey(tile))} title={tl("Fissa al centro")} className="group relative aspect-video w-44 flex-shrink-0 overflow-hidden rounded-xl bg-black ring-1 ring-white/10 hover:ring-white/40">
+                        <StreamVideo stream={tile.stream} muted={tile.local} />
+                        <span className="absolute bottom-1.5 left-1.5 max-w-[80%] truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold">{tile.participantName}</span>
+                        {spotlightKey === tileKey(tile) && <Sparkles className="absolute right-1.5 top-1.5 h-4 w-4 text-amber-300" />}
+                        <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-xs font-semibold group-hover:flex"><Pin className="mr-1 h-4 w-4" />{tl("Fissa")}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="grid min-h-0 flex-1 auto-rows-fr gap-3 overflow-y-auto" style={{ gridTemplateColumns: `repeat(${Math.min(4, Math.max(1, Math.ceil(Math.sqrt(voiceParticipants.length || 1))))}, minmax(0, 1fr))` }}>
+                {voiceParticipants.map((participant) => {
+                  const live = participant.role === 'teacher' || participant.active
+                  return (
+                    <div key={participant.id} className={`flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl bg-white/5 ${participant.active ? 'ring-2 ring-emerald-400' : participant.queued ? 'ring-2 ring-amber-400' : ''}`}>
+                      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-2xl font-bold">
+                        {participantLabel(participant).slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="max-w-[90%] truncate text-sm font-semibold">{participantLabel(participant)}{participant.local ? ` (${tl("tu")})` : ''}</span>
+                      <span className="text-[11px] text-white/50">{participant.queued ? tl("Chiede la parola") : live ? (participant.role === 'teacher' ? tl("Docente") : tl("In parola")) : tl("In ascolto")}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Control bar */}
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 px-3 py-3">
+            {isActive && isConnected && isPublishing && (
+              <button type="button" onClick={() => void toggleMute()} className={controlButton(!isMuted)} title={isMuted ? tl("Attiva microfono") : tl("Silenzia microfono")} aria-pressed={!isMuted}>
+                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                {!isMuted && <VUMeter level={localAudioLevel} />}
+              </button>
+            )}
+            {isActive && !isTeacher && (
+              <button type="button" onClick={() => emitVoice(isSpeaker || isQueued ? 'voice_cancel_request' : 'voice_request_speak')} className={controlButton(isSpeaker || isQueued)}>
+                {isSpeaker || isQueued ? <X className="h-5 w-5" /> : <Hand className="h-5 w-5" />}
+                <span>{isSpeaker ? tl("Termina intervento") : isQueued ? tl("Annulla richiesta") : tl("Chiedi la parola")}</span>
+              </button>
+            )}
+            {isActive && canPublishMedia && (
+              <>
+                <button type="button" onClick={() => void toggleCamera()} disabled={!isConnected} className={controlButton(localCameraEnabled)} title={tl("Camera")} aria-pressed={localCameraEnabled}>
+                  {localCameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                </button>
+                <button type="button" onClick={() => void toggleScreenShare()} disabled={!isConnected} className={controlButton(screenShareEnabled)} title={tl("Condividi schermo")} aria-pressed={screenShareEnabled}>
+                  {screenShareEnabled ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
+                </button>
+                <button type="button" onClick={() => void updateVideoQuality(videoQuality === 'hi' ? 'low' : 'hi')} className={controlButton(false)} title={tl("Qualità video")}>
+                  <span className="text-xs font-bold">{videoQuality === 'hi' ? 'HD' : 'LOW'}</span>
+                </button>
+              </>
+            )}
+            {isActive && callTiles.length > 0 && (
+              <button type="button" onClick={openVideoCallWindow} className={controlButton(false)} title={tl("Apri in una finestra")}>
+                <PictureInPicture2 className="h-5 w-5" />
+              </button>
+            )}
+            {isActive && callId && isModerator && (
+              recordingState ? (
+                <button type="button" disabled={recordingBusy} onClick={() => {
+                  if (capturingHere) void stopRecording()
+                  else if (window.confirm(tl("Un altro docente sta registrando dal suo browser. Fermare la registrazione per tutti?"))) void voiceCallsApi.stopRecording(recordingState.id).catch(() => setError(tl("Impossibile fermare la registrazione")))
+                }} className={controlButton(false, true)} title={tl("Ferma la registrazione: trascrizione e riassunto partono subito")}>
+                  {recordingBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <span className="h-3 w-3 rounded-sm bg-white" />}
+                  <span>{tl("Stop")} {recordingLabel}</span>
+                </button>
+              ) : (
+                <button type="button" disabled={recordingBusy || !isConnected} onClick={() => void startRecording()} className={controlButton(false)} title={tl("Registra: trascrizione con i nomi dei partecipanti, riassunto e analisi finiscono nella knowledge di sessione")}>
+                  {recordingBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <span className="h-3 w-3 rounded-full bg-red-500" />}
+                  <span>{tl("Registra")}</span>
+                </button>
+              )
+            )}
+            <span className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
+            <button type="button" onClick={() => setSideOpen((open) => !open)} className={controlButton(sideOpen)} title={tl("Chat e partecipanti")} aria-pressed={sideOpen}>
+              <MessageSquare className="h-5 w-5" />
+              {queued.length > 0 && isModerator && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-950">{queued.length}</span>}
+            </button>
+            {isModerator && isActive && (
+              <button type="button" onClick={() => { if (window.confirm(tl("Terminare la videochiamata per tutti?"))) emitVoice('voice_room_end') }} className={controlButton(false, true)}>
+                <PhoneOff className="h-5 w-5" /><span>{tl("Termina per tutti")}</span>
+              </button>
+            )}
+            {onLeave && (
+              <button type="button" onClick={onLeave} className={controlButton(false, !isModerator || !isActive)} title={tl("Esci")}>
+                <LogOut className="h-5 w-5" /><span>{tl("Esci")}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right column: class chat / participants */}
+        {sideOpen && (
+          <aside className="flex w-full max-w-[380px] min-w-[300px] flex-col overflow-hidden rounded-3xl bg-[var(--ds-surface-raised)] shadow-[var(--shadow-sm)] max-lg:fixed max-lg:inset-y-3 max-lg:right-3 max-lg:z-40 max-lg:w-[calc(100%-1.5rem)]">
+            <div className="flex flex-shrink-0 items-center gap-1 p-2">
+              {chatPanel && (
+                <button type="button" onClick={() => setSideTab('chat')} aria-pressed={sideTab === 'chat'} className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-xs font-semibold ${sideTab === 'chat' ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)]'}`}>
+                  <MessageSquare className="h-4 w-4" />{tl("Chat di classe")}
+                </button>
+              )}
+              <button type="button" onClick={() => setSideTab('people')} aria-pressed={sideTab === 'people' || !chatPanel} className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-xs font-semibold ${sideTab === 'people' || !chatPanel ? 'ds-selected' : 'text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)]'}`}>
+                <Users className="h-4 w-4" />{tl("Partecipanti")} · {voiceParticipants.length}
+              </button>
+              <button type="button" onClick={() => setSideOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--ds-surface-muted)] lg:hidden" aria-label={tl("Chiudi")}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {chatPanel && (
+              <div className={`min-h-0 flex-1 ${sideTab === 'chat' ? 'flex flex-col' : 'hidden'}`}>{chatPanel}</div>
+            )}
+            {(sideTab === 'people' || !chatPanel) && (
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
+                {voiceParticipants.length === 0 && <p className="px-2 py-4 text-center text-xs text-[var(--text-secondary)]">{tl("Nessun partecipante connesso")}</p>}
+                {voiceParticipants.map((participant) => (
+                  <div key={participant.id} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-[var(--ds-surface-muted)]">
+                    <span className={`h-2 w-2 flex-shrink-0 rounded-full ${participant.role === 'teacher' || participant.active ? 'bg-emerald-500' : participant.queued ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{participantLabel(participant)}{participant.local ? ` (${tl("tu")})` : ''}</span>
+                    {isModerator && participant.role === 'student' && participant.queued && (
+                      <button type="button" onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })} className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-200">{tl("Dai parola")}</button>
+                    )}
+                    {isModerator && participant.role === 'student' && participant.active && (
+                      <button type="button" onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })} className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-200">{tl("Togli parola")}</button>
+                    )}
+                    {!(isModerator && participant.role === 'student' && (participant.queued || participant.active)) && (
+                      <span className="text-[11px] text-[var(--text-secondary)]">{participant.role === 'teacher' ? tl("Docente") : participant.active ? tl("In parola") : participant.queued ? tl("Chiede la parola") : tl("In ascolto")}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className={isPage ? 'ds-semantic-info overflow-hidden rounded-3xl' : 'ds-semantic-info mx-3 mt-3 overflow-hidden rounded-2xl'}>
+    <div className="ds-semantic-info mx-3 mt-3 overflow-hidden rounded-2xl">
       <div ref={audioSinkRef} className="hidden" />
 
       {/* Header row */}

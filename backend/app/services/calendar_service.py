@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.permissions import teacher_can_access_class, teacher_can_access_session
 from app.models.calendar import CalendarEvent, CalendarEventTarget, SessionCalendarEvent
 from app.models.enums import UserRole
-from app.models.invitation import ClassTeacher
+from app.models.invitation import ClassTeacher, SessionTeacher
 from app.models.session import Class, Session
 from app.models.user import User
 
@@ -287,10 +287,30 @@ async def _regenerate(db, teacher, event, data, rule, scope) -> list[CalendarEve
 
 # ── Visibility / busy times ───────────────────────────────────────────────────
 
+def teacher_class_ids(teacher_id):
+    """Classes a teacher owns or co-teaches (subquery)."""
+    return select(Class.id).where(or_(
+        Class.teacher_id == teacher_id,
+        Class.id.in_(select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher_id)),
+    ))
+
+
+def teacher_session_ids(teacher_id):
+    """Sessions of those classes plus sessions the teacher was invited to directly (subquery)."""
+    return select(Session.id).where(or_(
+        Session.class_id.in_(teacher_class_ids(teacher_id)),
+        Session.id.in_(select(SessionTeacher.session_id).where(SessionTeacher.teacher_id == teacher_id)),
+    ))
+
+
 def teacher_visibility(teacher: User):
-    invited = select(CalendarEventTarget.event_id).where(
-        CalendarEventTarget.target_type == "teacher", CalendarEventTarget.target_id == teacher.id,
-    )
+    """Own events, events naming the teacher, and events shared with a class/session the teacher (co-)teaches:
+    a co-teacher sees what a colleague planned for their shared class, like the students do."""
+    invited = select(CalendarEventTarget.event_id).where(or_(
+        and_(CalendarEventTarget.target_type == "teacher", CalendarEventTarget.target_id == teacher.id),
+        and_(CalendarEventTarget.target_type == "class", CalendarEventTarget.target_id.in_(teacher_class_ids(teacher.id))),
+        and_(CalendarEventTarget.target_type == "session", CalendarEventTarget.target_id.in_(teacher_session_ids(teacher.id))),
+    ))
     return or_(CalendarEvent.owner_teacher_id == teacher.id, CalendarEvent.id.in_(invited))
 
 
