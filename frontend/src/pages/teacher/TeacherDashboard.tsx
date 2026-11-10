@@ -249,7 +249,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/ai-3d', label: tl("AI 3D"), icon: MushroomIcon },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
-    ...(authStore.user?.role === 'ADMIN' ? [{ path: '/teacher/agentic', label: 'Agentic · Beta', icon: GitBranch }] : []),
+    { path: '/teacher/agentic', label: tl("Dataflow Studio"), icon: GitBranch },
     { path: '/teacher/smart-canvas', label: tl("Canvas intelligente"), icon: CanvasEaselIcon },
   ]
 
@@ -478,9 +478,9 @@ export default function TeacherDashboard() {
               <Route path="visual-comprehension" element={authStore.user?.role === 'ADMIN' ? <VisualComprehensionPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
               <Route path="video-studio" element={<VideoStudioLibraryPage />} />
               <Route path="video-studio/:projectId" element={<VideoStudioEditorPage />} />
-              <Route path="agentic" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowLibraryPage /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
-              <Route path="agentic/new" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
-              <Route path="agentic/:workflowId" element={authStore.user?.role === 'ADMIN' ? <AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} /> : <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{tl("Area riservata agli amministratori.")}</div>} />
+              <Route path="agentic" element={<AgenticWorkflowLibraryPage />} />
+              <Route path="agentic/new" element={<AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="agentic/:workflowId" element={<AgenticWorkflowStudioPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="coding" element={
                 activeSessionId ? (
                   <div className="h-full min-h-0 overflow-hidden">

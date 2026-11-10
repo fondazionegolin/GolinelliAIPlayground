@@ -7,6 +7,7 @@ import logging
 import math
 import random
 import time
+from contextvars import ContextVar
 from io import StringIO
 from datetime import datetime, timezone
 from typing import Any
@@ -531,7 +532,64 @@ async def _ai_add_column(inputs: dict[str, Any], config: dict[str, Any], provide
     return output, provider, model, prompt_tokens, completion_tokens
 
 
+# Who pays for AI tokens when the actor is not a teacher (a student chatting with a published dataflow bot).
+billing_user: ContextVar[User | None] = ContextVar("dataflow_billing_user", default=None)
+
+
+class CreditsExhausted(ValueError):
+    """The teacher's (or school's) credit cap is reached: the run stops before the next AI call."""
+
+
+async def _credits_available(db: AsyncSession, actor: User) -> bool:
+    from app.services.credit_service import credit_service
+    if not actor.tenant_id:
+        return True
+    return await credit_service.check_availability(db, actor.tenant_id, teacher_id=actor.id)
+
+
+async def _charge_llm_usage(db: AsyncSession, actor: User, node_type: str, provider: str | None, model: str | None,
+                            prompt_tokens: int, completion_tokens: int) -> None:
+    """Bill the AI tokens a node used to the teacher's credits (same accounting as the rest of the platform)."""
+    from app.services.credit_service import credit_service
+    from app.services.environmental_impact import enrich_usage_with_environmental_impact
+    if not actor.tenant_id or not provider or not model or (prompt_tokens + completion_tokens) <= 0:
+        return
+    try:
+        cost = credit_service.calculate_cost_for_model(provider, model, prompt_tokens, completion_tokens, 0)
+        usage = enrich_usage_with_environmental_impact(
+            {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+             "total_tokens": prompt_tokens + completion_tokens, "image_count": 0, "type": f"dataflow:{node_type}"},
+            provider=provider, model=model,
+        )
+        await credit_service.track_usage(db, actor.tenant_id, provider, model, cost, usage, actor.id)
+    except Exception:  # tracking must never break a run
+        logger.exception("dataflow usage tracking failed (%s)", node_type)
+
+
 async def _execute(
+    node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
+    db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
+) -> tuple[dict[str, Any], str | None, str | None, int, int]:
+    """Run one node and charge its AI tokens to the actor's credits.
+
+    Credits are checked before the first node of a run and again after every node that spent tokens, so a run
+    (or a long loop) stops cleanly once the cap is reached instead of spending past it.
+    """
+    payer = actor if isinstance(actor, User) else billing_user.get()
+    billed = db is not None and payer is not None
+    if billed and state.get("_credits_check", True):
+        if not await _credits_available(db, payer):
+            raise CreditsExhausted("Crediti esauriti: il workflow si è fermato prima della prossima chiamata AI. Chiedi una ricarica all'amministratore.")
+        state["_credits_check"] = False
+    result = await _execute_node(node_type, inputs, config, state, db=db, actor=actor, instance_id=instance_id)
+    _output, provider, model, prompt_tokens, completion_tokens = result
+    if billed and (prompt_tokens or completion_tokens):
+        await _charge_llm_usage(db, payer, node_type, provider, model, int(prompt_tokens or 0), int(completion_tokens or 0))
+        state["_credits_check"] = True
+    return result
+
+
+async def _execute_node(
     node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
     db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
@@ -555,7 +613,10 @@ async def _execute(
         dataset_id = str(config.get("dataset_id") or "").strip()
         if not dataset_id:
             raise ValueError("Seleziona un dataset dalla libreria")
-        result = await db.execute(select(AgenticDataset).where(AgenticDataset.id == dataset_id))
+        query = select(AgenticDataset).where(AgenticDataset.id == dataset_id)
+        if actor is not None and getattr(actor, "tenant_id", None):
+            query = query.where(AgenticDataset.tenant_id == actor.tenant_id)  # the library is per school
+        result = await db.execute(query)
         dataset = result.scalar_one_or_none()
         if not dataset:
             raise ValueError("Il dataset selezionato non è più disponibile")

@@ -11,14 +11,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import StudentOrTeacher, get_current_admin, get_student_or_teacher
+from app.api.deps import StudentOrTeacher, get_current_teacher, get_student_or_teacher
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.agentic import AgenticAssistantConversation, AgenticDataset, AgenticNodeRun, AgenticWorkflow, AgenticWorkflowRun
 from app.models.session import Session
 from app.models.user import User
 from app.services import agentic_assistant, agentic_assistant_agents
 from app.services import model_selection
-from app.services.agentic_runtime import NODE_REGISTRY, advance_conversation, configured_models, execute_node_isolated, execute_run, validate_graph
+from app.services.agentic_runtime import NODE_REGISTRY, advance_conversation, billing_user, configured_models, execute_node_isolated, execute_run, validate_graph
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -112,10 +112,10 @@ def _node_run_payload(node_run: AgenticNodeRun) -> dict[str, Any]:
     }
 
 
-async def _owned_workflow(db: AsyncSession, workflow_id: UUID, admin: User) -> AgenticWorkflow:
+async def _owned_workflow(db: AsyncSession, workflow_id: UUID, teacher: User) -> AgenticWorkflow:
     result = await db.execute(select(AgenticWorkflow).where(
         AgenticWorkflow.id == workflow_id,
-        AgenticWorkflow.created_by_user_id == admin.id,
+        AgenticWorkflow.created_by_user_id == teacher.id,
     ))
     workflow = result.scalar_one_or_none()
     if not workflow:
@@ -123,11 +123,11 @@ async def _owned_workflow(db: AsyncSession, workflow_id: UUID, admin: User) -> A
     return workflow
 
 
-async def _owned_run(db: AsyncSession, run_id: UUID, admin: User) -> tuple[AgenticWorkflowRun, AgenticWorkflow]:
+async def _owned_run(db: AsyncSession, run_id: UUID, teacher: User) -> tuple[AgenticWorkflowRun, AgenticWorkflow]:
     result = await db.execute(
         select(AgenticWorkflowRun, AgenticWorkflow)
         .join(AgenticWorkflow, AgenticWorkflow.id == AgenticWorkflowRun.workflow_id)
-        .where(AgenticWorkflowRun.id == run_id, AgenticWorkflow.created_by_user_id == admin.id)
+        .where(AgenticWorkflowRun.id == run_id, AgenticWorkflow.created_by_user_id == teacher.id)
     )
     row = result.first()
     if not row:
@@ -208,13 +208,19 @@ async def _resume_chat_run(db: AsyncSession, run: AgenticWorkflowRun, workflow: 
             "running": "Il flusso sta ancora elaborando il passo precedente: attendi o premi Stop",
         }.get(run.status, "La conversazione non attende una risposta")
         raise HTTPException(status_code=409, detail=reason)
-    await advance_conversation(db, workflow, run, actor, user_input=content)
+    # Students chatting with a published dataflow bot: the AI tokens are billed to the workflow's owner.
+    owner = actor if isinstance(actor, User) else await db.get(User, workflow.created_by_user_id)
+    token = billing_user.set(owner)
+    try:
+        await advance_conversation(db, workflow, run, actor, user_input=content)
+    finally:
+        billing_user.reset(token)
     return await _run_payload(db, run)
 
 
 @router.get("/registry")
-async def get_registry(admin: Annotated[User, Depends(get_current_admin)]):
-    del admin
+async def get_registry(teacher: Annotated[User, Depends(get_current_teacher)]):
+    del teacher
     await model_selection.refresh_cache()  # the editor shows the admin's latest Agentic list, not the 30 s cache
     models = configured_models()
     return {
@@ -257,10 +263,10 @@ def _conversation_payload(item: AgenticAssistantConversation, with_messages: boo
     return payload
 
 
-async def _owned_conversation(db: AsyncSession, conversation_id: UUID, admin: User) -> AgenticAssistantConversation:
+async def _owned_conversation(db: AsyncSession, conversation_id: UUID, teacher: User) -> AgenticAssistantConversation:
     result = await db.execute(select(AgenticAssistantConversation).where(
         AgenticAssistantConversation.id == conversation_id,
-        AgenticAssistantConversation.created_by_user_id == admin.id,
+        AgenticAssistantConversation.created_by_user_id == teacher.id,
     ))
     item = result.scalar_one_or_none()
     if not item:
@@ -270,11 +276,11 @@ async def _owned_conversation(db: AsyncSession, conversation_id: UUID, admin: Us
 
 @router.get("/assistant/conversations")
 async def list_assistant_conversations(
-    admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)], db: Annotated[AsyncSession, Depends(get_db)],
     workflow_id: UUID | None = None,
 ):
     """Saved assistant chats of the user, newest first; `workflow_id` narrows them to one workflow."""
-    query = select(AgenticAssistantConversation).where(AgenticAssistantConversation.created_by_user_id == admin.id)
+    query = select(AgenticAssistantConversation).where(AgenticAssistantConversation.created_by_user_id == teacher.id)
     if workflow_id:
         query = query.where(AgenticAssistantConversation.workflow_id == workflow_id)
     result = await db.execute(query.order_by(AgenticAssistantConversation.updated_at.desc()).limit(50))
@@ -283,12 +289,12 @@ async def list_assistant_conversations(
 
 @router.post("/assistant/conversations", status_code=status.HTTP_201_CREATED)
 async def create_assistant_conversation(
-    request: ConversationCreate, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    request: ConversationCreate, teacher: Annotated[User, Depends(get_current_teacher)], db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if request.workflow_id:
-        await _owned_workflow(db, request.workflow_id, admin)
+        await _owned_workflow(db, request.workflow_id, teacher)
     item = AgenticAssistantConversation(
-        created_by_user_id=admin.id, workflow_id=request.workflow_id,
+        created_by_user_id=teacher.id, workflow_id=request.workflow_id,
         title=request.title.strip() or "Nuova conversazione", messages=request.messages,
     )
     db.add(item)
@@ -299,21 +305,21 @@ async def create_assistant_conversation(
 
 @router.get("/assistant/conversations/{conversation_id}")
 async def get_assistant_conversation(
-    conversation_id: UUID, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    conversation_id: UUID, teacher: Annotated[User, Depends(get_current_teacher)], db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return _conversation_payload(await _owned_conversation(db, conversation_id, admin))
+    return _conversation_payload(await _owned_conversation(db, conversation_id, teacher))
 
 
 @router.put("/assistant/conversations/{conversation_id}")
 async def update_assistant_conversation(
     conversation_id: UUID, request: ConversationUpdate,
-    admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)], db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    item = await _owned_conversation(db, conversation_id, admin)
+    item = await _owned_conversation(db, conversation_id, teacher)
     if request.title is not None:
         item.title = request.title.strip() or item.title
     if request.workflow_id is not None:
-        await _owned_workflow(db, request.workflow_id, admin)
+        await _owned_workflow(db, request.workflow_id, teacher)
         item.workflow_id = request.workflow_id
     if request.messages is not None:
         item.messages = request.messages
@@ -324,16 +330,16 @@ async def update_assistant_conversation(
 
 @router.delete("/assistant/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_assistant_conversation(
-    conversation_id: UUID, admin: Annotated[User, Depends(get_current_admin)], db: Annotated[AsyncSession, Depends(get_db)],
+    conversation_id: UUID, teacher: Annotated[User, Depends(get_current_teacher)], db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    item = await _owned_conversation(db, conversation_id, admin)
+    item = await _owned_conversation(db, conversation_id, teacher)
     await db.delete(item)
     await db.commit()
 
 
 @router.get("/assistant/catalog")
-async def assistant_catalog(admin: Annotated[User, Depends(get_current_admin)]):
-    del admin
+async def assistant_catalog(teacher: Annotated[User, Depends(get_current_teacher)]):
+    del teacher
     return {**agentic_assistant.catalog_for_llm(), "text": agentic_assistant.catalog_text()}
 
 
@@ -341,11 +347,11 @@ async def assistant_catalog(admin: Annotated[User, Depends(get_current_admin)]):
 async def assistant_intake(
     request: AssistantIntake,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """«Ho capito bene?»: the assistant restates the intention, lists its assumptions and may ask up to 3 questions."""
     try:
-        return await agentic_assistant_agents.run_intake(db, admin, request.intent, request.answers)
+        return await agentic_assistant_agents.run_intake(db, teacher, request.intent, request.answers)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -353,12 +359,12 @@ async def assistant_intake(
         raise HTTPException(status_code=502, detail="L'assistente non riesce a rispondere in questo momento: riprova.") from exc
 
 
-def _assistant_stream(admin: User, run: Any, failure: str) -> StreamingResponse:
+def _assistant_stream(teacher: User, run: Any, failure: str) -> StreamingResponse:
     """SSE wrapper for the long model calls: ``status`` / ``ping`` while it works, then one ``result`` or ``error``.
 
     ``run(session, actor, report)`` returns the result dict; it gets its own session because the stream outlives the request's.
     """
-    actor = SimpleNamespace(id=admin.id, tenant_id=admin.tenant_id)
+    actor = SimpleNamespace(id=teacher.id, tenant_id=teacher.tenant_id)
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     async def report(message: str) -> None:
@@ -397,7 +403,7 @@ def _assistant_stream(admin: User, run: Any, failure: str) -> StreamingResponse:
 
 
 @router.post("/assistant/plan")
-async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(get_current_admin)]):
+async def assistant_plan(request: AssistantPlan, teacher: Annotated[User, Depends(get_current_teacher)]):
     """The architect designs (or, with ``previous_blueprint`` + ``feedback``, revises) the workflow. SSE: status / ping / result / error."""
     async def run(session: AsyncSession, actor: Any, report: Any) -> dict[str, Any]:
         return await agentic_assistant_agents.run_architect(
@@ -405,11 +411,11 @@ async def assistant_plan(request: AssistantPlan, admin: Annotated[User, Depends(
             allow_destructive=request.allow_destructive, on_status=report,
             previous_blueprint=request.previous_blueprint, feedback=request.feedback,
         )
-    return _assistant_stream(admin, run, "L'assistente non è riuscito a progettare il workflow: riprova.")
+    return _assistant_stream(teacher, run, "L'assistente non è riuscito a progettare il workflow: riprova.")
 
 
 @router.post("/assistant/edit")
-async def assistant_edit(request: AssistantEdit, admin: Annotated[User, Depends(get_current_admin)]):
+async def assistant_edit(request: AssistantEdit, teacher: Annotated[User, Depends(get_current_teacher)]):
     """Edit the workflow already on the canvas. SSE result: ``graph``, canvas ``ops`` (diff), human ``summary``, ``issues``, ``explanation``."""
     try:
         validate_graph(request.graph)
@@ -421,13 +427,13 @@ async def assistant_edit(request: AssistantEdit, admin: Annotated[User, Depends(
             session, actor, request.graph, request.instruction, request.selected, request.history,
             allow_destructive=request.allow_destructive, on_status=report,
         )
-    return _assistant_stream(admin, run, "L'assistente non è riuscito a preparare la modifica: riprova.")
+    return _assistant_stream(teacher, run, "L'assistente non è riuscito a preparare la modifica: riprova.")
 
 
 @router.post("/assistant/compile")
-async def assistant_compile(request: AssistantCompile, admin: Annotated[User, Depends(get_current_admin)]):
+async def assistant_compile(request: AssistantCompile, teacher: Annotated[User, Depends(get_current_teacher)]):
     """Blueprint → graph, canvas operations, cost estimate and static review. Pure: nothing is saved or executed."""
-    del admin
+    del teacher
     try:
         return agentic_assistant.compile_blueprint(request.blueprint, allow_destructive=request.allow_destructive)
     except ValueError as exc:
@@ -435,18 +441,18 @@ async def assistant_compile(request: AssistantCompile, admin: Annotated[User, De
 
 
 @router.post("/assistant/lint")
-async def assistant_lint(request: AssistantLint, admin: Annotated[User, Depends(get_current_admin)]):
-    del admin
+async def assistant_lint(request: AssistantLint, teacher: Annotated[User, Depends(get_current_teacher)]):
+    del teacher
     return {"issues": agentic_assistant.lint_graph(request.graph), "estimate": agentic_assistant.estimate_cost(request.graph)}
 
 
 @router.get("/datasets")
 async def list_datasets(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     result = await db.execute(select(AgenticDataset).where(
-        AgenticDataset.tenant_id == admin.tenant_id,
+        AgenticDataset.tenant_id == teacher.tenant_id,
     ).order_by(AgenticDataset.created_at.desc()).limit(100))
     return [_dataset_payload(item) for item in result.scalars().all()]
 
@@ -460,13 +466,13 @@ class DatasetCreate(BaseModel):
 async def create_dataset(
     request: DatasetCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     rows = request.table.get("rows")
     if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=422, detail="La tabella da salvare è vuota o non valida")
     dataset = AgenticDataset(
-        tenant_id=admin.tenant_id, created_by_user_id=admin.id, title=request.title.strip(),
+        tenant_id=teacher.tenant_id, created_by_user_id=teacher.id, title=request.title.strip(),
         source="upload", row_count=int(request.table.get("rowCount") or len(rows)), table_json=request.table,
     )
     db.add(dataset)
@@ -479,10 +485,10 @@ async def create_dataset(
 async def delete_dataset(
     dataset_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     result = await db.execute(select(AgenticDataset).where(
-        AgenticDataset.id == dataset_id, AgenticDataset.tenant_id == admin.tenant_id,
+        AgenticDataset.id == dataset_id, AgenticDataset.tenant_id == teacher.tenant_id,
     ))
     dataset = result.scalar_one_or_none()
     if not dataset:
@@ -494,9 +500,9 @@ async def delete_dataset(
 @router.post("/validate")
 async def validate_workflow(
     request: WorkflowWrite,
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    del admin
+    del teacher
     try:
         validate_graph(request.graph)
     except ValueError as exc:
@@ -508,10 +514,16 @@ async def validate_workflow(
 async def execute_single_node(
     request: NodeExecute,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     try:
-        return await execute_node_isolated(request.node, request.inputs, db=db, actor=admin, workflow_id=request.workflow_id)
+        if request.workflow_id:
+            try:
+                owned_id = UUID(str(request.workflow_id))
+            except ValueError:
+                raise HTTPException(status_code=422, detail="workflow_id non valido") from None
+            await _owned_workflow(db, owned_id, teacher)  # db.* nodes read/write that workflow's tables
+        return await execute_node_isolated(request.node, request.inputs, db=db, actor=teacher, workflow_id=request.workflow_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -519,10 +531,10 @@ async def execute_single_node(
 @router.get("/workflows")
 async def list_workflows(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     result = await db.execute(select(AgenticWorkflow).where(
-        AgenticWorkflow.created_by_user_id == admin.id,
+        AgenticWorkflow.created_by_user_id == teacher.id,
     ).order_by(AgenticWorkflow.updated_at.desc()))
     return [_workflow_payload(item) for item in result.scalars().all()]
 
@@ -531,14 +543,14 @@ async def list_workflows(
 async def create_workflow(
     request: WorkflowWrite,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     try:
         validate_graph(request.graph)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     workflow = AgenticWorkflow(
-        tenant_id=admin.tenant_id, created_by_user_id=admin.id,
+        tenant_id=teacher.tenant_id, created_by_user_id=teacher.id,
         title=request.title.strip(), graph_json=request.graph,
     )
     db.add(workflow)
@@ -551,9 +563,9 @@ async def create_workflow(
 async def get_workflow(
     workflow_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    return _workflow_payload(await _owned_workflow(db, workflow_id, admin))
+    return _workflow_payload(await _owned_workflow(db, workflow_id, teacher))
 
 
 @router.put("/workflows/{workflow_id}")
@@ -561,13 +573,13 @@ async def update_workflow(
     workflow_id: UUID,
     request: WorkflowWrite,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     try:
         validate_graph(request.graph)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    workflow = await _owned_workflow(db, workflow_id, admin)
+    workflow = await _owned_workflow(db, workflow_id, teacher)
     workflow.title = request.title.strip()
     workflow.graph_json = request.graph
     workflow.version += 1
@@ -580,9 +592,9 @@ async def update_workflow(
 async def delete_workflow(
     workflow_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    workflow = await _owned_workflow(db, workflow_id, admin)
+    workflow = await _owned_workflow(db, workflow_id, teacher)
     await db.delete(workflow)
     await db.commit()
 
@@ -592,13 +604,13 @@ async def create_run(
     workflow_id: UUID,
     request: RunCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    workflow = await _owned_workflow(db, workflow_id, admin)
+    workflow = await _owned_workflow(db, workflow_id, teacher)
     if request.session_id:
         result = await db.execute(select(Session).where(
             Session.id == request.session_id,
-            Session.tenant_id == admin.tenant_id,
+            Session.tenant_id == teacher.tenant_id,
             Session.deleted_at.is_(None),
         ))
         if not result.scalar_one_or_none():
@@ -606,8 +618,8 @@ async def create_run(
         if not _has_chatbot_nodes(workflow):
             raise HTTPException(status_code=422, detail="Il workflow non contiene nodi chatbot")
     run = AgenticWorkflowRun(
-        workflow_id=workflow.id, tenant_id=admin.tenant_id,
-        created_by_user_id=admin.id,
+        workflow_id=workflow.id, tenant_id=teacher.tenant_id,
+        created_by_user_id=teacher.id,
         input_json={**request.inputs, **({"_session_id": str(request.session_id)} if request.session_id else {})},
     )
     db.add(run)
@@ -616,12 +628,12 @@ async def create_run(
     if request.background:
         run.status = "running"
         await db.commit()
-        _spawn_run(workflow.id, run.id, admin.id)
+        _spawn_run(workflow.id, run.id, teacher.id)
         return await _run_payload(db, run)
     if _has_chatbot_nodes(workflow):
-        await advance_conversation(db, workflow, run, admin)
+        await advance_conversation(db, workflow, run, teacher)
     else:
-        await execute_run(db, workflow, run, admin)
+        await execute_run(db, workflow, run, teacher)
     return await _run_payload(db, run)
 
 
@@ -629,9 +641,9 @@ async def create_run(
 async def list_runs(
     workflow_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    workflow = await _owned_workflow(db, workflow_id, admin)
+    workflow = await _owned_workflow(db, workflow_id, teacher)
     result = await db.execute(select(AgenticWorkflowRun).where(
         AgenticWorkflowRun.workflow_id == workflow.id,
     ).order_by(AgenticWorkflowRun.created_at.desc()).limit(30))
@@ -642,9 +654,9 @@ async def list_runs(
 async def get_run(
     run_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    run, _ = await _owned_run(db, run_id, admin)
+    run, _ = await _owned_run(db, run_id, teacher)
     return await _run_payload(db, run)
 
 
@@ -652,9 +664,9 @@ async def get_run(
 async def stop_run(
     run_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    run, _ = await _owned_run(db, run_id, admin)
+    run, _ = await _owned_run(db, run_id, teacher)
     if run.status in {"running", "waiting"}:
         run.status = "cancelled"
         await db.commit()
@@ -667,17 +679,17 @@ async def provide_chat_input(
     run_id: UUID,
     request: ChatInput,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(get_current_admin)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    run, workflow = await _owned_run(db, run_id, admin)
+    run, workflow = await _owned_run(db, run_id, teacher)
     if request.background:
         if run.status != "waiting":
-            return await _resume_chat_run(db, run, workflow, request.content, admin)  # raises the 409 with the reason
+            return await _resume_chat_run(db, run, workflow, request.content, teacher)  # raises the 409 with the reason
         run.status = "running"
         await db.commit()
-        _spawn_run(workflow.id, run.id, admin.id, request.content)
+        _spawn_run(workflow.id, run.id, teacher.id, request.content)
         return await _run_payload(db, run)
-    return await _resume_chat_run(db, run, workflow, request.content, admin)
+    return await _resume_chat_run(db, run, workflow, request.content, teacher)
 
 
 @router.get("/sessions/{session_id}/chatbot")

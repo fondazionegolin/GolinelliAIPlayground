@@ -372,7 +372,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   })
 
   const betaItems = [
-    ...(isAdmin ? [{ path: '/teacher/agentic', details: tl("Costruisci flussi di lavoro AI a nodi: collega modelli, strumenti e condizioni, poi eseguili passo dopo passo."), label: 'Agentic β', description: t('navbar.desc_agentic'), icon: GitBranch, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } }] : []),
     ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', description: t('navbar.desc_backlog'), icon: ShieldCheck }] : []),
   ]
   // Classes row: the session being worked on first, then the other running sessions.
@@ -408,6 +407,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       { path: '/teacher/notebooks', details: tl("Quaderni di codice con Python, p5.js, micro:bit e altro: esegui il codice nel browser e chiedi aiuto al tutor AI mentre lavori."), label: t('navbar.nav_notebook'), description: t('navbar.desc_notebook'), icon: FileCode2, recents: { queryKey: ['notebooks'], limit: 3, fetch: navRecentFetchers.notebooks } },
       { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), description: t('navbar.desc_ml_lab'), icon: Brain, recents: { queryKey: ['ml-lab-projects'], limit: 3, fetch: navRecentFetchers.mlProjects } },
       { path: '/teacher/toy-lm', label: 'ToyGPT', description: t('navbar.desc_toygpt'), icon: Network, recents: { queryKey: ['toy-lm-jobs'], limit: 3, fetch: navRecentFetchers.toyModels } },
+      { path: '/teacher/agentic', label: tl("Dataflow Studio"), description: tl("Pipeline di dati, ML e chatbot a nodi"), details: tl("Costruisci flussi di lavoro AI a nodi: collega dati, modelli, strumenti e condizioni, poi eseguili passo dopo passo. I nodi AI usano i tuoi crediti."), icon: GitBranch, isNew: true, recents: { queryKey: ['workflows'], limit: 3, fetch: navRecentFetchers.workflows } },
     ] },
     { id: 'files', label: t('navbar.nav_files'), icon: FolderOpen, items: [
       { path: '/teacher/files', label: t('navbar.nav_files'), description: t('navbar.desc_files'), icon: FolderOpen, recents: { queryKey: ['drive-recent'], limit: 3, fetch: navRecentFetchers.files } },

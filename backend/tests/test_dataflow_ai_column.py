@@ -195,12 +195,12 @@ async def test_execution_api_exposes_ai_column_and_bar(monkeypatch):
     from fastapi import FastAPI
     from httpx import ASGITransport, AsyncClient
     from app.api.v1.endpoints import agentic
-    from app.api.deps import get_current_admin
+    from app.api.deps import get_current_teacher
     from app.core.database import get_db
 
     app = FastAPI()
     app.include_router(agentic.router, prefix="/agentic")
-    app.dependency_overrides[get_current_admin] = lambda: SimpleNamespace(id="test", tenant_id=None)
+    app.dependency_overrides[get_current_teacher] = lambda: SimpleNamespace(id="test", tenant_id=None)
     app.dependency_overrides[get_db] = lambda: None
     monkeypatch.setattr(runtime, "_pick_model", lambda *args: ("test", "m"))
 
