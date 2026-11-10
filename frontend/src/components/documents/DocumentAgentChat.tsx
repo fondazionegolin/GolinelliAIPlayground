@@ -35,8 +35,10 @@ type ChatMessage = {
   proposal?: Proposal
   beforePreview?: string
   status?: 'pending' | 'applied' | 'rejected'
-  /** Progress of the illustrations generated after a slide/presentation proposal was applied. */
+  /** Progress of the illustrations generated from this proposal's placeholders («Genera tutte»). */
   images?: { done: number; total: number; failed: number }
+  /** Image placeholders (with their prompt) this applied proposal put on the slides. */
+  placeholders?: string[]
   plan?: Plan
   planPrompt?: string
   planTarget?: DocumentAssistContext
@@ -65,6 +67,8 @@ type Props = {
   onPatchImage?: (blockId: string, url: string) => void
   /** Deck theme, so generated illustrations match the presentation's palette. */
   deckTheme?: DeckTheme | null
+  /** The live deck: «Genera tutte» only fills the placeholders that are still empty. */
+  currentSlides?: StudioSlide[]
   onClose: () => void
 }
 
@@ -122,7 +126,7 @@ const CURSOR_SUGGESTIONS: Array<[string, string]> = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, onClose }: Props) {
   const [input, setInput] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, input)
@@ -253,23 +257,32 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     }
   }
 
-  /** Applies a reviewed proposal; slide image slots it introduced are then illustrated in the background. */
+  /** Applies a reviewed proposal. Image slots it introduced stay as placeholders showing their prompt: the user
+   *  generates each one from the slide («Genera immagine»), or all of them from here. */
   const applyProposal = (message: ChatMessage) => {
     const proposal = message.proposal!
     onApply(proposal)
-    updateProposalStatus(message.id, 'applied')
-    const slots = onPatchImage ? pendingImageSlots(proposalSlides(proposal)) : []
-    if (!slots.length) return
+    const placeholders = pendingImageSlots(proposalSlides(proposal)).map((slot) => slot.blockId)
+    setMessages((current) => current.map((item) => item.id === message.id ? { ...item, status: 'applied', placeholders: placeholders.length ? placeholders : undefined } : item))
+  }
+
+  /** «Genera tutte»: fills the placeholders of this proposal that are still empty in the live deck. */
+  const generateAll = (message: ChatMessage) => {
+    if (!onPatchImage || !message.placeholders?.length) return
+    const wanted = new Set(message.placeholders)
+    const live = (currentSlides || proposalSlides(message.proposal!)).map((slide) => ({ ...slide, blocks: slide.blocks.filter((block) => wanted.has(block.id)) }))
+    const total = pendingImageSlots(live).length
+    if (!total) return
     const setProgress = (images: ChatMessage['images']) =>
       setMessages((current) => current.map((item) => item.id === message.id ? { ...item, images } : item))
     let failed = 0
-    setProgress({ done: 0, total: slots.length, failed: 0 })
+    setProgress({ done: 0, total, failed: 0 })
     void generateDeckImages(
-      proposalSlides(proposal),
+      live,
       { deckTitle: String(documentContext.title || ''), theme: deckTheme },
-      (slot, url) => onPatchImage!(slot.blockId, url),
-      (done, total) => setProgress({ done, total, failed }),
-    ).then((result) => { failed = result.failed; setProgress({ done: slots.length, total: slots.length, failed: result.failed }) })
+      (slot, url) => onPatchImage(slot.blockId, url),
+      (done) => setProgress({ done, total, failed }),
+    ).then((result) => { failed = result.failed; setProgress({ done: total, total, failed: result.failed }) })
   }
 
   /** Puts back the picture replaced by an automatic image edit. */
@@ -558,13 +571,20 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                     ) : (
                       <p className={`border-t border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide ${message.status === 'applied' ? 'text-emerald-700' : 'text-slate-400'}`}>{message.status === 'applied' ? tl("Modifica applicata") : tl("Proposta rifiutata")}</p>
                     )}
+                    {message.placeholders && !message.images && (
+                      <div className="flex items-center gap-2 border-t border-slate-200 bg-violet-50 px-3 py-2 text-[11px] text-violet-900">
+                        <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1">{tl("{0} segnaposto con il prompt: clicca «Genera immagine» sulla slide, o generale tutte ora.", message.placeholders.length)}</span>
+                        {onPatchImage && <button type="button" onClick={() => generateAll(message)} className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-700">{tl("Genera tutte")}</button>}
+                      </div>
+                    )}
                     {message.images && (
                       <p className="flex items-center gap-1.5 border-t border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600">
                         {message.images.done < message.images.total
                           ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600" />{tl("Genero le immagini {0}/{1}…", message.images.done, message.images.total)}</>
                           : <><ImageIcon className="h-3.5 w-3.5 text-emerald-600" />{message.images.failed
-                            ? tl("{0} immagini inserite, {1} non generate (resta il segnaposto)", message.images.total - message.images.failed, message.images.failed)
-                            : tl("{0} immagini inserite nelle slide", message.images.total)}</>}
+                            ? tl("{0} immagini generate e inserite, {1} non generate: sul segnaposto resta il prompt, riprova da lì", message.images.total - message.images.failed, message.images.failed)
+                            : tl("✓ {0} immagini generate e inserite nelle slide", message.images.total)}</>}
                       </p>
                     )}
                   </div>

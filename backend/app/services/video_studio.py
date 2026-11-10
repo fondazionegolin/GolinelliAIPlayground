@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from sqlalchemy import select
 
+from app.services.model_roles import openai_image_model
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.pricing import USD_TO_EUR
@@ -340,7 +341,7 @@ async def _gpt_image(prompt: str, size: str, refs: list[bytes], quality: Optiona
     client = llm_service.openai_client
     if client is None:
         raise RuntimeError("OPENAI_API_KEY non configurata")
-    model = settings.OPENAI_IMAGE_MODEL
+    model = openai_image_model()
     quality = quality or settings.VIDEO_STUDIO_IMAGE_QUALITY
     if refs:
         files = [(f"ref{i}.jpg", data, "image/jpeg") for i, data in enumerate(refs[:8])]
@@ -394,7 +395,7 @@ async def run_storyboard(project_id: uuid.UUID, only_shots: Optional[list[str]] 
             png = await _gpt_image(f"{prefix}. {kind_hint}. {ent['name']}: {ent['description']}. No text, no labels.", size, [], "low")
             key = f"{base}/sheet_{ent['id']}.jpg"
             await _put(key, _jpeg(png), "image/jpeg")
-            await _charge(project_id, "openai", settings.OPENAI_IMAGE_MODEL, IMAGE_COST_BY_QUALITY["low"], {"step": "sheet"})
+            await _charge(project_id, "openai", openai_image_model(), IMAGE_COST_BY_QUALITY["low"], {"step": "sheet"})
             ver = int(time.time())
 
             def apply(p, s, ent=ent, key=key, ver=ver):
@@ -434,7 +435,7 @@ async def run_storyboard(project_id: uuid.UUID, only_shots: Optional[list[str]] 
             png = await _gpt_image(prompt, size, refs)
             key = f"{base}/key_{sid}.jpg"
             await _put(key, _jpeg(png), "image/jpeg")
-            await _charge(project_id, "openai", settings.OPENAI_IMAGE_MODEL, unit, {"step": "keyframe"})
+            await _charge(project_id, "openai", openai_image_model(), unit, {"step": "keyframe"})
             prev_key = key
             ver = int(time.time())
 

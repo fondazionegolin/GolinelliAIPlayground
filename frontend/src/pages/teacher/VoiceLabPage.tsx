@@ -141,7 +141,7 @@ export default function VoiceLabPage() {
   const coverBusy = makeCover.isPending || uploadCover.isPending || removeCover.isPending
   const busy = generating || savePreview.isPending
   const ready = configured && !busy && !!quote.data && !quote.loading && !quote.error && (workspace === 'music'
-    ? !!musicPrompt.trim() && Number.isInteger(seconds) && seconds >= 3 && seconds <= 600
+    ? !!musicPrompt.trim() && Number.isInteger(seconds) && seconds >= (config.data?.music_model?.min_seconds ?? 3) && seconds <= (config.data?.music_model?.max_seconds ?? 600)
     : !!chosenVoice && !!activeModel && (source === 'text' ? !!text.trim() && text.length <= Math.min(activeModel.max_characters || 5000, 20000) : !!file && file.size <= 50 * 1024 * 1024))
 
   async function download(item: LabItem) {
@@ -205,7 +205,8 @@ export default function VoiceLabPage() {
             <MusicPromptEditor value={musicPrompt} onChange={setMusicPrompt} disabled={busy} />
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
               <Field label={tl('Titolo (facoltativo)')}><Input maxLength={200} value={musicTitle} onChange={e => setMusicTitle(e.target.value)} placeholder={tl('Nuovo brano')} /></Field>
-              <Field label={tl('Durata · secondi')}><Input type="number" min={3} max={600} value={Number.isFinite(seconds) ? seconds : ''} onChange={e => setSeconds(e.target.valueAsNumber)} title={tl('Da 3 a 600 secondi')} /></Field>
+              <Field label={tl('Durata · secondi')}><Input type="number" min={config.data?.music_model?.min_seconds ?? 3} max={config.data?.music_model?.max_seconds ?? 600} disabled={!!config.data?.music_model?.fixed_seconds} value={config.data?.music_model?.fixed_seconds ?? (Number.isFinite(seconds) ? seconds : '')} onChange={e => setSeconds(e.target.valueAsNumber)} title={tl('Da {0} a {1} secondi', config.data?.music_model?.min_seconds ?? 3, config.data?.music_model?.max_seconds ?? 600)} /></Field>
+              {config.data?.music_model && <p className="text-[11px] text-[var(--text-secondary)] sm:col-span-2">{tl('Modello: {0} · {1}', config.data.music_model.label, config.data.music_model.price_note)}{config.data.music_model.fixed_seconds ? ` · ${tl('durata fissa {0} s', config.data.music_model.fixed_seconds)}` : ''} · {tl('si sceglie in Admin → Modelli')}</p>}
             </div>
             <details className="text-sm"><summary className="cursor-pointer font-medium text-[var(--text-secondary)]">{tl('Opzioni')}</summary><div className="mt-3 space-y-3">
               <label className="flex items-center gap-2"><input className="voice-lab-check" type="checkbox" checked={instrumental} onChange={e => setInstrumental(e.target.checked)} />{tl('Solo strumentale')}</label>

@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(model_catalog.scan_loop()))
         from app.services import license as licensing
         tasks.append(asyncio.create_task(licensing.renew_loop()))
+        from app.services import calendar_reminders
+        tasks.append(asyncio.create_task(calendar_reminders.reminder_loop()))
     yield
     for task in tasks:
         task.cancel()

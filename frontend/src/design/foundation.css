@@ -28,6 +28,16 @@
   --ds-field-focus-ink: #616161;
   --ds-field-shadow: none;
   --ds-field-radius: 1.125rem;
+  /* Calendar grids: days are separate tiles on a darker gutter; today and "now" are marked. */
+  --ds-cal-gutter: #dfe3e9;
+  --ds-cal-today: #e5484d;
+  /* Session join code pill in the navbar: yellow with black ink in both themes. */
+  --ds-session-code-bg: #facc15;
+  --ds-session-code-ink: #111111; /* today's date badge: red circle, bold white digits (both themes) */
+  --ds-cal-day: #ffffff;
+  --ds-cal-day-muted: #f5f6f8;
+  --ds-cal-hour-line: #eef0f3;
+  --ds-cal-half-line: #f6f7f9;
   --ds-cluster: rgba(238, 242, 248, 0.94);
   --ds-cluster-bg:
     radial-gradient(ellipse at 24% 0%, rgba(255,255,255,0.40) 0%, transparent 58%),
@@ -114,6 +124,11 @@
   --ds-field-ink: #f2f2f2;
   --ds-field-placeholder: #bdbdbd;
   --ds-field-focus-ink: #c5c5c5;
+  --ds-cal-gutter: #0b0c0e;
+  --ds-cal-day: #22252a;
+  --ds-cal-day-muted: #1a1c20;
+  --ds-cal-hour-line: rgba(255, 255, 255, 0.07);
+  --ds-cal-half-line: rgba(255, 255, 255, 0.03);
   --ds-cluster: rgba(34, 36, 41, 0.96);
   --ds-cluster-bg: linear-gradient(#222429, #222429);
   --ds-navbar-cluster: rgba(32, 34, 38, 0.98);

@@ -7,8 +7,14 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { PodcastPanel } from '@/components/chat/PodcastPanel'
 import { TeachingProtocolPanel } from '@/components/chat/TeachingProtocolPanel'
 import { isProtocolRequest, protocolApi, type ProtocolMessage, type ProtocolState } from '@/lib/teachingProtocol'
+import { CalendarAgentCard } from '@/components/calendar/CalendarAgentCard'
+import { calendarApi, type CalendarAgentState } from '@/lib/api'
+import { openCalendarAt } from '@/components/calendar/calendarUtils'
+import { publishRealtimeEvent } from '@/lib/realtimeEvents'
 import { isPodcastRequest, podcastApi, type PodcastState, type PodcastMessage } from '@/lib/podcasts'
 import { isDeepResearchRequest } from '@/lib/research'
+import { extractHtmlPage, requestsCodeOnly } from '@/lib/supportChatArtifacts'
+import { consumeSupportChatStream as consumeSseStream } from '@/lib/supportChatStream'
 import { mediaKind } from '@/lib/media'
 import { attachmentsFromContentJson } from '@/lib/chatAttachments'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
@@ -156,6 +162,7 @@ interface Message {
   attachments?: MessageAttachment[]
   podcast?: PodcastState
   protocol?: ProtocolState
+  calendar?: CalendarAgentState
   timestamp: Date
   provider?: string
   model?: string
@@ -356,68 +363,6 @@ function normalizeOcrOverlayLines(rawLines: Array<Record<string, unknown>> | nul
   })
 }
 
-async function consumeSseStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  onEvent: (data: any) => void
-) {
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
-
-    let normalized = buffer.replace(/\r\n/g, '\n')
-    let boundaryIndex = normalized.indexOf('\n\n')
-
-    while (boundaryIndex !== -1) {
-      const rawEvent = normalized.slice(0, boundaryIndex)
-      buffer = normalized.slice(boundaryIndex + 2)
-
-      const payload = rawEvent
-        .split('\n')
-        .filter((line) => line.startsWith('data: '))
-        .map((line) => line.slice(6))
-        .join('\n')
-        .trim()
-
-      if (payload) {
-        let parsed: any = null
-        try {
-          parsed = JSON.parse(payload)
-        } catch {
-          // Ignore malformed partial events
-        }
-        if (parsed) onEvent(parsed)
-      }
-
-      normalized = buffer.replace(/\r\n/g, '\n')
-      boundaryIndex = normalized.indexOf('\n\n')
-    }
-
-    if (done) {
-      const trailing = buffer.replace(/\r\n/g, '\n').trim()
-      if (trailing.startsWith('data: ')) {
-        const payload = trailing
-          .split('\n')
-          .filter((line) => line.startsWith('data: '))
-          .map((line) => line.slice(6))
-          .join('\n')
-          .trim()
-        if (payload) {
-          let parsed: any = null
-          try {
-            parsed = JSON.parse(payload)
-          } catch {
-            // Ignore malformed trailing events
-          }
-          if (parsed) onEvent(parsed)
-        }
-      }
-      break
-    }
-  }
-}
 
 function parseDispensaMetaPayload(raw: string): DispensaMetaPayload | null {
   const parsed = parseJsonBlockLoose<Partial<DispensaMetaPayload>>(raw, 'dispensa_meta')
@@ -501,6 +446,12 @@ const REPORT_TYPE_OPTIONS = [
 ] as const
 
 
+
+/** Explicit calendar wording: skips the router so the calendar agent answers immediately. */
+function isCalendarRequest(text: string) {
+  return /\b(?:in|nel|sul|al|dal|dentro il)\s+(?:mio\s+)?(?:calendario|agenda)\b/i.test(text)
+    || /\b(?:calendarizza\w*|ripianifica\w*)\b/i.test(text)
+}
 
 function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dockArmed = false }: { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }) {
   const { t } = useTranslation()
@@ -1035,6 +986,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
             token_usage_json: m.token_usage_json,
             podcast: m.podcast,
             protocol: m.protocol,
+            calendar: m.calendar || undefined,
             attachments: attachmentsFromContentJson(m.attachments_json),
           }))
           const localMessageCount = cachedMessages?.length || 0
@@ -1072,8 +1024,12 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
               setActiveDoc(serverDoc)
               setShowCanvas(true)
             } else if (!localDoc) {
-              setActiveDoc(null)
-              setShowCanvas(false)
+              const candidate = [...serverMessages].reverse().find((message: Message) => message.role === 'assistant' && extractHtmlPage(message.content))
+              const precedingUser = candidate ? serverMessages.slice(0, serverMessages.indexOf(candidate)).reverse().find((message: Message) => message.role === 'user') : null
+              if (!candidate || !openResponseArtifact(candidate.content, currentConversationId, precedingUser?.content || '')) {
+                setActiveDoc(null)
+                setShowCanvas(false)
+              }
             }
           }
         }
@@ -1106,6 +1062,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           token_usage_json: m.token_usage_json,
           podcast: m.podcast,
           protocol: m.protocol,
+          calendar: m.calendar || undefined,
           attachments: attachmentsFromContentJson(m.attachments_json),
         }))
         setMessages(prev => [...older, ...prev])
@@ -1702,7 +1659,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     }
 
     // Helper: stream a prompt and return the full content
-    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6', maxTokens = 4096, attempt = 0, maxAttempts = 1): Promise<string> => {
+    const streamPrompt = async (promptText: string, model = selectedModel, maxTokens = 4096, attempt = 0, maxAttempts = 1): Promise<string> => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Response-Length': getResponseLength() },
@@ -1711,21 +1668,23 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
         body: JSON.stringify({
           content: promptText,
           history: [],
-          provider: 'anthropic',
+          provider: availableModels.find(item => item.id === model)?.provider || 'openai',
           model,
           agent_mode: 'default',
           max_tokens: maxTokens,
         })
       })
-      if (!response.ok) throw new Error('Stream request failed')
+      if (!response.ok) throw new Error(`Generazione non riuscita (${response.status})`)
       const reader = response.body?.getReader()
       let out = ''
+      if (!reader) throw new Error(tl('Il modello non ha restituito alcun contenuto'))
       if (reader) {
         await consumeSseStream(reader, (data) => {
           if (data.type === 'chunk') { out += data.content || ''; onProgress?.({ text: out, attempt, maxAttempts }) }
           else if (data.type === 'done' && data.content) out = data.content
         })
       }
+      if (!out.trim()) throw new Error(tl('Il modello non ha restituito alcun contenuto'))
       return out.trim()
     }
 
@@ -1733,7 +1692,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       promptText: string,
       parse: (raw: string) => T | null,
       label: string,
-      model = 'claude-sonnet-4-6',
+      model = selectedModel,
       maxAttempts = 3,
       maxTokens = 4096,
     ): Promise<T> => {
@@ -1744,9 +1703,9 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           : [
               promptText,
               '',
-              'ATTENZIONE: la risposta precedente era troncata o JSON non valido.',
+              'ATTENZIONE: la risposta precedente era troncata o non valida.',
               `Rigenera da zero l intero blocco ${label} completo e valido.`,
-              'Se stai per terminare i token, chiudi comunque correttamente il JSON e il blocco markdown.',
+              label === 'html_page' ? 'Restituisci HTML completo con tutti i tag e script chiusi.' : 'Chiudi correttamente il JSON e il blocco markdown.',
               lastOutput ? `OUTPUT PRECEDENTE NON VALIDO:\n${lastOutput.slice(-6000)}` : '',
             ].filter(Boolean).join('\n')
         onProgress?.({ text: '', attempt, maxAttempts })
@@ -1868,34 +1827,10 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     if (mode === 'html_page') {
       const currentHtml = isEdit && currentDoc ? currentDoc.content : null
 
-      // EDIT MODE: backend tool-calling agent — no free-text parsing, fully deterministic
-      if (isEdit && currentHtml) {
-        const response = await llmApi.editHtmlPage(currentHtml, userRequest, signal)
-        return response.data.html
-      }
-
-      // NEW GENERATION (no current doc): generate full self-contained page
-      const parseHtmlPage = (raw: string): string | null => {
-        let m = raw.match(/```html_page\s*([\s\S]*?)```/)
-        if (!m) m = raw.match(/```html\s*([\s\S]*?)```/)
-        let html: string
-        if (m) {
-          html = m[1].trim()
-        } else {
-          const dtIdx = raw.indexOf('<!DOCTYPE')
-          const hIdx = raw.indexOf('<html')
-          const startIdx = dtIdx >= 0 ? dtIdx : hIdx >= 0 ? hIdx : -1
-          html = startIdx >= 0 ? raw.slice(startIdx).trim() : raw.trim()
-        }
-        if (html.includes('</html>') || html.includes('</body>')) return html
-        if (html.includes('<!DOCTYPE') || html.startsWith('<html')) {
-          return html + '\n</body></html>'
-        }
-        return null
-      }
-
       const htmlPrompt = [
-        'Genera una pagina HTML5 interattiva e animata completa.',
+        currentHtml
+          ? 'Modifica la pagina HTML esistente secondo la richiesta. Preserva contenuti e funzionalità non interessati e restituisci il documento COMPLETO aggiornato, mai patch o sole promesse.'
+          : 'Genera una pagina HTML5 interattiva e animata completa.',
         '',
         'REQUISITI TECNICI:',
         '- Pagina HTML5 completamente self-contained (CSS e JS inline)',
@@ -1915,24 +1850,16 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
         '- Nessun testo fuori dal blocco codice',
         '- Se stai per terminare i token, chiudi comunque correttamente </body></html>',
         '',
-        `ARGOMENTO: ${userRequest}`,
+        currentHtml ? `PAGINA ATTUALE:\n${currentHtml}` : '',
+        `${currentHtml ? 'MODIFICA RICHIESTA' : 'ARGOMENTO'}: ${userRequest}`,
         contextSection,
       ].filter(Boolean).join('\n')
 
-      const html = await streamPromptValidated(htmlPrompt, parseHtmlPage, 'html_page', 'claude-sonnet-4-6', 3, 10000)
+      const html = await streamPromptValidated(htmlPrompt, extractHtmlPage, 'html_page', selectedModel, 2, 12000)
       return html
     }
 
     if (mode === 'brochure') {
-      // EDIT MODE: backend tool-calling — surgical field-level merge, no full regeneration
-      if (isEdit && currentDoc) {
-        const currentPayload = parseBrochurePayload(currentDoc.content)
-        if (currentPayload) {
-          const response = await llmApi.editBrochure(currentPayload, userRequest, signal)
-          return `\`\`\`brochure_data\n${JSON.stringify(response.data.payload, null, 2)}\n\`\`\``
-        }
-      }
-      // NEW GENERATION
       const payload = await streamPromptValidated(prompt, parseBrochurePayload, 'brochure_data')
       return `\`\`\`brochure_data\n${JSON.stringify(payload, null, 2)}\n\`\`\``
     }
@@ -1995,8 +1922,8 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       body: JSON.stringify({
         content: prompt,
         history: [],
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        provider: availableModels.find(item => item.id === selectedModel)?.provider || 'openai',
+        model: selectedModel,
         agent_mode: 'default',
       })
     })
@@ -2089,7 +2016,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
         setResearchRun((prev) => applyResearchEvent(prev, data))
         if (data.type === 'done') finalEvent = data
         if (data.type === 'error') throw new Error(data.message || tl("Ricerca non riuscita"))
-      })
+      }, { totalTimeoutMs: 3_600_000, idleTimeoutMs: 180_000 })
       if (!finalEvent) throw new Error(tl("La ricerca si è interrotta prima del termine"))
       const newDoc: GeneratedDoc = finalEvent.document
       setActiveDoc(newDoc)
@@ -2135,6 +2062,30 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     teacherApi.saveConversationDocument(currentConversationId, edited).catch((e) => console.warn('Failed to save research document:', e))
   }
 
+  const openResponseArtifact = (content: string, convId: string, request: string): boolean => {
+    if (requestsCodeOnly(request)) return false
+    const html = extractHtmlPage(content)
+    const type: GeneratedDoc['type'] | null = html ? 'html_page'
+      : /```brochure_data\b/.test(content) && parseBrochurePayload(content) ? 'brochure'
+      : /```dispensa_data\b/.test(content) && parseDispensaPayload(content) ? 'dispensa'
+      : /```report_data\b/.test(content) && parseReportPayload(content) ? 'report' : null
+    if (!type) return false
+    const previous = docCacheRef.current[convId]
+    const documentContent = html || content
+    const doc: GeneratedDoc = {
+      type, content: documentContent,
+      title: previous?.type === type ? previous.title : request.slice(0, 60) || tl('Pagina interattiva'),
+      version: previous?.type === type ? previous.version + (previous.content === documentContent ? 0 : 1) : 1,
+    }
+    docCacheRef.current[convId] = doc
+    setActiveDoc(doc)
+    setShowCanvas(true)
+    setConvsWithDocs(prev => new Set([...prev, convId]))
+    try { localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current)) } catch { /* Server is authoritative. */ }
+    teacherApi.saveConversationDocument(convId, doc).catch(error => console.warn('Failed to save generated artifact:', error))
+    return true
+  }
+
   const TOOL_TO_MODE: Record<string, AgentMode> = {
     image: 'image', brochure: 'brochure', dispensa: 'dispensa', html_page: 'html_page',
     quiz: 'quiz', dataset: 'dataset', deep_research: 'deep_research',
@@ -2159,6 +2110,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       const when = tl("{0} messaggi fa", ago)
       if (/!\[[^\]]*\]\(/.test(m.content) || m.content.includes('[IMMAGINE')) push('image', `generata ${when}`)
       if (m.content.includes('```presentation_document')) push('presentation', `creata ${when}`)
+      if (extractHtmlPage(m.content)) push('html_page', when)
       if (/\*\*Pagina Interattiva (generata|aggiornata)/.test(m.content)) push('html_page', `${doc?.type === 'html_page' ? `v${doc.version} · ${doc.title} · ` : ''}${when}`)
       if (/\*\*Brochure (generata|aggiornata)/.test(m.content)) push('brochure', `${doc?.type === 'brochure' ? `${doc.title} · ` : ''}${when}`)
       if (/\*\*Dispensa (generata|aggiornata)/.test(m.content)) push('dispensa', `${doc?.type === 'dispensa' ? `${doc.title} · ` : ''}${when}`)
@@ -2231,6 +2183,40 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     } finally { setIsLoading(false); setStreamingStatus(null) }
   }
 
+  // Calendar agent: the Decisions router classified the message as a calendar edit (or it names the calendar).
+  // It applies the changes right away and opens the calendar on the first touched day.
+  const startCalendarAgent = async (prompt: string) => {
+    if (isLoading) return
+    setIsLoading(true)
+    setStreamingStatus(tl('Aggiorno il calendario…'))
+    try {
+      const convId = await ensureConversation(prompt)
+      if (!convId) return
+      let sessionId: string | null = null
+      try { sessionId = JSON.parse(localStorage.getItem('teacher_selected_session') || 'null')?.id ?? null } catch { sessionId = null }
+      const { data } = await calendarApi.agent(prompt, { conversationId: convId, sessionId, files: attachedFiles.map(f => f.file) })
+      const now = new Date()
+      const newMessages: Message[] = [
+        data.user_message
+          ? { id: data.user_message.id, role: 'user', content: data.user_message.content, timestamp: new Date(data.user_message.created_at) }
+          : { id: `cal-u-${now.getTime()}`, role: 'user', content: prompt, timestamp: now },
+        data.assistant_message
+          ? { id: data.assistant_message.id, role: 'assistant', content: data.assistant_message.content, calendar: data.assistant_message.calendar, timestamp: new Date(data.assistant_message.created_at) }
+          : { id: `cal-a-${now.getTime()}`, role: 'assistant', content: data.content, calendar: data.calendar, timestamp: now },
+      ]
+      if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
+      conversationCacheRef.current = { ...conversationCacheRef.current,
+        [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
+      setConversationCache(conversationCacheRef.current)
+      setInputText(''); setAttachedFiles([])
+      publishRealtimeEvent('calendar_changed', { event_id: `calendar-agent:${now.getTime()}`, action: 'agent' })
+      if (data.calendar.created + data.calendar.updated > 0) openCalendarAt(data.calendar.focus_date, 'week')
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail
+      toast({ title: tl('Calendario'), description: typeof detail === 'string' ? detail : tl('Non sono riuscito ad aggiornare il calendario. Riprova.'), variant: 'destructive' })
+    } finally { setIsLoading(false); setStreamingStatus(null) }
+  }
+
   // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
   // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
@@ -2241,17 +2227,18 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
       return startProtocol(text || tl('Analizza il protocollo allegato e prepara tutti i materiali necessari.'))
     }
     if ((text || attachedFiles.length > 0) && (agentMode === 'podcast' || agentMode === 'default' && isPodcastRequest(text))) return startPodcast(text || tl("Crea un podcast dai documenti allegati"))
+    if (agentMode === 'default' && text && isCalendarRequest(text)) return startCalendarAgent(text)
     if (agentMode === 'default' && isDeepResearchRequest(text)) {
       return runSend(overrideInput, 'deep_research', false, { tool: 'deep_research', action: 'create', top: 'deep_research', confidence: 1, alternatives: [], routed: true })
     }
     const canRoute = overrideInput === undefined && agentMode === 'default' && !isLoading
-      && !attachedYoutube && text.length >= 8
+      && !attachedYoutube && text.length > 0
     if (canRoute) {
       try {
         setStreamingStatus(tl("Analizzo la richiesta…"))
         const { data } = await llmApi.decideTool(
           attachedFiles.length ? `${text}\nDocumenti allegati: ${attachedFiles.map(f => f.file.name).join(', ')}` : text,
-          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol'],
+          ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol', 'calendar'],
           collectRoutingArtifacts(),
           messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
         )
@@ -2259,6 +2246,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           tool: data.tool, action: data.action, top: data.top, confidence: data.confidence,
           alternatives: data.alternatives, actionAlternatives: data.action_alternatives, routed: data.routed,
         }
+        if (data.tool === 'calendar') return await startCalendarAgent(text)
         if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text)
         if (data.tool === 'teaching_protocol' && data.action === 'create') return await startProtocol(text)
         const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
@@ -2663,7 +2651,9 @@ REGOLE IMPORTANTI:
         setIsGeneratingDoc(true)
         const filesContext = currentFiles.map(f => f.file.name).join(', ')
         const cachedDoc = docCacheRef.current[convId]
-        const baseDoc = activeDoc?.type === 'html_page' ? activeDoc : (cachedDoc?.type === 'html_page' ? cachedDoc : null)
+        const recoveredHtml = [...messages].reverse().filter(message => message.role === 'assistant').map(message => extractHtmlPage(message.content)).find(Boolean)
+        const recoveredDoc: GeneratedDoc | null = recoveredHtml ? { type: 'html_page', content: recoveredHtml, version: 1, title: tl('Pagina interattiva') } : null
+        const baseDoc = activeDoc?.type === 'html_page' ? activeDoc : (cachedDoc?.type === 'html_page' ? cachedDoc : recoveredDoc)
         // Router verdict wins: "edit" modifies the existing page even with the canvas closed; "create" never overwrites it.
         const isEdit = intent === 'edit' ? !!baseDoc : intent === 'create' ? false : (showCanvas && activeDoc?.type === 'html_page')
 
@@ -2674,8 +2664,7 @@ REGOLE IMPORTANTI:
         const progressId = `progress-${startedAt}`
         const title = isEdit ? tl("Aggiorno la tua pagina interattiva") : tl("Genero la tua pagina interattiva")
         setGenProgress(isEdit
-          // Edits are not streamed: the model returns the changed CSS/HTML/JS sections in one go.
-          ? { title, phases, activeIndex: 1, note: tl("Il modello sta riscrivendo gli stili e il codice interessati: può richiedere fino a un minuto…"), startedAt }
+          ? { title, phases, activeIndex: 0, note: tl("Invio la pagina attuale al modello per applicare le modifiche…"), startedAt }
           : { title, phases, activeIndex: 0, note: tl("Invio la richiesta al modello e attendo i primi token…"), startedAt })
 
         try {
@@ -2726,10 +2715,10 @@ REGOLE IMPORTANTI:
           const finalContent = isEdit
             ? tl("**Pagina Interattiva aggiornata** (v{0}) — le modifiche sono visibili nel canvas a destra.", newDoc.version)
             : tl("**Pagina Interattiva generata** (v{0}) — il codice è aperto nel canvas. Puoi chiedere modifiche continuando la chat.", newDoc.version)
-          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
+          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: availableModels.find(item => item.id === selectedModel)?.provider, model: selectedModel }
           setGenProgress(null)
           setMessages(prev => [...prev, assistantMessage])
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } finally {
           setGenProgress(null)
           setIsGeneratingDoc(false)
@@ -2776,11 +2765,11 @@ REGOLE IMPORTANTI:
             role: 'assistant',
             content: `${planSummary}\n\nApprova il piano per generare la dispensa PDF oppure modifica la richiesta per rigenerarlo.`,
             timestamp: new Date(),
-            provider: 'anthropic',
-            model: 'claude-sonnet-4-6',
+            provider: availableModels.find(item => item.id === selectedModel)?.provider,
+            model: selectedModel,
           }
           setMessages(prev => [...prev, assistantMessage])
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
           return
         }
 
@@ -2847,8 +2836,8 @@ REGOLE IMPORTANTI:
             ? tl("**{0} aggiornata** (v{1}) — le modifiche sono visibili nel canvas a destra.", docLabel, newDoc.version)
             : tl("**{0} generata** (v{1}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.", docLabel, newDoc.version)
           setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
-          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: availableModels.find(item => item.id === selectedModel)?.provider, model: selectedModel }
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } catch (e) {
           clearInterval(progressTimer)
           setMessages(prev => prev.filter(m => m.id !== progressId))
@@ -2945,6 +2934,7 @@ REGOLE IMPORTANTI:
               ...(response.data?.image_count ? { image_count: response.data.image_count } : {}),
             },
           }
+          openResponseArtifact(assistantMessage.content, convId, userInput)
           setMessages(prev => [...prev, assistantMessage])
           queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
           await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
@@ -2986,6 +2976,8 @@ REGOLE IMPORTANTI:
           })
 
           setStreamingStatus(null)
+
+          openResponseArtifact(streamResult.content, convId, userInput)
 
           // Always replace with clean final content (strips any CALENDAR_EVENT tags)
           setMessages(prev => prev.map(m =>
@@ -3035,7 +3027,7 @@ REGOLE IMPORTANTI:
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: t('teacher_chat.generation_error_check_console'),
+        content: tl('Non è stato possibile completare la generazione: {0}', e.response?.data?.detail || e.message || tl('errore imprevisto')),
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMsg])
@@ -3142,13 +3134,13 @@ REGOLE IMPORTANTI:
       ].join('\n')
     }
     if (mode === 'brochure') {
-      return tl("Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
+      return tl("Sei in modalità **Brochure** 🎨. Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.")
     }
     if (mode === 'deep_research') {
       return 'Sei in modalità **Deep Research** 🔬. Dimmi cosa vuoi approfondire: ti proporrò gli argomenti da cercare e tu li approvi o li modifichi. Poi più sub-agent cercheranno e leggeranno le fonti, in più giri, confrontando pertinenza, copertura e fonti originali, e produrranno un documento Markdown che potrai modificare o ampliare chiedendomi di aggiungere altri argomenti. Vedrai l\'attività di ogni sub-agent nel pannello a destra.'
     }
     if (mode === 'dispensa') {
-      return tl("Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
+      return tl("Sei in modalità **Dispensa** 📄. Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.")
     }
     return null
   }
@@ -3882,6 +3874,7 @@ REGOLE IMPORTANTI:
                                 </>
                               )}
                               {msg.podcast && <PodcastPanel messageId={msg.id} state={msg.podcast} onUpdate={message => updatePodcastMessage(message)} />}
+                              {msg.calendar && <CalendarAgentCard state={msg.calendar} />}
                               {msg.protocol && <TeachingProtocolPanel messageId={msg.id} state={msg.protocol}
                                 onUpdate={message => updateProtocolMessage(message)}
                                 onPublishQuiz={data => { setPublishMode('draft'); setPublishModal({ isOpen: true, type: 'quiz', data }) }} />}

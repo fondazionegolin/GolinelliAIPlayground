@@ -20,6 +20,22 @@ from app.schemas.content import (
 
 logger = logging.getLogger(__name__)
 
+SUPPORT_ARTIFACT_SPEC = """
+ARTEFATTI NEL CHATBOT DI SUPPORTO (vale per QUALSIASI modello e provider):
+- Puoi produrre pagine interattive, simulazioni, mini-app e giochi direttamente nel pannello laterale della chat.
+- Per una pagina restituisci il documento HTML5 COMPLETO in un blocco ```html_page (è accettato anche ```html),
+  da <!DOCTYPE html><html> fino a </body></html>, con CSS e JavaScript inline e senza dipendenze esterne.
+- Il sistema apre e salva automaticamente il documento nel canvas. Non chiedere al docente di copiare il codice,
+  salvarlo come file o aprirlo nel browser. Se chiede solo il codice, rispetta la richiesta.
+- Quando modifica una pagina esistente, applica subito i cambiamenti e restituisci l'intera pagina aggiornata.
+  Preserva il resto della pagina. Non limitarti a dire «sto generando», «attendi» o promettere un output futuro:
+  ogni risposta deve contenere l'artefatto completo oppure spiegare il problema concreto.
+- Gli altri artefatti usano i rispettivi strumenti e formati della piattaforma: quiz in ```quiz con JSON valido,
+  dataset in ```csv; brochure e dispense strutturate nel canvas, presentazioni nei Documenti, immagini e podcast
+  con gli strumenti dedicati. Non inventare link a file o dichiarare completate operazioni mai eseguite.
+- Per domande o spiegazioni sugli artefatti rispondi normalmente; crea o modifica solo quando richiesto.
+"""
+
 
 # ============================================================================
 # PLATFORM KNOWLEDGE BASE
@@ -1543,6 +1559,8 @@ async def generate_with_analytics(
 
 {QUIZ_FORMAT_SPEC}
 
+{SUPPORT_ARTIFACT_SPEC}
+
 HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 
 {context}
@@ -1609,6 +1627,8 @@ async def generate_with_analytics_stream(
 
 {QUIZ_FORMAT_SPEC}
 
+{SUPPORT_ARTIFACT_SPEC}
+
 HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 
 {context}
@@ -1639,12 +1659,18 @@ LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
 """
     enhanced_prompt = apply_output_language_instruction(enhanced_prompt, ui_language)
 
-    async for chunk in llm_service.generate_stream(
-        messages=messages,
-        system_prompt=enhanced_prompt,
-        provider=provider,
-        model=model,
-        temperature=0.7,
-        max_tokens=max_tokens,
-    ):
-        yield chunk
+    # Bound the provider call, including retries and silent reasoning. The endpoint converts
+    # this failure to an SSE error, so the job and the chat both leave their running state.
+    try:
+        async with asyncio.timeout(300):
+            async for chunk in llm_service.generate_stream(
+                messages=messages,
+                system_prompt=enhanced_prompt,
+                provider=provider,
+                model=model,
+                temperature=0.7,
+                max_tokens=max_tokens,
+            ):
+                yield chunk
+    except TimeoutError as exc:
+        raise RuntimeError("Il modello non ha completato la generazione entro 5 minuti. Riprova.") from exc

@@ -761,6 +761,44 @@ export const voiceApi = {
     api.post('/voice/livekit-token', { session_id: sessionId }),
 }
 
+/** Class video call reachable through an invite link `/call/<code>`. */
+export interface VoiceCall {
+  id: string
+  code: string
+  title: string
+  join_path: string
+  session_id: string | null
+  session_label: string | null
+  class_id: string | null
+  class_label: string | null
+  owner_teacher_id: string
+  owner_name: string
+  is_owner: boolean
+  role: 'moderator' | 'participant' | null
+  /** Owner only: null for everyone else. */
+  link_enabled: boolean | null
+  open_to_teachers: boolean | null
+  live: boolean
+  last_started_at: string | null
+  next_event: { id: string; title: string; starts_at: string; ends_at: string | null } | null
+  created_at: string | null
+}
+
+export const voiceCallsApi = {
+  list: (sessionId?: string) => api.get<VoiceCall[]>('/voice-calls', { params: { session_id: sessionId || undefined } }),
+  create: (data: { title: string; session_id?: string | null; class_id?: string | null; open_to_teachers?: boolean }) =>
+    api.post<VoiceCall>('/voice-calls', data),
+  byCode: (code: string) => api.get<VoiceCall>(`/voice-calls/by-code/${encodeURIComponent(code)}`),
+  update: (id: string, data: { title?: string; link_enabled?: boolean; open_to_teachers?: boolean }) =>
+    api.patch<VoiceCall>(`/voice-calls/${id}`, data),
+  regenerateCode: (id: string) => api.post<VoiceCall>(`/voice-calls/${id}/regenerate-code`),
+  remove: (id: string) => api.delete(`/voice-calls/${id}`),
+  token: (id: string) => api.post(`/voice-calls/${id}/token`),
+}
+
+/** Absolute invite link for a call code. */
+export const voiceCallUrl = (code: string) => `${window.location.origin}/call/${code}`
+
 export const teacherApi = {
   getSchools: () => api.get('/teacher/schools'),
   changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
@@ -1951,6 +1989,91 @@ export const calendarApi = {
     api.patch(`/calendar/session/${sessionId}/events/${eventId}`, data),
   deleteEvent: (sessionId: string, eventId: string) =>
     api.delete(`/calendar/session/${sessionId}/events/${eventId}`),
+  // Shared calendar (navbar): events shared with classes, sessions and co-teachers.
+  listShared: (start: string, end: string, sessionId?: string) =>
+    api.get<SharedCalendarEvent[]>('/calendar/events', { params: { start, end, session_id: sessionId || undefined } }),
+  shareTargets: () => api.get<CalendarShareTargets>('/calendar/share-targets'),
+  createShared: (data: SharedCalendarEventInput) => api.post<SharedCalendarEvent>('/calendar/events', data),
+  updateShared: (eventId: string, data: Partial<SharedCalendarEventInput>, scope: CalendarScope = 'one') =>
+    api.patch<SharedCalendarEvent>(`/calendar/events/${eventId}`, data, { params: { scope } }),
+  deleteShared: (eventId: string, scope: CalendarScope = 'one') => api.delete(`/calendar/events/${eventId}`, { params: { scope } }),
+  /** Agentic calendar edits from the teacher chat (create/move/delete, recurrences, free slots, dates from documents). */
+  agent: (prompt: string, opts: { conversationId?: string | null; sessionId?: string | null; files?: File[] } = {}) => {
+    const form = new FormData()
+    form.append('prompt', prompt)
+    if (opts.conversationId) form.append('conversation_id', opts.conversationId)
+    if (opts.sessionId) form.append('session_id', opts.sessionId)
+    ;(opts.files || []).forEach((file) => form.append('files', file))
+    return api.post<CalendarAgentResponse>('/calendar/agent', form, { timeout: 240000 })
+  },
+}
+
+export type CalendarScope = 'one' | 'following' | 'all'
+
+export interface CalendarRecurrence {
+  freq: 'daily' | 'weekly' | 'monthly'
+  interval: number
+  until?: string | null
+  count?: number | null
+  weekdays?: number[]
+}
+
+export interface CalendarAgentState {
+  created: number
+  updated: number
+  deleted: number
+  errors: number
+  focus_date: string | null
+  event_ids: string[]
+}
+
+export interface CalendarAgentResponse {
+  content: string
+  calendar: CalendarAgentState
+  user_message?: { id: string; content: string; created_at: string }
+  assistant_message?: { id: string; content: string; created_at: string; calendar: CalendarAgentState }
+}
+
+export type CalendarTargetType = 'class' | 'session' | 'teacher'
+
+export interface SharedCalendarEvent {
+  id: string
+  source: 'event' | 'session'
+  title: string
+  description?: string | null
+  starts_at: string
+  ends_at?: string | null
+  all_day: boolean
+  color: string
+  owner_teacher_id?: string | null
+  owner_name?: string | null
+  can_edit: boolean
+  series_id?: string | null
+  recurrence?: CalendarRecurrence | null
+  created_at?: string | null
+  updated_at?: string | null
+  targets: { target_type: CalendarTargetType; target_id: string; label: string }[]
+  voice_call?: { id: string; code: string; title: string; join_path: string; link_enabled: boolean; live: boolean } | null
+}
+
+export interface SharedCalendarEventInput {
+  title: string
+  description?: string | null
+  starts_at: string
+  ends_at?: string | null
+  all_day: boolean
+  color: string
+  targets: { target_type: CalendarTargetType; target_id: string }[]
+  recurrence?: CalendarRecurrence | null
+  /** Link an existing call of yours (null detaches on update) or create a new one with `with_voice_call`. */
+  voice_call_id?: string | null
+  with_voice_call?: boolean
+}
+
+export interface CalendarShareTargets {
+  classes: { id: string; name: string }[]
+  sessions: { id: string; name: string; class_id: string; class_name?: string | null; status?: string }[]
+  teachers: { id: string; name: string; email?: string }[]
 }
 
 export const liveInteractionApi = {

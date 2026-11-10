@@ -18,7 +18,7 @@ import {
 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
-import { voiceApi } from '@/lib/api'
+import { voiceApi, voiceCallsApi } from '@/lib/api'
 import { tl } from '@/i18n/tl'
 
 type VoiceQueueItem = {
@@ -28,7 +28,8 @@ type VoiceQueueItem = {
 }
 
 type VoiceRoomState = {
-  session_id: string
+  session_id: string | null
+  call_id?: string | null
   active: boolean
   teacher_id?: string
   active_speaker_id?: string | null
@@ -56,7 +57,14 @@ type MediaTile = {
 }
 
 interface VoiceRoomPanelProps {
-  sessionId: string
+  /** Session voice room (class chat sidebar). Ignored when `callId` is set. */
+  sessionId?: string
+  /** Invite-link call room: the socket must already have joined it (`voice_call_join`). */
+  callId?: string
+  /** Whether this teacher may start/stop the room and give the floor (default: every teacher). */
+  canModerate?: boolean
+  /** `page`: full-width videoconference layout used by /call/:code. */
+  variant?: 'sidebar' | 'page'
   userType: 'teacher' | 'student'
   currentUserId: string
   socket: Socket | null
@@ -101,7 +109,7 @@ function StreamVideo({ stream, className = 'h-full w-full object-cover', muted =
   return <video ref={videoRef} className={className} />
 }
 
-export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: VoiceRoomPanelProps) {
+export function VoiceRoomPanel({ sessionId = '', callId, canModerate, variant = 'sidebar', userType, currentUserId, socket }: VoiceRoomPanelProps) {
   const [voiceState, setVoiceState] = useState<VoiceRoomState | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
@@ -132,8 +140,13 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   const levelMonitorRef = useRef<{ stop: () => void } | null>(null)
 
   const isTeacher = userType === 'teacher'
+  const isModerator = isTeacher && (canModerate ?? true)
+  const isPage = variant === 'page'
+  const roomPayload = callId ? { call_id: callId } : { session_id: sessionId }
+  const roomKey = callId ? `call-${callId}` : sessionId
   const currentVoiceState: VoiceRoomState = voiceState ?? {
-    session_id: sessionId,
+    session_id: callId ? null : sessionId,
+    call_id: callId ?? null,
     active: false,
     active_speaker_id: null,
     queue: [],
@@ -489,7 +502,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     try {
       const [{ ConnectionState, Room, RoomEvent, Track }, tokenResponse] = await Promise.all([
         import('livekit-client'),
-        voiceApi.createLiveKitToken(sessionId),
+        callId ? voiceCallsApi.token(callId) : voiceApi.createLiveKitToken(sessionId),
       ])
       ;(window as any).LiveKitTrack = Track
       const { url, token, can_publish: canPublish, ice_servers: iceServers } = tokenResponse.data
@@ -592,19 +605,19 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       joiningRef.current = false
       setIsConnecting(false)
     }
-  }, [desiredPublish, disconnectRoom, isActive, sessionId, setLocalPublishing, syncRoomParticipants])
+  }, [callId, desiredPublish, disconnectRoom, isActive, sessionId, setLocalPublishing, syncRoomParticipants])
 
   useEffect(() => {
-    if (!socket || !sessionId) return
+    if (!socket || (!sessionId && !callId)) return
     const handleState = (state: VoiceRoomState) => {
-      if (state.session_id === sessionId) setVoiceState(state)
+      if (callId ? state.call_id === callId : state.session_id === sessionId) setVoiceState(state)
     }
     socket.on('voice_room_state', handleState)
-    socket.emit('voice_get_state', { session_id: sessionId }, (state: VoiceRoomState & { error?: string }) => {
+    socket.emit('voice_get_state', callId ? { call_id: callId } : { session_id: sessionId }, (state: VoiceRoomState & { error?: string }) => {
       if (state && !state.error) setVoiceState(state)
     })
     return () => { socket.off('voice_room_state', handleState) }
-  }, [sessionId, socket])
+  }, [callId, sessionId, socket])
 
   useEffect(() => {
     if (!isActive) {
@@ -626,16 +639,18 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   }, [canPublishMedia, desiredPublish, disconnectRoom, isActive, joinRoom, localCameraEnabled, screenShareEnabled, setLocalPublishing, stopLocalVideoPublishing])
 
   useEffect(() => {
+    if (callId) return
     window.dispatchEvent(new CustomEvent('golinelli:voice-room-state', {
       detail: { sessionId, active: isActive },
     }))
-  }, [isActive, sessionId])
+  }, [callId, isActive, sessionId])
 
   useEffect(() => () => {
+    if (callId) return
     window.dispatchEvent(new CustomEvent('golinelli:voice-room-state', {
       detail: { sessionId, active: false },
     }))
-  }, [sessionId])
+  }, [callId, sessionId])
 
   useEffect(() => () => {
     if (remoteLevelTimerRef.current) clearTimeout(remoteLevelTimerRef.current)
@@ -644,7 +659,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
 
   const emitVoice = (event: string, payload: Record<string, unknown> = {}) => {
     if (!socket) return
-    socket.emit(event, { session_id: sessionId, ...payload }, (response: { error?: string }) => {
+    socket.emit(event, { ...roomPayload, ...payload }, (response: { error?: string }) => {
       if (response?.error) setError(response.error)
     })
   }
@@ -680,7 +695,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     : callTiles
 
   const openVideoCallWindow = useCallback(() => {
-    const popup = window.open('', `golinelli-videocall-${sessionId}`, 'popup=yes,width=1280,height=820')
+    const popup = window.open('', `golinelli-videocall-${roomKey}`, 'popup=yes,width=1280,height=820')
     if (!popup) {
       setError(tl("Il browser ha bloccato la finestra della videocall"))
       return
@@ -782,9 +797,9 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
       void video.play().catch(() => {})
     })
     popup.focus()
-  }, [callTiles, selectedTile, sessionId, videoQuality, voiceParticipants])
+  }, [callTiles, selectedTile, roomKey, videoQuality, voiceParticipants])
 
-  if (!voiceState?.active && !isTeacher) return null
+  if (!voiceState?.active && !isTeacher && !isPage) return null
 
   // ── Status label ─────────────────────────────────────────────────────────
   const statusText = (() => {
@@ -798,7 +813,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   })()
 
   return (
-    <div className="ds-semantic-info mx-3 mt-3 overflow-hidden rounded-2xl">
+    <div className={isPage ? 'ds-semantic-info overflow-hidden rounded-3xl' : 'ds-semantic-info mx-3 mt-3 overflow-hidden rounded-2xl'}>
       <div ref={audioSinkRef} className="hidden" />
 
       {/* Header row */}
@@ -821,7 +836,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
           </p>
         </div>
 
-        {isTeacher ? (
+        {isModerator ? (
           <Button
             size="sm"
             onClick={() => emitVoice(isActive ? 'voice_room_end' : 'voice_room_start')}
@@ -830,7 +845,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             {isActive ? <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
             {isActive ? tl("Chiudi") : tl("Avvia")}
           </Button>
-        ) : (
+        ) : !isTeacher ? (
           <Button
             size="sm"
             disabled={!isActive}
@@ -846,7 +861,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             {isSpeaker || isQueued ? <X className="mr-1.5 h-3.5 w-3.5" /> : <Hand className="mr-1.5 h-3.5 w-3.5" />}
             {isSpeaker ? tl("Termina") : isQueued ? tl("Annulla") : tl("Intervieni")}
           </Button>
-        )}
+        ) : null}
       </div>
 
       {error && (
@@ -878,9 +893,9 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                 <div key={participant.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
                   <span className={`h-2 w-2 rounded-full ${participant.role === 'teacher' || participant.active ? 'animate-pulse bg-emerald-500' : participant.queued ? 'bg-amber-400' : 'bg-slate-300'}`} />
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">
-                    {participant.role === 'teacher' ? tl("Docente") : participant.name}
+                    {participant.role === 'teacher' && (!callId || participant.id === 'teacher') ? tl("Docente") : participant.name}
                   </span>
-                  {isTeacher && participant.role === 'student' && participant.queued && (
+                  {isModerator && participant.role === 'student' && participant.queued && (
                     <button
                       type="button"
                       onClick={() => emitVoice('voice_grant_speaker', { student_id: participant.id })}
@@ -889,7 +904,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                       {tl("Dai parola")}
                     </button>
                   )}
-                  {isTeacher && participant.role === 'student' && participant.active && (
+                  {isModerator && participant.role === 'student' && participant.active && (
                     <button
                       type="button"
                       onClick={() => emitVoice('voice_revoke_speaker', { student_id: participant.id })}
@@ -898,7 +913,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                       {tl("Togli")}
                     </button>
                   )}
-                  {(!isTeacher || participant.role === 'teacher' || (!participant.queued && !participant.active)) && (
+                  {(!isModerator || participant.role === 'teacher' || (!participant.queued && !participant.active)) && (
                     <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
                       participant.role === 'teacher' || participant.active ? 'bg-emerald-50 text-emerald-700' : participant.queued ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
                     }`}>
@@ -1045,13 +1060,13 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                   </button>
 
                   {thumbnailTiles.length > 0 && (
-                    <div className="flex max-h-24 gap-2 overflow-x-auto pb-1">
+                    <div className={`flex gap-2 overflow-x-auto pb-1 ${isPage ? 'max-h-40' : 'max-h-24'}`}>
                       {thumbnailTiles.map((tile) => (
                         <button
                           key={tile.id}
                           type="button"
                           onClick={() => setSelectedTileId(tile.id)}
-                          className="w-24 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-900 text-left hover:border-violet-300"
+                          className={`${isPage ? 'w-48' : 'w-24'} flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-900 text-left hover:border-violet-300`}
                         >
                           <div className="aspect-video w-full">
                         <StreamVideo stream={tile.stream} muted={tile.local} />

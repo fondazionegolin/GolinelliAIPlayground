@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import podcasts, voice_lab
+from app.api.v1.endpoints import podcasts, voice_lab, voice_calls
 from app.api.v1.endpoints import visual_comprehension
 from app.api.v1.endpoints import visual_sessions
 from app.api.v1.endpoints import smart_canvas
@@ -58,6 +58,7 @@ api_router.include_router(desktop.router, tags=["desktop"])
 api_router.include_router(calendar.router, tags=["calendar"])
 api_router.include_router(meshy.router, prefix="/meshy", tags=["meshy"])
 api_router.include_router(voice.router, prefix="/voice", tags=["voice"])
+api_router.include_router(voice_calls.router, tags=["voice-calls"])
 api_router.include_router(live_teacher_router, prefix="/teacher", tags=["live-interaction"])
 api_router.include_router(live_student_router, prefix="/student", tags=["live-interaction"])
 api_router.include_router(live_public_router, prefix="/public", tags=["live-interaction-public"])

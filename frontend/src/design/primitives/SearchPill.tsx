@@ -23,6 +23,7 @@ export const SearchPill = React.forwardRef<HTMLInputElement, SearchPillProps>(
       <input
         ref={ref}
         type="search"
+        data-field-appearance="plain"
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         placeholder={placeholder}

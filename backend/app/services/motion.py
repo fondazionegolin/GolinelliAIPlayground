@@ -236,7 +236,8 @@ def _example(name: str) -> str:
     return json.dumps(json.loads((EXAMPLES / f"{name}.json").read_text()), ensure_ascii=False, separators=(",", ":"))
 
 
-SYSTEM = """Sei un regista di animazioni scientifiche per la scuola (chimica, biochimica, fisica, astronomia, biologia).
+SYSTEM = """Sei un regista di animazioni scientifiche per la scuola (chimica, biochimica, fisica, astronomia, biologia)
+e di ANIMAZIONI CONCETTUALI che spiegano le idee emerse da un brainstorming o un'attività di design thinking.
 Produci UNA scena JSON che un motore deterministico disegna in SVG. Solo dati, mai codice. Rispondi SOLO con il JSON della scena.
 
 FORMATO
@@ -266,12 +267,18 @@ REGIA
 4. Colori leggibili sullo sfondo: 'dark'/'space' con testi chiari (default automatico), 'lab'/'paper'/'cell' con testi scuri. Codice colore coerente (stesso elemento = stesso colore).
 5. Ciclo che si ripete bene: a fine durata la scena può tornare all'inizio (fai svanire/riapparire con opacity).
 6. Per cambiare una scena esistente restituisci la scena COMPLETA modificata.
+7. ANIMAZIONE CONCETTUALE (il piano parla di idee, temi, post-it, sintesi): niente fenomeni fisici inventati. Usa text, rect (rx alto),
+   circle come insiemi tematici, arrow per relazioni. Arco: le idee dei partecipanti compaiono (testi esatti del piano, brevi) → si spostano
+   nel loro tema con keyframe → i temi si collegano → frase di sintesi finale. Sfondo 'paper', un colore per tema, al massimo ~8 idee visibili.
 
 ESEMPIO 1 (fisica, espressioni):
 """ + _example("pendulum") + """
 
 ESEMPIO 2 (biochimica, keyframe):
-""" + _example("enzyme")
+""" + _example("enzyme") + """
+
+ESEMPIO 3 (animazione concettuale di un brainstorming, keyframe):
+""" + _example("concepts")
 
 
 async def generate_scene(brief: str, request: str, width: int, height: int, previous: dict | None,

@@ -39,15 +39,19 @@ async def video_models(client: httpx.AsyncClient) -> list[dict]:
 async def discover(client: httpx.AsyncClient) -> list[dict]:
     response = await client.get(f"{BASE_URL}/models", headers=headers())
     response.raise_for_status()
+    images = await image_models(client)
+    image_ids = {item["id"] for item in images}
     found = []
     for item in response.json()["data"]:
-        if "text" not in item.get("architecture", {}).get("output_modalities", []):
-            continue
+        if "text" not in item.get("architecture", {}).get("output_modalities", []) or item["id"] in image_ids:
+            continue  # image generators are listed below, as images
         pricing = item.get("pricing") or {}
         found.append({"id": item["id"], "name": item.get("name") or item["id"], "kind": "text",
                       "input_usd": token_price(pricing.get("prompt")),
                       "output_usd": token_price(pricing.get("completion")),
                       "context_window": item.get("context_length")})
+    for item in images:
+        found.append({"id": item["id"], "name": item.get("name") or item["id"], "kind": "image"})
     for item in await video_models(client):
         note = "; ".join(f"{sku}: ${price}" for sku, price in (item.get("pricing_skus") or {}).items())
         found.append({"id": item["id"], "name": item.get("name") or item["id"], "kind": "video", "price_note": note[:200] or None})
@@ -194,3 +198,78 @@ def pick_duration(supported: list[int], wanted: float) -> int:
     """Shortest supported duration covering `wanted` seconds (else the longest one)."""
     options = sorted(set(int(d) for d in supported))
     return next((d for d in options if d >= wanted), options[-1])
+
+
+# ── image generation (dedicated Image API) ──────────────────────────────────
+
+def is_openrouter_image_model(model: str | None) -> bool:
+    """OpenRouter slugs carry the vendor (`google/gemini-…`); OpenAI image ids never do."""
+    return bool(model) and "/" in model
+
+
+def _ratio(label: str) -> float | None:
+    try:
+        w, h = (float(v) for v in label.split(":"))
+        return w / h
+    except ValueError:
+        return None
+
+
+def _aspect(size: str, allowed: list[str] | None) -> str | None:
+    """Supported aspect ratio closest to the requested WxH (None when the model takes no aspect ratio)."""
+    try:
+        w, h = (int(v) for v in size.lower().split("x"))
+        wanted = w / h
+    except ValueError:
+        wanted = 1.0
+    options = {label: r for label in (allowed or ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"]) if (r := _ratio(label))}
+    return min(options, key=lambda k: abs(options[k] - wanted)) if options else None
+
+
+_image_params: tuple[float, dict[str, dict]] = (0.0, {})
+
+
+async def image_models(client: httpx.AsyncClient) -> list[dict]:
+    response = await client.get(f"{BASE_URL}/images/models", headers=headers())
+    response.raise_for_status()
+    return response.json()["data"]
+
+
+async def _supported(client: httpx.AsyncClient, model: str) -> dict:
+    """supported_parameters of an image model, from the catalogue cached for an hour."""
+    import time
+
+    global _image_params
+    if time.monotonic() - _image_params[0] > 3600 or model not in _image_params[1]:
+        _image_params = (time.monotonic(), {m["id"]: m.get("supported_parameters") or {} for m in await image_models(client)})
+    return _image_params[1].get(model, {})
+
+
+async def generate_image(model: str, prompt: str, size: str = "1024x1024", references: list[bytes] | None = None,
+                         mime: str = "image/png") -> tuple[bytes, str, float | None]:
+    """One image from an OpenRouter image model at ~1 megapixel. Returns (bytes, media type, provider cost in USD if reported)."""
+    import base64
+
+    async with httpx.AsyncClient(timeout=180) as client:
+        params = await _supported(client, model)
+        payload: dict = {"model": model, "prompt": prompt}
+        if "aspect_ratio" in params:
+            aspect = _aspect(size, (params["aspect_ratio"] or {}).get("values"))
+            if aspect:
+                payload["aspect_ratio"] = aspect
+        if "1K" in ((params.get("resolution") or {}).get("values") or []):
+            payload["resolution"] = "1K"  # the tier the catalogue prices are estimated on
+        limit = int((params.get("input_references") or {}).get("max") or 0)
+        if references and limit:
+            payload["input_references"] = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(r).decode()}"}}
+                                           for r in references[:limit]]
+        # No retry: a timed-out POST may already have been charged.
+        response = await client.post(f"{BASE_URL}/images", headers=headers(), json=payload)
+    if response.status_code >= 400:
+        raise RuntimeError(f"OpenRouter {response.status_code}: {response.text[:300]}")
+    body = response.json()
+    item = next((d for d in body.get("data") or [] if d.get("b64_json")), None)
+    if not item:
+        raise RuntimeError("Il modello immagine non ha restituito dati")
+    cost = (body.get("usage") or {}).get("cost")
+    return base64.b64decode(item["b64_json"]), item.get("media_type") or "image/png", float(cost) if cost is not None else None

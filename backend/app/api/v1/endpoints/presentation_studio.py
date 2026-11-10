@@ -80,7 +80,7 @@ class RethemeRequest(BaseModel):
 
 
 class ImageRequest(BaseModel):
-    prompt: str = Field(min_length=2, max_length=400)
+    prompt: str = Field(min_length=2, max_length=1200)
     deck_title: str = Field("", max_length=200)
     slide_title: str = Field("", max_length=200)
     theme: Optional[dict] = None

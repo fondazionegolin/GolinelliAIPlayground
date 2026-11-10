@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from typing import Annotated, Optional
 import httpx
 
+from app.services.model_roles import image_provider
 from app.core.database import get_db
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.models.session import Class, Session, SessionModule
@@ -123,7 +124,7 @@ async def generate_image(
         raise HTTPException(status_code=400, detail="Prompt required")
 
     tenant_id, credit_scope = await _credit_context(db, actor)
-    estimated_cost = credit_service.calculate_cost_for_model("openai", settings.OPENAI_IMAGE_MODEL, 0, 0, image_count=1)
+    estimated_cost = credit_service.calculate_cost_for_model(image_provider(), settings.OPENAI_IMAGE_MODEL, 0, 0, image_count=1)
     allowed = await credit_service.check_availability(
         db,
         tenant_id,

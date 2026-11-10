@@ -20,6 +20,9 @@ export function NavbarMusicComposer({ onPlay }: { onPlay: (item: LabItem) => voi
   const controller = useRef(new AbortController())
   const qc = useQueryClient(), { toast } = useToast()
   const config = useQuery({ queryKey: ['voice-lab-config'], queryFn: async () => (await voiceLabApi.config()).data })
+  const music = config.data?.music_model
+  const maxSeconds = music?.max_seconds ?? 600
+  const minSeconds = music?.min_seconds ?? 3
   const quote = useVoiceLabQuote({ tool: 'music', text: prompt, seconds, model: '', dialogue: [], file: null, previewText: '', enabled: !!config.data?.configured })
   const fail = (error: unknown) => {
     if (controller.current.signal.aborted) return
@@ -67,13 +70,14 @@ export function NavbarMusicComposer({ onPlay }: { onPlay: (item: LabItem) => voi
   return <div className="space-y-3 pt-2">
     <fieldset disabled={pending} className="min-w-0 space-y-3">
       <MusicPromptEditor value={prompt} onChange={setPrompt} disabled={pending} compact />
-      <label className="block space-y-1 text-xs font-semibold">{tl('Durata in secondi')}<Input type="number" min={3} max={600} step={1} value={Number.isFinite(seconds) ? seconds : ''} onChange={e => setSeconds(e.target.valueAsNumber)} /></label>
+      <label className="block space-y-1 text-xs font-semibold">{tl('Durata in secondi')}<Input type="number" min={minSeconds} max={maxSeconds} step={1} disabled={!!music?.fixed_seconds} value={music?.fixed_seconds ?? (Number.isFinite(seconds) ? seconds : '')} onChange={e => setSeconds(e.target.valueAsNumber)} /></label>
+      {music && <p className="text-[11px] text-[var(--text-secondary)]">{tl('Modello: {0} · {1}', music.label, music.price_note)}{music.fixed_seconds ? ` · ${tl('durata fissa {0} s', music.fixed_seconds)}` : ''}</p>}
       <details className="text-xs"><summary className="cursor-pointer text-[var(--text-secondary)]">{tl('Opzioni')}</summary><label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={aiCover} onChange={e => setAiCover(e.target.checked)} />{tl('Genera copertina')}</label></details>
     </fieldset>
     {!config.isLoading && !config.isError && !config.data?.configured && <p role="status" className="text-xs">{tl('La generazione musicale non è ancora configurata.')}</p>}
     {config.isError && <Button tone="neutral" surface="ghost" density="compact" onClick={() => void config.refetch()}>{tl('Riprova connessione')}</Button>}
     <p aria-live="polite" className="text-xs text-[var(--text-secondary)]">{quote.loading ? tl('Calcolo dei crediti…') : quote.error || (quote.data ? tl('Costo stimato{0}: {1} crediti', aiCover ? tl(' con copertina') : '', (quote.data.credits + (aiCover ? config.data?.cover_credits || 0 : 0)).toLocaleString('it-IT', { maximumFractionDigits: 2 })) : '')}</p>
-    <Button tone="accent" surface="solid" disabled={pending || !config.data?.configured || !prompt.trim() || !Number.isInteger(seconds) || seconds < 3 || seconds > 600 || !quote.data || quote.loading || !!quote.error} onClick={() => void generate()}>
+    <Button tone="accent" surface="solid" disabled={pending || !config.data?.configured || !prompt.trim() || !Number.isInteger(seconds) || seconds < minSeconds || seconds > maxSeconds || !quote.data || quote.loading || !!quote.error} onClick={() => void generate()}>
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Music className="h-4 w-4" />}{tl(pending ? 'Generazione in corso…' : 'Genera musica')}
     </Button>
     {pending && <p role="status" className="text-xs text-[var(--text-secondary)]">{job?.progress_label || tl('Verifico le generazioni in corso…')} {tl('Puoi chiudere il player: il brano sarà salvato nella libreria.')}</p>}

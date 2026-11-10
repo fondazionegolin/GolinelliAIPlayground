@@ -1,5 +1,6 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from app.services.model_roles import image_provider
 from app.services import model_roles, default_teacherbots
 from app.models.llm import TeacherConversation, TeacherConversationMessage
 from pydantic import BaseModel
@@ -2475,7 +2476,7 @@ async def send_teacherbot_message_with_files(
             image_prompt = prompt_ext.content.strip()
             
             # gpt-image really edits the uploaded picture; flux-schnell is text-to-image only
-            img_provider, img_model = ("openai", settings.OPENAI_IMAGE_MODEL) if image_base64 else ("flux", "flux-schnell")
+            img_provider, img_model = (image_provider(), settings.OPENAI_IMAGE_MODEL) if image_base64 else ("flux", "flux-schnell")
             image_url = await llm_service.generate_image(
                 image_prompt, 
                 size="1024x1024", 

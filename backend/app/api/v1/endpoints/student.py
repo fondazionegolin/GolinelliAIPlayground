@@ -582,7 +582,9 @@ async def upsert_session_canvas(
     canvas = result.scalar_one_or_none()
 
     if canvas and not canvas.students_can_write:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students cannot write to this canvas")
+        from app.realtime.gateway import student_owns_smart_canvas
+        if not await student_owns_smart_canvas(db, student.id, canvas.canvas_key):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students cannot write to this canvas")
 
     if canvas and request.base_version is not None and request.base_version != canvas.version:
         raise HTTPException(

@@ -1,5 +1,16 @@
 # Dataflow Studio — Riferimento tecnico
 
+## Aggiornamento 8 novembre 2026 — colonne AI e barre per categoria
+
+Il catalogo comprende anche `ai.add_column` e `plot.bar`, disponibili alle API del registro/esecuzione e all'assistente sia in creazione sia in modifica del Canvas.
+
+- `ai.add_column`: ingresso obbligatorio `table:TABLE`, contesto opzionale `extra:ANY`; uscite `table:TABLE` e `metadata:METRICS`. Parametri: `name`, `instruction`, `output_type` (`number|text|boolean`), limiti numerici opzionali inclusivi `min_value`/`max_value`, `batch_size` (default 25, massimo 50), `provider`, `model`, `max_tokens`. Il modello restituisce solo coppie `row_id`/`value`: il runtime controlla identità, completezza, tipi e limiti, e aggiunge i valori alle righe originali mantenendone ordine e contenuti. Tutte le righe sono elaborate in blocchi, senza il limite di anteprima di 50 righe di `ai.transform`. Una risposta incompleta o non valida fa fallire il nodo, senza pubblicare una tabella parziale. I token di tutti i blocchi sono sommati; il preventivo delle chiamate usa un limite superiore quando il numero di righe è deducibile, altrimenti resta sconosciuto.
+- `plot.bar`: ingresso `table:TABLE`, uscita `plot:ANY`; parametri `x` (categoria, anche testuale), `y` (valore numerico), `title`. Output `{"kind":"bar","x":["S001","S002"],"y":[7.5,2],"labels":{"x":"studente","y":"criticita"}}`. Canvas ed explorer conservano le etichette, anche nel foglio dati e nel CSV esportato. `plot.histogram` resta il grafico della distribuzione per intervalli.
+- Flusso scolastico: `ai.generate_dataset → data.convert_to_number → data.distinct → data.validate.valid → ai.add_column → plot.bar`. Generare dati interamente sintetici con la correlazione desiderata nel prompt; usare lo stesso nome (es. `criticita`) nella colonna AI e nell'asse Y. Per una valutazione 0–10 impostare entrambi i limiti. Un'analisi generale opzionale può essere prodotta da `ai.transform.text` e collegata a `ai.add_column.extra`.
+- `ai.transform` con compito `custom`, `summarize`, `translate` o `image_prompt` produce solo `text`, anche se la risposta contiene JSON. Il lint segnala un collegamento dalla sua uscita `table`, e l'assistente riprova correggendo il progetto. Per convertire JSON/CSV già generato usare `data.parse_text`; per arricchire una tabella usare `ai.add_column`.
+
+Le sezioni seguenti descrivono il catalogo precedente a questo aggiornamento.
+
 **Stato del documento:** 8 ottobre 2026 · branch `feature/iconstyle` · generato a partire dal catalogo reale dei nodi (`NODE_REGISTRY` + azioni di piattaforma), quindi porte, tipi, parametri e default delle tabelle sono quelli del codice, non una descrizione a memoria.
 
 **Cosa è questo documento.** Il riferimento di ciò che il Dataflow Studio (la sezione «Agentic Beta», `/teacher/agentic`, riservata agli amministratori) *fa oggi*: modello dati, regole di validazione, i tre modi di esecuzione, la scheda tecnica di tutti i 56 nodi e una proposta di progetto per l'assistente agentico che costruisce i workflow (§8).

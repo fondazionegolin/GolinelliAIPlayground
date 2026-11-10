@@ -27,6 +27,7 @@ const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
 const PublicTeacherbotChatPage = lazy(() => import('@/pages/PublicTeacherbotChatPage'))
 const PublicLiveInteractionPage = lazy(() => import('@/pages/PublicLiveInteractionPage'))
 const PublicSolidModelPage = lazy(() => import('@/pages/PublicSolidModelPage'))
+const CallPage = lazy(() => import('@/pages/CallPage'))
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, isAuthenticated } = useAuthStore()
@@ -68,6 +69,8 @@ function App() {
           <Route path="/bot/:token" element={<PublicTeacherbotChatPage />} />
           <Route path="/live/:token" element={<PublicLiveInteractionPage />} />
           <Route path="/3d/:token" element={<PublicSolidModelPage />} />
+          <Route path="/call" element={<CallPage />} />
+          <Route path="/call/:code" element={<CallPage />} />
           <Route path="/teacher-request" element={<TeacherRequestPage />} />
           <Route path="/activate/:token" element={<ActivatePage />} />
           <Route path="/school-invite/:token" element={<SchoolInvitePage />} />

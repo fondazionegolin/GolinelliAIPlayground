@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { priceInCredits } from '@/lib/credits'
 import { tl } from '@/i18n/tl'
 
-type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama'
+type Provider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'gemini' | 'ollama' | 'elevenlabs' | 'runware'
 interface Candidate {
   id: string; provider: Provider; model_id: string; display_name: string; kind: string
   input_usd: number | null; output_usd: number | null; price_note: string | null
@@ -23,12 +23,12 @@ interface Role {
 }
 interface RolesResponse { roles: Role[]; fixed: Array<{ label: string; model: string; reason: string }> }
 
-const PROVIDER_LABEL: Record<Provider, string> = { anthropic: 'Anthropic', openai: 'OpenAI', deepseek: 'DeepSeek', openrouter: 'OpenRouter', gemini: 'Gemini', ollama: 'Ollama' }
+const PROVIDER_LABEL: Record<Provider, string> = { anthropic: 'Anthropic', openai: 'OpenAI', deepseek: 'DeepSeek', openrouter: 'OpenRouter', gemini: 'Gemini', ollama: 'Ollama', elevenlabs: 'ElevenLabs', runware: 'Runware' }
 const GROUPS: Array<{ id: Role['group'][]; title: string; hint: string }> = [
   { id: ['chat'], title: tl("Chatbot e generazione di testo"), hint: tl("Chat di sessione, docente, tutor dei Notebook, Vibe Lab, ricerca nei documenti") },
   { id: ['vision'], title: tl("Visione"), hint: tl("Analisi di immagini, PDF e anteprime") },
   { id: ['image'], title: tl("Generazione di immagini"), hint: tl("Generatore di piattaforma e flussi agentici") },
-  { id: ['voice'], title: tl("Voce e tempo reale"), hint: tl("Interrogazione vocale, indagine, trascrizione e dettatura") },
+  { id: ['voice'], title: tl("Voce, musica e tempo reale"), hint: tl("Generazione musicale, interrogazione vocale, indagine, trascrizione e dettatura") },
 ]
 
 const money = (value: number) => priceInCredits(value)
@@ -38,11 +38,18 @@ export function priceLabel(model: Pick<Candidate, 'kind' | 'input_usd' | 'output
   if (model.kind === 'image' && model.input_usd !== null) return tl("{0} per immagine", money(model.input_usd))
   return model.price_note || tl("vedi listino")
 }
+/** Image models: share of blind head-to-head votes they would win against GPT Image 2.5 Sunburst (50% = as good). */
+export function imageStrength(model: Pick<Candidate, 'kind' | 'quality_score'> | null): string | null {
+  if (!model || model.kind !== 'image') return null
+  return model.quality_score === null ? tl("forza non valutata") : tl("{0}% vs GPT Image 2.5", model.quality_score)
+}
+const strengthOrQuality = (model: Pick<Candidate, 'kind' | 'quality_score'> | null) =>
+  imageStrength(model) ?? (model?.quality_score ? `Q${model.quality_score}` : null)
 const unusable = (role: Role, c: Candidate) => !c.ready ? tl("chiave API mancante") : (role.kind === 'text' && (c.input_usd === null || c.output_usd === null)) || (role.kind === 'image' && c.input_usd === null) ? tl("prezzo mancante") : null
 const optionText = (role: Role, c: Candidate) => {
   const reason = unusable(role, c)
-  const parts = [c.display_name, c.kind === 'text' ? (c.input_usd !== null && c.output_usd !== null ? `${money(c.input_usd)}/${money(c.output_usd)}` : null) : c.kind === 'image' ? (c.input_usd !== null ? `${money(c.input_usd)}/img` : null) : null,
-    c.quality_score ? `Q${c.quality_score}` : null, c.recommended ? tl("★ consigliato") : null, reason ? `(${reason})` : null]
+  const parts = [c.display_name, c.kind === 'text' ? (c.input_usd !== null && c.output_usd !== null ? `${money(c.input_usd)}/${money(c.output_usd)}` : null) : c.kind === 'image' ? (c.input_usd !== null ? `${money(c.input_usd)}/img` : null) : c.kind === 'music' ? c.price_note : null,
+    strengthOrQuality(c), c.recommended ? tl("★ consigliato") : null, reason ? `(${reason})` : null]
   return parts.filter(Boolean).join(' · ')
 }
 
@@ -102,7 +109,7 @@ export default function ModelRolesPanel() {
                       <div className="min-w-0 text-xs">
                         <p className="admin-eyebrow">{tl("In uso ora")}</p>
                         <p className="truncate font-semibold text-slate-900" title={role.current.model_id}>{role.current.display_name}</p>
-                        <p className="text-[11px] text-slate-500">{PROVIDER_LABEL[role.current.provider]} · {priceLabel(role.current.model)}{role.current.model?.quality_score ? ` · Q${role.current.model.quality_score}` : ''}</p>
+                        <p className="text-[11px] text-slate-500">{PROVIDER_LABEL[role.current.provider]} · {priceLabel(role.current.model)}{strengthOrQuality(role.current.model) ? ` · ${strengthOrQuality(role.current.model)}` : ''}</p>
                         {role.overridden && <p className="mt-0.5 text-[11px] font-semibold text-[var(--admin-accent)]">{tl("Personalizzato")}{role.updated_by ? ` da ${role.updated_by}` : ''}</p>}
                       </div>
                       <div className="min-w-0 space-y-1.5">

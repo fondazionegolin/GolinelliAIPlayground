@@ -21,7 +21,7 @@ from app.models.voice_lab import VoiceLabItem
 from app.models.file import File
 from app.models.drive import DriveItem
 from app.models.enums import OwnerType, Scope
-from app.services import audio_cover, background_jobs, drive_service as drive, voice_lab as eleven, voice_lab_billing as billing
+from app.services import audio_cover, background_jobs, drive_service as drive, music_generation, voice_lab as eleven, voice_lab_billing as billing
 from app.services.credit_service import credit_service
 from app.services.audio_library import artist_name, rename_track
 
@@ -165,7 +165,7 @@ async def budget(db, teacher, characters=0):
 
 @router.get("/config")
 async def config(_: Teacher):
-    return {"configured": bool(settings.ELEVENLABS_API_KEY), "default_model": settings.ELEVENLABS_TTS_MODEL,
+    return {"configured": bool(settings.ELEVENLABS_API_KEY), "default_model": settings.ELEVENLABS_TTS_MODEL, "music_model": music_generation.current(),
             "max_upload_mb": MAX_BYTES // (1024 * 1024), "output_formats": list(eleven.OUTPUT_FORMATS), "cover_credits": audio_cover.COVER_CREDITS, "pricing_rates": billing.RATES, "usd_to_eur": billing.USD_TO_EUR, "pricing_source": billing.SOURCE}
 
 
@@ -178,6 +178,8 @@ class QuoteRequest(BaseModel):
 
 @router.post("/quote")
 async def generation_quote(body: QuoteRequest, _: Teacher):
+    if body.action == "music" and music_generation.uses_external():
+        return music_generation.quote(music_generation.current()["model"])
     return billing.quote(**body.model_dump())
 
 
@@ -301,7 +303,9 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
     await budget(db, teacher, character_count)
     upload = await read_upload(file) if body.action in {"convert", "transcribe", "isolate", "alignment", "dubbing"} else None
     seconds = await billing.duration(upload[1]) if upload else body.seconds
-    price = billing.quote(body.action, characters=character_count, seconds=seconds, model=body.model_id or settings.ELEVENLABS_TTS_MODEL)
+    music = music_generation.current() if body.action == "music" else None
+    lyria = bool(music and music["provider"] in ("openrouter", "runware"))  # not ElevenLabs: admin choice in Admin → Modelli → Generazione musicale
+    price = music_generation.quote(music["model"]) if lyria else billing.quote(body.action, characters=character_count, seconds=seconds, model=body.model_id or settings.ELEVENLABS_TTS_MODEL)
     if body.voice_id or body.dialogue:
         await require_voices(db, teacher, {body.voice_id} if body.voice_id else {v.voice_id for v in body.dialogue})
     teacher_id, tenant_id = teacher.id, teacher.tenant_id
@@ -348,6 +352,34 @@ async def generate(db: Db, teacher: Teacher, payload: Annotated[str, Form(max_le
             elif body.action == "dialogue":
                 response = await paid_request("POST", "/v1/text-to-dialogue", params=params,
                     json={"inputs": [v.model_dump() for v in body.dialogue], "model_id": "eleven_v3", "language_code": body.language})
+            elif lyria:
+                tx = await billing.reserve(db, teacher, price, music["model"], provider=music["provider"])
+                await ctx.progress(0.1, f"Richiesta inviata a {music['label']}…", force=True)
+                try:
+                    lyria_audio = await music_generation.generate(music["model"], body.text, body.seconds, body.instrumental)
+                except asyncio.CancelledError:
+                    await asyncio.shield(billing.settle(db, tx.id, status="refunded"))
+                    raise
+                except Exception:
+                    await billing.settle(db, tx.id, status="refunded")
+                    raise
+                charged = music_generation.quote(music["model"], lyria_audio[2])  # the real OpenRouter cost
+                await billing.settle(db, tx.id, charged)
+                details.update(provider=music["provider"], music_model=music["model"])
+                if music["fixed_seconds"]:
+                    details["duration_seconds"] = music["fixed_seconds"]
+                item = await save_blob(db, teacher, body.title, body.action, lyria_audio[0], lyria_audio[1], "mp3", {**details, **billing.details(tx, charged)})
+                await db.commit()
+                await db.refresh(item)
+                if body.cover == "ai":
+                    await ctx.progress(0.9, "Creo la copertina…", force=True)
+                    try:
+                        await audio_cover.generate(db, teacher, item)
+                    except HTTPException as exc:
+                        item.details = {**item.details, "cover_error": exc.detail}
+                        await db.commit()
+                    await db.refresh(item)
+                return {"item": serialize(item, True, artist=artist_name(teacher))}
             elif body.action in {"sound_effects", "music"}:
                 data = {"text": body.text, "duration_seconds": body.seconds, "model_id": "eleven_text_to_sound_v2"} if body.action == "sound_effects" else {
                     "prompt": body.text, "music_length_ms": body.seconds * 1000, "force_instrumental": body.instrumental, "model_id": "music_v1"}

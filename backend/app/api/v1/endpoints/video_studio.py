@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.model_roles import openai_image_model
 from app.api.deps import get_current_teacher
 from app.core.config import settings
 from app.core.database import get_db
@@ -126,7 +127,7 @@ def _credits(usd: float) -> float:
 async def get_config(_: Teacher):
     return {
         "configured": bool(settings.OPENAI_API_KEY),
-        "image_model": settings.OPENAI_IMAGE_MODEL,
+        "image_model": openai_image_model(),
         "image_credits": _credits(studio.image_cost_usd()),
         "sheet_credits": _credits(studio.IMAGE_COST_BY_QUALITY["low"]),
         "voice_credits_per_1000_chars": _credits(voice_lab_billing.quote("tts", characters=1000, model=settings.VIDEO_STUDIO_TTS_MODEL)["usd"]),

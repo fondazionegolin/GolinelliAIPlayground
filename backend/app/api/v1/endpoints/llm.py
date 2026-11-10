@@ -19,6 +19,7 @@ import re
 import math
 from pathlib import Path
 
+from app.services.model_roles import image_provider as image_billing_provider
 from app.core.config import settings
 from app.services import model_roles
 from app.core.database import AsyncSessionLocal, get_db
@@ -243,7 +244,7 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
             if theme_role:
                 clean_block["themeRole"] = theme_role
             if block_type == "image" and block.get("imagePrompt"):
-                clean_block["imagePrompt"] = str(block.get("imagePrompt"))[:200]
+                clean_block["imagePrompt"] = str(block.get("imagePrompt"))[:600]
             clean_blocks.append(clean_block)
 
         if clean_blocks:
@@ -1573,10 +1574,10 @@ async def send_message(
                 image_base64=image_base64
             )
             openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2", settings.OPENAI_IMAGE_MODEL}
-            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1", "gpt-image-1.5": "GPT Image 1.5", "gpt-image-2": "GPT Image 2", settings.OPENAI_IMAGE_MODEL: "GPT Image 2"}
+            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1", "gpt-image-1.5": "GPT Image 1.5", "gpt-image-2": "GPT Image 2", settings.OPENAI_IMAGE_MODEL: "GPT Image 2" if "/" not in settings.OPENAI_IMAGE_MODEL else settings.OPENAI_IMAGE_MODEL.split("/")[-1]}
             provider_label = provider_labels.get(image_provider, image_provider)
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
-            provider = "openai" if image_provider in openai_providers else "flux"
+            provider = image_billing_provider() if image_provider == settings.OPENAI_IMAGE_MODEL else "openai" if image_provider in openai_providers else "flux"
             model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2", settings.OPENAI_IMAGE_MODEL: settings.OPENAI_IMAGE_MODEL}
             model = model_map.get(image_provider, image_provider)
             token_usage = enrich_usage_with_environmental_impact(
@@ -2485,7 +2486,7 @@ def _deck_patch_view(slides: list[dict]) -> list[dict]:
             if block.get("type") == "image":
                 content = "(immagine)" if str(content or "").startswith("data:") else str(content or "")[:200]
                 if block.get("imagePrompt"):
-                    extra["image_prompt"] = str(block["imagePrompt"])[:200]
+                    extra["image_prompt"] = str(block["imagePrompt"])[:600]
             blocks.append({
                 "id": block.get("id"), "type": block.get("type"), "content": content, **extra,
                 "x": round(float(block.get("x") or 0)), "y": round(float(block.get("y") or 0)),
@@ -2535,7 +2536,7 @@ async def _generate_slide_picture(
     provider, model = model_roles.pair_for("image.generation")
     if source_b64 and not (model.startswith("gpt-image") or model.startswith("flux-2")):
         # generate_image routes img2img for other models to the OpenAI editor: bill what really runs.
-        provider, model = "openai", settings.OPENAI_IMAGE_MODEL
+        provider, model = image_billing_provider(), settings.OPENAI_IMAGE_MODEL
     try:
         url = await llm_service.generate_image(prompt, provider=model, image_base64=source_b64)
     except Exception as exc:
@@ -2563,6 +2564,112 @@ def _keep_existing_slide_images(rendered: dict, original: Optional[dict]) -> Non
         new_prompt = str(new.get("imagePrompt") or "").strip()
         if not new_prompt or new_prompt == old_prompt or new_prompt == str(original.get("title") or "").strip():
             new["content"] = old["content"]
+
+
+# ── Image placeholders: «un'immagine per ogni slide» ────────────────────────
+# A whole-deck rewrite is a poor way to add pictures: the model must re-emit every block with new geometry and long
+# answers get cut. Instead the model only writes one visual prompt per slide; the server makes room and drops a
+# placeholder that shows that prompt, and the user generates each picture from the slide itself.
+
+_IMAGE_REQUEST_RE = re.compile(r"\b(immagin\w*|illustra\w*|foto\w*|figur\w*|disegn\w*|image\w*|picture\w*|visual\w*)\b", re.IGNORECASE)
+_IMAGE_VERB_RE = re.compile(r"\b(aggiung\w*|inser\w*|gener\w*|mett\w*|crea\w*|add\w*|ogni|ciascun\w*|tutte|each|every|corred\w*|illustra\w*|"
+                            r"sostitu\w*|cambia\w*|rigener\w*|replace\w*)\b", re.IGNORECASE)
+_IMAGE_REPLACE_RE = re.compile(r"\b(sostitu\w*|cambia\w*|rigener\w*|rifai|replace\w*|nuove immagini)\b", re.IGNORECASE)
+_IMAGE_EXCLUDE_RE = re.compile(r"\b(togli\w*|rimuov\w*|elimin\w*|remove|delete|sposta\w*|ridimension\w*|move|resize)\b|"
+                               r"\b(nuova slide|slide nuov\w*|new slide)", re.IGNORECASE)
+PLACEHOLDER_PROMPT_MAX = 600
+
+
+def _is_image_placeholder_request(prompt: str) -> bool:
+    return bool(_IMAGE_REQUEST_RE.search(prompt) and _IMAGE_VERB_RE.search(prompt) and not _IMAGE_EXCLUDE_RE.search(prompt))
+
+
+def _image_placeholder_url(width: float, height: float) -> str:
+    return f"https://placehold.co/{max(int(width), 1)}x{max(int(height), 1)}?text=Immagine"
+
+
+def _has_real_image(slide: dict) -> bool:
+    return any(isinstance(b, dict) and b.get("type") == "image" and not b.get("hidden")
+               and "placehold.co" not in str(b.get("content") or "") for b in slide.get("blocks") or [])
+
+
+def _slide_text(slide: dict, limit: int = 900) -> str:
+    texts = [re.sub(r"<[^>]+>", " ", str(b.get("content") or "")) for b in slide.get("blocks") or []
+             if isinstance(b, dict) and b.get("type") == "text"]
+    return re.sub(r"\s+", " ", " ".join(texts)).strip()[:limit]
+
+
+def _place_image_placeholder(slide: dict, prompt: str, width: int, height: int, replace: bool = False) -> bool:
+    """Reuse the slide's image slot, or make room on the right (text squeezed into the left ~55%) and add one.
+    A real picture is only turned back into a placeholder when the user asked to replace pictures."""
+    blocks = [b for b in slide.get("blocks") or [] if isinstance(b, dict)]
+    slots = [b for b in blocks if b.get("type") == "image" and not b.get("hidden")]
+    if slots and not replace and _has_real_image(slide):
+        return False
+    if slots:
+        slot = max(slots, key=lambda b: float(b.get("width") or 0) * float(b.get("height") or 0))
+        slot["imagePrompt"] = prompt
+        slot["content"] = _image_placeholder_url(float(slot.get("width") or 640), float(slot.get("height") or 360))
+        return True
+    def is_background(b: dict) -> bool:
+        return float(b.get("width") or 0) >= width * 0.9 and float(b.get("height") or 0) >= height * 0.85
+    def is_title(b: dict) -> bool:
+        return b.get("type") == "text" and float(b.get("y") or 0) < height * 0.2 and float(b.get("height") or 0) < height * 0.25
+    content = [b for b in blocks if not is_background(b) and not is_title(b)]
+    titles = [b for b in blocks if is_title(b)]
+    top = max([float(b.get("y") or 0) + float(b.get("height") or 0) for b in titles] + [height * 0.08]) + height * 0.04
+    split = width * 0.55
+    right = max([float(b.get("x") or 0) + float(b.get("width") or 0) for b in content] + [0.0])
+    if content and right > split:
+        left = min(float(b.get("x") or 0) for b in content)
+        factor = max(0.35, (split - left) / max(right - left, 1))
+        for b in content:
+            b["x"] = left + (float(b.get("x") or 0) - left) * factor
+            b["width"] = max(40.0, float(b.get("width") or 0) * factor)
+            if b.get("type") == "text" and isinstance(b.get("style"), dict):
+                b["style"]["autoFit"] = True
+    margin = width * 0.04
+    box_w, box_h = width - split - margin * 1.5, max(height * 0.4, height - top - margin)
+    blocks.append({
+        "id": str(uuid.uuid4()), "type": "image", "content": _image_placeholder_url(box_w, box_h),
+        "x": split + margin * 0.5, "y": top, "width": box_w, "height": box_h, "rotation": 0,
+        "zIndex": max([int(b.get("zIndex") or 0) for b in blocks] + [0]) + 1,
+        "style": {"borderRadius": 16, "padding": 0, "backgroundColor": "transparent"}, "imagePrompt": prompt,
+    })
+    slide["blocks"] = blocks
+    if slide.get("layout"):
+        slide["customized"] = True  # keep the new arrangement when the deck is re-themed
+    return True
+
+
+async def _image_placeholder_edit(*, prompt: str, deck_title: str, slides: list[dict], language: str, provider, model,
+                                  dims: tuple[int, int]) -> tuple[list[dict], int, list]:
+    """One short call for the visual prompts, then deterministic placement. Returns (slides, placed, responses)."""
+    work = json.loads(json.dumps(slides))
+    view = [{"slide_id": s.get("id"), "index": i + 1, "title": s.get("title") or "", "text": _slide_text(s),
+             "has_image": _has_real_image(s)} for i, s in enumerate(work)]
+    system_prompt = ("Sei un art director per presentazioni didattiche. Rispondi solo con JSON valido, compatto, senza Markdown.")
+    user_prompt = (
+        f"Lingua: {language}\nPresentazione: {deck_title}\nRichiesta dell'utente:\n{prompt}\n\nSlide:\n{json.dumps(view, ensure_ascii=False)[:60000]}\n\n"
+        "Scegli le slide che devono ricevere un'immagine secondo la richiesta (se chiede «ogni slide» tutte, se indica slide precise solo quelle; "
+        "salta le slide con has_image=true a meno che l'utente chieda di sostituire le immagini). Per ciascuna scrivi un PROMPT per un generatore "
+        "di immagini, in italiano, 2-4 frasi: soggetto concreto legato al contenuto di QUELLA slide, scena e composizione, stile (es. illustrazione "
+        "editoriale piatta, foto realistica, schema 3D) coerente in tutta la presentazione; nessun testo, scritta o numero nell'immagine.\n"
+        'Schema: {"slides":[{"slide_id":"...","prompt":"..."}]}'
+    )
+    response = await llm_service.generate(messages=[{"role": "user", "content": user_prompt}], system_prompt=system_prompt,
+                                          provider=provider, model=model, temperature=0.4, max_tokens=6000, allow_web_search=False)
+    payload = _extract_json_object(response.content)
+    by_id = {str(s.get("id")): s for s in work}
+    placed = 0
+    for item in payload.get("slides") or []:
+        if not isinstance(item, dict):
+            continue
+        slide = by_id.get(str(item.get("slide_id") or ""))
+        text = re.sub(r"\s+", " ", str(item.get("prompt") or "")).strip()[:PLACEHOLDER_PROMPT_MAX]
+        if slide is not None and text and _place_image_placeholder(slide, text, *dims, replace=bool(_IMAGE_REPLACE_RE.search(prompt))):
+            placed += 1
+    return work, placed, [response]
 
 
 def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int, theme: Optional[dict],
@@ -2608,7 +2715,7 @@ def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int
             if not isinstance(raw, dict):
                 continue
             block = block_by_id.get(str(raw.get("id") or ""))
-            image_prompt = str(raw.get("image_prompt") or raw.get("imagePrompt") or "").strip()[:200]
+            image_prompt = str(raw.get("image_prompt") or raw.get("imagePrompt") or "").strip()[:600]
             if block is None:  # new block: full sanitisation
                 if raw.get("type") == "image" and image_prompt:
                     # A picture to generate: placeholder now, the client fills it with the real illustration.
@@ -2959,6 +3066,53 @@ async def document_context_assist(
                 for item in source_slides
             ]
             target_payload = json.dumps({"title": target.get("title"), "slides": content_mode_slides}, ensure_ascii=False)[:60000]
+    if target_kind in {"slide", "presentation"} and _is_image_placeholder_request(prompt):
+        try:
+            source_slides = [target.get("slide")] if target_kind == "slide" else (target.get("slides") or [])
+            source_slides = [item for item in source_slides if isinstance(item, dict)]
+            if not source_slides:
+                raise ValueError("Nessuna slide da modificare")
+            new_slides, placed, usage_responses = await _image_placeholder_edit(
+                prompt=prompt, deck_title=str(target.get("title") or target.get("deck_title") or ""), slides=source_slides,
+                language=language, provider=provider, model=model, dims=(canvas_width, canvas_height),
+            )
+            if not placed:
+                raise ValueError("Nessuna slide adatta: indica su quali slide vuoi le immagini, o rimuovi prima quelle esistenti.")
+            check_and_fix_slides(new_slides, canvas_width, canvas_height, deck_theme)
+            if target_kind == "slide":
+                proposal = {"kind": "slide", "replacement_slide": new_slides[0]}
+            else:
+                proposal = {"kind": "presentation", "replacement_presentation": {
+                    "title": str(target.get("title") or "Presentazione")[:140], "format": target.get("format") or "16:9", "slides": new_slides,
+                }}
+            proposal["image_placeholders"] = placed
+            summary = (f"Ho preparato {placed} segnaposto immagine, ciascuno con il suo prompt. Applica la proposta, poi su ogni slide "
+                       "clicca «Genera immagine» (puoi prima ritoccare il prompt), oppure generale tutte insieme da qui.")
+            response = usage_responses[-1]
+            real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER
+            real_model = response.model or model or settings.DEFAULT_LLM_MODEL
+            await safe_track_usage(
+                db, tenant_id, real_provider, real_model,
+                credit_service.calculate_cost_for_model(real_provider, real_model, response.prompt_tokens, response.completion_tokens),
+                enrich_usage_with_environmental_impact({
+                    "type": "document_context_assist", "target_kind": target_kind, "mode": "image_placeholders",
+                    "prompt_tokens": response.prompt_tokens, "completion_tokens": response.completion_tokens,
+                    "total_tokens": response.prompt_tokens + response.completion_tokens,
+                }, provider=real_provider, model=real_model),
+                teacher_id, class_id, session_id, student_id, context="document_context_assist",
+            )
+            return {"summary": summary, "proposal": proposal, "agent_steps": [
+                {"agent": "Context Analyst", "summary": f"Ho letto il contenuto di {len(source_slides)} slide."},
+                {"agent": "Art Director", "summary": f"Ho scritto {placed} prompt visivi, uno per slide, e fatto spazio alle immagini."},
+                {"agent": "Reviewer", "summary": "Le immagini si generano dal segnaposto, quando vuoi."},
+            ]}
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except Exception as exc:
+            logger.exception("Image placeholder assist failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Document assist failed: {exc}")
     if target_kind in {"slide", "presentation"} and not content_mode_slides and _is_text_only_request(prompt):
         try:
             source_slides = [target.get("slide")] if target_kind == "slide" else (target.get("slides") or [])
@@ -4663,8 +4817,12 @@ async def teacher_chat_with_files(
 
     # Get chatbot profile
     profile = get_profile(profile_key)
+    support_instructions = ""
+    if profile_key == "teacher_support":
+        from app.services.teacher_agent import SUPPORT_ARTIFACT_SPEC, QUIZ_FORMAT_SPEC
+        support_instructions = "\n\n" + SUPPORT_ARTIFACT_SPEC + "\n\n" + QUIZ_FORMAT_SPEC
     base_system_prompt = apply_output_language_instruction(
-        profile["system_prompt"],
+        profile["system_prompt"] + support_instructions,
         get_ui_language(http_request),
     )
 

@@ -20,7 +20,7 @@ export interface ChatMessage {
   is_private?: boolean
   target_id?: string
   is_notification?: boolean
-  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published' | 'task_feedback' | 'task_correction' | 'board_shared'
+  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published' | 'task_feedback' | 'task_correction' | 'board_shared' | 'calendar_reminder'
   notification_data?: Record<string, unknown>
   reply_to_id?: string
   reply_preview?: string
@@ -54,6 +54,8 @@ type PublicChatCache = {
 }
 
 const PUBLIC_CHAT_CACHE = new Map<string, PublicChatCache>()
+/** Every socket currently owned by a mounted useSocket hook, oldest first. */
+const LIVE_SOCKETS = new Set<Socket>()
 const CACHE_TTL_MS = 2 * 60 * 1000
 const DEFAULT_CHUNK_SIZE = 30
 const MAX_IN_MEMORY_MESSAGES = 300
@@ -286,6 +288,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socketRef.current = socket
+    LIVE_SOCKETS.add(socket)
     ;(window as any).socket = socket
 
     let refreshInterval: NodeJS.Timeout | null = null
@@ -556,6 +559,14 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       publishRealtimeEvent('board_shared', data)
     })
 
+    socket.on('calendar_reminder', (data: Record<string, any>) => {
+      publishRealtimeEvent('calendar_reminder', data)
+    })
+
+    socket.on('calendar_changed', (data: Record<string, any>) => {
+      publishRealtimeEvent('calendar_changed', data)
+    })
+
     socket.on('share_chat_invite', (data: Record<string, any>) => {
       publishRealtimeEvent('share_chat_invite', data)
     })
@@ -577,7 +588,10 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       }
       socket.disconnect()
       socketRef.current = null
-      ;(window as any).socket = null
+      LIVE_SOCKETS.delete(socket)
+      // Several hooks own a socket at once (navbar, chat, floating chat): when one goes away the shared
+      // reference must move to one that is still alive, never to null (boards, cursors and "richiama qui" use it).
+      if ((window as any).socket === socket) (window as any).socket = [...LIVE_SOCKETS].pop() || null
     }
   }, [authToken, sessionId, refreshOnlineUsers, updatePublicCache])
 

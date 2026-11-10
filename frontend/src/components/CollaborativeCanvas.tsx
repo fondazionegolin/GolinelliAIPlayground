@@ -6,16 +6,18 @@ import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
-  RectangleHorizontal, Triangle, Circle, Square, Star, Minus, ArrowRight, Undo2, Redo2, Maximize, Minimize,
-  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move,
+  RectangleHorizontal, Triangle, Circle, Square, Minus, ArrowRight, Undo2, Redo2, Maximize, Minimize,
+  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move, Sparkles,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+import { BRAINSTORM_ACTIONS } from './canvasBrainstorm'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { FormulaEditor } from './FormulaEditor'
 import { MotionFrame, MotionPlayer } from './motion/MotionStage'
 import { CanvasShape } from './CanvasShape'
-import { canvasLabelColor } from './canvasColors'
+import { CheckCard, FlashCard, QuizCard, type CheckResult } from './CanvasInteractive'
+import { canvasLabelColor, isToneStroke, shadeTopFor, shapeStrokeFor } from './canvasColors'
 import { DEMOS } from './motion/library'
 import { buildTutorial, TUTORIAL_SIZE } from './canvasTutorial'
 import type { Scene } from './motion/spec'
@@ -27,7 +29,7 @@ import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, de
 
 type CanvasRole = 'teacher' | 'student'
 type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move'
-const SHAPE_TOOLS: Tool[] = ['roundedRect', 'triangle', 'rect', 'ellipse', 'diamond', 'star', 'hexagon']
+const SHAPE_TOOLS: Tool[] = ['roundedRect', 'triangle', 'rect', 'ellipse']
 
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
@@ -36,7 +38,10 @@ type LockInfo = { userId: string; userType: string }
 type Collaborator = { id: string; name: string; role: 'teacher' | 'student'; avatarUrl?: string }
 type RemoteCursor = { userId: string; label: string; color: string; x: number; y: number; updatedAt: number }
 
-type CanvasItemBase = { id: string; parentFrameId?: string; ai?: boolean }
+/** `by`/`at`: who created the item and when (ms); `eb`/`et`: who last edited it. They feed the board report. */
+/** `role`: sections made by an AI regrouping (and their summary text), reused by the next regrouping instead of duplicated. */
+type CanvasItemBase = { id: string; parentFrameId?: string; ai?: boolean; by?: string; at?: number; eb?: string; et?: number; role?: 'cluster' | 'cluster-summary' }
+type CanvasAnswer = { name: string; ok: boolean; at: number; choice?: number; text?: string; feedback?: string }
 
 type CanvasTextStyle = {
   fontFamily: string
@@ -62,6 +67,9 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
   | (CanvasPositionedItemBase & { type: 'path'; points: Point[]; ow: number; oh: number; color: string; width: number })
+  | (CanvasPositionedItemBase & { type: 'quiz'; question: string; options: string[]; correct: number[]; explanation?: string; color: string; answers?: Record<string, CanvasAnswer> })
+  | (CanvasPositionedItemBase & { type: 'flashcard'; front: string; back: string; color: string; answers?: Record<string, CanvasAnswer> })
+  | (CanvasPositionedItemBase & { type: 'check'; question: string; expected: string; hint?: string; color: string; answers?: Record<string, CanvasAnswer> })
 
 type CanvasDoc = { type: 'canvas_v1'; items: CanvasItem[] }
 export type { CanvasItem, CanvasDoc }
@@ -86,6 +94,8 @@ interface CollaborativeCanvasProps {
   initialContent?: string
   onContentChange?: (contentJson: string) => void
   readOnly?: boolean
+  /** The viewer owns this shared board: they always edit it, whatever the students' edit flag says. */
+  ownerCanWrite?: boolean
   /** Extra controls drawn at the right of the top bar (e.g. open the AI panel). */
   chrome?: React.ReactNode
   /** Fill the parent's height instead of the viewport-based default. */
@@ -100,6 +110,10 @@ interface CollaborativeCanvasProps {
   onHydrated?: () => void
   /** Fires with the live value of the single students-can-write flag (the AI assistant follows it). */
   onPermissionChange?: (studentsCanWrite: boolean) => void
+  /** Display name stamped on the items this viewer creates or edits (the board report tells who did what). */
+  author?: string
+  /** Checks an open answer of a «Verifica» card against its key (AI); without it a keyword match is used. */
+  onValidateAnswer?: (question: string, expected: string, answer: string) => Promise<CheckResult>
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -368,7 +382,13 @@ const mergeCanvasDocs = (base: CanvasDoc, local: CanvasDoc, remote: CanvasDoc): 
 
   const merged = remote.items
     .filter((item) => !(changedLocally.has(item.id) && !localById.has(item.id)))
-    .map((item) => changedLocally.has(item.id) ? localById.get(item.id) || item : item)
+    .map((item) => {
+      if (!changedLocally.has(item.id)) return item
+      const mine = localById.get(item.id)
+      if (!mine) return item
+      const theirs = (item as { answers?: Record<string, unknown> }).answers, ours = (mine as { answers?: Record<string, unknown> }).answers
+      return theirs || ours ? { ...mine, answers: { ...(theirs || {}), ...(ours || {}) } } as CanvasItem : mine
+    })
   const mergedIds = new Set(merged.map((item) => item.id))
   local.items.forEach((item) => {
     if (changedLocally.has(item.id) && !mergedIds.has(item.id)) merged.push(item)
@@ -435,12 +455,10 @@ const collectFrameDescendants = (items: CanvasItem[], frameId: string): string[]
 
 // ─── Tool button (module-level to avoid remount on parent re-render) ──────────
 
-const DiamondIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>
 const GrabHandIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10.5V5a1.5 1.5 0 0 1 3 0v5.5" /><path d="M14 10.5V6.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 6.5-6 6.5-2.4 0-3.7-1-5-3L4 14.2a1.4 1.4 0 0 1 2.3-1.6L8 14.5V12" /></svg>
 const SigmaIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><path d="M18 5H6l6 7-6 7h12" /></svg>
 const AnimationIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M10 8.5v5l4-2.5z" /><path d="M8 21h8" /></svg>
 const MapIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>
-const HexagonIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M7 4h10l5 8-5 8H7l-5-8z" /></svg>
 
 function ToolButton({
   activeTool,
@@ -480,6 +498,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   initialContent,
   onContentChange,
   readOnly = false,
+  ownerCanWrite = false,
   chrome,
   fill = false,
   onAssist,
@@ -487,6 +506,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   leading,
   tutorial = false,
   onHydrated,
+  author,
+  onValidateAnswer,
 }, handleRef) {
   const collaborationNameRef = useRef((canvasName || title || tl("Lavagna collaborativa")).trim())
   const [collaborationKey, setCollaborationKey] = useState(() => collaborationNameRef.current.toLocaleLowerCase().trim().replace(/\s+/g, ' ').slice(0, 240))
@@ -545,8 +566,14 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [newPostitColor, setNewPostitColor] = useState('#fef9c3')
   const [newShapeFill, setNewShapeFill] = useState('#bae6fd')
-  const [newShapeStroke, setNewShapeStroke] = useState('#0369a1')
+  // null = tone on tone: the border follows the fill, a little darker
+  const [newShapeStrokeChoice, setNewShapeStroke] = useState<string | null>(null)
+  const newShapeStroke = newShapeStrokeChoice ?? shapeStrokeFor(newShapeFill)
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
+  // Ids already known (loaded or received): anything else that appears was made here, and gets this viewer as author.
+  const seenIdsRef = useRef<Set<string> | null>(null)
+  if (!seenIdsRef.current) seenIdsRef.current = new Set(canvasDoc.items.map((item) => item.id))
+  const markSeen = (doc: CanvasDoc) => doc.items.forEach((item) => seenIdsRef.current!.add(item.id))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -571,6 +598,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [liveSocket, setLiveSocket] = useState<any>(() => (window as any).socket || null)
   const [online, setOnline] = useState<Collaborator[]>([])
   const [summon, setSummon] = useState<{ x: number; y: number; label: string; at: number } | null>(null)
+  const [summonError, setSummonError] = useState('')
+  useEffect(() => { if (!summonError) return; const t = window.setTimeout(() => setSummonError(''), 4000); return () => window.clearTimeout(t) }, [summonError])
   const onHydratedRef = useRef(onHydrated)
   onHydratedRef.current = onHydrated
   const onPermissionChangeRef = useRef(onPermissionChange)
@@ -583,13 +612,23 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; itemId: string | null } | null>(null)
 
   // Derived
-  const canEdit = !readOnly && (role === 'teacher' || !sessionId || studentsCanWrite)
+  const canEdit = !readOnly && (role === 'teacher' || !sessionId || studentsCanWrite || ownerCanWrite)
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
   const itemById = useMemo(() => new Map(canvasDoc.items.map((item) => [item.id, item])), [canvasDoc.items])
   const connectorItems = useMemo(() => canvasDoc.items.filter(isConnector) as Array<Extract<CanvasItem, { type: 'connector' }>>, [canvasDoc.items])
   const positionedItems = useMemo(() => canvasDoc.items.filter(isPositioned), [canvasDoc.items])
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds])
-  const itemZIndex = useMemo(() => new Map(canvasDoc.items.map((item, index) => [item.id, index + 1])), [canvasDoc.items])
+  // Frames are containers: by definition they always sit below every other element (larger frames under the ones
+  // they contain), then the connector layer, then everything else in document order. «Porta avanti/indietro» reorders
+  // inside each layer, never across it.
+  const { itemZIndex, connectorLayerZ } = useMemo(() => {
+    const order = new Map(canvasDoc.items.map((item, index) => [item.id, index]))
+    const frames = canvasDoc.items.filter(isFrame).sort((a, b) => (b.w * b.h - a.w * a.h) || (order.get(a.id)! - order.get(b.id)!))
+    const z = new Map<string, number>(frames.map((frame, index) => [frame.id, index + 1]))
+    const base = frames.length + 2
+    canvasDoc.items.forEach((item, index) => { if (!isFrame(item)) z.set(item.id, base + index) })
+    return { itemZIndex: z, connectorLayerZ: frames.length + 1 }
+  }, [canvasDoc.items])
   const selectedItem = useMemo(
     () => (selectedId ? itemById.get(selectedId) || null : null),
     [itemById, selectedId],
@@ -607,8 +646,20 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     const raw = role === 'student' ? localStorage.getItem('student_token') : localStorage.getItem('access_token')
     return jwtSubject(raw)
   }, [role])
+  const viewer = useMemo(() => ({ key: currentUserId || author || 'me', name: author || (role === 'teacher' ? tl("Docente") : tl("Studente")) }), [author, currentUserId, role])
 
   useEffect(() => { latestSerializedRef.current = serializedDoc }, [serializedDoc])
+
+  useEffect(() => {
+    const seen = seenIdsRef.current!
+    const fresh = canvasDoc.items.filter((item) => !seen.has(item.id))
+    if (!fresh.length) return
+    fresh.forEach((item) => seen.add(item.id))
+    const stamp = new Set(fresh.filter((item) => !item.by).map((item) => item.id))
+    if (!author || !stamp.size) return
+    const now = Date.now()
+    setCanvasDoc((prev) => ({ ...prev, items: prev.items.map((item) => (stamp.has(item.id) && !item.by ? { ...item, by: author, at: now } as CanvasItem : item)) }))
+  }, [canvasDoc, author])
   useEffect(() => { onContentChangeRef.current = onContentChange }, [onContentChange])
 
   useEffect(() => {
@@ -855,6 +906,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
         ? mergeCanvasDocs(parseCanvasDoc(lastSerializedRef.current), local, remote)
         : remote
       const nextSerialized = JSON.stringify(next)
+      markSeen(remote)
       if (nextSerialized !== lastSerializedRef.current) {
         setCanvasDoc(next)
         latestSerializedRef.current = nextSerialized
@@ -891,11 +943,9 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           try {
             const current = await apiByRole[role].getCanvas(sessionId, collaborationNameRef.current)
             const remoteVersion = Number(current.data?.version || 0)
-            const merged = mergeCanvasDocs(
-              parseCanvasDoc(baseSerialized),
-              parseCanvasDoc(nextSerialized),
-              parseCanvasDoc(current.data?.content_json),
-            )
+            const theirs = parseCanvasDoc(current.data?.content_json)
+            markSeen(theirs)
+            const merged = mergeCanvasDocs(parseCanvasDoc(baseSerialized), parseCanvasDoc(nextSerialized), theirs)
             const mergedSerialized = JSON.stringify(merged)
             const retry = await apiByRole[role].updateCanvas(sessionId, collaborationNameRef.current, { title, content_json: mergedSerialized, base_version: remoteVersion })
             const mergedVersion = Number(retry.data?.version || remoteVersion + 1)
@@ -946,6 +996,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   useEffect(() => {
     const parsed = parseCanvasDoc(initialContent)
     const serialized = JSON.stringify(parsed)
+    markSeen(parsed)
     if (serialized !== serializedDoc) {
       setCanvasDoc(parsed)
       lastSerializedRef.current = serialized
@@ -1010,6 +1061,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       if (incomingVersion <= versionRef.current) return
       if (isInteractingRef.current) { remoteWhileInteractingRef.current = String(payload?.content_json || ''); return }
       const remote = parseCanvasDoc(payload?.content_json)
+      markSeen(remote)
       const remoteSerialized = JSON.stringify(remote)
       versionRef.current = incomingVersion
       setVersion(incomingVersion)
@@ -1217,18 +1269,21 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   useEffect(() => {
     const socket = liveSocket
     if (!socket || !sessionId) return
-    const toCollaborator = (u: any): Collaborator => ({ id: String(u.student_id), name: String(u.nickname || (u.role === 'teacher' ? 'Docente' : 'Studente')), role: u.role === 'teacher' ? 'teacher' : 'student', avatarUrl: u.avatar_url || undefined })
-    const join = () => socket.emit('join_session', { session_id: sessionId }, (response: { online_students?: any[] }) => {
-      if (response?.online_students) setOnline(response.online_students.map(toCollaborator))
+    // Avatars = people who have THIS board open right now (gateway "canvas_presence"), not the whole session.
+    const toCollaborator = (u: any): Collaborator => ({ id: String(u.id), name: String(u.name || (u.role === 'teacher' ? 'Docente' : 'Studente')), role: u.role === 'teacher' ? 'teacher' : 'student', avatarUrl: u.avatar_url || undefined })
+    const applyViewers = (list: any[]) => {
+      const viewers = (list || []).map(toCollaborator).filter((u) => u.id !== currentUserId)
+      setOnline(viewers)
+      const ids = new Set(viewers.map((u) => u.id))
+      setRemoteCursors((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => ids.has(id))))
+    }
+    const here = () => socket.emit('canvas_presence', { session_id: sessionId, canvas_key: collaborationKey, state: 'here' }, (response: { viewers?: any[] }) => {
+      if (response?.viewers) applyViewers(response.viewers)
     })
-    const onPresence = (data: any) => {
-      const id = String(data?.student_id || '')
-      if (!id) return
-      if (data.status === 'online') setOnline((prev) => (prev.some((u) => u.id === id) ? prev.map((u) => (u.id === id ? toCollaborator(data) : u)) : [...prev, toCollaborator(data)]))
-      else {
-        setOnline((prev) => prev.filter((u) => u.id !== id))
-        setRemoteCursors((prev) => { const next = { ...prev }; delete next[id]; return next })
-      }
+    const join = () => { socket.emit('join_session', { session_id: sessionId }); here() }
+    const onBoardPresence = (data: any) => {
+      if (data?.session_id !== sessionId || data?.canvas_key !== collaborationKey) return
+      applyViewers(data.viewers)
     }
     const onSummon = (payload: any) => {
       if (payload?.session_id !== sessionId || payload?.canvas_key !== collaborationKey || role === 'teacher') return
@@ -1253,12 +1308,16 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       window.requestAnimationFrame(step)
     }
     join()
-    const refresh = window.setInterval(() => { if (socket.connected) join() }, 20000)
+    const refresh = window.setInterval(() => { if (socket.connected) here() }, 20000)
     socket.on('connect', join)
-    socket.on('presence_update', onPresence)
+    socket.on('canvas_presence', onBoardPresence)
     socket.on('canvas_summon', onSummon)
-    return () => { window.clearInterval(refresh); socket.off('connect', join); socket.off('presence_update', onPresence); socket.off('canvas_summon', onSummon) }
-  }, [collaborationKey, liveSocket, paintViewport, role, sessionId])
+    return () => {
+      window.clearInterval(refresh)
+      socket.emit('canvas_presence', { session_id: sessionId, canvas_key: collaborationKey, state: 'left' })
+      socket.off('connect', join); socket.off('canvas_presence', onBoardPresence); socket.off('canvas_summon', onSummon)
+    }
+  }, [collaborationKey, currentUserId, liveSocket, paintViewport, role, sessionId])
 
   useEffect(() => {
     if (!summon) return
@@ -1268,8 +1327,12 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
   const summonStudents = (clientX: number, clientY: number) => {
     const point = toWorld(clientX, clientY)
-    liveSocket?.emit('canvas_summon', { session_id: sessionId, canvas_key: collaborationKey, x: point.x, y: point.y })
-    setSummon({ x: point.x, y: point.y, label: 'Docente', at: Date.now() })
+    const socket = liveSocket?.connected ? liveSocket : (window as any).socket
+    if (!socket?.connected) { setSummonError(tl("Connessione in tempo reale assente: riprova tra qualche secondo.")); return }
+    socket.emit('canvas_summon', { session_id: sessionId, canvas_key: collaborationKey, x: point.x, y: point.y }, (response: { error?: string } | undefined) => {
+      if (response?.error) setSummonError(tl("Non è stato possibile richiamare gli studenti."))
+    })
+    setSummon({ x: point.x, y: point.y, label: tl("Docente"), at: Date.now() })
   }
 
   const goToCollaborator = (id: string) => {
@@ -1310,7 +1373,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   // ─── Item creation ────────────────────────────────────────────────────────
 
   const DEFAULT_ITEM_SIZES: Partial<Record<Tool, [number, number]>> = {
-    postit: [220, 180], frame: [360, 260], text: [280, 120], roundedRect: [220, 140], triangle: [220, 160],
+    postit: [150, 130], frame: [360, 260], text: [280, 120], roundedRect: [220, 140], triangle: [220, 160],
     rect: [220, 140], ellipse: [200, 140], diamond: [200, 160], star: [180, 180], hexagon: [220, 150], line: [160, 0], arrow: [160, 0], formula: [380, 84],
   }
 
@@ -1319,13 +1382,18 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', backgroundColor: '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#171717', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'formula') return { id, type: 'formula', x, y, w, h, latex: '', fontSize: 28, color: '#0f172a' }
     const shapeByTool: Partial<Record<Tool, 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon'>> = { rect: 'rect', ellipse: 'ellipse', diamond: 'diamond', star: 'star', hexagon: 'hexagon' }
     const extraShape = shapeByTool[type]
-    if (extraShape) return { id, type: 'shape', shape: extraShape, x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 2.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (extraShape) return { id, type: 'shape', shape: extraShape, x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke, borderWidth: 1.5, borderStyle: 'solid', text: '', textColor: '#171717', textStyle: DEFAULT_TEXT_STYLE }
     return null
+  }
+
+  /** Answers to interactive cards: not blocked by someone else's text lock, merged per participant on conflicts. */
+  const recordAnswer = (id: string, patch: Partial<CanvasItem>) => {
+    setCanvasDoc((prev) => ({ ...prev, items: prev.items.map((item) => (item.id === id ? { ...item, ...patch } as CanvasItem : item)) }))
   }
 
   const updateItem = (id: string, patch: Partial<CanvasItem>) => {
@@ -1333,7 +1401,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     setCanvasDoc((prev) => {
       const target = prev.items.find((item) => item.id === id)
       if (!target) return prev
-      const updated = { ...target, ...patch } as CanvasItem
+      const updated = { ...target, ...patch, ...(author && !('answers' in patch) ? { eb: author, et: Date.now() } : {}) } as CanvasItem
       const positionChanged = isPositioned(updated) && ('x' in patch || 'y' in patch || 'w' in patch || 'h' in patch)
       const nextItem = positionChanged ? { ...updated, parentFrameId: getParentFrameId(updated, prev.items) } as CanvasItem : updated
       return { ...prev, items: prev.items.map((item) => item.id === id ? nextItem : item) }
@@ -2317,7 +2385,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
               <span className="text-slate-500">{tl("Forma")}</span>
               <div className="flex items-center gap-1">
                 <span className="text-slate-500">Fill</span>
-                <ColorPicker value={selectedItem.fill} onChange={(color) => updateItem(selectedItem.id, { fill: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Riempimento")} />
+                <ColorPicker value={selectedItem.fill} onChange={(color) => updateItem(selectedItem.id, isToneStroke(selectedItem.stroke, selectedItem.fill) ? { fill: color, stroke: shapeStrokeFor(color) } : { fill: color })} disabled={!canEdit || isLockedByOther(selectedItem.id)} title={tl("Riempimento")} />
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-slate-500">{tl("Bordo")}</span>
@@ -2399,9 +2467,6 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             <ToolButton activeTool={tool} t="rect" icon={Square} label={tl("Rettangolo a spigoli vivi")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="ellipse" icon={Circle} label={tl("Ellisse — trascina per dimensionare (O)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="triangle" icon={Triangle} label={tl("Triangolo — trascina per dimensionare")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="diamond" icon={DiamondIcon} label={tl("Rombo")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="hexagon" icon={HexagonIcon} label={tl("Esagono")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="star" icon={Star} label={tl("Stella")} onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
             <ToolButton activeTool={tool} t="line" icon={Minus} label={tl("Linea — trascina (L)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="arrow" icon={ArrowRight} label={tl("Freccia libera — trascina (A)")} onSetTool={setTool} />
@@ -2437,7 +2502,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             {(SHAPE_TOOLS.includes(tool) || tool === 'line' || tool === 'arrow') && (
               <>
                 <div className="my-0.5 h-px w-7 bg-slate-200" />
-                <ColorPicker value={newShapeFill} onChange={(color) => setNewShapeFill(color)} title={tl("Riempimento")} />
+                <ColorPicker value={newShapeFill} onChange={(color) => { setNewShapeFill(color); setNewShapeStroke(null) }} title={tl("Riempimento")} />
                 <ColorPicker value={newShapeStroke} onChange={(color) => setNewShapeStroke(color)} title={tl("Bordo")} />
               </>
             )}
@@ -2487,7 +2552,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             }}
           >
             {/* SVG: connectors & paths */}
-            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" style={{ width: 1, height: 1, overflow: 'visible' }}>
+            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" style={{ width: 1, height: 1, overflow: 'visible', zIndex: connectorLayerZ }}>
               <defs>
                 <marker id="canvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
@@ -2566,8 +2631,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                       onFocus={() => { beginInteraction(); emitLock(item.id) }}
                       onBlur={() => { emitUnlock(item.id); endInteraction() }}
                       onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                      className="h-full w-full resize-none rounded-md p-2 text-sm shadow-sm"
-                      style={{ background: item.color, color: canvasLabelColor(item.color), fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
+                      className="h-full w-full resize-none rounded-xl p-2.5 text-sm"
+                      style={{ background: `linear-gradient(180deg, ${shadeTopFor(item.color, 0.5)} 0%, ${item.color} 100%)`, boxShadow: `inset 0 0 0 1px ${shapeStrokeFor(item.color)}55, 0 2px 6px -2px ${shapeStrokeFor(item.color)}40`, color: canvasLabelColor(item.color), fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
                       disabled={!canEdit || lockedByOther}
                       readOnly={!isEditing}
                       autoFocus={isEditing}
@@ -2577,7 +2642,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
                   {item.type === 'frame' && (
                     <div
-                      className="relative flex h-full w-full flex-col rounded-md backdrop-blur-sm"
+                      className="relative flex h-full w-full flex-col rounded-lg"
                       style={{
                         backgroundColor: item.backgroundColor || '#ffffff99',
                         borderColor: item.borderStyle === 'hand-drawn' ? 'transparent' : item.color,
@@ -2739,6 +2804,10 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                     </div>
                   )}
 
+                  {item.type === 'quiz' && <QuizCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} />}
+                  {item.type === 'flashcard' && <FlashCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} />}
+                  {item.type === 'check' && <CheckCard item={item} viewer={viewer} canRecord={canEdit} onRecord={(patch) => recordAnswer(item.id, patch)} onValidate={onValidateAnswer} />}
+
                   {/* Move mode: a grab surface over the whole item, so nothing inside it (text, players, images) steals the drag */}
                   {tool === 'move' && canEdit && !lockedByOther && (
                     <div className={`absolute inset-0 z-[5] cursor-grab rounded-sm active:cursor-grabbing ${selectedIdSet.has(item.id) ? 'bg-pink-400/10 outline-dashed outline-2 outline-pink-500' : 'hover:bg-pink-400/10 hover:outline-dashed hover:outline-2 hover:outline-pink-300'}`} style={{ pointerEvents: 'auto' }} />
@@ -2785,6 +2854,9 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           </div>
 
           {/* Drop overlay */}
+          {summonError && (
+            <div className="absolute left-1/2 top-3 z-40 -translate-x-1/2 rounded-full bg-rose-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg" role="alert">{summonError}</div>
+          )}
           {summon && role !== 'teacher' && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-40 -translate-x-1/2 rounded-full bg-[#1a1a2e] px-4 py-1.5 text-xs font-bold text-white shadow-lg" role="status">
               {summon.label} {tl("ti richiama qui")}
@@ -2861,6 +2933,21 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#e85c8d] hover:bg-pink-50" onClick={() => { summonStudents(contextMenu.screenX, contextMenu.screenY); closeContextMenu() }}>
                 <Users className="h-3 w-3" /> {tl("Richiama gli studenti qui")}
               </button>
+              <div className="mx-2 my-1 h-px bg-slate-100" />
+            </>
+          )}
+          {contextMenu.itemId && onAssist && (
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#e85c8d]">{tl("Assistente · brainstorming")}</div>
+              {BRAINSTORM_ACTIONS.map((action) => (
+                <button key={action.key} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-pink-50" onClick={() => {
+                  const id = contextMenu.itemId!
+                  closeContextMenu()
+                  onAssist(action.prompt, selectedIdSet.has(id) ? selectedIds : [id])
+                }}>
+                  <Sparkles className="h-3 w-3 text-[#e85c8d]" /> {action.label}
+                </button>
+              ))}
               <div className="mx-2 my-1 h-px bg-slate-100" />
             </>
           )}

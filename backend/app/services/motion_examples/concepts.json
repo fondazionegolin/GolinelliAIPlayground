@@ -1,0 +1,602 @@
+{
+ "title": "Idee emerse: la scuola che vorremmo",
+ "width": 800,
+ "height": 450,
+ "duration": 16,
+ "loop": true,
+ "background": "paper",
+ "entities": [
+  {
+   "id": "g1",
+   "type": "circle",
+   "x": 230,
+   "y": 200,
+   "r": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      5.5,
+      105
+     ]
+    ],
+    "ease": "inout"
+   },
+   "fill": "#dbeafe",
+   "stroke": "#2563eb",
+   "strokeWidth": 3,
+   "opacity": {
+    "keys": [
+     [
+      4,
+      0
+     ],
+     [
+      5,
+      0.9
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "g2",
+   "type": "circle",
+   "x": 570,
+   "y": 200,
+   "r": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      5.5,
+      105
+     ]
+    ],
+    "ease": "inout"
+   },
+   "fill": "#dcfce7",
+   "stroke": "#16a34a",
+   "strokeWidth": 3,
+   "opacity": {
+    "keys": [
+     [
+      4,
+      0
+     ],
+     [
+      5,
+      0.9
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "g1t",
+   "type": "text",
+   "x": 230,
+   "y": 82,
+   "text": "Spazi",
+   "size": 22,
+   "bold": true,
+   "fill": "#1e3a8a",
+   "opacity": {
+    "keys": [
+     [
+      5,
+      0
+     ],
+     [
+      6,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "g2t",
+   "type": "text",
+   "x": 570,
+   "y": 82,
+   "text": "Tempo",
+   "size": 22,
+   "bold": true,
+   "fill": "#166534",
+   "opacity": {
+    "keys": [
+     [
+      5,
+      0
+     ],
+     [
+      6,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i1",
+   "type": "text",
+   "text": "aule all'aperto",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      120
+     ],
+     [
+      5.5,
+      120
+     ],
+     [
+      7.5,
+      230
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      60
+     ],
+     [
+      5.5,
+      60
+     ],
+     [
+      7.5,
+      160
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      0.4,
+      0
+     ],
+     [
+      1.0,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i2",
+   "type": "text",
+   "text": "angoli lettura",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      400
+     ],
+     [
+      5.5,
+      400
+     ],
+     [
+      7.5,
+      230
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      330
+     ],
+     [
+      5.5,
+      330
+     ],
+     [
+      7.5,
+      205
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      1.0,
+      0
+     ],
+     [
+      1.6,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i3",
+   "type": "text",
+   "text": "laboratori aperti",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      680
+     ],
+     [
+      5.5,
+      680
+     ],
+     [
+      7.5,
+      230
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      70
+     ],
+     [
+      5.5,
+      70
+     ],
+     [
+      7.5,
+      250
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      1.6,
+      0
+     ],
+     [
+      2.2,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i4",
+   "type": "text",
+   "text": "pause più lunghe",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      160
+     ],
+     [
+      5.5,
+      160
+     ],
+     [
+      7.5,
+      570
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      330
+     ],
+     [
+      5.5,
+      330
+     ],
+     [
+      7.5,
+      160
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      2.2,
+      0
+     ],
+     [
+      2.8000000000000003,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i5",
+   "type": "text",
+   "text": "orari flessibili",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      640
+     ],
+     [
+      5.5,
+      640
+     ],
+     [
+      7.5,
+      570
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      330
+     ],
+     [
+      5.5,
+      330
+     ],
+     [
+      7.5,
+      205
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      2.8,
+      0
+     ],
+     [
+      3.4,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "i6",
+   "type": "text",
+   "text": "progetti lunghi",
+   "size": 17,
+   "fill": "#0f172a",
+   "x": {
+    "keys": [
+     [
+      0,
+      400
+     ],
+     [
+      5.5,
+      400
+     ],
+     [
+      7.5,
+      570
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y": {
+    "keys": [
+     [
+      0,
+      60
+     ],
+     [
+      5.5,
+      60
+     ],
+     [
+      7.5,
+      250
+     ]
+    ],
+    "ease": "inout"
+   },
+   "opacity": {
+    "keys": [
+     [
+      3.4,
+      0
+     ],
+     [
+      4.0,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "link",
+   "type": "arrow",
+   "x": 340,
+   "y": 200,
+   "x2": {
+    "keys": [
+     [
+      0,
+      0
+     ],
+     [
+      8.5,
+      0
+     ],
+     [
+      10,
+      116
+     ]
+    ],
+    "ease": "inout"
+   },
+   "y2": 0,
+   "stroke": "#7c3aed",
+   "strokeWidth": 4,
+   "opacity": {
+    "keys": [
+     [
+      8.4,
+      0
+     ],
+     [
+      8.6,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "linkt",
+   "type": "text",
+   "x": 400,
+   "y": 180,
+   "text": "si rinforzano",
+   "size": 14,
+   "fill": "#6d28d9",
+   "opacity": {
+    "keys": [
+     [
+      9.5,
+      0
+     ],
+     [
+      10.3,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "synth",
+   "type": "rect",
+   "x": 400,
+   "y": 352,
+   "w": 560,
+   "h": 48,
+   "rx": 24,
+   "fill": "#fef3c7",
+   "stroke": "#b45309",
+   "strokeWidth": 2,
+   "opacity": {
+    "keys": [
+     [
+      11,
+      0
+     ],
+     [
+      12,
+      1
+     ]
+    ],
+    "ease": "inout"
+   },
+   "scale": {
+    "keys": [
+     [
+      11,
+      0.85
+     ],
+     [
+      12,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  },
+  {
+   "id": "syntht",
+   "type": "text",
+   "x": 400,
+   "y": 358,
+   "text": "Una scuola più aperta nello spazio e nel tempo",
+   "size": 18,
+   "bold": true,
+   "fill": "#78350f",
+   "opacity": {
+    "keys": [
+     [
+      11.4,
+      0
+     ],
+     [
+      12.2,
+      1
+     ]
+    ],
+    "ease": "inout"
+   }
+  }
+ ],
+ "steps": [
+  {
+   "at": 0.3,
+   "text": "Le idee del gruppo compaiono una alla volta"
+  },
+  {
+   "at": 4.5,
+   "text": "Emergono due temi: gli spazi e il tempo"
+  },
+  {
+   "at": 6,
+   "text": "Ogni idea si sposta nel suo tema"
+  },
+  {
+   "at": 8.6,
+   "text": "I due temi si rinforzano a vicenda"
+  },
+  {
+   "at": 11.2,
+   "text": "Sintesi: una scuola più aperta nello spazio e nel tempo"
+  }
+ ]
+}

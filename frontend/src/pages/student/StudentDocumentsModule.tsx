@@ -2530,6 +2530,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       snapOptions={snapOptions}
                       onContextAddBlock={addSlideBlock}
                       onActiveTextEditorChange={setActiveBlockEditor}
+                      imageGeneration={{ deckTitle: document.title, slideTitle: currentSlide.title, theme: document.theme }}
+                      onPatchBlock={(blockId, patch) => setDocument((current) => ({
+                        ...current,
+                        slides: current.slides.map((slide) => slide.blocks.some((block) => block.id === blockId)
+                          ? { ...slide, blocks: slide.blocks.map((block) => block.id === blockId && block.type === 'image' ? { ...block, ...patch } : block) }
+                          : slide),
+                      }))}
                     />
                   </div>
                </div>
@@ -2606,6 +2613,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   : slide),
               }))}
               deckTheme={document.theme}
+              currentSlides={document.slides}
               onClose={() => setPresentationChatOpen(false)}
             />
           )}

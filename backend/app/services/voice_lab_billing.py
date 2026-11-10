@@ -57,7 +57,7 @@ async def duration(data):
     return await asyncio.to_thread(_duration, data)
 
 
-async def reserve(db, teacher, price, model=""):
+async def reserve(db, teacher, price, model="", provider="elevenlabs"):
     # Serialize reservations on the same budget; never hold locks during provider I/O.
     limits = await credit_service.get_applicable_limits(db, teacher.tenant_id, teacher_id=teacher.id)
     if limits:
@@ -67,13 +67,13 @@ async def reserve(db, teacher, price, model=""):
     details = {"type": "voice_lab", "service": "Audio Lab", "action": price["action"],
                "billing_status": "reserved", "pricing": price,
                "limit_periods": {str(v.id): v.period_start.isoformat() for v in limits}}
-    tx = await credit_service.track_usage(db, teacher.tenant_id, "elevenlabs", model or price["action"], price["cost"], details, teacher_id=teacher.id)
+    tx = await credit_service.track_usage(db, teacher.tenant_id, provider, model or price["action"], price["cost"], details, teacher_id=teacher.id)
     return tx
 
 
 async def settle(db, tx_id, price=None, *, status="settled", commit=True):
     tx = await db.scalar(select(CreditTransaction).where(CreditTransaction.id == UUID(str(tx_id))).with_for_update().execution_options(populate_existing=True))
-    if not tx or tx.provider != "elevenlabs" or tx.usage_details.get("billing_status") != "reserved":
+    if not tx or (tx.usage_details or {}).get("type") != "voice_lab" or tx.usage_details.get("billing_status") != "reserved":
         return tx
     delta = (price["cost"] if price else 0) - tx.cost
     snapshots = tx.usage_details.get("limit_periods", {})

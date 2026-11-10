@@ -134,6 +134,19 @@ async def can_user_access_session(user: dict, session_id: str) -> bool:
         return False
 
 
+async def student_owns_smart_canvas(db, student_id, canvas_key: str) -> bool:
+    """A student always edits the smart board they created, whatever the classmates' edit flag says."""
+    if not canvas_key.startswith("smart:") or not student_id:
+        return False
+    from app.models.smart_canvas import SmartCanvas
+    try:
+        board_id = canvas_key.split(":", 1)[1]
+        owner = (await db.execute(select(SmartCanvas.owner_student_id).where(SmartCanvas.id == board_id))).scalar_one_or_none()
+    except Exception:
+        return False
+    return owner is not None and str(owner) == str(student_id)
+
+
 async def can_user_edit_canvas(user: dict, session_id: str, canvas_key: str | None = None) -> bool:
     """Realtime canvas mutations follow the same permission as the HTTP API."""
     if not await can_user_access_session(user, session_id):
@@ -142,12 +155,15 @@ async def can_user_edit_canvas(user: dict, session_id: str, canvas_key: str | No
         return True
     try:
         async with AsyncSessionLocal() as db:
+            key = normalize_canvas_key(canvas_key)
             result = await db.execute(
                 select(SessionCanvas.students_can_write)
                 .where(SessionCanvas.session_id == session_id)
-                .where(SessionCanvas.canvas_key == normalize_canvas_key(canvas_key))
+                .where(SessionCanvas.canvas_key == key)
             )
-            return bool(result.scalar_one_or_none())
+            if bool(result.scalar_one_or_none()):
+                return True
+            return await student_owns_smart_canvas(db, user.get("id"), key)
     except Exception as exc:
         print(f"[Gateway] canvas permission check failed for session {session_id}: {exc}")
         return False
@@ -171,15 +187,29 @@ def _voice_participant_name(user_id: str, user_type: str) -> str:
     return "Docente"
 
 
+def _voice_call_key(call_id) -> str:
+    return f"call:{call_id}"
+
+
+def _voice_socket_room(key: str) -> str:
+    """Socket room of a voice room key: `call:<id>` for invite-link calls, `session:<id>` otherwise."""
+    key = str(key)
+    return key if key.startswith("call:") else f"session:{key}"
+
+
 def _voice_public_state(session_id: str) -> dict:
+    """Public state of a voice room. `session_id` is the room key: a session id or `call:<id>`."""
+    session_id = str(session_id)
     state = voice_rooms.get(session_id) or {}
+    is_call = session_id.startswith("call:")
     queue_ids = state.get("queue", [])
     active_speaker_ids = state.get("active_speaker_ids")
     if active_speaker_ids is None:
         active_speaker_ids = [state.get("active_speaker_id")] if state.get("active_speaker_id") else []
     active_speaker_id = active_speaker_ids[0] if active_speaker_ids else None
     return {
-        "session_id": session_id,
+        "session_id": None if is_call else session_id,
+        "call_id": session_id.split(":", 1)[1] if is_call else None,
         "active": bool(state.get("active")),
         "teacher_id": state.get("teacher_id"),
         "active_speaker_id": active_speaker_id,
@@ -210,7 +240,7 @@ def _voice_public_state(session_id: str) -> dict:
 
 
 async def _broadcast_voice_state(session_id: str):
-    await sio.emit("voice_room_state", _voice_public_state(session_id), room=f"session:{session_id}")
+    await sio.emit("voice_room_state", _voice_public_state(session_id), room=_voice_socket_room(session_id))
 
 
 async def _require_teacher_session_access(user: dict, session_id: str) -> Optional[dict]:
@@ -456,6 +486,9 @@ async def disconnect(sid):
         return
 
     print(f"[Gateway] User disconnected: {user.get('id')} ({user.get('type')}) sid={sid}")
+    await _drop_canvas_viewer(sid)
+    for call_id in list((user.get("voice_calls") or {}).keys()):
+        await _drop_voice_user(_voice_call_key(call_id), user["id"], unless_sid=sid)
 
     if user.get("subjective_observer"):
         watchers = subjective_observers.get(user["id"])
@@ -1023,30 +1056,141 @@ async def chat_private_message(sid, data):
     return {"success": True}
 
 
-@sio.event
-async def voice_get_state(sid, data):
+async def _voice_target(sid, data: dict, *, moderator: bool = False) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
+    """Resolve (voice room key, user, error) for a voice event.
+
+    `call_id` targets an invite-link call (key `call:<id>`, the socket must have joined it via
+    `voice_call_join`); otherwise the session voice room (students: their own session).
+    """
     user = connected_users.get(sid)
     if not user:
-        return {"error": "Not authenticated"}
+        return None, None, {"error": "Not authenticated"}
+    data = data or {}
+    call_id = data.get("call_id")
+    if call_id:
+        role = (user.get("voice_calls") or {}).get(str(call_id))
+        if not role:
+            return None, user, {"error": "Forbidden"}
+        if moderator and role != "moderator":
+            return None, user, {"error": "Solo i docenti della classe possono gestire la chiamata"}
+        return _voice_call_key(call_id), user, None
 
-    requested_session_id = data.get("session_id")
-    session_id = user.get("session_id") if user.get("type") == "student" else requested_session_id
+    session_id = user.get("session_id") if user.get("type") == "student" else data.get("session_id")
+    if moderator:
+        error = await _require_teacher_session_access(user, session_id)
+        return (None, user, error) if error else (session_id, user, None)
     if not session_id:
-        return {"error": "Session ID required"}
+        return None, user, {"error": "Session ID required"}
     if not await can_user_access_session(user, session_id):
+        return None, user, {"error": "Forbidden"}
+    return session_id, user, None
+
+
+@sio.event
+async def voice_get_state(sid, data):
+    key, _user, error = await _voice_target(sid, data)
+    if error:
+        return error
+    return _voice_public_state(key)
+
+
+@sio.event
+async def voice_call_join(sid, data):
+    """Join the socket room of an invite-link call after checking the audience in the DB."""
+    import uuid as _uuid
+    from app.models.voice_call import VoiceCall
+    from app.services.voice_calls import call_role
+
+    user = connected_users.get(sid)
+    if not user or user.get("subjective_observer"):
+        return {"error": "Not authenticated"}
+    try:
+        call_id = _uuid.UUID(str((data or {}).get("call_id")))
+    except (TypeError, ValueError):
+        return {"error": "call_id required"}
+    async with AsyncSessionLocal() as db:
+        call = await db.get(VoiceCall, call_id)
+        if not call:
+            return {"error": "Videochiamata non trovata"}
+        if user.get("type") == "student":
+            role = await call_role(db, call, student_session_id=_uuid.UUID(str(user.get("session_id"))))
+        else:
+            teacher = await db.get(User, _uuid.UUID(str(user["id"])))
+            role = await call_role(db, call, teacher=teacher) if teacher else None
+    if not role:
         return {"error": "Forbidden"}
-    return _voice_public_state(session_id)
+    user.setdefault("voice_calls", {})[str(call_id)] = role
+    await sio.enter_room(sid, _voice_call_key(call_id))
+    return {"role": role, **_voice_public_state(_voice_call_key(call_id))}
+
+
+@sio.event
+async def voice_call_leave(sid, data):
+    user = connected_users.get(sid)
+    call_id = str((data or {}).get("call_id") or "")
+    if not user or not call_id:
+        return {"success": True}
+    (user.get("voice_calls") or {}).pop(call_id, None)
+    await sio.leave_room(sid, _voice_call_key(call_id))
+    await _drop_voice_user(_voice_call_key(call_id), user["id"])
+    return {"success": True}
+
+
+async def _drop_voice_user(key: str, user_id: str, *, unless_sid: Optional[str] = None) -> None:
+    """Remove a user from a room's queue/floor unless they still have another socket in that call."""
+    if key.startswith("call:"):
+        call_id = key.split(":", 1)[1]
+        for other_sid, other in connected_users.items():
+            if other_sid != unless_sid and other.get("id") == user_id and call_id in (other.get("voice_calls") or {}):
+                return
+    state = voice_rooms.get(key)
+    if not state:
+        return
+    before = (list(state.get("queue", [])), list(state.get("active_speaker_ids", [])))
+    state["queue"] = [q for q in state.get("queue", []) if q != user_id]
+    state["active_speaker_ids"] = [s for s in state.get("active_speaker_ids", []) if s != user_id]
+    if state.get("active_speaker_id") == user_id:
+        state["active_speaker_id"] = state["active_speaker_ids"][0] if state["active_speaker_ids"] else None
+    if before != (state["queue"], state["active_speaker_ids"]):
+        await _broadcast_voice_state(key)
+
+
+async def end_voice_call(call_id: str, reason: str = "ended") -> None:
+    """Close a call's live room (link disabled / call deleted): everyone in it is told and dropped."""
+    key = _voice_call_key(call_id)
+    if (voice_rooms.get(key) or {}).get("active") or reason == "deleted":
+        voice_rooms[key] = {"active": False, "queue": [], "active_speaker_ids": [], "active_speaker_id": None,
+                            "ended_at": datetime.now(timezone.utc).isoformat()}
+        await _broadcast_voice_state(key)
+    await sio.emit("voice_call_closed", {"call_id": call_id, "reason": reason}, room=key)
+    for user in connected_users.values():
+        calls = user.get("voice_calls") or {}
+        if call_id in calls and calls[call_id] != "moderator" or reason == "deleted":
+            calls.pop(call_id, None)
+
+
+async def _mark_call_started(key: str) -> None:
+    if not key.startswith("call:"):
+        return
+    try:
+        import uuid as _uuid
+        from app.models.voice_call import VoiceCall
+        async with AsyncSessionLocal() as db:
+            call = await db.get(VoiceCall, _uuid.UUID(key.split(":", 1)[1]))
+            if call:
+                call.last_started_at = datetime.now(timezone.utc)
+                await db.commit()
+    except Exception as exc:  # pragma: no cover - bookkeeping only
+        print(f"[Gateway] could not mark call started: {exc}")
 
 
 @sio.event
 async def voice_room_start(sid, data):
-    user = connected_users.get(sid)
-    session_id = data.get("session_id")
-    error = await _require_teacher_session_access(user, session_id)
+    key, user, error = await _voice_target(sid, data, moderator=True)
     if error:
         return error
 
-    voice_rooms[session_id] = {
+    voice_rooms[key] = {
         "active": True,
         "teacher_id": user["id"],
         "active_speaker_id": None,
@@ -1054,19 +1198,18 @@ async def voice_room_start(sid, data):
         "queue": [],
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    await _mark_call_started(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
 async def voice_room_end(sid, data):
-    user = connected_users.get(sid)
-    session_id = data.get("session_id")
-    error = await _require_teacher_session_access(user, session_id)
+    key, user, error = await _voice_target(sid, data, moderator=True)
     if error:
         return error
 
-    voice_rooms[session_id] = {
+    voice_rooms[key] = {
         "active": False,
         "teacher_id": user["id"],
         "active_speaker_id": None,
@@ -1074,18 +1217,19 @@ async def voice_room_end(sid, data):
         "queue": [],
         "ended_at": datetime.now(timezone.utc).isoformat(),
     }
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
 async def voice_request_speak(sid, data):
-    user = connected_users.get(sid)
-    if not user or user.get("type") != "student":
+    key, user, error = await _voice_target(sid, data)
+    if error:
+        return error
+    if user.get("type") != "student":
         return {"error": "Student access required"}
 
-    session_id = user.get("session_id")
-    state = voice_rooms.get(session_id)
+    state = voice_rooms.get(key)
     if not state or not state.get("active"):
         return {"error": "Voice room is not active"}
 
@@ -1094,18 +1238,19 @@ async def voice_request_speak(sid, data):
     student_id = user["id"]
     if student_id not in active_speaker_ids and student_id not in queue:
         queue.append(student_id)
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
 async def voice_cancel_request(sid, data):
-    user = connected_users.get(sid)
-    if not user or user.get("type") != "student":
+    key, user, error = await _voice_target(sid, data)
+    if error:
+        return error
+    if user.get("type") != "student":
         return {"error": "Student access required"}
 
-    session_id = user.get("session_id")
-    state = voice_rooms.get(session_id)
+    state = voice_rooms.get(key)
     if not state:
         return {"success": True}
 
@@ -1116,22 +1261,20 @@ async def voice_cancel_request(sid, data):
     ]
     if state.get("active_speaker_id") == student_id:
         state["active_speaker_id"] = None
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
 async def voice_grant_speaker(sid, data):
-    user = connected_users.get(sid)
-    session_id = data.get("session_id")
-    student_id = data.get("student_id")
-    error = await _require_teacher_session_access(user, session_id)
+    key, _user, error = await _voice_target(sid, data, moderator=True)
     if error:
         return error
+    student_id = (data or {}).get("student_id")
     if not student_id:
         return {"error": "student_id required"}
 
-    state = voice_rooms.get(session_id)
+    state = voice_rooms.get(key)
     if not state or not state.get("active"):
         return {"error": "Voice room is not active"}
 
@@ -1140,23 +1283,21 @@ async def voice_grant_speaker(sid, data):
         active_speaker_ids.append(student_id)
     state["active_speaker_id"] = active_speaker_ids[0] if active_speaker_ids else None
     state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
 async def voice_revoke_speaker(sid, data):
-    user = connected_users.get(sid)
-    session_id = data.get("session_id")
-    error = await _require_teacher_session_access(user, session_id)
+    key, _user, error = await _voice_target(sid, data, moderator=True)
     if error:
         return error
 
-    state = voice_rooms.get(session_id)
+    state = voice_rooms.get(key)
     if not state:
         return {"success": True}
 
-    student_id = data.get("student_id")
+    student_id = (data or {}).get("student_id")
     if student_id:
         state["active_speaker_ids"] = [
             speaker_id for speaker_id in state.get("active_speaker_ids", []) if speaker_id != student_id
@@ -1164,8 +1305,8 @@ async def voice_revoke_speaker(sid, data):
     else:
         state["active_speaker_ids"] = []
     state["active_speaker_id"] = state["active_speaker_ids"][0] if state.get("active_speaker_ids") else None
-    await _broadcast_voice_state(session_id)
-    return {"success": True, **_voice_public_state(session_id)}
+    await _broadcast_voice_state(key)
+    return {"success": True, **_voice_public_state(key)}
 
 
 @sio.event
@@ -1472,6 +1613,86 @@ async def canvas_summon(sid, data):
         skip_sid=sid,
     )
     return {"success": True}
+
+
+# ─── Board presence ────────────────────────────────────────────────────────────
+# Who has a given collaborative board open right now (not everyone online in the session).
+# Clients announce "here" when they open a board and every ~20 s while it stays open, "left" when they close it;
+# a dropped connection is cleaned up in disconnect(). Entries without a heartbeat expire.
+CANVAS_PRESENCE_TTL = 60
+canvas_viewers: dict[tuple[str, str], dict[str, dict]] = {}  # (session_id, canvas_key) -> {sid: viewer}
+teacher_profiles: dict[str, tuple[str, Optional[str]]] = {}  # teacher_id -> (name, avatar_url)
+
+
+async def _canvas_viewer(user: dict) -> dict:
+    if user.get("type") == "student":
+        return {"id": str(user["id"]), "name": student_nicknames.get(user["id"]) or user.get("nickname") or "Studente",
+                "role": "student", "avatar_url": student_avatars.get(user["id"])}
+    teacher_id = str(user.get("id") or "")
+    if teacher_id not in teacher_profiles:
+        name, avatar = "Docente", None
+        try:
+            async with AsyncSessionLocal() as db:
+                teacher = (await db.execute(select(User).where(User.id == teacher_id))).scalar_one_or_none()
+                if teacher:
+                    name = f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email or "Docente"
+                    avatar = teacher.avatar_url
+        except Exception as e:
+            print(f"[Gateway] canvas viewer lookup failed: {e}")
+        teacher_profiles[teacher_id] = (name, avatar)
+    name, avatar = teacher_profiles[teacher_id]
+    return {"id": teacher_id, "name": name, "role": "teacher", "avatar_url": avatar}
+
+
+def _canvas_viewer_list(key: tuple[str, str]) -> list[dict]:
+    viewers = canvas_viewers.get(key) or {}
+    now = datetime.now(timezone.utc).timestamp()
+    for stale in [sid for sid, v in viewers.items() if now - v["seen"] > CANVAS_PRESENCE_TTL or sid not in connected_users]:
+        viewers.pop(stale, None)
+    if not viewers:
+        canvas_viewers.pop(key, None)
+    unique: dict[str, dict] = {}
+    for v in viewers.values():
+        unique[v["id"]] = {k: v[k] for k in ("id", "name", "role", "avatar_url")}
+    return list(unique.values())
+
+
+async def _broadcast_canvas_viewers(key: tuple[str, str]) -> None:
+    await sio.emit("canvas_presence", {"session_id": key[0], "canvas_key": key[1], "viewers": _canvas_viewer_list(key)},
+                   room=f"session:{key[0]}")
+
+
+async def _drop_canvas_viewer(sid: str) -> None:
+    for key in [k for k, viewers in canvas_viewers.items() if sid in viewers]:
+        canvas_viewers[key].pop(sid, None)
+        await _broadcast_canvas_viewers(key)
+
+
+@sio.event
+async def canvas_presence(sid, data):
+    """A participant opened ("here", also as heartbeat) or closed ("left") a board; everyone in the session gets the list."""
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+    session_id = str((data or {}).get("session_id") or "")
+    canvas_key = normalize_canvas_key((data or {}).get("canvas_key"))
+    if not session_id:
+        return {"error": "session_id required"}
+    key = (session_id, canvas_key)
+    if (data or {}).get("state") == "left":
+        if key in canvas_viewers:
+            canvas_viewers[key].pop(sid, None)
+        await _broadcast_canvas_viewers(key)
+        return {"success": True}
+    known = canvas_viewers.get(key, {}).get(sid)
+    if not known and not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+    viewer = known or await _canvas_viewer(user)
+    canvas_viewers.setdefault(key, {})[sid] = {**viewer, "seen": datetime.now(timezone.utc).timestamp()}
+    if not known:
+        await sio.enter_room(sid, f"session:{session_id}")  # teachers' sockets are not in the room by default
+        await _broadcast_canvas_viewers(key)
+    return {"success": True, "viewers": _canvas_viewer_list(key)}
 
 
 # Helper function to broadcast from API endpoints

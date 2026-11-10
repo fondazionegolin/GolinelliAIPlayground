@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-04T20:40:03.374395+00:00",
-  "version_label": "2026.11.04-c4fa7e41",
+  "generated_at": "2026-11-07T20:18:20.105117+00:00",
+  "version_label": "2026.11.07-e454c6ed",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 14 commit dall'ultima release pubblicata.",
-  "git_ref": "c4fa7e41934a5c50e716df256bfe662885f9e4c4",
+  "summary": "Bozza generata automaticamente da 15 commit dall'ultima release pubblicata.",
+  "git_ref": "e454c6edde3898bb8d33ee70250e9c11a5b5132d",
   "items": [
     {
       "category": "new",
@@ -74,6 +74,11 @@
       "category": "new",
       "title": "Audio Lab rename, background audio generation, recents everywhere, responsive navbar",
       "description": "Audio Lab rename, background audio generation, recents everywhere, responsive navbar"
+    },
+    {
+      "category": "new",
+      "title": "Licences, music library, presentation agents, vibe gate",
+      "description": "Licences, music library, presentation agents, vibe gate"
     }
   ]
 }

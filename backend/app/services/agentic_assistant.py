@@ -22,7 +22,7 @@ ROW_HEIGHT = 280
 ORIGIN = (80, 80)
 KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 CREDIT_EFFECTS = {"spends_credits"}
-LLM_NODES = {"ai.generate_dataset", "ai.transform", "llm_chatbot"}
+LLM_NODES = {"ai.generate_dataset", "ai.transform", "ai.add_column", "llm_chatbot"}
 
 # Preview-only answers make a chatbot node answer by itself: generated nodes must always wait for the real person.
 INTERACTIVE_DEFAULTS = {"chatbot.ask": {"test_response": ""}, "chatbot.multi_choice": {"test_choice": 0}}
@@ -668,8 +668,27 @@ def estimate_cost(graph: dict[str, Any]) -> dict[str, Any]:
             credit_nodes.append({"node": node["instanceId"], "type": node["id"], "function": function, "times": multiplier,
                                  "long_running": meta.long_running})
         if node["id"] in LLM_NODES:
+            if node["id"] == "ai.add_column":
+                feeder = next((e for e in graph["edges"] if e["to"] == node["instanceId"] and _edge_port(e, "target") == "table"), None)
+                rows = _table_row_bound(graph, feeder["from"]) if feeder else None
+                batch = min(50, max(1, int((node.get("config") or {}).get("batch_size") or 25)))
+                multiplier = None if rows is None or multiplier is None else multiplier * ((rows + batch - 1) // batch)
             llm_calls = None if (multiplier is None or llm_calls is None) else llm_calls + multiplier
     return {"credit_nodes": credit_nodes, "llm_calls": llm_calls}
+
+
+def _table_row_bound(graph: dict[str, Any], node_id: str, seen: frozenset[str] = frozenset()) -> int | None:
+    """Upper bound for row-preserving/filtering chains, without executing nodes or paid calls."""
+    if node_id in seen:
+        return None
+    count = _static_rows(graph, node_id)
+    if count is not None:
+        return count
+    node = next((n for n in graph["nodes"] if n["instanceId"] == node_id), None)
+    if node and node["id"] in {"data.dropna", "data.distinct", "data.validate", "data.convert_to_number", "data.filter", "data.sort", "data.select", "data.compute_column", "ai.add_column"}:
+        feeder = next((e for e in graph["edges"] if e["to"] == node_id and _edge_port(e, "target") == "table"), None)
+        return _table_row_bound(graph, feeder["from"], seen | {node_id}) if feeder else None
+    return None
 
 
 # ── static lint (reviewer level 1) ────────────────────────────────────────────
@@ -752,9 +771,9 @@ def infer_columns(graph: dict[str, Any], node_id: str, port: str, _seen: frozens
         columns = chosen or columns
         mapping = {old.strip(): new.strip() for old, new in (item.split(":", 1) for item in _csv(config.get("rename")) if ":" in item)}
         return [mapping.get(name, name) for name in columns]
-    if kind == "data.compute_column":
+    if kind in {"data.compute_column", "ai.add_column"}:
         columns = upstream()
-        name = str(config.get("name") or "nuova_colonna")
+        name = str(config.get("name") or ("valutazione" if kind == "ai.add_column" else "nuova_colonna"))
         return None if columns is None else columns + ([name] if name not in columns else [])
     if kind == "data.group_by":
         columns = upstream()
@@ -794,6 +813,11 @@ def lint_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
     for node in graph["nodes"]:
         config = node.get("config") or {}
         title = node.get("label") or NODE_REGISTRY[node["id"]]["label"]
+        if node["id"] == "ai.transform" and config.get("task", "custom") not in {"extract_table", "prompt_table"}:
+            if any(e["from"] == node["instanceId"] and _edge_port(e, "source") == "table" for e in graph["edges"]):
+                issues.append(_issue("error", node["instanceId"], f"«{title}»: questo compito AI produce testo, non una tabella. Per aggiungere una colonna usa ai.add_column; per JSON testuale usa data.parse_text sull'uscita text"))
+        if node["id"] == "ai.add_column" and not str(config.get("instruction") or "").strip():
+            issues.append(_issue("error", node["instanceId"], f"«{title}»: indica il criterio di valutazione della nuova colonna"))
         for item in effective_ports(node["id"], config, "inputs"):
             if item.get("required", True) and (node["instanceId"], item["name"]) not in connected:
                 issues.append(_issue("error", node["instanceId"], f"«{title}»: l'ingresso «{item['label']}» ({item['name']}) non è collegato"))
@@ -851,6 +875,8 @@ def lint_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
 # ── catalogue for the architect prompt ────────────────────────────────────────
 
 COMPOSITION_RULES = [
+    "Per aggiungere una valutazione/classificazione AI a ogni riga usa ai.add_column (table→table): conserva i dati e valuta tutte le righe in blocchi. name, instruction, output_type e min_value/max_value definiscono la colonna. Un'analisi precedente può entrare in extra.",
+    "ai.transform custom/summarize/translate/image_prompt produce SOLO text, non table. Non collegare table da questi compiti. Per una barra per studente/categoria usa plot.bar (x=identificativo, y=valutazione); plot.histogram mostra soltanto la distribuzione di una colonna.",
     "Un ingresso dati accetta UN solo arco; le porte di uscita possono alimentare più nodi dati.",
     "Tipi: un'uscita si collega a un ingresso dello stesso tipo, oppure se uno dei due è ANY. TABLE→TABLE, MODEL→MODEL, ecc.",
     "Il grafo è aciclico. L'unico arco all'indietro è la porta «repeat» di control.repeat_until (solo nei dialoghi chatbot).",

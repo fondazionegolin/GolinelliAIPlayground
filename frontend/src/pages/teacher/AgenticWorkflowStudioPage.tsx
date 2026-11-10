@@ -12,7 +12,8 @@ import { AssistantPanel } from '@/components/agentic/AssistantPanel'
 import { AssistantLauncher, useFloatingDrag, type FloatingPoint } from '@/components/agentic/AssistantLauncher'
 import type { AssistantOp } from '@/lib/agenticAssistant'
 import { ArtifactPreviews, extractArtifacts, hasArtifacts, type NodeArtifacts } from '@/components/agentic/NodeArtifacts'
-import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
+import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotAxes, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
+import { usePlotTheme } from '@/components/agentic/plotTheme'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 import {
   Activity, BarChart3, Braces, ChevronDown, ChevronRight,
@@ -491,7 +492,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     }
     if (node.id === 'data.new_table') { const chosen = csv(node.config.columns).filter((name) => names.includes(name)); names = renamed(chosen.length ? chosen : names, node.config.rename) }
     if (node.id === 'data.rename_columns') names = renamed(names, node.config.rename)
-    if (node.id === 'data.compute_column') names = [...names, String(node.config.name || 'nuova_colonna')]
+    if (node.id === 'data.compute_column' || node.id === 'ai.add_column') names = [...names, String(node.config.name || (node.id === 'ai.add_column' ? 'valutazione' : 'nuova_colonna'))]
     if (node.id === 'nlp.sentiment') names = [...names, 'polarity', 'sentiment']
     if (node.id === 'data.group_by' && names.length) {
       const group = names.includes(String(node.config.group_column)) ? String(node.config.group_column) : names[0]
@@ -514,13 +515,32 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     return [...new Set(incoming.flatMap((edge) => inferOutputColumns(edge.from, edge.sourcePort)))]
   }
 
+  const openNodeExplorer = (node: CanvasNode, target: ExplorerTarget) => {
+    if (target.kind !== 'plot') { setExplorer(target); return }
+    const incoming = edges.find(edge => edge.to === node.instanceId && edge.targetPort === 'table')
+    const table = Object.values(outputs[node.instanceId] || {}).find(isTable)
+      || (incoming ? outputs[incoming.from]?.[incoming.sourcePort] : undefined)
+    setExplorer({ ...target, table: isTable(table) ? table : undefined,
+      axes: { x: target.plot.labels?.x || String(node.config.x || ''), y: target.plot.labels?.y || String(node.config.y || ''),
+        z: target.plot.z ? target.plot.labels?.z || String(node.config.z || '') : '', color: String(node.config.color || '') || undefined },
+      nodeId: node.id.startsWith('plot.') ? node.instanceId : undefined })
+  }
+
+  const changePlotAxes = (axes: PlotAxes, plot: PlotValue) => {
+    if (explorer?.kind !== 'plot' || !explorer.nodeId) return
+    const nodeId = explorer.nodeId, port = explorer.outputPort || 'plot'
+    setNodes(current => current.map(node => node.instanceId !== nodeId ? node : { ...node,
+      config: { ...node.config, ...(node.id === 'plot.histogram' ? { column: axes.x } : { x: axes.x, y: axes.y, ...(node.id === 'plot.2d' ? { z: axes.z } : {}) }) } }))
+    setOutputs(current => ({ ...current, [nodeId]: { ...current[nodeId], [port]: plot } }))
+  }
+
   const recommendedConfig = (node: CanvasNode, available = inputColumnsFor(node)) => {
     if (!available.length) return node.config
     const config = { ...node.config }
     const choose = (name: string, fallback: string) => {
       if (!available.includes(String(config[name] || ''))) config[name] = fallback
     }
-    if (node.id === 'plot.2d') {
+    if (node.id === 'plot.2d' || node.id === 'plot.bar') {
       choose('x', available[0]); choose('y', available.find((name) => name !== config.x) || available[0])
       if (config.color && !available.includes(String(config.color))) config.color = ''
     } else if (node.id === 'plot.histogram' || node.id === 'data.sort') choose('column', available[0])
@@ -1152,7 +1172,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
 
                   {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 p-2.5 shadow-[0_1px_0_rgba(120,120,124,0.10)]" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? available : undefined} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
 
-                  <NodePreview output={output} error={nodeErrors[node.instanceId]} nodeLabel={spec.label} onOpenTable={(outputPort, table) => setTableModal({ nodeId: node.instanceId, outputPort, nodeLabel: spec.label, table, editor: node.config._tableEditor as Partial<TableEditorState> | undefined })} onExplore={setExplorer} />
+                  <NodePreview output={output} error={nodeErrors[node.instanceId]} nodeLabel={spec.label} onOpenTable={(outputPort, table) => setTableModal({ nodeId: node.instanceId, outputPort, nodeLabel: spec.label, table, editor: node.config._tableEditor as Partial<TableEditorState> | undefined })} onExplore={target => openNodeExplorer(node, target)} />
                 </div>
               </article>
             })}
@@ -1177,7 +1197,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       {inspectorOpen && <aside className="flex w-[19rem] shrink-0 flex-col border-l border-slate-200 bg-white max-xl:hidden"><div className="flex h-16 items-center justify-between border-b border-slate-100 px-4"><div><p className="text-[10px] font-black uppercase text-slate-400">Inspector</p><h2 className="text-sm font-black">{selectedSpec?.label || tl("Nessun nodo")}</h2></div><SidebarCollapseButton side="right" onClick={() => setInspectorOpen(false)} label={tl("Comprimi inspector")} /></div>{selected && selectedSpec ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><p className="mb-4 rounded-xl bg-slate-50 p-3 text-[10px] leading-4 text-slate-600">{selectedSpec.description}</p>{inputColumnsFor(selected).length > 0 && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-wider text-violet-700">{tl("Schema input rilevato")}</p><Button onClick={() => setNodes((current) => current.map((item) => item.instanceId === selected.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item) } : item))} tone="accent" surface="solid" density="compact" className="rounded-full !h-6 !px-2.5 text-[9px]">{"Auto-configura"}</Button></div><div className="mt-2 flex flex-wrap gap-1">{inputColumnsFor(selected).map((column) => <span key={column} className="rounded-md bg-white px-2 py-1 text-[9px] font-bold text-violet-700">{column}</span>)}</div></div>}<h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Parametri avanzati") : tl("Contenuto e parametri")}</h3><div className="space-y-3">{(() => { const advancedParams = selectedSpec.params.filter((param) => !(INLINE_PARAMS[selected.id] || []).includes(param.name)); return advancedParams.length ? advancedParams.map((param) => <ParamField key={param.name} param={param} value={selected.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? inputColumnsFor(selected) : undefined} onChange={(value) => updateNodeParam(selected.instanceId, param.name, value)} />) : <p className="rounded-xl border border-dashed p-3 text-[10px] text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Gli altri parametri sono modificabili direttamente sul nodo.") : tl("Questo nodo usa solo gli input collegati.")}</p> })()}</div><Button onClick={() => executeOne(selected)} tone="accent" surface="solid" fullWidth className="mt-5 rounded-full"><Play className="h-4 w-4" /> {tl("Esegui questo nodo")}</Button>{['data.custom_input', 'csv.synthetic'].includes(selected.id) && outputs[selected.instanceId] && <Button onClick={() => saveTableToLibrary(selected)} tone="neutral" surface="outline" fullWidth className="mt-2 rounded-full"><Save className="h-4 w-4" /> {tl("Salva in libreria dataset")}</Button>}{nodeErrors[selected.instanceId] &&<p className="mt-2 rounded-lg bg-rose-50 p-2 text-[10px] text-rose-700">{nodeErrors[selected.instanceId]}</p>}<h3 className="mb-2 mt-6 text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Porte")}</h3>{[...selectedSpec.inputs.map((port) => ({ ...port, direction: 'IN' })), ...selectedSpec.outputs.map((port) => ({ ...port, direction: 'OUT' }))].map((port) => <div key={`${port.direction}-${port.name}`} className="mb-1 flex rounded-lg border border-slate-100 p-2 text-[10px]"><b className="w-9 text-slate-400">{port.direction}</b><span className="flex-1 font-bold">{port.name}</span><code className="text-violet-600">{port.type}</code></div>)}</div> : null}{selected && <Button onClick={() => { setNodes((current) => current.filter((item) => item.instanceId !== selected.instanceId)); setEdges((current) => current.filter((edge) => edge.from !== selected.instanceId && edge.to !== selected.instanceId)); setSelectedId('') }} tone="danger" surface="ghost" className="m-3 rounded-full"><Trash2 className="h-4 w-4" /> {tl("Elimina nodo")}</Button>}</aside>}
       {!inspectorOpen && <SidebarRail className="max-xl:hidden" side="right" label="Inspector" expandLabel={tl("Apri inspector")} onExpand={() => setInspectorOpen(true)} />}
     </div>
-    {explorer && <OutputExplorerModal target={explorer} onClose={() => setExplorer(null)} onOpenTable={(label, table) => setTableModal({ nodeId: '', outputPort: '', nodeLabel: label, table, detached: true })} />}
+    {explorer && <OutputExplorerModal target={explorer} onClose={() => setExplorer(null)} onAxesChange={changePlotAxes} onOpenTable={(label, table) => setTableModal({ nodeId: '', outputPort: '', nodeLabel: label, table, detached: true })} />}
     {tableModal && <WorkflowTableModal modal={tableModal} onClose={() => setTableModal(null)} onApply={(table, editor) => { if (tableModal.detached) setTableModal(null); else applyTableEdit(tableModal, table, editor) }} />}
   </div>
 }
@@ -1195,7 +1215,7 @@ function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { out
   // Stop pointer events here: the node captures the pointer for dragging, which would swallow clicks on previews.
   return <div className="overflow-hidden rounded-b-[22px] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-b-[40px]" onPointerDown={(event) => event.stopPropagation()}>
     {showArtifacts && <ArtifactPreviews artifacts={artifacts} nodeLabel={nodeLabel} />}
-    {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || tl("{0} · grafico", nodeLabel), plot: plotEntry[1] })} onOpenMetrics={openMetrics} /></div>}
+    {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || tl("{0} · grafico", nodeLabel), plot: plotEntry[1], outputPort: plotEntry[0] })} onOpenMetrics={openMetrics} /></div>}
     {!plotEntry && metrics && <MetricCards metrics={metrics} onOpen={openMetrics} />}
     {firstTable && <MiniTable table={firstTable[1]} label={firstTable[0]} onOpen={() => onOpenTable(firstTable[0], firstTable[1])} />}
     {otherTables.length > 0 && <div className="flex flex-wrap gap-1.5 px-2 pb-2">{otherTables.map(([port, table]) => <button key={port} type="button" onClick={() => onOpenTable(port, table)} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {port} · {table.rowCount ?? table.rows.length} righe</button>)}</div>}
@@ -1227,6 +1247,7 @@ function compactTick(value: unknown) {
 
 function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
   if (plot.kind === 'scatter3d') return <Mini3DPlot plot={plot} metrics={metrics} onExplore={onExplore} onOpenMetrics={onOpenMetrics} />
+  if (plot.kind === 'bar') return <MiniBarPlot plot={plot} onExplore={onExplore} />
   const points = plot.x.map((x, index) => ({ x: Number(x), y: Number(plot.y[index]), group: String(plot.color?.[index] ?? tl("Dati")) })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
   const groups = [...new Set(points.map((point) => point.group))]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
@@ -1240,8 +1261,27 @@ function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico"))}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.kind === 'histogram' ? `${histogram.length} intervalli` : `${points.length} punti`}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
     <div className="grid grid-cols-3 gap-px border-b border-slate-100 bg-slate-100">{plot.kind === 'histogram' ? <><ChartStat label={tl("Totale")} value={plot.y.reduce((sum, value) => sum + Number(value || 0), 0)} /><ChartStat label={tl("Picco")} value={Math.max(0, ...plot.y.map(Number))} /><ChartStat label={tl("Intervallo")} value={rangeLabel([...(plot.x || []), ...(plot.xEnd || [])].map(Number).filter(Number.isFinite))} /></> : <><ChartStat label={tl("Intervallo X")} value={rangeLabel(xs)} /><ChartStat label={tl("Intervallo Y")} value={rangeLabel(ys)} /><ChartStat label={tl("Correlazione")} value={correlation === null ? '—' : correlation.toFixed(3)} /></>}</div>
-    <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title={tl("Doppio clic per aprire l’explorer")}>{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: '#737373' }} label={{ value: plot.labels?.x || tl("Valore"), position: 'insideBottom', offset: -28, fontSize: 9, fill: '#525252' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: '#737373' }} width={34} label={{ value: plot.labels?.y || tl("Conteggio"), angle: -90, position: 'insideLeft', fontSize: 9, fill: '#525252' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, tl("Conteggio")]} labelFormatter={(label) => tl("Intervallo {0}", label)} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#737373' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: '#525252' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: '#737373' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#525252' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
+    <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title={tl("Doppio clic per aprire l’explorer")}>{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || tl("Valore"), position: 'insideBottom', offset: -28, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={34} label={{ value: plot.labels?.y || tl("Conteggio"), angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, tl("Conteggio")]} labelFormatter={(label) => tl("Intervallo {0}", label)} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
     {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
+  </div>
+}
+
+function MiniBarPlot({ plot, onExplore }: { plot: PlotValue; onExplore: () => void }) {
+  const data = plot.x.map((label, index) => ({ label: String(label), value: plot.y[index] }))
+  return <div className="ds-panel overflow-hidden rounded-xl">
+    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <div className="min-w-0"><p className="truncate text-xs font-semibold">{plot.title || tl('Grafico a barre')}</p><p className="text-xs text-[var(--text-secondary)]">{plot.labels?.x} · {plot.labels?.y}</p></div>
+      <Button tone="neutral" surface="ghost" density="compact" onClick={onExplore}><Maximize2 className="h-3 w-3" />{tl('Esplora')}</Button>
+    </div>
+    <div className="h-[255px] w-full" onDoubleClick={onExplore}>
+      <ResponsiveContainer width="100%" height="100%"><BarChart data={data} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--text-secondary)" opacity={.2} />
+        <XAxis dataKey="label" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} width={34} />
+        <Tooltip formatter={(value) => [value, plot.labels?.y || tl('Valore')]} />
+        <Bar dataKey="value" name={plot.labels?.y || tl('Valore')} fill="var(--logo-violet)" radius={[4, 4, 0, 0]} />
+      </BarChart></ResponsiveContainer>
+    </div>
   </div>
 }
 
@@ -1252,6 +1292,7 @@ function ChartStat({ label, value }: { label: string; value: unknown }) {
 const Plot3D = lazy(() => import('react-plotly.js'))
 
 function Mini3DPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
+  const theme = usePlotTheme()
   const groups = plot.color ? [...new Set(plot.color.map((value) => String(value)))] : []
   const traces = groups.length > 1
     ? groups.map((group, index) => {
@@ -1268,9 +1309,9 @@ function Mini3DPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotVal
       <Suspense fallback={<div className="flex h-full items-center justify-center text-[10px] text-slate-400">{tl("Caricamento vista 3D…")}</div>}>
         <Plot3D
           data={traces as any}
-          layout={{ autosize: true, margin: { l: 0, r: 0, t: 0, b: 0 }, paper_bgcolor: 'rgba(0,0,0,0)',
-            scene: { xaxis: { title: plot.labels?.x || 'x' }, yaxis: { title: plot.labels?.y || 'y' }, zaxis: { title: plot.labels?.z || 'z' } },
-            showlegend: groups.length > 1, legend: { font: { size: 9 } } } as any}
+          layout={{ autosize: true, margin: { l: 0, r: 0, t: 0, b: 0 }, paper_bgcolor: theme.surface, font: { color: theme.ink },
+            scene: { bgcolor: theme.surface, ...Object.fromEntries(['x', 'y', 'z'].map(axis => [`${axis}axis`, { title: { text: plot.labels?.[axis] || axis, font: { color: theme.ink } }, tickfont: { color: theme.ink }, gridcolor: theme.grid }])) },
+            showlegend: groups.length > 1, legend: { font: { size: 9, color: theme.ink } }, modebar: { color: theme.muted, activecolor: theme.ink } } as any}
           config={{ displaylogo: false, responsive: true }}
           style={{ width: '100%', height: '100%' }}
           useResizeHandler

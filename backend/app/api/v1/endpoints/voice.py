@@ -42,6 +42,21 @@ def _generate_turn_credentials(secret: str, ttl: int) -> tuple[str, str]:
     return username, credential
 
 
+def build_ice_servers() -> list[dict]:
+    """ICE servers for the client: the external TURN when configured, else an empty list."""
+    if not (settings.TURN_HOST and settings.TURN_SECRET):
+        return []
+    turn_user, turn_cred = _generate_turn_credentials(settings.TURN_SECRET, settings.TURN_TTL_SECONDS)
+    return [{
+        "urls": [
+            f"turns:{settings.TURN_HOST}:{settings.TURN_PORT}?transport=tcp",
+            f"turn:{settings.TURN_HOST}:3478?transport=udp",
+        ],
+        "username": turn_user,
+        "credential": turn_cred,
+    }]
+
+
 class LiveKitTokenRequest(BaseModel):
     session_id: uuid.UUID
 
@@ -136,20 +151,7 @@ async def create_livekit_token(
     }
     token = jwt.encode(payload, settings.LIVEKIT_API_SECRET, algorithm="HS256")
 
-    # Build ICE server list for the client: include the external TURN if configured.
-    ice_servers = []
-    if settings.TURN_HOST and settings.TURN_SECRET:
-        turn_user, turn_cred = _generate_turn_credentials(
-            settings.TURN_SECRET, settings.TURN_TTL_SECONDS
-        )
-        ice_servers.append({
-            "urls": [
-                f"turns:{settings.TURN_HOST}:{settings.TURN_PORT}?transport=tcp",
-                f"turn:{settings.TURN_HOST}:3478?transport=udp",
-            ],
-            "username": turn_user,
-            "credential": turn_cred,
-        })
+    ice_servers = build_ice_servers()
 
     return {
         "url": settings.LIVEKIT_URL,

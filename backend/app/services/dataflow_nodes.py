@@ -122,6 +122,17 @@ NODE_SPECS = [
         param("provider", "STRING", "Provider (opzionale)", ""), param("model", "STRING", "Modello (opzionale)", ""),
         param("max_tokens", "INTEGER", "Token massimi", 2048)],
          "Elaborazione AI one-shot: ottimizza un prompt per immagini, riassumi, traduci, estrai una tabella da un testo, crea slide o un quiz live. Collega l'uscita giusta (testo, tabella, slide) al nodo successivo.", "never"),
+    spec("ai.add_column", "Aggiungi colonna con AI", "Trasformazioni", [port("table", "TABLE"), port("extra", "ANY", "Analisi o contesto aggiuntivo", required=False)],
+         [port("table", "TABLE"), port("metadata", "METRICS")], [
+        param("name", "STRING", "Nome nuova colonna", "valutazione"),
+        param("instruction", "CODE", "Criterio di valutazione per ogni riga", ""),
+        param("output_type", "SELECT", "Tipo dei valori", "number", options=["number", "text", "boolean"]),
+        param("min_value", "NUMBER", "Minimo numerico (vuoto = nessun limite)", "", required=False),
+        param("max_value", "NUMBER", "Massimo numerico (vuoto = nessun limite)", "", required=False),
+        param("batch_size", "INTEGER", "Righe per chiamata", 25, min=1, max=50),
+        param("provider", "STRING", "Provider (opzionale)", ""), param("model", "STRING", "Modello (opzionale)", ""),
+        param("max_tokens", "INTEGER", "Token massimi per chiamata", 2048, min=256, max=8192)],
+         "Aggiunge una valutazione AI a ogni riga senza riscrivere i dati originali: restituisce l'intera tabella con la nuova colonna, verifica abbinamenti, tipi e limiti numerici, elabora tutte le righe in blocchi.", "never"),
     spec("text.from_table", "Tabella → testo", "Testo", [port("table", "TABLE")], [port("text", "ANY")], [
         param("format", "SELECT", "Formato", "markdown", options=["markdown", "csv", "json"]), param("max_rows", "INTEGER", "Righe massime", 50, min=1, max=1000)],
          "Converte una tabella in testo (Markdown, CSV o JSON) per darla a un chatbot, a un prompt o a un documento."),
@@ -148,6 +159,10 @@ NODE_SPECS = [
         param("columns", "COLUMNS", "Feature", ""), param("clusters", "INTEGER", "Cluster", 3, min=2, max=12), param("normalize", "BOOLEAN", "Normalizza", True)], "Segmenta i dati e misura silhouette e Davies-Bouldin."),
     spec("plot.2d", "Grafico", "Visualizzazioni", [port("table", "TABLE")], [port("plot", "ANY")], [param("x", "COLUMN", "Asse X", "x"), param("y", "COLUMN", "Asse Y", "y"), param("z", "COLUMN", "Asse Z (opzionale, per 3D)", "", required=False), param("color", "COLUMN", "Colore", "", required=False)], "Scatter 2D; imposta anche l'asse Z per una vista 3D orientabile."),
     spec("plot.histogram", "Istogramma", "Visualizzazioni", [port("table", "TABLE")], [port("plot", "ANY")], [param("column", "COLUMN", "Colonna", "x"), param("bins", "INTEGER", "Intervalli", 20)], "Mostra la distribuzione di una colonna."),
+    spec("plot.bar", "Grafico a barre", "Visualizzazioni", [port("table", "TABLE")], [port("plot", "ANY")], [
+        param("x", "COLUMN", "Categoria (es. studente)", ""), param("y", "COLUMN", "Valore numerico (es. criticita)", ""),
+        param("title", "STRING", "Titolo", "Grafico a barre")],
+         "Mostra un valore per ogni riga, con etichette anche testuali: una barra per studente, prodotto o categoria. Non raggruppa i valori in intervalli."),
     spec("chatbot.start", "Inizio conversazione", "Chatbot", [], [port("next", "ANY", "Avvio")],
          [param("welcome_message", "STRING", "Messaggio di benvenuto (opzionale)", "")], "Punto di ingresso del flusso: ogni chatbot deve iniziare da qui.", "never"),
     spec("chatbot.say", "Messaggio", "Chatbot", [port("trigger", "ANY", "In", required=False), port("value", "ANY", "Valore da mostrare ({valore})", required=False)], [port("next", "ANY", "Continua")], [param("message", "STRING", "Messaggio", "Ciao!")], "Invia un messaggio; richiama una variabile salvata con $nome.", "never"),
@@ -853,6 +868,15 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         return {"table": json_value(df), "metrics": json_value(metrics), "plot": plot}
     if node_type.startswith("plot."):
         df = table_frame(inputs["table"])
+        if node_type == "plot.bar":
+            require_columns(df, [config[key] for key in ("x", "y") if config.get(key)], label="colonne del grafico a barre")
+            x = preferred_column(df, config.get("x"), label="categoria")
+            y = str(config.get("y") or "").strip() or preferred_column(df, None, numeric=True, exclude={x}, label="valore")
+            values = pd.to_numeric(df[y], errors="coerce")
+            if not np.isfinite(values.to_numpy(dtype=float)).all():
+                raise ValueError(f"La colonna «{y}» del grafico a barre deve contenere valori numerici finiti")
+            return {"plot": {"kind": "bar", "x": df[x].astype(str).tolist(), "y": values.tolist(),
+                              "labels": {"x": x, "y": y}, "title": str(config.get("title") or "Grafico a barre")}}
         if node_type == "plot.2d":
             x = preferred_column(df, config.get("x"), numeric=True, label="asse X")
             y = preferred_column(df, config.get("y"), numeric=True, exclude={x}, label="asse Y")

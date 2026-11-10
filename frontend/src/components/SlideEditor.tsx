@@ -1,11 +1,33 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
-import { BringToFront, Copy, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RotateCw, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
+import { BringToFront, Copy, Download, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RefreshCw, RotateCw, Sparkles, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
 import { SlideTextBlock } from './SlideTextBlock'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'
 import { moveBlockLayer, normalizeLayerOrder, textBoxPadding, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
 import { ensureSlideFonts } from '@/lib/slideFonts'
 import { tl } from '@/i18n/tl'
+import { presentationStudioApi, type DeckTheme } from '@/lib/presentationStudio'
+import { GeneratedBadge, SlideImagePlaceholder } from './presentation/SlideImagePlaceholder'
+
+/** An image slot that has its prompt but not yet a real picture. */
+export const isPendingImage = (block: SlideBlock): boolean =>
+  block.type === 'image' && Boolean(block.imagePrompt) && (!block.content || block.content.includes('placehold.co'))
+
+/** Saves a slide picture to the user's disk (falls back to opening it when the host forbids reading it). */
+export async function downloadSlideImage(url: string, name = 'immagine-slide') {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(String(response.status))
+    const blob = await response.blob()
+    const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '')
+    const href = URL.createObjectURL(blob)
+    const a = Object.assign(document.createElement('a'), { href, download: `${name}.${ext}` })
+    document.body.appendChild(a); a.click(); a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(href), 1000)
+  } catch {
+    window.open(url, '_blank', 'noopener')
+  }
+}
 
 /** Rotates a screen-space delta by `angleDeg` into the block's local (unrotated) coordinate space,
  * so the existing per-handle resize math (defined in that local space) keeps working unchanged. */
@@ -66,6 +88,8 @@ export interface ImageSlideBlock extends BaseSlideBlock {
   content: string
   /** Newly inserted: once the picture loads, reshape the box to the image's real proportions. */
   fitToImage?: boolean
+  /** What the picture should show: a slot with a prompt and no real picture yet is a placeholder to generate. */
+  imagePrompt?: string
   style: {
     borderRadius?: number
     padding?: number
@@ -117,6 +141,10 @@ interface SlideEditorProps {
   onActiveTextEditorChange?: (editor: Editor | null) => void
   /** Slide background; the editing dot grid only shows on an unset (white) slide. */
   backgroundColor?: string
+  /** Enables «Genera immagine» on image placeholders (context for a picture consistent with the deck). */
+  imageGeneration?: { deckTitle: string; slideTitle?: string; theme?: DeckTheme | null }
+  /** Patches one block wherever it lives in the deck (a picture may arrive after the user moved to another slide). */
+  onPatchBlock?: (blockId: string, patch: Partial<ImageSlideBlock>) => void
 }
 
 export function SlideEditor({
@@ -134,7 +162,35 @@ export function SlideEditor({
   onContextAddBlock,
   onActiveTextEditorChange,
   backgroundColor,
+  imageGeneration,
+  onPatchBlock,
 }: SlideEditorProps) {
+  // Generation outlives re-renders: patch the latest blocks, not the ones captured when the click happened.
+  const latestBlocksRef = useRef(blocks)
+  latestBlocksRef.current = blocks
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const [imageStatus, setImageStatus] = useState<Record<string, { state: 'busy' | 'error' | 'done'; error?: string }>>({})
+  const onPatchBlockRef = useRef(onPatchBlock)
+  onPatchBlockRef.current = onPatchBlock
+  const patchBlock = useCallback((blockId: string, patch: Partial<ImageSlideBlock>) => {
+    if (onPatchBlockRef.current) { onPatchBlockRef.current(blockId, patch); return }
+    onChangeRef.current(latestBlocksRef.current.map(b => b.id === blockId && b.type === 'image' ? { ...b, ...patch } : b))
+  }, [])
+  const generateImage = useCallback(async (blockId: string, prompt: string) => {
+    if (!imageGeneration || !prompt.trim()) return
+    setImageStatus(s => ({ ...s, [blockId]: { state: 'busy' } }))
+    try {
+      const { data } = await presentationStudioApi.image({ prompt: prompt.trim().slice(0, 1200), deck_title: imageGeneration.deckTitle, slide_title: imageGeneration.slideTitle || '', theme: imageGeneration.theme })
+      if (!data?.url) throw new Error('empty')
+      patchBlock(blockId, { content: data.url, imagePrompt: prompt.trim() })
+      setImageStatus(s => ({ ...s, [blockId]: { state: 'done' } }))
+      window.setTimeout(() => setImageStatus(s => { const next = { ...s }; if (next[blockId]?.state === 'done') delete next[blockId]; return next }), 4000)
+    } catch (error: any) {
+      const detail = error?.response?.status === 402 ? tl("Crediti AI esauriti.") : (typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : '')
+      setImageStatus(s => ({ ...s, [blockId]: { state: 'error', error: detail } }))
+    }
+  }, [imageGeneration, patchBlock])
   const [dragState, setDragState] = useState<{
     isDragging: boolean
     isResizing: boolean
@@ -717,13 +773,26 @@ export function SlideEditor({
                 onChange(newBlocks)
               }}
             />
+          ) : block.type === 'image' && isPendingImage(block) ? (
+            <SlideImagePlaceholder
+              prompt={block.imagePrompt || ''}
+              status={imageStatus[block.id]?.state === 'busy' ? 'busy' : imageStatus[block.id]?.state === 'error' ? 'error' : undefined}
+              error={imageStatus[block.id]?.error}
+              readOnly={readOnly || block.locked}
+              onPromptChange={(prompt) => patchBlock(block.id, { imagePrompt: prompt })}
+              onGenerate={imageGeneration ? (prompt) => void generateImage(block.id, prompt) : undefined}
+            />
           ) : block.type === 'image' ? (
+            <>
+            {imageStatus[block.id]?.state === 'done' && <GeneratedBadge />}
+            {imageStatus[block.id]?.state === 'busy' && <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-white/60 text-xs font-bold text-violet-700">{tl("Rigenero l’immagine…")}</span>}
             <img
               src={block.content}
               alt="Block"
               className="w-full h-full object-cover pointer-events-none select-none"
               onLoad={block.fitToImage && !readOnly ? (event) => fitImageBlock(block.id, event.currentTarget) : undefined}
             />
+            </>
           ) : block.type === 'line' ? (
             <svg className="w-full h-full pointer-events-none overflow-visible">
               <line
@@ -853,6 +922,17 @@ export function SlideEditor({
           {contextMenu.blockId && (
             <>
               <div className="my-1 border-t border-slate-100" />
+              {(() => {
+                const target = blocks.find(b => b.id === contextMenu.blockId)
+                if (!target || target.type !== 'image') return null
+                const pending = isPendingImage(target)
+                return <>
+                  {pending && imageGeneration && <ContextMenuButton icon={<Sparkles className="h-4 w-4" />} label={tl("Genera immagine")} onClick={() => runContextAction(() => void generateImage(target.id, target.imagePrompt || ''))} />}
+                  {!pending && target.imagePrompt && imageGeneration && <ContextMenuButton icon={<RefreshCw className="h-4 w-4" />} label={tl("Rigenera dal prompt")} onClick={() => runContextAction(() => void generateImage(target.id, target.imagePrompt || ''))} />}
+                  {!pending && target.content && <ContextMenuButton icon={<Download className="h-4 w-4" />} label={tl("Scarica immagine")} onClick={() => runContextAction(() => void downloadSlideImage(target.content))} />}
+                  <div className="my-1 border-t border-slate-100" />
+                </>
+              })()}
               <ContextMenuButton icon={<Copy className="h-4 w-4" />} label={tl("Duplica oggetto")} onClick={() => runContextAction(() => duplicateBlock(contextMenu.blockId!))} />
               <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label={tl("Porta davanti")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'front'))} />
               <ContextMenuButton icon={<Layers className="h-4 w-4" />} label={tl("Porta dietro")} onClick={() => runContextAction(() => moveLayer(contextMenu.blockId!, 'back'))} />

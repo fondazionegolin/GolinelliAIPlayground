@@ -7,14 +7,22 @@ import type { CanvasDoc, CanvasItem } from './CollaborativeCanvas'
 import { parseEquation, samples } from './visual-comprehension/mathExpr'
 import { explicitFunction, graphWindow } from './canvasMath'
 import type { Scene } from './motion/spec'
-import { canvasLabelColor } from './canvasColors'
+import { canvasLabelColor, shapeStrokeFor } from './canvasColors'
 
 export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'parallelogram'
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 
 /** Mirror of the backend `CanvasOp` (snake_case on the wire). */
 export type AiOp = {
-  kind: 'shape' | 'text' | 'note' | 'frame' | 'arrow' | 'line' | 'plot' | 'curve' | 'formula' | 'animation' | 'connect' | 'update' | 'delete'
+  kind: 'shape' | 'text' | 'note' | 'frame' | 'arrow' | 'line' | 'plot' | 'curve' | 'formula' | 'animation' | 'cluster' | 'illustration'
+    | 'quiz' | 'flashcard' | 'check' | 'connect' | 'update' | 'delete'
+  /** quiz: `text` = question, `options`, `correct` (indices), `explanation`; flashcard: `text` = front, `back`;
+   *  check: `text` = open question, `expected` = answer key, `hint`. */
+  options?: string[]; correct?: number[]; explanation?: string; back?: string; expected?: string; hint?: string
+  /** cluster: existing items regrouped under a theme (laid out here, not by the model); `target` = the theme section to reuse. */
+  members?: string[]; summary?: string
+  /** illustration: `brief` is the visual brief, `src` the generated image (filled in by the client), `text` the caption. */
+  aspect?: 'landscape' | 'square' | 'portrait'; src?: string; bold?: boolean
   expr?: string; x_min?: number; x_max?: number; y_min?: number; y_max?: number
   marks?: Array<{ x: number; y: number; label?: string }>; points?: number[][]
   id?: string; target?: string; shape?: ShapeKind
@@ -39,7 +47,7 @@ export function shapePath(shape: ShapeKind, w: number, h: number): string {
   switch (shape) {
     case 'rect': return `M${l} ${t}H${r}V${b}H${l}Z`
     case 'rounded-rect': {
-      const k = Math.min(16, (r - l) / 2, (b - t) / 2)
+      const k = Math.min(22, (r - l) / 4, (b - t) / 3.2)
       return `M${l + k} ${t}H${r - k}A${k} ${k} 0 0 1 ${r} ${t + k}V${b - k}A${k} ${k} 0 0 1 ${r - k} ${b}H${l + k}A${k} ${k} 0 0 1 ${l} ${b - k}V${t + k}A${k} ${k} 0 0 1 ${l + k} ${t}Z`
     }
     case 'ellipse': {
@@ -103,18 +111,30 @@ const TEXT_STYLE = (fontSize = 14, weight: 'normal' | '600' = 'normal') =>
 function buildItem(op: AiOp): CanvasItem | null {
   const id = op.id as string
   const x = op.x ?? 0, y = op.y ?? 0
-  const stroke = op.stroke || '#1e3a8a'
   switch (op.kind) {
     case 'shape':
+      // Tone on tone: without an explicit border the figure takes a slightly darker shade of its own fill.
       return { id, ai: true, type: 'shape', shape: op.shape || 'rounded-rect', x, y, w: op.w ?? 200, h: op.h ?? 100,
-        fill: op.fill || '#dbeafe', fillOpacity: op.opacity, stroke, borderWidth: 2.5, borderStyle: 'solid', text: op.text || '', textColor: '#171717', textStyle: TEXT_STYLE(op.font_size ?? 15) }
+        fill: op.fill || '#dbeafe', fillOpacity: op.opacity, stroke: op.stroke || shapeStrokeFor(op.fill || '#dbeafe'), borderWidth: op.opacity !== undefined && op.opacity < 0.6 ? 2 : 1.5, borderStyle: 'solid', text: op.text || '', textColor: '#171717', textStyle: TEXT_STYLE(op.font_size ?? 15, op.bold ? '600' : 'normal') }
     case 'text':
-      return { id, ai: true, type: 'text', x, y, w: op.w ?? 280, h: op.h ?? 60, text: op.text || '', color: op.stroke || '#171717', textStyle: TEXT_STYLE(op.font_size ?? 16) }
+      return { id, ai: true, type: 'text', x, y, w: op.w ?? 280, h: op.h ?? 60, text: op.text || '', color: op.stroke || '#171717', textStyle: TEXT_STYLE(op.font_size ?? 16, op.bold ? '600' : 'normal') }
     case 'note':
-      return { id, ai: true, type: 'postit', x, y, w: op.w ?? 220, h: op.h ?? 160, text: op.text || '', color: op.fill || '#fef9c3', textStyle: TEXT_STYLE(op.font_size ?? 14) }
+      return { id, ai: true, type: 'postit', x, y, w: op.w ?? 180, h: op.h ?? 140, text: op.text || '', color: op.fill || '#fef9c3', textStyle: TEXT_STYLE(op.font_size ?? 14, op.bold ? '600' : 'normal') }
     case 'frame':
       return { id, ai: true, type: 'frame', x, y, w: op.w ?? 480, h: op.h ?? 320, text: op.text || 'Sezione', color: op.stroke || '#3ea9f4',
         backgroundColor: op.fill ? `${op.fill}66` : '#ffffff99', borderWidth: 2, borderStyle: 'dashed', textStyle: TEXT_STYLE(op.font_size ?? 13, '600') }
+    case 'quiz': {
+      const options = (op.options || []).map((o) => CLEAN(o, 200)).filter(Boolean).slice(0, 6)
+      const correct = (op.correct || []).filter((i) => i >= 0 && i < options.length)
+      if (options.length < 2 || !correct.length) return null
+      return { id, ai: true, type: 'quiz', x, y, w: op.w ?? 340, h: op.h ?? Math.max(240, 110 + options.length * 40), question: CLEAN(op.text, 400), options, correct,
+        explanation: CLEAN(op.explanation, 500) || undefined, color: op.fill || '#e0e7ff' }
+    }
+    case 'flashcard':
+      return { id, ai: true, type: 'flashcard', x, y, w: op.w ?? 260, h: op.h ?? 190, front: CLEAN(op.text, 200), back: CLEAN(op.back, 500), color: op.fill || '#fef3c7' }
+    case 'check':
+      return { id, ai: true, type: 'check', x, y, w: op.w ?? 340, h: op.h ?? 270, question: CLEAN(op.text, 400), expected: CLEAN(op.expected, 600),
+        hint: CLEAN(op.hint, 200) || undefined, color: op.fill || '#dcfce7' }
     case 'animation':
       return op.scene ? { id, ai: true, type: 'animation', x, y, w: op.w ?? 640, h: op.h ?? 360, scene: op.scene } : null
     case 'formula':
@@ -260,13 +280,179 @@ function relativeTo(items: CanvasItem[], op: AiOp, resolve: (id?: string) => str
   return { ...op, on: undefined, x: x === undefined ? undefined : box.x + x, y: y === undefined ? undefined : box.y + y, w: pct(op.w, box.w), h: pct(op.h, box.h) }
 }
 
+const CLUSTER_COLORS: Array<[string, string]> = [['#2563eb', '#dbeafe'], ['#16a34a', '#dcfce7'], ['#d97706', '#fef3c7'], ['#db2777', '#fce7f3'],
+  ['#7c3aed', '#ede9fe'], ['#0d9488', '#ccfbf1'], ['#dc2626', '#fee2e2'], ['#475569', '#e2e8f0']]
+
+type Positioned = Extract<CanvasItem, { x: number }>
+type Frame = Extract<CanvasItem, { type: 'frame' }>
+
+/** A theme section from an earlier regrouping (marked, or — on boards from before the mark — an AI dashed section). */
+export const isClusterFrame = (item: CanvasItem): item is Frame =>
+  item.type === 'frame' && (item.role === 'cluster' || (!!item.ai && item.borderStyle === 'dashed'))
+const themeKey = (text?: string) => (text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+/** Moves the members of every cluster op into one titled section per theme. The model only names the groups.
+ *  Regrouping again is a diff: a theme that already has a section (op `target`, or the same name) keeps it — the section
+ *  is reused with its colour and summary, its current ideas stay and the new ones join; only new themes get new sections.
+ *  The block is laid out where the existing sections were, else inside the common section the ideas came from, else in free space. */
+export function layoutClusters(items: CanvasItem[], ops: AiOp[], newId: () => string): { items: CanvasItem[]; created: string[]; idMap: Record<string, string>; removed: string[] } {
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const sections = items.filter(isClusterFrame)
+  const byName = new Map(sections.map((f) => [themeKey(f.text), f]))
+  const summaryOf = (frame: Frame) => items.find((i): i is Positioned & { type: 'text' } => i.type === 'text' && i.parentFrameId === frame.id
+    && (i.role === 'cluster-summary' || (!!i.ai && i.y - frame.y < 90)))
+  const summaries = new Set(sections.map((f) => summaryOf(f)?.id).filter(Boolean) as string[])
+  const movable = (i: CanvasItem | undefined): i is Positioned => !!i && 'x' in i && 'w' in i && i.type !== 'frame' && !summaries.has(i.id)
+
+  const claimed = new Set<string>()
+  const used = new Set<string>()
+  const picked = ops.filter((op) => op.kind === 'cluster' && (op.id || op.target)).map((op) => {
+    let frame = op.target ? byId.get(op.target) : undefined
+    if (!frame || frame.type !== 'frame') frame = byName.get(themeKey(op.text))
+    if (frame && claimed.has(frame.id)) frame = undefined
+    if (frame) claimed.add(frame.id)
+    const explicit = (op.members || []).map((m) => byId.get(m)).filter((i): i is Positioned => movable(i) && !used.has(i.id))
+    explicit.forEach((m) => used.add(m.id))
+    return { op, frame: frame as Frame | undefined, explicit }
+  })
+  // A reused section keeps the ideas it already holds (unless another theme claims them), in their current order.
+  const groups = picked.map((g) => {
+    const kept = g.frame ? items.filter((i): i is Positioned => movable(i) && i.parentFrameId === g.frame!.id && !used.has(i.id))
+      .sort((a, b) => a.y - b.y || a.x - b.x) : []
+    kept.forEach((m) => used.add(m.id))
+    const inFrame = g.explicit.filter((m) => g.frame && m.parentFrameId === g.frame.id).sort((a, b) => a.y - b.y || a.x - b.x)
+    const members = [...inFrame, ...kept, ...g.explicit.filter((m) => !inFrame.includes(m))]
+    return { ...g, members, summary: g.frame ? summaryOf(g.frame) : undefined }
+  }).filter((g) => g.members.length || g.frame)
+  if (!groups.length) return { items, created: [], idMap: {}, removed: [] }
+
+  const GAP = 20, PAD = 24, BETWEEN = 60
+  const sized = groups.map((g) => {
+    const n = Math.max(g.members.length, 1)
+    const cols = n <= 2 ? n : n <= 6 ? 2 : n <= 12 ? 3 : 4
+    const cellW = Math.max(150, ...g.members.map((m) => m.w)), cellH = Math.max(60, ...g.members.map((m) => m.h))
+    const head = g.op.summary || g.summary ? 104 : 60
+    const rows = Math.ceil(n / cols)
+    return { ...g, cols, cellW, cellH, head, w: Math.max(PAD * 2 + cols * cellW + (cols - 1) * GAP, 280), h: head + PAD + rows * cellH + (rows - 1) * GAP }
+  })
+  // Reused sections first, in their reading order, so a regrouping does not shuffle what people already know.
+  sized.sort((a, b) => (a.frame ? 0 : 1) - (b.frame ? 0 : 1) || (a.frame && b.frame ? a.frame.y - b.frame.y || a.frame.x - b.frame.x : 0))
+  const perRow = sized.length <= 4 ? sized.length : sized.length <= 6 ? 3 : 4
+  const rows: typeof sized[] = []
+  for (let i = 0; i < sized.length; i += perRow) rows.push(sized.slice(i, i + perRow))
+  const blockW = Math.max(...rows.map((r) => r.reduce((sum, g) => sum + g.w, 0) + (r.length - 1) * BETWEEN))
+  const blockH = rows.reduce((sum, r) => sum + Math.max(...r.map((g) => g.h)), 0) + (rows.length - 1) * BETWEEN
+
+  const reused = sized.flatMap((g) => (g.frame ? [g.frame] : []))
+  const touched = new Set([...used, ...reused.map((f) => f.id), ...sized.flatMap((g) => (g.summary ? [g.summary.id] : []))])
+  const rest = items.filter((i) => !touched.has(i.id))
+  const members = sized.flatMap((g) => g.members)
+  const common = (list: Array<{ parentFrameId?: string }>) => {
+    const id = list[0]?.parentFrameId
+    const found = id && list.every((m) => m.parentFrameId === id) ? byId.get(id) : undefined
+    return found?.type === 'frame' ? found : undefined
+  }
+  let parent: Frame | undefined
+  let origin: { x: number; y: number }
+  if (reused.length) {
+    parent = common(reused)
+    origin = { x: Math.min(...reused.map((f) => f.x)), y: Math.min(...reused.map((f) => f.y)) }
+  } else {
+    // All ideas came from one section that holds nothing else: regroup inside it and let it grow.
+    const from = common(members)
+    parent = from && !rest.some((i) => 'parentFrameId' in i && i.parentFrameId === from.id) ? from : undefined
+    if (parent) origin = { x: parent.x + 30, y: parent.y + 70 }
+    else {
+      const box = { x: Math.min(...members.map((m) => m.x)), y: Math.min(...members.map((m) => m.y)), w: 0, h: 0 }
+      box.w = Math.max(...members.map((m) => m.x + m.w)) - box.x
+      box.h = Math.max(...members.map((m) => m.y + m.h)) - box.y
+      const restDoc: CanvasDoc = { type: 'canvas_v1', items: rest }
+      const blocked = allBoxes(restDoc).some((b) => box.x < b.x + b.w + 20 && box.x + blockW > b.x - 20 && box.y < b.y + b.h + 20 && box.y + blockH > b.y - 20)
+      origin = blocked ? findFreeRect(restDoc, box, blockW, blockH, 60) : { x: box.x, y: box.y }
+    }
+  }
+
+  const moved = new Map<string, CanvasItem>()
+  const extra: CanvasItem[] = []
+  const created: string[] = []
+  const idMap: Record<string, string> = {}
+  const usedColors = new Set(sections.map((f) => f.color))
+  const palette = [...CLUSTER_COLORS.filter(([stroke]) => !usedColors.has(stroke)), ...CLUSTER_COLORS]
+  let y = origin.y, index = 0
+  for (const row of rows) {
+    let x = origin.x
+    for (const g of row) {
+      const name = CLEAN(g.op.text || g.frame?.text || 'Tema', 80)
+      let frameId: string
+      if (g.frame) {
+        frameId = g.frame.id
+        moved.set(frameId, { ...g.frame, x, y, w: g.w, h: g.h, text: name, role: 'cluster' })
+      } else {
+        const [stroke, fill] = palette[index++ % palette.length]
+        const tint = /^#[0-9a-fA-F]{6}$/.test(g.op.fill || '') ? g.op.fill! : fill
+        frameId = newId()
+        created.push(frameId)
+        extra.push({ id: frameId, ai: true, role: 'cluster', type: 'frame', x, y, w: g.w, h: g.h, text: name, color: g.op.stroke || stroke,
+          backgroundColor: `${tint}66`, borderWidth: 2, borderStyle: 'dashed', textStyle: TEXT_STYLE(15, '600'), ...(parent ? { parentFrameId: parent.id } : {}) })
+      }
+      if (g.op.id) idMap[g.op.id] = frameId
+      const summaryBox = { x: x + PAD, y: y + 46, w: g.w - PAD * 2, h: 48 }
+      if (g.summary) moved.set(g.summary.id, { ...g.summary, ...summaryBox, text: g.op.summary ? CLEAN(g.op.summary, 300) : g.summary.text, role: 'cluster-summary' })
+      else if (g.op.summary) {
+        const textId = newId()
+        created.push(textId)
+        extra.push({ id: textId, ai: true, role: 'cluster-summary', type: 'text', ...summaryBox, text: CLEAN(g.op.summary, 300), color: '#334155', textStyle: TEXT_STYLE(13), parentFrameId: frameId })
+      }
+      g.members.forEach((m, i) => {
+        const col = i % g.cols, line = Math.floor(i / g.cols)
+        moved.set(m.id, { ...m, x: x + PAD + col * (g.cellW + GAP), y: y + g.head + line * (g.cellH + GAP), parentFrameId: frameId })
+      })
+      x += g.w + BETWEEN
+    }
+    y += Math.max(...row.map((g) => g.h)) + BETWEEN
+  }
+  let next = items.map((i) => moved.get(i.id) || i)
+  if (parent) {
+    const grow = { w: origin.x - parent.x + blockW + 30, h: origin.y - parent.y + blockH + 30 }
+    next = next.map((i) => (i.id === parent!.id && i.type === 'frame' ? { ...i, w: Math.max(i.w, grow.w), h: Math.max(i.h, grow.h) } : i))
+  }
+  // Earlier theme sections left with no ideas (all moved to other themes) go, with their summary and arrows.
+  const holds = new Set(next.flatMap((i) => ('parentFrameId' in i && i.parentFrameId && !summaries.has(i.id) ? [i.parentFrameId] : [])))
+  const emptied = sections.filter((f) => !claimed.has(f.id) && !holds.has(f.id) && items.some((i) => used.has(i.id) && 'parentFrameId' in i && i.parentFrameId === f.id))
+  const removed = emptied.flatMap((f) => [f.id, ...(summaryOf(f) ? [summaryOf(f)!.id] : [])])
+  if (removed.length) next = next.filter((i) => !removed.includes(i.id) && !(i.type === 'connector' && (removed.includes(i.fromId) || removed.includes(i.toId))))
+  // Sections first, so they are drawn under the ideas they hold.
+  return { items: [...extra.filter((e) => e.type === 'frame'), ...next, ...extra.filter((e) => e.type !== 'frame')], created, idMap, removed }
+}
+
+const ILLUSTRATION_SIZE = { landscape: [480, 320], square: [400, 400], portrait: [320, 480] } as const
+
 /** Applies a model's ops. Ops that point at missing items are skipped rather than failing the batch. */
 export function applyAiOps(doc: CanvasDoc, ops: AiOp[], newId: () => string = () => crypto.randomUUID()): { doc: CanvasDoc; created: string[]; idMap: Record<string, string> } {
   let items = [...doc.items]
   const created: string[] = []
   const idMap: Record<string, string> = {}
   const resolve = (id?: string) => (id ? idMap[id] || id : '')
+  if (ops.some((op) => op.kind === 'cluster')) {
+    const clustered = layoutClusters(items, ops, newId)
+    items = clustered.items
+    created.push(...clustered.created)
+    Object.assign(idMap, clustered.idMap)
+  }
   for (const op of ops) {
+    if (op.kind === 'cluster') continue
+    if (op.kind === 'illustration') {
+      if (!op.id || !op.src) continue
+      const [w, h] = ILLUSTRATION_SIZE[op.aspect || 'landscape'] || ILLUSTRATION_SIZE.landscape
+      const x = op.x ?? 0, y = op.y ?? 0
+      const imageId = newId(), captionId = newId()
+      const caption = CLEAN(op.text || '', 600)
+      idMap[op.id] = imageId
+      items.push({ id: imageId, ai: true, type: 'image', x, y, w, h, src: op.src })
+      if (caption) items.push({ id: captionId, ai: true, type: 'text', x, y: y + h + 12, w, h: Math.ceil((caption.length * 7.6) / w + 0.5) * 21 + 10, text: caption, color: '#334155', textStyle: TEXT_STYLE(14) })
+      created.push(imageId, ...(caption ? [captionId] : []))
+      continue
+    }
     if (op.kind === 'connect') {
       const from = items.find((i) => i.id === resolve(op.from_id)), to = items.find((i) => i.id === resolve(op.to_id))
       if (!from || !to || !('w' in from) || !('w' in to)) continue
@@ -314,6 +500,11 @@ export function applyAiOps(doc: CanvasDoc, ops: AiOp[], newId: () => string = ()
   return { doc: { ...doc, items }, created, idMap }
 }
 
+function answersNote(answers?: Record<string, { ok: boolean }>): string {
+  const list = Object.values(answers || {})
+  return list.length ? `; ${list.length} risposte, ${list.filter((a) => a.ok).length} corrette` : ''
+}
+
 /** Structured scene sent to the model, with short aliases (n1, n2…) instead of UUIDs. */
 export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Record<string, string>; fromAlias: Record<string, string> } {
   const toAlias: Record<string, string> = {}
@@ -324,7 +515,9 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
     const base = { id: toAlias[item.id], type: item.type === 'postit' ? 'note' : item.type, ...(box ? { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h) } : {}) }
     const parent = 'parentFrameId' in item && item.parentFrameId && toAlias[item.parentFrameId] ? `dentro ${toAlias[item.parentFrameId]}` : ''
     switch (item.type) {
-      case 'postit': case 'frame': case 'text': return { ...base, text: CLEAN(item.text, 600), detail: parent }
+      case 'frame': return { ...base, text: CLEAN(item.text, 600), detail: [isClusterFrame(item) ? 'sezione tematica di un raggruppamento precedente' : '', parent].filter(Boolean).join(', ') }
+      case 'postit': return { ...base, text: CLEAN(item.text, 600), detail: parent }
+      case 'text': return { ...base, text: CLEAN(item.text, 600), detail: [item.role === 'cluster-summary' ? 'sintesi della sezione' : '', parent].filter(Boolean).join(', ') }
       case 'shape': return { ...base, text: CLEAN(item.text, 600), detail: [item.shape, parent].filter(Boolean).join(', ') }
       case 'connector': return { ...base, text: '', detail: `da ${toAlias[item.fromId] || '?'} a ${toAlias[item.toId] || '?'}` }
       case 'image': return { ...base, text: '', detail: 'immagine incollata' }
@@ -333,6 +526,9 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
       case 'line': return { ...base, text: '', detail: item.arrow ? 'freccia' : 'linea' }
       case 'formula': return { ...base, text: CLEAN(item.latex, 600), detail: CLEAN(`formula${item.src ? ` (${item.src})` : ''}${parent ? `, ${parent}` : ''}`, 380) }
       case 'animation': return { ...base, text: CLEAN(item.scene.title, 200), detail: CLEAN(`animazione di ${item.scene.duration}s: ${item.scene.steps.map((s) => s.text).join(' / ')}`, 380) }
+      case 'quiz': return { ...base, text: CLEAN(item.question, 400), detail: CLEAN(`quiz: ${item.options.map((o, i) => `${String.fromCharCode(65 + i)}) ${o}${item.correct.includes(i) ? ' [giusta]' : ''}`).join(' ')}${answersNote(item.answers)}`, 380) }
+      case 'flashcard': return { ...base, text: CLEAN(item.front, 300), detail: CLEAN(`flashcard, retro: ${item.back}${answersNote(item.answers)}`, 380) }
+      case 'check': return { ...base, text: CLEAN(item.question, 400), detail: CLEAN(`domanda aperta con verifica, soluzione: ${item.expected}${answersNote(item.answers)}`, 380) }
       case 'plot': return { ...base, text: CLEAN(item.title || '', 600), detail: CLEAN(`grafico y=${item.expr}, x ${item.xMin}..${item.xMax}, y ${item.yMin}..${item.yMax}`, 380) }
       default: return { ...base, text: '', detail: '' }
     }
@@ -343,12 +539,13 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
 /** Translate aliases in the model's ops (and focus) back to real ids. */
 export function unaliasOps(ops: AiOp[], fromAlias: Record<string, string>): AiOp[] {
   const real = (id?: string) => (id ? fromAlias[id] || id : id)
-  return ops.map((op) => ({ ...op, target: real(op.target), from_id: real(op.from_id), to_id: real(op.to_id), on: real(op.on) }))
+  return ops.map((op) => ({ ...op, target: real(op.target), from_id: real(op.from_id), to_id: real(op.to_id), on: real(op.on),
+    ...(op.members ? { members: op.members.map((m) => real(m) as string) } : {}) }))
 }
 
 const label = (item: CanvasItem) => {
-  const text = item.type === 'formula' ? CLEAN(item.src || item.latex, 40) : 'text' in item ? CLEAN(item.text, 40) : ''
-  const names: Record<string, string> = { postit: 'post-it', frame: 'sezione', text: 'testo', shape: 'forma', image: 'immagine', table: 'tabella', path: 'disegno', line: 'linea', connector: 'freccia', plot: 'grafico', formula: 'formula', animation: 'animazione' }
+  const text = item.type === 'formula' ? CLEAN(item.src || item.latex, 40) : item.type === 'quiz' || item.type === 'check' ? CLEAN(item.question, 40) : item.type === 'flashcard' ? CLEAN(item.front, 40) : 'text' in item ? CLEAN(item.text, 40) : ''
+  const names: Record<string, string> = { postit: 'post-it', frame: 'sezione', text: 'testo', shape: 'forma', image: 'immagine', table: 'tabella', path: 'disegno', line: 'linea', connector: 'freccia', plot: 'grafico', formula: 'formula', animation: 'animazione', quiz: 'quiz', flashcard: 'flashcard', check: 'domanda di verifica' }
   return `${names[item.type] || item.type}${text ? ` «${text}»` : ''}`
 }
 
@@ -453,7 +650,9 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
   const images = new Map<string, HTMLImageElement | null>()
   await Promise.all(doc.items.filter((i) => i.type === 'image').map(async (i) => { if (i.type === 'image') images.set(i.id, await loadImage(i.src)) }))
 
-  for (const item of doc.items) {
+  // Same layering as the live board: frames (larger first) under everything else.
+  const frameFirst = [...doc.items.filter((i) => i.type === 'frame').sort((a, b) => ('w' in b ? b.w * b.h : 0) - ('w' in a ? a.w * a.h : 0)), ...doc.items.filter((i) => i.type !== 'frame')]
+  for (const item of frameFirst) {
     ctx.save()
     ctx.lineJoin = 'round'
     ctx.lineCap = 'round'
@@ -492,6 +691,12 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
       ctx.translate(item.x, item.y); ctx.scale(item.w / item.ow, item.h / item.oh)
       ctx.strokeStyle = item.color; ctx.lineWidth = item.width / Math.max(Math.min(item.w / item.ow, item.h / item.oh), 0.01)
       ctx.beginPath(); item.points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke()
+    } else if (item.type === 'quiz' || item.type === 'flashcard' || item.type === 'check') {
+      ctx.fillStyle = item.color; ctx.strokeStyle = shapeStrokeFor(item.color); ctx.lineWidth = 1.5
+      const card = new Path2D(); card.roundRect(item.x, item.y, item.w, item.h, 16); ctx.fill(card); ctx.stroke(card)
+      const head = item.type === 'quiz' ? 'QUIZ' : item.type === 'check' ? 'VERIFICA' : 'FLASHCARD'
+      const body = item.type === 'quiz' ? `${item.question}\n${item.options.map((o, i) => `${String.fromCharCode(65 + i)}) ${o}`).join('\n')}` : item.type === 'check' ? item.question : item.front
+      drawText(ctx, `${head}\n${body}`, item.x, item.y, item.w, item.h, 13, '#171717', false)
     } else if (item.type === 'animation') {
       ctx.fillStyle = '#0f172a'; ctx.fillRect(item.x, item.y, item.w, item.h)
       drawText(ctx, `▶ ${item.scene.title}`, item.x, item.y, item.w, item.h, 18, '#e2e8f0', true)

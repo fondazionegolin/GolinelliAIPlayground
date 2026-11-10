@@ -32,6 +32,8 @@ PRICING_URLS = {
     "openrouter": "https://openrouter.ai/models",
     "gemini": "https://ai.google.dev/gemini-api/docs/pricing",
     "ollama": "https://ollama.com/library",
+    "elevenlabs": "https://elevenlabs.io/pricing/api",
+    "runware": "https://runware.ai/audio-generation-api",
 }
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 PRICE_EPSILON = 0.0005
@@ -97,6 +99,133 @@ SEED_OTHER: list[tuple[str, str, str, str, float | None, str]] = [
     ("openai", "gpt-4o-transcribe", "GPT-4o Transcribe", "transcribe", None, "vedi listino"),
     ("openai", "whisper-1", "Whisper", "transcribe", None, "≈ $0.006 al minuto"),
 ]
+# ── image generators: price per image and blind-test strength ────────────────
+# Elo of the Artificial Analysis text-to-image arena (AA-Image-T2I v2.1, read 2026-11-09). The platform compares every image
+# model to GPT Image 2.5 Sunburst (max): `quality_score` = % of head-to-head votes the model would win against it
+# (50 = as good, <50 worse). Prices: USD per ~1 MP image at the 1K tier, from the OpenRouter listing of 2026-11-09;
+# token-billed models are converted with the tokens per 1K image measured by Artificial Analysis. OpenAI models are
+# priced at max quality (the setting their Elo was measured at). Admin edits are never overwritten.
+IMAGE_REFERENCE = ("GPT Image 2.5 Sunburst (max)", 1227)
+IMAGE_BENCH_SOURCE = "Artificial Analysis T2I v2.1, Elo {elo} (letto 2026-11-09)"
+# (provider, model id, display name, Elo or None, USD per image)
+IMAGE_MODELS: list[tuple[str, str, str, int | None, float]] = [
+    ("openrouter", "openai/gpt-image-2.6-sunburst", "GPT Image 2.6 Sunburst (OpenRouter)", 1259, 0.211),
+    ("openrouter", "openai/gpt-image-2.6-flare", "GPT Image 2.6 Flare (OpenRouter)", 1228, 0.211),
+    ("openrouter", "openai/gpt-image-2.5-sunburst", "GPT Image 2.5 Sunburst (OpenRouter)", 1227, 0.211),
+    ("openrouter", "openai/gpt-image-2.5-flare", "GPT Image 2.5 Flare (OpenRouter)", 1208, 0.211),
+    ("openrouter", "openai/gpt-image-2", "GPT Image 2 (OpenRouter)", 1188, 0.211),
+    ("openrouter", "google/gemini-nano-banana-2.1", "Nano Banana 2.1", 1176, 0.0336),
+    ("openrouter", "microsoft/mai-image-2.6", "MAI-Image-2.6", 1168, 0.0389),
+    ("openrouter", "x-ai/grok-imagine-image-2.0", "Grok Imagine Image 2.0", 1166, 0.06),
+    ("openrouter", "google/gemini-3.1-flash-image", "Nano Banana 2 (Gemini 3.1 Flash Image)", 1142, 0.074),
+    ("openrouter", "google/gemini-3.1-flash-image-preview", "Nano Banana 2 preview", 1142, 0.067),
+    ("openrouter", "microsoft/mai-image-2.6-flash", "MAI-Image-2.6 Flash", 1122, 0.0195),
+    ("openrouter", "microsoft/mai-image-2.5", "MAI-Image-2.5", 1120, 0.0481),
+    ("openrouter", "google/gemini-3-pro-image", "Nano Banana Pro (Gemini 3 Pro Image)", 1119, 0.134),
+    ("openrouter", "google/gemini-3-pro-image-preview", "Nano Banana Pro preview", 1119, 0.067),
+    ("openrouter", "black-forest-labs/flux-3-image", "FLUX 3 Image", 1117, 0.048),
+    ("openrouter", "microsoft/mai-image-2.5-pro", "MAI-Image-2.5 Pro", 1116, 0.1085),
+    ("openrouter", "google/gemini-3.1-flash-lite-image", "Nano Banana 2 Lite", 1109, 0.0336),
+    ("openrouter", "bytedance-seed/seedream-5-0-pro", "Seedream 5.0 Pro", 1101, 0.045),
+    ("openrouter", "qwen/qwen-image-3-pro", "Qwen-Image 3.0 Pro", 1095, 0.04),
+    ("openrouter", "qwen/qwen-image-3", "Qwen-Image 3.0", 1073, 0.03),
+    ("openrouter", "qwen/qwen-image-2.1-pro", "Qwen-Image 2.1 Pro", 1058, 0.046),
+    ("openrouter", "black-forest-labs/flux-3-image-klein", "FLUX 3 Image Klein", 1043, 0.009),
+    ("openrouter", "krea/krea-2-large", "Krea 2 Large", 1035, 0.06),
+    ("openrouter", "bytedance-seed/seedream-4.5", "Seedream 4.5", 1030, 0.04),
+    ("openrouter", "black-forest-labs/flux.2-flex", "FLUX.2 [flex]", 1028, 0.063),
+    ("openrouter", "recraft/recraft-v4.1-utility", "Recraft V4.1 Utility", 1028, 0.035),
+    ("openrouter", "qwen/qwen-image-2.1-turbo", "Qwen-Image 2.1 Turbo", 1027, 0.0184),
+    ("openrouter", "black-forest-labs/flux.2-max", "FLUX.2 [max]", 1021, 0.073),
+    ("openrouter", "krea/krea-2-medium-turbo", "Krea 2 Medium Turbo", 1020, 0.015),
+    ("openrouter", "bytedance-seed/seedream-5-0-lite", "Seedream 5.0 Lite (2K)", 1019, 0.035),
+    ("openrouter", "recraft/recraft-v4.1-utility-pro", "Recraft V4.1 Utility Pro", 1018, 0.21),
+    ("openrouter", "krea/krea-2-medium", "Krea 2 Medium", 1014, 0.03),
+    ("openrouter", "openai/gpt-image-1", "GPT Image 1 (OpenRouter)", 1014, 0.167),
+    ("openrouter", "black-forest-labs/flux.2-pro", "FLUX.2 [pro]", 1003, 0.031),
+    ("openrouter", "google/gemini-2.5-flash-image", "Nano Banana (Gemini 2.5 Flash Image)", 986, 0.0387),
+    ("openrouter", "tencent/hy-image-v3.5-preview", "HunyuanImage 3.5 preview", 974, 0.024),
+    ("openrouter", "recraft/recraft-v4.1-flash", "Recraft V4.1 Flash", 951, 0.007),
+    ("openrouter", "openai/gpt-image-1-mini", "GPT Image 1 Mini (OpenRouter)", 937, 0.011),
+    ("openrouter", "black-forest-labs/flux.2-klein-4b", "FLUX.2 [klein] 4B", 840, 0.015),
+    # Not in the arena: priced, strength unknown.
+    ("openrouter", "bytedance-seed/seedream-5-0-flash", "Seedream 5.0 Flash", None, 0.018),
+    ("openrouter", "recraft/recraft-v4.1", "Recraft V4.1", None, 0.035),
+    ("openrouter", "recraft/recraft-v4.1-pro", "Recraft V4.1 Pro", None, 0.21),
+    ("openrouter", "recraft/recraft-v4.1-vector", "Recraft V4.1 Vector (SVG)", None, 0.08),
+    ("openrouter", "sourceful/riverflow-v2.5-fast", "Riverflow 2.5 Fast", None, 0.019),
+    ("openrouter", "sourceful/riverflow-v2.6-pro", "Riverflow 2.6 Pro", None, 0.13),
+    ("openrouter", "krea/k3-edit", "Krea K3 Edit", None, 0.03),
+    # Direct OpenAI ids (same models, billed by OpenAI).
+    ("openai", "gpt-image-2.6-sunburst", "GPT Image 2.6 Sunburst", 1259, 0.211),
+    ("openai", "gpt-image-2.6-flare", "GPT Image 2.6 Flare", 1228, 0.211),
+    ("openai", "gpt-image-2.5-sunburst", "GPT Image 2.5 Sunburst", 1227, 0.211),
+    ("openai", "gpt-image-2.5-flare", "GPT Image 2.5 Flare", 1208, 0.211),
+    ("openai", "gpt-image-2", "GPT Image 2", 1188, 0.211),
+    ("openai", "gpt-image-2-2026-04-21", "GPT Image 2 (snapshot 2026-04-21)", 1188, 0.211),
+    ("openai", "gpt-image-1.5", "GPT Image 1.5", 1124, 0.133),
+    ("openai", "gpt-image-1", "GPT Image 1", 1014, 0.167),
+]
+
+
+def image_win_rate(elo: float) -> int:
+    """% of blind head-to-head votes won against the reference image model (50 = as good)."""
+    return round(100 / (1 + 10 ** ((IMAGE_REFERENCE[1] - elo) / 400)))
+
+
+# Music generators (role «audio.music»). input_usd = indicative USD per track (ElevenLabs: per minute).
+MUSIC_MODELS: list[tuple[str, str, str, float, str]] = [
+    ("elevenlabs", "music_v1", "ElevenLabs Music", 0.15, "$0.15 al minuto (tariffa API; l'abbonamento ElevenLabs ha un tetto mensile)"),
+    ("openrouter", "google/lyria-3-clip-preview", "Google Lyria 3 Clip (30 s)", 0.04, "$0.04 a brano da 30 s (OpenRouter)"),
+    ("openrouter", "google/lyria-3-pro-preview", "Google Lyria 3 Pro (brano completo)", 0.08, "$0.08 a brano, fino a ~3 min (OpenRouter)"),
+    ("runware", "runware:ace-step@v1.5-xl-turbo", "ACE-Step 1.5 XL Turbo · open source, sperimentale", 0.002, "≈ $0.002 a brano, 30–300 s, anche con testo cantato (Runware)"),
+    ("runware", "runware:ace-step@v1.5-turbo", "ACE-Step 1.5 Turbo · open source, sperimentale", 0.004, "≈ $0.004 a brano, 30–300 s (Runware)"),
+    ("runware", "runware:ace-step@v1.5-xl-sft", "ACE-Step 1.5 XL SFT · open source, sperimentale", 0.008, "≈ $0.008 a brano da 1 min, 30–300 s (Runware)"),
+]
+
+
+def _seed_music(rows: dict[tuple[str, str], AIModel], db: AsyncSession) -> bool:
+    changed = False
+    for provider, model_id, name, usd, note in MUSIC_MODELS:
+        row = rows.get((provider, model_id))
+        if row is None:
+            db.add(AIModel(provider=provider, model_id=model_id, display_name=name, status="active", kind="music", input_usd=usd,
+                           price_note=note, pricing_url=PRICING_URLS[provider], acknowledged=True))
+            changed = True
+        elif row.kind == "text" and not row.offered and not row.scopes:
+            # The OpenRouter scan lists Lyria as a chat model: it only makes sense as a music generator.
+            row.kind, row.display_name, row.input_usd, row.output_usd, row.cached_input_usd, row.price_note = "music", name, usd, None, None, note
+            row.status = "active"
+            changed = True
+    return changed
+
+
+def _seed_images(rows: dict[tuple[str, str], AIModel], db: AsyncSession) -> bool:
+    changed = False
+    for provider, model_id, name, elo, per_image in IMAGE_MODELS:
+        note = f"≈ ${per_image:g} per immagine ~1 MP (stima 2026-11-09)"
+        row = rows.get((provider, model_id))
+        if row is None:
+            db.add(AIModel(provider=provider, model_id=model_id, display_name=name, status="available", kind="image", input_usd=per_image,
+                           price_note=note, pricing_url=PRICING_URLS[provider], quality_score=image_win_rate(elo) if elo else None,
+                           quality_source=IMAGE_BENCH_SOURCE.format(elo=elo) if elo else None, acknowledged=True))
+            changed = True
+            continue
+        if row.kind == "text" and provider == "openrouter" and not row.offered and not row.scopes:
+            # Found by the chat scan, but these only make sense as image generators.
+            row.kind, row.output_usd, row.cached_input_usd, row.input_usd, row.price_note = "image", None, None, per_image, note
+            changed = True
+        if row.kind != "image":
+            continue
+        if row.input_usd is None:
+            row.input_usd, row.price_note = per_image, note
+            changed = True
+        if elo and row.quality_score is None:
+            row.quality_score, row.quality_source = image_win_rate(elo), IMAGE_BENCH_SOURCE.format(elo=elo)
+            changed = True
+    return changed
+
+
 # Models offered in the users' model selectors until the admin changes it (the list the platform shipped with).
 SEED_OFFERED = {"gpt-5.6-luna", "claude-haiku-4-5-20251001"}
 
@@ -131,9 +260,11 @@ def apply_runtime_prices(models: list[AIModel]) -> int:
 
 async def seed_if_empty(db: AsyncSession) -> None:
     """Insert the catalogue entries that are missing (idempotent: existing rows and admin edits are never touched)."""
-    existing = {(row.provider, row.model_id) for row in (await db.execute(select(AIModel))).scalars().all()}
+    all_rows = {(row.provider, row.model_id): row for row in (await db.execute(select(AIModel))).scalars().all()}
+    existing = set(all_rows)
     checked = datetime(2026, 10, 7, tzinfo=timezone.utc)
-    added = False
+    added = _seed_images(all_rows, db)
+    added = _seed_music(all_rows, db) or added
     for provider, model_id, name, price_in, price_out, cached, context in SEED:
         if (provider, model_id) in existing:
             continue

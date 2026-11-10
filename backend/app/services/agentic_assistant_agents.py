@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.user import User
 from app.services import model_roles
-from app.services.agentic_assistant import BlueprintError, apply_patch, catalog_text, compile_blueprint, describe_graph, parse_blueprint, parse_patch, wants_rebuild
+from app.services.agentic_assistant import BlueprintError, apply_patch, catalog_text, compile_blueprint, describe_graph, lint_graph, parse_blueprint, parse_patch, wants_rebuild
 from app.services.agentic_runtime import _parse_json_payload
 from app.services.credit_service import credit_service
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
@@ -23,6 +23,15 @@ from app.services.llm_service import llm_service
 logger = logging.getLogger(__name__)
 MAX_REPAIRS = 2
 MAX_INTENT_CHARS = 4000
+
+TABLE_AI_RULES = """
+VALUTAZIONI AI SU TABELLE:
+- Se l'utente chiede esplicitamente un giudizio LLM, una classificazione o un punteggio per ogni riga, usa ai.add_column: collega la tabella pulita a table e imposta name, instruction, output_type. Per un punteggio 0-10 imposta output_type=number, min_value=0, max_value=10. È una valutazione AI richiesta, anche quando i dati di partenza sono numerici; non sostituirla con una formula arbitraria.
+- ai.add_column restituisce l'intera tabella originale con la colonna aggiunta; gestisce tutte le righe in blocchi e ne mantiene l'identità. Non servono loop, ricostruzioni della tabella o join per posizione. Per altre colonne AI si possono concatenare più nodi ai.add_column.
+- Un commento generale opzionale si ottiene con ai.transform task=summarize; la sua uscita text può alimentare extra di ai.add_column. Il compito custom/summarize NON restituisce table: per JSON testuale già prodotto usa data.parse_text, per una nuova valutazione usa ai.add_column.
+- Per una barra per studente usa plot.bar con x=identificativo/nome studente e y=nuova colonna. plot.histogram raggruppa i valori in intervalli e non identifica i singoli studenti. Usa esattamente lo stesso nome di colonna nel nodo AI e nel grafico.
+- I dataset inventati con correlazioni specifiche si generano con ai.generate_dataset descrivendo correlazioni e scale nel prompt, non con csv.synthetic rinominando a caso le feature. Pulizia e validazione restano algoritmiche (convert_to_number, dropna, distinct, validate).
+"""
 
 INTAKE_SYSTEM = """Sei l'assistente del Dataflow Studio, un editor a nodi per costruire workflow (dati, grafici, machine learning, testi con AI,
 documenti, immagini, cicli su tabelle, chatbot). L'utente descrive un'intenzione. Il tuo compito, PRIMA di costruire qualunque cosa, è
@@ -136,6 +145,19 @@ ESEMPIO 6 — «leggi il CSV dal drive, scarta le righe non valide e salva le va
 
 """
 
+ARCHITECT_SYSTEM += TABLE_AI_RULES + """
+ESEMPIO 7 — «dati scolastici sintetici correlati, pulizia, criticità AI 0-10 e una barra per studente»
+{"title":"Criticità scolastica simulata","mode":"data","steps":[
+ {"key":"src","node":"ai.generate_dataset","config":{"rows":40,"columns":"studente,performance,italiano,fratelli_sorelle","prompt":"Dati interamente sintetici: identificativi univoci S001...; performance scolastica e padronanza dell'italiano entrambe 0-10 con correlazione positiva ma non perfetta; numero fratelli/sorelle intero 0-6, variabile indipendente."}},
+ {"key":"num","node":"data.convert_to_number","config":{"columns":"performance,italiano,fratelli_sorelle"},"inputs":{"table":"src.table"}},
+ {"key":"distinct","node":"data.distinct","config":{"columns":"studente"},"inputs":{"table":"num.table"}},
+ {"key":"clean","node":"data.validate","config":{"rules":"studente:not_empty\\nperformance:number:0-10\\nitaliano:number:0-10\\nfratelli_sorelle:number:0-6"},"inputs":{"table":"distinct.table"}},
+ {"key":"score","node":"ai.add_column","config":{"name":"criticita","output_type":"number","min_value":0,"max_value":10,"instruction":"Analizza ogni profilo sintetico e valuta la necessità di supporto didattico: 0 nessuna criticità, 10 criticità molto elevata. Considera congiuntamente performance scolastica e padronanza dell'italiano; descrivi nel criterio una maggiore criticità per valori bassi. Il numero di fratelli/sorelle è descrittivo e da solo non prova difficoltà."},"inputs":{"table":"clean.valid"}},
+ {"key":"bar","node":"plot.bar","config":{"x":"studente","y":"criticita","title":"Criticità per studente (simulazione)"},"inputs":{"table":"score.table"}}],
+ "warnings":["Il punteggio è una valutazione AI su dati sintetici per l'esercitazione."]}
+
+"""
+
 BLUEPRINT_FORMAT_REMINDER = "Rispondi solo con il JSON del blueprint corretto."
 
 
@@ -240,6 +262,9 @@ async def run_architect(
         try:
             blueprint = parse_blueprint(_json_object(content))
             result = compile_blueprint(blueprint, allow_destructive=allow_destructive)
+            errors = [issue["message"] for issue in result["issues"] if issue["severity"] == "error"]
+            if errors:
+                raise BlueprintError("\n".join(errors[:8]))
         except BlueprintError as exc:
             last_error = str(exc)
             logger.info("architect attempt %s rejected: %s", attempt + 1, last_error)
@@ -294,6 +319,9 @@ Regole:
 """
 
 
+EDITOR_SYSTEM += TABLE_AI_RULES
+
+
 async def run_editor(
     db: AsyncSession, actor: User, graph: dict[str, Any], instruction: str, selected: str | None = None,
     history: list[dict[str, str]] | None = None, allow_destructive: bool = False, on_status: Any = None,
@@ -325,6 +353,10 @@ async def run_editor(
         try:
             result = apply_patch(graph, parse_patch(_json_object(content)), allow_destructive=allow_destructive,
                                  allow_rebuild=wants_rebuild(instruction))
+            existing_errors = {(issue["node"], issue["message"]) for issue in lint_graph(graph) if issue["severity"] == "error"}
+            errors = [issue["message"] for issue in result["issues"] if issue["severity"] == "error" and (issue["node"], issue["message"]) not in existing_errors]
+            if errors:
+                raise BlueprintError("\n".join(errors[:8]))
         except BlueprintError as exc:
             last_error = str(exc)
             logger.info("editor attempt %s rejected: %s", attempt + 1, last_error)

@@ -5,7 +5,7 @@ import { adminApi, type ModelScope } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import ModelRolesPanel, { priceLabel } from '@/components/admin/ModelRolesPanel'
+import ModelRolesPanel, { imageStrength, priceLabel } from '@/components/admin/ModelRolesPanel'
 import { tl } from '@/i18n/tl'
 import { creditsToUsd, priceInCredits, usdToCredits } from '@/lib/credits'
 import { AdminBadge, AdminEmpty, AdminNotice, AdminPageHeader, AdminSection, AdminStat, AdminStatGrid, AdminTabs } from '@/components/admin/AdminUI'
@@ -430,7 +430,7 @@ export default function AdminModelsPage() {
                                       <td className="text-right tabular-nums" title={m.quality_source ?? undefined}>{m.quality_score ?? '—'}</td>
                                       <td className="text-right font-semibold tabular-nums">{m.value_score ?? '—'}</td>
                                     </>
-                                  ) : <td colSpan={4} className="text-slate-500">{priceLabel(m)}</td>}
+                                  ) : <td colSpan={4} className="text-slate-500" title={m.quality_source ?? undefined}>{priceLabel(m)}{imageStrength(m) ? <> · <span className="font-semibold text-slate-700">{imageStrength(m)}</span></> : null}</td>}
                                   <td><AdminBadge tone={m.status === 'active' ? 'success' : 'neutral'}>{STATUS_LABEL[m.status]}</AdminBadge></td>
                                   {hasTextRows && <td className="max-w-[16rem]">
                                     {m.scopes.length ? <span className="flex flex-wrap gap-1">{m.scopes.map((s) => <AdminBadge key={s} tone={s === scope ? 'accent' : 'neutral'}>{scopeLabel(s)}</AdminBadge>)}</span> : <span className="text-slate-400">—</span>}

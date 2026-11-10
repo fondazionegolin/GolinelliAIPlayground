@@ -55,13 +55,13 @@ class ScopeBulk(BaseModel):
 class RoleAssign(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
-    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama"]
+    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama", "elevenlabs", "runware"]
     model_id: str = Field(min_length=1, max_length=120)
 
 
 class ModelCreate(ModelUpdate):
     kind: Literal["text", "video"] = "text"
-    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama"]
+    provider: Literal["openai", "anthropic", "deepseek", "openrouter", "gemini", "ollama", "elevenlabs", "runware"]
     model_id: str = Field(min_length=1, max_length=120)
     display_name: str = Field(min_length=1, max_length=160)
 
@@ -262,8 +262,12 @@ async def list_roles(_: Admin, db: Db) -> dict:
     roles = []
     for role in model_roles.ROLES.values():
         pool = [m for m in catalogue if m.kind == role.kind and (not role.providers or m.provider in role.providers)]
-        scored = [m for m in pool if m.quality_score and m.blended_usd_value]
-        best = sorted(scored, key=lambda m: m.quality_score / m.blended_usd_value, reverse=True)[:2]
+        if role.kind == "image":  # strength vs GPT Image 2.5 per unit of price, among models at least 40% as strong
+            scored = [m for m in pool if m.quality_score and m.quality_score >= 40 and m.input_usd and m.status != "deprecated"]
+            best = sorted(scored, key=lambda m: m.quality_score / m.input_usd, reverse=True)[:2]
+        else:
+            scored = [m for m in pool if m.quality_score and m.blended_usd_value]
+            best = sorted(scored, key=lambda m: m.quality_score / m.blended_usd_value, reverse=True)[:2]
         recommended = {m.model_id for m in best}
         provider, model = model_roles.pair_for(role.id)
         current = by_key.get((provider, model))
@@ -274,7 +278,8 @@ async def list_roles(_: Admin, db: Db) -> dict:
             "default": {"provider": role.default[0], "model_id": role.default[1]},
             "overridden": model_roles.is_overridden(role.id),
             "updated_by": row.updated_by if row else None, "updated_at": row.updated_at if row else None,
-            "candidates": sorted((_candidate(m, recommended) for m in pool), key=lambda c: (c["provider"], -(c["input_usd"] or 0))),
+            "candidates": sorted((_candidate(m, recommended) for m in pool),
+                                 key=(lambda c: (-(c["quality_score"] or -1), c["input_usd"] or 0)) if role.kind == "image" else (lambda c: (c["provider"], -(c["input_usd"] or 0)))),
         })
     return {"roles": roles, "fixed": model_roles.FIXED_MODELS}
 

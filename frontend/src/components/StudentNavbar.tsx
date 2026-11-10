@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
+import { SessionCodePill } from './SessionCodePill'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
@@ -406,6 +407,7 @@ export function StudentNavbar({
                   sessionId={sessionId}
                   accentColor={accentTheme.accent}
                   inNavCluster
+                  role="student"
                 />
 
                 {/* Session Info - Always visible */}
@@ -417,10 +419,8 @@ export function StudentNavbar({
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                     <div className="hidden text-left min-w-0 md:block">
                       <span className="block max-w-[150px] truncate text-[11px] font-bold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
-                      {joinCode && (
-                        <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{joinCode}</span>
-                      )}
                     </div>
+                    {joinCode && <SessionCodePill size="sm" code={joinCode} className="hidden sm:flex" />}
                   </div>
                 )}
 

@@ -719,7 +719,9 @@ class LLMService:
     ) -> str:
         """Generate an image using BFL (Flux), DALL-E 3 or Golinelli API"""
         provider = provider or settings.OPENAI_IMAGE_MODEL
-        
+        if "/" in provider:  # OpenRouter slug chosen in Admin → Modelli (vendor/model)
+            return await self._generate_image_openrouter(prompt, size, provider, image_base64)
+
         # BFL Models
         bfl_models = [
             "flux-pro-1.1", "flux-pro", "flux-dev", "flux-schnell", 
@@ -753,6 +755,15 @@ class LLMService:
 
         # Fallback to BFL schnell
         return await self._generate_image_bfl(prompt, size, model="flux-schnell")
+
+    async def _generate_image_openrouter(self, prompt: str, size: str, model: str, image_base64: Optional[str] = None) -> str:
+        """One image from an OpenRouter image model (optionally from a source picture), saved locally like the others."""
+        import base64 as _base64
+        from app.services import openrouter
+
+        refs = [_base64.b64decode(image_base64)] if image_base64 else None
+        data, _mime, _cost = await openrouter.generate_image(model, prompt, size, references=refs)
+        return await _save_optimized_generated_image(data, Path("/app/uploads/generated"))
 
     async def _generate_image_bfl(
         self,

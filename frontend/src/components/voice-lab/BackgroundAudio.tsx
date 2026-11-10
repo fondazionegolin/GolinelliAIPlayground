@@ -322,7 +322,7 @@ function NavbarAudioPanel() {
   const [showLibrary, setShowLibrary] = useState(false)
   const [creatingMusic, setCreatingMusic] = useState(false)
   const queue = player.active?.tracks || []
-  const listIsQueue = !showLibrary && queue.length > 1
+  const listIsQueue = !showLibrary && (queue.length > 1 || !!player.active?.id)
   const rows: AudioTrack[] = listIsQueue ? queue : (library.data || [])
   return <div className="space-y-2">
     <div className="grid gap-3 sm:grid-cols-[16rem_minmax(0,1fr)]">
@@ -348,14 +348,20 @@ function NavbarAudioPanel() {
       </div>
       <div className="flex min-w-0 flex-col gap-2">
         {/* menuClassName: the list opens inline; an absolute menu was clipped by the panel's overflow-y-auto. */}
-        <SearchableSelect menuClassName="!static !mt-2 w-full" label={tl('Playlist')} value={showLibrary ? '' : player.personal?.id || ''} options={[{ value: '__library', label: tl('Tutti i brani') }, ...(lists.data || []).map(v => ({ value: v.id, label: v.title }))]} onChange={id => {
+        <SearchableSelect menuClassName="!static !mt-2 w-full" label={tl('Playlist')} value={showLibrary ? '__library' : player.active?.id || '__library'} options={[{ value: '__library', label: tl('Tutti i brani') }, ...(lists.data || []).map(v => ({ value: v.id, label: v.title }))]} onChange={id => {
           if (id === '__library') { setShowLibrary(true); return }
           const playlist = lists.data?.find(v => v.id === id); if (playlist) { setShowLibrary(false); player.listen(playlist) }
         }} />
         <ol aria-label={listIsQueue ? tl('Tracce in riproduzione') : tl('Brani')} className="max-h-60 min-h-24 flex-1 space-y-0.5 overflow-y-auto">
           {rows.map((entry, i) => { const current = listIsQueue ? i === player.index : entry.id === track?.id
             return <li key={entry.id}><button type="button" className={`flex w-full items-center gap-2.5 rounded-xl p-1.5 text-left text-sm transition-colors hover:bg-[var(--ds-field-bg)] disabled:opacity-50 ${current ? 'ds-selected font-semibold' : ''}`} aria-label={tl('Riproduci {0}', entry.title)} aria-current={current ? 'true' : undefined} disabled={!mayChoose}
-              onClick={() => { if (listIsQueue) player.choose(i); else { player.playFile(entry) } }}><AudioCover url={entry.cover_url} className="h-8 w-8 rounded-lg" iconClassName="h-4 w-4" /><span className="min-w-0"><span className="block truncate">{entry.title}</span>{entry.artist_name && <span className="block truncate text-xs font-normal text-[var(--text-secondary)]">{entry.artist_name}</span>}</span></button></li> })}
+              onClick={() => {
+                if (listIsQueue) player.choose(i)
+                else {
+                  player.playTracks(rows, async (track, signal) => (await driveApi.content(track.id, signal)).data, i)
+                  setShowLibrary(false)
+                }
+              }}><AudioCover url={entry.cover_url} className="h-8 w-8 rounded-lg" iconClassName="h-4 w-4" /><span className="min-w-0"><span className="block truncate">{entry.title}</span>{entry.artist_name && <span className="block truncate text-xs font-normal text-[var(--text-secondary)]">{entry.artist_name}</span>}</span></button></li> })}
           {!rows.length && !library.isLoading && <li className="p-2 text-xs text-[var(--text-secondary)]">{tl('Nessun brano disponibile.')}</li>}
         </ol>
       </div>

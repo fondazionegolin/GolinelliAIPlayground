@@ -27,7 +27,7 @@ class Role:
     group: str  # chat | vision | image | voice
     label: str
     description: str
-    kind: str  # text | image | realtime | transcribe
+    kind: str  # text | image | realtime | transcribe | music
     default: tuple[str, str]
     providers: tuple[str, ...] = ()  # allowed providers; empty = any
     provider_attr: Optional[str] = None  # settings attribute mirrored from the override
@@ -79,7 +79,9 @@ ROLES: dict[str, Role] = {r.id: r for r in [
     Role("vision.critic", "vision", "Comprensione visuale · revisore grafico", "Revisione dei disegni del tutor visuale: se fanno davvero capire, leggibilità, allineamenti, sobrietà.", "text",
          ("anthropic", "claude-sonnet-5-5"), providers=("openai", "anthropic"), where=("Comprensione visuale",)),
     Role("image.generation", "image", "Generazione di immagini", "Generatore di immagini di piattaforma (anche nei flussi agentici).", "image",
-         ("openai", settings.OPENAI_IMAGE_MODEL), providers=("openai",), model_attr="OPENAI_IMAGE_MODEL", where=("Immagini AI", "Flussi agentici")),
+         ("openai", settings.OPENAI_IMAGE_MODEL), providers=("openai", "openrouter"), model_attr="OPENAI_IMAGE_MODEL", where=("Immagini AI", "Flussi agentici")),
+    Role("audio.music", "voice", "Generazione musicale", "Brani dell'Audio Lab e «Crea musica» nel player della navbar. ElevenLabs Music fatturato al minuto; Google Lyria (OpenRouter) e ACE-Step open source (Runware, sperimentale e molto economico) a brano.", "music",
+         ("elevenlabs", "music_v1"), providers=("elevenlabs", "openrouter", "runware"), where=("Audio Lab", "Player musicale")),
     Role("realtime.voice", "voice", "Voce in tempo reale · interrogazione", "Chatbot vocale dell'interrogazione (WebRTC).", "realtime",
          ("openai", settings.OPENAI_REALTIME_MODEL), providers=("openai",), model_attr="OPENAI_REALTIME_MODEL", where=("Interrogazione vocale",)),
     Role("realtime.inquiry", "voice", "Voce in tempo reale · indagine", "Intervista agli NPC nella modalità indagine dei teacherbot.", "realtime",
@@ -119,6 +121,18 @@ def provider_for(role: str) -> str:
 
 def model_for(role: str) -> str:
     return pair_for(role)[1]
+
+
+def image_provider() -> str:
+    """Billing provider of the platform image generator (an OpenRouter slug carries its vendor: `google/…`)."""
+    return "openrouter" if "/" in (settings.OPENAI_IMAGE_MODEL or "") else "openai"
+
+
+def openai_image_model() -> str:
+    """gpt-image model for features that need OpenAI-only options (quality tiers, multi-image edits):
+    the platform choice when it is an OpenAI model, else the shipped OpenAI default."""
+    model = settings.OPENAI_IMAGE_MODEL or ""
+    return model if "/" not in model else ROLES["image.generation"].default[1]
 
 
 def is_overridden(role: str) -> bool:

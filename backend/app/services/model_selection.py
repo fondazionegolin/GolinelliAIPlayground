@@ -44,7 +44,8 @@ _cache: dict[str, list[tuple[str, str, str]]] = {}
 def provider_keys() -> dict[str, bool]:
     return {"openai": bool(settings.OPENAI_API_KEY), "anthropic": bool(settings.ANTHROPIC_API_KEY),
             "deepseek": bool(settings.DEEPSEEK_API_KEY), "openrouter": bool(settings.OPENROUTER_API_KEY),
-            "gemini": bool(settings.GEMINI_API_KEY), "ollama": bool(settings.OLLAMA_BASE_URL)}
+            "gemini": bool(settings.GEMINI_API_KEY), "ollama": bool(settings.OLLAMA_BASE_URL),
+            "elevenlabs": bool(settings.ELEVENLABS_API_KEY), "runware": bool(settings.RUNWARE_API_KEY)}
 
 
 def _usable(db_rows: list[AIModel], scope: Scope | None = None) -> list[AIModel]:

@@ -18,6 +18,7 @@ import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } f
 import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
+import { SessionVoiceCalls } from '@/components/voice-calls/SessionVoiceCalls'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import TuringTestPanel from '@/components/TuringTestPanel'
 import { DropOverlay } from '@/components/ui/DropOverlay'
@@ -1370,6 +1371,7 @@ export default function ChatSidebar({
           currentUserId={currentUserId}
           socket={socket}
         />
+        <SessionVoiceCalls sessionId={sessionId} isTeacher={userType === 'teacher'} />
 
         {activeTab === 'session' && renderSessionChat()}
 

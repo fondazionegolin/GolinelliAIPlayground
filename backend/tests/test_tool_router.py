@@ -77,7 +77,49 @@ async def test_low_confidence_and_errors_fall_back_to_chat(monkeypatch):
     d = await tool_router.decide_tool("parlami dei gatti nello spazio")
     assert d["tool"] == "chat" and d["top"] == "image" and d["confidence"] == 0.3 and d["routed"]
     _use(monkeypatch, {}, status=500)
-    assert (await tool_router.decide_tool("fai una brochure sul museo"))["tool"] == "chat"
+    assert (await tool_router.decide_tool("fai una brochure sul museo"))["tool"] == "brochure"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text,artifact", [
+    ("Crea una pagina interattiva sul sistema solare", "html_page"),
+    ("Genera una simulazione del pendolo", "html_page"),
+    ("Build an interactive page about gravity", "html_page"),
+    ("Prepara un quiz sul clima", "quiz"),
+    ("Crea un dataset CSV", "dataset"),
+    ("Crea una dispensa sul DNA", "dispensa"),
+])
+async def test_explicit_artifacts_survive_missing_routing_credentials(monkeypatch, text, artifact):
+    monkeypatch.setattr(tool_router.settings, "OPENAI_API_KEY", "")
+    decision = await tool_router.decide_tool(text)
+    assert (decision["tool"], decision["action"]) == (artifact, "create")
+
+
+@pytest.mark.asyncio
+async def test_router_outage_keeps_edits_anchored_to_existing_page(monkeypatch):
+    _use(monkeypatch, {}, status=503)
+    for text in ["Aggiungi uno slider alla pagina", "Rendila più colorata", "cambia"]:
+        decision = await tool_router.decide_tool(text, artifacts=HTML)
+        assert (decision["tool"], decision["action"]) == ("html_page", "edit")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", [
+    "Spiegami come creare una pagina HTML", "Come posso creare un quiz?",
+    "Non creare una pagina interattiva", "Mostrami solo il codice HTML",
+    "What is the best way to create a web page?",
+])
+async def test_fallback_keeps_explanations_and_code_only_requests_in_chat(monkeypatch, text):
+    monkeypatch.setattr(tool_router.settings, "OPENAI_API_KEY", "")
+    assert (await tool_router.decide_tool(text, artifacts=HTML))["tool"] == "chat"
+
+
+@pytest.mark.asyncio
+async def test_fallback_respects_allowed_artifacts_and_does_not_edit_another_type(monkeypatch):
+    monkeypatch.setattr(tool_router.settings, "OPENAI_API_KEY", "")
+    assert (await tool_router.decide_tool("Crea una pagina HTML", allowed=["quiz"]))["tool"] == "chat"
+    decision = await tool_router.decide_tool("Modifica la pagina HTML", artifacts=[{"type": "image"}])
+    assert (decision["tool"], decision["action"]) == ("html_page", "create")
 
 
 @pytest.mark.asyncio

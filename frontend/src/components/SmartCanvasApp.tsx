@@ -8,7 +8,8 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useOpenParam } from '@/lib/useOpenParam'
-import { Check, ChevronRight, Clock3, Loader2, MoreVertical, Pencil, Plus, Search, Send, Sparkles, Trash2, Users, X } from '@/components/icons'
+import { Check, ChevronRight, Clock3, Download, FileText, Loader2, MoreVertical, Pencil, Plus, Search, Send, Sparkles, Trash2, Users, X } from '@/components/icons'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Select } from '@/design'
 import api from '@/lib/api'
@@ -18,6 +19,7 @@ import { changedIds, cropWithGrid, diffDocs, renderPreview, unaliasOps, type AiO
 import type { CanvasDoc } from '@/components/CollaborativeCanvas'
 import { TUTORIAL_TITLE } from '@/components/canvasTutorial'
 import { tl } from '@/i18n/tl'
+import { BRAINSTORM_ACTIONS } from '@/components/canvasBrainstorm'
 
 const BASE = '/smart-canvases'
 const SUGGESTIONS = [tl("Cosa vedi sulla lavagna?"), tl("Fammi un'animazione della fotosintesi clorofilliana"), tl("Risolvi passo passo la formula selezionata"), tl("Annota l'immagine selezionata")]
@@ -26,8 +28,8 @@ type Role = 'teacher' | 'student'
 type Board = {
   id: string; title: string; updated_at: string; message_count: number
   session_id: string | null; session_title: string | null; canvas_key: string | null; preview?: string | null
-  students_can_write: boolean; mine: boolean; owner_type: 'teacher' | 'student'; owner_name: string | null; can_chat: boolean
-  content_json?: string; messages?: Stored[]
+  students_can_write: boolean; shared: boolean; mine: boolean; owner_type: 'teacher' | 'student'; owner_name: string | null; can_chat: boolean
+  content_json?: string; messages?: Stored[]; viewer_name?: string
 }
 type SessionOption = { id: string; title: string; class_name: string; status: string | null }
 type Stored = { id: string; role: 'user' | 'assistant'; content: string; ops?: AiOp[]; author?: string }
@@ -66,7 +68,7 @@ async function refineOps(boardId: string, ops: AiOp[], doc: CanvasDoc, request: 
 }
 
 /** Hands every animation brief to the director; an op whose scene could not be built is dropped (and reported). */
-async function directAnimations(boardId: string, ops: AiOp[], doc: CanvasDoc, request: string): Promise<{ ops: AiOp[]; failed: string[] }> {
+async function directAnimations(boardId: string, ops: AiOp[], doc: CanvasDoc, request: string): Promise<{ ops: Array<AiOp | null>; failed: string[] }> {
   const failed: string[] = []
   const done = await Promise.all(ops.map(async (op): Promise<AiOp | null> => {
     if (!op.brief || !(op.kind === 'animation' || op.kind === 'update')) return op
@@ -79,7 +81,21 @@ async function directAnimations(boardId: string, ops: AiOp[], doc: CanvasDoc, re
       return { ...op, scene: data.scene }
     } catch (err) { failed.push(errorMessage(err, tl("animazione non riuscita"))); return null }
   }))
-  return { ops: done.filter((o): o is AiOp => !!o), failed }
+  return { ops: done, failed }
+}
+
+/** Generates the image of every 'illustration' op from its visual brief (in parallel); a failed one is dropped and reported. */
+async function illustrate(boardId: string, ops: AiOp[]): Promise<{ ops: Array<AiOp | null>; failed: string[] }> {
+  const failed: string[] = []
+  const done = await Promise.all(ops.map(async (op): Promise<AiOp | null> => {
+    if (op.kind !== 'illustration') return op
+    if (!op.brief) return null
+    try {
+      const { data } = await api.post<{ src: string }>(`${BASE}/${boardId}/illustrate`, { brief: op.brief, aspect: op.aspect || 'landscape' }, { timeout: 190000 })
+      return { ...op, src: data.src }
+    } catch (err) { failed.push(errorMessage(err, tl("illustrazione non riuscita"))); return null }
+  }))
+  return { ops: done, failed }
 }
 
 function errorMessage(err: unknown, fallback: string) {
@@ -136,7 +152,7 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
   const others = shown.filter(b => !b.mine)
   const groups: Array<[string, Board[]]> = role === 'teacher'
     ? Object.entries(others.reduce<Record<string, Board[]>>((acc, b) => { const k = b.session_title || tl("Senza sessione"); (acc[k] ||= []).push(b); return acc }, {}))
-    : [[tl("Condivise dal docente"), others]]
+    : [[tl("Condivise nella sessione"), others]]
 
   async function startGuide() {
     if (startingGuide) return
@@ -169,16 +185,16 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
           {board.preview
             ? <img src={board.preview} alt="" className="h-full w-full object-contain p-2" loading="lazy" />
             : <div className="flex h-full items-center justify-center"><CanvasEaselIcon className="h-10 w-10 text-slate-300" /></div>}
-          {board.session_id && <Badge tone="accent" surface="soft" className="absolute right-2 top-2 gap-1 px-2 py-0.5 text-[9px] font-black uppercase"><Users className="h-3 w-3" />{tl("Condivisa")}</Badge>}
+          {board.shared && <Badge tone="accent" surface="soft" className="absolute right-2 top-2 gap-1 px-2 py-0.5 text-[9px] font-black uppercase"><Users className="h-3 w-3" />{tl("Condivisa")}</Badge>}
         </div>
         <div className="px-4 pb-3 pt-4">
           <h3 className="truncate text-sm font-black text-slate-900">{board.title}</h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone="neutral" surface="soft" className="px-2 py-0.5 text-[10px]">{board.session_id ? (board.session_title || tl("Sessione")) : tl("Privata")}</Badge>
-            {board.session_id && (board.students_can_write
-              ? <Badge tone="success" surface="soft" className="px-2 py-0.5 text-[10px]">{tl("Studenti: modifica")}</Badge>
+            <Badge tone="neutral" surface="soft" className="px-2 py-0.5 text-[10px]">{board.shared ? tl("Con {0}", board.session_title || tl("la sessione")) : tl("Privata")}</Badge>
+            {board.shared && (board.students_can_write
+              ? <Badge tone="success" surface="soft" className="px-2 py-0.5 text-[10px]">{board.owner_type === 'student' ? tl("Collaborativa") : tl("Studenti: modifica")}</Badge>
               : <Badge tone="warning" surface="soft" className="px-2 py-0.5 text-[10px]">{tl("Studenti: sola lettura")}</Badge>)}
-            {!board.mine && board.owner_name && <Badge tone="accent" surface="soft" className="px-2 py-0.5 text-[10px]">{board.owner_name}</Badge>}
+            {!board.mine && board.owner_name && <Badge tone="accent" surface="soft" className="px-2 py-0.5 text-[10px]">{tl("Creata da {0}", board.owner_name)}</Badge>}
           </div>
         </div>
       </button>
@@ -210,7 +226,7 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[var(--logo-pink)]">{tl("Lavagne intelligenti · Beta")}</p>
-              <SectionHeading section="/teacher/smart-canvas" className="text-2xl font-black tracking-tight text-slate-950" subtitle={<>{role === 'teacher' ? tl("Crea una lavagna, condividila con una sessione e lavorate insieme in tempo reale, con l’assistente che legge tutto.") : tl("Le lavagne condivise dal docente e quelle che crei tu, in questa sessione.")}</>} subtitleClassName="mt-3 max-w-2xl text-sm text-slate-500">{role === 'teacher' ? tl("Le tue lavagne") : tl("Le lavagne della sessione")}</SectionHeading></div>
+              <SectionHeading section="/teacher/smart-canvas" className="text-2xl font-black tracking-tight text-slate-950" subtitle={<>{role === 'teacher' ? tl("Crea una lavagna, condividila con una sessione e lavorate insieme in tempo reale, con l’assistente che legge tutto.") : tl("Le tue lavagne e quelle condivise nella sessione dal docente o dai compagni.")}</>} subtitleClassName="mt-3 max-w-2xl text-sm text-slate-500">{role === 'teacher' ? tl("Le tue lavagne") : tl("Le lavagne della sessione")}</SectionHeading></div>
           </div>
 
         </div>
@@ -224,9 +240,12 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
         <button type="button" onClick={() => void startGuide()} disabled={startingGuide} className="ds-control flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-black disabled:opacity-60">{startingGuide && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{tl("Apri la guida")}</button>
       </div>
 
-      <div className="ui-search mb-5 flex items-center gap-3 p-3"><Search className="ml-1 h-4 w-4 text-slate-400" />
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder={tl("Cerca nelle lavagne…")} aria-label={tl("Cerca una lavagna")} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
-        <span className="rounded-lg bg-white/70 px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-[var(--ds-shadow-1)]">{shown.length}</span></div>
+      {/* One field: the icon and the count sit inside the input itself. */}
+      <div className="relative mb-5">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" aria-hidden="true" />
+        <Input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={tl("Cerca nelle lavagne…")} aria-label={tl("Cerca una lavagna")} className="h-12 w-full pl-11 pr-14 text-sm" />
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-black tabular-nums text-[var(--text-secondary)]" aria-label={tl("{0} lavagne", String(shown.length))}>{shown.length}</span>
+      </div>
 
       {error && <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert"><span className="flex-1">{error}</span><button type="button" aria-label={tl("Chiudi errore")} onClick={() => setError('')}><X className="h-4 w-4" /></button></div>}
 
@@ -262,7 +281,7 @@ function CreateDialog({ role, sessions, onClose, onCreated }: { role: Role; sess
   return <Dialog open onOpenChange={open => { if (!open) onClose() }}>
     <DialogContent size="sm">
       <DialogHeader><DialogTitle>{tl("Nuova lavagna")}</DialogTitle>
-        <DialogDescription>{role === 'teacher' ? tl("Scegli un nome e, se vuoi, condividila con una sessione.") : tl("La lavagna sarà visibile a te e al docente di questa sessione.")}</DialogDescription></DialogHeader>
+        <DialogDescription>{role === 'teacher' ? tl("Scegli un nome e, se vuoi, condividila con una sessione.") : tl("Nasce privata: la vedete solo tu e i docenti della sessione. Potrai condividerla con la sessione quando vuoi, dal pulsante «Condividi».")}</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="grid gap-4">
         <label className="grid gap-1.5 text-xs font-bold text-slate-600">{tl("Nome")}
           <Input autoFocus value={title} onChange={e => setTitle(e.target.value)} maxLength={200} placeholder={tl("Es. Le parabole")} />
@@ -300,6 +319,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   const [saving, setSaving] = useState<'saved' | 'saving'>('saved')
   const [phase, setPhase] = useState('')
   const [liveCanWrite, setLiveCanWrite] = useState<boolean | null>(null)
+  const [reportOpen, setReportOpen] = useState(false)
   const handle = useRef<CanvasHandle>(null)
   const history = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
@@ -333,10 +353,11 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   }, [boardId])
   useEffect(() => () => { void flush() }, [flush])
 
-  const shared = !!board?.session_id
+  const shared = !!board?.shared
   const canWrite = liveCanWrite ?? board?.students_can_write ?? false
-  // Teacher: always. Student: only while the teacher lets students edit this board.
-  const assistantAllowed = role === 'teacher' || (shared && canWrite)
+  // Teacher board: only the teacher who made and shared it (students never see the assistant there).
+  // Student board: its owner while editable, and the session's teachers.
+  const assistantAllowed = !!board?.can_chat
 
   /** The landing page shows a small picture of the board: redrawn a few seconds after the last change, and when leaving. */
   const uploadPreview = useCallback(async () => {
@@ -378,7 +399,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
     } catch (err) { setError(errorMessage(err, tl("Impossibile aggiornare la condivisione."))) }
   }
 
-  async function send(content = draft) {
+  async function send(content = draft, ids?: string[]) {
     const text = content.trim()
     const canvas = handle.current
     if (!text || !canvas || busy || !assistantAllowed) return
@@ -387,6 +408,10 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
     setMessages(m => [...m, userMessage])
     try {
       const snap = await canvas.snapshot()
+      if (ids?.length) {  // a request from an item's menu is about that item (or the selection it belongs to)
+        const alias = Object.fromEntries(Object.entries(snap.fromAlias).map(([a, real]) => [real, a]))
+        snap.selected = ids.map(id => alias[id]).filter(Boolean)
+      }
       const before = JSON.parse(lastSeen.current || '{"type":"canvas_v1","items":[]}')
       const changes = diffDocs(before, snap.doc)
       // Where the user is working: what they selected, else what they just edited. New work is placed next to it.
@@ -399,11 +424,18 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       let ops = unaliasOps(data.message.ops || [], snap.fromAlias)
       if (ops.some(o => o.on && o.kind === 'shape')) { setPhase(tl("Preciso le posizioni sull’immagine…")); ops = await refineOps(boardId, ops, snap.doc, text, data.message.content) }
       let note = ''
-      if (ops.some(o => o.brief)) {
-        setPhase(tl("Il regista costruisce l’animazione… può richiedere un minuto"))
-        const directed = await directAnimations(boardId, ops, snap.doc, text)
-        ops = directed.ops
-        if (directed.failed.length) note = `\n\n⚠️ ${directed.failed[0]}`
+      const pictures = ops.filter(o => o.kind === 'illustration').length
+      const animated = ops.some(o => o.brief && o.kind !== 'illustration')
+      if (pictures || animated) {
+        setPhase([animated && tl("il regista costruisce l’animazione"), pictures && tl("disegno {0} illustrazioni", String(pictures))].filter(Boolean).join(' · ') + '… ' + tl("può richiedere un minuto"))
+        // Director and illustrator work at the same time; each passes through the ops it does not handle, in the model's order.
+        const [directed, drawn] = await Promise.all([
+          animated ? directAnimations(boardId, ops, snap.doc, text) : { ops: ops as Array<AiOp | null>, failed: [] as string[] },
+          pictures ? illustrate(boardId, ops) : { ops: ops as Array<AiOp | null>, failed: [] as string[] },
+        ])
+        ops = ops.map((o, i) => (o.kind === 'illustration' ? drawn.ops[i] : directed.ops[i])).filter((o): o is AiOp => !!o)
+        const failures = [...directed.failed, ...drawn.failed]
+        if (failures.length) note = `\n\n⚠️ ${failures[0]}`
       }
       const { created, idMap } = ops.length ? canvas.applyOps(ops) : { created: [], idMap: {} as Record<string, string> }
       const named = (data.message.focus || []).map(f => idMap[f] || snap.fromAlias[f]).filter((f): f is string => !!f)
@@ -421,32 +453,62 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   function assist(prompt: string, ids: string[]) {
     if (!assistantAllowed) return
     setPanelOpen(true)
-    handle.current?.focusItems(ids)
-    void send(prompt)
+    if (ids.length) handle.current?.focusItems(ids)
+    void send(prompt, ids)
   }
 
   const chrome = useMemo(() => <>
     <span className="mx-1 h-5 w-px bg-slate-200" />
-    {role === 'teacher' && board?.mine && (
+    {board?.mine && (
       <div className="relative">
-        <button type="button" onClick={() => setShareOpen(v => !v)} aria-expanded={shareOpen} title={shared ? `${tl("Condivisa con")} ${board.session_title || tl("la sessione")}` : tl("Condividi con una sessione")} className={`flex h-7 max-w-[130px] items-center gap-1.5 rounded px-2 text-xs font-semibold ${shared ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-100'}`}><Users className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{shared ? (board.session_title || tl("Condivisa")) : tl("Condividi")}</span></button>
-        {shareOpen && <div className="absolute right-0 top-8 z-[10000] w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-          <label className="block text-[11px] font-semibold text-slate-600">{tl("Sessione")}
-            <select value={board.session_id || ''} onChange={e => { setShareOpen(false); void share({ session_id: e.target.value || null }) }} className="mt-1 h-8 w-full rounded border border-slate-200 bg-white px-1.5 text-xs font-normal">
-              <option value="">{tl("Solo io (privata)")}</option>
-              {sessions.map(s => <option key={s.id} value={s.id}>{s.title} · {s.class_name}</option>)}
-            </select>
-          </label>
-          {shared && <p className="mt-2 text-[11px] leading-snug text-slate-500">{tl("Gli studenti connessi vedono la lavagna in tempo reale. Con l’interruttore «Modifiche studenti» in alto decidi se possono modificarla e usare l’assistente. Tasto destro sulla lavagna: «Richiama gli studenti qui».")}</p>}
+        <button type="button" onClick={() => setShareOpen(v => !v)} aria-expanded={shareOpen}
+          title={shared ? tl("Condivisa con {0}", board.session_title || tl("la sessione")) : (role === 'teacher' ? tl("Condividi con una sessione") : tl("Condividi con la tua sessione"))}
+          className={`flex h-7 max-w-[160px] items-center gap-1.5 rounded px-2 text-xs font-semibold ${shared ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <Users className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{shared ? tl("Condivisa · {0}", board.session_title || tl("sessione")) : tl("Condividi")}</span>
+        </button>
+        {shareOpen && <div className="ds-popover absolute right-0 top-8 z-[10000] w-80 rounded-xl p-3">
+          {role === 'teacher' ? (
+            <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Sessione")}
+              <Select density="compact" className="mt-1" value={shared ? (board.session_id || '') : ''} onChange={e => { void share({ session_id: e.target.value || null }) }}>
+                <option value="">{tl("Solo io (privata)")}</option>
+                {sessions.map(s => <option key={s.id} value={s.id}>{s.title} · {s.class_name}</option>)}
+              </Select>
+            </label>
+          ) : (
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-[var(--text-primary)]">
+              <input type="checkbox" className="mt-0.5" checked={shared} onChange={e => void share({ session_id: e.target.checked ? board.session_id : null })} />
+              <span><strong className="block">{tl("Condividi con la mia sessione")}</strong>
+                <span className="text-[11px] text-[var(--text-secondary)]">{tl("I compagni e i docenti della sessione la vedono in tempo reale.")}</span></span>
+            </label>
+          )}
+          {shared && <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-[var(--text-primary)]">
+            <input type="checkbox" className="mt-0.5" checked={canWrite} onChange={e => void share({ students_can_write: e.target.checked })} />
+            <span><strong className="block">{role === 'teacher' ? tl("Gli studenti possono modificare") : tl("Collaborativa: i compagni possono modificare")}</strong>
+              <span className="text-[11px] text-[var(--text-secondary)]">{role === 'teacher' ? tl("Senza modifica la vedono in sola lettura. L’assistente resta solo tuo.") : tl("Senza modifica la vedono in sola lettura. Tu puoi sempre modificarla.")}</span></span>
+          </label>}
+          <div className="mt-3 rounded-lg bg-[var(--ds-surface-muted)] px-3 py-2 text-[11px] text-[var(--text-secondary)]">
+            {shared
+              ? tl("Condivisa con: {0} · {1}", board.session_title || tl("la sessione"), canWrite ? tl("tutti possono modificare") : tl("sola lettura per gli altri"))
+              : role === 'teacher' ? tl("Non condivisa: la vedi solo tu.") : tl("Non condivisa: la vedete solo tu e i docenti della sessione.")}
+          </div>
+          {shared && role === 'teacher' && <p className="mt-2 text-[11px] leading-snug text-[var(--text-secondary)]">{tl("Tasto destro sulla lavagna: «Richiama gli studenti qui» sposta la vista di chi la sta guardando.")}</p>}
         </div>}
       </div>
     )}
-    {shared && !board?.mine && <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{board?.owner_type === 'student' ? board?.owner_name : tl("Docente")}</span>}
+    {board?.owner_name && <span className="flex h-7 max-w-[200px] items-center gap-1.5 rounded-full bg-[var(--ds-surface-muted)] px-2.5 text-[11px] font-semibold text-[var(--text-primary)]" title={tl("Creatore della lavagna")}>
+      <span className="text-[var(--text-secondary)]">{tl("Creata da")}</span><span className="truncate">{board.owner_name}</span>
+    </span>}
     {!shared && <span className="flex items-center text-slate-400" role="status" title={saving === 'saving' ? tl("Salvataggio…") : tl("Salvata")}>{saving === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</span>}
-    <button type="button" onClick={() => setPanelOpen(v => !v)} className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold ${panelOpen ? 'bg-[#1a1a2e] text-white' : 'bg-pink-50 text-[#e85c8d] hover:bg-pink-100'}`}>
+    {assistantAllowed && <button type="button" onClick={() => setReportOpen(true)} title={tl("Racconto di chi ha fatto cosa, idee, necessità ed esiti dei quiz")} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"><FileText className="h-3.5 w-3.5" />{tl("Report")}</button>}
+    {assistantAllowed && <button type="button" onClick={() => setPanelOpen(v => !v)} className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold ${panelOpen ? 'bg-[#1a1a2e] text-white' : 'bg-pink-50 text-[#e85c8d] hover:bg-pink-100'}`}>
       <Sparkles className="h-3.5 w-3.5" />{tl("Assistente")}
-    </button>
-  </>, [board, flush, onBack, panelOpen, role, saving, shareOpen, shared, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
+    </button>}
+  </>, [assistantAllowed, board, canWrite, flush, onBack, panelOpen, role, saving, shareOpen, shared, sessions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const validateAnswer = useCallback(async (question: string, expected: string, answer: string) => {
+    const { data } = await api.post<{ ok: boolean; feedback: string }>(`${BASE}/${boardId}/check`, { question, expected, answer }, { timeout: 50000 })
+    return data
+  }, [boardId])
 
   const leading = <button type="button" onClick={() => { void flush(); if (previewBase.current !== null) void uploadPreview(); onBack() }} className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-slate-100 px-2 text-xs font-bold text-slate-700 hover:bg-slate-200" aria-label={tl("Torna alle lavagne")}><ChevronRight className="h-3.5 w-3.5 rotate-180" />{tl("Lavagne")}</button>
 
@@ -454,13 +516,15 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
 
   return <div className="flex h-full min-h-0 w-full bg-white">
     <div className="relative min-w-0 flex-1">
-      <CollaborativeCanvas key={`${board.id}:${board.session_id || 'private'}`} ref={handle} fill role={role} title={board.title}
-        onTitleChange={board.mine ? t => void rename(t) : undefined} readOnly={false}
+      <CollaborativeCanvas key={`${board.id}:${shared ? 'live' : 'private'}`} ref={handle} fill role={role} title={board.title}
+        onTitleChange={board.mine ? t => void rename(t) : undefined} readOnly={!shared && !board.mine} ownerCanWrite={board.mine}
         {...(shared ? { sessionId: board.session_id!, canvasName: board.canvas_key! } : { initialContent: board.content_json })}
         onContentChange={onContentChange} chrome={chrome} leading={<>{leading}<SectionIllustration section="/teacher/smart-canvas" compact /></>} tutorial
-        onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onPermissionChange={setLiveCanWrite} />
+        onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onPermissionChange={setLiveCanWrite}
+        author={board.viewer_name} onValidateAnswer={validateAnswer} />
     </div>
-    {panelOpen && <aside className="flex w-[380px] max-w-[45vw] shrink-0 flex-col border-l border-slate-200 bg-slate-50" aria-label={tl("Assistente della lavagna")}>
+    {reportOpen && <ReportDialog boardId={boardId} title={board.title} beforeOpen={flush} onClose={() => setReportOpen(false)} />}
+    {panelOpen && assistantAllowed && <aside className="flex w-[380px] max-w-[45vw] shrink-0 flex-col border-l border-slate-200 bg-slate-50" aria-label={tl("Assistente della lavagna")}>
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
         <Sparkles className="h-4 w-4 text-[#e85c8d]" />
         <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-bold text-slate-900">{tl("Assistente della lavagna")}</h2>
@@ -468,7 +532,6 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
         <button type="button" aria-label={tl("Chiudi")} onClick={() => setPanelOpen(false)} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
       </div>
       <div ref={history} className="flex-1 space-y-3 overflow-y-auto px-4 py-3" role="log" aria-live="polite">
-        {!assistantAllowed && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{tl("L’assistente si attiva quando il docente permette agli studenti di modificare questa lavagna. Intanto puoi seguire il lavoro in tempo reale.")}</div>}
         {assistantAllowed && !messages.length && <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-600">
           <button type="button" onClick={() => handle.current?.insertTutorial()} className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-pink-50 px-3 py-1.5 text-[11px] font-bold text-[#e85c8d] hover:bg-pink-100"><span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#e85c8d] text-[10px] text-white">?</span>{tl("Apri la guida sulla lavagna")}</button>
           <p className="mb-2 font-semibold text-slate-800">{tl("Disegna, incolla un’immagine, poi chiedi.")}</p>
@@ -487,6 +550,11 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
         {error && <div className="flex items-start gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700" role="alert"><span className="flex-1">{error}</span><button type="button" aria-label={tl("Chiudi errore")} onClick={() => setError('')}><X className="h-3.5 w-3.5" /></button></div>}
       </div>
       <form className="border-t border-slate-200 bg-white p-3" onSubmit={(e: FormEvent) => { e.preventDefault(); void send() }}>
+        {assistantAllowed && <div className="mb-2" role="group" aria-label={tl("Brainstorming")}>
+          <p className="mb-1 text-[11px] font-semibold text-[var(--text-secondary)]">{tl("Brainstorming · sulla selezione o su tutta la lavagna")}</p>
+          <div className="flex flex-wrap gap-1">{BRAINSTORM_ACTIONS.map(a => <Button key={a.key} type="button" tone="accent" surface="soft" density="compact" disabled={busy}
+            className="text-[11px]" onClick={() => void send(a.prompt)}>{a.label}</Button>)}</div>
+        </div>}
         <CanvasModelMenu />
         <div className="flex items-end gap-2">
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={4000} disabled={busy || !assistantAllowed}
@@ -498,6 +566,55 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       </form>
     </aside>}
   </div>
+}
+
+function download(name: string, type: string, content: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }))
+  const a = Object.assign(document.createElement('a'), { href: url, download: name })
+  document.body.appendChild(a); a.click(); a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const REPORT_CSS = `body{font:15px/1.6 Inter,system-ui,sans-serif;color:#1f2937;max-width:780px;margin:40px auto;padding:0 20px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 8px;color:#1a1a2e;border-bottom:1px solid #e5e7eb;padding-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f8fafc}
+em{color:#64748b}@media print{body{margin:0}}`
+
+/** The board report: written by the assistant from the board's authorship, answers and conversation; downloadable. */
+function ReportDialog({ boardId, title, beforeOpen, onClose }: { boardId: string; title: string; beforeOpen: () => Promise<void>; onClose: () => void }) {
+  const [markdown, setMarkdown] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const generate = useCallback(async () => {
+    setBusy(true); setError('')
+    try {
+      await beforeOpen()
+      const { data } = await api.post<{ markdown: string }>(`${BASE}/${boardId}/report`, {}, { timeout: 170000 })
+      setMarkdown(data.markdown)
+    } catch (err) { setError(errorMessage(err, tl("Impossibile generare il report."))) } finally { setBusy(false) }
+  }, [beforeOpen, boardId])
+  useEffect(() => { void generate() }, [generate])
+  const file = (title || 'lavagna').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'lavagna'
+  function asHtml() {
+    const body = renderToStaticMarkup(<ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{markdown}</ReactMarkdown>)
+    return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Report · ${title.replace(/[<&>]/g, '')}</title><style>${REPORT_CSS}</style></head><body>${body}</body></html>`
+  }
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}>
+    <DialogContent size="lg">
+      <DialogHeader><DialogTitle>{tl("Report della lavagna")}</DialogTitle>
+        <DialogDescription>{tl("Il racconto di chi ha fatto cosa, le idee e le necessità in gioco, gli esiti di quiz e verifiche.")}</DialogDescription></DialogHeader>
+      <div className="max-h-[60vh] min-h-[200px] overflow-y-auto rounded-xl bg-slate-50 px-4 py-3">
+        {busy ? <div className="flex h-48 items-center justify-center gap-2 text-sm text-slate-500" role="status"><Loader2 className="h-4 w-4 animate-spin" />{tl("Rileggo la lavagna e scrivo il report…")}</div>
+          : error ? <p className="text-sm font-semibold text-rose-600" role="alert">{error}</p>
+          : <div className="prose prose-sm max-w-none"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{markdown}</ReactMarkdown></div>}
+      </div>
+      <DialogFooter>
+        <Button type="button" tone="neutral" surface="soft" onClick={() => void generate()} disabled={busy}>{tl("Rigenera")}</Button>
+        <Button type="button" tone="neutral" surface="soft" disabled={busy || !markdown} onClick={() => download(`report-${file}.md`, 'text/markdown;charset=utf-8', markdown)}><Download className="h-4 w-4" />{tl("Markdown")}</Button>
+        <Button type="button" tone="accent" surface="solid" disabled={busy || !markdown} onClick={() => download(`report-${file}.html`, 'text/html;charset=utf-8', asHtml())}><Download className="h-4 w-4" />{tl("Scarica (HTML stampabile)")}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 }
 
 /** Model of the board assistant, from the models the admin enabled for the smart canvas; hidden while none is enabled. */

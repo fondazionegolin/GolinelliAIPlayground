@@ -77,7 +77,7 @@ async def test_column_nodes_have_safe_defaults_and_actionable_errors():
 @pytest.mark.asyncio
 async def test_every_local_node_executor_smoke():
     """Keep catalogue entries and their runtime implementations in lockstep."""
-    covered = {"ai.generate_dataset", "ai.transform", "llm_chatbot", "data.saved_dataset"}  # handled by the async workflow runtime
+    covered = {"ai.generate_dataset", "ai.transform", "ai.add_column", "llm_chatbot", "data.saved_dataset"}  # handled by the async workflow runtime
     covered |= {"loop.for_each", "loop.collect", "control.repeat_until"}  # runtime-level nodes
     covered |= {node_id for node_id in NODE_REGISTRY if node_id.startswith("platform.")}  # platform action dispatcher
     # Persistent database nodes and the following local nodes have dedicated
@@ -131,6 +131,7 @@ async def test_every_local_node_executor_smoke():
     assert len(clustered["plot"]["color"]) == 30
     await run("plot.2d", {"table": numeric_table}, {"x": "x", "y": "y"})
     await run("plot.histogram", {"table": numeric_table}, {"column": "x", "bins": 5})
+    await run("plot.bar", {"table": table}, {"x": "text", "y": "x"})
     await run("control.if_else", {"condition": True})
     await run("control.compare_numbers", {"a": 2, "b": 1}, {"operator": ">"})
     state = {}

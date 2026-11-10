@@ -24,6 +24,7 @@ import { openFeedback } from '@/components/FloatingHelper'
 import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
+import { SessionCodePill } from './SessionCodePill'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
@@ -498,7 +499,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <div className="ds-control flex h-9 items-stretch overflow-hidden rounded-[var(--selection-radius)]">
                   <button
                     onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                    className="flex min-w-0 items-center gap-2 px-3 transition-colors hover:bg-slate-200/60"
+                    className="flex min-w-0 items-center gap-2 pl-3 pr-2 transition-colors hover:bg-slate-200/60"
                     aria-expanded={showSessionsMenu}
                   >
                     <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
@@ -509,11 +510,18 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       >
                         {currentSession ? currentSession.name : t('navbar.no_session')}
                       </span>
-                      {currentSession?.joinCode && (
-                        <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
-                      )}
                     </div>
-                    <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  {/* Session code: small yellow tag right next to the name, click to copy */}
+                  {currentSession?.joinCode && <SessionCodePill size="sm" code={currentSession.joinCode} className="my-auto hidden sm:flex" />}
+                  <button
+                    type="button"
+                    onClick={() => setShowSessionsMenu(!showSessionsMenu)}
+                    className="flex w-7 shrink-0 items-center justify-center transition-colors hover:bg-slate-200/60"
+                    aria-label={t('navbar.sessions_title')}
+                    aria-expanded={showSessionsMenu}
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                   </button>
                   {currentSession && (
                     <button

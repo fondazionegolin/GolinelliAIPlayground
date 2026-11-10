@@ -12,6 +12,17 @@ MESHY_V1_URL = "https://api.meshy.ai/openapi/v1"
 MESHY_V2_URL = "https://api.meshy.ai/openapi/v2"
 
 
+
+def _as_png(data: bytes) -> bytes:
+    """Callers store these as PNG: OpenRouter models may answer in WebP or JPEG."""
+    import io
+
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as im:
+        out = io.BytesIO()
+        im.save(out, format="PNG")
+        return out.getvalue()
+
 class MeshyService:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {settings.MESHY_API_KEY}"}
@@ -87,7 +98,11 @@ class MeshyService:
         quality: str = "standard",
         style: str = "natural",
     ) -> dict:
-        """Generate an image with OpenAI Images. Returns {image_data (base64), image_mime, revised_prompt}."""
+        """Generate an image with the platform image model (OpenAI, or OpenRouter when chosen). Returns {image_data (base64), image_mime, revised_prompt}."""
+        if "/" in (settings.OPENAI_IMAGE_MODEL or ""):  # OpenRouter model chosen in Admin → Modelli
+            from app.services import openrouter
+            data, _mime, _cost = await openrouter.generate_image(settings.OPENAI_IMAGE_MODEL, prompt, size)
+            return {"image_data": base64.b64encode(await asyncio.to_thread(_as_png, data)).decode("ascii"), "image_mime": "image/png", "revised_prompt": prompt}
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not configured")
 

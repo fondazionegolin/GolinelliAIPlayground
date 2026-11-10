@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from app.services.model_roles import openai_image_model
 from app.core.config import settings
 from app.core.pricing import USD_TO_EUR
 from app.services import drive_service as drive
@@ -74,7 +75,7 @@ async def generate(db, teacher, item) -> None:
         raise HTTPException(402, "Crediti insufficienti per generare la copertina")
     details = item.details or {}
     try:
-        resp = await llm_service.openai_client.images.generate(model=settings.OPENAI_IMAGE_MODEL, n=1, size="1024x1024", quality="low",
+        resp = await llm_service.openai_client.images.generate(model=openai_image_model(), n=1, size="1024x1024", quality="low",
                                                                prompt=prompt_for(item.title, details.get("text") or ""))
         b64 = resp.data[0].b64_json
         if not b64:
@@ -84,6 +85,6 @@ async def generate(db, teacher, item) -> None:
     except Exception as exc:
         logger.warning("cover generation failed for %s: %s", item.id, exc)
         raise HTTPException(502, "Non sono riuscito a creare la copertina. Riprova.") from exc
-    await credit_service.track_usage(db, teacher.tenant_id, "openai", settings.OPENAI_IMAGE_MODEL, cost,
+    await credit_service.track_usage(db, teacher.tenant_id, "openai", openai_image_model(), cost,
                                      {"type": "voice_lab", "service": "Audio Lab", "action": "cover", "item_id": str(item.id)}, teacher_id=teacher.id)
     await store(db, teacher, item, base64.b64decode(b64))

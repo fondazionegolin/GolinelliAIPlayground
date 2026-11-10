@@ -13,7 +13,8 @@ export interface LabQuote { credits: number; quantity: number; unit: 'characters
 export interface LabPlaylist { id: string; title: string; folder_id: string; tracks: { id: string; source_item_id: string; title: string; artist_name?: string | null; mime_type: string; cover_url?: string | null }[] }
 export interface AudioFile { id: string; title: string; artist_name?: string | null; mime_type: string; owned: boolean; shared: boolean; cover_url?: string | null }
 export interface ClassPlayback { session_id: string; teacher_id: string; playlist: LabPlaylist; index: number; position: number; paused: boolean; updated_at: number; server_time: number; revision: string }
-export interface LabConfig { configured: boolean; cover_credits: number; default_model: string; max_upload_mb: number; output_formats: string[] }
+export interface MusicModel { provider: string; model: string; label: string; fixed_seconds: number | null; min_seconds?: number; max_seconds: number; price_note: string }
+export interface LabConfig { configured: boolean; cover_credits: number; default_model: string; max_upload_mb: number; output_formats: string[]; music_model?: MusicModel }
 
 export const voiceLabApi = {
   audioFiles: () => api.get<AudioFile[]>('/voice-lab/audio-files'),

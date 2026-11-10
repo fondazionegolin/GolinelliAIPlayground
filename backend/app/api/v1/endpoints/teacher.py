@@ -4459,6 +4459,7 @@ async def get_teacher_conversation(
                 "attachments_json": {"files": (m.attachments_json or {}).get("files", [])},
                 "podcast": (m.attachments_json or {}).get("podcast"),
                 "protocol": public_protocol_state(m.id, (m.attachments_json or {}).get("protocol")),
+                "calendar": (m.attachments_json or {}).get("calendar"),
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages

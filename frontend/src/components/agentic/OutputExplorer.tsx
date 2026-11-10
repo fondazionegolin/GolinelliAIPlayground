@@ -1,18 +1,19 @@
 import { Fragment, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BarChart3, Braces, Check, Copy, Download, FileSpreadsheet, Gauge, RotateCcw, X } from '@/components/icons'
-import { Button } from '@/design'
+import { Button, Input, Select } from '@/design'
 import { tl } from '@/i18n/tl'
+import { plotColumns, plotWithAxes, tableFromPlot, type PlotAxes, type PlotValue, type TableValue } from './plotData'
+import { usePlotTheme } from './plotTheme'
 
-export type TableValue = { columns?: string[]; rows: Array<Record<string, unknown>>; rowCount?: number }
-export type PlotValue = { kind: 'scatter' | 'histogram' | 'scatter3d'; x: number[]; xEnd?: number[]; y: number[]; z?: number[]; color?: unknown[]; labels?: Record<string, string>; title?: string }
+export type { PlotAxes, PlotValue, TableValue } from './plotData'
 
 export type ExplorerTarget =
-  | { kind: 'plot'; title: string; plot: PlotValue }
+  | { kind: 'plot'; title: string; plot: PlotValue; table?: TableValue; axes?: PlotAxes; nodeId?: string; outputPort?: string }
   | { kind: 'metrics'; title: string; metrics: Record<string, unknown> }
   | { kind: 'raw'; title: string; value: unknown }
 
 export function isTable(value: unknown): value is TableValue { return Boolean(value && typeof value === 'object' && Array.isArray((value as TableValue).rows)) }
-export function isPlot(value: unknown): value is PlotValue { return Boolean(value && typeof value === 'object' && ['scatter', 'histogram', 'scatter3d'].includes(String((value as PlotValue).kind)) && Array.isArray((value as PlotValue).x) && Array.isArray((value as PlotValue).y)) }
+export function isPlot(value: unknown): value is PlotValue { return Boolean(value && typeof value === 'object' && ['scatter', 'histogram', 'scatter3d', 'bar'].includes(String((value as PlotValue).kind)) && Array.isArray((value as PlotValue).x) && Array.isArray((value as PlotValue).y)) }
 export function formatCompact(value: unknown) { if (value === null || value === undefined || value === '') return '—'; if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3); if (typeof value === 'object') return JSON.stringify(value); return String(value) }
 
 const Plot = lazy(() => import('react-plotly.js'))
@@ -26,7 +27,7 @@ const PALETTES: Record<string, string[]> = {
 const METRIC_LABELS: Record<string, string> = { clusters: 'Cluster', rows: tl("Righe"), inertia: tl("Inerzia"), silhouette: 'Silhouette', davies_bouldin: 'Davies–Bouldin', r2: 'R²', rmse: 'RMSE', mae: 'MAE', accuracy: 'Accuracy', precision: tl("Precisione"), recall: 'Recall', f1: 'F1', cv_mean: tl("CV media") }
 
 /** Full-screen, operational explorer for any node output that is not a table (tables open in the spreadsheet). */
-export function OutputExplorerModal({ target, onClose, onOpenTable }: { target: ExplorerTarget; onClose: () => void; onOpenTable: (title: string, table: TableValue) => void }) {
+export function OutputExplorerModal({ target, onClose, onOpenTable, onAxesChange }: { target: ExplorerTarget; onClose: () => void; onOpenTable: (title: string, table: TableValue) => void; onAxesChange?: (axes: PlotAxes, plot: PlotValue) => void }) {
   useEffect(() => {
     // Esc closes only when no spreadsheet opened from here is stacked on top.
     const keydown = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-modal-stack]')) onClose() }
@@ -43,7 +44,7 @@ export function OutputExplorerModal({ target, onClose, onOpenTable }: { target: 
         <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100" aria-label={tl("Chiudi")}><X className="h-4 w-4" /></button>
       </header>
       <div className="min-h-0 flex-1">
-        {target.kind === 'plot' && <PlotExplorer title={target.title} plot={target.plot} onOpenTable={onOpenTable} />}
+        {target.kind === 'plot' && <PlotExplorer title={target.title} plot={target.plot} table={target.table} initialAxes={target.axes} onAxesChange={onAxesChange} onOpenTable={onOpenTable} />}
         {target.kind === 'metrics' && <MetricsExplorer metrics={target.metrics} />}
         {target.kind === 'raw' && <RawExplorer value={target.value} />}
       </div>
@@ -62,7 +63,7 @@ type PlotSettings = {
 
 function initialSettings(plot: PlotValue): PlotSettings {
   return {
-    chart: plot.kind === 'histogram' ? 'bar' : plot.kind === 'scatter3d' ? 'scatter3d' : 'scatter',
+    chart: plot.kind === 'histogram' || plot.kind === 'bar' ? 'bar' : plot.kind === 'scatter3d' ? 'scatter3d' : 'scatter',
     title: plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico")),
     xLabel: plot.labels?.x || 'x', yLabel: plot.labels?.y || (plot.kind === 'histogram' ? tl("Conteggio") : 'y'), zLabel: plot.labels?.z || 'z',
     groupByColor: Boolean(plot.color?.length), markerSize: plot.kind === 'scatter3d' ? 4 : 8, opacity: .85,
@@ -75,10 +76,26 @@ const numberOrNull = (value: string) => { if (!value.trim()) return null; const 
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
 const std = (values: number[]) => { const m = mean(values); return Math.sqrt(mean(values.map((value) => (value - m) ** 2))) }
 
-function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotValue; onOpenTable: (title: string, table: TableValue) => void }) {
-  const [settings, setSettings] = useState<PlotSettings>(() => initialSettings(plot))
+function PlotExplorer({ title, plot: initialPlot, table, initialAxes, onAxesChange, onOpenTable }: { title: string; plot: PlotValue; table?: TableValue; initialAxes?: PlotAxes; onAxesChange?: (axes: PlotAxes, plot: PlotValue) => void; onOpenTable: (title: string, table: TableValue) => void }) {
+  const source = useMemo(() => table || tableFromPlot(initialPlot), [table, initialPlot])
+  const available = useMemo(() => plotColumns(source), [source])
+  const startAxes = useMemo<PlotAxes>(() => ({ x: initialAxes?.x || initialPlot.labels?.x || available.columns[0] || 'x',
+    y: initialAxes?.y || initialPlot.labels?.y || available.numeric[0] || 'y', z: initialAxes?.z || (initialPlot.z ? initialPlot.labels?.z || 'z' : ''), color: initialAxes?.color }), [initialAxes, initialPlot, available])
+  const [axes, setAxes] = useState(startAxes)
+  const plot = useMemo(() => axes.x === startAxes.x && axes.y === startAxes.y && axes.z === startAxes.z
+    ? initialPlot : plotWithAxes(initialPlot, source, axes), [initialPlot, source, axes, startAxes])
+  const theme = usePlotTheme()
+  const [settings, setSettings] = useState<PlotSettings>(() => initialSettings(initialPlot))
+  const changeAxis = (axis: 'x' | 'y' | 'z', column: string) => {
+    const next = { ...axes, [axis]: column }
+    setAxes(next)
+    setSettings(current => ({ ...current, [`${axis}Label`]: column || axis,
+      xMin: '', xMax: '', yMin: '', yMax: '', chart: next.z ? 'scatter3d' : current.chart === 'scatter3d' ? 'scatter' : current.chart }))
+    onAxesChange?.(next, plotWithAxes(initialPlot, source, next))
+  }
   const set = <K extends keyof PlotSettings>(key: K, value: PlotSettings[K]) => setSettings((current) => ({ ...current, [key]: value }))
   const isHistogram = plot.kind === 'histogram'
+  const isBar = plot.kind === 'bar'
   const is3D = plot.kind === 'scatter3d'
   const colors = PALETTES[settings.palette] || PALETTES.Piattaforma
 
@@ -86,10 +103,10 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
   const points = useMemo(() => {
     const xMin = numberOrNull(settings.xMin); const xMax = numberOrNull(settings.xMax)
     const yMin = numberOrNull(settings.yMin); const yMax = numberOrNull(settings.yMax)
-    return plot.x.map((x, index) => ({ x: Number(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? tl("Dati")) }))
+    return plot.x.map((x, index) => ({ x: isBar ? index : Number(x), category: String(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? tl("Dati")) }))
       .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
       .filter((point) => (xMin === null || point.x >= xMin) && (xMax === null || point.x <= xMax) && (yMin === null || point.y >= yMin) && (yMax === null || point.y <= yMax))
-  }, [plot, settings.xMin, settings.xMax, settings.yMin, settings.yMax])
+  }, [plot, isBar, settings.xMin, settings.xMax, settings.yMin, settings.yMax])
 
   const groups = settings.groupByColor ? [...new Set(points.map((point) => point.group))] : [tl("Dati")]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
@@ -117,13 +134,13 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
       return groups.map((group, index) => {
         const subset = points.filter((point) => !settings.groupByColor || point.group === group)
         return { type: 'scatter3d', mode: 'markers', name: group, x: subset.map((p) => p.x), y: subset.map((p) => p.y), z: subset.map((p) => p.z),
-          marker: { size: settings.markerSize, opacity: settings.opacity, color: settings.groupByColor ? colors[index % colors.length] : subset.map((p) => p.z), colorscale: settings.groupByColor ? undefined : 'Viridis', showscale: !settings.groupByColor } }
+          marker: { size: settings.markerSize, opacity: settings.opacity, color: settings.groupByColor ? colors[index % colors.length] : subset.map((p) => p.z), colorscale: settings.groupByColor ? undefined : 'Viridis', showscale: !settings.groupByColor, colorbar: { tickfont: { color: theme.ink } } } }
       })
     }
-    if (isHistogram) {
-      const labels = points.map((point) => point.xEnd !== undefined ? `${formatCompact(point.x)}–${formatCompact(point.xEnd)}` : formatCompact(point.x))
+    if (isHistogram || isBar) {
+      const labels = points.map((point) => isBar ? point.category : point.xEnd !== undefined ? `${formatCompact(point.x)}–${formatCompact(point.xEnd)}` : formatCompact(point.x))
       if (settings.chart === 'line' || settings.chart === 'area') {
-        return [{ type: 'scatter', mode: 'lines+markers', name: settings.yLabel, x: points.map((p) => p.x), y: ys, fill: settings.chart === 'area' ? 'tozeroy' : undefined,
+        return [{ type: 'scatter', mode: 'lines+markers', name: settings.yLabel, x: isBar ? labels : points.map((p) => p.x), y: ys, fill: settings.chart === 'area' ? 'tozeroy' : undefined,
           line: { color: colors[0], width: 2.5, shape: 'spline' }, marker: { size: settings.markerSize / 2, color: colors[0] }, opacity: settings.opacity }]
       }
       return [{ type: 'bar', name: settings.yLabel, x: labels, y: ys, marker: { color: points.map((_p, index) => colors[index % 2]), opacity: settings.opacity } }]
@@ -131,7 +148,7 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
     if (settings.chart === 'density') {
       return [
         { type: 'histogram2dcontour', x: xs, y: ys, colorscale: 'Blues', reversescale: false, showscale: true, contours: { coloring: 'heatmap' }, opacity: settings.opacity, name: 'Densità' },
-        { type: 'scatter', mode: 'markers', x: xs, y: ys, name: 'Punti', marker: { size: 3, color: '#171717', opacity: .45 } },
+        { type: 'scatter', mode: 'markers', x: xs, y: ys, name: 'Punti', marker: { size: 3, color: theme.ink, opacity: .45 } },
       ]
     }
     const base = groups.map((group, index) => {
@@ -144,23 +161,26 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
     })
     if (settings.trend && regression && xs.length) {
       const lo = Math.min(...xs); const hi = Math.max(...xs)
-      base.push({ type: 'scatter', mode: 'lines', name: `Tendenza (R² ${regression.r2.toFixed(3)})`, x: [lo, hi], y: [regression.slope * lo + regression.intercept, regression.slope * hi + regression.intercept], line: { color: '#171717', width: 2 } } as never)
+      base.push({ type: 'scatter', mode: 'lines', name: `Tendenza (R² ${regression.r2.toFixed(3)})`, x: [lo, hi], y: [regression.slope * lo + regression.intercept, regression.slope * hi + regression.intercept], line: { color: theme.ink, width: 2 } } as never)
     }
     return base
-  }, [colors, groups, isHistogram, points, regression, settings, xs, ys])
+  }, [colors, groups, isHistogram, isBar, points, regression, settings, xs, ys, theme])
 
-  const axis = (label: string, log: boolean, extra: Record<string, unknown> = {}) => ({ title: { text: label }, type: log ? 'log' : 'linear', showgrid: settings.grid, gridcolor: '#e5e5e5', zeroline: false, ...extra })
+  const axis = (label: string, log: boolean, extra: Record<string, unknown> = {}) => ({ title: { text: label, font: { color: theme.ink } }, tickfont: { color: theme.ink }, type: log ? 'log' : 'linear', showgrid: settings.grid, gridcolor: theme.grid, zeroline: false, ...extra })
+  const themeLayout = { font: { color: theme.ink }, paper_bgcolor: theme.surface, plot_bgcolor: theme.surface,
+    title: { text: settings.title, font: { color: theme.ink } }, hoverlabel: { bgcolor: theme.surface, font: { color: theme.ink } },
+    modebar: { color: theme.muted, activecolor: theme.ink, bgcolor: theme.surface } }
   const layout = settings.chart === 'scatter3d'
-    ? { autosize: true, title: { text: settings.title }, margin: { l: 0, r: 0, t: 48, b: 0 }, paper_bgcolor: 'rgba(0,0,0,0)', showlegend: groups.length > 1,
-        scene: { xaxis: { title: settings.xLabel, showgrid: settings.grid }, yaxis: { title: settings.yLabel, showgrid: settings.grid }, zaxis: { title: settings.zLabel, showgrid: settings.grid } } }
-    : { autosize: true, title: { text: settings.title }, margin: { l: 64, r: 24, t: 56, b: 64 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: '#ffffff', hovermode: 'closest', bargap: .08,
-        showlegend: groups.length > 1 || settings.trend, legend: { orientation: 'h', y: -0.18 },
-        xaxis: axis(settings.xLabel, settings.xLog, isHistogram && settings.chart === 'bar' ? { type: 'category' } : {}), yaxis: axis(settings.yLabel, settings.yLog) }
+    ? { ...themeLayout, autosize: true, margin: { l: 0, r: 0, t: 48, b: 0 }, showlegend: groups.length > 1, legend: { font: { color: theme.ink } },
+        scene: { bgcolor: theme.surface, xaxis: axis(settings.xLabel, false), yaxis: axis(settings.yLabel, false), zaxis: axis(settings.zLabel, false) } }
+    : { ...themeLayout, autosize: true, margin: { l: 64, r: 24, t: 56, b: 64 }, hovermode: 'closest', bargap: .08,
+        showlegend: groups.length > 1 || settings.trend, legend: { orientation: 'h', y: -0.18, font: { color: theme.ink } },
+        xaxis: axis(settings.xLabel, settings.xLog, isBar || (isHistogram && settings.chart === 'bar') ? { type: 'category' } : {}), yaxis: axis(settings.yLabel, settings.yLog) }
 
   const pointsTable = (): TableValue => {
     const columns = [settings.xLabel, ...(isHistogram && plot.xEnd ? [`${settings.xLabel}_fine`] : []), settings.yLabel, ...(is3D ? [settings.zLabel] : []), ...(plot.color?.length ? [tl("gruppo")] : [])]
     const rows = points.map((point) => Object.fromEntries([
-      [settings.xLabel, point.x], ...(isHistogram && plot.xEnd ? [[`${settings.xLabel}_fine`, point.xEnd]] : []), [settings.yLabel, point.y],
+      [settings.xLabel, isBar ? point.category : point.x], ...(isHistogram && plot.xEnd ? [[`${settings.xLabel}_fine`, point.xEnd]] : []), [settings.yLabel, point.y],
       ...(is3D ? [[settings.zLabel, point.z]] : []), ...(plot.color?.length ? [[tl("gruppo"), point.group]] : []),
     ]))
     return { columns, rows, rowCount: rows.length }
@@ -175,34 +195,37 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
 
   const chartOptions: Array<[PlotSettings['chart'], string]> = is3D
     ? [['scatter3d', tl("Dispersione 3D")], ['scatter', tl("Proiezione X/Y")]]
-    : isHistogram ? [['bar', tl("Barre")], ['line', tl("Linea")], ['area', 'Area']]
-      : [['scatter', tl("Dispersione")], ['line', tl("Linea")], ['area', 'Area'], ['bar', tl("Barre")], ['density', tl("Densità")]]
+    : isHistogram || isBar ? [['bar', tl("Barre")], ['line', tl("Linea")], ['area', 'Area']]
+    : [['scatter', tl("Dispersione")], ['line', tl("Linea")], ['area', 'Area'], ['bar', tl("Barre")], ['density', tl("Densità")]]
   const showMarkers = !isHistogram && settings.chart !== 'density' && settings.chart !== 'bar'
 
   return <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
     <aside className="min-h-0 space-y-5 overflow-y-auto border-r border-slate-200 bg-white p-4 text-xs">
       <Section title={tl("Visualizzazione")}>
-        <div className="grid grid-cols-2 gap-1.5">{chartOptions.map(([id, label]) => <button key={id} type="button" onClick={() => set('chart', id)} className={`h-9 rounded-lg px-2 font-bold ${settings.chart === id ? 'ds-selected' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>{label}</button>)}</div>
-        <Field label="Palette"><select value={settings.palette} onChange={(event) => set('palette', event.target.value)} className={INPUT}>{Object.keys(PALETTES).map((name) => <option key={name}>{name}</option>)}</select></Field>
+        <div className="grid grid-cols-2 gap-1.5">{chartOptions.map(([id, label]) => <Button key={id} type="button" tone="neutral" surface="ghost" density="compact" aria-pressed={settings.chart === id} onClick={() => set('chart', id)} className={settings.chart === id ? 'ds-selected' : ''}>{label}</Button>)}</div>
+        <Field label="Palette"><Select density="compact" value={settings.palette} onChange={(event) => set('palette', event.target.value)}>{Object.keys(PALETTES).map((name) => <option key={name}>{name}</option>)}</Select></Field>
         {plot.color?.length ? <Toggle label={tl("Colora per gruppo")} value={settings.groupByColor} onChange={(value) => set('groupByColor', value)} /> : null}
         <Toggle label={tl("Griglia")} value={settings.grid} onChange={(value) => set('grid', value)} />
-        {!isHistogram && !is3D && <Toggle label={tl("Linea di tendenza")} value={settings.trend} onChange={(value) => set('trend', value)} />}
+        {!isHistogram && !isBar && !is3D && <Toggle label={tl("Linea di tendenza")} value={settings.trend} onChange={(value) => set('trend', value)} />}
       </Section>
       <Section title={tl("Stile")}>
         {showMarkers && <Range label={tl("Dimensione punti")} min={2} max={18} step={1} value={settings.markerSize} onChange={(value) => set('markerSize', value)} />}
         <Range label={tl("Opacità")} min={.2} max={1} step={.05} value={settings.opacity} onChange={(value) => set('opacity', value)} />
       </Section>
       <Section title={tl("Assi")}>
-        <Field label={tl("Titolo")}><input value={settings.title} onChange={(event) => set('title', event.target.value)} className={INPUT} /></Field>
-        <Field label={tl("Etichetta X")}><input value={settings.xLabel} onChange={(event) => set('xLabel', event.target.value)} className={INPUT} /></Field>
-        <Field label={tl("Etichetta Y")}><input value={settings.yLabel} onChange={(event) => set('yLabel', event.target.value)} className={INPUT} /></Field>
-        {is3D && <Field label={tl("Etichetta Z")}><input value={settings.zLabel} onChange={(event) => set('zLabel', event.target.value)} className={INPUT} /></Field>}
-        {settings.chart !== 'scatter3d' && <><Toggle label={tl("Scala logaritmica X")} value={settings.xLog} onChange={(value) => set('xLog', value)} /><Toggle label={tl("Scala logaritmica Y")} value={settings.yLog} onChange={(value) => set('yLog', value)} /></>}
+        <Field label={tl('Colonna X')}><Select aria-label={tl('Colonna X')} density="compact" disabled={isHistogram && !table} value={axes.x} onChange={event => changeAxis('x', event.target.value)}>{(isBar ? available.columns : available.numeric).map(column => <option key={column} value={column}>{column}</option>)}</Select></Field>
+        {!isHistogram && <Field label={tl('Colonna Y')}><Select aria-label={tl('Colonna Y')} density="compact" value={axes.y} onChange={event => changeAxis('y', event.target.value)}>{available.numeric.map(column => <option key={column} value={column}>{column}</option>)}</Select></Field>}
+        {!isHistogram && !isBar && <Field label={tl('Colonna Z')}><Select aria-label={tl('Colonna Z')} density="compact" value={axes.z} onChange={event => changeAxis('z', event.target.value)}><option value="">{tl('Nessuna · grafico 2D')}</option>{available.numeric.map(column => <option key={column} value={column}>{column}</option>)}</Select></Field>}
+        <Field label={tl("Titolo")}><Input value={settings.title} onChange={(event) => set('title', event.target.value)} /></Field>
+        <Field label={tl("Etichetta X")}><Input value={settings.xLabel} onChange={(event) => set('xLabel', event.target.value)} /></Field>
+        <Field label={tl("Etichetta Y")}><Input value={settings.yLabel} onChange={(event) => set('yLabel', event.target.value)} /></Field>
+        {is3D && <Field label={tl("Etichetta Z")}><Input value={settings.zLabel} onChange={(event) => set('zLabel', event.target.value)} /></Field>}
+        {settings.chart !== 'scatter3d' && <>{!isBar && <Toggle label={tl("Scala logaritmica X")} value={settings.xLog} onChange={(value) => set('xLog', value)} />}<Toggle label={tl("Scala logaritmica Y")} value={settings.yLog} onChange={(value) => set('yLog', value)} /></>}
       </Section>
       <Section title={tl("Filtra intervallo")}>
         <div className="grid grid-cols-2 gap-1.5">
-          <input value={settings.xMin} onChange={(event) => set('xMin', event.target.value)} placeholder="X min" className={INPUT} />
-          <input value={settings.xMax} onChange={(event) => set('xMax', event.target.value)} placeholder="X max" className={INPUT} />
+          {!isBar && <><input value={settings.xMin} onChange={(event) => set('xMin', event.target.value)} placeholder="X min" className={INPUT} />
+          <input value={settings.xMax} onChange={(event) => set('xMax', event.target.value)} placeholder="X max" className={INPUT} /></>}
           <input value={settings.yMin} onChange={(event) => set('yMin', event.target.value)} placeholder="Y min" className={INPUT} />
           <input value={settings.yMax} onChange={(event) => set('yMax', event.target.value)} placeholder="Y max" className={INPUT} />
         </div>
@@ -210,13 +233,17 @@ function PlotExplorer({ title, plot, onOpenTable }: { title: string; plot: PlotV
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
         <Button type="button" onClick={() => onOpenTable(tl("{0} · dati del grafico", title), pointsTable())} tone="neutral" surface="outline" density="compact" className="rounded-full"><FileSpreadsheet className="h-4 w-4" /> {tl("Apri dati nel foglio")}</Button>
         <Button type="button" onClick={exportCsv} tone="neutral" surface="outline" density="compact" className="rounded-full"><Download className="h-4 w-4" /> {tl("Esporta CSV")}</Button>
-        <Button type="button" onClick={() => setSettings(initialSettings(plot))} tone="neutral" surface="ghost" density="compact" className="rounded-full"><RotateCcw className="h-4 w-4" /> {tl("Ripristina")}</Button>
+        <Button type="button" onClick={() => { setSettings(initialSettings(initialPlot)); setAxes(startAxes); onAxesChange?.(startAxes, initialPlot) }} tone="neutral" surface="ghost" density="compact" className="rounded-full"><RotateCcw className="h-4 w-4" /> {tl("Ripristina")}</Button>
       </div>
     </aside>
     <section className="flex min-h-0 flex-col gap-3 p-4">
       <div className="grid shrink-0 grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
         <Stat label={isHistogram ? tl("Intervalli") : tl("Punti")} value={points.length} />
-        {isHistogram ? <>
+        {isBar ? <>
+          <Stat label={tl("Media {0}", settings.yLabel)} value={ys.length ? mean(ys) : '—'} />
+          <Stat label={tl("Minimo")} value={ys.length ? Math.min(...ys) : '—'} />
+          <Stat label={tl("Massimo")} value={ys.length ? Math.max(...ys) : '—'} />
+        </> : isHistogram ? <>
           <Stat label={tl("Totale")} value={ys.reduce((sum, value) => sum + value, 0)} />
           <Stat label={tl("Picco")} value={ys.length ? Math.max(...ys) : '—'} />
           <Stat label="Da" value={xs.length ? Math.min(...xs) : '—'} />
@@ -278,10 +305,10 @@ function RawExplorer({ value }: { value: unknown }) {
 const INPUT = 'h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs outline-none focus:border-slate-400'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="space-y-2"><p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{title}</p>{children}</div>
+  return <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{title}</p>{children}</div>
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block space-y-1"><span className="block text-[10px] font-bold text-slate-500">{label}</span>{children}</label>
+  return <label className="block space-y-1"><span className="block text-xs font-semibold text-[var(--text-secondary)]">{label}</span>{children}</label>
 }
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
   return <button type="button" role="switch" aria-checked={value} onClick={() => onChange(!value)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left font-semibold text-slate-600 hover:bg-slate-50"><span>{label}</span><span className={`relative h-5 w-9 rounded-full transition-colors ${value ? 'bg-slate-900' : 'bg-slate-200'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${value ? 'left-[18px]' : 'left-0.5'}`} /></span></button>

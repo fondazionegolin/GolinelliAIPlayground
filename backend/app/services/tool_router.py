@@ -37,6 +37,7 @@ ARTIFACTS = [
     {"value": "teaching_protocol", "description": "Execute a teaching/activity protocol or produce a coordinated set of teaching materials with multiple specialized agents (quiz, teacherbot, documents, slides, sheet, image, interactive page). Requests to discuss, design or explain agentic systems are plain conversation."},
     {"value": "deep_research", "description": "An in-depth investigation / deep research / ricerca approfondita: search and read multiple online sources, compare evidence and produce a cited research report. Explicit requests for deep research always concern this artifact, not plain chat."},
     {"value": "podcast", "description": "An audio summary, narrated explanation, educational podcast or spoken version of attached documents."},
+    {"value": "calendar", "description": "The teacher's calendar: add, schedule, plan, move, reschedule, cancel or delete events, lessons, tests, meetings or deadlines on dates; recurring events (every week / every month); finding a free slot when a class or session is available; putting the dates found in an attached document into the calendar. Asking to put something 'in calendario/in agenda' always concerns this artifact."},
     {"value": "none", "description": "No artifact is involved: plain conversation."},
     {"value": "image", "description": "A picture, illustration, drawing, photo, logo or poster image."},
     {"value": "presentation", "description": "A slide deck / PowerPoint-style presentation."},
@@ -51,14 +52,16 @@ ARTIFACT_VALUES = {a["value"] for a in ARTIFACTS}
 ACTION_INSTRUCTIONS = (
     "What does the LAST user message want to do? Decide using the artifacts already present in the chat. "
     "If it refers to something that exists ('la pagina', 'l'immagine', 'modificala', 'cambia lo stile', 'più corto', 'aggiungi...') it is edit or ask_about, "
-    "not create. Choose create only when it clearly asks for something new."
+    "not create. Choose create only when it clearly asks for something new. Any change to the calendar (adding, moving, repeating or deleting events, scheduling into a free slot) is edit: the calendar always exists."
 )
 ARTIFACT_INSTRUCTIONS = (
     "Which kind of artifact does the LAST user message concern? For edit/ask_about pick the EXISTING artifact it refers to: "
     "an explicit noun wins ('la pagina' = html_page, 'l'immagine/foto' = image, 'le slide' = presentation); otherwise the MOST RECENT artifact listed. "
     "For create pick the kind to produce. Choose teaching_protocol when the user asks to execute a teaching/activity protocol, "
     "create a teacherbot, or produce multiple coordinated kinds of materials (such as quiz AND slides AND teacherbot). "
-    "Writing a protocol document or discussing agentic behavior without asking to execute it is plain conversation. Use none for plain conversation."
+    "Writing a protocol document or discussing agentic behavior without asking to execute it is plain conversation. "
+    "Choose calendar whenever the user wants events added, moved, repeated or removed in the calendar, a free slot found, "
+    "or the dates of an attached document put in the calendar. Use none for plain conversation."
 )
 
 
@@ -76,6 +79,41 @@ def _chat(**overrides) -> ToolDecision:
     base: ToolDecision = {"tool": "chat", "action": "chat", "confidence": 0.0, "top": "chat", "alternatives": [], "action_alternatives": [], "routed": False}
     base.update(overrides)  # type: ignore[typeddict-item]
     return base
+
+
+def fallback_tool_decision(text: str, allowed: Optional[list[str]], artifacts: list[dict]) -> ToolDecision:
+    """Keep explicit artifact requests usable without an external routing model."""
+    if re.search(r"\b(?:come\s+(?:posso|si|faccio\s+a)|come\s+(?:creare|generare|modificare)|spiegami|how\s+(?:to|can|do)|what\s+is)\b", text, re.I):
+        return _chat()
+    if re.search(r"\b(?:non|senza|don't|do not)\s+(?:\w+\s+){0,2}(?:crea\w*|genera\w*|modifica\w*|create|generate|edit)\b", text, re.I):
+        return _chat()
+    if re.search(r"\b(?:solo\s+(?:il\s+)?codice|soltanto\s+(?:il\s+)?codice|code\s+only|only\s+(?:the\s+)?code)\b", text, re.I):
+        return _chat()
+    create = re.search(r"\b(?:crea|creami|creare|genera|generami|generare|prepara|preparami|realizza|realizzami|costruisci|fammi|fai|create|build|generate|make)\b", text, re.I)
+    edit = re.search(r"\b(?:modifica\w*|cambia\w*|aggiung\w*|rimuov\w*|togli\w*|rendi\w*|rendila|rendilo|corregg\w*|sostituisc\w*|edit|change|add|remove|fix|update)\b", text, re.I)
+    if not create and not edit:
+        return _chat()
+    patterns = {
+        "html_page": r"\b(?:pagin[ae](?:\s+(?:web|html|interattiv[ae]))?|simulazion[ei]|mini[ -]?app|interactive\s+(?:page|visualization)|web\s*page|html|gioco\s+interattivo)\b",
+        "brochure": r"\b(?:brochure|volantino|flyer)\b",
+        "dispensa": r"\b(?:dispens[ae]|handout)\b",
+        "presentation": r"\b(?:presentazion[ei]|slides?|diapositive|deck)\b",
+        "image": r"\b(?:immagin[ei]|illustrazion[ei]|foto|image|picture)\b",
+        "quiz": r"\b(?:quiz|verifica|questionario)\b",
+        "dataset": r"\b(?:dataset|csv)\b",
+    }
+    available = set(allowed) if allowed is not None else ARTIFACT_VALUES
+    named = [kind for kind, pattern in patterns.items() if re.search(pattern, text, re.I)]
+    # Multiple materials and disallowed tools require the semantic router; don't guess.
+    if len(named) > 1 or named and named[0] not in available:
+        return _chat()
+    referents = [a["type"] for a in artifacts if a.get("type") in available and a.get("type") != "calendar"]
+    artifact = named[0] if named else referents[-1] if edit and referents else None
+    if not artifact:
+        return _chat()
+    action = "edit" if edit and artifact in referents and not create else "create"
+    return {**_chat(), "tool": artifact, "action": action, "top": artifact,
+            "confidence": 1.0, "routed": True, "alternatives": [{"tool": artifact, "probability": 1.0}]}
 
 
 def build_evidence(text: str, artifacts: list[dict], recent: list[dict]) -> str:
@@ -114,15 +152,21 @@ async def decide_tool(
     recent: Optional[list[dict]] = None,
 ) -> ToolDecision:
     text = (text or "").strip()
+    if re.search(r"\b(?:solo\s+(?:il\s+)?codice|soltanto\s+(?:il\s+)?codice|code\s+only|only\s+(?:the\s+)?code)\b", text, re.I):
+        return _chat()
     # An explicit mode request must work even when the Decisions API is unavailable.
     if (not allowed or "deep_research" in allowed) and is_deep_research_request(text):
         return {**_chat(), "tool": "deep_research", "action": "create", "top": "deep_research",
                 "confidence": 1.0, "routed": True,
                 "alternatives": [{"tool": "deep_research", "probability": 1.0}]}
+    fallback = fallback_tool_decision(text, allowed, artifacts or [])
     if len(text) < MIN_TEXT_LENGTH or not settings.OPENAI_API_KEY:
-        return _chat()
+        return fallback
 
     artifacts = [a for a in (artifacts or []) if a.get("type") in ARTIFACT_VALUES]
+    if allowed and "calendar" in allowed and not any(a["type"] == "calendar" for a in artifacts):
+        # The calendar is always there to be edited, even in a brand-new chat.
+        artifacts = [{"type": "calendar", "detail": "calendario del docente (sempre disponibile)"}, *artifacts]
     existing = {a["type"] for a in artifacts}
     allowed_set = (set(allowed) if allowed else set(ARTIFACT_VALUES)) | {"none"}
     allowed_set.discard("chat")
@@ -147,40 +191,46 @@ async def decide_tool(
             )
         if resp.status_code >= 400:
             logger.warning("Decisions API error %s: %s", resp.status_code, resp.text[:300])
-            return _chat()
+            return fallback
         answers = {a.get("name"): a for a in resp.json().get("answers", []) if a.get("type") == "choice"}
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("Decisions API tool routing failed: %s", exc)
-        return _chat()
+        return fallback
 
     act, art = answers.get("action"), answers.get("artifact")
     if not act or not art:
-        return _chat()
+        return fallback
     action = act.get("choice") or "chat"
     artifact = art.get("choice") or "none"
     act_conf, art_conf = float(act.get("confidence") or 0.0), float(art.get("confidence") or 0.0)
     # Editing/asking is anchored on what already exists: if the model is sure of the action but unsure
     # which artifact, the most recent one is the natural referent ("rendila più colorata").
-    anchored = action in ("edit", "ask_about") and act_conf >= MIN_CONFIDENCE and art_conf < MIN_CONFIDENCE and bool(artifacts)
+    # The always-present calendar is never an implicit referent: only an explicit calendar request targets it.
+    referents = [a for a in artifacts if a["type"] != "calendar"]
+    anchored = action in ("edit", "ask_about") and act_conf >= MIN_CONFIDENCE and art_conf < MIN_CONFIDENCE and bool(referents)
     if anchored:
-        artifact, art_conf = artifacts[-1]["type"], act_conf
+        artifact, art_conf = referents[-1]["type"], act_conf
     confidence = round(min(act_conf, art_conf), 3)
     alternatives = _probabilities(art, allowed_set)[:3]
     action_alternatives = [{"tool": a["tool"], "probability": a["probability"]} for a in _probabilities(act, {c["value"] for c in action_choices})]
     info = {"top": artifact, "alternatives": alternatives, "action_alternatives": action_alternatives, "confidence": confidence, "routed": True}
 
     if confidence < MIN_CONFIDENCE or action == "chat":
+        if fallback["routed"]:
+            return fallback
         return _chat(action="chat", **info)
 
     if action in ("edit", "ask_about"):
         if artifact not in existing:
             # The named artifact does not exist: fall back to the most recent one, else treat as a fresh request.
-            if artifacts:
-                artifact = artifacts[-1]["type"]
+            if referents:
+                artifact = referents[-1]["type"]
             elif action == "edit":
                 action = "create"
             else:
                 return _chat(action="chat", **info)
+    if artifact == "calendar" and action == "create":
+        action = "edit"  # adding events is an edit of the (always existing) calendar
     if artifact == "none":
         return _chat(action="chat", **info)
     return {**_chat(**info), "tool": artifact, "action": action}  # type: ignore[return-value]
