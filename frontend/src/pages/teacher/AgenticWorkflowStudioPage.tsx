@@ -18,7 +18,8 @@ import { usePlotTheme } from '@/components/agentic/plotTheme'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { Activity, BarChart3, Braces, ChevronDown, ChevronRight, Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2, ArrowLeft, Cloud, CloudOff, Eraser, Network, Play, Save, Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle, Minimize2, RefreshCw, Sparkles } from '@/components/icons'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
-import { tl } from '@/i18n/tl'
+import { tl, tlDyn, tlOption } from '@/i18n/tl'
+import { localizeSpec } from '@/lib/dataflowI18n'
 
 // Generic platform nodes carry the union of their functions' ports/params: `showFor` lists the functions an item
 // belongs to, `variants[fn]` overrides label/default/options/type for one function.
@@ -32,6 +33,7 @@ type CanvasNode = { id: string; instanceId: string; x: number; y: number; status
 type Edge = { id: string; from: string; to: string; sourcePort: string; targetPort: string }
 type NodeRun = { node_instance_id: string; visit?: number; label: string; status: string; output?: Record<string, unknown>; error?: string | null; duration_ms?: number | null }
 type WorkflowRun = { id: string; status: string; output?: Record<string, unknown>; error?: string | null; nodes: NodeRun[] }
+type HistorySnapshot = { nodes: CanvasNode[]; edges: Edge[] }
 type TableEditorState = { chart: SheetChartConfig; styles: SheetCellStyles; dimensions: SheetDimensions }
 // `detached` tables (e.g. data behind a chart) open in the spreadsheet for exploration only: nothing is written back.
 type TableModalState = { nodeId: string; outputPort: string; nodeLabel: string; table: TableValue; editor?: Partial<TableEditorState>; detached?: boolean }
@@ -47,16 +49,16 @@ const makeSpec = (
 })
 
 const FALLBACK_SPECS: NodeSpec[] = [
-  makeSpec('ai.generate_dataset', tl("Genera dataset con AI"), tl("Sorgenti"), tl("Genera una tabella coerente tramite un LLM."), [], [['table', 'TABLE'], ['metadata', 'METRICS']], [['prompt', 'CODE', tl("Descrizione dataset"), tl("Dataset realistico sui consumi energetici mensili di edifici scolastici")], ['columns', 'STRING', tl("Colonne"), tl("mese,studenti,kwh,costo_euro")], ['rows', 'INTEGER', tl("Righe"), 30], ['provider', 'STRING', 'Provider', ''], ['model', 'STRING', tl("Modello"), '']]),
-  makeSpec('csv.synthetic', tl("Dataset sintetico"), tl("Sorgenti"), tl("Genera dati riproducibili."), [], [['table', 'TABLE']], [['kind', 'SELECT', tl("Tipo"), 'regression', ['regression', 'classification', 'blobs']], ['samples', 'INTEGER', tl("Righe"), 100], ['features', 'INTEGER', 'Feature', 3], ['seed', 'INTEGER', 'Seed', 42]]),
-  makeSpec('data.custom_input', tl("Tabella manuale"), tl("Sorgenti"), 'Crea una tabella da JSON o CSV, anche caricando un file.', [], [['table', 'TABLE']], [['data', 'CODE', tl("Dati"), '[{"x":1,"y":2}]']]),
-  makeSpec('data.saved_dataset', tl("Dataset salvato"), tl("Sorgenti"), tl("Riusa un dataset già generato o caricato."), [], [['table', 'TABLE']], [['dataset_id', 'DATASET', 'Dataset', '']]),
-  makeSpec('math.numeric_input', tl("Valore numerico"), tl("Sorgenti"), tl("Immette un numero."), [], [['value', 'ANY']], [['value', 'NUMBER', tl("Valore"), 0]]),
-  makeSpec('data.new_table', tl("Nuova tabella da input"), tl("Sorgenti"), tl("Materializza in una nuova tabella i dati arrivati da un altro nodo."), [['table', 'TABLE']], [['table', 'TABLE']], [['columns', 'COLUMNS', tl("Colonne da copiare"), ''], ['rename', 'STRING', tl("Rinomina (vecchio:nuovo)"), ''], ['title', 'STRING', tl("Nome della nuova tabella"), tl("Nuova tabella")], ['save_to_library', 'BOOLEAN', tl("Salva nella libreria dataset"), false]]),
-  makeSpec('data.select', tl("Seleziona colonne"), tl("Trasformazioni"), tl("Include o esclude colonne."), [['table', 'TABLE']], [['table', 'TABLE']], [['mode', 'SELECT', tl("Modalità"), 'include', ['include', 'exclude']], ['columns', 'COLUMNS', tl("Colonne"), '']]),
-  makeSpec('data.filter', tl("Filtra righe"), tl("Trasformazioni"), tl("Filtra con una query pandas."), [['table', 'TABLE']], [['table', 'TABLE']], [['expression', 'CODE', tl("Espressione"), '']]),
-  makeSpec('data.split', 'Train / test split', tl("Trasformazioni"), tl("Divide il dataset."), [['table', 'TABLE']], [['train', 'TABLE'], ['test', 'TABLE']], [['test_size', 'SLIDER', tl("Quota test"), .2], ['seed', 'INTEGER', 'Seed', 42]]),
-  makeSpec('math.operation', tl("Operazione"), tl("Matematica"), tl("Esegue un calcolo."), [['a', 'ANY'], ['b', 'ANY', false]], [['result', 'ANY']], [['operation', 'SELECT', tl("Operazione"), 'add', ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt']]]),
+  makeSpec('ai.generate_dataset', tl("Genera dataset con AI"), 'Sorgenti', tl("Genera una tabella coerente tramite un LLM."), [], [['table', 'TABLE'], ['metadata', 'METRICS']], [['prompt', 'CODE', tl("Descrizione dataset"), tl("Dataset realistico sui consumi energetici mensili di edifici scolastici")], ['columns', 'STRING', tl("Colonne"), tl("mese,studenti,kwh,costo_euro")], ['rows', 'INTEGER', tl("Righe"), 30], ['provider', 'STRING', 'Provider', ''], ['model', 'STRING', tl("Modello"), '']]),
+  makeSpec('csv.synthetic', tl("Dataset sintetico"), 'Sorgenti', tl("Genera dati riproducibili."), [], [['table', 'TABLE']], [['kind', 'SELECT', tl("Tipo"), 'regression', ['regression', 'classification', 'blobs']], ['samples', 'INTEGER', tl("Righe"), 100], ['features', 'INTEGER', 'Feature', 3], ['seed', 'INTEGER', 'Seed', 42]]),
+  makeSpec('data.custom_input', tl("Tabella manuale"), 'Sorgenti', tl("Crea una tabella da JSON o CSV, anche caricando un file."), [], [['table', 'TABLE']], [['data', 'CODE', tl("Dati"), '[{"x":1,"y":2}]']]),
+  makeSpec('data.saved_dataset', tl("Dataset salvato"), 'Sorgenti', tl("Riusa un dataset già generato o caricato."), [], [['table', 'TABLE']], [['dataset_id', 'DATASET', 'Dataset', '']]),
+  makeSpec('math.numeric_input', tl("Valore numerico"), 'Sorgenti', tl("Immette un numero."), [], [['value', 'ANY']], [['value', 'NUMBER', tl("Valore"), 0]]),
+  makeSpec('data.new_table', tl("Nuova tabella da input"), 'Sorgenti', tl("Materializza in una nuova tabella i dati arrivati da un altro nodo."), [['table', 'TABLE']], [['table', 'TABLE']], [['columns', 'COLUMNS', tl("Colonne da copiare"), ''], ['rename', 'STRING', tl("Rinomina (vecchio:nuovo)"), ''], ['title', 'STRING', tl("Nome della nuova tabella"), tl("Nuova tabella")], ['save_to_library', 'BOOLEAN', tl("Salva nella libreria dataset"), false]]),
+  makeSpec('data.select', tl("Seleziona colonne"), 'Trasformazioni', tl("Include o esclude colonne."), [['table', 'TABLE']], [['table', 'TABLE']], [['mode', 'SELECT', tl("Modalità"), 'include', ['include', 'exclude']], ['columns', 'COLUMNS', tl("Colonne"), '']]),
+  makeSpec('data.filter', tl("Filtra righe"), 'Trasformazioni', tl("Filtra con una query pandas."), [['table', 'TABLE']], [['table', 'TABLE']], [['expression', 'CODE', tl("Espressione"), '']]),
+  makeSpec('data.split', 'Train / test split', 'Trasformazioni', tl("Divide il dataset."), [['table', 'TABLE']], [['train', 'TABLE'], ['test', 'TABLE']], [['test_size', 'SLIDER', tl("Quota test"), .2], ['seed', 'INTEGER', 'Seed', 42]]),
+  makeSpec('math.operation', tl("Operazione"), 'Matematica', tl("Esegue un calcolo."), [['a', 'ANY'], ['b', 'ANY', false]], [['result', 'ANY']], [['operation', 'SELECT', tl("Operazione"), 'add', ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt']]]),
   makeSpec('ml.regression', tl("Regressione"), 'Machine Learning', tl("Addestra un regressore."), [['train', 'TABLE']], [['model', 'MODEL'], ['metrics', 'METRICS'], ['predictions', 'TABLE']], [['target_column', 'COLUMN', 'Target', 'target'], ['feature_columns', 'COLUMNS', 'Feature', ''], ['algorithm', 'SELECT', tl("Algoritmo"), 'linear', ['linear', 'ridge', 'random_forest']], ['cv_folds', 'INTEGER', 'Cross validation', 5]]),
   makeSpec('ml.predict', tl("Applica modello"), 'Machine Learning', tl("Predice su nuovi dati."), [['model', 'MODEL'], ['data', 'TABLE']], [['predictions', 'TABLE']], []),
   makeSpec('plot.2d', tl("Grafico"), 'Visualizzazioni', tl("Scatter 2D, oppure 3D se imposti anche Z."), [['table', 'TABLE']], [['plot', 'ANY']], [['x', 'COLUMN', tl("Asse X"), 'feature_1'], ['y', 'COLUMN', tl("Asse Y"), 'prediction'], ['z', 'COLUMN', tl("Asse Z (opzionale)"), '']]),
@@ -65,10 +67,10 @@ const FALLBACK_SPECS: NodeSpec[] = [
   makeSpec('chatbot.say', tl("Messaggio"), 'Chatbot', tl("Invia un messaggio."), [['trigger', 'ANY', false]], [['next', 'ANY']], [['message', 'STRING', tl("Messaggio"), tl("Ciao!")]]),
   makeSpec('chatbot.ask', tl("Domanda"), 'Chatbot', tl("Attende la risposta reale."), [['trigger', 'ANY', false]], [['response', 'ANY']], [['question', 'STRING', tl("Domanda"), tl("Come posso aiutarti?")], ['test_response', 'STRING', tl("Risposta test"), '']]),
   makeSpec('chatbot.if_contains', tl("Contiene parole"), 'Chatbot', tl("Ramifica il dialogo."), [['text', 'ANY']], [['yes', 'ANY'], ['no', 'ANY']], [['keywords', 'STRING', tl("Parole"), 'urgente']]),
-  makeSpec('llm_chatbot', 'Chatbot LLM', 'Chatbot', tl("Risponde con un modello cloud usando fino a 3 contesti."), [['message', 'ANY', false], ['context_1', 'ANY', false], ['context_2', 'ANY', false], ['context_3', 'ANY', false]], [['response', 'ANY'], ['next', 'ANY']], [['system_prompt', 'CODE', tl("Condizionamento di sistema"), 'Sei un assistente utile.'], ['continuous', 'BOOLEAN', tl("Iterazione continua"), false], ['exit_phrases', 'STRING', tl("Frasi di chiusura (esempi per il modello)"), tl("grazie, ok basta, basta così, sono soddisfatto, ho capito, fine, ciao")], ['max_turns', 'INTEGER', tl("Turni massimi in iterazione continua"), 20]]),
+  makeSpec('llm_chatbot', 'Chatbot LLM', 'Chatbot', tl("Risponde con un modello cloud usando fino a 3 contesti."), [['message', 'ANY', false], ['context_1', 'ANY', false], ['context_2', 'ANY', false], ['context_3', 'ANY', false]], [['response', 'ANY'], ['next', 'ANY']], [['system_prompt', 'CODE', tl("Condizionamento di sistema"), tl("Sei un assistente utile.")], ['continuous', 'BOOLEAN', tl("Iterazione continua"), false], ['exit_phrases', 'STRING', tl("Frasi di chiusura (esempi per il modello)"), tl("grazie, ok basta, basta così, sono soddisfatto, ho capito, fine, ciao")], ['max_turns', 'INTEGER', tl("Turni massimi in iterazione continua"), 20]]),
   makeSpec('chatbot.end', tl("Fine conversazione"), 'Chatbot', tl("Chiude il ramo conversazionale."), [['trigger', 'ANY', false]], [['result', 'ANY']], [['message', 'STRING', tl("Messaggio finale"), tl("Conversazione conclusa.")]]),
-  makeSpec('control.repeat_until', tl("Ripeti finché"), tl("Controllo"), tl("Verifica un valore: se la condizione è soddisfatta prosegue, altrimenti «Ripeti» torna a un nodo precedente."), [['value', 'ANY']], [['ok', 'ANY'], ['repeat', 'ANY'], ['exhausted', 'ANY']], [['mode', 'SELECT', tl("Condizione"), 'contiene', ['contiene', 'uguale', 'verifica_ai', 'vero_falso']], ['expected', 'STRING', tl("Valore atteso / criterio"), '56'], ['max_attempts', 'INTEGER', tl("Tentativi massimi"), 3]]),
-  makeSpec('control.if_else', 'IF / ELSE', tl("Controllo"), tl("Attiva uno dei due rami."), [['condition', 'ANY']], [['yes', 'ANY'], ['no', 'ANY']], []),
+  makeSpec('control.repeat_until', tl("Ripeti finché"), 'Controllo', tl("Verifica un valore: se la condizione è soddisfatta prosegue, altrimenti «Ripeti» torna a un nodo precedente."), [['value', 'ANY']], [['ok', 'ANY'], ['repeat', 'ANY'], ['exhausted', 'ANY']], [['mode', 'SELECT', tl("Condizione"), 'contiene', ['contiene', 'uguale', 'verifica_ai', 'vero_falso']], ['expected', 'STRING', tl("Valore atteso / criterio"), '56'], ['max_attempts', 'INTEGER', tl("Tentativi massimi"), 3]]),
+  makeSpec('control.if_else', 'IF / ELSE', 'Controllo', tl("Attiva uno dei due rami."), [['condition', 'ANY']], [['yes', 'ANY'], ['no', 'ANY']], []),
 ]
 
 const INLINE_PARAMS: Record<string, string[]> = {
@@ -124,6 +126,7 @@ const SNAP_STEPS = [0, .5, 1, 5, 10] as const
 const snapValue = (value: number, dots: number) => dots ? Math.round(value / (GRID * dots)) * GRID * dots : value
 const REPLAY_STEP_MS = 650
 const POLL_MS = 600
+const HISTORY_LIMIT = 100
 const LIVE_STEP_MS = 320
 const RUN_IN_PROGRESS = ['queued', 'running']
 const nodeStatusOf = (status: string): NodeStatus => status === 'completed' ? 'complete' : status === 'failed' ? 'error' : status === 'waiting' ? 'waiting' : status === 'skipped' ? 'skipped' : status === 'running' ? 'running' : 'idle'
@@ -187,7 +190,7 @@ function effectiveSpec(spec: NodeSpec, config: Record<string, unknown>): NodeSpe
     items.filter((item) => !item.showFor || item.showFor.includes(fn)).map((item) => ({ ...item, ...(item.variants?.[fn] || {}) }))
   const current = spec.functions.find((item) => item.id === fn)
   return { ...spec, inputs: pick(spec.inputs), outputs: pick(spec.outputs), params: pick(spec.params),
-    description: current ? `${current.label}. ${current.description}${current.longRunning ? ' (operazione lunga)' : ''}` : spec.description }
+    description: current ? `${current.label}. ${current.description}${current.longRunning ? tl(" (operazione lunga)") : ''}` : spec.description }
 }
 
 function template(specs: NodeSpec[]) {
@@ -209,7 +212,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const queryClient = useQueryClient()
   const { workflowId: routeWorkflowId } = useParams<{ workflowId: string }>()
   const { data: registryResponse } = useQuery({ queryKey: ['agentic-registry-v3'], queryFn: () => agenticApi.getRegistry(), staleTime: 60_000 })
-  const specs = useMemo<NodeSpec[]>(() => registryResponse?.data?.nodes?.length ? registryResponse.data.nodes : FALLBACK_SPECS, [registryResponse])
+  const specs = useMemo<NodeSpec[]>(() => registryResponse?.data?.nodes?.length ? (registryResponse.data.nodes as NodeSpec[]).map(localizeSpec) : FALLBACK_SPECS, [registryResponse])
   const initial = useMemo(() => template(FALLBACK_SPECS), [])
   const [nodes, setNodes] = useState<CanvasNode[]>(initial.nodes)
   const [edges, setEdges] = useState<Edge[]>(initial.edges)
@@ -224,9 +227,13 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [zoom, setZoom] = useState(.8)
   const [pan, setPan] = useState({ x: 60, y: 60 })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(['synthetic-1']))
+  // A link can be selected (to delete it or drag its tip onto another node); while a tip is dragged the link is hidden.
+  const [selectedEdgeId, setSelectedEdgeId] = useState('')
+  const [rewiringId, setRewiringId] = useState('')
+  const rewireRef = useRef<Edge | null>(null)
   const [rubberBox, setRubberBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [chatWindow, setChatWindow] = useState(false)
-  const [title, setTitle] = useState('Esperimento di regressione')
+  const [title, setTitle] = useState(tl("Esperimento di regressione"))
   const [workflowId, setWorkflowId] = useState<string | null>(routeWorkflowId || null)
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null)
   const [running, setRunning] = useState(false)
@@ -281,7 +288,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const specOf = (node: CanvasNode): NodeSpec => {
     const found = specs.find((item) => item.id === node.id) || FALLBACK_SPECS.find((item) => item.id === node.id)
     return found ? effectiveSpec(found, node.config)
-      : { id: node.id, label: node.id, category: tl("Controllo"), description: tl("Nodo non disponibile nel catalogo corrente."), inputs: [], outputs: [], params: [] }
+      : { id: node.id, label: node.id, category: 'Controllo', description: tl("Nodo non disponibile nel catalogo corrente."), inputs: [], outputs: [], params: [] }
   }
   const liveRef = useRef({ nodes, zoom, followRun })
   liveRef.current = { nodes, zoom, followRun }
@@ -328,10 +335,61 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const chatbotFlow = nodes.some((node) => node.id.startsWith('chatbot.') || node.id === 'llm_chatbot')
   const chatLog = useMemo(() => buildChatLog(activeRun, nodes), [activeRun, nodes])
 
+  // Undo / redo of canvas edits (nodes, links, parameters). Bursts of changes (a drag, typing) coalesce into one step,
+  // and run status/outputs are not part of the history.
+  const historyRef = useRef<{ undo: HistorySnapshot[]; redo: HistorySnapshot[]; committed: HistorySnapshot; key: string | null; timer: number | undefined; reset: boolean }>(
+    { undo: [], redo: [], committed: { nodes, edges }, key: null, timer: undefined, reset: false })
+  const latestGraphRef = useRef<HistorySnapshot>({ nodes, edges })
+  latestGraphRef.current = { nodes, edges }
+  const historyKey = (snapshot: HistorySnapshot) => JSON.stringify([snapshot.nodes.map(({ status: _status, ...rest }) => rest), snapshot.edges])
+  const commitHistory = () => {
+    const history = historyRef.current
+    window.clearTimeout(history.timer); history.timer = undefined
+    const latest = latestGraphRef.current
+    const key = historyKey(latest)
+    if (history.key === null) { history.key = historyKey(history.committed) }
+    if (history.reset) { history.reset = false; history.undo = []; history.redo = []; history.committed = latest; history.key = key; return }
+    if (key === history.key) return
+    history.undo = [...history.undo.slice(-(HISTORY_LIMIT - 1)), history.committed]
+    history.redo = []; history.committed = latest; history.key = key
+  }
+  useEffect(() => {
+    const history = historyRef.current
+    window.clearTimeout(history.timer)
+    history.timer = window.setTimeout(commitHistory, 350)
+    return () => window.clearTimeout(history.timer)
+  }, [nodes, edges])
+  const stepHistory = (direction: 'undo' | 'redo') => {
+    if (running || tableModal || explorer) return
+    commitHistory()
+    const history = historyRef.current
+    const target = (direction === 'undo' ? history.undo : history.redo).pop()
+    if (!target) return
+    ;(direction === 'undo' ? history.redo : history.undo).push(history.committed)
+    history.committed = target; history.key = historyKey(target)
+    const statusOf = new Map(latestGraphRef.current.nodes.map((node) => [node.instanceId, node.status]))
+    const restored = target.nodes.map((node) => ({ ...node, status: statusOf.get(node.instanceId) ?? 'idle' as NodeStatus }))
+    const ids = new Set(restored.map((node) => node.instanceId))
+    setNodes(restored); setEdges(target.edges)
+    setSelectedIds((current) => new Set([...current].filter((id) => ids.has(id))))
+    setSelectedId((current) => (ids.has(current) ? current : ''))
+    setSelectedEdgeId(''); cancelConnection()
+  }
+  const stepHistoryRef = useRef(stepHistory)
+  stepHistoryRef.current = stepHistory
+
   useEffect(() => {
     const isTyping = () => { const tag = (document.activeElement?.tagName || '').toLowerCase(); return tag === 'input' || tag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable }
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && connectingRef.current) { event.preventDefault(); cancelConnection(); return }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !isTyping()) {
+        const key = event.key.toLowerCase()
+        if (key === 'z' || key === 'y') { event.preventDefault(); stepHistoryRef.current(key === 'y' || event.shiftKey ? 'redo' : 'undo'); return }
+      }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !isTyping() && selectedEdgeId) {
+        event.preventDefault()
+        setEdges((current) => current.filter((edge) => edge.id !== selectedEdgeId)); setSelectedEdgeId(''); return
+      }
       if ((event.key === 'Delete' || event.key === 'Backspace') && !isTyping() && selectedIds.size) {
         setNodes((current) => current.filter((item) => !selectedIds.has(item.instanceId)))
         setEdges((current) => current.filter((edge) => !selectedIds.has(edge.from) && !selectedIds.has(edge.to)))
@@ -340,7 +398,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     }
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
-  }, [selectedIds])
+  }, [selectedIds, selectedEdgeId])
 
   useEffect(() => {
     let cancelled = false
@@ -355,6 +413,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         const workflow = response.data
         const loadedNodes = Array.isArray(workflow.graph?.nodes) ? workflow.graph.nodes : []
         const loadedEdges = Array.isArray(workflow.graph?.edges) ? workflow.graph.edges : []
+        historyRef.current.reset = true
         setNodes(loadedNodes); setEdges(loadedEdges); setTitle(workflow.title); setWorkflowId(workflow.id)
         setSelectedId(loadedNodes[0]?.instanceId || '')
         lastSavedRef.current = JSON.stringify({ title: workflow.title, nodes: loadedNodes, edges: loadedEdges })
@@ -379,7 +438,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (!hydratedRef.current || savingRef.current || !dirtyRef.current) return snapshotRef.current.workflowId
     savingRef.current = true; setSaveState('saving')
     const snapshot = snapshotRef.current
-    const payload = { title: snapshot.title.trim() || 'Workflow senza titolo', graph: { nodes: snapshot.nodes, edges: snapshot.edges } }
+    const payload = { title: snapshot.title.trim() || tl("Workflow senza titolo"), graph: { nodes: snapshot.nodes, edges: snapshot.edges } }
     try {
       const response = snapshot.workflowId ? await agenticApi.updateWorkflow(snapshot.workflowId, payload) : await agenticApi.createWorkflow(payload)
       const id = String(response.data.id)
@@ -586,15 +645,18 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (!loopEdge && reaches(nodeId, source.nodeId)) { setError(tl("Connessione non valida: creerebbe un ciclo. Per tornare indietro usa «Ripeti» del nodo Ripeti finché")); cancelConnection(); return }
     // Flow nodes can be entered from several places (first pass + «Ripeti»); data inputs keep a single source.
     const multiEntry = !!targetNode && isFlowNode(targetNode.id)
-    setEdges((current) => [...current.filter((edge) => !(edge.to === nodeId && edge.targetPort === port.name && (!multiEntry || edge.from === source.nodeId))), {
-      id: `edge-${Date.now()}`, from: source.nodeId, to: nodeId, sourcePort: source.port, targetPort: port.name,
+    const rewireId = rewireRef.current?.id
+    const newEdgeId = `edge-${Date.now()}`
+    setEdges((current) => [...current.filter((edge) => edge.id !== rewireId && !(edge.to === nodeId && edge.targetPort === port.name && (!multiEntry || edge.from === source.nodeId))), {
+      id: newEdgeId, from: source.nodeId, to: nodeId, sourcePort: source.port, targetPort: port.name,
     }])
+    if (rewireId) setSelectedEdgeId(newEdgeId)
     const inferred = inferOutputColumns(source.nodeId, source.port)
     if (inferred.length) setNodes((current) => current.map((node) => node.instanceId === nodeId ? { ...node, config: recommendedConfig(node, inferred) } : node))
-    connectingRef.current = null; connectStartRef.current = null; setConnecting(null); setConnectionPoint(null); setError('')
+    connectingRef.current = null; connectStartRef.current = null; rewireRef.current = null; setRewiringId(''); setConnecting(null); setConnectionPoint(null); setError('')
   }
   function cancelConnection() {
-    connectingRef.current = null; connectStartRef.current = null; setConnecting(null); setConnectionPoint(null)
+    connectingRef.current = null; connectStartRef.current = null; rewireRef.current = null; setRewiringId(''); setConnecting(null); setConnectionPoint(null)
   }
   // Drop target resolution by geometry, not by the element under the cursor: the nearest input handle within
   // reach wins, so releasing slightly off a 14px dot (or over the node body/label) still connects.
@@ -635,6 +697,16 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (node) setConnectionPoint(portPoint(node, 'out', port.name))
   }
 
+  // Dragging the tip of a selected link detaches it and starts a connection from its source; releasing on nothing restores it.
+  const beginRewire = (event: ReactPointerEvent, edge: Edge) => {
+    event.stopPropagation(); event.preventDefault()
+    const fromNode = nodes.find((item) => item.instanceId === edge.from)
+    const sourcePort = fromNode && specOf(fromNode).outputs.find((item) => item.name === edge.sourcePort)
+    if (!sourcePort) return
+    startConnection(edge.from, sourcePort, event.clientX, event.clientY)
+    rewireRef.current = edge; setRewiringId(edge.id)
+  }
+
   useEffect(() => {
     if (!connecting) return
     const move = (event: PointerEvent) => {
@@ -646,7 +718,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       const target = nearestInputPort(event.clientX, event.clientY) || nodeBodyTarget(event.clientX, event.clientY)
       if (target) { connectTo(target.nodeId, target.port); return }
       // A drag that ends on nothing cancels; a plain click keeps click-to-connect mode alive.
-      if (connectStartRef.current?.moved) cancelConnection()
+      if (connectStartRef.current?.moved || rewireRef.current) cancelConnection()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', release)
@@ -655,6 +727,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
 
   const nodePointerDown = (event: ReactPointerEvent, node: CanvasNode, draggable: boolean) => {
     event.stopPropagation()
+    setSelectedEdgeId('')
     const positions: Record<string, { x: number; y: number }> = {}
     if (draggable) {
       const alreadySelected = selectedIds.has(node.instanceId)
@@ -669,6 +742,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const target = event.target as HTMLElement
     if (!target.closest('[data-canvas-background]') || !viewportRef.current) return
     if (connectingRef.current) { cancelConnection(); return }
+    setSelectedEdgeId('')
     stopGlide()
     if (event.button === 1) {
       panRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y }
@@ -835,7 +909,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       await new Promise((resolve) => setTimeout(resolve, REPLAY_STEP_MS))
       if (stoppedRef.current) break
       setNodeStatus([item.node_instance_id], status)
-      if (item.status === 'failed' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: String(item.error) }))
+      if (item.status === 'failed' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: tlDyn(String(item.error)) }))
     }
     const waitingFor = run.status === 'waiting' ? String(run.output?.waiting_for || '') : ''
     if (waitingFor && !stoppedRef.current) { setActiveNodeId(waitingFor); focusCamera(waitingFor); return }
@@ -874,7 +948,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         if (stoppedRef.current) return
       }
       setNodeStatus([item.node_instance_id], status)
-      if (status === 'error' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: String(item.error) }))
+      if (status === 'error' && item.error) setNodeErrors((current) => ({ ...current, [item.node_instance_id]: tlDyn(String(item.error)) }))
     }
   }
   const watchRun = async (runId: string, signal: AbortSignal): Promise<WorkflowRun> => {
@@ -907,7 +981,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       await applyRun(await watchRun(response.data.id, controller.signal))
     }
     catch (reason: any) {
-      if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || reason?.message || tl("Esecuzione non riuscita"))
+      if (reason?.code !== 'ERR_CANCELED') setError(tlDyn(String(reason?.response?.data?.detail || reason?.message || tl("Esecuzione non riuscita"))))
       setNodes((current) => current.map((node) => node.status === 'running' ? { ...node, status: 'idle' } : node)); clearFocus()
     }
     finally { setRunning(false); abortRef.current = null }
@@ -923,7 +997,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (waitingFor && answeredNode?.id !== 'llm_chatbot') { setNodeStatus([waitingFor], 'complete'); setActiveNodeId(null) } // a continuous chat node keeps the floor: the server marks it «running»
     try { await agenticApi.provideInput(activeRun.id, content, controller.signal, true); setChatInput(''); await applyRun(await watchRun(activeRun.id, controller.signal)) }
     catch (reason: any) {
-      if (reason?.code !== 'ERR_CANCELED') setError(reason?.response?.data?.detail || tl("Risposta non inviata"))
+      if (reason?.code !== 'ERR_CANCELED') setError(tlDyn(String(reason?.response?.data?.detail || tl("Risposta non inviata"))))
       if (waitingFor) { setNodeStatus([waitingFor], 'waiting'); setActiveNodeId(waitingFor) }
     }
     finally { setRunning(false); abortRef.current = null }
@@ -988,7 +1062,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const top = Math.min(Math.max(8, assistantPos.y), Math.max(8, height - 360))
     return { left, top, height: Math.min(600, Math.max(320, height - top - 12)) }
   }
-  const assistantTitle = (value: string) => setTitle((current) => (!current.trim() || ['Esperimento di regressione', 'Workflow senza titolo'].includes(current.trim()) ? value : current))
+  const assistantTitle = (value: string) => setTitle((current) => (!current.trim() || ['Esperimento di regressione', 'Workflow senza titolo', tl("Esperimento di regressione"), tl("Workflow senza titolo")].includes(current.trim()) ? value : current))
 
   const updateNodeParam = (nodeId: string, name: string, value: unknown) => {
     const target = nodes.find((item) => item.instanceId === nodeId)
@@ -1015,7 +1089,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     const output = outputs[node.instanceId]
     const table = output && (Object.values(output).find(isTable) as TableValue | undefined)
     if (!table) return
-    const title = window.prompt('Nome del dataset da salvare nella libreria', specOf(node).label)
+    const title = window.prompt(tl("Nome del dataset da salvare nella libreria"), specOf(node).label)
     if (!title || !title.trim()) return
     try { await agenticApi.createDataset({ title: title.trim(), table }); queryClient.invalidateQueries({ queryKey: ['agentic-datasets'] }) }
     catch (reason: any) { setError(reason?.response?.data?.detail || tl("Salvataggio dataset non riuscito")) }
@@ -1080,14 +1154,14 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
       )}
       <aside className={`flex w-[17rem] shrink-0 flex-col border-r border-slate-200 bg-white max-sm:hidden ${libraryCollapsed ? '!hidden' : ''}`}>
         <div className="border-b border-slate-100 p-4"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Node library</p><h2 className="mt-1 text-base font-black">{tl("Primitive dataflow")}</h2></div><div className="flex items-center gap-1"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{specs.length}</span><SidebarCollapseButton onClick={() => setLibraryCollapsed(true)} label={tl("Comprimi libreria nodi")} /></div></div><SearchPill value={query} placeholder={tl("Cerca nodo o tipo")} onValueChange={setQuery} className="mt-3" /></div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">{grouped.map(({ category, items }) => { const style = CATEGORY_STYLE[category]; const Icon = style.icon; const shut = collapsed.has(category); return <section key={category}><button onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next })} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"><span className="h-2 w-2 rounded-full" style={{ background: style.dot }} /><span className="flex-1 text-left">{category}</span><span>{items.length}</span>{shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>{!shut && <div className="space-y-1 pb-2">{items.map((item) => <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-dataflow-node', item.id)} onDoubleClick={() => addNode(item.id, undefined, undefined, true)} title={tl("Trascina sul canvas, oppure doppio clic per aggiungerlo e collegarlo al nodo selezionato")} className="group flex w-full items-start gap-2.5 rounded-xl border border-transparent px-2 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-700">{item.label}</span><span className="block line-clamp-2 text-[10px] leading-4 text-slate-400">{item.description}</span><span className="mt-1 block truncate text-[8px] font-bold text-slate-400">{item.inputs.map((port) => port.type).join(' + ') || 'SOURCE'} → {item.outputs.map((port) => port.type).join(' + ')}</span></span><GripVertical className="mt-1 h-3.5 w-3.5 text-slate-200" /></button>)}</div>}</section> })}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">{grouped.map(({ category, items }) => { const style = CATEGORY_STYLE[category]; const Icon = style.icon; const shut = collapsed.has(category); return <section key={category}><button onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next })} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"><span className="h-2 w-2 rounded-full" style={{ background: style.dot }} /><span className="flex-1 text-left">{tl(category)}</span><span>{items.length}</span>{shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>{!shut && <div className="space-y-1 pb-2">{items.map((item) => <button key={item.id} draggable onDragStart={(event) => event.dataTransfer.setData('application/x-dataflow-node', item.id)} onDoubleClick={() => addNode(item.id, undefined, undefined, true)} title={tl("Trascina sul canvas, oppure doppio clic per aggiungerlo e collegarlo al nodo selezionato")} className="group flex w-full items-start gap-2.5 rounded-xl border border-transparent px-2 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-700">{item.label}</span><span className="block line-clamp-2 text-[10px] leading-4 text-slate-400">{item.description}</span><span className="mt-1 block truncate text-[8px] font-bold text-slate-400">{item.inputs.map((port) => port.type).join(' + ') || 'SOURCE'} → {item.outputs.map((port) => port.type).join(' + ')}</span></span><GripVertical className="mt-1 h-3.5 w-3.5 text-slate-200" /></button>)}</div>}</section> })}</div>
       </aside>
 
       <main ref={mainRef} className="relative min-w-0 flex-1 overflow-hidden bg-[var(--ds-canvas)]">
         <style>{DATAFLOW_CSS}</style>
         <div className="absolute left-3 top-3 z-30 flex flex-wrap items-center gap-2">
           <div className="flex rounded-full p-1 text-slate-600" style={PILL_STYLE}><button onClick={() => zoomBy(1 / 1.2)} className="p-2" title={tl("Riduci")}><ZoomOut className="h-4 w-4" /></button><span className="w-11 py-2 text-center text-[10px] font-black">{Math.round(zoom * 100)}%</span><button onClick={() => zoomBy(1.2)} className="p-2" title={tl("Ingrandisci")}><ZoomIn className="h-4 w-4" /></button><button onClick={() => { setZoom(.75); setPan({ x: 60, y: 60 }) }} className="p-2" title={tl("Vista iniziale")}><Maximize2 className="h-4 w-4" /></button></div>
-          <div className="flex items-center gap-0.5 rounded-full p-1" style={PILL_STYLE} role="radiogroup" aria-label={tl("Passo della griglia magnetica")}><Grid3x3 className="ml-2 mr-1 h-4 w-4 text-slate-400" aria-hidden />{SNAP_STEPS.map((step) => <button key={step} role="radio" aria-checked={snapDots === step} onClick={() => { setSnapDots(step); writeStored('dataflow-snap', String(step)) }} title={step ? tl("Sposta i nodi a passi di {0}", step === .5 ? 'mezzo pallino' : `${step} pallin${step === 1 ? 'o' : 'i'}`) : tl("Movimento libero")} className={`h-8 min-w-8 rounded-full px-2.5 text-[10px] font-black transition-colors ${snapDots === step ? 'bg-[var(--ds-choice-surface)] text-[var(--ds-choice-ink)]' : 'text-slate-500 hover:bg-slate-100/70'}`}>{step === 0 ? 'Off' : step === .5 ? '½' : step}</button>)}</div>
+          <div className="flex items-center gap-0.5 rounded-full p-1" style={PILL_STYLE} role="radiogroup" aria-label={tl("Passo della griglia magnetica")}><Grid3x3 className="ml-2 mr-1 h-4 w-4 text-slate-400" aria-hidden />{SNAP_STEPS.map((step) => <button key={step} role="radio" aria-checked={snapDots === step} onClick={() => { setSnapDots(step); writeStored('dataflow-snap', String(step)) }} title={step ? tl("Sposta i nodi a passi di {0}", step === .5 ? tl("mezzo pallino") : step === 1 ? tl("1 pallino") : tl("{0} pallini", step)) : tl("Movimento libero")} className={`h-8 min-w-8 rounded-full px-2.5 text-[10px] font-black transition-colors ${snapDots === step ? 'bg-[var(--ds-choice-surface)] text-[var(--ds-choice-ink)]' : 'text-slate-500 hover:bg-slate-100/70'}`}>{step === 0 ? 'Off' : step === .5 ? '½' : step}</button>)}</div>
           <button onClick={() => { const next = !followRun; setFollowRun(next); writeStored('dataflow-follow', next ? '1' : '0') }} aria-pressed={followRun} title={tl("Durante l'esecuzione la vista segue il nodo attivo")} style={PILL_STYLE} className="flex h-10 items-center gap-2 rounded-full pl-3.5 pr-1.5 text-[11px] font-bold text-slate-700"><Crosshair className={`h-4 w-4 ${followRun ? 'text-violet-700' : 'text-slate-400'}`} /> {tl("Segui esecuzione")}<span className={`relative ml-1 h-6 w-10 rounded-full transition-colors ${followRun ? 'bg-violet-700' : 'bg-slate-200'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${followRun ? 'left-[18px]' : 'left-0.5'}`} /></span></button>
         </div>
         {connecting && <div className="absolute bottom-14 left-1/2 z-30 -translate-x-1/2 rounded-full bg-slate-950 px-3 py-2 text-[10px] font-bold text-white">Da {connecting.port} ({connecting.type}{tl(") · rilascia su una porta evidenziata o sul corpo di un nodo ·")} <kbd className="rounded bg-white/15 px-1">Esc</kbd> o <button onClick={cancelConnection} className="text-white/70 underline">{tl("annulla")}</button></div>}
@@ -1114,7 +1188,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
           <div ref={canvasRef} data-canvas-background className="absolute left-0 top-0 origin-top-left select-none" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transition: cameraGlide ? 'transform .55s cubic-bezier(.2,.8,.2,1)' : undefined }}>
             <svg className="absolute left-0 top-0 overflow-visible" style={{ width: 1, height: 1 }}>{edges.map((edge) => {
               const from = nodes.find((node) => node.instanceId === edge.from); const to = nodes.find((node) => node.instanceId === edge.to)
-              if (!from || !to) return null
+              if (!from || !to || edge.id === rewiringId) return null
               const a = portPoint(from, 'out', edge.sourcePort); const b = portPoint(to, 'in', edge.targetPort)
               const bend = Math.max(70, Math.abs(b.x - a.x) * .42)
               const loop = isLoopEdge(edge)
@@ -1129,8 +1203,12 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
               const traversed = focusMode && runTrail.has(edge.from) && runTrail.has(edge.to)
               const accent = (CATEGORY_STYLE[specOf(to).category] || CATEGORY_STYLE.Controllo).dot
               const related = edge.from === selectedId || edge.to === selectedId
-              const stroke = live ? accent : traversed ? '#525252' : related ? '#404040' : loop ? '#a78bfa' : '#b8c1ce'
-              return <g key={edge.id} className="group cursor-pointer" style={{ opacity: focusMode && !live && !traversed ? .3 : 1, transition: 'opacity .35s ease' }} onClick={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)) }}><title>{tl("Clic per eliminare il collegamento")}</title><path d={path} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={path} fill="none" stroke={stroke} strokeWidth={live ? 3 : traversed ? 2.5 : 2} strokeLinecap="round" strokeDasharray={loop && !live ? '7 6' : undefined} className={`pointer-events-none group-hover:stroke-rose-400 ${live ? 'df-flow' : ''}`} />{live && <circle r="5" fill={accent} className="df-travel pointer-events-none"><animateMotion dur={`${REPLAY_STEP_MS}ms`} repeatCount="indefinite" path={path} /></circle>}{(!focusMode || loop) && <text x={(a.x + b.x) / 2} y={labelY} textAnchor="middle" fill={loop ? '#7c3aed' : '#a3a3a3'} fontSize={loop ? 11 : 9} fontWeight="700" className="pointer-events-none">{loop ? tl("↺ ripeti") : `${edge.sourcePort} → ${edge.targetPort}`}</text>}</g>
+              const isSelected = edge.id === selectedEdgeId
+              const stroke = isSelected ? '#7c3aed' : live ? accent : traversed ? '#525252' : related ? '#404040' : loop ? '#a78bfa' : '#b8c1ce'
+              return <g key={edge.id} className="group cursor-pointer" style={{ opacity: focusMode && !live && !traversed ? .3 : 1, transition: 'opacity .35s ease' }} onPointerDown={(event) => { event.stopPropagation(); setSelectedEdgeId(edge.id); setSelectedIds(new Set()); setSelectedId('') }}><title>{tl("Clic per selezionare il collegamento")}</title><path d={path} fill="none" stroke="transparent" strokeWidth="14" className="pointer-events-stroke" /><path d={path} fill="none" stroke={stroke} strokeWidth={isSelected ? 3 : live ? 3 : traversed ? 2.5 : 2} strokeLinecap="round" strokeDasharray={loop && !live ? '7 6' : undefined} className={`pointer-events-none group-hover:stroke-rose-400 ${live ? 'df-flow' : ''}`} />{live && <circle r="5" fill={accent} className="df-travel pointer-events-none"><animateMotion dur={`${REPLAY_STEP_MS}ms`} repeatCount="indefinite" path={path} /></circle>}{(!focusMode || loop) && <text x={(a.x + b.x) / 2} y={labelY} textAnchor="middle" fill={loop ? '#7c3aed' : '#a3a3a3'} fontSize={loop ? 11 : 9} fontWeight="700" className="pointer-events-none">{loop ? tl("↺ ripeti") : `${edge.sourcePort} → ${edge.targetPort}`}</text>}{isSelected && <>
+                <g style={{ pointerEvents: 'all', cursor: 'pointer' }} onPointerDown={(event) => { event.stopPropagation(); setEdges((current) => current.filter((item) => item.id !== edge.id)); setSelectedEdgeId('') }}><title>{tl("Elimina collegamento")}</title><circle cx={(a.x + b.x) / 2} cy={backwards ? labelY + 18 : (a.y + b.y) / 2 + 12} r="9" fill="#fff" stroke="#e11d48" strokeWidth="1.5" /><path d={`M${(a.x + b.x) / 2 - 3.5},${(backwards ? labelY + 18 : (a.y + b.y) / 2 + 12) - 3.5} l7,7 m0,-7 l-7,7`} stroke="#e11d48" strokeWidth="1.8" strokeLinecap="round" /></g>
+                <circle cx={b.x} cy={b.y} r="8" fill="#fff" stroke="#7c3aed" strokeWidth="2.5" style={{ pointerEvents: 'all', cursor: 'grab' }} onPointerDown={(event) => beginRewire(event, edge)}><title>{tl("Trascina la punta su un altro nodo per ricollegare")}</title></circle>
+              </>}</g>
             })}{connecting && connectionPoint && (() => {
               const from = nodes.find((node) => node.instanceId === connecting.nodeId)
               if (!from) return null
@@ -1154,14 +1232,14 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
                 {node.status === 'running' && <span className="df-running-glow df-squircle pointer-events-none absolute inset-0" />}
                 {(isActive || isWaiting) && <span className="pointer-events-none absolute -top-8 left-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold text-white" style={{ background: isWaiting ? '#f59e0b' : style.dot }}>{isWaiting ? <><MessageSquareText className="h-3 w-3" /> {tl("In attesa di risposta")}</> : <><Activity className="h-3 w-3" /> {tl("In esecuzione")}</>}</span>}
                 <div>
-                  <div onPointerDown={(event) => beginMove(event, node)} className="df-squircle-top flex h-14 cursor-grab items-center gap-3 px-3.5 shadow-[0_1px_0_rgba(120,120,124,0.10)] active:cursor-grabbing"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-black uppercase tracking-wider" style={{ color: style.dot }}>{spec.category}</span></span><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-[filter] hover:brightness-95 disabled:opacity-60" style={{ background: tint(style.dot, 13), color: style.dot }} title={tl("Esegui solo questo nodo")} aria-label={tl("Esegui solo questo nodo")}>{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}</button></div>
+                  <div onPointerDown={(event) => beginMove(event, node)} className="df-squircle-top flex h-14 cursor-grab items-center gap-3 px-3.5 shadow-[0_1px_0_rgba(120,120,124,0.10)] active:cursor-grabbing"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: tint(style.dot, 13), color: style.dot }}><Icon className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{spec.label}</span><span className="block truncate text-[9px] font-black uppercase tracking-wider" style={{ color: style.dot }}>{tl(spec.category)}</span></span><button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); executeOne(node) }} disabled={node.status === 'running'} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-[filter] hover:brightness-95 disabled:opacity-60" style={{ background: tint(style.dot, 13), color: style.dot }} title={tl("Esegui solo questo nodo")} aria-label={tl("Esegui solo questo nodo")}>{node.status === 'running' ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-current" />}</button></div>
 
                   <div className="py-1 shadow-[0_1px_0_rgba(120,120,124,0.10)]" style={{ minHeight: portRows * PORT_HEIGHT + 8 }}>{Array.from({ length: portRows }).map((_, index) => {
                     const input = spec.inputs[index]; const outputPort = spec.outputs[index]
                     const compatible = !!connecting && !!input && connecting.nodeId !== node.instanceId && typesCompatible(connecting.type, input.type)
                     const inputLinked = !!input && edges.some((edge) => edge.to === node.instanceId && edge.targetPort === input.name)
                     const columnsOut = outputPort ? outputColumns(outputPort) : []
-                    return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} title={`${input.label} · ${input.type}${input.required === false ? ' · opzionale' : ''}`} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left transition-opacity ${connecting && !compatible ? 'opacity-30' : ''} ${compatible ? 'text-slate-900' : ''}`}><span data-anchor={`${node.instanceId}::in::${input.name}`} className={`absolute left-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${compatible ? 'df-port-target' : ''}`} style={{ background: inputLinked || compatible ? TYPE_COLOR[input.type] || '#737373' : '#fff', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[input.type] || '#737373'}`, scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span>{input.required === false && <span className="text-[7px] font-semibold text-slate-300">opz.</span>}<code className="text-[7px]" style={{ color: TYPE_COLOR[input.type] || '#d4d4d4' }}>{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} title={columnsOut.length ? `${outputPort.label} · ${outputPort.type}\nColonne: ${columnsOut.join(', ')}` : tl("{0} · {1} — trascina su un nodo per collegare", outputPort.label, outputPort.type)} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px]" style={{ color: TYPE_COLOR[outputPort.type] || '#d4d4d4' }}>{outputPort.type}{columnsOut.length ? ` · ${columnsOut.length} col` : ''}</code><span className="truncate">{outputPort.label}</span><span data-anchor={`${node.instanceId}::out::${outputPort.name}`} className={`absolute right-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'ring-4 ring-slate-200' : ''}`} style={{ background: TYPE_COLOR[outputPort.type] || '#262626', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[outputPort.type] || '#262626'}`, scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div>
+                    return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} title={`${input.label} · ${input.type}${input.required === false ? ` · ${tl("opzionale")}` : ''}`} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left transition-opacity ${connecting && !compatible ? 'opacity-30' : ''} ${compatible ? 'text-slate-900' : ''}`}><span data-anchor={`${node.instanceId}::in::${input.name}`} className={`absolute left-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${compatible ? 'df-port-target' : ''}`} style={{ background: inputLinked || compatible ? TYPE_COLOR[input.type] || '#737373' : '#fff', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[input.type] || '#737373'}`, scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span>{input.required === false && <span className="text-[7px] font-semibold text-slate-300">{tl("opz.")}</span>}<code className="text-[7px]" style={{ color: TYPE_COLOR[input.type] || '#d4d4d4' }}>{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} title={columnsOut.length ? `${outputPort.label} · ${outputPort.type}\n${tl("Colonne")}: ${columnsOut.join(', ')}` : tl("{0} · {1} — trascina su un nodo per collegare", outputPort.label, outputPort.type)} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px]" style={{ color: TYPE_COLOR[outputPort.type] || '#d4d4d4' }}>{outputPort.type}{columnsOut.length ? ` · ${tl("{0} col", columnsOut.length)}` : ''}</code><span className="truncate">{outputPort.label}</span><span data-anchor={`${node.instanceId}::out::${outputPort.name}`} className={`absolute right-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'ring-4 ring-slate-200' : ''}`} style={{ background: TYPE_COLOR[outputPort.type] || '#262626', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[outputPort.type] || '#262626'}`, scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div>
                   })}</div>
 
                   {stale.length > 0 && <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[9px] font-bold text-amber-800" onPointerDown={(event) => event.stopPropagation()}><AlertTriangle className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{tl("Colonne non trovate:")} {stale.join(', ')}</span><button type="button" onClick={() => setNodes((current) => current.map((item) => item.instanceId === node.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item, available) } : item))} className="shrink-0 rounded-md bg-amber-500 px-2 py-0.5 text-white hover:bg-amber-600">{tl("Correggi")}</button></div>}
@@ -1186,11 +1264,11 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         {!assistantOpen && <AssistantLauncher pos={assistantDrag.clamp(assistantPos)} open={assistantOpen} working={assistantWorking} dragging={assistantDrag.dragging} onPointerDown={(event) => assistantDrag.begin(event, () => setAssistantOpen((open) => !open))} onToggle={() => setAssistantOpen((open) => !open)} />}
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
-        {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{error}</span><button onClick={() => setError('')} aria-label={tl("Chiudi errore")}><X className="h-3.5 w-3.5" /></button></div>}
+        {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{tlDyn(error)}</span><button onClick={() => setError('')} aria-label={tl("Chiudi errore")}><X className="h-3.5 w-3.5" /></button></div>}
         {chatbotFlow && !chatWindow && <Button onClick={() => setChatWindow(true)} tone="neutral" surface="solid" density="compact" className="absolute bottom-3 right-3 z-30 rounded-full"><MessageSquareText className="h-4 w-4" /> {tl("Chat test")}</Button>}
       </main>
 
-      {inspectorOpen && <aside className="flex w-[19rem] shrink-0 flex-col border-l border-slate-200 bg-white max-xl:hidden"><div className="flex h-16 items-center justify-between border-b border-slate-100 px-4"><div><p className="text-[10px] font-black uppercase text-slate-400">Inspector</p><h2 className="text-sm font-black">{selectedSpec?.label || tl("Nessun nodo")}</h2></div><SidebarCollapseButton side="right" onClick={() => setInspectorOpen(false)} label={tl("Comprimi inspector")} /></div>{selected && selectedSpec ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><p className="mb-4 rounded-xl bg-slate-50 p-3 text-[10px] leading-4 text-slate-600">{selectedSpec.description}</p>{inputColumnsFor(selected).length > 0 && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-wider text-violet-700">{tl("Schema input rilevato")}</p><Button onClick={() => setNodes((current) => current.map((item) => item.instanceId === selected.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item) } : item))} tone="accent" surface="solid" density="compact" className="rounded-full !h-6 !px-2.5 text-[9px]">{"Auto-configura"}</Button></div><div className="mt-2 flex flex-wrap gap-1">{inputColumnsFor(selected).map((column) => <span key={column} className="rounded-md bg-white px-2 py-1 text-[9px] font-bold text-violet-700">{column}</span>)}</div></div>}<h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Parametri avanzati") : tl("Contenuto e parametri")}</h3><div className="space-y-3">{(() => { const advancedParams = selectedSpec.params.filter((param) => !(INLINE_PARAMS[selected.id] || []).includes(param.name)); return advancedParams.length ? advancedParams.map((param) => <ParamField key={param.name} param={param} value={selected.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? inputColumnsFor(selected) : undefined} onChange={(value) => updateNodeParam(selected.instanceId, param.name, value)} />) : <p className="rounded-xl border border-dashed p-3 text-[10px] text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Gli altri parametri sono modificabili direttamente sul nodo.") : tl("Questo nodo usa solo gli input collegati.")}</p> })()}</div><Button onClick={() => executeOne(selected)} tone="accent" surface="solid" fullWidth className="mt-5 rounded-full"><Play className="h-4 w-4" /> {tl("Esegui questo nodo")}</Button>{['data.custom_input', 'csv.synthetic'].includes(selected.id) && outputs[selected.instanceId] && <Button onClick={() => saveTableToLibrary(selected)} tone="neutral" surface="outline" fullWidth className="mt-2 rounded-full"><Save className="h-4 w-4" /> {tl("Salva in libreria dataset")}</Button>}{nodeErrors[selected.instanceId] &&<p className="mt-2 rounded-lg bg-rose-50 p-2 text-[10px] text-rose-700">{nodeErrors[selected.instanceId]}</p>}<h3 className="mb-2 mt-6 text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Porte")}</h3>{[...selectedSpec.inputs.map((port) => ({ ...port, direction: 'IN' })), ...selectedSpec.outputs.map((port) => ({ ...port, direction: 'OUT' }))].map((port) => <div key={`${port.direction}-${port.name}`} className="mb-1 flex rounded-lg border border-slate-100 p-2 text-[10px]"><b className="w-9 text-slate-400">{port.direction}</b><span className="flex-1 font-bold">{port.name}</span><code className="text-violet-600">{port.type}</code></div>)}</div> : null}{selected && <Button onClick={() => { setNodes((current) => current.filter((item) => item.instanceId !== selected.instanceId)); setEdges((current) => current.filter((edge) => edge.from !== selected.instanceId && edge.to !== selected.instanceId)); setSelectedId('') }} tone="danger" surface="ghost" className="m-3 rounded-full"><Trash2 className="h-4 w-4" /> {tl("Elimina nodo")}</Button>}</aside>}
+      {inspectorOpen && <aside className="flex w-[19rem] shrink-0 flex-col border-l border-slate-200 bg-white max-xl:hidden"><div className="flex h-16 items-center justify-between border-b border-slate-100 px-4"><div><p className="text-[10px] font-black uppercase text-slate-400">Inspector</p><h2 className="text-sm font-black">{selectedSpec?.label || tl("Nessun nodo")}</h2></div><SidebarCollapseButton side="right" onClick={() => setInspectorOpen(false)} label={tl("Comprimi inspector")} /></div>{selected && selectedSpec ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><p className="mb-4 rounded-xl bg-slate-50 p-3 text-[10px] leading-4 text-slate-600">{selectedSpec.description}</p>{inputColumnsFor(selected).length > 0 && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-wider text-violet-700">{tl("Schema input rilevato")}</p><Button onClick={() => setNodes((current) => current.map((item) => item.instanceId === selected.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item) } : item))} tone="accent" surface="solid" density="compact" className="rounded-full !h-6 !px-2.5 text-[9px]">{tl("Auto-configura")}</Button></div><div className="mt-2 flex flex-wrap gap-1">{inputColumnsFor(selected).map((column) => <span key={column} className="rounded-md bg-white px-2 py-1 text-[9px] font-bold text-violet-700">{column}</span>)}</div></div>}<h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Parametri avanzati") : tl("Contenuto e parametri")}</h3><div className="space-y-3">{(() => { const advancedParams = selectedSpec.params.filter((param) => !(INLINE_PARAMS[selected.id] || []).includes(param.name)); return advancedParams.length ? advancedParams.map((param) => <ParamField key={param.name} param={param} value={selected.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? inputColumnsFor(selected) : undefined} onChange={(value) => updateNodeParam(selected.instanceId, param.name, value)} />) : <p className="rounded-xl border border-dashed p-3 text-[10px] text-slate-400">{(INLINE_PARAMS[selected.id] || []).length ? tl("Gli altri parametri sono modificabili direttamente sul nodo.") : tl("Questo nodo usa solo gli input collegati.")}</p> })()}</div><Button onClick={() => executeOne(selected)} tone="accent" surface="solid" fullWidth className="mt-5 rounded-full"><Play className="h-4 w-4" /> {tl("Esegui questo nodo")}</Button>{['data.custom_input', 'csv.synthetic'].includes(selected.id) && outputs[selected.instanceId] && <Button onClick={() => saveTableToLibrary(selected)} tone="neutral" surface="outline" fullWidth className="mt-2 rounded-full"><Save className="h-4 w-4" /> {tl("Salva in libreria dataset")}</Button>}{nodeErrors[selected.instanceId] &&<p className="mt-2 rounded-lg bg-rose-50 p-2 text-[10px] text-rose-700">{nodeErrors[selected.instanceId]}</p>}<h3 className="mb-2 mt-6 text-[10px] font-black uppercase tracking-wider text-slate-400">{tl("Porte")}</h3>{[...selectedSpec.inputs.map((port) => ({ ...port, direction: 'IN' })), ...selectedSpec.outputs.map((port) => ({ ...port, direction: 'OUT' }))].map((port) => <div key={`${port.direction}-${port.name}`} className="mb-1 flex rounded-lg border border-slate-100 p-2 text-[10px]"><b className="w-9 text-slate-400">{port.direction}</b><span className="flex-1 font-bold">{port.name}</span><code className="text-violet-600">{port.type}</code></div>)}</div> : null}{selected && <Button onClick={() => { setNodes((current) => current.filter((item) => item.instanceId !== selected.instanceId)); setEdges((current) => current.filter((edge) => edge.from !== selected.instanceId && edge.to !== selected.instanceId)); setSelectedId('') }} tone="danger" surface="ghost" className="m-3 rounded-full"><Trash2 className="h-4 w-4" /> {tl("Elimina nodo")}</Button>}</aside>}
       {!inspectorOpen && <SidebarRail className="max-xl:hidden" side="right" label="Inspector" expandLabel={tl("Apri inspector")} onExpand={() => setInspectorOpen(true)} />}
     </div>
     {explorer && <OutputExplorerModal target={explorer} onClose={() => setExplorer(null)} onAxesChange={changePlotAxes} onOpenTable={(label, table) => setTableModal({ nodeId: '', outputPort: '', nodeLabel: label, table, detached: true })} />}
@@ -1199,7 +1277,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
 }
 
 function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { output?: Record<string, unknown>; error?: string; nodeLabel: string; onOpenTable: (outputPort: string, table: TableValue) => void; onExplore: (target: ExplorerTarget) => void }) {
-  if (error) return <div className="m-2 rounded-lg bg-rose-50 p-2 text-[9px] leading-4 text-rose-700">{error}</div>
+  if (error) return <div className="m-2 rounded-lg bg-rose-50 p-2 text-[9px] leading-4 text-rose-700">{tlDyn(error)}</div>
   if (!output) return <div className="m-2 flex h-12 items-center justify-center rounded-lg border border-dashed border-slate-200 text-[9px] text-slate-400">{tl("▶ Esegui il nodo per vedere l’anteprima")}</div>
   const values = Object.values(output)
   const tableEntries = Object.entries(output).filter(([, value]) => isTable(value)) as Array<[string, TableValue]>
@@ -1214,14 +1292,14 @@ function NodePreview({ output, error, nodeLabel, onOpenTable, onExplore }: { out
     {plotEntry && <div className="p-2"><MiniPlot plot={plotEntry[1]} metrics={metrics} onExplore={() => onExplore({ kind: 'plot', title: plotEntry[1].title || tl("{0} · grafico", nodeLabel), plot: plotEntry[1], outputPort: plotEntry[0] })} onOpenMetrics={openMetrics} /></div>}
     {!plotEntry && metrics && <MetricCards metrics={metrics} onOpen={openMetrics} />}
     {firstTable && <MiniTable table={firstTable[1]} label={firstTable[0]} onOpen={() => onOpenTable(firstTable[0], firstTable[1])} />}
-    {otherTables.length > 0 && <div className="flex flex-wrap gap-1.5 px-2 pb-2">{otherTables.map(([port, table]) => <button key={port} type="button" onClick={() => onOpenTable(port, table)} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {port} · {table.rowCount ?? table.rows.length} righe</button>)}</div>}
+    {otherTables.length > 0 && <div className="flex flex-wrap gap-1.5 px-2 pb-2">{otherTables.map(([port, table]) => <button key={port} type="button" onClick={() => onOpenTable(port, table)} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {port} · {tl("{0} righe", table.rowCount ?? table.rows.length)}</button>)}</div>}
     {!plotEntry && !metrics && !tableEntries.length && !showArtifacts && <button type="button" onClick={() => onExplore({ kind: 'raw', title: `${nodeLabel} · output`, value: values.length === 1 ? values[0] : output })} className="group m-2 block max-h-24 w-[calc(100%-1rem)] overflow-hidden rounded-lg bg-slate-950 p-2 text-left text-[9px] leading-4 text-slate-100" title={tl("Apri l’output completo")}><span className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-slate-400 group-hover:text-white"><Maximize2 className="h-3 w-3" /> {tl("Apri output")}</span>{formatCompact(values[0])}</button>}
   </div>
 }
 
 function MiniTable({ table, label, onOpen }: { table: TableValue; label?: string; onOpen: () => void }) {
   const columns = (table.columns?.length ? table.columns : Object.keys(table.rows[0] || {})).slice(0, 4)
-  return <button type="button" onClick={(event) => { event.stopPropagation(); onOpen() }} className="group block w-full p-2 text-left" title={tl("Apri nell'editor di tabelle")}><div className="mb-1 flex justify-between text-[8px] font-bold uppercase text-slate-400"><span className="flex items-center gap-1 group-hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {tl("Apri")} {label || tl("tabella")} {tl("nel foglio")}</span><span>{table.rowCount ?? table.rows.length} righe</span></div><div className="overflow-hidden rounded-lg border border-slate-200 transition group-hover:border-violet-300 group-hover:ring-2 group-hover:ring-violet-100"><table className="w-full table-fixed text-[8px]"><thead className="bg-slate-100"><tr>{columns.map((column) => <th key={column} className="truncate px-1.5 py-1 text-left">{column}</th>)}</tr></thead><tbody>{table.rows.slice(0, 3).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="truncate px-1.5 py-1 text-slate-600">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div></button>
+  return <button type="button" onClick={(event) => { event.stopPropagation(); onOpen() }} className="group block w-full p-2 text-left" title={tl("Apri nell'editor di tabelle")}><div className="mb-1 flex justify-between text-[8px] font-bold uppercase text-slate-400"><span className="flex items-center gap-1 group-hover:text-slate-900"><FileSpreadsheet className="h-3 w-3" /> {tl("Apri")} {label || tl("tabella")} {tl("nel foglio")}</span><span>{tl("{0} righe", table.rowCount ?? table.rows.length)}</span></div><div className="overflow-hidden rounded-lg border border-slate-200 transition group-hover:border-violet-300 group-hover:ring-2 group-hover:ring-violet-100"><table className="w-full table-fixed text-[8px]"><thead className="bg-slate-100"><tr>{columns.map((column) => <th key={column} className="truncate px-1.5 py-1 text-left">{column}</th>)}</tr></thead><tbody>{table.rows.slice(0, 3).map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="truncate px-1.5 py-1 text-slate-600">{formatCompact(row[column])}</td>)}</tr>)}</tbody></table></div></button>
 }
 
 function MetricCards({ metrics, onOpen }: { metrics: Record<string, unknown>; onOpen?: () => void }) {
@@ -1255,7 +1333,7 @@ function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue
   const histogram = plot.x.map((start, index) => ({ bin: `${compactTick(start)}–${compactTick(plot.xEnd?.[index] ?? plot.x[index + 1] ?? start)}`, value: Number(plot.y[index]), start: Number(start) }))
   const tooltipStyle = { borderRadius: 10, border: '1px solid #e5e5e5', fontSize: 10, boxShadow: '0 10px 25px rgba(23,23,23,.12)' }
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico"))}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.kind === 'histogram' ? `${histogram.length} intervalli` : `${points.length} punti`}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico"))}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.kind === 'histogram' ? tl("{0} intervalli", histogram.length) : tl("{0} punti", points.length)}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
     <div className="grid grid-cols-3 gap-px border-b border-slate-100 bg-slate-100">{plot.kind === 'histogram' ? <><ChartStat label={tl("Totale")} value={plot.y.reduce((sum, value) => sum + Number(value || 0), 0)} /><ChartStat label={tl("Picco")} value={Math.max(0, ...plot.y.map(Number))} /><ChartStat label={tl("Intervallo")} value={rangeLabel([...(plot.x || []), ...(plot.xEnd || [])].map(Number).filter(Number.isFinite))} /></> : <><ChartStat label={tl("Intervallo X")} value={rangeLabel(xs)} /><ChartStat label={tl("Intervallo Y")} value={rangeLabel(ys)} /><ChartStat label={tl("Correlazione")} value={correlation === null ? '—' : correlation.toFixed(3)} /></>}</div>
     <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title={tl("Doppio clic per aprire l’explorer")}>{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || tl("Valore"), position: 'insideBottom', offset: -28, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={34} label={{ value: plot.labels?.y || tl("Conteggio"), angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, tl("Conteggio")]} labelFormatter={(label) => tl("Intervallo {0}", label)} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
     {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
@@ -1300,7 +1378,7 @@ function Mini3DPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotVal
     : [{ type: 'scatter3d', mode: 'markers', name: 'Dati', x: plot.x, y: plot.y, z: plot.z,
         marker: { size: 4, color: plot.z, colorscale: 'Viridis', opacity: .85, showscale: true } }]
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || tl("Grafico 3D")}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'} · {plot.labels?.z || 'z'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.x.length} punti</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || tl("Grafico 3D")}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'} · {plot.labels?.z || 'z'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{tl("{0} punti", plot.x.length)}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
     <div className="h-[280px] w-full bg-slate-50/60" onPointerDown={(event) => event.stopPropagation()}>
       <Suspense fallback={<div className="flex h-full items-center justify-center text-[10px] text-slate-400">{tl("Caricamento vista 3D…")}</div>}>
         <Plot3D
@@ -1345,7 +1423,7 @@ function gridToTable(grid: string[][], originalColumns: string[]): TableValue {
   }))
   const used = new Set<string>()
   const columns = Array.from({ length: lastColumn + 1 }, (_, index) => {
-    const preferred = String(grid[0]?.[index] || originalColumns[index] || `colonna_${index + 1}`).trim() || `colonna_${index + 1}`
+    const preferred = String(grid[0]?.[index] || originalColumns[index] || tl("colonna_{0}", index + 1)).trim() || tl("colonna_{0}", index + 1)
     let name = preferred; let suffix = 2
     while (used.has(name)) name = `${preferred}_${suffix++}`
     used.add(name); return name
@@ -1385,7 +1463,7 @@ function ParamField({ param, value, suggestedOptions, onChange }: { param: Param
     reader.readAsText(file)
     event.target.value = ''
   }
-  return <label className="block"><span className="mb-1 block text-[10px] font-bold text-slate-500">{param.label}</span>{param.type === 'BOOLEAN' ? <button type="button" onClick={() => onChange(!value)} className={`${cls} text-left font-bold`}>{value ? tl("Attivo") : tl("Disattivo")}</button> : param.type === 'SELECT' ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}>{param.options?.map((option) => <option key={option} value={option}>{param.optionLabels?.[option] ?? option}</option>)}</select> : param.type === 'DATASET' ? <DatasetPicker value={String(value ?? '')} onChange={onChange} /> : param.type === 'COLUMN' && suggestedOptions?.length ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}><option value="">{param.required === false ? tl("Nessuna") : tl("Seleziona una colonna")}</option>{suggestedOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select> : param.type === 'COLUMNS' && suggestedOptions?.length ? <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2">{suggestedOptions.map((option) => <button key={option} type="button" onClick={() => toggleColumn(option)} className={`rounded-full px-2 py-1 text-[9px] font-bold ${selected.includes(option) ? 'bg-violet-600 text-white' : 'bg-white text-slate-600'}`}>{option}</button>)}</div> : param.type === 'CODE' ? <div className="space-y-1"><textarea value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} rows={5} className={`${cls} h-auto py-2 font-mono`} /><label className="inline-flex cursor-pointer items-center gap-1 text-[9px] font-bold text-violet-600 hover:text-violet-700"><Paperclip className="h-3 w-3" /> {tl("Carica file (CSV/JSON/testo)")}<input type="file" accept=".csv,.json,.txt" onChange={readFile} className="hidden" /></label></div> : <input type={['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? 'number' : 'text'} min={param.min} max={param.max} step={param.step || (param.type === 'INTEGER' ? 1 : 'any')} value={String(value ?? '')} onChange={(event) => onChange(['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? Number(event.target.value) : event.target.value)} className={cls} />}</label>
+  return <label className="block"><span className="mb-1 block text-[10px] font-bold text-slate-500">{param.label}</span>{param.type === 'BOOLEAN' ? <button type="button" onClick={() => onChange(!value)} className={`${cls} text-left font-bold`}>{value ? tl("Attivo") : tl("Disattivo")}</button> : param.type === 'SELECT' ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}>{param.options?.map((option) => <option key={option} value={option}>{tlOption(param.optionLabels?.[option] ?? option)}</option>)}</select> : param.type === 'DATASET' ? <DatasetPicker value={String(value ?? '')} onChange={onChange} /> : param.type === 'COLUMN' && suggestedOptions?.length ? <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} className={cls}><option value="">{param.required === false ? tl("Nessuna") : tl("Seleziona una colonna")}</option>{suggestedOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select> : param.type === 'COLUMNS' && suggestedOptions?.length ? <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2">{suggestedOptions.map((option) => <button key={option} type="button" onClick={() => toggleColumn(option)} className={`rounded-full px-2 py-1 text-[9px] font-bold ${selected.includes(option) ? 'bg-violet-600 text-white' : 'bg-white text-slate-600'}`}>{option}</button>)}</div> : param.type === 'CODE' ? <div className="space-y-1"><textarea value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} rows={5} className={`${cls} h-auto py-2 font-mono`} /><label className="inline-flex cursor-pointer items-center gap-1 text-[9px] font-bold text-violet-600 hover:text-violet-700"><Paperclip className="h-3 w-3" /> {tl("Carica file (CSV/JSON/testo)")}<input type="file" accept=".csv,.json,.txt" onChange={readFile} className="hidden" /></label></div> : <input type={['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? 'number' : 'text'} min={param.min} max={param.max} step={param.step || (param.type === 'INTEGER' ? 1 : 'any')} value={String(value ?? '')} onChange={(event) => onChange(['NUMBER', 'INTEGER', 'SLIDER'].includes(param.type) ? Number(event.target.value) : event.target.value)} className={cls} />}</label>
 }
 
 function DatasetPicker({ value, onChange }: { value: string; onChange: (value: unknown) => void }) {
