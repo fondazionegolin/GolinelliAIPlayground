@@ -1,29 +1,34 @@
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { agenticApi } from '@/lib/api'
-import { Activity, Clock3, MoreVertical, Network, Play, Plus, Trash2 } from '@/components/icons'
+import { Activity, Clock3, Copy, MoreVertical, Network, Play, Plus, Share2, Trash2 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
+
+const WorkflowShareDialog = lazy(() => import('@/components/agentic/WorkflowShareDialog'))
 
 type GraphNode = { id: string; instanceId: string; x?: number; y?: number }
 type GraphEdge = { from: string; to: string }
-type WorkflowItem = { id: string; title: string; version: number; status: string; graph: { nodes?: GraphNode[]; edges?: GraphEdge[] }; created_at: string; updated_at: string }
+type WorkflowItem = { id: string; title: string; version: number; status: string; graph: { nodes?: GraphNode[]; edges?: GraphEdge[] }; created_at: string; updated_at: string; shared_from_teacher?: boolean }
 
 const CATEGORY_COLOR: Record<string, string> = {
   csv: '#0284c7', data: '#0891b2', math: '#7c3aed', ml: '#16a34a', plot: '#ea580c',
   chatbot: '#4f46e5', control: '#d97706', ai: '#db2777', llm_chatbot: '#4f46e5', nlp: '#db2777',
 }
 
-export default function AgenticWorkflowLibraryPage({ sessionId }: { sessionId?: string }) {
-  const navigate = useNavigate()
+export default function AgenticWorkflowLibraryPage({ sessionId, embedded }: { sessionId?: string; embedded?: { go: (target: string) => void } }) {
+  const routerNavigate = useNavigate()
+  const navigate = (path: string) => (embedded ? embedded.go(path.replace('/teacher/agentic/', '')) : routerNavigate(path))
+  const listKey = embedded ? 'agentic-workflows-student' : 'agentic-workflows'
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
   const [runningId, setRunningId] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<Record<string, string>>({})
   const [openMenu, setOpenMenu] = useState<string | null>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['agentic-workflows'], queryFn: () => agenticApi.listWorkflows(), refetchInterval: 5000 })
+  const [sharing, setSharing] = useState<WorkflowItem | null>(null)
+  const { data, isLoading } = useQuery({ queryKey: [listKey], queryFn: () => agenticApi.listWorkflows(), refetchInterval: 5000 })
   const workflows = useMemo<WorkflowItem[]>(() => {
     const items = (data?.data || []) as WorkflowItem[]
     const search = query.trim().toLocaleLowerCase('it')
@@ -42,11 +47,17 @@ export default function AgenticWorkflowLibraryPage({ sessionId }: { sessionId?: 
     } finally { setRunningId(null) }
   }
 
+  const duplicateWorkflow = async (workflow: WorkflowItem) => {
+    setOpenMenu(null)
+    try { await agenticApi.duplicateWorkflow(workflow.id) } catch (error: any) { window.alert(error?.response?.data?.detail || tl("Duplicazione non riuscita")); return }
+    await queryClient.invalidateQueries({ queryKey: [listKey] })
+  }
+
   const deleteWorkflow = async (workflow: WorkflowItem) => {
     if (!window.confirm(tl("Eliminare “{0}”?", workflow.title))) return
     await agenticApi.deleteWorkflow(workflow.id)
     setOpenMenu(null)
-    await queryClient.invalidateQueries({ queryKey: ['agentic-workflows'] })
+    await queryClient.invalidateQueries({ queryKey: [listKey] })
   }
 
   return <div className="h-full overflow-y-auto bg-transparent">
@@ -59,11 +70,12 @@ export default function AgenticWorkflowLibraryPage({ sessionId }: { sessionId?: 
       <SearchPill value={query} placeholder={tl("Cerca nei workflow…")} onValueChange={setQuery} className="mb-5" endAdornment={<span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--text-secondary)]">{workflows.length}</span>} />
 
       {isLoading ? <div className="flex h-64 items-center justify-center"><Activity className="h-6 w-6 animate-spin text-violet-500" /></div> : workflows.length ? <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{workflows.map((workflow) => <article key={workflow.id} className="ui-card ui-card-interactive group overflow-hidden">
-        <button onClick={() => navigate(`/teacher/agentic/${workflow.id}`)} className="block w-full text-left"><WorkflowPreview graph={workflow.graph} /><div className="px-4 pb-3 pt-4"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black text-slate-900">{workflow.title}</h2><p className="mt-1 text-[10px] text-slate-400">v{workflow.version} · {workflow.graph.nodes?.length || 0} {tl("nodi ·")} {workflow.graph.edges?.length || 0} connessioni</p></div><span className="rounded-full bg-violet-50 px-2 py-1 text-[8px] font-black uppercase text-violet-700">workflow</span></div></div></button>
-        <div className="flex items-center gap-2 p-3 shadow-[0_-1px_0_rgba(163,163,163,0.10)]"><button onClick={() => runWorkflow(workflow)} disabled={runningId === workflow.id} className="ui-cta flex h-9 flex-1 items-center justify-center gap-2 rounded-xl text-[11px] font-black disabled:opacity-50">{runningId === workflow.id ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {tl("Esegui")}</button><button onClick={() => navigate(`/teacher/agentic/${workflow.id}`)} className="ds-control h-9 rounded-xl px-3 text-[11px] font-bold">{tl("Apri")}</button><div className="relative"><button onClick={() => setOpenMenu(openMenu === workflow.id ? null : workflow.id)} className="ds-control flex h-9 w-9 items-center justify-center rounded-xl"><MoreVertical className="h-4 w-4" /></button>{openMenu === workflow.id && <div className="ds-popover absolute bottom-11 right-0 z-20 w-40 rounded-xl p-1"><button onClick={() => deleteWorkflow(workflow)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /> {tl("Elimina")}</button></div>}</div></div>
+        <button onClick={() => navigate(`/teacher/agentic/${workflow.id}`)} className="block w-full text-left"><WorkflowPreview graph={workflow.graph} /><div className="px-4 pb-3 pt-4"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-black text-slate-900">{workflow.title}</h2><p className="mt-1 text-[10px] text-slate-400">v{workflow.version} · {workflow.graph.nodes?.length || 0} {tl("nodi ·")} {workflow.graph.edges?.length || 0} connessioni</p></div><span className="shrink-0 rounded-full bg-violet-50 px-2 py-1 text-[8px] font-black uppercase text-violet-700">{workflow.shared_from_teacher ? tl("Condiviso dal docente") : "workflow"}</span></div></div></button>
+        <div className="flex items-center gap-2 p-3 shadow-[0_-1px_0_rgba(163,163,163,0.10)]"><button onClick={() => runWorkflow(workflow)} disabled={runningId === workflow.id} className="ui-cta flex h-9 flex-1 items-center justify-center gap-2 rounded-xl text-[11px] font-black disabled:opacity-50">{runningId === workflow.id ? <Activity className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {tl("Esegui")}</button><button onClick={() => navigate(`/teacher/agentic/${workflow.id}`)} className="ds-control h-9 rounded-xl px-3 text-[11px] font-bold">{tl("Apri")}</button><div className="relative"><button onClick={() => setOpenMenu(openMenu === workflow.id ? null : workflow.id)} className="ds-control flex h-9 w-9 items-center justify-center rounded-xl"><MoreVertical className="h-4 w-4" /></button>{openMenu === workflow.id && <div className="ds-popover absolute bottom-11 right-0 z-20 w-44 rounded-xl p-1"><button onClick={() => duplicateWorkflow(workflow)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold hover:bg-[var(--surface-muted)]"><Copy className="h-3.5 w-3.5" /> {tl("Duplica")}</button>{!embedded && <button onClick={() => { setOpenMenu(null); setSharing(workflow) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold hover:bg-[var(--surface-muted)]"><Share2 className="h-3.5 w-3.5" /> {tl("Condividi")}</button>}<button onClick={() => deleteWorkflow(workflow)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /> {tl("Elimina")}</button></div>}</div></div>
         <div className="flex items-center justify-between border-t border-slate-50 px-4 py-2 text-[9px] text-slate-400"><span className="flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(workflow.updated_at).toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span><span className={runStatus[workflow.id] === 'completed' ? 'font-bold text-emerald-600' : runStatus[workflow.id]?.includes('fail') ? 'font-bold text-rose-600' : ''}>{runStatus[workflow.id] || tl("Salvato")}</span></div>
       </article>)}</div> : <div className="flex min-h-[22rem] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white text-center"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-50 text-violet-600"><Network className="h-7 w-7" /></span><h2 className="mt-4 text-lg font-black">{tl("Nessun workflow")}</h2><p className="mt-1 max-w-sm text-sm text-slate-400">{tl("Crea il primo flusso e combina sorgenti, trasformazioni, modelli e visualizzazioni.")}</p><button onClick={() => navigate('/teacher/agentic/new')} className="mt-5 flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white"><Plus className="h-4 w-4" /> {tl("Crea workflow")}</button></div>}
     </div>
+    {sharing && <Suspense fallback={null}><WorkflowShareDialog workflowId={sharing.id} title={sharing.title} onClose={() => setSharing(null)} /></Suspense>}
   </div>
 }
 

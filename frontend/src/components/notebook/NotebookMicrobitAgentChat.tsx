@@ -1,6 +1,6 @@
 import { storedModelChoice } from '@/components/models/ScopedModelSelect'
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, GitCompare, History, Loader2, Send, X } from '@/components/icons'
+import { Bot, Check, GitCompare, History, ImagePlus, Loader2, Send, X } from '@/components/icons'
 import { Textarea } from '@/design/primitives/Textarea'
 import { IconButton } from '@/design/primitives/IconButton'
 import axios from 'axios'
@@ -38,7 +38,7 @@ function formatElapsed(seconds: number) {
 /** Live progress of the agent pipeline: which agent has the baton, which ones are done, how long it has been. */
 function PipelineProgress({ done, active, elapsed }: { done: string[]; active: ActiveStage | null; elapsed: number }) {
   return (
-    <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+    <div className="rounded-xl bg-sky-500/10 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-sky-700">
         <span>{tl("Agenti al lavoro")}</span>
         <span className="font-mono normal-case tabular-nums">{formatElapsed(elapsed)}</span>
@@ -86,12 +86,12 @@ function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
 
   if (isFeedback) {
     const tone = kind === 'file_write_summary'
-      ? { border: 'border-sky-200 bg-sky-50', label: 'text-sky-700' }
+      ? { border: 'bg-sky-500/10', label: 'text-sky-700' }
       : kind === 'agent_reasoning'
-        ? { border: 'border-amber-200 bg-amber-50', label: 'text-amber-800' }
-        : { border: 'border-slate-200 bg-slate-50', label: 'text-slate-500' }
+        ? { border: 'bg-amber-500/10', label: 'text-amber-800' }
+        : { border: 'bg-slate-500/5', label: 'text-slate-500' }
     return (
-      <div className={`rounded-xl border px-3 py-2.5 ${tone.border}`}>
+      <div className={`rounded-xl px-3 py-2.5 ${tone.border}`}>
         <div className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${tone.label}`}>{label}</div>
         <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
           {message.content}
@@ -353,6 +353,32 @@ export default function NotebookMicrobitAgentChat({
   const [elapsed, setElapsed] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Reference image (data URL, downscaled): the visual model turns it into a technical spec for the code agents.
+  const [attachedImage, setAttachedImage] = useState<string | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
+
+  const attachImageFile = async (file: File | undefined | null) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setImageError(tl("Allega un file immagine.")); return }
+    try {
+      const bitmap = await createImageBitmap(file)
+      const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas')
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      bitmap.close?.()
+      setAttachedImage(canvas.toDataURL('image/jpeg', 0.85))
+      setImageError(null)
+    } catch {
+      setImageError(tl("Non riesco a leggere questa immagine."))
+    }
+  }
   const contextualSuggestions = getContextualSuggestions({
     device,
     source: currentCellSource,
@@ -397,7 +423,7 @@ export default function NotebookMicrobitAgentChat({
   // (microbit/circuitplayground) restano sulla POST JSON: una sola chiamata veloce.
   const useStreaming = device === 'python' || device === 'p5js'
 
-  const sendStreaming = async (text: string) => {
+  const sendStreaming = async (text: string, image: string | null) => {
     // Auth: cookie per i docenti (credentials include), student-token per gli studenti —
     // stessa logica dell'interceptor axios (niente student-token se c'è auth docente).
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -416,7 +442,7 @@ export default function NotebookMicrobitAgentChat({
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput, ...storedModelChoice('notebook') }),
+      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput, ...(image ? { image } : {}), ...storedModelChoice('notebook') }),
     })
     if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
     if (!response.ok || !response.body) throw new Error(tl("stream non partito"))
@@ -473,20 +499,22 @@ export default function NotebookMicrobitAgentChat({
   }, [notebookId, useStreaming])
 
   const send = async () => {
-    const text = input.trim()
+    const image = useStreaming ? attachedImage : null
+    const text = input.trim() || (image ? tl("Analizza questa immagine e replica l'effetto che mostra.") : '')
     if (!text || loading) return
 
     setInput('')
+    setAttachedImage(null)
     setDoneAgents([])
     setActiveStage({ agent: 'Prompt Analyst', label: tl("Leggo la richiesta e il codice attuale…") })
     setLoading(true)
 
-    const nextMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: text }]
+    const nextMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: image ? `${text}\n\n📎 ${tl("Immagine di riferimento allegata")}` : text }]
     setMessages(nextMessages)
 
     try {
       if (useStreaming) {
-        await sendStreaming(text)
+        await sendStreaming(text, image)
       } else {
         const response = await notebooksApi.assist(notebookId, {
           message: text,
@@ -515,8 +543,8 @@ export default function NotebookMicrobitAgentChat({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-2.5 px-2 pb-2 pt-1">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
           <Bot className="h-4 w-4" />
         </div>
@@ -535,9 +563,9 @@ export default function NotebookMicrobitAgentChat({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {messages.length === 0 && (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+          <div className="rounded-xl bg-slate-500/5 p-3 text-sm text-slate-600">
             <p className="font-semibold text-slate-800">{copy.emptyTitle}</p>
             <p className="mt-2 text-xs leading-5">
               {copy.intro}
@@ -554,7 +582,7 @@ export default function NotebookMicrobitAgentChat({
             useStreaming
               ? <PipelineProgress done={doneAgents} active={activeStage} elapsed={elapsed} />
               : (
-                <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-700">
+                <div className="flex items-center gap-2 rounded-xl bg-sky-500/10 px-3 py-2.5 text-xs font-medium text-sky-700">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   {tl("Il tutor sta preparando la proposta…")} {formatElapsed(elapsed)}
                 </div>
@@ -568,7 +596,7 @@ export default function NotebookMicrobitAgentChat({
                 {tl("Diff da approvare")}
               </div>
               {pendingProposals.map((proposal) => (
-                <div key={proposal.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div key={proposal.id} className="rounded-xl bg-slate-500/5 p-3">
                   <div className="mb-2">
                     <p className="text-sm font-semibold text-slate-900">{proposal.message}</p>
                     {proposal.explanation && <p className="mt-1 text-xs leading-5 text-slate-600">{proposal.explanation}</p>}
@@ -589,7 +617,7 @@ export default function NotebookMicrobitAgentChat({
                     </button>
                     <button
                       onClick={() => onRejectProposal(proposal.id)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-500/10"
                     >
                       <X className="h-3.5 w-3.5" />
                       {tl("Scarta")}
@@ -601,7 +629,7 @@ export default function NotebookMicrobitAgentChat({
           )}
 
           {contextualSuggestions.length > 0 && !loading && (
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+            <div className="rounded-xl bg-indigo-500/5 p-3">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-indigo-600">
                 {tl("Puoi chiedere anche")}
               </p>
@@ -611,7 +639,7 @@ export default function NotebookMicrobitAgentChat({
                     key={suggestion}
                     type="button"
                     onClick={() => selectSuggestion(suggestion)}
-                    className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-left text-xs leading-5 text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    className="w-full rounded-lg bg-indigo-500/10 px-3 py-2 text-left text-xs leading-5 text-indigo-800 transition hover:bg-indigo-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     {suggestion}
                   </button>
@@ -624,12 +652,49 @@ export default function NotebookMicrobitAgentChat({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-slate-200 p-3">
+      <div className="shrink-0 px-2 pb-2 pt-2">
+        {attachedImage && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-500/5 p-1.5">
+            <img src={attachedImage} alt="" className="h-12 w-12 rounded-lg object-cover" />
+            <p className="min-w-0 flex-1 text-[11px] leading-4 text-slate-500">{tl("L'immagine verrà analizzata e usata come riferimento per l'effetto.")}</p>
+            <IconButton type="button" size="sm" tone="neutral" surface="soft" onClick={() => setAttachedImage(null)} title={tl("Rimuovi immagine")}>
+              <X />
+            </IconButton>
+          </div>
+        )}
+        {imageError && <p className="mb-2 px-1 text-[11px] text-red-500">{imageError}</p>}
         <div className="flex items-end gap-2">
+          {useStreaming && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => { void attachImageFile(event.target.files?.[0]); event.target.value = '' }}
+              />
+              <IconButton
+                type="button"
+                size="default"
+                tone="neutral"
+                surface="soft"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                className="shrink-0"
+                title={tl("Allega un'immagine di riferimento")}
+              >
+                <ImagePlus />
+              </IconButton>
+            </>
+          )}
           <Textarea
             ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onPaste={(event) => {
+              const file = Array.from(event.clipboardData.files).find((f) => f.type.startsWith('image/'))
+              if (file && useStreaming) { event.preventDefault(); void attachImageFile(file) }
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
@@ -649,7 +714,7 @@ export default function NotebookMicrobitAgentChat({
             tone="accent"
             surface="solid"
             onClick={() => void send()}
-            disabled={!input.trim() || loading}
+            disabled={(!input.trim() && !attachedImage) || loading}
             className="shrink-0"
             title={tl("Invia al tutor (Invio) · Maiusc+Invio per andare a capo")}
           >

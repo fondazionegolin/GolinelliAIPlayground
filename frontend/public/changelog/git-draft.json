@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-10T14:07:10.107928+00:00",
-  "version_label": "2026.11.10-0639867d",
+  "generated_at": "2026-11-11T20:13:08.791493+00:00",
+  "version_label": "2026.11.11-838e8fd7",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 20 commit dall'ultima release pubblicata.",
-  "git_ref": "0639867d9cc3483e313e1755d5e59baffa82035b",
+  "summary": "Bozza generata automaticamente da 22 commit dall'ultima release pubblicata.",
+  "git_ref": "838e8fd7671f092b795226b0a4798812994c2739",
   "items": [
     {
       "category": "new",
@@ -104,6 +104,16 @@
       "category": "fixed",
       "title": "Teacher-ui: add MobileSessionsSheet imported by TeacherDashboard",
       "description": "Teacher-ui: add MobileSessionsSheet imported by TeacherDashboard"
+    },
+    {
+      "category": "new",
+      "title": "Call transcription, brochure/HTML-PDF export, presentation sources, UI polish",
+      "description": "Call transcription, brochure/HTML-PDF export, presentation sources, UI polish"
+    },
+    {
+      "category": "new",
+      "title": "Dataflow: English UI for node catalogue, undo/redo, selectable and re-wirable links",
+      "description": "Dataflow: English UI for node catalogue, undo/redo, selectable and re-wirable links"
     }
   ]
 }

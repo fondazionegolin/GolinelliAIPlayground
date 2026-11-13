@@ -24,6 +24,7 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.llm_service import llm_service
 from app.services.presentation_sources import MAX_SOURCE_BYTES, MAX_SOURCE_CHARS, MAX_SLIDES, extract_notes
+from app.services.presentation_layouts import render_outline_slide
 from app.services.presentation_quality import check_and_fix_slides
 from app.services.presentation_themes import FONT_CHOICES, resolve_theme, theme_catalog, theme_from_deck
 
@@ -85,6 +86,18 @@ class ImageRequest(BaseModel):
     deck_title: str = Field("", max_length=200)
     slide_title: str = Field("", max_length=200)
     theme: Optional[dict] = None
+
+
+class NewSlideRequest(BaseModel):
+    description: str = Field("", max_length=800)
+    deck_title: str = Field("", max_length=200)
+    theme: Optional[dict] = None
+    index: int = Field(0, ge=0, le=500)
+    dims: Dims = Field(default_factory=Dims)
+    # Title + short text of the neighbouring slides, so the new one fits the story.
+    context: list[dict] = Field(default_factory=list, max_length=12)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
 
 
 class QualityRequest(BaseModel):
@@ -436,3 +449,77 @@ async def generate_slide_image(
         context="presentation_image",
     )
     return {"url": image_url}
+
+
+@router.post("/new-slide")
+async def new_slide(
+    payload: NewSlideRequest,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """One new slide in the deck's own theme. With a short description the model writes its content;
+    without one it is an empty, themed slide (title + bullet layout) ready to be edited."""
+    theme = theme_from_deck(payload.theme) or resolve_theme("aula", {})
+    description = payload.description.strip()
+    raw: dict = {"layout": "title_bullets", "title": "Nuova slide", "points": []}
+    responses = []
+    billing = await _billing_context(db, auth)
+    if description:
+        if not await credit_service.check_availability(
+            db, billing["tenant_id"], 0.002, billing["teacher_id"], billing["class_id"], billing["session_id"], billing["student_id"]
+        ):
+            raise HTTPException(status_code=402, detail="Credit limit exceeded")
+        language = get_ui_language(http_request)
+        grade_instruction = get_school_grade_instruction(billing["school_grade"]) if billing["school_grade"] else ""
+        neighbours = json.dumps(payload.context, ensure_ascii=False)[:6000]
+        prompt = (
+            f"Lingua dei contenuti: {language}\n{grade_instruction}\n"
+            f"Presentazione: {payload.deck_title or 'senza titolo'}\n"
+            f"Slide vicine (titolo e testo, nell'ordine; la nuova va in posizione {payload.index + 1}): {neighbours}\n\n"
+            f"{studio.LAYOUT_GUIDE}\n"
+            "Scrivi UNA nuova slide, coerente per tono, lessico e livello con le slide vicine e senza ripeterle. "
+            "Non usare i layout cover, image_full e image_split. Usa SOLO ciò che serve a quanto richiesto.\n"
+            f"Descrizione di ciò che deve contenere: {description}\n"
+            f"Restituisci solo l'oggetto JSON della slide: {studio.SLIDE_SCHEMA}"
+        )
+        provider, model = await model_selection.resolve_scoped(db, "documents", payload.llm_provider, payload.llm_model)
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                response = await llm_service.generate(
+                    messages=[{"role": "user", "content": prompt}], system_prompt=studio.OUTLINE_SYSTEM_PROMPT,
+                    provider=provider, model=model, temperature=0.5 if attempt == 0 else 0.2,
+                    max_tokens=1800, allow_web_search=False,
+                )
+                responses.append(response)
+                raw = _extract_json_object(response.content)
+                if raw.get("layout") in ("cover", "image_split", "image_full"):
+                    raw["layout"] = "title_bullets"
+                last_error = None
+                break
+            except Exception as exc:  # unparsable: one stricter retry
+                last_error = exc
+                prompt += "\n\nIMPORTANTE: rispondi esclusivamente con JSON valido, senza testo prima o dopo."
+        if responses:
+            prompt_tokens = sum(r.prompt_tokens for r in responses)
+            completion_tokens = sum(r.completion_tokens for r in responses)
+            real_provider = responses[-1].provider or provider
+            real_model = responses[-1].model or model
+            await safe_track_usage(
+                db, billing["tenant_id"], real_provider, real_model,
+                credit_service.calculate_cost_for_model(real_provider, real_model, prompt_tokens, completion_tokens),
+                enrich_usage_with_environmental_impact({
+                    "type": "presentation_new_slide", "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens,
+                }, provider=real_provider, model=real_model),
+                billing["teacher_id"], billing["class_id"], billing["session_id"], billing["student_id"],
+                context="presentation_new_slide",
+            )
+        if last_error is not None:
+            logger.error("New slide failed: %s", last_error)
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Non è stato possibile scrivere la slide: riprova.")
+    outline_slide = studio.normalize_slide(raw, "dettagliata")
+    rendered = render_outline_slide(outline_slide, payload.index, payload.dims.width, payload.dims.height, theme)
+    check_and_fix_slides([rendered], payload.dims.width, payload.dims.height, theme)
+    return {"slide": rendered}

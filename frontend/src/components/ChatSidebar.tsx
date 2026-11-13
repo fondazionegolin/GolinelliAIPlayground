@@ -10,8 +10,8 @@ import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
-  MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, FolderOpen, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap, Video
+  MessagesSquare, MessageCircle, Pin,
+  File, Wand2, FolderOpen, UserRound, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap, Video
 } from '@/components/icons'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -24,12 +24,13 @@ import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy
 import TuringTestPanel from '@/components/TuringTestPanel'
 import { DropOverlay } from '@/components/ui/DropOverlay'
 import { SessionFilesExplorer } from '@/components/SessionFilesExplorer'
+import { SessionStudentsPanel } from '@/components/teacher/SessionStudentsPanel'
 import { DRIVE_ITEM_MIME, filesFromUniversalDrag, setFileDrag } from '@/lib/dragFiles'
 import { tl } from '@/i18n/tl'
 
 export type { ChatMessage }
 
-type TabType = 'session' | 'private' | 'files'
+type TabType = 'session' | 'private' | 'students' | 'files'
 
 interface ToyLMModelAttachment {
   type: 'toy_lm_model'
@@ -113,8 +114,10 @@ export default function ChatSidebar({
     teacherHeader: isEnglish ? 'Live chat' : 'Chat live',
     pin: isEnglish ? 'Pin sidebar' : 'Fissa Sidebar',
     unpin: isEnglish ? 'Unpin sidebar' : 'Sblocca Sidebar',
+    close: isEnglish ? 'Close class chat' : 'Chiudi chat di classe',
     sessionTab: isEnglish ? 'Class' : 'Classe',
     privateTab: isEnglish ? 'Private' : 'Privata',
+    studentsTab: isEnglish ? 'Students' : 'Studenti',
     filesTab: isEnglish ? 'Files' : 'File',
   }
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -160,7 +163,7 @@ export default function ChatSidebar({
 
   const availableTabs: TabType[] = userType === 'student'
     ? ['session', ...(privateChatEnabled ? (['private'] as const) : [])]
-    : ['session', 'private', 'files']
+    : ['session', 'private', 'students', 'files']
 
   const getRelativePath = (file: File) => {
     const relativePath = (file as any).webkitRelativePath as string | undefined
@@ -644,7 +647,7 @@ export default function ChatSidebar({
     ? "w-full"
     : isPinned
       ? "relative"
-      : "fixed top-16 right-0 h-[calc(100vh-4rem)] shadow-xl z-30")}`
+      : "fixed top-[var(--shell-nav-h)] right-0 h-[calc(100vh-var(--shell-nav-h))] shadow-xl z-30")}`
 
   // When className is provided, the parent wrapper handles width, so we only notify via onWidthChange
   // When no className, we apply width directly (fixed positioning mode)
@@ -1331,11 +1334,12 @@ export default function ChatSidebar({
             <Button
               variant="ghost"
               size="icon"
-              className={`h-6 w-6 ${isPinned ? 'text-neutral-900 bg-[#181b1e]/5' : 'text-slate-400'}`}
+              className={`h-7 w-7 ${isPinned ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400'}`}
               onClick={onPinToggle}
-              title={isPinned ? sidebarLabels.unpin : sidebarLabels.pin}
+              title={isPinned ? sidebarLabels.close : sidebarLabels.pin}
+              aria-label={isPinned ? sidebarLabels.close : sidebarLabels.pin}
             >
-              {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+              {isPinned ? <X className="h-4 w-4" /> : <Pin className="h-3 w-3" />}
             </Button>
           )}
           {onToggle && !isPinned && (
@@ -1362,9 +1366,10 @@ export default function ChatSidebar({
             const tabLabels = {
               session: sidebarLabels.sessionTab,
               private: sidebarLabels.privateTab,
+              students: sidebarLabels.studentsTab,
               files: sidebarLabels.filesTab,
             }
-            const TabIcons = { session: MessageSquare, private: MessagesSquare, files: FolderOpen }
+            const TabIcons = { session: MessageSquare, private: MessagesSquare, students: UserRound, files: FolderOpen }
             const TabIcon = TabIcons[tab]
             return (
               <button
@@ -1422,6 +1427,12 @@ export default function ChatSidebar({
 
         {activeTab === 'private' && renderPrivateChatsTab()}
 
+
+        {activeTab === 'students' && userType === 'teacher' && (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+            <SessionStudentsPanel sessionId={sessionId} onlineUsers={onlineUsers} />
+          </div>
+        )}
 
         {activeTab === 'files' && <SessionFilesExplorer sessionId={sessionId} isTeacher={userType === 'teacher'} />}
       </div>

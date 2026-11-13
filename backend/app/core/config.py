@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30
     STUDENT_TOKEN_EXPIRE_HOURS: int = 24
     FEEDBACK_MCP_TOKEN_EXPIRE_DAYS: int = 180
+
+    # Public OAuth web client ID; Google Workspace export uses short-lived browser tokens.
+    GOOGLE_WORKSPACE_CLIENT_ID: str = ""
     
     # MinIO / S3
     MINIO_ENDPOINT: str = "localhost:9000"

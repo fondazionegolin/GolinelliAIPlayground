@@ -43,11 +43,14 @@ MAX_SAME_LAYOUT_RUN = 3
 
 # Layouts a repeated one may be swapped for, keeping the content type plausible.
 _VARIETY_SWAPS = {
-    "title_bullets": ["cards", "two_column", "timeline"],
+    "title_bullets": ["editorial", "icon_cards", "two_column"],
     "cards": ["title_bullets", "two_column"],
     "two_column": ["title_bullets", "cards"],
     "timeline": ["title_bullets", "cards"],
     "image_split": ["title_bullets", "cards"],
+    "image_full": ["editorial", "title_bullets"],
+    "icon_cards": ["editorial", "two_column"],
+    "editorial": ["two_column", "icon_cards"],
 }
 
 READER_SYSTEM_PROMPT = (
@@ -185,7 +188,7 @@ def harmonize_plan(raw_slides: list[dict], title: str, subtitle: str, slide_cap:
     # Image budget: images are slow and costly, keep the few the architect found most useful (the first ones).
     seen_images = 0
     for slide in slides:
-        if slide["layout"] == "image_split":
+        if slide["layout"] in {"image_split", "image_full"}:
             seen_images += 1
             if seen_images > MAX_IMAGE_SLIDES:
                 slide["layout"] = "title_bullets"

@@ -20,7 +20,10 @@ from app.models.agentic import AgenticDataset, AgenticNodeRun, AgenticWorkflow, 
 from app.models.user import User
 from app.services import platform_actions
 from app.services.dataflow_tables import DB_NODES, run_db_node
-from app.services.dataflow_nodes import AI_TRANSFORM_TASKS, DEFAULT_EXIT_PHRASES, NODE_REGISTRY, execute_data_node, interpolate_variables, json_value, table_frame, value_to_text
+from app.services.dataflow_nodes import (
+    AI_TRANSFORM_TASKS, DEFAULT_EXIT_PHRASES, NODE_REGISTRY, columns as split_columns, execute_data_node, interpolate_variables, json_value,
+    llm_rows, slug_column, slug_table, table_frame, value_to_text,
+)
 
 platform_actions.register_nodes(NODE_REGISTRY)
 from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service
@@ -418,7 +421,13 @@ def _parse_json_payload(raw: str) -> Any:
     except ValueError:
         start, end = min((i for i in (cleaned.find("["), cleaned.find("{")) if i >= 0), default=-1), max(cleaned.rfind("]"), cleaned.rfind("}"))
         if start >= 0 and end > start:
-            return json.loads(cleaned[start:end + 1])
+            try:
+                return json.loads(cleaned[start:end + 1])
+            except ValueError:
+                pass
+        rows = llm_rows(cleaned) if start >= 0 else None  # an answer cut off by the token limit: keep its complete objects
+        if rows:
+            return rows
         raise
 
 
@@ -457,7 +466,7 @@ async def _ai_transform(inputs: dict[str, Any], config: dict[str, Any], provider
             raise ValueError("Il modello non ha restituito una lista di oggetti")
         if task in {"extract_table", "prompt_table"}:
             columns = list(dict.fromkeys(str(key) for row in rows for key in row.keys()))
-            output["table"] = {"columns": columns, "rows": rows, "rowCount": len(rows)}
+            output["table"] = slug_table({"columns": columns, "rows": rows, "rowCount": len(rows)})
         else:
             output["slides"] = rows
     return output, response.provider, response.model, response.prompt_tokens, response.completion_tokens
@@ -536,18 +545,46 @@ async def _ai_add_column(inputs: dict[str, Any], config: dict[str, Any], provide
 billing_user: ContextVar[User | None] = ContextVar("dataflow_billing_user", default=None)
 
 
+class StudentRunActor:
+    """A session student running their own dataflow: AI tokens are billed to the session / student pool, never to a teacher."""
+
+    is_student = True
+
+    def __init__(self, student: Any):
+        self.id = student.id
+        self.tenant_id = student.tenant_id
+        self.session_id = student.session_id
+        self.nickname = student.nickname
+
+
+# Nodes a student workflow may not use: they reach teacher-owned data (platform drive, saved-dataset library).
+# Chatbot nodes are allowed: students test their own dialogues in the Studio (never published to a class).
+STUDENT_BLOCKED_PREFIXES = ("platform.",)
+STUDENT_BLOCKED_NODES: set[str] = set()  # the dataset library is per student, so saved datasets are safe
+
+
+def _dataset_owner(actor: Any) -> dict[str, Any]:
+    return {"owner_student_id": actor.id} if isinstance(actor, StudentRunActor) else {"created_by_user_id": actor.id}
+
+
+def student_node_allowed(node_id: str) -> bool:
+    return node_id not in STUDENT_BLOCKED_NODES and not node_id.startswith(STUDENT_BLOCKED_PREFIXES)
+
+
 class CreditsExhausted(ValueError):
     """The teacher's (or school's) credit cap is reached: the run stops before the next AI call."""
 
 
-async def _credits_available(db: AsyncSession, actor: User) -> bool:
+async def _credits_available(db: AsyncSession, actor: User | StudentRunActor) -> bool:
     from app.services.credit_service import credit_service
     if not actor.tenant_id:
         return True
+    if isinstance(actor, StudentRunActor):
+        return await credit_service.check_availability(db, actor.tenant_id, session_id=actor.session_id, student_id=actor.id)
     return await credit_service.check_availability(db, actor.tenant_id, teacher_id=actor.id)
 
 
-async def _charge_llm_usage(db: AsyncSession, actor: User, node_type: str, provider: str | None, model: str | None,
+async def _charge_llm_usage(db: AsyncSession, actor: User | StudentRunActor, node_type: str, provider: str | None, model: str | None,
                             prompt_tokens: int, completion_tokens: int) -> None:
     """Bill the AI tokens a node used to the teacher's credits (same accounting as the rest of the platform)."""
     from app.services.credit_service import credit_service
@@ -561,21 +598,25 @@ async def _charge_llm_usage(db: AsyncSession, actor: User, node_type: str, provi
              "total_tokens": prompt_tokens + completion_tokens, "image_count": 0, "type": f"dataflow:{node_type}"},
             provider=provider, model=model,
         )
-        await credit_service.track_usage(db, actor.tenant_id, provider, model, cost, usage, actor.id)
+        if isinstance(actor, StudentRunActor):
+            await credit_service.track_usage(db, actor.tenant_id, provider, model, cost, usage,
+                                             session_id=actor.session_id, student_id=actor.id)
+        else:
+            await credit_service.track_usage(db, actor.tenant_id, provider, model, cost, usage, actor.id)
     except Exception:  # tracking must never break a run
         logger.exception("dataflow usage tracking failed (%s)", node_type)
 
 
 async def _execute(
     node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
-    db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
+    db: AsyncSession | None = None, actor: "User | StudentRunActor | None" = None, instance_id: str | None = None,
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
     """Run one node and charge its AI tokens to the actor's credits.
 
     Credits are checked before the first node of a run and again after every node that spent tokens, so a run
     (or a long loop) stops cleanly once the cap is reached instead of spending past it.
     """
-    payer = actor if isinstance(actor, User) else billing_user.get()
+    payer = actor if isinstance(actor, (User, StudentRunActor)) else billing_user.get()
     billed = db is not None and payer is not None
     if billed and state.get("_credits_check", True):
         if not await _credits_available(db, payer):
@@ -591,7 +632,7 @@ async def _execute(
 
 async def _execute_node(
     node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any],
-    db: AsyncSession | None = None, actor: User | None = None, instance_id: str | None = None,
+    db: AsyncSession | None = None, actor: "User | StudentRunActor | None" = None, instance_id: str | None = None,
 ) -> tuple[dict[str, Any], str | None, str | None, int, int]:
     if node_type == LOOP_NODE:
         return await _repeat_until(inputs, config, state, instance_id or "default")
@@ -601,8 +642,10 @@ async def _execute_node(
         return _iteration_output(rows[0][1], rows[0][0], 1, config), None, None, 0, 0
     if node_type == COLLECT_NODE:
         return _collect_output([(1, None, inputs.get("value"))], config), None, None, 0, 0
+    if isinstance(actor, StudentRunActor) and not student_node_allowed(node_type):
+        raise ValueError("Questo nodo non è disponibile per gli studenti")
     if node_type.startswith("platform."):
-        if db is None or actor is None:
+        if db is None or not isinstance(actor, User):
             raise ValueError("I nodi di piattaforma si eseguono con un account docente")
         return await platform_actions.run_platform_node(node_type, inputs, config, db, actor), None, None, 0, 0
     if node_type in DB_NODES:
@@ -614,8 +657,10 @@ async def _execute_node(
         if not dataset_id:
             raise ValueError("Seleziona un dataset dalla libreria")
         query = select(AgenticDataset).where(AgenticDataset.id == dataset_id)
-        if actor is not None and getattr(actor, "tenant_id", None):
-            query = query.where(AgenticDataset.tenant_id == actor.tenant_id)  # the library is per school
+        if isinstance(actor, StudentRunActor):
+            query = query.where(AgenticDataset.owner_student_id == actor.id)  # a student only reads their own library
+        elif actor is not None and getattr(actor, "tenant_id", None):
+            query = query.where(AgenticDataset.tenant_id == actor.tenant_id, AgenticDataset.owner_student_id.is_(None))  # the school library, never a student's private datasets
         result = await db.execute(query)
         dataset = result.scalar_one_or_none()
         if not dataset:
@@ -624,11 +669,11 @@ async def _execute_node(
     if node_type == "data.new_table":
         output = await execute_data_node(node_type, inputs, config, state)
         table = output["table"]
-        if config.get("save_to_library") and db is not None and actor is not None:
+        if config.get("save_to_library") and db is not None and isinstance(actor, (User, StudentRunActor)):
             if not table.get("rows"):
                 raise ValueError("La nuova tabella è vuota: niente da salvare in libreria")
             db.add(AgenticDataset(
-                tenant_id=actor.tenant_id, created_by_user_id=actor.id,
+                tenant_id=actor.tenant_id, **_dataset_owner(actor),
                 title=(str(config.get("title") or "").strip() or "Nuova tabella")[:180],
                 source="workflow", row_count=int(table.get("rowCount") or len(table["rows"])), table_json=table,
             ))
@@ -643,38 +688,61 @@ async def _execute_node(
         return await _ai_transform(inputs, config, provider, model)
     if node_type == "ai.generate_dataset":
         requested_rows = min(300, max(5, int(config.get("rows", 30))))
-        requested_columns = str(config.get("columns") or "").strip()
+        wanted = [slug_column(name) for name in split_columns(config.get("columns"))]
         description = str(config.get("prompt") or "Dataset didattico realistico")
+        columns_rule = (f"Usa ESATTAMENTE queste colonne, con questi nomi: {', '.join(wanted)}." if wanted
+                        else "Scegli 4-8 colonne coerenti.")
+        # Enough room for every row: a cut-off answer used to be parsed as CSV and became a garbage table.
+        budget = min(16000, max(4096, requested_rows * max(len(wanted), 6) * 28 + 600))
         response = await llm_service.generate(
             messages=[{"role": "user", "content": (
-                f"Genera {requested_rows} righe per questo dataset: {description}.\n"
-                f"Colonne richieste: {requested_columns or 'sceglile in modo coerente'}.\n"
-                "Restituisci esclusivamente un array JSON di oggetti, senza markdown né spiegazioni. "
-                "Mantieni tipi coerenti, valori plausibili e varietà sufficiente per analisi statistiche."
+                f"Genera {requested_rows} righe per questo dataset: {description}.\n{columns_rule}\n"
+                "I nomi delle colonne sono in minuscolo, senza spazi, accenti o simboli (snake_case ASCII, es. consumo_kwh). "
+                "Restituisci esclusivamente un array JSON di oggetti, uno per riga, con le stesse chiavi in ogni oggetto, senza markdown né spiegazioni. "
+                "Mantieni tipi coerenti (numeri come numeri, non stringhe), valori plausibili e varietà sufficiente per analisi statistiche."
             )}],
             system_prompt="Sei un generatore rigoroso di dataset tabellari sintetici per attività didattiche e machine learning.",
-            provider=provider, model=model, max_tokens=4096,
+            provider=provider, model=model, max_tokens=budget,
         )
-        raw = response.content.strip().removeprefix("```json").removeprefix("```csv").removeprefix("```").removesuffix("```").strip()
-        try:
-            parsed = json.loads(raw)
-            rows = parsed.get("rows") if isinstance(parsed, dict) else parsed
-        except (TypeError, ValueError):
-            rows = list(csv.DictReader(StringIO(raw)))
-        if not isinstance(rows, list) or not rows or not all(isinstance(row, dict) for row in rows):
-            raise ValueError("Il modello non ha restituito un dataset tabellare valido")
-        columns = list(dict.fromkeys(str(key) for row in rows for key in row.keys()))
-        table = {"columns": columns, "rows": rows[:requested_rows], "rowCount": min(len(rows), requested_rows)}
-        metadata = {"generated_by": f"{response.provider}/{response.model}", "requested_rows": requested_rows, "actual_rows": table["rowCount"], "columns": columns}
-        if db is not None and actor is not None:
+        rows = llm_rows(response.content)[:requested_rows]
+        prompt_total, completion_total = response.prompt_tokens or 0, response.completion_tokens or 0
+        for _ in range(2):  # the model stops early on long tables: ask only for the missing rows
+            missing = requested_rows - len(rows)
+            if missing <= 0 or len(rows) < 5:
+                break
+            sample = json.dumps(rows[-3:], ensure_ascii=False)
+            more = await llm_service.generate(
+                messages=[{"role": "user", "content": (
+                    f"Continua questo dataset ({description}) con {missing} righe NUOVE e diverse da quelle già generate. "
+                    f"Stesse colonne e stessi nomi di queste ultime righe: {sample}\n"
+                    "Restituisci esclusivamente un array JSON di oggetti, senza markdown né spiegazioni."
+                )}],
+                system_prompt="Sei un generatore rigoroso di dataset tabellari sintetici per attività didattiche e machine learning.",
+                provider=provider, model=model, max_tokens=budget,
+            )
+            prompt_total += more.prompt_tokens or 0
+            completion_total += more.completion_tokens or 0
+            try:
+                extra = llm_rows(more.content)
+            except ValueError:
+                break
+            if not extra:
+                break
+            rows = (rows + extra)[:requested_rows]
+        table = slug_table({"columns": list(dict.fromkeys(str(key) for row in rows for key in row.keys())), "rows": rows})
+        columns = table["columns"]
+        table = {"columns": columns, "rows": [{c: row.get(c) for c in columns} for row in table["rows"]], "rowCount": len(rows)}
+        metadata = {"generated_by": f"{response.provider}/{response.model}", "requested_rows": requested_rows, "actual_rows": table["rowCount"], "columns": columns,
+                    **({"warning": f"Il modello ha restituito {table['rowCount']} righe su {requested_rows}"} if table["rowCount"] < requested_rows else {})}
+        if db is not None and isinstance(actor, (User, StudentRunActor)):
             title = description.strip()[:170] or "Dataset generato"
             db.add(AgenticDataset(
-                tenant_id=actor.tenant_id, created_by_user_id=actor.id, title=title,
+                tenant_id=actor.tenant_id, **_dataset_owner(actor), title=title,
                 source="ai", row_count=table["rowCount"], table_json=table,
             ))
             await db.commit()
             metadata["saved_to_library"] = True
-        return {"table": table, "metadata": metadata}, response.provider, response.model, response.prompt_tokens, response.completion_tokens
+        return {"table": table, "metadata": metadata}, response.provider, response.model, prompt_total, completion_total
 
     message = inputs.get("message") or "Inizia la conversazione"
     message = value_to_text(message)
@@ -731,7 +799,7 @@ def _collect_output(items: list[tuple[int, Any, Any]], config: dict[str, Any]) -
 
 async def _run_loop(
     db: AsyncSession, run: AgenticWorkflowRun, graph: dict[str, Any], node_by_id: dict[str, dict[str, Any]],
-    origin: str, group: dict[str, Any], header_run: AgenticNodeRun, state: dict[str, Any], actor: User, sequence: list[int],
+    origin: str, group: dict[str, Any], header_run: AgenticNodeRun, state: dict[str, Any], actor: "User | StudentRunActor", sequence: list[int],
 ) -> dict[str, Any]:
     """Run the body of a «Per ogni riga» once per table row, then publish the «Fine ciclo» results."""
     header = node_by_id[origin]
@@ -815,7 +883,7 @@ async def _run_loop(
     return end_output
 
 
-async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: User | None = None, workflow_id: Any = None) -> dict[str, Any]:
+async def execute_node_isolated(node: dict[str, Any], inputs: dict[str, Any], db: AsyncSession | None = None, actor: "User | StudentRunActor | None" = None, workflow_id: Any = None) -> dict[str, Any]:
     """Execute one node without persisting a workflow run.
 
     The caller supplies resolved values keyed by input-port name.  This is used by

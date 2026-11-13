@@ -12,14 +12,16 @@ import { SpreadsheetEditor, type SheetCellStyles, type SheetChartConfig, type Sh
 import { AssistantPanel } from '@/components/agentic/AssistantPanel'
 import { AssistantLauncher, useFloatingDrag, type FloatingPoint } from '@/components/agentic/AssistantLauncher'
 import type { AssistantOp } from '@/lib/agenticAssistant'
-import { ArtifactPreviews, extractArtifacts, hasArtifacts, type NodeArtifacts } from '@/components/agentic/NodeArtifacts'
+import { ArtifactPreviews, extractArtifacts, hasArtifacts } from '@/components/agentic/NodeArtifacts'
+import { buildChatLog, isChatNode, type ChatEntry } from '@/components/agentic/chatLog'
 import { OutputExplorerModal, formatCompact, isPlot, isTable, type ExplorerTarget, type PlotAxes, type PlotValue, type TableValue } from '@/components/agentic/OutputExplorer'
 import { usePlotTheme } from '@/components/agentic/plotTheme'
-import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, BarChart3, Braces, ChevronDown, ChevronRight, Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2, ArrowLeft, Cloud, CloudOff, Eraser, Network, Play, Save, Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle, Minimize2, RefreshCw, Sparkles } from '@/components/icons'
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
+import { Activity, BarChart3, Braces, ChevronDown, ChevronRight, Database, FileSpreadsheet, GitBranch, GripVertical, Maximize2, MessageSquareText, MousePointer2, ArrowLeft, Cloud, CloudOff, Eraser, Network, Play, Save, Sigma, Split, Square, Trash2, Undo2, X, ZoomIn, ZoomOut, Minus, Paperclip, Grid3x3, Crosshair, AlertTriangle, Minimize2, RefreshCw, Sparkles, Share2 } from '@/components/icons'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl, tlDyn, tlOption } from '@/i18n/tl'
 import { localizeSpec } from '@/lib/dataflowI18n'
+const WorkflowShareDialog = lazy(() => import('@/components/agentic/WorkflowShareDialog'))
 
 // Generic platform nodes carry the union of their functions' ports/params: `showFor` lists the functions an item
 // belongs to, `variants[fn]` overrides label/default/options/type for one function.
@@ -134,17 +136,23 @@ const readStored = (key: string) => { try { return window.localStorage.getItem(k
 const writeStored = (key: string, value: string) => { try { window.localStorage.setItem(key, value) } catch { /* storage unavailable */ } }
 const typesCompatible = (from: string, to: string) => from === to || from === 'ANY' || to === 'ANY'
 // First node(s) of a dialogue: a legacy «Inizio conversazione», else chat nodes that no other dialogue node leads into.
-const isChatNode = (id: string) => id.startsWith('chatbot.') || id === 'llm_chatbot'
 function dialogueEntryIds(nodes: CanvasNode[], edges: Edge[]): string[] {
   const legacy = nodes.filter((node) => node.id === 'chatbot.start')
   if (legacy.length) return legacy.map((node) => node.instanceId)
   const byId = new Map(nodes.map((node) => [node.instanceId, node]))
   return nodes.filter((node) => isChatNode(node.id) && !edges.some((edge) => edge.to === node.instanceId && edge.sourcePort !== 'repeat' && isFlowNode(byId.get(edge.from)?.id || ''))).map((node) => node.instanceId)
 }
+// Nodes re-run automatically when their inputs change: free, deterministic and without side effects. AI, platform,
+// named tables, dialogue and loop nodes only get flagged as out of date, never re-run on their own.
+const autoRefreshable = (node: CanvasNode) => !(node.id.startsWith('ai.') || node.id === 'llm_chatbot' || node.id.startsWith('platform.')
+  || node.id.startsWith('db.') || node.id.startsWith('chatbot.') || node.id.startsWith('loop.') || node.id.startsWith('control.')
+  || (node.id === 'data.new_table' && Boolean(node.config.save_to_library)))
+const configKey = (config: Record<string, unknown>) => JSON.stringify(Object.entries(config).filter(([key]) => !key.startsWith('_')))
 const isFlowNode = (id: string) => id.startsWith('chatbot.') || id.startsWith('control.') || id === 'llm_chatbot'
 // «Ripeti» of a repeat-until node is the only port allowed to point backwards and close a loop.
 const LOOP_NODE = 'control.repeat_until'
 const LOOP_PORT = 'repeat'
+const AUTO_SKIP = new Error('auto-refresh skipped')
 
 // Port dots are colored by data type so compatible ends are recognisable before dragging.
 const TYPE_COLOR: Record<string, string> = { TABLE: '#0d9488', MODEL: '#16a34a', METRICS: '#ea580c', PARAMS: '#7c3aed', SERIES: '#0284c7', ARRAY_3D: '#db2777', ANY: '#737373' }
@@ -178,7 +186,7 @@ const NODE_WIDTH = 300
 // Fallback geometry, used only until the real port positions have been measured from the DOM.
 const PORT_TOP = 61
 const PORT_HEIGHT = 28
-const nodeWidth = (spec: NodeSpec) => spec.category === 'Visualizzazioni' ? 430 : spec.id === 'ml.kmeans_clustering' ? 500 : NODE_WIDTH
+const nodeWidth = (spec: NodeSpec) => spec.category === 'Visualizzazioni' ? 430 : spec.id === 'ml.kmeans_clustering' || spec.id === 'ml.forecast' ? 500 : NODE_WIDTH
 const defaults = (spec: NodeSpec) => Object.fromEntries(spec.params.map((param) => [param.name, param.default ?? '']))
 const functionOf = (spec: NodeSpec, config: Record<string, unknown>) =>
   spec.functions ? String(config.function || spec.params.find((param) => param.name === 'function')?.default || spec.functions[0]?.id || '') : ''
@@ -207,17 +215,23 @@ function template(specs: NodeSpec[]) {
   }
 }
 
-export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: string }) {
+/** Embedded mode (student module): no router, no teacher dataset library. `go` receives 'library', 'new' or a workflow id. */
+export type StudioEmbed = { workflowId: string | null; go: (target: string) => void }
+
+export default function AgenticWorkflowStudioPage({ sessionId, embedded }: { sessionId?: string; embedded?: StudioEmbed }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { workflowId: routeWorkflowId } = useParams<{ workflowId: string }>()
-  const { data: registryResponse } = useQuery({ queryKey: ['agentic-registry-v3'], queryFn: () => agenticApi.getRegistry(), staleTime: 60_000 })
+  const params = useParams<{ workflowId: string }>()
+  const routeWorkflowId = embedded ? embedded.workflowId ?? undefined : params.workflowId
+  const { data: registryResponse } = useQuery({ queryKey: [embedded ? 'agentic-registry-v3-student' : 'agentic-registry-v3'], queryFn: () => agenticApi.getRegistry(), staleTime: 60_000 })
   const specs = useMemo<NodeSpec[]>(() => registryResponse?.data?.nodes?.length ? (registryResponse.data.nodes as NodeSpec[]).map(localizeSpec) : FALLBACK_SPECS, [registryResponse])
   const initial = useMemo(() => template(FALLBACK_SPECS), [])
   const [nodes, setNodes] = useState<CanvasNode[]>(initial.nodes)
   const [edges, setEdges] = useState<Edge[]>(initial.edges)
   const [outputs, setOutputs] = useState<Record<string, Record<string, unknown>>>({})
   const [nodeErrors, setNodeErrors] = useState<Record<string, string>>({})
+  // Outputs computed from inputs that have changed since (kept for nodes that cost credits or have side effects).
+  const [staleOutputs, setStaleOutputs] = useState<Set<string>>(new Set())
   const [selectedId, setSelectedId] = useState('synthetic-1')
   const [connecting, setConnecting] = useState<{ nodeId: string; port: string; type: string } | null>(null)
   const [connectionPoint, setConnectionPoint] = useState<{ x: number; y: number } | null>(null)
@@ -233,6 +247,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const rewireRef = useRef<Edge | null>(null)
   const [rubberBox, setRubberBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [chatWindow, setChatWindow] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [title, setTitle] = useState(tl("Esperimento di regressione"))
   const [workflowId, setWorkflowId] = useState<string | null>(routeWorkflowId || null)
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null)
@@ -241,6 +256,8 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantBusy, setAssistantBusy] = useState(false)
+  const assistantBusyRef = useRef(false)
+  assistantBusyRef.current = assistantBusy
   const [assistantWorking, setAssistantWorking] = useState(false)
   const [assistantPos, setAssistantPos] = useState<FloatingPoint>(() => {
     try { const stored = JSON.parse(readStored('dataflow-assistant-pos') || 'null'); if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return { x: stored.x, y: stored.y } } catch { /* default */ }
@@ -435,14 +452,14 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
   }, [title, nodes, edges, workflowId])
 
   saveNowRef.current = async () => {
-    if (!hydratedRef.current || savingRef.current || !dirtyRef.current) return snapshotRef.current.workflowId
+    if (!hydratedRef.current || savingRef.current || !dirtyRef.current || assistantBusyRef.current) return snapshotRef.current.workflowId
     savingRef.current = true; setSaveState('saving')
     const snapshot = snapshotRef.current
     const payload = { title: snapshot.title.trim() || tl("Workflow senza titolo"), graph: { nodes: snapshot.nodes, edges: snapshot.edges } }
     try {
       const response = snapshot.workflowId ? await agenticApi.updateWorkflow(snapshot.workflowId, payload) : await agenticApi.createWorkflow(payload)
       const id = String(response.data.id)
-      if (!snapshot.workflowId) { setWorkflowId(id); navigate(`/teacher/agentic/${id}`, { replace: true }) }
+      if (!snapshot.workflowId) { setWorkflowId(id); if (!embedded) navigate(`/teacher/agentic/${id}`, { replace: true }) }
       lastSavedRef.current = JSON.stringify({ title: snapshot.title, nodes: snapshot.nodes, edges: snapshot.edges })
       dirtyRef.current = false; setSaveState('saved')
       return id
@@ -839,12 +856,19 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     await saveNowRef.current()
   }
 
-  const executeOne = async (node: CanvasNode) => {
-    const resolved = { ...outputs }
+  // `auto`: background refresh after an upstream change — it never runs a node that costs credits or has side effects,
+  // nor one whose required inputs are not all connected. A manual run always re-executes the clicked node.
+  const executeOne = async (node: CanvasNode, options: { resolved?: Record<string, Record<string, unknown>>; auto?: boolean } = {}) => {
+    const resolved = options.resolved || { ...outputs }
+    if (!options.auto) delete resolved[node.instanceId]
     const visiting = new Set<string>()
     const executeResolved = async (currentNode: CanvasNode): Promise<Record<string, unknown>> => {
       if (resolved[currentNode.instanceId]) return resolved[currentNode.instanceId]
       if (visiting.has(currentNode.instanceId)) throw new Error(tl("Il workflow contiene una connessione ciclica"))
+      if (options.auto) {
+        const linked = new Set(edges.filter((item) => item.to === currentNode.instanceId && !isLoopEdge(item)).map((item) => item.targetPort))
+        if (!autoRefreshable(currentNode) || specOf(currentNode).inputs.some((port) => port.required !== false && !linked.has(port.name))) throw AUTO_SKIP
+      }
       visiting.add(currentNode.instanceId)
       const inputValues: Record<string, unknown> = {}
       for (const edge of edges.filter((item) => item.to === currentNode.instanceId && !isLoopEdge(item))) {
@@ -862,6 +886,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
         const result = response.data.output || {}
         resolved[currentNode.instanceId] = result
         setOutputs((current) => ({ ...current, [currentNode.instanceId]: result }))
+        setStaleOutputs((current) => { if (!current.has(currentNode.instanceId)) return current; const next = new Set(current); next.delete(currentNode.instanceId); return next })
         setNodes((current) => current.map((item) => item.instanceId === currentNode.instanceId ? { ...item, status: 'complete' } : item))
         return result
       } catch (reason: any) {
@@ -873,8 +898,78 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     }
     try {
       await executeResolved(node)
-    } catch { /* The failing node already exposes its actionable error inline. */ }
+    } catch { /* The failing node already exposes its actionable error inline. */ return }
+    // What depends on the fresh result is now out of date: refresh it (free nodes) or flag it.
+    if (!options.auto) markStale(new Set([node.instanceId]), false)
   }
+
+  // Everything reachable downstream of `ids` (data edges only; «Ripeti» back-edges are excluded).
+  const descendantsOf = (ids: Set<string>, graphEdges: Edge[] = edges) => {
+    const found = new Set<string>(); const queue = [...ids]
+    while (queue.length) {
+      const id = queue.shift()!
+      for (const edge of graphEdges) if (edge.from === id && !isLoopEdge(edge) && !found.has(edge.to) && !ids.has(edge.to)) { found.add(edge.to); queue.push(edge.to) }
+    }
+    return found
+  }
+  const outputsRef = useRef(outputs)
+  outputsRef.current = outputs
+  const pendingRefreshRef = useRef<Set<string>>(new Set())
+  const refreshTimerRef = useRef<number | undefined>(undefined)
+  // Inputs of `changed` (and so of everything downstream) are different now: drop or flag the old results and queue
+  // the nodes that were showing a result for an automatic refresh.
+  function markStale(changed: Set<string>, includeChanged: boolean, graph: { nodes: CanvasNode[]; edges: Edge[] } = latestGraphRef.current) {
+    const affected = descendantsOf(changed, graph.edges)
+    if (includeChanged) changed.forEach((id) => affected.add(id))
+    if (!affected.size) return
+    const byId = new Map(graph.nodes.map((node) => [node.instanceId, node]))
+    const live = [...affected].filter((id) => outputsRef.current[id])
+    const keep = new Set(live.filter((id) => { const node = byId.get(id); return node && !autoRefreshable(node) }))
+    setOutputs((current) => { const next = { ...current }; affected.forEach((id) => { if (!keep.has(id)) delete next[id] }); return next })
+    setStaleOutputs((current) => new Set([...current, ...keep]))
+    setNodeErrors((current) => { const next = { ...current }; affected.forEach((id) => { delete next[id] }); return next })
+    setNodes((current) => current.map((node) => affected.has(node.instanceId) && (node.status === 'complete' || node.status === 'error') ? { ...node, status: 'idle' } : node))
+    live.filter((id) => !keep.has(id)).forEach((id) => pendingRefreshRef.current.add(id))
+    if (!pendingRefreshRef.current.size) return
+    window.clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = window.setTimeout(() => { void refreshRef.current() }, 650)
+  }
+  const refreshPending = async () => {
+    if (running) { refreshTimerRef.current = window.setTimeout(() => { void refreshRef.current() }, 1500); return }
+    const ids = [...pendingRefreshRef.current].filter((id) => nodes.some((node) => node.instanceId === id) && !outputs[id])
+    pendingRefreshRef.current = new Set()
+    // Run only the ends of each chain: executing them resolves (once, shared) every queued node upstream.
+    const ends = ids.filter((id) => !ids.some((other) => other !== id && descendantsOf(new Set([id])).has(other)))
+    const resolved = { ...outputs }
+    for (const id of ends) {
+      const node = nodes.find((item) => item.instanceId === id)
+      if (node) await executeOne(node, { resolved, auto: true })
+    }
+  }
+  const refreshRef = useRef(refreshPending)
+  refreshRef.current = refreshPending
+
+  // Any change of a node's configuration or of the links into it (by hand, undo, the assistant…) invalidates downstream.
+  const previousGraphRef = useRef<{ nodes: CanvasNode[]; edges: Edge[] }>({ nodes, edges })
+  useEffect(() => {
+    const previous = previousGraphRef.current
+    previousGraphRef.current = { nodes, edges }
+    const changed = new Set<string>()
+    const before = new Map(previous.nodes.map((node) => [node.instanceId, node.config]))
+    for (const node of nodes) {
+      const config = before.get(node.instanceId)
+      if (config && config !== node.config && configKey(config) !== configKey(node.config)) changed.add(node.instanceId)
+    }
+    if (previous.edges !== edges) {
+      const key = (edge: Edge) => `${edge.from}|${edge.sourcePort}|${edge.to}|${edge.targetPort}`
+      const was = new Set(previous.edges.map(key)); const is = new Set(edges.map(key))
+      edges.forEach((edge) => { if (!was.has(key(edge))) changed.add(edge.to) })
+      previous.edges.forEach((edge) => { if (!is.has(key(edge))) changed.add(edge.to) })
+    }
+    const present = new Set(nodes.map((node) => node.instanceId))
+    changed.forEach((id) => { if (!present.has(id)) changed.delete(id) })
+    if (changed.size) markStale(changed, true, { nodes, edges })
+  }, [nodes, edges])
 
   const setNodeStatus = (ids: string[], status: NodeStatus) => setNodes((current) => current.map((node) => ids.includes(node.instanceId) ? { ...node, status } : node))
   // While the server is working, light up where execution starts so the canvas never looks frozen.
@@ -1012,10 +1107,10 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
     if (activeRun) { try { const response = await agenticApi.stopRun(activeRun.id); setActiveRun(response.data) } catch { /* best effort */ } }
   }
   const reset = () => {
-    const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null); clearFocus()
+    const fresh = template(specs); setNodes(fresh.nodes); setEdges(fresh.edges); setOutputs({}); setStaleOutputs(new Set()); setNodeErrors({}); setSelectedId('synthetic-1'); setSelectedIds(new Set(['synthetic-1'])); setActiveRun(null); clearFocus()
   }
   const clearCanvas = () => {
-    setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection(); clearFocus()
+    setNodes([]); setEdges([]); setOutputs({}); setStaleOutputs(new Set()); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); cancelConnection(); clearFocus()
   }
   // The assistant builds on the canvas one operation at a time; each node is added with its final config and position.
   const assistantApply = (op: AssistantOp) => {
@@ -1125,10 +1220,10 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
 
   return <div className={`flex min-h-0 flex-col bg-neutral-100 text-slate-900 ${fullscreen ? 'teacher-ui fixed inset-0 z-[200]' : 'h-full'}`}>
     <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
-      <button onClick={() => navigate('/teacher/agentic')} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title={tl("Torna ai workflow")}><ArrowLeft className="h-4 w-4" /></button>
+      <button onClick={() => (embedded ? embedded.go('library') : navigate('/teacher/agentic'))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title={tl("Torna ai workflow")}><ArrowLeft className="h-4 w-4" /></button>
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white"><Network className="h-5 w-5" /></div>
       <div className="min-w-0"><div className="flex items-center gap-2"><SectionHeading section="/teacher/agentic" compact className="text-sm font-black md:text-base">{tl("Dataflow Studio")}</SectionHeading></div><label className="mt-1 flex items-center gap-1.5"><span className="text-[9px] font-black uppercase tracking-wide text-slate-400">{tl("Nome workflow")}</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={tl("Workflow senza titolo")} className="w-56 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" /></label></div>
-      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? tl("Salvataggio…") : saveState === 'dirty' ? tl("Modifiche non salvate") : saveState === 'loading' ? tl("Caricamento…") : saveState === 'error' ? tl("Errore salvataggio") : tl("Salvato sul server")}</span><Button onClick={() => setAssistantOpen((open) => !open)} tone={assistantOpen ? 'accent' : 'neutral'} surface={assistantOpen ? 'solid' : 'outline'} density="compact" className="rounded-full" title={tl("Descrivi cosa vuoi fare e l’assistente costruisce il workflow")}><Sparkles className="h-4 w-4" /><span className="hidden lg:inline">{tl("Assistente")}</span></Button><Button onClick={toggleFullscreen} tone="neutral" surface="outline" density="compact" className="rounded-full" title={fullscreen ? tl("Esci da tutta pagina") : tl("Apri a tutta pagina")}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}<span className="hidden xl:inline">{fullscreen ? tl("Riduci") : tl("Tutta pagina")}</span></Button><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> {tl("Pulisci")}</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> {tl("Salva")}</Button><Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} {tl("Esegui tutto")}</Button>{(running || activeRun?.status === 'running' || activeRun?.status === 'waiting') && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full" title={tl("Ferma l'esecuzione del workflow")}><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
+      <div className="ml-auto flex items-center gap-2"><span className={`hidden items-center gap-1.5 text-[10px] font-bold md:flex ${saveState === 'error' ? 'text-rose-600' : saveState === 'dirty' ? 'text-amber-600' : 'text-slate-400'}`}>{saveState === 'error' ? <CloudOff className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}{saveState === 'saving' ? tl("Salvataggio…") : saveState === 'dirty' ? tl("Modifiche non salvate") : saveState === 'loading' ? tl("Caricamento…") : saveState === 'error' ? tl("Errore salvataggio") : tl("Salvato sul server")}</span><Button onClick={() => setAssistantOpen((open) => !open)} tone={assistantOpen ? 'accent' : 'neutral'} surface={assistantOpen ? 'solid' : 'outline'} density="compact" className="rounded-full" title={tl("Descrivi cosa vuoi fare e l’assistente costruisce il workflow")}><Sparkles className="h-4 w-4" /><span className="hidden lg:inline">{tl("Assistente")}</span></Button><Button onClick={toggleFullscreen} tone="neutral" surface="outline" density="compact" className="rounded-full" title={fullscreen ? tl("Esci da tutta pagina") : tl("Apri a tutta pagina")}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}<span className="hidden xl:inline">{fullscreen ? tl("Riduci") : tl("Tutta pagina")}</span></Button><Button onClick={clearCanvas} tone="danger" surface="outline" density="compact" className="hidden rounded-full sm:flex"><Eraser className="h-4 w-4" /> {tl("Pulisci")}</Button><Button onClick={reset} tone="neutral" surface="outline" density="compact" className="hidden rounded-full lg:flex"><Undo2 className="h-4 w-4" /> Template</Button><Button onClick={save} tone="neutral" surface="outline" density="compact" className="rounded-full"><Save className="h-4 w-4" /> {tl("Salva")}</Button>{!embedded && <Button onClick={() => setShareOpen(true)} disabled={!workflowId} tone="neutral" surface="outline" density="compact" className="rounded-full" title={workflowId ? tl("Condividi con classi, sessioni o con un link / QR") : tl("Salva il workflow per condividerlo")}><Share2 className="h-4 w-4" /><span className="hidden xl:inline">{tl("Condividi")}</span></Button>}<Button onClick={run} disabled={running || !nodes.length} tone="accent" surface="solid" className="rounded-full">{running ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4" />} {tl("Esegui tutto")}</Button>{(running || activeRun?.status === 'running' || activeRun?.status === 'waiting') && <Button onClick={stopWorkflow} tone="danger" surface="solid" className="rounded-full" title={tl("Ferma l'esecuzione del workflow")}><Square className="h-3.5 w-3.5" /> Stop</Button>}</div>
     </header>
     <div className="flex min-h-0 flex-1">
       {libraryCollapsed && (
@@ -1242,6 +1337,7 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
                     return <div key={index} className="relative flex h-7 items-center justify-between text-[9px] font-bold text-slate-500">{input ? <button data-port-in={`${node.instanceId}::${input.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (connectingRef.current) connectTo(node.instanceId, input) }} title={`${input.label} · ${input.type}${input.required === false ? ` · ${tl("opzionale")}` : ''}`} className={`flex h-full max-w-[48%] items-center gap-1.5 pl-3 text-left transition-opacity ${connecting && !compatible ? 'opacity-30' : ''} ${compatible ? 'text-slate-900' : ''}`}><span data-anchor={`${node.instanceId}::in::${input.name}`} className={`absolute left-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${compatible ? 'df-port-target' : ''}`} style={{ background: inputLinked || compatible ? TYPE_COLOR[input.type] || '#737373' : '#fff', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[input.type] || '#737373'}`, scale: `${Math.max(1, 1 / zoom)}` }} /><span className="truncate">{input.label}</span>{input.required === false && <span className="text-[7px] font-semibold text-slate-300">{tl("opz.")}</span>}<code className="text-[7px]" style={{ color: TYPE_COLOR[input.type] || '#d4d4d4' }}>{input.type}</code></button> : <span />}{outputPort ? <button onPointerDown={(event) => { event.stopPropagation(); if (event.button === 0) startConnection(node.instanceId, outputPort, event.clientX, event.clientY) }} onClick={(event) => event.stopPropagation()} title={columnsOut.length ? `${outputPort.label} · ${outputPort.type}\n${tl("Colonne")}: ${columnsOut.join(', ')}` : tl("{0} · {1} — trascina su un nodo per collegare", outputPort.label, outputPort.type)} className="flex h-full max-w-[48%] cursor-crosshair items-center justify-end gap-1.5 pr-3 text-right"><code className="text-[7px]" style={{ color: TYPE_COLOR[outputPort.type] || '#d4d4d4' }}>{outputPort.type}{columnsOut.length ? ` · ${tl("{0} col", columnsOut.length)}` : ''}</code><span className="truncate">{outputPort.label}</span><span data-anchor={`${node.instanceId}::out::${outputPort.name}`} className={`absolute right-[-7px] top-[calc(50%-7px)] z-10 h-3.5 w-3.5 rounded-full border-2 border-white ${connecting?.nodeId === node.instanceId && connecting.port === outputPort.name ? 'ring-4 ring-slate-200' : ''}`} style={{ background: TYPE_COLOR[outputPort.type] || '#262626', boxShadow: `0 0 0 1.5px ${TYPE_COLOR[outputPort.type] || '#262626'}`, scale: `${Math.max(1, 1 / zoom)}` }} /></button> : <span />}</div>
                   })}</div>
 
+                  {staleOutputs.has(node.instanceId) && <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[9px] font-bold text-amber-800" onPointerDown={(event) => event.stopPropagation()}><AlertTriangle className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{tl("I dati a monte sono cambiati: riesegui per aggiornare")}</span><button type="button" onClick={() => executeOne(node)} className="shrink-0 rounded-md bg-amber-500 px-2 py-0.5 text-white hover:bg-amber-600">{tl("Riesegui")}</button></div>}
                   {stale.length > 0 && <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[9px] font-bold text-amber-800" onPointerDown={(event) => event.stopPropagation()}><AlertTriangle className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{tl("Colonne non trovate:")} {stale.join(', ')}</span><button type="button" onClick={() => setNodes((current) => current.map((item) => item.instanceId === node.instanceId ? { ...item, status: 'idle', config: recommendedConfig(item, available) } : item))} className="shrink-0 rounded-md bg-amber-500 px-2 py-0.5 text-white hover:bg-amber-600">{tl("Correggi")}</button></div>}
 
                   {(INLINE_PARAMS[node.id] || []).length > 0 && <div className="space-y-2 p-2.5 shadow-[0_1px_0_rgba(120,120,124,0.10)]" onPointerDown={(event) => event.stopPropagation()}>{(INLINE_PARAMS[node.id] || []).map((paramName) => { const param = spec.params.find((item) => item.name === paramName); if (!param) return null; return <ParamField key={param.name} param={param} value={node.config[param.name]} suggestedOptions={['COLUMN', 'COLUMNS'].includes(param.type) ? available : undefined} onChange={(value) => updateNodeParam(node.instanceId, param.name, value)} /> })}</div>}
@@ -1258,10 +1354,11 @@ export default function AgenticWorkflowStudioPage({ sessionId }: { sessionId?: s
           open={assistantOpen} workflowId={workflowId} style={assistantPanelStyle()} onHeaderPointerDown={(event) => assistantDrag.begin(event)} onWorking={setAssistantWorking}
           nodeCount={nodes.length} selectedId={selectedId || null} labelOf={(nodeId) => specOfId(nodeId)?.label || nodeId}
           snapshot={() => ({ nodes: nodes as never, edges: edges as never })}
-          restore={(snap) => { setNodes(snap.nodes as unknown as CanvasNode[]); setEdges(snap.edges as unknown as Edge[]); setOutputs({}); setNodeErrors({}) }}
-          reset={() => { setNodes([]); setEdges([]); setOutputs({}); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); clearFocus() }}
+          restore={(snap) => { setNodes(snap.nodes as unknown as CanvasNode[]); setEdges(snap.edges as unknown as Edge[]); setOutputs({}); setStaleOutputs(new Set()); setNodeErrors({}) }}
+          reset={() => { setNodes([]); setEdges([]); setOutputs({}); setStaleOutputs(new Set()); setNodeErrors({}); setSelectedId(''); setSelectedIds(new Set()); setActiveRun(null); clearFocus() }}
           applyOp={assistantApply} setLocked={setAssistantBusy} onTitle={assistantTitle} onClose={() => setAssistantOpen(false)} />
         {!assistantOpen && <AssistantLauncher pos={assistantDrag.clamp(assistantPos)} open={assistantOpen} working={assistantWorking} dragging={assistantDrag.dragging} onPointerDown={(event) => assistantDrag.begin(event, () => setAssistantOpen((open) => !open))} onToggle={() => setAssistantOpen((open) => !open)} />}
+        {shareOpen && workflowId && <Suspense fallback={null}><WorkflowShareDialog workflowId={workflowId} title={title || tl("Workflow")} onClose={() => setShareOpen(false)} /></Suspense>}
         {chatWindow && <FloatingChatWindow chatLog={chatLog} waitingInfo={activeRun?.status === 'waiting' ? { kind: String(activeRun.output?.kind || 'text'), options: Array.isArray(activeRun.output?.options) ? activeRun.output!.options as string[] : undefined } : null} chatInput={chatInput} setChatInput={setChatInput} onSend={answer} onClose={() => setChatWindow(false)} />}
 
         {error && <div className="absolute bottom-14 left-1/2 z-40 flex max-w-[min(40rem,90%)] -translate-x-1/2 items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-[11px] font-bold text-white shadow-lg"><span className="min-w-0 flex-1 truncate">{tlDyn(error)}</span><button onClick={() => setError('')} aria-label={tl("Chiudi errore")}><X className="h-3.5 w-3.5" /></button></div>}
@@ -1322,6 +1419,7 @@ function compactTick(value: unknown) {
 function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
   if (plot.kind === 'scatter3d') return <Mini3DPlot plot={plot} metrics={metrics} onExplore={onExplore} onOpenMetrics={onOpenMetrics} />
   if (plot.kind === 'bar') return <MiniBarPlot plot={plot} onExplore={onExplore} />
+  if (plot.kind === 'line') return <MiniLinePlot plot={plot} metrics={metrics} onExplore={onExplore} onOpenMetrics={onOpenMetrics} />
   const points = plot.x.map((x, index) => ({ x: Number(x), y: Number(plot.y[index]), group: String(plot.color?.[index] ?? tl("Dati")) })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
   const groups = [...new Set(points.map((point) => point.group))]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
@@ -1336,6 +1434,41 @@ function MiniPlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue
     <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div><p className="text-[11px] font-black text-slate-800">{plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico"))}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><span className="flex items-center gap-1.5"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-600">{plot.kind === 'histogram' ? tl("{0} intervalli", histogram.length) : tl("{0} punti", points.length)}</span><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></span></div>
     <div className="grid grid-cols-3 gap-px border-b border-slate-100 bg-slate-100">{plot.kind === 'histogram' ? <><ChartStat label={tl("Totale")} value={plot.y.reduce((sum, value) => sum + Number(value || 0), 0)} /><ChartStat label={tl("Picco")} value={Math.max(0, ...plot.y.map(Number))} /><ChartStat label={tl("Intervallo")} value={rangeLabel([...(plot.x || []), ...(plot.xEnd || [])].map(Number).filter(Number.isFinite))} /></> : <><ChartStat label={tl("Intervallo X")} value={rangeLabel(xs)} /><ChartStat label={tl("Intervallo Y")} value={rangeLabel(ys)} /><ChartStat label={tl("Correlazione")} value={correlation === null ? '—' : correlation.toFixed(3)} /></>}</div>
     <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title={tl("Doppio clic per aprire l’explorer")}>{plot.kind === 'histogram' ? <ResponsiveContainer width="100%" height="100%"><BarChart data={histogram} margin={{ top: 5, right: 12, bottom: 36, left: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis dataKey="bin" interval="preserveStartEnd" angle={-28} textAnchor="end" tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || tl("Valore"), position: 'insideBottom', offset: -28, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis allowDecimals={false} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={34} label={{ value: plot.labels?.y || tl("Conteggio"), angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, tl("Conteggio")]} labelFormatter={(label) => tl("Intervallo {0}", label)} /><Bar dataKey="value" name="Conteggio" radius={[4, 4, 0, 0]}>{histogram.map((_entry, index) => <Cell key={index} fill={CHART_COLORS[index % 2]} />)}</Bar></BarChart></ResponsiveContainer> : <ResponsiveContainer width="100%" height="100%"><ScatterChart margin={{ top: 5, right: 15, bottom: 28, left: 2 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" /><XAxis type="number" dataKey="x" name={plot.labels?.x || 'x'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} label={{ value: plot.labels?.x || 'x', position: 'insideBottom', offset: -18, fontSize: 9, fill: 'var(--text-primary)' }} /><YAxis type="number" dataKey="y" name={plot.labels?.y || 'y'} tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={42} label={{ value: plot.labels?.y || 'y', angle: -90, position: 'insideLeft', fontSize: 9, fill: 'var(--text-primary)' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} formatter={(value, name) => [compactTick(value), name]} />{groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 6 }} />}{groups.map((group, index) => <Scatter key={group} name={group} data={points.filter((point) => point.group === group)} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}</ScatterChart></ResponsiveContainer>}</div>
+    {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
+  </div>
+}
+
+// Time series (e.g. ml.forecast): one line per group (history / forecast) and the confidence band of the forecast.
+// The forecast line starts from the last observed point so the two lines read as one continuous series.
+function MiniLinePlot({ plot, metrics, onExplore, onOpenMetrics }: { plot: PlotValue; metrics?: Record<string, unknown>; onExplore: () => void; onOpenMetrics?: () => void }) {
+  const groupOf = (index: number) => String(plot.color?.[index] ?? tl("Dati"))
+  const groups = [...new Set(plot.x.map((_x, index) => groupOf(index)))]
+  const data: Array<Record<string, unknown>> = plot.x.map((x, index) => {
+    const row: Record<string, unknown> = { label: String(x), [groupOf(index)]: plot.y[index] }
+    const lower = plot.lower?.[index]; const upper = plot.upper?.[index]
+    if (lower !== null && lower !== undefined && upper !== null && upper !== undefined) row.band = [lower, upper]
+    return row
+  })
+  if (groups.length > 1) {
+    const joint = plot.x.findIndex((_x, index) => groupOf(index) === groups[1]) - 1
+    if (joint >= 0) { data[joint][groups[1]] = plot.y[joint]; if (plot.lower) data[joint].band = [plot.y[joint], plot.y[joint]] }
+  }
+  const colors = ['#475569', 'var(--logo-violet)', '#0d9488', '#ea580c']
+  const forecastColor = colors[Math.min(1, groups.length - 1)]
+  const tooltipStyle = { borderRadius: 10, border: '1px solid #e5e5e5', fontSize: 10, boxShadow: '0 10px 25px rgba(23,23,23,.12)' }
+  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-3 py-2.5"><div className="min-w-0"><p className="truncate text-[11px] font-black text-slate-800">{tlDyn(plot.title || "") || tl("Grafico")}</p><p className="mt-0.5 text-[8px] font-semibold text-slate-400">{plot.labels?.x || 'x'} · {plot.labels?.y || 'y'}</p></div><button type="button" onClick={(event) => { event.stopPropagation(); onExplore() }} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-[8px] font-black text-white hover:bg-slate-700" title={tl("Apri explorer interattivo")}><Maximize2 className="h-3 w-3" /> {tl("Esplora")}</button></div>
+    <div className="h-[255px] w-full cursor-zoom-in bg-slate-50/60 px-1 pb-1 pt-3" onDoubleClick={onExplore} title={tl("Doppio clic per aprire l’explorer")}>
+      <ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 12, bottom: 30, left: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-choice-border)" />
+        <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={18} angle={-24} textAnchor="end" tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} />
+        <YAxis tickFormatter={compactTick} tick={{ fontSize: 8, fill: 'var(--text-secondary)' }} width={40} domain={['auto', 'auto']} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [Array.isArray(value) ? value.map((item) => compactTick(item)).join(' – ') : compactTick(value), name === 'band' ? tl("Intervallo di confidenza") : name]} />
+        {plot.lower && <Area dataKey="band" name={tl("Intervallo di confidenza")} stroke="none" fill={forecastColor} fillOpacity={.15} isAnimationActive={false} legendType="none" />}
+        {groups.map((group, index) => <Line key={group} dataKey={group} name={tl(group)} stroke={colors[index % colors.length]} strokeWidth={2} strokeDasharray={index > 0 ? '5 4' : undefined} dot={data.length <= 40 ? { r: 2 } : false} connectNulls={false} isAnimationActive={false} />)}
+        {groups.length > 1 && <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />}
+      </ComposedChart></ResponsiveContainer>
+    </div>
     {metrics && <MetricCards metrics={metrics} onOpen={onOpenMetrics} />}
   </div>
 }
@@ -1510,40 +1643,4 @@ function FloatingChatWindow({ chatLog, waitingInfo, chatInput, setChatInput, onS
   </div>
 }
 
-type ChatEntry = { role: 'bot' | 'user'; text: string; artifacts?: NodeArtifacts; label?: string }
-
-function buildChatLog(run: WorkflowRun | null, nodes: CanvasNode[]): ChatEntry[] {
-  if (!run) return []
-  const log: ChatEntry[] = []
-  for (const item of run.nodes) {
-    if (item.status === 'idle' || item.status === 'skipped') continue
-    const node = nodes.find((candidate) => candidate.instanceId === item.node_instance_id)
-    if (!node) continue
-    const output = item.output || {}
-    if (node.id === 'chatbot.start') { const welcome = String(node.config.welcome_message ?? '').trim(); if (welcome) log.push({ role: 'bot', text: welcome }) }
-    else if (node.id === 'chatbot.say') log.push({ role: 'bot', text: String(output.message ?? node.config.message ?? '') })
-    else if (node.id === 'llm_chatbot' && Array.isArray(output.history)) (output.history as Array<{ role: string; content: string }>).forEach((turn) => log.push({ role: turn.role === 'user' ? 'user' : 'bot', text: String(turn.content ?? '') }))
-    else if (node.id === 'llm_chatbot') { const payload = output.response as { message?: string } | undefined; if (payload?.message) log.push({ role: 'bot', text: payload.message }) }
-    else if (node.id === 'chatbot.end') log.push({ role: 'bot', text: String(node.config.message ?? output.result ?? '') })
-    else if (node.id === 'chatbot.ask') {
-      log.push({ role: 'bot', text: String(node.config.question ?? '') })
-      if (item.status === 'completed' && output.response !== undefined) log.push({ role: 'user', text: String(output.response) })
-    } else if (node.id === 'chatbot.multi_choice') {
-      log.push({ role: 'bot', text: String(node.config.question ?? '') })
-      if (item.status === 'completed') {
-        const chosen = ['choice_1', 'choice_2', 'choice_3', 'choice_4'].findIndex((port) => output[port])
-        if (chosen >= 0) log.push({ role: 'user', text: String(node.config[`option_${chosen + 1}`] ?? '') })
-      }
-    } else if (node.id === 'chatbot.yes_no' && item.status === 'completed') {
-      log.push({ role: 'user', text: output.yes !== undefined && output.yes !== null ? tl("Sì") : 'No' })
-    }
-    // Any other node (image generation, documents, AI transforms…) that produced something visible is shown in the chat too.
-    if (item.status === 'completed' && !isChatNode(node.id)) {
-      const artifacts = extractArtifacts(output)
-      const text = node.id === 'ai.transform' && typeof output.text === 'string' && !output.table && !output.slides ? output.text : ''
-      if (hasArtifacts(artifacts) || text) log.push({ role: 'bot', text, label: item.label, artifacts: hasArtifacts(artifacts) ? artifacts : undefined })
-    }
-  }
-  return log
-}
 

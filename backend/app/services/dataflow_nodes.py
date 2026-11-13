@@ -6,10 +6,15 @@ are scoped to the current process and referenced by an opaque handle.
 """
 from __future__ import annotations
 
+import ast
+import csv
 import json
+import keyword
 import math
 import re
+import unicodedata
 import uuid
+from io import StringIO
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -108,8 +113,18 @@ NODE_SPECS = [
         param("start", "INTEGER", "Inizio", 0), param("end", "INTEGER", "Fine", 100), param("step", "INTEGER", "Passo", 1)], "Seleziona un intervallo di righe."),
     spec("data.merge_columns", "Combina tabelle", "Trasformazioni", [port("table_1", "TABLE"), port("table_2", "TABLE", required=False)], [port("table", "TABLE")],
          [param("merge_mode", "SELECT", "Modalità", "horizontal", options=["horizontal", "vertical"])], "Unisce tabelle per righe o colonne."),
-    spec("data.convert_to_number", "Converti in numero", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE")],
-         [param("columns", "COLUMNS", "Colonne", ""), param("decimal_separator", "SELECT", "Decimali", "auto", options=["auto", ",", "."])], "Converte stringhe numeriche europee o internazionali."),
+    spec("data.convert_to_number", "Codifica in numeri", "Trasformazioni", [port("table", "TABLE")], [port("table", "TABLE"), port("report", "METRICS", "Codifiche applicate")],
+         [param("columns", "COLUMNS", "Colonne (vuoto = tutte quelle non numeriche)", ""),
+          param("strategy", "SELECT", "Strategia", "auto", options=["auto", "ordinale", "one_hot", "binaria", "frequenza", "target", "etichetta", "numero"]),
+          param("overrides", "CODE", "Regole per colonna (una per riga): colonna:strategia oppure colonna:ordinale:basso|medio|alto", ""),
+          param("scale", "SELECT", "Scala delle codifiche ordinali", "indici", options=["indici", "0-1"]),
+          param("max_onehot", "INTEGER", "Massimo di categorie per one-hot", 10),
+          param("drop_first", "BOOLEAN", "One-hot senza la prima categoria", False),
+          param("target_column", "COLUMN", "Colonna target (per la codifica «target»)", ""),
+          param("decimal_separator", "SELECT", "Decimali (numeri scritti come testo)", "auto", options=["auto", ",", "."])],
+         "Trasforma le colonne testuali in numeri scegliendo la codifica giusta per ciascuna: numeri scritti come testo, intervalli («18-25» → 21,5), sì/no → 0/1, scale ordinate "
+         "(basso<medio<alto, mesi, giorni, livelli di studio, taglie, Likert…) → 0…n con minimo e massimo, date → giorni, poche categorie → one-hot, molte → frequenza o media del target. "
+         "Il report spiega cosa è stato fatto a ogni colonna."),
     spec("nlp.clean_text", "Pulisci testo", "Testo", [port("table", "TABLE")], [port("table", "TABLE")], [
         param("column", "COLUMN", "Colonna", "text"), param("lowercase", "BOOLEAN", "Minuscolo", True), param("remove_numbers", "BOOLEAN", "Rimuovi numeri", False)], "Normalizza una colonna testuale."),
     spec("nlp.sentiment", "Analisi del sentiment", "Testo", [port("table", "TABLE")], [port("table", "TABLE"), port("metrics", "METRICS")], [
@@ -155,6 +170,15 @@ NODE_SPECS = [
     spec("ml.classification", "Classificazione", "Machine Learning", [port("train", "TABLE")], [port("model", "MODEL"), port("metrics", "METRICS"), port("predictions", "TABLE")], [
         param("target_column", "COLUMN", "Target", "target"), param("feature_columns", "COLUMNS", "Feature", ""), param("algorithm", "SELECT", "Algoritmo", "logistic", options=["logistic", "random_forest", "gradient_boosting", "svc", "knn", "naive_bayes"]), param("cv_folds", "INTEGER", "Cross validation", 5, min=2, max=10)], "Addestra un classificatore e calcola accuracy, precision, recall e F1."),
     spec("ml.predict", "Applica modello", "Machine Learning", [port("model", "MODEL"), port("data", "TABLE")], [port("predictions", "TABLE")], [], "Applica un modello addestrato a nuovi dati."),
+    spec("ml.forecast", "Previsione serie temporale", "Machine Learning", [port("table", "TABLE", "Serie storica")],
+         [port("forecast", "TABLE", "Storico + previsione"), port("metrics", "METRICS", "Accuratezza (backtest)"), port("plot", "ANY", "Grafico")], [
+        param("time_column", "COLUMN", "Colonna del tempo (vuoto = automatica)", "", required=False),
+        param("value_column", "COLUMN", "Valore da prevedere (vuoto = prima numerica)", "", required=False),
+        param("horizon", "INTEGER", "Periodi da prevedere", 12, min=1, max=500),
+        param("method", "SELECT", "Metodo", "auto", options=["auto", "holt_winters", "linear_trend", "lag_regression", "seasonal_naive"]),
+        param("season_length", "INTEGER", "Stagionalità in periodi (0 = automatica, 1 = nessuna)", 0, min=0, max=400),
+        param("confidence", "SLIDER", "Intervallo di confidenza", .9, min=.5, max=.99, step=.05)],
+         "Prevede i valori futuri di una serie temporale (vendite mensili, temperature, presenze…): riconosce la colonna del tempo e la stagionalità, sceglie il metodo migliore con un backtest sugli ultimi periodi e restituisce previsione, intervallo di confidenza, accuratezza e grafico."),
     spec("ml.kmeans_clustering", "Clustering K-Means", "Machine Learning", [port("table", "TABLE")], [port("table", "TABLE"), port("metrics", "METRICS"), port("plot", "ANY")], [
         param("columns", "COLUMNS", "Feature", ""), param("clusters", "INTEGER", "Cluster", 3, min=2, max=12), param("normalize", "BOOLEAN", "Normalizza", True)], "Segmenta i dati e misura silhouette e Davies-Bouldin."),
     spec("plot.2d", "Grafico", "Visualizzazioni", [port("table", "TABLE")], [port("plot", "ANY")], [param("x", "COLUMN", "Asse X", "x"), param("y", "COLUMN", "Asse Y", "y"), param("z", "COLUMN", "Asse Z (opzionale, per 3D)", "", required=False), param("color", "COLUMN", "Colore", "", required=False)], "Scatter 2D; imposta anche l'asse Z per una vista 3D orientabile."),
@@ -434,6 +458,7 @@ def validate_table(table: Any, config: dict[str, Any]) -> dict[str, Any]:
         column, rule = column.strip(), rule.strip().lower()
         if not column or not rule:
             raise ValueError(f"Regola non valida «{line}»: usa colonna:regola")
+        column = resolve_column(df.columns, column)
         if column not in df.columns:
             raise ValueError(f"La regola «{line}» usa la colonna «{column}», che non esiste. Colonne: {', '.join(available_columns(df))}")
         if rule not in {"not_empty", "number", "integer", "in", "regex", "unique", "min_len", "max_len"}:
@@ -552,10 +577,224 @@ def available_columns(df: pd.DataFrame) -> list[str]:
     return [str(name) for name in df.columns]
 
 
+# ── column naming ────────────────────────────────────────────────────────────
+# Models and students write "month n°", "Month_N" or "mese" for the same column. Names are compared on a folded key
+# (accents, case, spaces and punctuation ignored) so a harmless naming difference never fails a run.
+
+def _fold(text: Any) -> str:
+    return "".join(ch for ch in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(ch))
+
+
+def column_key(name: Any) -> str:
+    return re.sub(r"[^0-9a-z]+", "", _fold(name).lower())
+
+
+def slug_column(name: Any) -> str:
+    """snake_case ASCII identifier: «Month N°» → month_n, «Emissioni CO₂ (Mt)» → emissioni_co2_mt."""
+    slug = re.sub(r"[^0-9a-z]+", "_", _fold(name).lower()).strip("_") or "colonna"
+    if slug[0].isdigit():
+        slug = f"c_{slug}"
+    return slug
+
+
+def slug_table(table: dict[str, Any]) -> dict[str, Any]:
+    """Rename a model-generated table's columns to clean unique identifiers (rows follow)."""
+    old = [str(c) for c in table.get("columns") or []]
+    new: list[str] = []
+    for name in old:
+        candidate, n = slug_column(name), 2
+        base = candidate
+        while candidate in new:
+            candidate, n = f"{base}_{n}", n + 1
+        new.append(candidate)
+    mapping = dict(zip(old, new))
+    rows = [{mapping.get(str(k), slug_column(k)): v for k, v in row.items()} for row in table.get("rows") or []]
+    return {**table, "columns": new, "rows": rows}
+
+
+def resolve_column(available: Any, name: Any) -> str:
+    """The real column that «name» refers to (exact, else same folded key when unambiguous); otherwise «name» unchanged."""
+    names = [str(c) for c in available]
+    text = str(name)
+    if text in names:
+        return text
+    key = column_key(text)
+    if key:
+        hits = [c for c in names if column_key(c) == key]
+        if len(hits) == 1:
+            return hits[0]
+    return text
+
+
+def resolve_list(available: Any, requested: Any) -> list[str]:
+    return [resolve_column(available, item) for item in columns(requested)]
+
+
+_EXPR_TOKEN = re.compile(r"""`[^`]*`|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^\W\d]\w*|\d+\.?\d*""")
+_EXPR_WORDS = {"and", "or", "not", "in", "is", "if", "else", "True", "False", "None", "true", "false"}
+
+
+def prepare_expression(df: pd.DataFrame, expression: str) -> tuple[pd.DataFrame, str]:
+    """A copy of ``df`` with identifier-safe column names, and ``expression`` rewritten to use them.
+
+    Columns can be written exactly, in backticks, or loosely (case, accents, spaces ↔ underscores).
+    String literals and attribute names (``.str``) are left alone.
+    """
+    safe: dict[str, str] = {}
+    used: set[str] = set()
+    for name in df.columns:
+        candidate, n = slug_column(name), 2
+        if candidate in _EXPR_WORDS or keyword.iskeyword(candidate):
+            candidate += "_"
+        base = candidate
+        while candidate in used:
+            candidate, n = f"{base}_{n}", n + 1
+        used.add(candidate)
+        safe[str(name)] = candidate
+    names = list(safe)
+
+    def swap(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token[0] in "'\"" or token[0].isdigit():
+            return token
+        if token[0] == "`":
+            return safe.get(resolve_column(names, token[1:-1]), token)
+        before = match.string[:match.start()].rstrip()
+        if before.endswith(".") or token in _EXPR_WORDS:
+            return token
+        actual = resolve_column(names, token)
+        return safe[actual] if actual in safe else token
+
+    return df.rename(columns=safe), _EXPR_TOKEN.sub(swap, expression)
+
+
+def _vector(fn: Any, fallback: Any) -> Any:
+    return lambda value, *rest: fn(value, *rest) if isinstance(value, (pd.Series, np.ndarray)) else fallback(value, *rest)
+
+
+_SAFE_FUNCTIONS: dict[str, Any] = {
+    "abs": np.abs, "round": lambda v, n=0: np.round(v, n), "sqrt": np.sqrt, "log": np.log, "log10": np.log10, "exp": np.exp,
+    "sin": np.sin, "cos": np.cos, "floor": np.floor, "ceil": np.ceil, "where": np.where, "clip": np.clip,
+    "min": np.minimum, "max": np.maximum,
+    "int": lambda v: v.astype(int) if isinstance(v, (pd.Series, np.ndarray)) else int(v),
+    "float": lambda v: v.astype(float) if isinstance(v, (pd.Series, np.ndarray)) else float(v),
+    "str": lambda v: v.astype(str) if isinstance(v, pd.Series) else str(v),
+    "pi": math.pi,
+}
+_ALLOWED_AST = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.Call, ast.Name, ast.Constant,
+                ast.Load, ast.Tuple, ast.List, ast.operator, ast.unaryop, ast.boolop, ast.cmpop)
+
+
+class _BoolToBitwise(ast.NodeTransformer):
+    """``a and b`` / ``not a`` on columns mean element-wise ``&`` / ``~``."""
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        self.generic_visit(node)
+        op = ast.BitAnd() if isinstance(node.op, ast.And) else ast.BitOr()
+        result = node.values[0]
+        for value in node.values[1:]:
+            result = ast.BinOp(left=result, op=op, right=value)
+        return result
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        self.generic_visit(node)
+        return ast.UnaryOp(op=ast.Invert(), operand=node.operand) if isinstance(node.op, ast.Not) else node
+
+
+def safe_eval(df: pd.DataFrame, expression: str) -> Any:
+    """Evaluate a column formula with a small whitelisted language (arithmetic, comparisons, int/float/round/sqrt/where…)."""
+    tree = ast.parse(expression.strip(), mode="eval")
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_AST):
+            raise ValueError("operazione non consentita nella formula")
+        if isinstance(node, ast.Call) and not (isinstance(node.func, ast.Name) and node.func.id in _SAFE_FUNCTIONS and not node.keywords):
+            raise ValueError("funzione non consentita nella formula")
+    tree = ast.fix_missing_locations(_BoolToBitwise().visit(tree))
+    namespace = {**_SAFE_FUNCTIONS, **{str(c): df[c] for c in df.columns}}
+    return eval(compile(tree, "<formula>", "eval"), {"__builtins__": {}}, namespace)  # noqa: S307 - AST-whitelisted
+
+
+def explain_expression_error(exc: Exception, df: pd.DataFrame, what: str) -> ValueError:
+    message = str(exc)
+    undefined = re.search(r"name '([^']+)' is not defined", message) or re.search(r"'([^']+)' is not defined", message)
+    if undefined:
+        word = undefined.group(1)
+        return ValueError(f"{what}: «{word}» non è una colonna né una funzione nota. Colonne disponibili: {', '.join(available_columns(df))}. "
+                          f"Se «{word}» è un testo, scrivilo tra virgolette (es. \"{word}\").")
+    return ValueError(f"{what} non valida ({message}). Colonne disponibili: {', '.join(available_columns(df))}")
+
+
+def canonical_config(node_type: str, config: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    """Map every COLUMN/COLUMNS parameter onto the real column names of the node's table input."""
+    spec_ = NODE_REGISTRY.get(node_type)
+    if not spec_ or not config:
+        return config
+    frames = []
+    for key in ("table", "train", "data", "table_1"):
+        value = inputs.get(key)
+        if isinstance(value, dict) and isinstance(value.get("columns"), list):
+            frames = [str(c) for c in value["columns"]]
+            break
+    if not frames:
+        return config
+    result = dict(config)
+    for item in spec_.get("params", []):
+        name, kind = item["name"], item["type"]
+        if name not in result or result[name] in (None, ""):
+            continue
+        if kind == "COLUMN":
+            result[name] = resolve_column(frames, result[name])
+        elif kind == "COLUMNS":
+            result[name] = ",".join(resolve_list(frames, result[name]))
+    return result
+
+
+def llm_rows(raw: str) -> list[dict[str, Any]]:
+    """Rows from a model answer: JSON array/object (also truncated or fenced), else delimited text. Never silent garbage."""
+    text = raw.strip()
+    fence = re.search(r"```(?:json|csv)?\s*(.*?)```", text, re.S)
+    if fence:
+        text = fence.group(1).strip()
+    start = min((i for i in (text.find("["), text.find("{")) if i >= 0), default=-1)
+    if start >= 0:
+        try:
+            parsed = json.loads(text[start:])
+        except ValueError:
+            parsed = None
+            decoder = json.JSONDecoder()
+            body = text[start:]
+            body = body[1:] if body.startswith("[") else body
+            items: list[Any] = []
+            index = 0
+            while True:  # salvage every complete object of an answer cut off by the token limit
+                brace = body.find("{", index)
+                if brace < 0:
+                    break
+                try:
+                    obj, index = decoder.raw_decode(body, brace)
+                except ValueError:
+                    break
+                items.append(obj)
+            parsed = items or None
+        if isinstance(parsed, dict):
+            parsed = next((v for v in parsed.values() if isinstance(v, list)), [parsed])
+        if isinstance(parsed, list) and parsed and all(isinstance(item, dict) for item in parsed):
+            return parsed
+        raise ValueError("Il modello non ha restituito una tabella valida (risposta troncata o in un formato inatteso): riprova con meno righe o meno colonne")
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        delimiter = max(",;\t|", key=lines[0].count)
+        if lines[0].count(delimiter) >= 1:
+            rows = list(csv.DictReader(StringIO("\n".join(lines)), delimiter=delimiter))
+            if rows and all(None not in row for row in rows):
+                return rows
+    raise ValueError("Il modello non ha restituito una tabella valida: riprova o descrivi meglio le colonne")
+
+
 def require_columns(df: pd.DataFrame, requested: Any, *, fallback: list[str] | None = None,
                     label: str = "colonne") -> list[str]:
     """Resolve configured columns and return actionable errors instead of pandas traces."""
-    names = columns(requested) or list(fallback or [])
+    names = resolve_list(df.columns, requested) or list(fallback or [])
     missing = [name for name in names if name not in df.columns]
     if missing:
         raise ValueError(
@@ -577,7 +816,7 @@ def rename_mapping(df: pd.DataFrame, raw: Any) -> dict[str, str]:
         if old and new:
             mapping[old] = new
     require_columns(df, list(mapping), label="colonne da rinominare")
-    return mapping
+    return {resolve_column(df.columns, old): new for old, new in mapping.items()}
 
 
 def numeric_values(value: Any) -> np.ndarray:
@@ -597,7 +836,7 @@ def preferred_column(df: pd.DataFrame, requested: Any, *, numeric: bool = False,
     excluded = exclude or set()
     candidates = [str(name) for name in (df.select_dtypes(include="number").columns if numeric else df.columns)
                   if str(name) not in excluded]
-    name = str(requested or "").strip()
+    name = resolve_column(df.columns, str(requested or "").strip())
     if name and name in df.columns and (not numeric or pd.api.types.is_numeric_dtype(df[name])) and name not in excluded:
         return name
     if candidates:
@@ -689,6 +928,7 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         left_on, right_on = str(config.get("left_on") or key).strip(), str(config.get("right_on") or key).strip()
         if not left_on or not right_on:
             raise ValueError("Indica la colonna chiave del join")
+        left_on, right_on = resolve_column(left.columns, left_on), resolve_column(right.columns, right_on)
         for column, frame, side in ((left_on, left, "sinistra"), (right_on, right, "destra")):
             if column not in frame.columns:
                 raise ValueError(f"La colonna chiave «{column}» non esiste nella tabella {side}. Colonne: {', '.join(available_columns(frame))}")
@@ -717,10 +957,15 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         elif node_type == "data.filter":
             expression = str(config.get("expression") or "").strip()
             if expression:
+                safe_df, safe_expr = prepare_expression(df, expression)
                 try:
-                    df = df.query(expression)
-                except Exception as exc:
-                    raise ValueError(f"Espressione di filtro non valida ({exc}). Colonne disponibili: {', '.join(available_columns(df))}") from exc
+                    df = df.loc[safe_df.query(safe_expr).index]
+                except Exception as first:
+                    try:
+                        mask = safe_eval(safe_df, safe_expr)
+                        df = df.loc[mask.astype(bool)]
+                    except Exception:
+                        raise explain_expression_error(first, df, "Espressione di filtro") from None
         elif node_type == "data.rename_columns": df = df.rename(columns=rename_mapping(df, config.get("rename")))
         elif node_type == "data.sort":
             name = preferred_column(df, config.get("column"), label="colonna di ordinamento")
@@ -742,12 +987,17 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
             name = str(config.get("name") or "").strip() or "nuova_colonna"
             expression = str(config.get("expression") or "").strip()
             if not expression: raise ValueError("Scrivi una formula, ad esempio costo_euro / kwh")
+            safe_df, safe_expr = prepare_expression(df, expression)
             try:
-                df[name] = df.eval(expression)
-            except Exception as exc:
-                raise ValueError(f"Formula non valida ({exc}). Colonne disponibili: {', '.join(available_columns(df))}") from exc
+                result = safe_df.eval(safe_expr)
+            except Exception as first:
+                try:
+                    result = safe_eval(safe_df, safe_expr)
+                except Exception:
+                    raise explain_expression_error(first, df, "Formula") from None
+            df[name] = result
         elif node_type == "data.distinct":
-            subset = [name for name in columns(config.get("columns")) if name in df.columns]
+            subset = [name for name in resolve_list(df.columns, config.get("columns")) if name in df.columns]
             df = df.drop_duplicates(subset=subset or None)
         elif node_type == "data.dropna": df = df.dropna(how=str(config.get("how", "any")))
         elif node_type == "data.slice": df = df.iloc[int(config.get("start", 0)):int(config.get("end", len(df))):max(1, int(config.get("step", 1)))]
@@ -759,11 +1009,10 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
                 frames[1] = frames[1].rename(columns={name: f"{name}_2" for name in clash})
             df = pd.concat(frames, axis=0 if config.get("merge_mode") == "vertical" else 1, ignore_index=config.get("merge_mode") == "vertical")
         elif node_type == "data.convert_to_number":
-            for name in require_columns(df, config.get("columns"), fallback=list(df.columns), label="colonne da convertire"):
-                series = df[name].astype(str).str.replace(r"[^\d,\.\-]", "", regex=True)
-                if config.get("decimal_separator", "auto") == "," or (config.get("decimal_separator", "auto") == "auto" and series.str.contains(",").any()):
-                    series = series.str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-                df[name] = pd.to_numeric(series, errors="coerce")
+            from app.services.dataflow_encoding import encode_table
+            requested = require_columns(df, config.get("columns"), fallback=[], label="colonne da codificare") if columns(config.get("columns")) else []
+            df, report = encode_table(df, config, requested)
+            return {"table": json_value(df.reset_index(drop=True)), "report": json_value(report)}
         elif node_type == "data.transform":
             op = config.get("operation", "standardize")
             fallback = list(df.columns) if op == "fillna" else list(df.select_dtypes(include="number").columns)
@@ -826,7 +1075,7 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         return {"analysis": {"expression": str(expression), "derivative": str(derivative), "integral": str(integral), "zeros": [str(item) for item in sp.solve(expression, x)], "critical_points": [str(item) for item in sp.solve(derivative, x)], "latex": sp.latex(expression)}}
     if node_type in {"ml.regression", "ml.classification"}:
         df = table_frame(inputs["train"]).dropna()
-        requested_target = str(config.get("target_column") or "").strip()
+        requested_target = resolve_column(df.columns, str(config.get("target_column") or "").strip())
         target = requested_target if requested_target in df.columns else ("target" if "target" in df.columns else str(df.columns[-1]))
         feats = require_columns(df, config.get("feature_columns"), fallback=[str(c) for c in df.select_dtypes(include="number").columns if str(c) != target], label="feature")
         if target not in df.columns: raise ValueError(f"Target '{target}' non presente")
@@ -854,6 +1103,9 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
         if not stored: raise ValueError("Il modello non è più disponibile: riesegui il nodo di training")
         df = table_frame(inputs["data"]); features = require_columns(df, stored["features"], label="feature richieste dal modello")
         df["prediction"] = stored["model"].predict(df[features]); return {"predictions": json_value(df)}
+    if node_type == "ml.forecast":
+        from app.services.dataflow_forecast import forecast_table
+        return forecast_table(table_frame(inputs["table"]), config)
     if node_type == "ml.kmeans_clustering":
         df = table_frame(inputs["table"]); names = require_columns(df, config.get("columns"), fallback=[str(c) for c in df.select_dtypes(include="number").columns], label="feature")
         if not names: raise ValueError("Il clustering richiede almeno una colonna numerica")
@@ -920,3 +1172,18 @@ async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict
     if node_type == "control.counter":
         counters = state.setdefault("counters", {}); key = str(config.get("counter_id", "default")); counters[key] = counters.get(key, int(config.get("start", 0))) + int(config.get("step", 1)); return {"value": counters[key]}
     raise ValueError(f"Esecutore non disponibile per {node_type}")
+
+
+_execute_data_node_raw = execute_data_node
+
+
+async def execute_data_node(node_type: str, inputs: dict[str, Any], config: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """Run a data node with column names resolved loosely, and plain-language errors instead of a bare ``KeyError``."""
+    try:
+        return await _execute_data_node_raw(node_type, inputs, canonical_config(node_type, config, inputs), state)
+    except KeyError as exc:
+        key = str(exc.args[0]) if exc.args else "?"
+        ports = {item["name"] for item in NODE_REGISTRY.get(node_type, {}).get("inputs", [])}
+        if key in ports:
+            raise ValueError(f"Manca un collegamento: collega un nodo alla porta «{key}» di questo nodo") from None
+        raise ValueError(f"Colonna o valore «{key}» non trovato: controlla i nomi delle colonne nella configurazione") from None

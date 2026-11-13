@@ -8,6 +8,7 @@ from app.models.rag import RAGDocument, RAGChunk, RAGEmbedding, RAGCitation
 from app.models.ml import MLDataset, MLExperiment, MLResult
 from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
 from app.models.document_draft import DocumentDraft
+from app.models.document_share import DocumentShareLink
 from app.models.template_version import TenantTemplateVersion
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.agentic import AgenticWorkflow, AgenticWorkflowRun, AgenticNodeRun

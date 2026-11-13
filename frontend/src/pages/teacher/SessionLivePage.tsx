@@ -22,7 +22,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Bot, Brain, MessageSquare,
   ClipboardList, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, ChevronRight, FileCode2, Code2, FileText, Filter, ArrowUpDown,
+  MonitorPlay, ChevronRight, FileCode2, GitBranch, Code2, FileText, Filter, ArrowUpDown,
   ListChecks, SquareKanban, Video
 } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
@@ -259,7 +259,7 @@ export default function SessionLivePage() {
 
   // Some optional modules are off by default and have no row until first enabled —
   // surface them in the toggle list so the teacher can turn them on.
-  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'models3d_ai', 'smart_canvas', 'chat_collaboration']
+  const MODULE_ORDER = ['chatbot', 'self_assessment', 'notebook', 'boards', 'classification', 'chat', 'coding', 'models3d', 'models3d_ai', 'smart_canvas', 'dataflow', 'chat_collaboration']
   const displayModules = [
     ...MODULE_ORDER
       .filter((k) => !modules.some((m) => m.module_key === k))
@@ -504,6 +504,12 @@ export default function SessionLivePage() {
                             label: tl("Lavagne intelligenti"),
                             subtitle: tl("Lavagne collaborative"),
                             desc: tl("Gli studenti vedono le lavagne condivise dal docente in tempo reale e possono crearne di proprie. Se il docente abilita la modifica, usano anche l’assistente AI."),
+                          },
+                          dataflow: {
+                            icon: GitBranch,
+                            label: 'Dataflow Studio',
+                            subtitle: tl("Analisi dati a nodi"),
+                            desc: tl("Gli studenti costruiscono i propri flussi di dati, grafici e modelli di machine learning collegando nodi. I workflow sono privati; i nodi AI usano i crediti degli studenti."),
                           },
                           models3d_ai: {
                             icon: MushroomIcon,

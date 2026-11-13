@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -12,7 +12,9 @@ class AgenticDataset(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
-    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Teacher datasets are shared school-wide; a student's datasets are private to that student.
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(180), nullable=False)
     source = Column(String(20), nullable=False, default="ai", server_default="ai")
     row_count = Column(Integer, nullable=False, default=0, server_default="0")
@@ -25,11 +27,20 @@ class AgenticWorkflow(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
-    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # A workflow belongs to a teacher account OR to a session student (never both): teacher queries filter on created_by_user_id.
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(180), nullable=False, default="Workflow senza titolo")
     status = Column(String(32), nullable=False, default="draft", server_default="draft")
     version = Column(Integer, nullable=False, default=1, server_default="1")
     graph_json = Column(JSONB, nullable=False, default=dict, server_default="{}")
+    # Sharing (teachers only): classes / single sessions whose students can run it, and an anonymous link (+ QR).
+    shared_class_ids = Column(JSONB, nullable=False, default=list, server_default="[]")
+    shared_session_ids = Column(JSONB, nullable=False, default=list, server_default="[]")
+    public_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    public_token = Column(String(64), nullable=True, unique=True, index=True)
+    # A student's own copy of a workflow the teacher shared with their class/session (the student may edit it freely).
+    source_workflow_id = Column(UUID(as_uuid=True), ForeignKey("agentic_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -107,7 +118,8 @@ class AgenticAssistantConversation(Base):
     __tablename__ = "agentic_assistant_conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     workflow_id = Column(UUID(as_uuid=True), ForeignKey("agentic_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(180), nullable=False, default="Nuova conversazione", server_default="Nuova conversazione")
     messages = Column(JSONB, nullable=False, default=list, server_default="[]")

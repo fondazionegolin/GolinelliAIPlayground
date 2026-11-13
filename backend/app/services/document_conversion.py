@@ -1176,9 +1176,10 @@ def _is_transparent(value: Any) -> bool:
 def _pptx_box(block: dict[str, Any], canvas_width: float, canvas_height: float) -> tuple[float, float, float, float]:
     x = max(0.0, min(canvas_width, float(block.get("x", 0) or 0)))
     y = max(0.0, min(canvas_height, float(block.get("y", 0) or 0)))
-    width = max(1.0, float(block.get("width", 1) or 1))
-    height = max(1.0, float(block.get("height", 1) or 1))
-    return x, y, min(width, max(1.0, canvas_width - x)), min(height, max(1.0, canvas_height - y))
+    minimum = 0.0 if block.get("type") == "line" else 1.0
+    width = max(minimum, float(block.get("width", minimum) or minimum))
+    height = max(minimum, float(block.get("height", minimum) or minimum))
+    return x, y, min(width, max(minimum, canvas_width - x)), min(height, max(minimum, canvas_height - y))
 
 
 def _set_shape_rotation(shape: Any, block: dict[str, Any]) -> None:
@@ -1258,7 +1259,12 @@ def _add_text_to_slide(
     if "<table" in text:
         _add_table_to_slide(slide, text, x, y, width, height, style, scale_x)
         return
-    box = slide.shapes.add_textbox(PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
+    radius = float(style.get("borderRadius") or 0)
+    if radius > 0 and not _is_transparent(style.get("backgroundColor")):
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
+        box.adjustments[0] = min(0.5, radius * scale_x / max(0.01, min(width, height)))
+    else:
+        box = slide.shapes.add_textbox(PptxInches(x), PptxInches(y), PptxInches(width), PptxInches(height))
     frame = box.text_frame
     _configure_text_frame(frame, style, scale_x, scale_y)
     # Canvas pixels → points so text keeps its size relative to the slide (canvas width = slide width).
@@ -1283,6 +1289,24 @@ def _cover_image_bytes(data: bytes, width: float, height: float) -> bytes:
         return output.getvalue()
 
 
+def _slide_image_bytes(data: bytes, width: float, height: float, style: dict) -> bytes:
+    """Match object-cover and the CSS corner mask, including transparent icon assets."""
+    raw = _cover_image_bytes(data, width, height)
+    radius = max(0, float(style.get("borderRadius") or 0))
+    if radius:
+        from PIL import ImageDraw
+        with Image.open(io.BytesIO(raw)) as image:
+            mask = Image.new("L", image.size, 0)
+            ImageDraw.Draw(mask).rounded_rectangle((0, 0, image.width - 1, image.height - 1),
+                                                   radius=radius * image.width / max(1, width), fill=255)
+            from PIL import ImageChops
+            image.putalpha(ImageChops.multiply(image.getchannel("A"), mask))
+            output = io.BytesIO()
+            image.save(output, format="PNG")
+            return output.getvalue()
+    return raw
+
+
 def _add_shape_to_slide(
     slide: Any,
     block: dict[str, Any],
@@ -1290,6 +1314,7 @@ def _add_shape_to_slide(
     y: float,
     width: float,
     height: float,
+    scale_x: float,
 ) -> None:
     style = block.get("style") or {}
     if block.get("type") == "line":
@@ -1311,6 +1336,8 @@ def _add_shape_to_slide(
             PptxInches(width),
             PptxInches(height),
         )
+        if shape_type == MSO_SHAPE.ROUNDED_RECTANGLE:
+            shape.adjustments[0] = min(0.5, float(style.get("cornerRadius") or 0) * scale_x / max(0.01, min(width, height)))
         fill = style.get("fill")
         if _is_transparent(fill):
             shape.fill.background()
@@ -1322,7 +1349,11 @@ def _add_shape_to_slide(
         shape.line.fill.background()
     else:
         shape.line.color.rgb = _pptx_rgb(stroke, "1E293B")
-        shape.line.width = PptxPt(max(0.25, float(style.get("strokeWidth") or 1) * 0.75))
+        stroke_width = float(style.get("strokeWidth", 1))
+        if stroke_width <= 0:
+            shape.line.fill.background()
+        else:
+            shape.line.width = PptxPt(max(0.25, stroke_width * scale_x * 72))
     _set_shape_rotation(shape, block)
 
 
@@ -1367,10 +1398,9 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
         if not _is_transparent(background):
             slide.background.fill.solid()
             slide.background.fill.fore_color.rgb = _pptx_rgb(background, "FFFFFF")
-        blocks = sorted(
-            (block for block in native_slide.get("blocks") or [] if not block.get("hidden")),
-            key=lambda block: float(block.get("zIndex", 0) or 0),
-        )
+        blocks = [b for _, b in sorted(enumerate(native_slide.get("blocks") or []),
+                  key=lambda item: float(item[1].get("zIndex") if item[1].get("zIndex") is not None else item[0]))
+                  if not b.get("hidden")]
         for block in blocks:
             block_x, block_y, block_width, block_height = _pptx_box(block, canvas_width, canvas_height)
             x, y = block_x * scale_x, block_y * scale_y
@@ -1383,6 +1413,16 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
                 _configure_text_frame(frame, style, scale_x, scale_y)
                 pptx_rich.fill_text_frame(frame, str(block.get("content") or ""), style, px_to_pt=scale_x * 72)
                 _set_shape_rotation(title_placeholder, block)
+                title_placeholder.fill.background()
+                if not _is_transparent(style.get("backgroundColor")):
+                    title_placeholder.fill.solid()
+                    title_placeholder.fill.fore_color.rgb = _pptx_rgb(style["backgroundColor"], "FFFFFF")
+                title_placeholder.line.fill.background()
+                # A layout placeholder starts below all added shapes. Reinsert it at its actual
+                # paint position, otherwise the slide background covers the title in Google Slides.
+                element = title_placeholder._element
+                element.getparent().remove(element)
+                slide.shapes._spTree.insert_element_before(element, "p:extLst")
             elif block.get("type") == "text":
                 _add_text_to_slide(
                     slide,
@@ -1397,7 +1437,7 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
                 if match:
                     raw = base64.b64decode(match.group(2))
                     try:
-                        image = _cover_image_bytes(raw, block_width, block_height)
+                        image = _slide_image_bytes(raw, block_width, block_height, block.get("style") or {})
                     except Exception:
                         image = raw  # undecodable by Pillow: let PowerPoint render the original bytes
                     try:
@@ -1406,8 +1446,13 @@ def _native_to_pptx(content: dict[str, Any], title: str) -> bytes:
                     except Exception:
                         pass
             elif block.get("type") in {"rectangle", "ellipse", "line"}:
-                _add_shape_to_slide(slide, block, x, y, width, height)
-        pptx_rich.write_notes(slide, str(native_slide.get("notes") or ""))
+                _add_shape_to_slide(slide, block, x, y, width, height, scale_x)
+        # Match the presenter's fallback title for otherwise empty / shape-only slides.
+        if not any(b.get("type") in {"text", "image"} for b in native_slide.get("blocks") or []):
+            _add_text_to_slide(slide, slide_title or title, 32 * scale_x, 32 * scale_y,
+                               (canvas_width - 64) * scale_x, 80 * scale_y,
+                               {"fontSize": 36, "fontWeight": "bold", "color": "#0f172a"}, scale_x, scale_y)
+        pptx_rich.write_notes(slide, str(native_slide.get("speakerNotes") or native_slide.get("notes") or ""))
     output = io.BytesIO()
     presentation.save(output)
     return output.getvalue()

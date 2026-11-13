@@ -1999,7 +1999,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-100 lg:flex-row lg:bg-transparent">
+    <div className="relative flex h-full min-h-0 flex-col bg-slate-100 lg:flex-row lg:bg-transparent">
       {showDesignStudio && (
         <DesignSystemStudio
           onClose={() => setShowDesignStudio(false)}

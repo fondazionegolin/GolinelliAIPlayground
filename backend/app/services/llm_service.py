@@ -138,6 +138,25 @@ def _openai_supports_web_search(model: str) -> bool:
     return not (model.startswith('o1') or model.startswith('o3'))
 
 
+# Appended to every chat/generation system prompt. Many platform prompts are written in Italian and
+# several say "rispondi in italiano"; without this the models answer in Italian even when the
+# person writes to them in English.
+LANGUAGE_RULE_MARKER = "[LANGUAGE POLICY]"
+LANGUAGE_RULE = (
+    f"\n\n{LANGUAGE_RULE_MARKER} Write all natural-language output (explanations, reasoning, chat replies, "
+    "comments, UI text you generate) in the language the end user wrote in: use the language of the user's own "
+    "words in their most recent message or brief, ignoring the platform's instruction scaffolding, which may be in "
+    "Italian. If the user writes in English, reply in English even if these instructions say Italian. "
+    "Fall back to Italian only when the user's language is unclear. Never translate code, identifiers, file "
+    "paths, JSON keys or required output formats."
+)
+
+
+def with_language_rule(system_prompt: Optional[str]) -> str:
+    base = system_prompt or ""
+    return base if LANGUAGE_RULE_MARKER in base else base + LANGUAGE_RULE
+
+
 class LLMService:
     def __init__(self):
         self.openai_client = None
@@ -179,6 +198,7 @@ class LLMService:
         anthropic_options: Optional[dict] = None,
     ) -> LLMResponse:
         """``anthropic_options`` (e.g. ``thinking``, ``output_config``) is forwarded to Anthropic only."""
+        system_prompt = with_language_rule(system_prompt)
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or default_model_for(provider)
         model = normalize_llm_model(provider, model) or model
@@ -519,6 +539,7 @@ class LLMService:
         DeepSeek reasoning models (ignored by other providers). `reasoning_sink`, when given, receives the model's hidden
         thinking text (DeepSeek reasoning models) so callers can show progress during long,
         otherwise silent thinking phases."""
+        system_prompt = with_language_rule(system_prompt)
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or default_model_for(provider)
         use_web_search = allow_web_search and _needs_web_search(messages)

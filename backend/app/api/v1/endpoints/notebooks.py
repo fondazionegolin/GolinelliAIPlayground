@@ -376,6 +376,11 @@ async def _generate_text_accumulated(
             provider=prov, model=mdl,
             temperature=temperature, max_tokens=max_tokens,
             allow_web_search=False,
+            # DeepSeek V4 / OpenRouter reasoning models otherwise "think" silently and can spend the whole
+            # output budget before writing a single character (-> empty answer, "Expecting value: char 0").
+            # Larger prompts (e.g. with an image spec) make this far more likely. The prompt already asks
+            # for an explicit "reasoning" field.
+            thinking=False,
         ):
             parts.append(chunk)
         return "".join(parts)
@@ -625,13 +630,13 @@ Regole sugli edit:
         "content": (
             f"Richiesta dello studente: {user_prompt}\n\n"
             f"Errori o output console riportati:\n{last_output[:1200] or '(nessuno)'}\n{failure_note}\n"
-            f"File corrente:\n```{code_fence}\n{active_source[:40000]}\n```"
+            f"File corrente:\n```{code_fence}\n{active_source[:80000]}\n```"
         ),
     }]
     last_error: Exception | None = None
     for attempt in range(2):
         raw = await _generate_text_accumulated(
-            messages, system_prompt, provider, model, temperature=0.2, max_tokens=8000,
+            messages, system_prompt, provider, model, temperature=0.2, max_tokens=16000,
         )
         try:
             parsed = _extract_json_object(raw)
@@ -713,9 +718,54 @@ async def _notebook_review_edits(
 PROMPT_ANALYST_PROGRESS_MESSAGE = "Leggo la richiesta, controllo il codice e preparo una versione aggiornata della cella."
 
 
+_ALLOWED_REFERENCE_IMAGE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$")
+_MAX_REFERENCE_IMAGE_CHARS = 8_000_000  # ~6 MB di immagine in base64
+
+
+def _clean_reference_image(raw: object) -> str | None:
+    """Immagine di riferimento allegata dall'utente (data URL). Scartata se non valida o troppo grande."""
+    if not isinstance(raw, str) or not raw or len(raw) > _MAX_REFERENCE_IMAGE_CHARS:
+        return None
+    return raw if _ALLOWED_REFERENCE_IMAGE.match(raw) else None
+
+
+async def _describe_reference_image(image_data_url: str, user_prompt: str, project_type: str) -> str:
+    """Il modello visivo traduce l'immagine in una specifica tecnica dell'effetto, utilizzabile dal
+    generatore di codice (che non vede l'immagine)."""
+    target = "uno sketch p5.js (canvas 2D, eventualmente WEBGL)" if project_type == "p5js" else "un programma Python"
+    instruction = (
+        f"L'utente allega un'immagine di riferimento e vuole ottenere un effetto come questo in {target}.\n"
+        f"Sua richiesta: «{user_prompt[:800]}»\n\n"
+        "Analizza l'immagine e scrivi una SPECIFICA TECNICA breve (max 350 parole, in italiano) che un programmatore "
+        "possa implementare senza vederla:\n"
+        "1. Cosa rappresenta e quale effetto visivo/animazione suggerisce.\n"
+        "2. Palette (codici RGB/hex approssimati) e sfondo.\n"
+        "3. Forme, composizione, scala, densità e disposizione degli elementi.\n"
+        "4. Movimento ipotizzato (rumore Perlin, particelle, onde, rotazioni...) e interazione sensata.\n"
+        "5. Tecnica p5.js consigliata (funzioni, blendMode, trasparenze, buffer, shader se serve).\n"
+        "Non scrivere codice."
+    )
+    resp = await llm_service.generate(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": instruction},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ],
+        }],
+        provider=model_roles.provider_for("vision"),
+        model=model_roles.model_for("vision"),
+        temperature=0.3,
+        max_tokens=1200,
+        allow_web_search=False,
+    )
+    return (resp.content or "").strip()
+
+
 async def _run_agent_pipeline_stream(
     project_type: str, active_source: str, last_output: str, user_prompt: str, is_student: bool,
     override: tuple[str, str] | None = None,
+    reference_image: str | None = None,
 ):
     """Versione streaming della pipeline: invece di restituire tutto alla fine, EMETTE ogni
     bolla di agente non appena lo stadio finisce, poi un frame finale con le proposte. È il
@@ -734,6 +784,33 @@ async def _run_agent_pipeline_stream(
         "content": PROMPT_ANALYST_PROGRESS_MESSAGE,
         "metadata": {"kind": "agent_progress"},
     })
+
+    if reference_image:
+        yield ("active", {
+            "agent_name": "Analista visivo",
+            "label": "Guardo l'immagine e ne ricavo palette, forme e movimento…",
+        })
+        try:
+            visual_spec = await _describe_reference_image(reference_image, user_prompt, project_type)
+        except Exception as exc:
+            logger.warning("Notebook reference image analysis failed: %s", exc)
+            visual_spec = ""
+        if visual_spec:
+            yield ("stage", {
+                "role": "assistant", "agent_name": "Analista visivo",
+                "content": visual_spec,
+                "metadata": {"kind": "agent_reasoning"},
+            })
+            user_prompt = (
+                f"{user_prompt}\n\nL'utente ha allegato un'immagine di riferimento. Specifica dell'effetto "
+                f"ricavata dall'immagine (da seguire fedelmente):\n{visual_spec}"
+            )
+        else:
+            yield ("stage", {
+                "role": "assistant", "agent_name": "Analista visivo",
+                "content": "Non sono riuscito a leggere l'immagine: procedo solo con la tua descrizione.",
+                "metadata": {"kind": "agent_feedback"},
+            })
 
     yield ("active", {
         "agent_name": "Architetto",
@@ -2369,6 +2446,8 @@ async def notebook_assist_stream(
     last_output = request.get("last_output", "") or ""
     user_prompt = request.get("message", "") or "Analizza il codice e suggerisci correzioni mirate."
     project_type = nb.project_type or "python"
+    reference_image = _clean_reference_image(request.get("image"))
+    history_prompt = f"{user_prompt}\n\n📎 [Immagine di riferimento allegata]" if reference_image else user_prompt
     ml_context = await _ml_models_context(db, nb)
     if ml_context:
         user_prompt = f"{user_prompt}\n\n{ml_context}"
@@ -2377,6 +2456,9 @@ async def notebook_assist_stream(
     provider, model, prompt_tokens, completion_tokens = _notebook_agent_usage_estimate(
         project_type, active_source, last_output, user_prompt, override
     )
+    if reference_image:
+        # La specifica ricavata dall'immagine (~400 parole) entra nel prompt del generatore e dei revisori.
+        prompt_tokens += 1500
     credit_scope = await _notebook_credit_scope(db, actor)
     await _require_notebook_agent_credits(
         db, credit_scope, provider, model, prompt_tokens, completion_tokens
@@ -2393,7 +2475,8 @@ async def notebook_assist_stream(
         async def run_pipeline():
             try:
                 async for kind, payload in _run_agent_pipeline_stream(
-                    project_type, active_source, last_output, user_prompt, is_student, override
+                    project_type, active_source, last_output, user_prompt, is_student, override,
+                    reference_image=reference_image,
                 ):
                     if kind == "stage":
                         staged.append(payload)
@@ -2417,7 +2500,7 @@ async def notebook_assist_stream(
                 try:
                     updated_history = _sanitize_tutor_history([
                         *(nb.tutor_messages or []),
-                        {"role": "user", "content": str(user_prompt).strip()},
+                        {"role": "user", "content": str(history_prompt).strip()},
                         *staged,
                     ])
                     nb.tutor_messages = updated_history

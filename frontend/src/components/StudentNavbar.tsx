@@ -2,7 +2,7 @@ import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import { queryClient } from '@/lib/queryClient'
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, FolderOpen } from '@/components/icons'
+import { MessageSquarePlus, User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, Eye, BookOpen, Code2, KanbanSquare, FolderOpen, GitBranch } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
@@ -25,6 +25,7 @@ import { openFeedback } from '@/components/FloatingHelper'
 import { ThemeToggleMenuItem } from './ThemeToggleMenuItem'
 import { useUiThemeStore } from '@/stores/uiTheme'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
+import { ShellNavHandle, shellNavPeekProps } from '@/components/ShellFullscreen'
 import { tl } from '@/i18n/tl'
 
 interface StudentProfile {
@@ -294,6 +295,7 @@ export function StudentNavbar({
     { key: 'models3d', label: '3D Lab', icon: Cube3DIcon },
     { key: 'models3d_ai', label: tl("AI 3D"), icon: MushroomIcon },
     { key: 'smart_canvas', label: tl("Lavagne"), icon: CanvasEaselIcon },
+    { key: 'dataflow', label: 'Dataflow', icon: GitBranch },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'files'])
@@ -338,8 +340,10 @@ export function StudentNavbar({
           </button>
         </div>
       )}
+      <ShellNavHandle accent={accentTheme.accent} />
       <nav
-        className={`fixed left-0 right-0 z-50 border-b ${isPreviewMode && !subjectiveMode ? 'top-8' : 'top-0'}`}
+        {...shellNavPeekProps}
+        className={`shell-nav fixed left-0 right-0 z-50 border-b ${isPreviewMode && !subjectiveMode ? 'top-8' : 'top-0'}`}
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -397,8 +401,6 @@ export function StudentNavbar({
                 })()}
               </div>
             )}
-
-            <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
               <div className="flex h-11 min-w-0 items-center gap-1 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
@@ -603,7 +605,8 @@ export function StudentNavbar({
 
       {onNavigate && (
         <aside
-          className={`fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${hasTeacherModeBanner ? 'top-24' : 'top-16'}`}
+          {...shellNavPeekProps}
+          className={`shell-nav fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${hasTeacherModeBanner ? 'top-24' : 'top-16'}`}
           style={accentVars}
           aria-label={t('navbar.nav_desktop')}
         >

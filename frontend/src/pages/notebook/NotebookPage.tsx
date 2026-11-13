@@ -5,8 +5,8 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
-  Brain, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Settings, Square, Terminal, Trash2, Wrench, X, Zap,
+  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
+  Brain, Maximize2, Minimize2, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Settings, Square, Terminal, Trash2, Wrench, X, Zap,
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -18,6 +18,7 @@ import { usePyodide } from '@/hooks/usePyodide'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import NotebookCell from '@/components/notebook/NotebookCell'
 import NotebookMicrobitAgentChat from '@/components/notebook/NotebookMicrobitAgentChat'
+import { p5NeedsCamera, stopP5SharedCamera } from '@/components/notebook/p5Camera'
 import NotebookMicrobitSerialPanel from '@/components/notebook/NotebookMicrobitSerialPanel'
 import CircuitPlaygroundPanel from '@/components/notebook/CircuitPlaygroundPanel'
 import { useTranslation } from 'react-i18next'
@@ -220,6 +221,37 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
   const [p5Playing, setP5Playing] = useState(true)
+  // Full-screen play uses the browser Fullscreen API on the existing preview wrapper: the iframe is never
+  // re-mounted or reloaded, so switching in and out is instant and the sketch keeps running.
+  const p5PreviewWrapRef = useRef<HTMLDivElement | null>(null)
+  const p5FilesRef = useRef<{ source: string }[]>([])
+  const editorSettingsRef = useRef<{ libraries?: string[] }>({})
+  const mlModelsRef = useRef<unknown[]>([])
+  const [p5Fullscreen, setP5Fullscreen] = useState(false)
+  useEffect(() => {
+    const onChange = () => {
+      const active = document.fullscreenElement === p5PreviewWrapRef.current
+      setP5Fullscreen(active)
+      // Restart the sketch once the browser has settled on the new window size (entering or leaving), so
+      // setup() / createCanvas() measure the real area instead of the old one.
+      window.setTimeout(() => setPreviewNonce((n) => n + 1), 120)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+  // The camera is released when leaving the notebook (it is kept open across restarts/full screen).
+  useEffect(() => () => stopP5SharedCamera(), [])
+  const toggleP5Fullscreen = useCallback(async () => {
+    if (document.fullscreenElement) { void document.exitFullscreen(); return }
+    // A browser permission prompt would drop full screen: ask for the camera first, while still in the editor.
+    if (p5NeedsCamera(p5FilesRef.current, editorSettingsRef.current.libraries ?? [], mlModelsRef.current)) {
+      try {
+        const warmup = await navigator.mediaDevices.getUserMedia({ video: true })
+        warmup.getTracks().forEach((t) => t.stop())
+      } catch { /* denied: the sketch reports it itself */ }
+    }
+    void p5PreviewWrapRef.current?.requestFullscreen?.()
+  }, [])
   const [gameSplitRatio, setGameSplitRatio] = useState(0.48)
   const [gamePlaying, setGamePlaying] = useState(true)
   const [strudelSplitRatio, setStrudelSplitRatio] = useState(0.58)
@@ -587,6 +619,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     setPreviewNonce((value) => value + 1)
   }, [activeCell, updateCell])
   const p5Files = cells.map((c) => ({ name: c.name ?? 'sketch.js', source: c.source }))
+  p5FilesRef.current = p5Files
+  editorSettingsRef.current = editorSettings
+  mlModelsRef.current = mlModels
   const p5SourceKey = p5Files.map((f) => f.source).join('\n')
   const gameSource = activeCell?.source ?? ''
 
@@ -623,6 +658,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   }, [])
 
   const handleP5Stop = useCallback(() => {
+    stopP5SharedCamera()
     p5IframeWindowRef.current?.postMessage({ source: 'p5-control', action: 'stop' }, '*')
     setP5Playing(false)
   }, [])
@@ -1237,6 +1273,9 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                   )}
                 </Button>
                 <span className="mx-1.5 h-5 w-px bg-slate-200" />
+                <IconButton type="button" size="sm" tone="neutral" surface="soft" onClick={toggleP5Fullscreen} title={isEnglish ? 'Full-screen preview (Esc to exit)' : 'Anteprima a schermo intero (Esc per uscire)'}>
+                  <Maximize2 />
+                </IconButton>
                 <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleP5Play} title={isEnglish ? 'Run sketch' : 'Esegui sketch'}>
                   <Play />
                   Play
@@ -1570,7 +1609,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
               )}
             </div>
           ) : projectType === 'p5js' ? (
-            <div className="flex min-h-0 flex-1 flex-col p-4 gap-2">
+            <div className="relative flex min-h-0 flex-1 flex-col p-4 gap-2">
               <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                 {/* Left panel: file tabs + editor */}
                 <div
@@ -1643,6 +1682,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       isActive
                       isCompact
                       showOutputs={false}
+                      proposalsInChatOnDesktop
                       proposals={assistantProposals[activeCell.id] || []}
                       onActivate={() => setActiveCellId(activeCell.id)}
                       onChange={(source) => updateCell(activeCell.id, { source })}
@@ -1663,15 +1703,21 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                 </div>
 
                 {/* Right panel: preview */}
-                <div className={`relative min-h-0 min-w-0 flex-1 p-4 ${isP5Resizing ? 'pointer-events-none' : ''}`}>
+                <div ref={p5PreviewWrapRef} className={`relative min-h-0 min-w-0 flex-1 ${p5Fullscreen ? 'bg-black' : 'p-4'} ${isP5Resizing ? 'pointer-events-none' : ''}`}>
+                  {p5Fullscreen && (
+                    <IconButton type="button" size="sm" tone="neutral" surface="glass" onClick={toggleP5Fullscreen} className="absolute right-3 top-3 z-20 opacity-40 transition hover:opacity-100" title={isEnglish ? 'Back to editor (Esc)' : 'Torna all\'editor (Esc)'}>
+                      <Minimize2 />
+                    </IconButton>
+                  )}
                   <Suspense fallback={previewFallback}>
                     <NotebookP5Preview
+                      fullscreen={p5Fullscreen}
                       files={p5Files}
                       livePreview={editorSettings.live_preview}
                       previewNonce={previewNonce}
                       runtimeError={previewRuntimeError}
                       onRuntimeMessage={setPreviewRuntimeError}
-                      onIframeLoad={(win) => { p5IframeWindowRef.current = win }}
+                      onIframeLoad={(win) => { p5IframeWindowRef.current = win; if (document.fullscreenElement) win?.focus() }}
                       activeLibraries={editorSettings.libraries ?? []}
                       mlModels={mlModels}
                       mlLoading={mlLoading}
@@ -1682,15 +1728,30 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
               </div>
 
               {/* Console panel */}
-              {(() => {
+              {!consoleOpen && (
+                <button
+                  type="button"
+                  onClick={() => setConsoleOpen(true)}
+                  className="absolute bottom-3 left-6 z-10 flex h-8 items-center gap-1.5 rounded-full bg-slate-900/90 px-2.5 text-slate-300 shadow-md transition hover:bg-slate-800"
+                  title={isEnglish ? 'Show console' : 'Mostra console'}
+                  aria-label={isEnglish ? 'Show console' : 'Mostra console'}
+                >
+                  <Terminal className="h-4 w-4" />
+                  {consoleEntries.length > 0 && (
+                    <span className="text-[10px] font-bold tabular-nums">{consoleEntries.length}</span>
+                  )}
+                </button>
+              )}
+              {consoleOpen && (() => {
                 const hasErrors = !!previewRuntimeError || consoleEntries.some((e) => e.level === 'error')
                 return (
-	                  <div className="flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+	                  <div className="flex-shrink-0 overflow-hidden rounded-xl bg-slate-950">
                     {/* Header row */}
                     <div className="flex items-center gap-2 px-4 py-2">
                       <button
-                        onClick={() => setConsoleOpen((v) => !v)}
+                        onClick={() => setConsoleOpen(false)}
                         className="flex flex-1 items-center gap-2 text-left"
+                        title={isEnglish ? 'Minimize console' : 'Riduci console'}
                       >
                         <Terminal className="h-3.5 w-3.5 text-slate-400" />
                         <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Console' : 'Console'}</span>
@@ -1705,10 +1766,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                           </span>
                         )}
                         <div className="flex-1" />
-                        {consoleOpen
-                          ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-                          : <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
-                        }
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
                       </button>
                       {hasErrors && (
                         <button
@@ -1723,7 +1781,7 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       )}
                       {consoleEntries.length > 0 && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setConsoleEntries([]); setConsoleAiResponse(null) }}
+                          onClick={(e) => { e.stopPropagation(); setConsoleEntries([]); setConsoleAiResponse(null); setConsoleOpen(false) }}
                           className="text-[10px] text-slate-500 hover:text-slate-300"
                         >
                           {isEnglish ? 'Clear' : 'Pulisci'}
@@ -1731,8 +1789,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
                       )}
                     </div>
 
-                    {consoleOpen && (
-                      <div className="border-t border-slate-800">
+                    {(
+                      <div className="border-t border-slate-800/60">
                         {/* Log entries */}
                         <div className="max-h-36 overflow-y-auto px-4 py-2 font-mono text-xs">
                           {previewRuntimeError && (
@@ -1877,23 +1935,15 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
       {/* ── Right sidebar panel ──────────────────────────────────────────── */}
       {chatSidebarOpen && notebookId && (
         <div className="hidden lg:flex shrink-0 min-h-0" style={{ width: tutorSidebarWidth }}>
-          {/* Resize handle — left edge of sidebar */}
+          {/* Resize handle — the only chrome of the sidebar: a slim grip in the middle of its left edge */}
           <div
             onPointerDown={startTutorResize}
-            className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${
-              projectType === 'python'
-                ? (isTutorResizing ? 'bg-[#f4b6cf]' : 'bg-[#f8d6e5] hover:bg-[#f4b6cf]')
-                : (isTutorResizing ? 'bg-[#b5dbfb]' : 'bg-[#d9ecfd] hover:bg-[#b5dbfb]')
-            }`}
+            className="group relative w-3 flex-shrink-0 cursor-col-resize touch-none"
             title={isEnglish ? 'Resize tutor sidebar' : 'Ridimensiona sidebar tutor'}
           >
-            <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${
-              projectType === 'python'
-                ? (isTutorResizing ? 'bg-[#d61b5b]' : 'bg-[#E91E63] group-hover:bg-[#d61b5b]')
-                : (isTutorResizing ? 'bg-[#1d84d8]' : 'bg-[#2196F3] group-hover:bg-[#1d84d8]')
-            }`} />
+            <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isTutorResizing ? 'bg-violet-500' : 'bg-slate-400/50 group-hover:bg-violet-500'}`} />
           </div>
-	          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {supportsAgentChat(projectType) && activeCell ? (
               <NotebookMicrobitAgentChat
                 notebookId={notebookId}

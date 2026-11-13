@@ -69,7 +69,7 @@ const slideProblems = (slide: OutlineSlide): string[] => {
   if (fields.includes('title') && !slide.title.trim() && slide.layout !== 'big_stat') problems.push(tl("Manca il titolo"))
   if (slide.layout === 'big_stat' && !slide.stat_value.trim()) problems.push(tl("Manca il dato"))
   if (slide.layout === 'quote' && !slide.quote.trim()) problems.push(tl("Manca la citazione"))
-  if (slide.layout === 'cards' && (slide.points.length < 2 || slide.points.length > 4)) problems.push(tl("Le schede devono essere da 2 a 4"))
+  if (['cards', 'icon_cards'].includes(slide.layout) && (slide.points.length < 2 || slide.points.length > 4)) problems.push(tl("Le schede devono essere da 2 a 4"))
   if (slide.layout === 'timeline' && slide.points.length < 2) problems.push(tl("Servono almeno 2 passaggi"))
   if (['title_bullets', 'summary', 'image_split'].includes(slide.layout) && slide.points.length === 0) problems.push(tl("Elenco vuoto"))
   if (slide.points.length > 6) problems.push(tl("Troppi punti: sposta i dettagli nelle note"))
@@ -420,7 +420,7 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
   ]
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50" role="dialog" aria-modal="true" aria-label={tl("Presentation Studio")}>
+    <div className="absolute inset-0 z-[40] flex flex-col overflow-hidden bg-slate-50" role="dialog" aria-label={tl("Presentation Studio")}>
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><MonitorPlay className="h-5 w-5" /></span>
         <div className="min-w-0">
@@ -453,6 +453,16 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
       {step === 'brief' && (
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
+            {onBlank && (
+              <section className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-sm" aria-labelledby="studio-manual-title">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><MonitorPlay className="h-5 w-5" /></span>
+                <div className="min-w-0 flex-1">
+                  <h3 id="studio-manual-title" className="text-sm font-bold text-slate-900">{tl("Preferisci fare da solo?")}</h3>
+                  <p className="text-xs text-[var(--text-secondary)]">{tl("Puoi creare la presentazione senza la guida dell'AI: parti da una presentazione vuota e scrivi tu le slide.")}</p>
+                </div>
+                <Button tone="neutral" surface="outline" onClick={onBlank}>{tl("Inizia senza AI")}</Button>
+              </section>
+            )}
             <section>
               <label className="text-sm font-bold text-slate-900" htmlFor="studio-topic">{tl("Di cosa parla la presentazione?")}</label>
               <textarea
@@ -516,7 +526,6 @@ export default function PresentationStudio({ onClose, onCreate, onBlank, initial
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
             </section>
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-5">
-              {onBlank && <button type="button" onClick={onBlank} className="mr-auto text-xs font-semibold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">{tl("Inizia da una presentazione vuota")}</button>}
               {outline && <Button tone="neutral" surface="soft" onClick={() => setStep('outline')}>{tl("Torna alla scaletta")}</Button>}
               <ScopedModelSelect scope="documents" value={modelChoice.value} onChange={modelChoice.setValue} className="w-56" label={tl("Modello per la scaletta")} />
               <Button tone="accent" disabled={(brief.topic.trim().length < 3 && brief.source_text.trim().length < 20) || busy === 'outline' || importing || brief.source_text.length > MAX_STUDIO_SOURCE_CHARS} onClick={() => void runOutline('create')}>
@@ -756,8 +765,8 @@ function OutlineSlideFields({ slide, onChange }: { slide: OutlineSlide; onChange
   const fields = LAYOUT_FIELDS[slide.layout]
   const input = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100'
   const label = 'text-xs font-bold uppercase tracking-wide text-slate-500'
-  const pointsHint = slide.layout === 'cards' ? tl("una scheda per riga, nel formato «Concetto: spiegazione»")
-    : slide.layout === 'timeline' ? tl("un passaggio per riga") : tl("un punto per riga")
+  const pointsHint = ['cards', 'icon_cards', 'editorial'].includes(slide.layout) ? tl("una scheda per riga, nel formato «Concetto: spiegazione»")
+    : slide.layout === 'timeline' ? tl("un passaggio per riga, nel formato «Data o fase: spiegazione»") : tl("un punto per riga")
   return (
     <div className="space-y-3">
       {fields.includes('stat_value') && (
@@ -796,6 +805,24 @@ function OutlineSlideFields({ slide, onChange }: { slide: OutlineSlide; onChange
       {fields.includes('image_prompt') && (
         <label className="block"><span className={label}>{tl("Immagine da inserire")}</span>
           <input value={slide.image_prompt} onChange={(e) => onChange({ image_prompt: e.target.value })} placeholder={tl("Cosa deve mostrare l'immagine")} className={input} /></label>
+      )}
+      {fields.includes('icons') && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {slide.points.slice(0, 4).map((point, index) => (
+            <label key={index} className="block min-w-0">
+              <span className={label}>{tl('Icona {0}', index + 1)} · {point.split(':')[0]}</span>
+              <select className="ds-field mt-1 w-full" value={slide.icons?.[index] || ''} onChange={event => {
+                const icons = [...(slide.icons || [])]
+                while (icons.length <= index) icons.push('')
+                icons[index] = event.target.value
+                onChange({ icons })
+              }}>
+                <option value="">{tl('Automatica dal contenuto')}</option>
+                {Object.entries({ book: tl('Libro'), leaf: tl('Natura'), flask: tl('Scienza'), lightbulb: tl('Idea'), people: tl('Persone'), target: tl('Obiettivo'), clock: tl('Tempo'), chart: tl('Dati'), globe: tl('Mondo'), shield: tl('Protezione'), search: tl('Ricerca'), code: tl('Codice') }).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
       )}
     </div>
   )

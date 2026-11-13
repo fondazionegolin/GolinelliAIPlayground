@@ -31,6 +31,7 @@ import { CreditBalancePill } from './CreditBalancePill'
 import BackgroundJobsIndicator from './BackgroundJobsIndicator'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
 import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
+import { ShellNavHandle, shellNavPeekProps } from '@/components/ShellFullscreen'
 import { tl } from '@/i18n/tl'
 
 interface TeacherProfile {
@@ -403,7 +404,8 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="ds-navbar fixed top-0 left-0 right-0 z-50" style={accentVars}>
+      <ShellNavHandle accent={accentTheme.accent} />
+      <nav className="ds-navbar shell-nav fixed top-0 left-0 right-0 z-50" style={accentVars} {...shellNavPeekProps}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between gap-2">
             {/* Logo/Brand */}
@@ -431,8 +433,6 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
             <div className="ds-cluster hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               <NavClusterBar clusters={navClusters} />
             </div>
-
-            <div className="ds-divider hidden xl:block h-8 w-px mx-1" />
 
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
               <div className="ds-cluster flex h-11 min-w-0 items-center gap-1 rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle(accentTheme)}>
@@ -711,7 +711,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
       </nav>
 
       <aside
-        className="ds-navbar fixed left-0 top-16 bottom-0 z-40 hidden w-16 px-2 py-3 md:flex xl:hidden"
+        className="ds-navbar shell-nav fixed left-0 top-16 bottom-0 z-40 hidden w-16 px-2 py-3 md:flex xl:hidden" {...shellNavPeekProps}
         style={accentVars}
         aria-label={t('navbar.nav_support')}
       >

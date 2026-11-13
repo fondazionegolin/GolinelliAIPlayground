@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, X, Loader2, FileUp, PanelTop } from '@/components/icons'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
+import { printSlidesAsPdf } from '@/lib/slidesPdf'
+import { DocumentShareButton } from '@/components/documents/DocumentShareButton'
 import { useToast } from '@/components/ui/use-toast'
 import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
 import { createShapeBlock, applyStyleToBlocks, applyBlockGroupReplacement, blockGroupAssistTarget } from '@/lib/slideBlocks'
@@ -226,7 +228,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'document' | 'presentation' | 'sheet' | 'canvas' | 'pdf' | 'web'>('all')
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
   const isCatalogGrid = true
-  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftId, setDraftIdState] = useState<string | null>(null)
+  const draftIdRef = useRef<string | null>(null)
+  const draftSavePromiseRef = useRef<Promise<string | null>>(Promise.resolve(null))
+  const activeDocumentIdRef = useRef(document.id)
+  activeDocumentIdRef.current = document.id
+  const setDraftId = useCallback((id: string | null) => { draftIdRef.current = id; setDraftIdState(id) }, [])
   const [isReadOnlyLesson, setIsReadOnlyLesson] = useState(false)
   const [activeLessonTaskId, setActiveLessonTaskId] = useState<string | null>(null)
   const [activeSubmittedDocument, setActiveSubmittedDocument] = useState<SubmittedDocument | null>(null)
@@ -340,7 +347,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         kind: 'slide_blocks',
         label: isEnglishUi ? `Selected group (${groupBlocks.length} objects)` : `Gruppo selezionato (${groupBlocks.length} oggetti)`,
         detail: summary,
-        target: blockGroupAssistTarget(currentSlide, currentSlideIndex, groupBlocks.map(b => b.id)),
+        target: blockGroupAssistTarget(currentSlide, currentSlideIndex, groupBlocks.map(b => b.id), { title: document.title, theme: document.theme }),
         beforePreview: `${groupBlocks.length} ${isEnglishUi ? 'objects' : 'oggetti'}\n${summary}`,
       }
     }
@@ -701,6 +708,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setDocumentExporting(true)
     try {
       const { contentJson } = buildNativeContentJson(false)
+      if (targetFormat === 'pdf' && mode === 'slides') {
+        await printSlidesAsPdf(document.slides, document.format === '4:3' ? '4:3' : '16:9', document.title)
+        return
+      }
       const response = await filesApi.exportDocument({ title: document.title, content_json: mode === 'document' ? withPageBreaks(contentJson, editor?.view.dom as HTMLElement | undefined) : contentJson, target_format: targetFormat })
       downloadExportedDocument(response.data, document.title, targetFormat)
       toast({ title: isEnglishUi ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
@@ -711,12 +722,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
   }
 
-  const upsertDraft = async (titleOverride?: string) => {
+  const upsertDraft = (titleOverride?: string): Promise<string | null> => {
     const { type, contentJson } = buildNativeContentJson(false)
+    const documentId = document.id
+    const title = titleOverride ?? document.title
+    const save = draftSavePromiseRef.current.catch(() => null).then(async () => {
+    if (activeDocumentIdRef.current !== documentId) return null
     try {
-      if (draftId) {
-        const res = await studentApi.updateDocumentDraft(draftId, {
-          title: titleOverride ?? document.title,
+      if (draftIdRef.current) {
+        const res = await studentApi.updateDocumentDraft(draftIdRef.current, {
+          title,
           doc_type: type,
           content_json: contentJson
         })
@@ -728,13 +743,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           contentJson: res.data.content_json,
         }
         setDraftDocuments(prev => [updated, ...prev.filter(d => d.id !== updated.id)])
+        return updated.id
       } else {
         const res = await studentApi.createDocumentDraft({
-          title: titleOverride ?? document.title,
+          title,
           doc_type: type,
           content_json: contentJson
         })
-        setDraftId(res.data.id)
+        if (activeDocumentIdRef.current === documentId) setDraftId(res.data.id)
         const created: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -743,10 +759,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           contentJson: res.data.content_json,
         }
         setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
+        return created.id
       }
     } catch (e) {
       console.error('Draft save failed', e)
+      return null
     }
+    })
+    draftSavePromiseRef.current = save
+    return save
   }
 
   const handleTitleChange = (value: string) => {
@@ -1143,6 +1164,19 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
   }, [openLessonTaskId, lessonDocuments, lessonsLoaded])
 
+  // Ctrl/Cmd + wheel (and trackpad pinch) zooms the slide instead of the whole page.
+  useEffect(() => {
+    const host = docScrollRef.current
+    if (mode !== 'slides' || !host) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      setScale(current => Math.min(3, Math.max(0.2, Math.round(current * Math.exp(-event.deltaY * 0.0025) * 1000) / 1000)))
+    }
+    host.addEventListener('wheel', onWheel, { passive: false })
+    return () => host.removeEventListener('wheel', onWheel)
+  }, [mode, viewMode])
+
   // Fit canvas
   useEffect(() => {
     const handleResize = () => {
@@ -1222,6 +1256,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   }
 
   // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
+  const slideListRef = useRef<HTMLDivElement>(null)
+  // Keep the current slide centred in the left rail, however it changed (arrows, click, editor navigation).
+  useEffect(() => {
+    const list = slideListRef.current
+    const item = list?.querySelector<HTMLElement>(`[data-slide-index="${currentSlideIndex}"]`)
+    if (!list || !item) return
+    const delta = item.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - item.offsetHeight) / 2
+    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: 'smooth' })
+  }, [currentSlideIndex, document.slides.length])
+
   const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
     event.preventDefault()
@@ -1240,7 +1284,6 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     setCurrentSlideIndex(target)
     setSelectedBlockId(null)
-    window.requestAnimationFrame(() => event.currentTarget.querySelector(`[data-slide-index="${target}"]`)?.scrollIntoView({ block: 'nearest' }))
   }
 
   const deleteSlide = (index: number) => {
@@ -1308,6 +1351,17 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         height: 300,
         style: {},
         fitToImage: true,
+      }
+    } else if (type === 'video') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'video',
+        content: '',
+        x: dims.width / 2 - 240,
+        y: dims.height / 2 - 135,
+        width: 480,
+        height: 270,
+        style: { borderRadius: 8 },
       }
     } else {
       newBlock = createShapeBlock(type, dims)
@@ -1494,6 +1548,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
           onDrop={(event) => { if (readOnlyCatalog) return; event.preventDefault(); setDocumentDragActive(false); void importDocumentFiles(Array.from(event.dataTransfer.files)) }}
         >
+          {showPresentationStudio && (
+            <PresentationStudio
+              onClose={() => setShowPresentationStudio(false)}
+              onCreate={createPresentationFromStudio}
+              onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+            />
+          )}
           {!readOnlyCatalog && <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />}
           <section className={`relative shrink-0 border-b border-slate-200/80 bg-white/95 shadow-sm md:border-0 md:ds-frame-header ${headerCollapsed ? 'py-1.5' : 'py-4 md:py-7'}`}>
             <div className="mx-auto max-w-6xl px-4 md:px-6">
@@ -1692,13 +1753,6 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           )}
         </div>
 
-        {showPresentationStudio && (
-          <PresentationStudio
-            onClose={() => setShowPresentationStudio(false)}
-            onCreate={createPresentationFromStudio}
-            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
-          />
-        )}
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {!readOnlyCatalog && showNewModal && (
           <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center z-50 p-4">
@@ -1862,7 +1916,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+      <div className="relative h-full flex flex-col bg-slate-100 overflow-hidden">
+          {showPresentationStudio && (
+            <PresentationStudio
+              onClose={() => setShowPresentationStudio(false)}
+              onCreate={createPresentationFromStudio}
+              onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+            />
+          )}
 
         <DocumentEditorHeader
           mode={mode}
@@ -1890,6 +1951,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           )}
           tools={(
             <>
+              {(mode === 'document' || mode === 'slides') && !isEditorReadOnly && <DocumentShareButton getSource={async () => {
+                const id = await upsertDraft()
+                if (!id) throw new Error('Salvataggio non riuscito')
+                return { source_kind: 'draft', source_id: id }
+              }} />}
               <HeaderIconButton label={t('documents.new')} onClick={() => setShowNewModal(true)}>
                 <Plus className="h-4 w-4" />
               </HeaderIconButton>
@@ -1911,6 +1977,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   label={isEnglishUi ? 'Export' : 'Esporta'}
                   exporting={documentExporting}
                   onExport={(format) => void exportCurrentDocument(format)}
+                  googleWorkspace={mode === 'document' || mode === 'slides' ? {
+                    kind: mode,
+                    getDocument: () => {
+                      const { contentJson } = buildNativeContentJson(false)
+                      return {
+                        title: document.title,
+                        content_json: mode === 'document' ? withPageBreaks(contentJson, editor?.view.dom as HTMLElement | undefined) : contentJson,
+                      }
+                    },
+                  } : undefined}
                   formats={[
                     { value: 'pdf' as const, label: 'PDF' },
                     ...(mode === 'slides' ? [{ value: 'pptx' as const, label: 'PowerPoint (.pptx)' }, { value: 'ppt' as const, label: 'PowerPoint 97-2003 (.ppt)' }] : []),
@@ -2081,6 +2157,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide outline-none"
                    tabIndex={0}
                    role="listbox"
+                   ref={slideListRef}
                    aria-label={isEnglishUi ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
                    onKeyDown={handleSlideListKeyDown}
                  >
@@ -2092,7 +2169,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                        aria-selected={idx === currentSlideIndex}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
-                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${(selectedSlideIds.includes(slide.id) || idx === currentSlideIndex)
+                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${idx === currentSlideIndex
+                         ? 'bg-indigo-100 text-indigo-950 border-indigo-500 shadow-md ring-2 ring-indigo-400'
+                         : selectedSlideIds.includes(slide.id)
                          ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
                          : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-400'}`}
                      >
@@ -2350,7 +2429,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               isEnglish={isEnglishUi}
             />
           )}
-          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-4 md:p-6 relative overflow-y-auto transition-colors ${isCorrectionPreview ? 'bg-amber-100' : 'bg-slate-100'}`}
+          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-4 md:p-6 relative overflow-auto transition-colors ${isCorrectionPreview ? 'bg-amber-100' : 'bg-slate-100'}`}
+               style={mode === 'slides' ? { justifyContent: 'safe center' } : undefined}
                onClick={() => setSelectedBlockId(null)}
           >
 
@@ -2485,11 +2565,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                </div>
                <div
                  ref={canvasRef}
-                 className="relative flex flex-col bg-white shadow-xl transition-transform origin-center"
+                 className="relative flex shrink-0 flex-col bg-white shadow-xl"
                  style={{
                    width: FORMAT_DIMENSIONS[document.format].width,
                    height: FORMAT_DIMENSIONS[document.format].height,
                    transform: `scale(${scale})`,
+                   transformOrigin: 'top left',
+                   // The scaled slide takes exactly its scaled size in the layout, so zooming in scrolls instead of clipping.
+                   marginRight: -FORMAT_DIMENSIONS[document.format].width * (1 - scale),
+                   marginBottom: -FORMAT_DIMENSIONS[document.format].height * (1 - scale),
                    marginTop: '20px'
                  }}
                  onClick={(e) => e.stopPropagation()}
@@ -2519,6 +2603,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       onSelectBlock={setSelectedBlockId}
                       selectedBlockIds={selectedBlockIds}
                       onSelectBlocks={setSelectedBlockIds}
+                      marqueeSurfaceRef={docScrollRef}
+                      onNavigateSlide={(delta) => { setCurrentSlideIndex(index => Math.max(0, Math.min(document.slides.length - 1, index + delta))); setSelectedBlockId(null); setSelectedSlideIds?.([]) }}
                       scale={scale}
                       readOnly={isEditorReadOnly}
                       slideWidth={FORMAT_DIMENSIONS[document.format].width}
@@ -2610,6 +2696,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               }))}
               deckTheme={document.theme}
               currentSlides={document.slides}
+              currentSlideIndex={currentSlideIndex}
               onClose={() => setPresentationChatOpen(false)}
             />
           )}
@@ -2632,13 +2719,6 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         </div>
 
         {/* New Document Modal */}
-        {showPresentationStudio && (
-          <PresentationStudio
-            onClose={() => setShowPresentationStudio(false)}
-            onCreate={createPresentationFromStudio}
-            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
-          />
-        )}
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

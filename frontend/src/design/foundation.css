@@ -757,3 +757,22 @@
   --ds-field-focus-ink: #616161;
   --canvas-dot: #d6d6d6;
 }
+
+/* Platform fullscreen: navbars collapse off-screen and slide back in over the page while peeking. */
+:root { --shell-nav-h: 4rem; }
+body[data-shell-fullscreen] { --shell-nav-h: 0px; }
+.shell-nav { transition: transform 0.18s ease; }
+body[data-shell-fullscreen] .shell-nav { transform: translateY(-110%); pointer-events: none; }
+body[data-shell-fullscreen][data-shell-peek] .shell-nav { transform: none; pointer-events: auto; z-index: 90; }
+/* The student navbar reserves its height with a spacer; collapse it with the navbar. */
+body[data-shell-fullscreen] .shell-nav-spacer { height: 0 !important; }
+/* Room for the always-visible fullscreen button at the right edge of the navbar. */
+nav.shell-nav > div { padding-right: 3rem; }
+/* Gentle upward hop that invites the user to go fullscreen. */
+@keyframes shell-arrow-bounce {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-7px); }
+  50% { transform: translateY(0); }
+  70% { transform: translateY(-4px); }
+}
+.shell-arrow-bounce { display: inline-flex; animation: shell-arrow-bounce 1.2s ease-in-out; }

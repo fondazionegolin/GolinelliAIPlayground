@@ -21,6 +21,7 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from app.services.presentation_themes import resolve_theme
+from app.services.presentation_assets import ICON_NAMES, icon_for, icon_image, paper_image
 
 # ---------------------------------------------------------------------------
 # Text fitting: estimates wrapped line count from content length / box width / font size using a
@@ -104,6 +105,8 @@ def normalize_content(content: Optional[dict]) -> dict:
         "quote": str(content.get("quote") or content.get("quote_text") or "").strip()[:360],
         "attribution": str(content.get("attribution") or "").strip()[:80],
         "image_prompt": str(content.get("image_prompt") or "").strip()[:200],
+        "icons": [name if isinstance(name, str) and name in ICON_NAMES else "" for name in
+                  (content.get("icons") if isinstance(content.get("icons"), list) else [])[:4]],
     }
 
 
@@ -188,6 +191,13 @@ class _Kit:
             "x": round(x, 1), "y": round(y, 1), "width": round(w, 1), "height": round(h, 1),
             "style": {"borderRadius": 14, "padding": 0, "backgroundColor": "transparent"},
             "imagePrompt": prompt,
+        })
+
+    def asset(self, x, y, w, h, source: str, role: str):
+        return self._add({
+            "type": "image", "content": source, "x": round(x, 1), "y": round(y, 1),
+            "width": round(w, 1), "height": round(h, 1), "assetRole": role,
+            "style": {"padding": 0, "borderRadius": 0, "backgroundColor": "transparent"},
         })
 
     # -- composite helpers ---------------------------------------------------
@@ -400,7 +410,7 @@ def layout_timeline(k: _Kit, c: dict, number: Optional[int]):
     n = max(1, len(steps))
     col_w = (k.w - 2 * k.mx) / n
     track_y = k.h * 0.44
-    dot = 36
+    dot = 16
     k.line(k.mx + col_w / 2, track_y, (k.w - 2 * k.mx) - col_w, "border", stroke_width=3)
     family = k.fonts["body"]
     text_w = col_w * 0.88
@@ -410,9 +420,10 @@ def layout_timeline(k: _Kit, c: dict, number: Optional[int]):
     for index, step in enumerate(steps):
         cx = k.mx + col_w * index + col_w / 2
         k.ellipse(cx - dot / 2, track_y - dot / 2, dot, dot, "accent")
-        k.text(cx - dot / 2, track_y - 10, dot, 20, str(index + 1), color_role="on_accent", fixed_size=14,
-               weight="bold", align="center", line_height=1.2)
-        k.text(cx - text_w / 2, track_y + dot / 2 + 14, text_w, text_h, step, color_role="text", fixed_size=size,
+        label, body = _split_card(step)
+        k.text(cx - text_w / 2, track_y - k.h * 0.11, text_w, k.h * 0.08, label or f"{index + 1:02d}",
+               color_role="primary_text", font="heading", base=22, minimum=13, weight="bold", align="center", line_height=1.15)
+        k.text(cx - text_w / 2, track_y + dot / 2 + 22, text_w, text_h, body, color_role="text", fixed_size=size,
                align="center", line_height=1.3)
     k.slide_number(number, "muted")
 
@@ -447,6 +458,78 @@ def layout_summary(k: _Kit, c: dict, number: Optional[int]):
     k.slide_number(number, "muted")
 
 
+def layout_icon_cards(k: _Kit, c: dict, number: Optional[int]):
+    """A quiet 2x2 grid; one specific pictogram per concept, with no ornamental top bars."""
+    k.background()
+    k.title(c["title"])
+    items = c["points"][:4]
+    columns = 2
+    rows = math.ceil(len(items) / columns)
+    gap = k.w * 0.025
+    card_w = (k.w - 2 * k.mx - gap) / 2
+    top, bottom = k.h * 0.31, k.h * 0.88
+    card_h = (bottom - top - gap * (rows - 1)) / max(1, rows)
+    for index, item in enumerate(items):
+        x = k.mx + index % columns * (card_w + gap)
+        y = top + index // columns * (card_h + gap)
+        k.rect(x, y, card_w, card_h, "surface", radius=10)
+        head, body = _split_card(item)
+        requested = c["icons"][index] if index < len(c["icons"]) else ""
+        name = icon_for(item, requested)
+        icon = k.asset(x + 18, y + 20, 36, 36, icon_image(name, k.c["primary_text"]), "icon")
+        icon["iconName"] = name
+        icon["themeRole"] = {"color": "primary_text"}
+        text_x, text_w = x + 70, card_w - 88
+        head_h = min(52, card_h * 0.37) if head else 0
+        if head:
+            k.text(text_x, y + 18, text_w, head_h, head, color_role="text", font="heading",
+                   base=22, minimum=16, weight="bold", line_height=1.15)
+        k.text(text_x, y + 20 + head_h, text_w, card_h - 36 - head_h, body,
+               color_role="text", base=19, minimum=14, line_height=1.25)
+    k.slide_number(number, "muted")
+
+
+def layout_image_full(k: _Kit, c: dict, number: Optional[int]):
+    k.background()
+    picture = k.image(0, 0, k.w, k.h, c["image_prompt"] or c["title"])
+    picture["style"]["borderRadius"] = 0
+    picture["imagePrompt"] = ("Fotografia editoriale a piena pagina, soggetto sulla destra, spazio visivo tranquillo a sinistra. "
+                              + (c["image_prompt"] or c["title"]))
+    # Opaque ink panel: contrast stays predictable with every photo and survives Office import.
+    k.rect(k.mx * 0.65, k.h * 0.36, k.w * 0.58, k.h * 0.53, "photo_panel", radius=4)
+    k.text(k.mx, k.h * 0.4, k.w * 0.49, k.h * 0.27, c["title"], color_role="photo_ink", font="heading",
+           base=42, minimum=24, weight="bold", line_height=1.12)
+    k.text(k.mx, k.h * 0.7, k.w * 0.49, k.h * 0.14, c["subtitle"], color_role="photo_ink",
+           base=21, minimum=14, line_height=1.25)
+
+
+def layout_editorial(k: _Kit, c: dict, number: Optional[int]):
+    k.background()
+    k.rect(0, 0, k.w, k.h, "paper")["locked"] = True
+    k.asset(0, 0, k.w, k.h, paper_image(), "paper")["locked"] = True
+    # Two typographic columns and one functional divider, as in a printed essay.
+    left_w = k.w * 0.4
+    k.text(k.mx, k.h * 0.12, left_w, k.h * 0.55, c["title"], color_role="paper_ink", font="editorial",
+           base=44, minimum=24, italic=True, line_height=1.12)
+    k.text(k.mx, k.h * 0.72, left_w, k.h * 0.14, c["subtitle"], color_role="paper_muted",
+           base=17, minimum=13, line_height=1.3)
+    right_x = k.w * 0.55
+    rule = k.line(right_x - 26, k.h * 0.14, 0, "paper_rule", stroke_width=1)
+    rule["height"] = round(k.h * 0.69, 1)
+    items = c["points"][:3]
+    row_h = k.h * 0.72 / max(1, len(items))
+    for index, item in enumerate(items):
+        y = k.h * 0.14 + index * row_h
+        head, body = _split_card(item)
+        head_h = row_h * 0.35 if head else 0
+        if head:
+            k.text(right_x, y, k.w - k.mx - right_x, head_h, head, color_role="paper_ink", font="editorial",
+                   base=25, minimum=17, weight="bold", line_height=1.15)
+        k.text(right_x, y + head_h, k.w - k.mx - right_x, row_h - head_h - 12, body,
+               color_role="paper_ink", base=20, minimum=14, line_height=1.35)
+    k.slide_number(number, "paper_muted")
+
+
 LAYOUTS: dict[str, dict] = {
     "cover": {"render": layout_cover, "label": "Copertina", "fields": ["title", "subtitle"]},
     "section": {"render": layout_section, "label": "Divisore di sezione", "fields": ["title", "subtitle"]},
@@ -454,6 +537,9 @@ LAYOUTS: dict[str, dict] = {
     "two_column": {"render": layout_two_column, "label": "Due colonne / confronto",
                    "fields": ["title", "left_label", "points", "right_label", "points_right"]},
     "cards": {"render": layout_cards, "label": "Schede (2–4 concetti)", "fields": ["title", "points"]},
+    "icon_cards": {"render": layout_icon_cards, "label": "Schede con icone", "fields": ["title", "points", "icons"]},
+    "image_full": {"render": layout_image_full, "label": "Immagine a piena pagina", "fields": ["title", "subtitle", "image_prompt"]},
+    "editorial": {"render": layout_editorial, "label": "Editoriale su carta", "fields": ["title", "subtitle", "points"]},
     "image_split": {"render": layout_image_split, "label": "Testo e immagine", "fields": ["title", "points", "image_prompt"]},
     "big_stat": {"render": layout_big_stat, "label": "Dato in evidenza", "fields": ["stat_value", "stat_label", "subtitle"]},
     "timeline": {"render": layout_timeline, "label": "Sequenza / processo", "fields": ["title", "points"]},
@@ -473,9 +559,9 @@ def coerce_layout(layout_key: Optional[str], content: dict, *, images: bool = Tr
         key = DEFAULT_LAYOUT
     if key == "quote" and not content.get("quote"):
         key = DEFAULT_LAYOUT
-    if key == "image_split" and not images:
+    if key in {"image_split", "image_full"} and not images:
         key = DEFAULT_LAYOUT
-    if key == "cards" and not (2 <= len(points) <= 4):
+    if key in {"cards", "icon_cards"} and not (2 <= len(points) <= 4):
         key = DEFAULT_LAYOUT
     if key == "timeline" and len(points) < 2:
         key = DEFAULT_LAYOUT
@@ -497,6 +583,12 @@ def choose_layout(role: Optional[str], key_points: Optional[list], visual_idea: 
         return "summary"
     if role == "process":
         return "timeline"
+    if any(word in idea for word in ("carta", "editorial", "analogic", "serif")):
+        return "editorial"
+    if any(word in idea for word in ("pieno schermo", "piena pagina", "full bleed", "full screen")):
+        return "image_full"
+    if any(word in idea for word in ("icone", "icons", "pittogram")) and 2 <= len(points) <= 4:
+        return "icon_cards"
     if role == "comparison" or len(points) == 2 and word_count > 12:
         return "two_column"
     if any(word in idea for word in ("immagine", "foto", "illustrazione", "photo", "image")):

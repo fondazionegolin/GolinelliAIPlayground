@@ -7,9 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
-import { boardsApi, solidModelerApi, studentApi } from '@/lib/api'
+import { agenticSharingApi, boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen } from '@/components/icons'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen, GitBranch } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -19,6 +19,7 @@ const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
 const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
 const StudentSmartCanvasModule = lazy(() => import('./StudentSmartCanvasModule'))
+const StudentDataflowModule = lazy(() => import('./StudentDataflowModule'))
 const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const StudentSolidModelsModule = lazy(() => import('./StudentSolidModelsModule'))
@@ -26,11 +27,14 @@ const StudentMeshyLab = lazy(() => import('@/components/meshy/UnifiedMeshyLab'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 const StudentDriveBrowser   = lazy(() => import('@/components/drive/DriveBrowser').then((module) => ({ default: module.DriveBrowser })))
 import ChatSidebar from '@/components/ChatSidebar'
+import { ClassChatDock } from '@/components/ClassChatDock'
 
 // Right padding (pr-4) around the class-chat card; added to the column width so the
 // card edge tracks the cursor exactly while dragging the resize grip.
 const CHAT_SIDEBAR_GUTTER = 28
+const CHAT_DOCK_WIDTH = 52
 import { LogoMark } from '@/components/LogoMark'
+import { ShellFullscreenCorner } from '@/components/ShellFullscreen'
 import { StudentNavbar } from '@/components/StudentNavbar'
 import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
 import { FloatingHelper } from '@/components/FloatingHelper'
@@ -172,6 +176,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-violet-200/80',
       shadowClass: 'shadow-violet-100/40',
     },
+    dataflow: {
+      label: tl("Dataflow Studio"),
+      description: tl("Costruisci flussi di dati, grafici e modelli collegando nodi"),
+      icon: GitBranch,
+      colorClass: 'text-violet-800',
+      bgClass: 'bg-violet-100',
+      borderClass: 'border-violet-200/80',
+      shadowClass: 'shadow-violet-100/40',
+    },
     smart_canvas: {
       label: tl("Lavagne intelligenti"),
       description: tl("Lavagne collaborative con un assistente che legge e disegna con te"),
@@ -232,6 +245,7 @@ const MOBILE_MODULE_ORDER: Array<string | null> = [
   'models3d',
   'models3d_ai',
   'smart_canvas',
+  'dataflow',
 ]
 
 export default function StudentDashboard() {
@@ -326,6 +340,13 @@ export default function StudentDashboard() {
   const { data: sharedSolidModels = [] } = useQuery({
     queryKey: ['student-solid-models', sessionInfo?.session.id],
     queryFn: async () => (await solidModelerApi.studentList()).data,
+    enabled: Boolean(sessionInfo?.session.id),
+    staleTime: 60_000,
+  })
+
+  const { data: sharedWorkflows = [] } = useQuery({
+    queryKey: ['student-shared-workflows', sessionInfo?.session.id],
+    queryFn: async () => (await agenticSharingApi.studentList()).data,
     enabled: Boolean(sessionInfo?.session.id),
     staleTime: 60_000,
   })
@@ -628,7 +649,7 @@ export default function StudentDashboard() {
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat' && m.is_enabled !== false) ?? false
   const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration' && m.is_enabled !== false) ?? false
   const sessionModules = sessionInfo?.enabled_modules?.filter((m) => m.is_enabled !== false).map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'files', ...(sharedBoards.length ? ['boards'] : []), ...(sharedSolidModels.length ? ['models3d'] : [])])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'files', ...(sharedBoards.length ? ['boards'] : []), ...(sharedSolidModels.length ? ['models3d'] : []), ...(sharedWorkflows.length ? ['dataflow'] : [])])]
   const chatbotEnabled = enabledModules.includes('chatbot')
 
   const dockStudentChat = () => {
@@ -700,8 +721,9 @@ export default function StudentDashboard() {
 
   return (
     <AppBackground className="student-ui h-[100dvh] flex flex-col" gradient={bgGradient}>
+      <ShellFullscreenCorner />
       {/* Desktop Navbar - hidden on mobile */}
-      <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' || localStorage.getItem('_subjective_mode') ? 'h-24' : 'h-16'}`}>
+      <div className={`shell-nav-spacer hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' || localStorage.getItem('_subjective_mode') ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
           activeModule={activeModule}
           onNavigate={setActiveModule}
@@ -823,13 +845,26 @@ export default function StudentDashboard() {
         {sessionInfo ? (
           <div
             ref={chatColumnRef}
-            className={`hidden h-full flex-shrink-0 mr-auto overflow-hidden bg-transparent box-border lg:block ${
-              isResizingChat ? '' : 'transition-[width,opacity] duration-200'
-            } ${showSidebar ? 'relative opacity-100 py-4 pl-3 pr-4' : 'pointer-events-none opacity-0'}`}
-            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : 0, height: '100%' }}
-            aria-hidden={!showSidebar}
+            className={`hidden h-full flex-shrink-0 mr-auto bg-transparent box-border lg:block ${showSidebar ? 'overflow-hidden' : 'overflow-visible'} ${
+              isResizingChat ? '' : 'transition-[width] duration-200'
+            } ${showSidebar ? 'relative py-4 pl-3 pr-4' : 'relative py-4 pr-4'}`}
+            style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : CHAT_DOCK_WIDTH, height: '100%' }}
           >
-            <div className="ds-page-frame h-full w-full overflow-hidden">
+            {!showSidebar && (
+              <ClassChatDock
+                userType="student"
+                sessionId={sessionInfo.session.id}
+                currentUserId={sessionInfo.student.id}
+                accentColor={getStudentAccentTheme(studentAccent).accent}
+                chatOpen={showSidebar}
+                onOpen={() => setShowSidebar(true)}
+              />
+            )}
+            <div
+              className={`ds-page-frame h-full overflow-hidden ${showSidebar ? 'w-full' : 'invisible pointer-events-none absolute left-0 top-0'}`}
+              style={showSidebar ? undefined : { width: sidebarWidth }}
+              aria-hidden={!showSidebar}
+            >
               <ChatSidebar
                 sessionId={sessionInfo.session.id}
                 userType="student"
@@ -932,6 +967,7 @@ function StudentMobileShell({
     { key: 'models3d', label: tl("Modelli 3D"), detail: tl("Guarda e scarica STL"), icon: Cube3DIcon },
     { key: 'models3d_ai', label: tl("AI 3D"), detail: tl("Genera modelli con l’AI"), icon: MushroomIcon },
     { key: 'smart_canvas', label: tl("Lavagne intelligenti"), detail: tl("Disegna e ragiona insieme"), icon: CanvasEaselIcon },
+    { key: 'dataflow', label: tl("Dataflow Studio"), detail: tl("Collega nodi per analizzare i dati"), icon: GitBranch },
   ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
@@ -1487,7 +1523,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'classification') {
     return (
-      <div className="h-full min-h-0 overflow-hidden">
+      <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
         <ClassificationModule sessionId={sessionId} />
       </div>
     )
@@ -1531,6 +1567,16 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'dataflow') {
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <StudentDataflowModule sessionId={sessionId} />
+        </Suspense>
       </div>
     )
   }

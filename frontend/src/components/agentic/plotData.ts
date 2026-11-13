@@ -1,5 +1,5 @@
 export type TableValue = { columns?: string[]; rows: Array<Record<string, unknown>>; rowCount?: number }
-export type PlotValue = { kind: 'scatter' | 'histogram' | 'scatter3d' | 'bar'; x: Array<number | string>; xEnd?: number[]; y: number[]; z?: number[]; color?: unknown[]; labels?: Record<string, string>; title?: string }
+export type PlotValue = { kind: 'scatter' | 'histogram' | 'scatter3d' | 'bar' | 'line'; x: Array<number | string>; xType?: 'date' | 'number' | 'index'; lower?: Array<number | null>; upper?: Array<number | null>; xEnd?: number[]; y: number[]; z?: number[]; color?: unknown[]; labels?: Record<string, string>; title?: string }
 export type PlotAxes = { x: string; y: string; z: string; color?: string }
 
 export function plotNumber(value: unknown): number | null {

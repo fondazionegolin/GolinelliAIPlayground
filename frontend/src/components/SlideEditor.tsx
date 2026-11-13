@@ -1,13 +1,42 @@
-import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { BringToFront, Copy, Download, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RefreshCw, RotateCw, Sparkles, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
+import { BringToFront, Video, Copy, Download, Image as ImageIcon, Layers, Lock, MoveDown, MoveUp, RefreshCw, RotateCw, Sparkles, Trash2, Type, Unlock, EyeOff } from '@/components/icons'
 import { SlideTextBlock } from './SlideTextBlock'
+import { SlideVideo } from './SlideVideo'
+import { isVideoUrl } from '@/lib/slideVideo'
 import { computeSnap, type GuideLine } from '@/lib/slideSnap'
-import { moveBlockLayer, normalizeLayerOrder, textBoxPadding, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
+import { applyStyleToBlocks, boundsOf, cloneBlocks, moveBlockLayer, normalizeLayerOrder, textBoxPadding, toggleBlockHidden, toggleBlockLocked, type LayerMoveAction } from '@/lib/slideBlocks'
 import { ensureSlideFonts } from '@/lib/slideFonts'
 import { tl } from '@/i18n/tl'
 import { presentationStudioApi, type DeckTheme } from '@/lib/presentationStudio'
 import { GeneratedBadge, SlideImagePlaceholder } from './presentation/SlideImagePlaceholder'
+
+/** Reads a picture as a data URL, shrinking very large ones (screenshots, photos) so saved decks stay light. */
+async function imageFileToDataUrl(file: File, maxSide = 1920): Promise<string> {
+  const original = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+  if (file.type === 'image/svg+xml' || file.type === 'image/gif') return original
+  try {
+    const bitmap = await createImageBitmap(file)
+    const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    if (ratio >= 1 && file.size <= 1_500_000) { bitmap.close(); return original }
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * ratio)
+    canvas.height = Math.round(bitmap.height * ratio)
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const keepsAlpha = file.type === 'image/png' || file.type === 'image/webp'
+    const encoded = canvas.toDataURL(keepsAlpha ? 'image/png' : 'image/jpeg', 0.88)
+    return encoded.length < original.length ? encoded : original
+  } catch {
+    return original
+  }
+}
 
 /** An image slot that has its prompt but not yet a real picture. */
 export const isPendingImage = (block: SlideBlock): boolean =>
@@ -39,7 +68,7 @@ function rotateDelta(dx: number, dy: number, angleDeg: number): { dx: number; dy
 }
 
 export type BlockShapeType = 'rectangle' | 'ellipse' | 'line'
-export type SlideBlockType = 'text' | 'image' | BlockShapeType
+export type SlideBlockType = 'text' | 'image' | 'video' | BlockShapeType
 
 interface BaseSlideBlock {
   id: string
@@ -110,7 +139,14 @@ export interface ShapeSlideBlock extends BaseSlideBlock {
   }
 }
 
-export type SlideBlock = TextSlideBlock | ImageSlideBlock | ShapeSlideBlock
+/** A video linked by URL (YouTube, Vimeo or a direct file); `content` is the link, empty until the author pastes one. */
+export interface VideoSlideBlock extends BaseSlideBlock {
+  type: 'video'
+  content: string
+  style: { borderRadius?: number }
+}
+
+export type SlideBlock = TextSlideBlock | ImageSlideBlock | VideoSlideBlock | ShapeSlideBlock
 
 export interface SlideSnapOptions {
   gridEnabled: boolean
@@ -135,6 +171,10 @@ interface SlideEditorProps {
   slideWidth?: number
   slideHeight?: number
   snapOptions?: SlideSnapOptions
+  /** Scroll area around the slide: dragging on its empty background draws a selection box. */
+  marqueeSurfaceRef?: RefObject<HTMLElement | null>
+  /** With no object selected, Up/Down arrows ask to move to the previous/next slide. */
+  onNavigateSlide?: (delta: -1 | 1) => void
   onContextAddBlock?: (type: SlideBlockType, position: { x: number; y: number }) => void
   /** Fires with the focused text block's TipTap instance (or null on blur) so a parent toolbar
    * can route Bold/Italic/color/etc. to the actual selection range instead of the whole block. */
@@ -159,6 +199,8 @@ export function SlideEditor({
   slideWidth,
   slideHeight,
   snapOptions = DEFAULT_SLIDE_SNAP_OPTIONS,
+  marqueeSurfaceRef,
+  onNavigateSlide,
   onContextAddBlock,
   onActiveTextEditorChange,
   backgroundColor,
@@ -205,7 +247,13 @@ export function SlideEditor({
     initialBlock: SlideBlock | null
     /** Starting positions of every selected block moved together with the dragged one. */
     group?: { id: string; x: number; y: number }[]
+    /** Resizing one of several selected blocks: the other selected blocks of the same kind take its new size. */
+    siblings?: { id: string; x: number; y: number; width: number; height: number }[]
+    /** The dragged blocks are fresh Alt-drag copies; `origin` is where the dragged one started. */
+    cloned?: { x: number; y: number }
   } | null>(null)
+  // Offset of the last Alt-drag / Ctrl+D copy, repeated by the next Ctrl+D (Figma's "duplicate again").
+  const lastCloneOffsetRef = useRef<{ dx: number; dy: number } | null>(null)
   // Text block in text-editing mode (entered by double-click); otherwise a click selects and drags it.
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [marquee, setMarquee] = useState<{ startX: number; startY: number; x: number; y: number; pointerId: number; additive: boolean; base: string[] } | null>(null)
@@ -226,6 +274,11 @@ export function SlideEditor({
   const canvasRef = useRef<HTMLDivElement>(null)
   const selectedBlock = selectedBlockId ? blocks.find(block => block.id === selectedBlockId) || null : null
   const selection = selectedBlockIds && selectedBlockIds.length > 0 ? selectedBlockIds : (selectedBlockId ? [selectedBlockId] : [])
+  const groupMembers = blocks.filter(b => selection.includes(b.id) && !b.locked && !b.hidden)
+  const groupBounds = !readOnly && groupMembers.length > 1 ? boundsOf(groupMembers) : null
+  const textMembers = groupMembers.filter((b): b is Extract<SlideBlock, { type: 'text' }> => b.type === 'text')
+  const sharedTextSize = textMembers.length && textMembers.every(b => b.style.fontSize === textMembers[0].style.fontSize) ? (textMembers[0].style.fontSize ?? null) : null
+  const setTextSize = (size: number) => onChange(applyStyleToBlocks(blocks, textMembers.map(b => b.id), 'fontSize', Math.max(8, size)))
   const select = useCallback((ids: string[]) => {
     onSelectBlocks?.(ids)
     onSelectBlock(ids.length ? ids[ids.length - 1] : null)
@@ -264,34 +317,57 @@ export function SlideEditor({
     })
   }
 
-  const canvasPoint = (clientX: number, clientY: number) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
-    return { x: rect ? (clientX - rect.left) / scale : 0, y: rect ? (clientY - rect.top) / scale : 0 }
+  // The selection box lives in screen coordinates so it can start anywhere (also outside the slide).
+  const beginMarquee = (clientX: number, clientY: number, pointerId: number, additive: boolean) => {
+    setMarquee({ startX: clientX, startY: clientY, x: clientX, y: clientY, pointerId, additive, base: additive ? selection : [] })
   }
   const startMarquee = (e: React.PointerEvent) => {
     if (readOnly || !onSelectBlocks) return false
-    const point = canvasPoint(e.clientX, e.clientY)
-    const additive = e.shiftKey || e.metaKey || e.ctrlKey
-    setMarquee({ startX: point.x, startY: point.y, x: point.x, y: point.y, pointerId: e.pointerId, additive, base: additive ? selection : [] })
+    beginMarquee(e.clientX, e.clientY, e.pointerId, e.shiftKey || e.metaKey || e.ctrlKey)
     return true
   }
+  const selectionRef = useRef<string[]>([])
+  selectionRef.current = selection
+  const selectRef = useRef(select)
+  selectRef.current = select
+  // Dragging on the empty area around the slide (the workspace) also draws a selection box.
+  useEffect(() => {
+    const surface = marqueeSurfaceRef?.current
+    if (!surface || readOnly || !onSelectBlocks) return
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 || e.target !== surface) return
+      const additive = e.shiftKey || e.metaKey || e.ctrlKey
+      e.preventDefault()
+      if (!additive) selectRef.current([])
+      setMarquee({ startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, pointerId: e.pointerId, additive, base: additive ? selectionRef.current : [] })
+    }
+    surface.addEventListener('pointerdown', onDown)
+    return () => surface.removeEventListener('pointerdown', onDown)
+  }, [marqueeSurfaceRef, readOnly, onSelectBlocks])
 
   useEffect(() => {
     if (!marquee) return
     const move = (e: PointerEvent) => {
       if (e.pointerId !== marquee.pointerId) return
-      const point = canvasPoint(e.clientX, e.clientY)
-      setMarquee(current => current ? { ...current, x: point.x, y: point.y } : current)
+      setMarquee(current => current ? { ...current, x: e.clientX, y: e.clientY } : current)
     }
     const up = (e: PointerEvent) => {
       if (e.pointerId !== marquee.pointerId) return
       const left = Math.min(marquee.startX, marquee.x), right = Math.max(marquee.startX, marquee.x)
       const top = Math.min(marquee.startY, marquee.y), bottom = Math.max(marquee.startY, marquee.y)
       if (right - left > 4 || bottom - top > 4) {
-        const hit = blocks
-          .filter(b => !b.hidden && !b.locked && b.x < right && b.x + b.width > left && b.y < bottom && b.y + Math.max(b.height, 1) > top)
+        const origin = canvasRef.current?.getBoundingClientRect()
+        const hit = (origin ? blocks : [])
+          .filter(b => {
+            const bl = origin!.left + b.x * scale, bt = origin!.top + b.y * scale
+            return !b.hidden && !b.locked && bl < right && bl + b.width * scale > left && bt < bottom && bt + Math.max(b.height * scale, 1) > top
+          })
           .map(b => b.id)
         select(Array.from(new Set([...marquee.base, ...hit])))
+        // The click that follows a drag ending on the workspace must not reach its "deselect" handler.
+        const swallow = (ev: MouseEvent) => { ev.stopPropagation(); ev.preventDefault() }
+        window.addEventListener('click', swallow, { capture: true, once: true })
+        window.setTimeout(() => window.removeEventListener('click', swallow, true), 0)
       }
       setMarquee(null)
     }
@@ -304,7 +380,7 @@ export function SlideEditor({
       window.removeEventListener('pointercancel', up)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marquee, blocks, select])
+  }, [marquee, blocks, select, scale])
 
   // Keyboard: Delete/Backspace removes, arrows nudge (Shift = 10px), Escape deselects — never while
   // typing in a text block or a form field.
@@ -319,9 +395,26 @@ export function SlideEditor({
         return
       }
       if (!target || target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
-      if (selection.length === 0) return
+      if (selection.length === 0) {
+        // Nothing selected: Up/Down (and Page Up/Down) browse the slides instead.
+        if (onNavigateSlide && !target.closest('[role="listbox"]') && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+          const step = event.key === 'ArrowDown' || event.key === 'PageDown' ? 1 : event.key === 'ArrowUp' || event.key === 'PageUp' ? -1 : 0
+          if (step) { event.preventDefault(); onNavigateSlide(step) }
+        }
+        return
+      }
       const editable = blocks.filter(b => selection.includes(b.id) && !b.locked)
       if (event.key === 'Escape') { select([]); return }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd' && editable.length) {
+        // Duplicate, repeating the offset of the last Alt-drag / Ctrl+D (Figma's "duplicate again").
+        event.preventDefault()
+        const offset = lastCloneOffsetRef.current ?? { dx: 24, dy: 24 }
+        const copied = cloneBlocks(blocks, editable.map(b => b.id), offset.dx, offset.dy)
+        lastCloneOffsetRef.current = offset
+        onChange(copied.blocks)
+        select(copied.ids)
+        return
+      }
       if ((event.key === 'Delete' || event.key === 'Backspace') && editable.length) {
         event.preventDefault()
         const ids = new Set(editable.map(b => b.id))
@@ -343,7 +436,7 @@ export function SlideEditor({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [readOnly, selection, blocks, onChange, select, slideWidth, slideHeight, editingBlockId])
+  }, [readOnly, selection, blocks, onChange, select, slideWidth, slideHeight, editingBlockId, onNavigateSlide])
   const orderedBlocks = blocks
     .map((block, index) => ({ block, index }))
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
@@ -438,10 +531,16 @@ export function SlideEditor({
       let dragSnap: { x: number; y: number } | null = null
       if (dragState.isDragging && slideWidth && slideHeight) {
         const init = dragState.initialBlock!
-        const proposed = { x: init.x + deltaX, y: init.y + deltaY, width: init.width, height: init.height }
-        const others = blocks.filter(b => b.id !== init.id && !(dragState.group || []).some(item => item.id === b.id))
+        const members = dragState.group && dragState.group.length > 1
+          ? blocks.filter(b => dragState.group!.some(item => item.id === b.id)) : []
+        // A multi-selection snaps as one box (its bounds), not as the single block that was grabbed.
+        const startBox = members.length > 1
+          ? boundsOf(dragState.group!.map(item => { const b = members.find(m => m.id === item.id)!; return { x: item.x, y: item.y, width: b.width, height: b.height } }))!
+          : { x: init.x, y: init.y, width: init.width, height: init.height }
+        const proposed = { x: startBox.x + deltaX, y: startBox.y + deltaY, width: startBox.width, height: startBox.height }
+        const others = blocks.filter(b => !b.hidden && b.id !== init.id && !(dragState.group || []).some(item => item.id === b.id))
         const snap = computeSnap(proposed, others, { width: slideWidth, height: slideHeight }, snapOptions)
-        dragSnap = { x: snap.x, y: snap.y }
+        dragSnap = { x: init.x + (snap.x - startBox.x), y: init.y + (snap.y - startBox.y) }
         setActiveGuides(snap.guides)
       }
 
@@ -574,11 +673,39 @@ export function SlideEditor({
         return b
       })
 
+      if (dragState.isResizing && dragState.siblings?.length && dragState.handle) {
+        const init = dragState.initialBlock!
+        const resized = newBlocks.find(b => b.id === init.id)
+        if (resized) {
+          const handle = dragState.handle
+          const sameWidth = (handle.includes('e') || handle.includes('w')) && resized.width !== init.width
+          const sameHeight = (handle.includes('n') || handle.includes('s')) && resized.height !== init.height
+          const byId = new Map(dragState.siblings.map(item => [item.id, item]))
+          onChange(newBlocks.map(b => {
+            const start = byId.get(b.id)
+            if (!start) return b
+            let { x, y, width, height } = start
+            if (sameWidth) { width = resized.width; if (handle.includes('w')) x = start.x + start.width - width }
+            if (sameHeight) { height = resized.height; if (handle.includes('n')) y = start.y + start.height - height }
+            if (slideWidth) { x = Math.min(Math.max(0, x), Math.max(0, slideWidth - width)) }
+            if (slideHeight) { y = Math.min(Math.max(0, y), Math.max(0, slideHeight - height)) }
+            return { ...b, x, y, width, height }
+          }))
+          return
+        }
+      }
+
       onChange(newBlocks)
     }
 
     const handlePointerUp = (e: PointerEvent) => {
       if (e.pointerId !== dragState?.pointerId) return
+      if (dragState.cloned) {
+        const moved = blocks.find(b => b.id === dragState.initialBlock?.id)
+        if (moved && (Math.abs(moved.x - dragState.cloned.x) > 0.5 || Math.abs(moved.y - dragState.cloned.y) > 0.5)) {
+          lastCloneOffsetRef.current = { dx: moved.x - dragState.cloned.x, dy: moved.y - dragState.cloned.y }
+        }
+      }
       setDragState(null)
       setActiveGuides([])
     }
@@ -618,38 +745,63 @@ export function SlideEditor({
     }))
   }
 
-  // Handle file drop for images
+  /** Drops/pastes become new blocks: pictures (downscaled so decks stay light) and video links. */
+  const addDroppedMedia = async (files: File[], text: string, at: { x: number; y: number } | null) => {
+    const added: SlideBlock[] = []
+    const place = (width: number, height: number, index: number) => {
+      const rawX = at ? at.x + index * 24 : (slideWidth || 960) / 2 - width / 2 + index * 24
+      const rawY = at ? at.y + index * 24 : (slideHeight || 540) / 2 - height / 2 + index * 24
+      return {
+        x: slideWidth ? Math.min(Math.max(0, rawX), Math.max(0, slideWidth - width)) : rawX,
+        y: slideHeight ? Math.min(Math.max(0, rawY), Math.max(0, slideHeight - height)) : rawY,
+      }
+    }
+    for (const file of files.filter(item => item.type.startsWith('image/'))) {
+      try {
+        const content = await imageFileToDataUrl(file)
+        const width = Math.min(300, slideWidth || 300)
+        const height = Math.min(200, slideHeight || 200)
+        added.push({ id: crypto.randomUUID(), type: 'image', content, ...place(width, height, added.length), width, height, style: {}, fitToImage: true })
+      } catch { /* unreadable image: skip it */ }
+    }
+    if (!added.length && isVideoUrl(text)) {
+      const width = Math.min(480, slideWidth || 480)
+      const height = Math.round(width * 9 / 16)
+      added.push({ id: crypto.randomUUID(), type: 'video', content: text.trim(), ...place(width, height, 0), width, height, style: { borderRadius: 8 } })
+    }
+    if (!added.length) return false
+    const top = Math.max(-1, ...latestBlocksRef.current.map(b => b.zIndex ?? 0))
+    onChange(normalizeLayerOrder([...latestBlocksRef.current, ...added.map((block, i) => ({ ...block, zIndex: top + 1 + i }))]))
+    select(added.map(b => b.id))
+    return true
+  }
+
+  // Ctrl/Cmd+V: a copied picture (or a video link) lands in the slide, as in any design tool.
+  const addDroppedMediaRef = useRef(addDroppedMedia)
+  addDroppedMediaRef.current = addDroppedMedia
+  useEffect(() => {
+    if (readOnly) return
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      const files = Array.from(event.clipboardData?.files || []).filter(file => file.type.startsWith('image/'))
+      const text = event.clipboardData?.getData('text/plain') || ''
+      if (!files.length && !isVideoUrl(text)) return
+      event.preventDefault()
+      void addDroppedMediaRef.current(files, text, null)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [readOnly])
+
+  // Handle file drop for images (and video links dragged from the browser)
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     if (readOnly) return
-    
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0 && files[0].type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const rect = canvasRef.current?.getBoundingClientRect()
-          const width = Math.min(300, slideWidth || 300)
-          const height = Math.min(200, slideHeight || 200)
-          const rawX = rect ? (e.clientX - rect.left) / scale : 0
-          const rawY = rect ? (e.clientY - rect.top) / scale : 0
-          const newBlock: SlideBlock = {
-            id: crypto.randomUUID(),
-            type: 'image',
-            content: event.target.result as string,
-            x: slideWidth ? Math.min(Math.max(0, rawX), Math.max(0, slideWidth - width)) : rawX,
-            y: slideHeight ? Math.min(Math.max(0, rawY), Math.max(0, slideHeight - height)) : rawY,
-            width,
-            height,
-            style: {},
-            fitToImage: true,
-          }
-          onChange([...blocks, newBlock])
-          onSelectBlock(newBlock.id)
-        }
-      }
-      reader.readAsDataURL(files[0])
-    }
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const at = rect ? { x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale } : null
+    const text = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || ''
+    void addDroppedMedia(Array.from(e.dataTransfer.files), text, at)
   }
 
   return (
@@ -693,6 +845,7 @@ export function SlideEditor({
             touchAction: readOnly || block.locked || editingBlockId === block.id ? undefined : 'none',
             transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
             transformOrigin: 'center center',
+            ...(block.type === 'video' ? { overflow: 'hidden', borderRadius: block.style.borderRadius ?? 8, backgroundColor: '#0f172a' } : {}),
             ...(block.type === 'text' || block.type === 'image'
               ? {
                   backgroundColor: block.style.backgroundColor || 'transparent',
@@ -736,6 +889,27 @@ export function SlideEditor({
             e.currentTarget.setPointerCapture(e.pointerId)
             const groupIds = inGroup ? selection : [block.id]
             dragMovedRef.current = false
+            if (e.altKey) {
+              // Alt + drag duplicates: the copies are what follows the pointer, the originals stay put.
+              const copied = cloneBlocks(blocks, groupIds, 0, 0)
+              if (copied.ids.length) {
+                const sourceIds = blocks.filter(b => groupIds.includes(b.id) && !b.locked).sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0)).map(b => b.id)
+                const grabbed = copied.blocks.find(b => b.id === copied.ids[Math.max(0, sourceIds.indexOf(block.id))]) || copied.blocks.find(b => b.id === copied.ids[0])!
+                onChange(copied.blocks)
+                select(copied.ids)
+                setDragState({
+                  isDragging: true,
+                  isResizing: false,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  pointerId: e.pointerId,
+                  initialBlock: grabbed,
+                  group: copied.blocks.filter(b => copied.ids.includes(b.id)).map(b => ({ id: b.id, x: b.x, y: b.y })),
+                  cloned: { x: grabbed.x, y: grabbed.y },
+                })
+                return
+              }
+            }
             setDragState({
               isDragging: true,
               isResizing: false,
@@ -793,8 +967,15 @@ export function SlideEditor({
               onLoad={block.fitToImage && !readOnly ? (event) => fitImageBlock(block.id, event.currentTarget) : undefined}
             />
             </>
+          ) : block.type === 'video' ? (
+            <SlideVideo
+              url={block.content}
+              interactive={readOnly}
+              selected={selection.length === 1 && selection[0] === block.id && !block.locked}
+              onChangeUrl={readOnly || block.locked ? undefined : (url) => onChange(blocks.map(b => b.id === block.id ? { ...b, content: url } : b))}
+            />
           ) : block.type === 'line' ? (
-            <svg className="w-full h-full pointer-events-none overflow-visible">
+            <svg className="pointer-events-none overflow-visible" style={{ width: Math.max(1, block.width), height: Math.max(1, block.height) }}>
               <line
                 x1={0}
                 y1={0}
@@ -824,12 +1005,12 @@ export function SlideEditor({
             transformOrigin: 'center center',
           }}
         >
-          {!block.locked && selection.length === 1 && (
+          {!block.locked && (selection.length === 1 || (block.width >= 28 && block.height >= 20)) && (
             <>
               {(block.type === 'line' ? ['nw', 'se'] : ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']).map((handle) => (
                 <div
                   key={handle}
-                  className="pointer-events-auto absolute h-4 w-4 touch-none rounded-full border border-blue-500 bg-white z-20 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+                  className={`pointer-events-auto absolute touch-none rounded-full border border-blue-500 bg-white z-20 ${selection.length > 1 ? "h-2.5 w-2.5" : "h-4 w-4"} [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6`}
                   style={{
                     top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%',
                     left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%',
@@ -847,14 +1028,19 @@ export function SlideEditor({
                       startX: e.clientX,
                       startY: e.clientY,
                       pointerId: e.pointerId,
-                      initialBlock: block
+                      initialBlock: block,
+                      // With several objects selected, the others of the same kind follow this one's size.
+                      siblings: selection.length > 1
+                        ? blocks.filter(b => selection.includes(b.id) && b.id !== block.id && b.type === block.type && !b.locked)
+                            .map(b => ({ id: b.id, x: b.x, y: b.y, width: b.width, height: b.height }))
+                        : undefined,
                     })
                   }}
                 />
               ))}
 
               {/* Rotation handle — pivots around the block's own center, captured on mousedown. */}
-              <div
+              {selection.length === 1 && <div
                 className="pointer-events-auto absolute flex h-5 w-5 touch-none -translate-x-1/2 items-center justify-center rounded-full border border-blue-500 bg-white z-20 cursor-alias [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:w-7"
                 style={{ top: -28, left: '50%' }}
                 title={tl("Trascina per ruotare (Shift per scattare a 15°)")}
@@ -877,14 +1063,54 @@ export function SlideEditor({
                 }}
               >
                 <RotateCw className="h-3 w-3 text-blue-500" />
-              </div>
+              </div>}
             </>
           )}
         </div>
       ))}
 
-      {/* Smart alignment guides — only visible while actively dragging a block */}
-      {activeGuides.map((guide, i) => (
+      {/* Multi-selection: a small panel that adapts to what is selected (today: one font size for all the texts). */}
+      {!readOnly && groupBounds && textMembers.length > 0 && !dragState && (
+        <div
+          className="pointer-events-auto absolute z-[1002] flex items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white p-1 pl-3 text-slate-700 shadow-lg"
+          style={groupBounds.y * scale > 56
+            ? { left: groupBounds.x, top: groupBounds.y - 8 / scale, transform: `translateY(-100%) scale(${1 / scale})`, transformOrigin: 'left bottom' }
+            : { left: groupBounds.x, top: groupBounds.y + groupBounds.height + 8 / scale, transform: `scale(${1 / scale})`, transformOrigin: 'left top' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
+        >
+          <span className="text-xs font-semibold text-slate-500">{textMembers.length === 1 ? tl("1 testo") : `${textMembers.length} ${tl("testi")}`} · {tl("Dimensione")}</span>
+          <button type="button" aria-label={tl("Riduci carattere")} className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold hover:bg-slate-100" onClick={() => setTextSize((sharedTextSize ?? textMembers[0].style.fontSize ?? 16) - 2)}>−</button>
+          <input
+            key={`${selection.join('|')}-${sharedTextSize ?? 'mixed'}`}
+            type="number"
+            min={8}
+            defaultValue={sharedTextSize ?? ''}
+            placeholder="–"
+            title={sharedTextSize === null ? tl("Misure diverse: scrivi un valore per renderle tutte uguali") : undefined}
+            className="h-8 w-14 rounded-lg bg-slate-100 px-2 text-center text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-400"
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            onBlur={(e) => { const value = parseInt(e.currentTarget.value, 10); if (Number.isFinite(value) && value !== sharedTextSize) setTextSize(value) }}
+          />
+          <button type="button" aria-label={tl("Ingrandisci carattere")} className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold hover:bg-slate-100" onClick={() => setTextSize((sharedTextSize ?? textMembers[0].style.fontSize ?? 16) + 2)}>+</button>
+        </div>
+      )}
+
+      {/* Smart guides — alignment lines and equal-spacing markers, only while dragging/resizing */}
+      {activeGuides.map((guide, i) => guide.kind === 'spacing' ? (
+        <div
+          key={i}
+          className="pointer-events-none absolute z-30 bg-rose-500"
+          style={guide.orientation === 'vertical'
+            ? { left: guide.position - 0.5 / scale, top: guide.from, width: 1 / scale, height: guide.to - guide.from }
+            : { top: guide.position - 0.5 / scale, left: guide.from, width: guide.to - guide.from, height: 1 / scale }}
+        >
+          <span
+            className="absolute rounded bg-rose-500 px-1 font-bold leading-none text-white"
+            style={{ fontSize: 10 / scale, padding: `${2 / scale}px ${4 / scale}px`, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+          >{guide.label}</span>
+        </div>
+      ) : (
         <div
           key={i}
           className="absolute bg-pink-500 pointer-events-none z-30"
@@ -896,16 +1122,17 @@ export function SlideEditor({
         />
       ))}
 
-      {marquee && (
+      {marquee && createPortal(
         <div
-          className="pointer-events-none absolute z-[1001] border border-blue-500 bg-blue-500/10"
+          className="pointer-events-none fixed z-[10000] border border-blue-500 bg-blue-500/10"
           style={{
             left: Math.min(marquee.startX, marquee.x),
             top: Math.min(marquee.startY, marquee.y),
             width: Math.abs(marquee.x - marquee.startX),
             height: Math.abs(marquee.y - marquee.startY),
           }}
-        />
+        />,
+        document.body,
       )}
 
       {contextMenu && !readOnly && (
@@ -919,6 +1146,7 @@ export function SlideEditor({
           <ContextMenuButton icon={<Layers className="h-4 w-4" />} label={tl("Aggiungi rettangolo")} onClick={() => runContextAction(() => onContextAddBlock?.('rectangle', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
           <ContextMenuButton icon={<BringToFront className="h-4 w-4" />} label={tl("Aggiungi ellisse")} onClick={() => runContextAction(() => onContextAddBlock?.('ellipse', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
           <ContextMenuButton icon={<ImageIcon className="h-4 w-4" />} label={tl("Aggiungi immagine")} onClick={() => runContextAction(() => onContextAddBlock?.('image', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
+          <ContextMenuButton icon={<Video className="h-4 w-4" />} label={tl("Aggiungi video da link")} onClick={() => runContextAction(() => onContextAddBlock?.('video', { x: contextMenu.canvasX, y: contextMenu.canvasY }))} />
           {contextMenu.blockId && (
             <>
               <div className="my-1 border-t border-slate-100" />

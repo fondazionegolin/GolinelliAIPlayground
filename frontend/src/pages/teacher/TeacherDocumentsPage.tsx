@@ -4,9 +4,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Plus, Trash2, Upload, Monitor, FileText, FileSpreadsheet, PenTool, User, MonitorPlay, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, Loader2, FileUp, PanelTop, ChevronDown, Clock } from '@/components/icons'
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Sparkles, FileUp, PanelTop, ChevronDown, Clock } from '@/components/icons'
 import { filesApi, teacherApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
+import { printSlidesAsPdf } from '@/lib/slidesPdf'
+import { DocumentShareButton } from '@/components/documents/DocumentShareButton'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
@@ -27,7 +29,9 @@ import { SlideLayersPanel } from '@/components/documents/SlideLayersPanel'
 import { collectDocumentColors } from '@/components/ui/ColorPicker'
 import PresentationStudio from '@/components/presentation/PresentationStudio'
 import PresentationDeckTools from '@/components/presentation/PresentationDeckTools'
-import { withImage, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
+import DocumentCreateRow from '@/components/documents/DocumentCreateRow'
+import { NewSlideDialog } from '@/components/documents/NewSlideDialog'
+import { withImage, createSlideAt, withSlideBlocks, type DeckTheme, type RenderedDeck, type StudioSlide } from '@/lib/presentationStudio'
 import DocumentCard from '@/components/documents/DocumentCard'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
 import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
@@ -121,6 +125,8 @@ interface DraftDocument {
   type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   contentJson: string
+  /** contentJson is a thumbnail-sized stand-in: fetch the full draft before opening it. */
+  lite?: boolean
 }
 
 interface DocumentDraftVersion {
@@ -369,7 +375,7 @@ export default function TeacherDocumentsPage() {
         kind: 'slide_blocks',
         label: isEnglish ? `Selected group (${groupBlocks.length} objects)` : `Gruppo selezionato (${groupBlocks.length} oggetti)`,
         detail: summary,
-        target: blockGroupAssistTarget(currentSlide, currentSlideIndex, groupBlocks.map(b => b.id)),
+        target: blockGroupAssistTarget(currentSlide, currentSlideIndex, groupBlocks.map(b => b.id), { title: document.title, theme: document.theme }),
         beforePreview: `${groupBlocks.length} ${isEnglish ? 'objects' : 'oggetti'}\n${summary}`,
       }
     }
@@ -764,6 +770,11 @@ export default function TeacherDocumentsPage() {
     setDocumentExporting(true)
     try {
       const payload = buildDraftPayload()
+      if (targetFormat === 'pdf' && mode === 'slides') {
+        // Printed from the presenter's own renderer, so the PDF matches what is shown on screen.
+        await printSlidesAsPdf(document.slides, document.format === '4:3' ? '4:3' : '16:9', payload.title)
+        return
+      }
       const response = await filesApi.exportDocument({ title: payload.title, content_json: mode === 'document' ? withPageBreaks(payload.content_json, editor?.view.dom as HTMLElement | undefined) : payload.content_json, target_format: targetFormat })
       downloadExportedDocument(response.data, payload.title, targetFormat)
       toast({ title: isEnglish ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
@@ -984,13 +995,14 @@ export default function TeacherDocumentsPage() {
   useEffect(() => {
     const fetchDrafts = async () => {
       try {
-        const res = await teacherApi.listDocumentDrafts()
+        const res = await teacherApi.listDocumentDrafts(undefined, true)
         const drafts: DraftDocument[] = (res.data || []).map((d: any) => ({
           id: d.id,
           title: d.title,
           type: d.doc_type,
           updatedAt: d.updated_at,
-          contentJson: d.content_json
+          contentJson: d.content_json,
+          lite: Boolean(d.lite),
         }))
         setDraftDocuments(drafts)
       } catch (e) {
@@ -1241,6 +1253,12 @@ export default function TeacherDocumentsPage() {
   }, [searchParams, storedDocuments, draftDocuments])
 
   const loadDraft = (doc: DraftDocument) => {
+    if (doc.lite) {
+      void teacherApi.getDocumentDraft(doc.id)
+        .then(response => loadDraft({ ...doc, contentJson: response.data.content_json, lite: false }))
+        .catch(error => console.error('Failed to load draft', error))
+      return
+    }
     editorGenerationRef.current += 1
     try {
       const content = JSON.parse(doc.contentJson)
@@ -1442,6 +1460,19 @@ export default function TeacherDocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVersionPanel, draftId])
 
+  // Ctrl/Cmd + wheel (and trackpad pinch) zooms the slide instead of the whole page.
+  useEffect(() => {
+    const host = docScrollRef.current
+    if (mode !== 'slides' || !host) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      setScale(current => Math.min(3, Math.max(0.2, Math.round(current * Math.exp(-event.deltaY * 0.0025) * 1000) / 1000)))
+    }
+    host.addEventListener('wheel', onWheel, { passive: false })
+    return () => host.removeEventListener('wheel', onWheel)
+  }, [mode, viewMode])
+
   // Fit canvas
   useEffect(() => {
     const handleResize = () => {
@@ -1461,6 +1492,44 @@ export default function TeacherDocumentsPage() {
   }, [document.format, mode])
 
   // Actions
+  // Right-click on the slide list → «Nuova slide» before/after the clicked one, optionally written from a short description.
+  const [slideMenu, setSlideMenu] = useState<{ x: number; y: number; index: number } | null>(null)
+  const [newSlideAt, setNewSlideAt] = useState<number | null>(null)
+  const [newSlideBusy, setNewSlideBusy] = useState(false)
+  useEffect(() => {
+    if (!slideMenu) return
+    const close = () => setSlideMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('keydown', close)
+    window.addEventListener('scroll', close, true)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('keydown', close); window.removeEventListener('scroll', close, true) }
+  }, [slideMenu])
+  const createSlideFromDialog = async (description: string) => {
+    if (newSlideAt === null) return
+    setNewSlideBusy(true)
+    try {
+      const { slides, themed } = await createSlideAt(
+        { title: document.title, theme: document.theme, slides: document.slides as unknown as StudioSlide[] },
+        newSlideAt, description, FORMAT_DIMENSIONS[document.format],
+      )
+      const index = Math.min(newSlideAt, slides.length - 1)
+      setDocument(prev => ({ ...prev, slides: slides as unknown as Slide[] }))
+      setCurrentSlideIndex(index)
+      setSelectedBlockId(null)
+      setSelectedSlideIds([])
+      setNewSlideAt(null)
+      if (description && !themed) toast({ title: isEnglish ? 'Empty slide added' : 'Slide vuota aggiunta', description: isEnglish ? 'This deck has no theme: ask the assistant to fill it.' : 'La presentazione non ha un tema: chiedi all’assistente di riempirla.' })
+    } catch (error: any) {
+      toast({
+        title: isEnglish ? 'Could not add the slide' : 'Impossibile aggiungere la slide',
+        description: error?.response?.status === 402 ? (isEnglish ? 'AI credits exhausted.' : 'Crediti AI esauriti.') : undefined,
+        variant: 'destructive',
+      })
+    } finally {
+      setNewSlideBusy(false)
+    }
+  }
+
   const addSlide = () => {
     const newSlide: Slide = {
       id: crypto.randomUUID(),
@@ -1507,6 +1576,16 @@ export default function TeacherDocumentsPage() {
   const actionSlideIds = selectedSlideIds.length > 0 ? selectedSlideIds : (currentSlide.id ? [currentSlide.id] : [])
 
   // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
+  const slideListRef = useRef<HTMLDivElement>(null)
+  // Keep the current slide centred in the left rail, however it changed (arrows, click, editor navigation).
+  useEffect(() => {
+    const list = slideListRef.current
+    const item = list?.querySelector<HTMLElement>(`[data-slide-index="${currentSlideIndex}"]`)
+    if (!list || !item) return
+    const delta = item.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - item.offsetHeight) / 2
+    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: 'smooth' })
+  }, [currentSlideIndex, document.slides.length])
+
   const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
     event.preventDefault()
@@ -1525,7 +1604,6 @@ export default function TeacherDocumentsPage() {
     }
     setCurrentSlideIndex(target)
     setSelectedBlockId(null)
-    window.requestAnimationFrame(() => event.currentTarget.querySelector(`[data-slide-index="${target}"]`)?.scrollIntoView({ block: 'nearest' }))
   }
 
   const deleteSelectedSlides = () => {
@@ -1619,6 +1697,17 @@ export default function TeacherDocumentsPage() {
         height: 300,
         style: {},
         fitToImage: true,
+      }
+    } else if (type === 'video') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'video',
+        content: '',
+        x: dims.width / 2 - 240,
+        y: dims.height / 2 - 135,
+        width: 480,
+        height: 270,
+        style: { borderRadius: 8 },
       }
     } else {
       newBlock = createShapeBlock(type, dims)
@@ -1863,6 +1952,13 @@ export default function TeacherDocumentsPage() {
             void importDocumentFiles(Array.from(event.dataTransfer.files))
           }}
         >
+          {showPresentationStudio && (
+            <PresentationStudio
+              onClose={() => setShowPresentationStudio(false)}
+              onCreate={createPresentationFromStudio}
+              onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+            />
+          )}
           <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
           <div className="ds-frame-header hidden h-14 items-center px-6 md:flex">
             <div className="flex items-center gap-2">
@@ -1873,28 +1969,15 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
             <div className="mx-auto max-w-6xl space-y-6 md:space-y-7">
 
-              <section className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2.5 lg:grid-cols-5">
-                <button type="button" onClick={createNewDocument} className="ui-card ui-card-interactive flex aspect-square flex-col justify-between gap-3 bg-emerald-50/75 p-3 text-left md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><FileText className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
-                </button>
-                <button type="button" onClick={() => setShowPresentationStudio(true)} className="ui-card ui-card-interactive flex aspect-square flex-col justify-between gap-3 bg-indigo-50/75 p-3 text-left md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Outline, style, slides.' : 'Scaletta, stile, slide.'}</span></span>
-                </button>
-                <button type="button" onClick={createNewSheet} className="ui-card ui-card-interactive flex aspect-square flex-col justify-between gap-3 bg-cyan-50/75 p-3 text-left md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
-                </button>
-                <button type="button" onClick={createNewCanvas} className="ui-card ui-card-interactive flex aspect-square flex-col justify-between gap-3 bg-amber-50/75 p-3 text-left md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm"><PenTool className="h-5 w-5" /></span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New board' : 'Nuova lavagna'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.'}</span></span>
-                </button>
-                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="ui-card ui-card-interactive flex aspect-square flex-col justify-between gap-3 bg-sky-50/75 p-3 text-left disabled:cursor-wait disabled:opacity-60 md:aspect-auto md:min-h-[76px] md:flex-row md:justify-start">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
-                </button>
-              </section>
+              <DocumentCreateRow
+                isEnglish={isEnglish}
+                importing={documentImporting}
+                dragActive={documentDragActive}
+                onNewDocument={createNewDocument}
+                onNewPresentation={() => setShowPresentationStudio(true)}
+                onNewSheet={createNewSheet}
+                onBrowseFiles={() => documentFileInputRef.current?.click()}
+              />
 
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
@@ -2082,20 +2165,20 @@ export default function TeacherDocumentsPage() {
 
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && newDocumentModal}
-        {showPresentationStudio && (
-          <PresentationStudio
-            onClose={() => setShowPresentationStudio(false)}
-            onCreate={createPresentationFromStudio}
-            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
-          />
-        )}
       </>
     )
   }
 
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+      <div className="relative h-full flex flex-col bg-slate-100 overflow-hidden">
+          {showPresentationStudio && (
+            <PresentationStudio
+              onClose={() => setShowPresentationStudio(false)}
+              onCreate={createPresentationFromStudio}
+              onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
+            />
+          )}
 
         <DocumentEditorHeader
           mode={mode}
@@ -2137,6 +2220,16 @@ export default function TeacherDocumentsPage() {
                   label={isEnglish ? 'Export' : 'Esporta'}
                   exporting={documentExporting}
                   onExport={(format) => void exportCurrentDocument(format)}
+                  googleWorkspace={mode === 'document' || mode === 'slides' ? {
+                    kind: mode,
+                    getDocument: () => {
+                      const payload = buildDraftPayload()
+                      return {
+                        title: payload.title,
+                        content_json: mode === 'document' ? withPageBreaks(payload.content_json, editor?.view.dom as HTMLElement | undefined) : payload.content_json,
+                      }
+                    },
+                  } : undefined}
                   formats={[
                     { value: 'pdf' as const, label: 'PDF' },
                     ...(mode === 'slides' ? [{ value: 'pptx' as const, label: 'PowerPoint (.pptx)' }, { value: 'ppt' as const, label: 'PowerPoint 97-2003 (.ppt)' }] : []),
@@ -2146,6 +2239,22 @@ export default function TeacherDocumentsPage() {
                   ]}
                 />
               )}
+              {(mode === 'document' || mode === 'slides') && <DocumentShareButton disabled={Boolean(activeStudentSubmissionId)} getSource={async () => {
+                const payload = buildDraftPayload()
+                if (activePublishedTaskIdRef.current) {
+                  await teacherApi.updatePublishedDocument(activePublishedTaskIdRef.current, { title: payload.title, content_json: payload.content_json })
+                  return { source_kind: 'task', source_id: activePublishedTaskIdRef.current }
+                }
+                pendingDraftPayloadRef.current = payload
+                await flushDraftSaveQueue()
+                const deadline = Date.now() + 30000
+                while (isSavingDraftRef.current || pendingDraftPayloadRef.current) {
+                  if (Date.now() > deadline) throw new Error('Salvataggio in corso')
+                  await new Promise(resolve => setTimeout(resolve, 100))
+                }
+                if (!draftIdRef.current || lastDraftPayloadKeyRef.current !== JSON.stringify(payload)) throw new Error('Salvataggio non riuscito')
+                return { source_kind: 'draft', source_id: draftIdRef.current }
+              }} />}
               {mode === 'slides' && (
                 <>
                   <HeaderToolDivider />
@@ -2250,8 +2359,10 @@ export default function TeacherDocumentsPage() {
                    className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide outline-none"
                    tabIndex={0}
                    role="listbox"
+                   ref={slideListRef}
                    aria-label={isEnglish ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
                    onKeyDown={handleSlideListKeyDown}
+                   onContextMenu={(event) => { event.preventDefault(); setSlideMenu({ x: event.clientX, y: event.clientY, index: document.slides.length }) }}
                  >
                    {document.slides.map((slide, idx) => (
                      <div 
@@ -2268,8 +2379,11 @@ export default function TeacherDocumentsPage() {
                        onDrop={(event) => { event.preventDefault(); dropSelectedSlidesAt(idx) }}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
+                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSlideMenu({ x: event.clientX, y: event.clientY, index: idx }) }}
                        title={isEnglish ? 'Ctrl/⌘+click or Shift+click to select several slides' : 'Ctrl/⌘+clic o Shift+clic per selezionare più slide'}
-                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${(selectedSlideIds.includes(slide.id) || idx === currentSlideIndex)
+                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${idx === currentSlideIndex
+                         ? 'border-indigo-500 bg-indigo-100 shadow-md ring-2 ring-indigo-400'
+                         : selectedSlideIds.includes(slide.id)
                          ? 'border-indigo-300 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-100'
                          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
                      >
@@ -2303,6 +2417,38 @@ export default function TeacherDocumentsPage() {
                      </div>
                    ))}
                  </div>
+                 {slideMenu && (
+                   <div
+                     className="fixed z-[9999] w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm text-black shadow-xl"
+                     style={{ left: Math.min(slideMenu.x, window.innerWidth - 220), top: Math.min(slideMenu.y, window.innerHeight - 120) }}
+                     onClick={(event) => event.stopPropagation()}
+                     onContextMenu={(event) => event.preventDefault()}
+                   >
+                     {slideMenu.index >= document.slides.length ? (
+                       <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-100" onClick={() => { setNewSlideAt(document.slides.length); setSlideMenu(null) }}>
+                         <Plus className="h-4 w-4" />{isEnglish ? 'New slide at the end' : 'Nuova slide in fondo'}
+                       </button>
+                     ) : (
+                       <>
+                         <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-100" onClick={() => { setNewSlideAt(slideMenu.index); setSlideMenu(null) }}>
+                           <Plus className="h-4 w-4" />{isEnglish ? 'New slide above' : 'Nuova slide prima'}
+                         </button>
+                         <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-100" onClick={() => { setNewSlideAt(slideMenu.index + 1); setSlideMenu(null) }}>
+                           <Plus className="h-4 w-4" />{isEnglish ? 'New slide below' : 'Nuova slide dopo'}
+                         </button>
+                       </>
+                     )}
+                   </div>
+                 )}
+                 <NewSlideDialog
+                   open={newSlideAt !== null}
+                   onOpenChange={(open) => { if (!open) setNewSlideAt(null) }}
+                   position={(newSlideAt ?? 0) + 1}
+                   total={document.slides.length}
+                   themed={Boolean(document.theme?.id)}
+                   busy={newSlideBusy}
+                   onCreate={(description) => void createSlideFromDialog(description)}
+                 />
               </div>
             )}
 
@@ -2324,7 +2470,8 @@ export default function TeacherDocumentsPage() {
               isEnglish={isEnglish}
             />
           )}
-          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
+          <div ref={docScrollRef} className={`flex-1 min-h-0 flex items-start justify-center p-2 md:p-3 relative overflow-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
+               style={mode === 'slides' ? { justifyContent: 'safe center' } : undefined}
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
 
@@ -2448,11 +2595,15 @@ export default function TeacherDocumentsPage() {
              {mode === 'slides' && (
                <div 
                  ref={canvasRef}
-                 className="bg-white shadow-xl relative transition-transform origin-center flex flex-col"
+                 className="bg-white shadow-xl relative shrink-0 flex flex-col"
                  style={{
                    width: FORMAT_DIMENSIONS[document.format].width,
                    height: FORMAT_DIMENSIONS[document.format].height,
                    transform: `scale(${scale})`,
+                   transformOrigin: 'top left',
+                   // The scaled slide takes exactly its scaled size in the layout, so zooming in scrolls instead of clipping.
+                   marginRight: -FORMAT_DIMENSIONS[document.format].width * (1 - scale),
+                   marginBottom: -FORMAT_DIMENSIONS[document.format].height * (1 - scale),
                    marginTop: '20px'
                  }}
                  onClick={(e) => e.stopPropagation()} // Prevent deselection when clicking slide background
@@ -2481,6 +2632,8 @@ export default function TeacherDocumentsPage() {
                       onSelectBlock={setSelectedBlockId}
                       selectedBlockIds={selectedBlockIds}
                       onSelectBlocks={setSelectedBlockIds}
+                      marqueeSurfaceRef={docScrollRef}
+                      onNavigateSlide={(delta) => { setCurrentSlideIndex(index => Math.max(0, Math.min(document.slides.length - 1, index + delta))); setSelectedBlockId(null); setSelectedSlideIds?.([]) }}
                       scale={scale}
                       slideWidth={FORMAT_DIMENSIONS[document.format].width}
                       slideHeight={FORMAT_DIMENSIONS[document.format].height}
@@ -2573,6 +2726,7 @@ export default function TeacherDocumentsPage() {
                 }))}
                 deckTheme={document.theme}
                 currentSlides={document.slides}
+                currentSlideIndex={currentSlideIndex}
                 onClose={() => setDocumentAgentOpen(false)}
               />
             </>
@@ -2640,13 +2794,6 @@ export default function TeacherDocumentsPage() {
         {/* New Document Modal */}
         {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && newDocumentModal}
-        {showPresentationStudio && (
-          <PresentationStudio
-            onClose={() => setShowPresentationStudio(false)}
-            onCreate={createPresentationFromStudio}
-            onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
-          />
-        )}
 
         {/* Publish Modal */}
         {showPublishModal && (

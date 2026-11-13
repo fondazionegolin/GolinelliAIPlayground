@@ -1340,6 +1340,50 @@ async def push_teacherbot_to_student(
     return {"message": f"Teacherbot {bot.name} pushed to student {student.nickname}"}
 
 
+class ResetStudentPasswordRequest(BaseModel):
+    password: str
+
+
+@router.post("/sessions/{session_id}/students/{student_id}/reset-password")
+async def reset_student_password(
+    session_id: UUID,
+    student_id: UUID,
+    request: ResetStudentPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Set a new password chosen by the teacher so the student can log back in with it."""
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    password = (request.password or "").strip()
+    if len(password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La password deve essere di almeno 8 caratteri")
+    if len(password) > 128:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password troppo lunga")
+
+    result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.session_id == session_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+    student.password_hash = await hash_password_async(password)
+    db.add(AuditEvent(
+        tenant_id=student.tenant_id,
+        session_id=session_id,
+        actor_type="TEACHER",
+        actor_user_id=teacher.id,
+        event_type="STUDENT_PASSWORD_RESET",
+        payload_json={"student_id": str(student_id), "nickname": student.nickname},
+    ))
+    await db.commit()
+    return {"message": "Password reset", "student_id": str(student_id), "nickname": student.nickname}
+
+
 @router.delete("/sessions/{session_id}/students/{student_id}")
 async def remove_student(
     session_id: UUID,
@@ -1749,9 +1793,65 @@ async def _snapshot_document_draft(
     await db.flush()
     return version
 
+def _draft_preview_json(content_json: str | None) -> str:
+    """Catalogue-sized stand-in for a draft's content: just what a thumbnail paints (first slide, first
+    page of text, first sheet rows). Full drafts can weigh megabytes (embedded pictures) and the catalogue
+    lists them all at once."""
+    raw = content_json or "{}"
+    if len(raw) < 40_000:
+        return raw
+    try:
+        content = json.loads(raw)
+    except (TypeError, ValueError):
+        return "{}"
+    if not isinstance(content, dict):
+        return "{}"
+    keep: dict = {}
+    for key, value in content.items():
+        if key == "slides" and isinstance(value, list):
+            first = value[0] if value and isinstance(value[0], dict) else None
+            if first is not None:
+                first = {**first, "blocks": [
+                    b for b in first.get("blocks") or []
+                    if isinstance(b, dict) and not (b.get("type") == "image" and len(str(b.get("content") or "")) > 150_000)
+                ]}
+            keep[key] = [first] if first is not None else []
+        elif key in ("htmlContent", "content") and isinstance(value, str):
+            keep[key] = value[:30_000]
+        elif key == "data" and isinstance(value, list):
+            keep[key] = [row[:7] if isinstance(row, list) else row for row in value[:8]]
+        elif key == "items" and isinstance(value, list):
+            keep[key] = []
+        elif key == "previewImage" and isinstance(value, str):
+            if len(value) <= 300_000:
+                keep[key] = value
+        elif len(json.dumps(value, ensure_ascii=False, default=str)) < 2_000:
+            keep[key] = value
+    return json.dumps(keep, ensure_ascii=False)
+
+
+@router.get("/documents/drafts/{draft_id}")
+async def get_document_draft(
+    draft_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    draft = (await db.execute(
+        select(DocumentDraft).where(DocumentDraft.id == draft_id, DocumentDraft.owner_teacher_id == teacher.id)
+    )).scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    return {
+        "id": str(draft.id), "title": draft.title, "doc_type": draft.doc_type, "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(), "updated_at": draft.updated_at.isoformat(),
+    }
+
+
 @router.get("/documents/drafts")
 async def list_document_drafts(
     session_id: UUID | None = None,
+    lite: bool = False,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
     teacher: Annotated[User, Depends(get_current_teacher)] = None,
 ):
@@ -1767,7 +1867,8 @@ async def list_document_drafts(
             "id": str(d.id),
             "title": d.title,
             "doc_type": d.doc_type,
-            "content_json": d.content_json,
+            "content_json": _draft_preview_json(d.content_json) if lite else d.content_json,
+            "lite": lite,
             "session_id": str(d.session_id) if d.session_id else None,
             "created_at": d.created_at.isoformat(),
             "updated_at": d.updated_at.isoformat(),

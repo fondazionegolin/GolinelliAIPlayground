@@ -148,7 +148,7 @@ export function applyStyleToBlocks(blocks: SlideBlock[], ids: string[], key: str
 /** Assistant target for a multi-selection: the group travels as one functional unit (e.g. a
  * numbered timeline made of circles, labels and connectors), with the rest of the slide as layout
  * context. Embedded image data is replaced by a marker, since it is restored on apply anyway. */
-export function blockGroupAssistTarget(slide: { title: string; blocks: SlideBlock[] }, slideIndex: number, ids: string[]) {
+export function blockGroupAssistTarget(slide: { title: string; blocks: SlideBlock[] }, slideIndex: number, ids: string[], deck?: { title: string; theme?: unknown }) {
   const group = new Set(ids)
   const compact = (block: SlideBlock) => block.type === 'image' && block.content.length > 300 ? { ...block, content: '[immagine]' } : block
   return {
@@ -159,6 +159,12 @@ export function blockGroupAssistTarget(slide: { title: string; blocks: SlideBloc
       .map(block => ({ type: block.type, x: Math.round(block.x), y: Math.round(block.y), width: Math.round(block.width), height: Math.round(block.height), ...(block.locked ? { locked: true } : {}) })),
     slide_index: slideIndex,
     slide_title: slide.title,
+    // Pictures in the group are generated from what the slide says, in the deck's style.
+    ...(deck ? {
+      deck_title: deck.title,
+      theme: deck.theme,
+      slide_context: slide.blocks.filter(b => b.type === 'text').map(b => b.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ').slice(0, 1500),
+    } : {}),
   }
 }
 
@@ -182,7 +188,8 @@ export function applyBlockGroupReplacement(blocks: SlideBlock[], groupIds: strin
       zIndex: original.zIndex,
       locked: original.locked,
       hidden: original.hidden,
-      ...(original.type === 'image' && next.type === 'image' ? { content: original.content } : {}),
+      ...(original.type === 'video' && next.type === 'video' ? { content: original.content } : {}),
+      ...(original.type === 'image' && next.type === 'image' && (!next.content || next.content.includes('placehold.co') || next.content === original.content || next.content.startsWith('[')) ? { content: original.content } : {}),
     } as SlideBlock)
   }
   const ordered = blocks
@@ -190,4 +197,29 @@ export function applyBlockGroupReplacement(blocks: SlideBlock[], groupIds: strin
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
     .flatMap(({ block }) => !group.has(block.id) ? [block] : kept.has(block.id) ? [kept.get(block.id)!] : [])
   return normalizeLayerOrder([...ordered, ...added])
+}
+
+// ── Multi-selection: bounds and repeatable duplicates ─────────────────
+
+export interface BoxRect { x: number; y: number; width: number; height: number }
+
+/** Smallest box containing every block (unrotated frames). */
+export function boundsOf(blocks: BoxRect[]): BoxRect | null {
+  if (!blocks.length) return null
+  const left = Math.min(...blocks.map(b => b.x))
+  const top = Math.min(...blocks.map(b => b.y))
+  const right = Math.max(...blocks.map(b => b.x + b.width))
+  const bottom = Math.max(...blocks.map(b => b.y + b.height))
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+/** Copies of the given blocks, shifted by (dx, dy) and painted above everything else. */
+export function cloneBlocks(blocks: SlideBlock[], ids: string[], dx: number, dy: number): { blocks: SlideBlock[]; ids: string[] } {
+  const sources = blocks
+    .map((block, index) => ({ block, index }))
+    .filter(({ block }) => ids.includes(block.id) && !block.locked)
+    .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
+    .map(({ block }) => block)
+  const copies = sources.map(block => ({ ...JSON.parse(JSON.stringify(block)), id: crypto.randomUUID(), x: block.x + dx, y: block.y + dy }) as SlideBlock)
+  return { blocks: normalizeLayerOrder([...blocks, ...copies]), ids: copies.map(c => c.id) }
 }

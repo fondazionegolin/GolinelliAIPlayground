@@ -202,6 +202,29 @@ API reference: [ElevenLabs](https://elevenlabs.io/docs/api-reference/introductio
 | prometheus | 9090 | Metrics collection |
 | grafana | 3001 | Monitoring dashboards |
 
+## Direct document links and QR codes
+
+Document and presentation editors expose **Condividi link e QR code** for teachers and students' own documents. Choose **Sola lettura** or **Può modificare**, then create a link, copy it or download its QR image. The two permissions have independent, revocable links. Guests open `/d/<token>` without an account; edit links save to the original with an explicit save button. A stale revision returns a conflict so guests can download their unsaved changes before reloading. Teacher drafts retain a checkpoint before anonymous edits. Published teacher documents can also be shared; students cannot grant access to teacher lessons or submitted work.
+
+Link management requires source ownership/access. Public image access is limited to files explicitly authorized by the sharer. Database migration `127_document_share_links` adds persistent capability links; no Google or external sharing service is required.
+
+## Google Docs and Slides export
+
+The document and presentation editors offer **Google Docs** and **Google Slides** in the export menu for teachers and students. The dialog opens Google's account chooser, shows the selected account, then creates an editable native file in that account's **My Drive** and opens it in a new tab. Each export creates a separate copy. Spreadsheets are excluded.
+
+To enable the integration:
+
+1. Enable Google Drive API in a Google Cloud project and configure its OAuth consent screen.
+2. Create an OAuth client of type **Web application** and register the exact platform origins (scheme, host and port) under **Authorized JavaScript origins**, including the development origin if needed. This popup token flow does not need a client secret or redirect URI.
+3. Configure the `https://www.googleapis.com/auth/drive.file` scope. Add test users while the OAuth app is in testing; Workspace administrators may need to allow the app.
+4. Set `GOOGLE_WORKSPACE_CLIENT_ID` in `.env` and recreate the API services with the explicit development project name: `docker compose -p dev_golinelli_ai up -d --no-deps api api-pool`.
+
+Only the public client ID is exposed by the authenticated configuration endpoint. Short-lived access tokens stay in dialog memory and are sent directly to Google; passwords and refresh tokens are never stored. The integration loads Google Identity Services only when opening the export dialog. With no configured client ID, the dialog explains that export is unavailable.
+
+Compatibility uses the existing rich DOCX/PPTX exporters followed by Google's native import, preserving editable content rather than flattening pages to images. Google may adjust unsupported fonts, effects, embedded media or advanced layouts; pixel-perfect conversion is not guaranteed. Large files use a resumable upload session. If the browser blocks the new tab, the success dialog retains an **Open** link to the created file.
+
+References: [Google token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model), [Drive uploads and native conversion](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+
 ## License
 
 MIT

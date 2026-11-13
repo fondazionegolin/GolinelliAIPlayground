@@ -13,7 +13,7 @@ export type ExplorerTarget =
   | { kind: 'raw'; title: string; value: unknown }
 
 export function isTable(value: unknown): value is TableValue { return Boolean(value && typeof value === 'object' && Array.isArray((value as TableValue).rows)) }
-export function isPlot(value: unknown): value is PlotValue { return Boolean(value && typeof value === 'object' && ['scatter', 'histogram', 'scatter3d', 'bar'].includes(String((value as PlotValue).kind)) && Array.isArray((value as PlotValue).x) && Array.isArray((value as PlotValue).y)) }
+export function isPlot(value: unknown): value is PlotValue { return Boolean(value && typeof value === 'object' && ['scatter', 'histogram', 'scatter3d', 'bar', 'line'].includes(String((value as PlotValue).kind)) && Array.isArray((value as PlotValue).x) && Array.isArray((value as PlotValue).y)) }
 export function formatCompact(value: unknown) { if (value === null || value === undefined || value === '') return '—'; if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3); if (typeof value === 'object') return JSON.stringify(value); return String(value) }
 
 const Plot = lazy(() => import('react-plotly.js'))
@@ -63,7 +63,7 @@ type PlotSettings = {
 
 function initialSettings(plot: PlotValue): PlotSettings {
   return {
-    chart: plot.kind === 'histogram' || plot.kind === 'bar' ? 'bar' : plot.kind === 'scatter3d' ? 'scatter3d' : 'scatter',
+    chart: plot.kind === 'histogram' || plot.kind === 'bar' ? 'bar' : plot.kind === 'scatter3d' ? 'scatter3d' : plot.kind === 'line' ? 'line' : 'scatter',
     title: plot.title || (plot.kind === 'histogram' ? tl("Distribuzione") : tl("Grafico")),
     xLabel: plot.labels?.x || 'x', yLabel: plot.labels?.y || (plot.kind === 'histogram' ? tl("Conteggio") : 'y'), zLabel: plot.labels?.z || 'z',
     groupByColor: Boolean(plot.color?.length), markerSize: plot.kind === 'scatter3d' ? 4 : 8, opacity: .85,
@@ -97,16 +97,18 @@ function PlotExplorer({ title, plot: initialPlot, table, initialAxes, onAxesChan
   const isHistogram = plot.kind === 'histogram'
   const isBar = plot.kind === 'bar'
   const is3D = plot.kind === 'scatter3d'
+  // Time series carry date labels: plotted on a real date axis (milliseconds) so spacing follows the calendar.
+  const isDate = plot.kind === 'line' && plot.xType === 'date'
   const colors = PALETTES[settings.palette] || PALETTES.Piattaforma
 
   // Points after the X/Y range filters: every view, stat and export works on the same subset.
   const points = useMemo(() => {
     const xMin = numberOrNull(settings.xMin); const xMax = numberOrNull(settings.xMax)
     const yMin = numberOrNull(settings.yMin); const yMax = numberOrNull(settings.yMax)
-    return plot.x.map((x, index) => ({ x: isBar ? index : Number(x), category: String(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? tl("Dati")) }))
+    return plot.x.map((x, index) => ({ x: isBar ? index : isDate ? Date.parse(String(x)) : Number(x), category: String(x), xEnd: plot.xEnd?.[index], y: Number(plot.y[index]), z: plot.z?.[index], group: String(plot.color?.[index] ?? tl("Dati")) }))
       .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
       .filter((point) => (xMin === null || point.x >= xMin) && (xMax === null || point.x <= xMax) && (yMin === null || point.y >= yMin) && (yMax === null || point.y <= yMax))
-  }, [plot, isBar, settings.xMin, settings.xMax, settings.yMin, settings.yMax])
+  }, [plot, isBar, isDate, settings.xMin, settings.xMax, settings.yMin, settings.yMax])
 
   const groups = settings.groupByColor ? [...new Set(points.map((point) => point.group))] : [tl("Dati")]
   const xs = points.map((point) => point.x); const ys = points.map((point) => point.y)
@@ -155,16 +157,22 @@ function PlotExplorer({ title, plot: initialPlot, table, initialAxes, onAxesChan
       const subset = points.filter((point) => !settings.groupByColor || point.group === group).sort((a, b) => settings.chart === 'scatter' ? 0 : a.x - b.x)
       const color = colors[index % colors.length]
       if (settings.chart === 'bar') return { type: 'bar', name: group, x: subset.map((p) => p.x), y: subset.map((p) => p.y), marker: { color, opacity: settings.opacity } }
-      return { type: 'scatter', mode: settings.chart === 'scatter' ? 'markers' : 'lines+markers', name: group, x: subset.map((p) => p.x), y: subset.map((p) => p.y),
+      return { type: 'scatter', mode: settings.chart === 'scatter' ? 'markers' : 'lines+markers', name: tl(group), x: subset.map((p) => p.x), y: subset.map((p) => p.y),
         fill: settings.chart === 'area' ? 'tozeroy' : undefined,
         line: { color, width: 2 }, marker: { size: settings.markerSize, color, opacity: settings.opacity, line: { width: 1, color: 'rgba(255,255,255,.8)' } } }
     })
+    if (plot.kind === 'line' && plot.lower && plot.upper) {
+      const band = plot.x.map((x, index) => ({ x: isDate ? Date.parse(String(x)) : Number(x), lower: plot.lower?.[index], upper: plot.upper?.[index] }))
+        .filter((item): item is { x: number; lower: number; upper: number } => Number.isFinite(item.x) && typeof item.lower === 'number' && typeof item.upper === 'number')
+      if (band.length) base.unshift({ type: 'scatter', mode: 'lines', name: tl("Intervallo di confidenza"), x: [...band.map((p) => p.x), ...band.map((p) => p.x).reverse()],
+        y: [...band.map((p) => p.upper), ...band.map((p) => p.lower).reverse()], fill: 'toself', fillcolor: 'rgba(124,58,237,.15)', line: { width: 0, color: 'rgba(0,0,0,0)' }, hoverinfo: 'skip' } as never)
+    }
     if (settings.trend && regression && xs.length) {
       const lo = Math.min(...xs); const hi = Math.max(...xs)
       base.push({ type: 'scatter', mode: 'lines', name: `Tendenza (R² ${regression.r2.toFixed(3)})`, x: [lo, hi], y: [regression.slope * lo + regression.intercept, regression.slope * hi + regression.intercept], line: { color: theme.ink, width: 2 } } as never)
     }
     return base
-  }, [colors, groups, isHistogram, isBar, points, regression, settings, xs, ys, theme])
+  }, [colors, groups, isHistogram, isBar, isDate, plot, points, regression, settings, xs, ys, theme])
 
   const axis = (label: string, log: boolean, extra: Record<string, unknown> = {}) => ({ title: { text: label, font: { color: theme.ink } }, tickfont: { color: theme.ink }, type: log ? 'log' : 'linear', showgrid: settings.grid, gridcolor: theme.grid, zeroline: false, ...extra })
   const themeLayout = { font: { color: theme.ink }, paper_bgcolor: theme.surface, plot_bgcolor: theme.surface,
@@ -175,7 +183,7 @@ function PlotExplorer({ title, plot: initialPlot, table, initialAxes, onAxesChan
         scene: { bgcolor: theme.surface, xaxis: axis(settings.xLabel, false), yaxis: axis(settings.yLabel, false), zaxis: axis(settings.zLabel, false) } }
     : { ...themeLayout, autosize: true, margin: { l: 64, r: 24, t: 56, b: 64 }, hovermode: 'closest', bargap: .08,
         showlegend: groups.length > 1 || settings.trend, legend: { orientation: 'h', y: -0.18, font: { color: theme.ink } },
-        xaxis: axis(settings.xLabel, settings.xLog, isBar || (isHistogram && settings.chart === 'bar') ? { type: 'category' } : {}), yaxis: axis(settings.yLabel, settings.yLog) }
+        xaxis: axis(settings.xLabel, settings.xLog, isBar || (isHistogram && settings.chart === 'bar') ? { type: 'category' } : isDate ? { type: 'date' } : {}), yaxis: axis(settings.yLabel, settings.yLog) }
 
   const pointsTable = (): TableValue => {
     const columns = [settings.xLabel, ...(isHistogram && plot.xEnd ? [`${settings.xLabel}_fine`] : []), settings.yLabel, ...(is3D ? [settings.zLabel] : []), ...(plot.color?.length ? [tl("gruppo")] : [])]

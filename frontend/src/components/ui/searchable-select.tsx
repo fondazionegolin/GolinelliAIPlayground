@@ -1,5 +1,6 @@
 import { SearchPill } from '@/design/primitives/SearchPill'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Star } from '@/components/icons'
 import { Button, IconButton } from '@/design'
 import { tl } from '@/i18n/tl'
@@ -23,15 +24,41 @@ export function SearchableSelect({ value, options, onChange, label, disabled = f
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  const popup = useRef<HTMLDivElement>(null)
+  // The menu is rendered in a portal and positioned from the trigger, so it always drops down as an
+  // overlay above the page — never clipped or covered by an overflow/stacking context of a toolbar.
+  const [placement, setPlacement] = useState<CSSProperties | null>(null)
+  const place = useCallback(() => {
+    const rect = trigger.current?.getBoundingClientRect()
+    if (!rect) return
+    const below = window.innerHeight - rect.bottom
+    const openUp = below < 340 && rect.top > below
+    setPlacement({
+      position: 'fixed',
+      right: Math.max(8, window.innerWidth - rect.right),
+      ...(openUp ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
+      width: menuClassName.includes('w-full') ? rect.width : undefined,
+      maxWidth: 'calc(100vw - 16px)',
+    })
+  }, [menuClassName])
+  useLayoutEffect(() => {
+    if (!open) { setPlacement(null); return }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [open, place])
+  const inside = (node: Node | null) => Boolean(node && (root.current?.contains(node) || popup.current?.contains(node)))
   const id = useId()
   const filtered = options.filter((option) => `${option.label} ${option.description || ''} ${option.searchText || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
   const close = () => { setOpen(false); trigger.current?.focus() }
   useEffect(() => {
     if (!open) return
     input.current?.focus()
-    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const outside = (event: PointerEvent) => { if (!inside(event.target as Node)) setOpen(false) }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
   useEffect(() => {
     if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' })
@@ -47,7 +74,7 @@ export function SearchableSelect({ value, options, onChange, label, disabled = f
   return <div ref={root} className={`relative min-w-0 ${className}`} onKeyDown={(event) => {
     if (open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() }
   }} onBlur={(event) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false)
+    if (!inside(event.relatedTarget as Node)) setOpen(false)
   }}>
     <Button tone="neutral" surface="ghost" ref={trigger} type="button" aria-label={label} aria-haspopup={hasFavorites ? 'grid' : 'listbox'} aria-expanded={open} disabled={disabled}
       onClick={() => { setOpen(!open); setSearch(''); setActive(0) }}
@@ -57,7 +84,7 @@ export function SearchableSelect({ value, options, onChange, label, disabled = f
         <span className="truncate font-semibold" style={{ color: 'var(--text-primary)' }}>{options.find((o) => o.value === value)?.label || label}</span>
       </span><ChevronDown className="h-3.5 w-3.5 shrink-0" />
     </Button>
-    {open && <div className={`ds-popover absolute right-0 top-full z-[110] mt-2 ${menuClassName} rounded-[var(--card-radius)] p-2 text-[var(--text-primary)]`}>
+    {open && placement && createPortal(<div ref={popup} style={placement} className={`ds-popover z-[1000] ${menuClassName.replace('w-full', '')} rounded-[var(--card-radius)] p-2 text-[var(--text-primary)]`}>
       <SearchPill ref={input} role="combobox" aria-label={tl('Cerca')} aria-controls={id} aria-expanded="true" aria-autocomplete="list" aria-haspopup={hasFavorites ? 'grid' : 'listbox'} aria-activedescendant={filtered[active] ? `${id}-${active}` : undefined} value={search} onKeyDown={(event) => {
             if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() }
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -99,6 +126,6 @@ export function SearchableSelect({ value, options, onChange, label, disabled = f
         })}
         {!filtered.length && <p className="px-3 py-4 text-xs text-[var(--text-secondary)]">{tl('Nessun risultato')}</p>}
       </div>
-    </div>}
+    </div>, document.body)}
   </div>
 }

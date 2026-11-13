@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useUiThemeRouteGuard } from '@/stores/uiTheme'
+import { useShellFullscreenSync } from '@/stores/shellFullscreen'
 import { Toaster } from '@/components/ui/toaster'
 import { CookieBanner } from '@/components/CookieBanner'
 import { LegalConsentGate } from '@/components/LegalConsentGate'
@@ -27,6 +28,8 @@ const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
 const PublicTeacherbotChatPage = lazy(() => import('@/pages/PublicTeacherbotChatPage'))
 const PublicLiveInteractionPage = lazy(() => import('@/pages/PublicLiveInteractionPage'))
 const PublicSolidModelPage = lazy(() => import('@/pages/PublicSolidModelPage'))
+const PublicWorkflowPage = lazy(() => import('@/pages/PublicWorkflowPage'))
+const PublicDocumentPage = lazy(() => import('@/pages/PublicDocumentPage'))
 const CallPage = lazy(() => import('@/pages/CallPage'))
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
@@ -46,6 +49,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 function App() {
   const { user, studentSession } = useAuthStore()
   useUiThemeRouteGuard(useLocation().pathname)
+  useShellFullscreenSync()
   
   const getDefaultRoute = (): string | null => {
     if (studentSession) return '/student'
@@ -69,6 +73,8 @@ function App() {
           <Route path="/bot/:token" element={<PublicTeacherbotChatPage />} />
           <Route path="/live/:token" element={<PublicLiveInteractionPage />} />
           <Route path="/3d/:token" element={<PublicSolidModelPage />} />
+          <Route path="/dataflow/:token" element={<PublicWorkflowPage />} />
+          <Route path="/d/:token" element={<PublicDocumentPage />} />
           <Route path="/call" element={<CallPage />} />
           <Route path="/call/:code" element={<CallPage />} />
           <Route path="/teacher-request" element={<TeacherRequestPage />} />

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronLeft, Download, Loader2, RectangleHorizontal, RectangleVertical, Ruler } from '@/components/icons'
 import { PAGE_SIZE_OPTIONS, type PageSetup } from '@/lib/documentPage'
 import { tl } from '@/i18n/tl'
+import { GoogleWorkspaceExportDialog } from './GoogleWorkspaceExportDialog'
+import type { GoogleWorkspaceExport } from '@/lib/googleWorkspace'
 
 export type DocumentEditorMode = 'document' | 'slides' | 'sheet' | 'canvas' | 'web' | 'pdf'
 
@@ -83,10 +85,12 @@ export function DocumentEditorHeader({
 }
 
 /** Icon-only header tool; the label becomes tooltip + accessible name. */
-export function HeaderIconButton({ label, onClick, active = false, disabled = false, children }: {
+export function HeaderIconButton({ label, onClick, active = false, emphasis = false, disabled = false, children }: {
   label: string
   onClick: () => void
   active?: boolean
+  /** Primary call-to-action tool (e.g. start the presentation): solid violet fill. */
+  emphasis?: boolean
   disabled?: boolean
   children: ReactNode
 }) {
@@ -98,7 +102,9 @@ export function HeaderIconButton({ label, onClick, active = false, disabled = fa
       title={label}
       aria-label={label}
       aria-pressed={active || undefined}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${active
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${emphasis
+        ? 'bg-[var(--logo-violet-strong)] text-white shadow-[var(--ds-shadow-1)] hover:brightness-110'
+        : active
         ? 'bg-[image:var(--ds-choice-bg)] text-[var(--logo-violet-strong)] shadow-[var(--ds-shadow-1)]'
         : 'text-slate-500 hover:bg-[var(--ds-control-hover)] hover:text-slate-900'}`}
     >
@@ -113,13 +119,15 @@ export interface ExportFormatOption<T extends string> {
 }
 
 /** Export tool: icon button opening a small format menu. */
-export function HeaderExportMenu<T extends string>({ label, formats, exporting = false, onExport }: {
+export function HeaderExportMenu<T extends string>({ label, formats, exporting = false, onExport, googleWorkspace }: {
   label: string
   formats: ExportFormatOption<T>[]
   exporting?: boolean
   onExport: (format: T) => void
+  googleWorkspace?: GoogleWorkspaceExport
 }) {
   const [open, setOpen] = useState(false)
+  const [googleOpen, setGoogleOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -144,6 +152,16 @@ export function HeaderExportMenu<T extends string>({ label, formats, exporting =
       {open && (
         <div role="menu" className="ds-popover absolute right-0 top-full z-50 mt-2 min-w-[190px] rounded-2xl p-1.5">
           <p className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+          {googleWorkspace && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); setGoogleOpen(true) }}
+              className="flex w-full items-center rounded-xl px-2.5 py-2 text-left text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--ds-control-hover)]"
+            >
+              {googleWorkspace.kind === 'slides' ? 'Google Slides' : 'Google Docs'}
+            </button>
+          )}
           {formats.map((format) => (
             <button
               key={format.value}
@@ -156,6 +174,9 @@ export function HeaderExportMenu<T extends string>({ label, formats, exporting =
             </button>
           ))}
         </div>
+      )}
+      {googleOpen && googleWorkspace && (
+        <GoogleWorkspaceExportDialog target={googleWorkspace} onClose={() => setGoogleOpen(false)} />
       )}
     </div>
   )

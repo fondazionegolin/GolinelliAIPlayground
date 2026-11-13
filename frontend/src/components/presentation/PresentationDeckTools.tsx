@@ -79,7 +79,7 @@ export default function PresentationDeckTools({ slides, theme, dims, onApply, on
 
   return (
     <>
-      <HeaderIconButton label={tl("Presenta a schermo intero (dalla slide corrente)")} onClick={() => setPresenting(currentSlideIndex)}>
+      <HeaderIconButton label={tl("Presenta a schermo intero (dalla slide corrente)")} onClick={() => setPresenting(currentSlideIndex)} emphasis>
         <Play className="h-4 w-4" />
       </HeaderIconButton>
       {presenting !== null && <PresentationPlayer slides={slides} format={format} startIndex={presenting} onClose={() => setPresenting(null)} />}

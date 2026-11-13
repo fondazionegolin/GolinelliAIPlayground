@@ -1,4 +1,5 @@
 import { storedModelChoice } from '@/lib/modelChoice'
+import { embedExportImages } from '@/lib/documentExport'
 import { getResponseLength } from '@/lib/responseLength'
 import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
@@ -139,6 +140,7 @@ export const agenticApi = {
   updateWorkflow: (workflowId: string, data: { title: string; graph: Record<string, unknown> }) =>
     api.put(`/agentic/workflows/${workflowId}`, data),
   deleteWorkflow: (workflowId: string) => api.delete(`/agentic/workflows/${workflowId}`),
+  duplicateWorkflow: (workflowId: string) => api.post(`/agentic/workflows/${workflowId}/duplicate`),
   createRun: (workflowId: string, inputs: Record<string, unknown> = {}, sessionId?: string, signal?: AbortSignal, background = false) =>
     api.post(`/agentic/workflows/${workflowId}/runs`, { inputs, session_id: sessionId || null, background }, { signal }),
   listRuns: (workflowId: string) => api.get(`/agentic/workflows/${workflowId}/runs`),
@@ -152,6 +154,38 @@ export const agenticApi = {
   getSessionChatbot: (sessionId: string) => api.get(`/agentic/sessions/${sessionId}/chatbot`),
   provideSessionChatInput: (sessionId: string, runId: string, content: string) =>
     api.post(`/agentic/sessions/${sessionId}/chatbot/runs/${runId}/input`, { content }),
+}
+
+export type WorkflowShareState = {
+  id: string; title: string
+  shared_class_ids: string[]; shared_session_ids: string[]
+  public_enabled: boolean; public_token: string | null
+}
+export type WorkflowShareTargets = {
+  classes: Array<{ id: string; name: string; school_grade?: string | null }>
+  sessions: Array<{ id: string; title: string; class_id: string; class_name: string }>
+}
+export type SharedWorkflowApp = {
+  id: string; title: string; author: string; chat: boolean; updated_at: string
+  graph: { nodes: Array<{ id: string; instanceId: string; config: Record<string, unknown> }>; edges: Array<{ from: string; to: string }> }
+}
+export type SharedWorkflowRun = {
+  id: string; status: string; output?: Record<string, unknown>; error?: string | null
+  nodes: Array<{ node_instance_id: string; visit?: number; label: string; status: string; output?: Record<string, unknown>; error?: string | null }>
+}
+
+/** Workflows shared as runnable apps: teacher's share settings, the student list, and the anonymous public link. */
+export const agenticSharingApi = {
+  targets: () => api.get<WorkflowShareTargets>('/agentic/share/targets'),
+  getShare: (workflowId: string) => api.get<WorkflowShareState>(`/agentic/share/workflows/${workflowId}`),
+  updateShare: (workflowId: string, data: { class_ids?: string[]; session_ids?: string[]; public_enabled?: boolean; regenerate_token?: boolean }) =>
+    api.put<WorkflowShareState>(`/agentic/share/workflows/${workflowId}`, data),
+  studentList: () => api.get<SharedWorkflowApp[]>('/agentic/share/student'),
+  publicApp: (token: string) => api.get<SharedWorkflowApp>(`/agentic/share/public/${token}`),
+  publicStart: (token: string) => api.post<SharedWorkflowRun>(`/agentic/share/public/${token}/runs`, {}),
+  publicRun: (token: string, runId: string) => api.get<SharedWorkflowRun>(`/agentic/share/public/${token}/runs/${runId}`),
+  publicInput: (token: string, runId: string, content: string) =>
+    api.post<SharedWorkflowRun>(`/agentic/share/public/${token}/runs/${runId}/input`, { content }),
 }
 
 export const authApi = {
@@ -903,6 +937,8 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/unfreeze/${studentId}`),
   pushTeacherbotToStudent: (sessionId: string, studentId: string, teacherbotId: string) =>
     api.post(`/teacher/sessions/${sessionId}/students/${studentId}/push-teacherbot`, null, { params: { teacherbot_id: teacherbotId } }),
+  resetStudentPassword: (sessionId: string, studentId: string, password: string) =>
+    api.post(`/teacher/sessions/${sessionId}/students/${studentId}/reset-password`, { password }),
   removeStudent: (sessionId: string, studentId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
@@ -1014,7 +1050,8 @@ export const teacherApi = {
     api.put(`/teacher/conversations/${conversationId}/document`, doc),
   deleteConversationDocument: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}/document`),
-  listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
+  listDocumentDrafts: (sessionId?: string, lite?: boolean) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId, lite: lite || undefined } }),
+  getDocumentDraft: (draftId: string) => api.get(`/teacher/documents/drafts/${draftId}`),
   listSharedDocuments: (params?: { class_id?: string; session_id?: string }) =>
     api.get('/teacher/documents/shared', { params }),
   updatePublishedDocument: (taskId: string, data: { title?: string; content_json: string }) =>
@@ -1403,14 +1440,16 @@ export const assessmentApi = {
 }
 
 export const filesApi = {
+  googleWorkspaceConfig: () =>
+    api.get<{ client_id: string }>('/files/documents/google-workspace/config'),
   importDocument: (file: File, sessionId?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     if (sessionId) formData.append('session_id', sessionId)
     return api.post('/files/documents/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  exportDocument: (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
-    api.post('/files/documents/export', data, { responseType: 'blob', timeout: 120000 }),
+  exportDocument: async (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
+    api.post('/files/documents/export', { ...data, content_json: await embedExportImages(data.content_json, getApiAuthHeaders()) }, { responseType: 'blob', timeout: 120000 }),
   getContent: (fileId: string) =>
     api.get(`/files/${fileId}/content`, { responseType: 'blob' }),
   getUploadUrl: (data: { filename: string; mime_type: string; size_bytes: number; scope: string; session_id?: string }) =>

@@ -212,6 +212,13 @@ async def import_lms_document(
     return {**_draft_response(draft), "source_file_id": str(file_id), "source_extension": extension}
 
 
+@router.get("/documents/google-workspace/config")
+async def google_workspace_config(
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    return {"client_id": settings.GOOGLE_WORKSPACE_CLIENT_ID}
+
+
 @router.post("/documents/export")
 async def export_native_document(
     request: DocumentExportRequest,

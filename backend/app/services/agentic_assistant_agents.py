@@ -24,13 +24,31 @@ logger = logging.getLogger(__name__)
 MAX_REPAIRS = 2
 MAX_INTENT_CHARS = 4000
 
-TABLE_AI_RULES = """
+TIME_SERIES_RULES = """
+SERIE TEMPORALI E PREVISIONI:
+- Una tabella è una serie temporale quando ha una colonna di tempo (data, giorno, settimana, mese, anno, trimestre, ora, periodo; nel
+  Canvas è segnata «SERIE TEMPORALE, tempo: …») e una grandezza numerica misurata nel tempo (vendite, temperature, presenze, consumi…).
+- Se l'utente chiede previsioni, valori futuri, andamento, tendenza, stagionalità o «quanto sarà tra N mesi», e i dati sono una serie
+  temporale, usa ml.forecast: collega la tabella a "table", imposta time_column (colonna del tempo), value_column (grandezza da
+  prevedere) e horizon (quanti periodi futuri; se non detto, 12 per dati mensili, 7 o 30 per giornalieri, 4 per trimestrali, 3-5 per annuali).
+  Lascia method="auto" (sceglie con un backtest) e season_length=0 (stagionalità automatica) salvo richiesta esplicita.
+- ml.forecast produce già il grafico (uscita plot, storico + previsione con intervallo), le metriche di accuratezza (metrics) e la
+  tabella forecast (colonne: tempo, valore, previsione, minimo, massimo, tipo). Non aggiungere plot.2d per lo stesso grafico.
+- MAI ml.regression con il tempo come feature e MAI data.split casuale su una serie temporale: mescolerebbe passato e futuro.
+  La valutazione onesta (backtest sugli ultimi periodi) è dentro ml.forecast.
+- Più serie nella stessa tabella (es. una per negozio): filtra prima con data.filter (es. negozio == 'Centro') e usa un ml.forecast per
+  serie; se ci sono più righe per lo stesso istante, ml.forecast le media (per i totali usa prima data.group_by con sum).
+- Dati di prova per una serie temporale: ai.generate_dataset con una colonna data/mese e il prompt che descrive trend e stagionalità.
+"""
+
+TABLE_AI_RULES = TIME_SERIES_RULES + """
 VALUTAZIONI AI SU TABELLE:
 - Se l'utente chiede esplicitamente un giudizio LLM, una classificazione o un punteggio per ogni riga, usa ai.add_column: collega la tabella pulita a table e imposta name, instruction, output_type. Per un punteggio 0-10 imposta output_type=number, min_value=0, max_value=10. È una valutazione AI richiesta, anche quando i dati di partenza sono numerici; non sostituirla con una formula arbitraria.
 - ai.add_column restituisce l'intera tabella originale con la colonna aggiunta; gestisce tutte le righe in blocchi e ne mantiene l'identità. Non servono loop, ricostruzioni della tabella o join per posizione. Per altre colonne AI si possono concatenare più nodi ai.add_column.
 - Un commento generale opzionale si ottiene con ai.transform task=summarize; la sua uscita text può alimentare extra di ai.add_column. Il compito custom/summarize NON restituisce table: per JSON testuale già prodotto usa data.parse_text, per una nuova valutazione usa ai.add_column.
 - Per una barra per studente usa plot.bar con x=identificativo/nome studente e y=nuova colonna. plot.histogram raggruppa i valori in intervalli e non identifica i singoli studenti. Usa esattamente lo stesso nome di colonna nel nodo AI e nel grafico.
 - I dataset inventati con correlazioni specifiche si generano con ai.generate_dataset descrivendo correlazioni e scale nel prompt, non con csv.synthetic rinominando a caso le feature. Pulizia e validazione restano algoritmiche (convert_to_number, dropna, distinct, validate).
+- Colonne testuali/categoriche prima di un modello: usa data.convert_to_number SENZA elencare strategie (strategy=auto): sceglie da solo numeri da testo, intervalli, sì/no, scale ordinate (basso<medio<alto), date, one-hot. Per forzare un ordine: overrides «colonna:ordinale:basso|medio|alto». Nomi di colonna: scrivili come nel dataset, anche in snake_case.
 """
 
 INTAKE_SYSTEM = """Sei l'assistente del Dataflow Studio, un editor a nodi per costruire workflow (dati, grafici, machine learning, testi con AI,
@@ -188,7 +206,11 @@ async def _record_cost(db: AsyncSession, actor: User, response: Any, context: st
              "image_count": 0, "estimated_tokens": True, "type": context},
             provider=response.provider, model=response.model,
         )
-        await credit_service.track_usage(db, actor.tenant_id, response.provider, response.model, cost, usage, actor.id, None, None, None)
+        if getattr(actor, "is_student", False):
+            await credit_service.track_usage(db, actor.tenant_id, response.provider, response.model, cost, usage,
+                                             session_id=actor.session_id, student_id=actor.id)
+        else:
+            await credit_service.track_usage(db, actor.tenant_id, response.provider, response.model, cost, usage, actor.id, None, None, None)
     except Exception:
         logger.exception("assistant usage tracking failed (%s)", context)
 

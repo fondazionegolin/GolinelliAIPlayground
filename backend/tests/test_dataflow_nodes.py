@@ -98,6 +98,8 @@ async def test_every_local_node_executor_smoke():
         return await execute_data_node(node_type, inputs, config or {}, state or {})
 
     await run("data.custom_input", {}, {"data": rows})
+    forecast = await run("ml.forecast", {"table": numeric_table}, {"value_column": "y", "horizon": 3})
+    assert forecast["plot"]["kind"] == "line" and len([row for row in forecast["forecast"]["rows"] if row["tipo"] == "previsione"]) == 3
     await run("data.new_table", {"table": table}, {"columns": "x,y", "rename": "x:score"})
     regression_source = await run("csv.synthetic", {}, {"kind": "regression", "samples": 30, "features": 2, "seed": 3})
     await run("math.numeric_input", {}, {"value": 4})

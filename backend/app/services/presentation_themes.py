@@ -256,6 +256,8 @@ def resolve_theme(theme_id: Optional[str], options: Optional[dict] = None) -> di
         colors["primary"], colors["accent"] = new_primary, new_accent
 
     bg, surface = colors["background"], colors["surface"]
+    colors.update({"paper": "#F7F1E5", "paper_ink": "#292720", "paper_muted": "#62594D", "paper_rule": "#A29988",
+                   "photo_panel": "#172125", "photo_ink": "#FFFFFF"})
     # Body text must read on both the slide background and card surfaces.
     colors["text"] = readable_on(bg, [colors["text"]], 7.0) if contrast_ratio(colors["text"], surface) >= 4.5 else readable_on(surface, [colors["text"]])
     colors["muted"] = colors["muted"] if min(contrast_ratio(colors["muted"], bg), contrast_ratio(colors["muted"], surface)) >= 4.5 else colors["text"]
@@ -288,6 +290,7 @@ def resolve_theme(theme_id: Optional[str], options: Optional[dict] = None) -> di
         "fonts": {
             "heading": FONT_STACKS.get(heading, FONT_STACKS["Inter"]),
             "body": FONT_STACKS.get(body, FONT_STACKS["Inter"]),
+            "editorial": FONT_STACKS["Georgia"],
         },
         "options": {
             "font": str(options.get("font") or "theme") if str(options.get("font") or "theme") in FONT_CHOICES else "theme",

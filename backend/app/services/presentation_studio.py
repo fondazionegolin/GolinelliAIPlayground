@@ -18,6 +18,7 @@ from app.services.presentation_layouts import LAYOUTS, coerce_layout, normalize_
 from app.services.presentation_quality import check_and_fix_slides
 from app.services.presentation_sources import MAX_SLIDES
 from app.services.presentation_themes import THEMES, THEMES_BY_ID, resolve_theme
+from app.services.presentation_assets import icon_image, ICON_NAMES
 
 def slide_image_prompt(subject: str, deck_title: str, slide_title: str, theme: Optional[dict], *, edit: bool = False) -> str:
     """Image-generation prompt for one slide illustration, consistent with the deck theme.
@@ -32,6 +33,13 @@ def slide_image_prompt(subject: str, deck_title: str, slide_title: str, theme: O
             f"Modifica questa illustrazione didattica per {context}. Modifica richiesta: {subject}. "
             "Mantieni composizione, soggetto e stile dove la richiesta non li cambia. "
             "Nessun testo, nessuna scritta, nessun numero, nessun logo nell'immagine."
+        )
+    if "fotografia editoriale a piena pagina" in subject.lower():
+        return (
+            f"Fotografia editoriale per {context}. {subject}. "
+            "Composizione orizzontale 16:9, luce naturale, colori sobri e materia reale, nessun effetto 3D o collage artificiale. "
+            "Il titolo sarà sovrapposto dall'editor sulla sinistra. Nessun testo, nessuna scritta o logo nell'immagine. "
+            "Adatta a un contesto scolastico."
         )
     return (
         f"Illustrazione didattica per {context}. Soggetto: {subject}. "
@@ -54,17 +62,31 @@ OUTLINE_SYSTEM_PROMPT = (
     "Non ti occupi di colori, caratteri o posizioni: quelli li sceglierà l'utente dopo. "
     "Regole: una sola idea per slide; titoli che dicono il messaggio (max 9 parole); niente testo copiato "
     "alla lettera dalle fonti ma sintetizzato; i dettagli vanno nelle note, non nella slide; usa i dati "
-    "e le citazioni solo se presenti nelle fonti o certi, mai inventati. Rispondi solo con JSON valido."
+    "e le citazioni solo se presenti nelle fonti o certi, mai inventati. "
+    "Art direction: pulizia editoriale, gerarchie chiare, spazio vuoto intenzionale; niente estetica AI generica, "
+    "decorazioni gratuite, emoji, griglie di riquadri tutte uguali o elenchi su ogni slide. "
+    "Alterna spiegazione, immagine, sequenza, confronto e pausa tipografica quando il contenuto lo giustifica. Rispondi solo con JSON valido."
 )
 
 LAYOUT_GUIDE = (
+    "Direzione visiva: gerarchie editoriali, spazio vuoto, pochi elementi grafici con una funzione precisa. "
+    "Niente emoji, decorazioni gratuite o griglie ripetute; usa fotografie, icone specifiche e pause tipografiche dove aiutano il messaggio. "
     "Layout disponibili (scegli quello che serve al contenuto, varia il ritmo e non usare lo stesso layout più di 3 volte di fila):\n"
     "- cover: copertina (solo la prima slide). Campi: title, subtitle.\n"
     "- section: divisore che apre una nuova parte. Campi: title, subtitle (es. 'Parte 2').\n"
     "- title_bullets: titolo + elenco puntato. Campi: title, subtitle (opzionale), points.\n"
     "- cards: 2-4 concetti affiancati. Campi: title, points nel formato 'Nome concetto: spiegazione breve'.\n"
+    "- icon_cards: 2-4 concetti con pittogrammi funzionali in una griglia ariosa. Campi: title, points ('Concetto: spiegazione'), "
+    "icons (un nome per punto: book, leaf, flask, lightbulb, people, target, clock, chart, globe, shield, search, code). "
+    "Scegli icone specifiche per il significato, mai come riempitivo.\n"
     "- two_column: confronto o due aspetti. Campi: title, left_label, points, right_label, points_right.\n"
-    "- timeline: sequenza, processo o cronologia di 2-5 passi. Campi: title, points (un passo ciascuno).\n"
+    "- timeline: sequenza, processo o cronologia di 2-5 passi. Campi: title, points ('Data o fase: spiegazione breve'); "
+    "date e fasi restano separate dalle descrizioni. Non trasformare un elenco senza ordine temporale in timeline.\n"
+    "- editorial: pagina analogica su carta con titolo serif corsivo, testo a due colonne e un divisore sottile. "
+    "Campi: title, subtitle, points (max 3, 'Concetto: spiegazione'). Per riflessioni, narrazione e pause di lettura.\n"
+    "- image_full: fotografia a piena pagina con titolo e breve sottotitolo su un pannello scuro a contrasto. "
+    "Campi: title, subtitle, image_prompt (soggetto concreto sulla destra, senza testo o infografiche). "
+    "Per un'osservazione visiva, un luogo, un caso concreto o un'apertura di sezione; evita immagini solo decorative.\n"
     "- big_stat: un numero o dato chiave. Campi: stat_value (es. '70%'), stat_label, subtitle (contesto).\n"
     "- quote: citazione significativa. Campi: quote, attribution.\n"
     "- image_split: testo con un'immagine illustrativa generata automaticamente. Campi: title, points (max 4), "
@@ -74,7 +96,7 @@ LAYOUT_GUIDE = (
 
 SLIDE_SCHEMA = (
     '{"layout":"...","title":"...","subtitle":"","points":["..."],"points_right":[],"left_label":"",'
-    '"right_label":"","stat_value":"","stat_label":"","quote":"","attribution":"","image_prompt":"","notes":"2-4 frasi per chi presenta"}'
+    '"right_label":"","stat_value":"","stat_label":"","quote":"","attribution":"","image_prompt":"","icons":[],"notes":"2-4 frasi per chi presenta"}'
 )
 
 
@@ -242,6 +264,8 @@ def _recolor_block(block: dict, theme: dict) -> None:
             style[prop] = colors[role]
     if roles.get("font") in theme["fonts"]:
         style["fontFamily"] = theme["fonts"][roles["font"]]
+    if block.get("assetRole") == "icon" and block.get("iconName") in ICON_NAMES:
+        block["content"] = icon_image(block["iconName"], colors.get(roles.get("color"), colors["primary_text"]))
 
 
 def _num(value, default: float = 0.0) -> float:
@@ -312,8 +336,8 @@ def apply_theme(slides: list[dict], theme: dict, width: float, height: float) ->
                                              "notes": slide.get("speakerNotes")}, index, width, height, theme)
             rendered["title"] = slide.get("title") or rendered["title"]
             # Keep pictures already generated/chosen for the slide's image slots.
-            old_images = [b for b in slide.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "image"]
-            new_images = [b for b in rendered["blocks"] if b.get("type") == "image"]
+            old_images = [b for b in slide.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "image" and not b.get("assetRole")]
+            new_images = [b for b in rendered["blocks"] if b.get("type") == "image" and not b.get("assetRole")]
             for new, old in zip(new_images, old_images):
                 if "placehold.co" not in str(old.get("content") or ""):
                     new["content"] = old["content"]

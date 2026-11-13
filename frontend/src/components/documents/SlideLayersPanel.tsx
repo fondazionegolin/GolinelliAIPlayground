@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Circle, Eye, EyeOff, GripVertical, Image as ImageIcon, Lock, Minus, Square, Type, Unlock } from '@/components/icons'
+import { Circle, Eye, EyeOff, GripVertical, Image as ImageIcon, Lock, Minus, Square, Type, Unlock, Video } from '@/components/icons'
 import type { SlideBlock } from '@/components/SlideEditor'
 import { reorderBlockLayer, toggleBlockHidden, toggleBlockLocked } from '@/lib/slideBlocks'
 import { tl } from '@/i18n/tl'
@@ -14,6 +14,7 @@ interface SlideLayersPanelProps {
 const TYPE_ICON: Record<SlideBlock['type'], typeof Type> = {
   text: Type,
   image: ImageIcon,
+  video: Video,
   rectangle: Square,
   ellipse: Circle,
   line: Minus,
@@ -25,6 +26,7 @@ function blockLabel(block: SlideBlock): string {
     return plain ? plain.slice(0, 40) : tl("Testo vuoto")
   }
   if (block.type === 'image') return tl("Immagine")
+  if (block.type === 'video') return tl("Video")
   if (block.type === 'rectangle') return tl("Rettangolo")
   if (block.type === 'ellipse') return tl("Ellisse")
   return tl("Linea")

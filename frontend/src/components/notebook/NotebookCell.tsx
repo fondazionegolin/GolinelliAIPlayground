@@ -25,6 +25,8 @@ interface Props {
   onRun: () => void
   onApplyProposal?: (proposalId: string) => void
   onRejectProposal?: (proposalId: string) => void
+  /** Proposals are reviewed in the tutor sidebar on desktop; keep the inline panel for narrow screens only. */
+  proposalsInChatOnDesktop?: boolean
   onDelete?: () => void
   onInsertBelow?: () => void
   onMoveUp?: () => void
@@ -54,6 +56,7 @@ export default function NotebookCell({
   onRun,
   onApplyProposal,
   onRejectProposal,
+  proposalsInChatOnDesktop = false,
   onDelete,
   onInsertBelow,
   onMoveUp,
@@ -332,7 +335,7 @@ export default function NotebookCell({
         />
 
         {proposals.length > 0 && (
-          <div className={`flex max-h-[55%] shrink-0 flex-col overflow-hidden border-t px-3 py-2 ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'}`}>
+          <div className={`${proposalsInChatOnDesktop ? 'lg:hidden ' : ''}flex max-h-[55%] shrink-0 flex-col overflow-hidden border-t px-3 py-2 ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'}`}>
             <div className={`mb-2 flex shrink-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <Sparkles className="h-3.5 w-3.5 text-indigo-300" />
               {tl("Proposte AI da approvare")}

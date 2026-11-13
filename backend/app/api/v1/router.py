@@ -5,16 +5,18 @@ from app.api.v1.endpoints import visual_sessions
 from app.api.v1.endpoints import smart_canvas
 from app.api.v1.endpoints import legal_docs
 
-from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, solid_modeler, deep_research, school_onboarding, privacy, video_studio, licenses
+from app.api.v1.endpoints import auth, admin, admin_backend, admin_models, admin_chatbots, admin_activity, teacher_memory, ml_lab, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding, hardware, boards, collaboration, inquiry, system_health, turing, agentic, agentic_sharing, solid_modeler, deep_research, school_onboarding, privacy, video_studio, licenses
 from app.api.v1.endpoints.live_interaction import public_router as live_public_router, teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 from app.api.v1.endpoints import jobs
 from app.api.v1.endpoints import drive
 from app.api.v1.endpoints import platform_api
 from app.api.v1.endpoints import presentation_studio
+from app.api.v1.endpoints import document_shares
 from app.api.v1.endpoints import teaching_protocol
 
 api_router = APIRouter()
+api_router.include_router(document_shares.router, prefix="/document-shares", tags=["document-shares"])
 api_router.include_router(teaching_protocol.router, prefix="/llm/teacher/protocol", tags=["teaching-protocol"])
 api_router.include_router(voice_lab.router, prefix="/voice-lab", tags=["voice-lab"])
 api_router.include_router(podcasts.router, prefix="/podcasts", tags=["podcasts"])
@@ -68,6 +70,7 @@ api_router.include_router(hardware.router, prefix="/hardware", tags=["hardware"]
 api_router.include_router(collaboration.router, tags=["collaboration"])
 api_router.include_router(turing.router, prefix="/turing", tags=["turing-test"])
 api_router.include_router(agentic.router, prefix="/agentic", tags=["agentic-workflows"])
+api_router.include_router(agentic_sharing.router, prefix="/agentic", tags=["agentic-sharing"])
 api_router.include_router(solid_modeler.router, prefix="/solid-modeler", tags=["solid-modeler"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["background-jobs"])
 api_router.include_router(drive.router, prefix="/drive", tags=["drive"])

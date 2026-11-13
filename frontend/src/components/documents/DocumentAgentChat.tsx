@@ -9,6 +9,8 @@ import { useServerHealth } from '@/components/ServerHealthIndicator'
 import type { FormatOperation } from '@/lib/documentFormatOps'
 import { PLACEMENT_LABEL, type WritePlacement, type WriteSpec } from '@/lib/documentWriting'
 import { sanitizeDocumentHtml } from '@/lib/sanitizeDocumentHtml'
+import { SlideProposalPreview } from '@/components/documents/SlideProposalPreview'
+import { slideProposalPairs, type SlidePair } from '@/lib/slideProposalPreview'
 import { tl } from '@/i18n/tl'
 import { IconButton } from '@/design'
 
@@ -34,6 +36,8 @@ type ChatMessage = {
   agentName?: string
   proposal?: Proposal
   beforePreview?: string
+  /** The slides this proposal would change, before and after, captured when it arrived. */
+  slidePairs?: SlidePair[]
   status?: 'pending' | 'applied' | 'rejected'
   /** Progress of the illustrations generated from this proposal's placeholders («Genera tutte»). */
   images?: { done: number; total: number; failed: number }
@@ -69,6 +73,8 @@ type Props = {
   deckTheme?: DeckTheme | null
   /** The live deck: «Genera tutte» only fills the placeholders that are still empty. */
   currentSlides?: StudioSlide[]
+  /** Slide the user is on: the proposal's default target when the request names none. */
+  currentSlideIndex?: number
   onClose: () => void
 }
 
@@ -126,7 +132,7 @@ const CURSOR_SUGGESTIONS: Array<[string, string]> = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, currentSlideIndex, onClose }: Props) {
   const [input, setInput] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, input)
@@ -246,6 +252,8 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
           content: data.summary || tl("Ho preparato una proposta contestuale."),
           proposal: contextualProposal,
           beforePreview: target.beforePreview,
+          slidePairs: contextualProposal && !autoApplied && currentSlides
+            ? slideProposalPairs(contextualProposal, currentSlides, currentSlideIndex) ?? undefined : undefined,
           status: autoApplied ? 'applied' : 'pending',
         },
       ])
@@ -559,10 +567,20 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
                   </div>
                 ) : message.proposal && (
                   <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                    {message.slidePairs?.length ? (
+                      <SlideProposalPreview
+                        pairs={message.slidePairs}
+                        format={dims && dims.width / dims.height < 1.5 ? '4:3' : '16:9'}
+                        pending={message.status === 'pending'}
+                        onApply={() => applyProposal(message)}
+                        onReject={() => updateProposalStatus(message.id, 'rejected')}
+                      />
+                    ) : (
                     <div className="grid grid-cols-2 divide-x divide-slate-200">
                       <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-red-600">{tl("Prima")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{message.beforePreview}</p></div>
                       <div className="min-w-0 p-2.5"><p className="mb-1 text-[9px] font-black uppercase tracking-wide text-sky-700">{tl("Proposta")}</p><p className="line-clamp-5 whitespace-pre-wrap text-[11px] leading-4">{proposalPreview(message.proposal)}</p></div>
                     </div>
+                    )}
                     {message.status === 'pending' ? (
                       <div className="flex gap-2 border-t border-slate-200 bg-white p-2">
                         <button type="button" onClick={() => updateProposalStatus(message.id, 'rejected')} className="h-9 flex-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">{tl("Rifiuta")}</button>

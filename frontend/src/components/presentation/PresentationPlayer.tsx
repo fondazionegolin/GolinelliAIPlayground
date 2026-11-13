@@ -73,7 +73,7 @@ export default function PresentationPlayer({ slides, format, startIndex = 0, onC
       aria-label={tl("Presentazione a schermo intero")}
     >
       <div className="relative min-h-0 flex-1" onClick={() => go(1)}>
-        {slide && <SlidePreview key={slide.id} content={content} title={slide.title} backdrop="bg-black" />}
+        {slide && <SlidePreview key={slide.id} content={content} title={slide.title} backdrop="bg-black" interactive />}
       </div>
       {showNotes && (
         <div className="max-h-[30vh] overflow-y-auto border-t border-white/10 bg-neutral-900 px-8 py-4 text-base leading-relaxed text-neutral-100">

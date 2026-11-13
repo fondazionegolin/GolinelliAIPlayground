@@ -15,14 +15,16 @@ export function ClassChatDock({
   accentColor,
   chatOpen,
   onOpen,
+  userType = 'teacher',
 }: {
   sessionId?: string | null
   currentUserId?: string
   accentColor: string
   chatOpen: boolean
   onOpen: () => void
+  userType?: 'teacher' | 'student'
 }) {
-  const readKey = `class-chat:last-read:teacher:${sessionId || 'none'}`
+  const readKey = `class-chat:last-read:${userType}:${sessionId || 'none'}`
   const [readAt, setReadAt] = useState(() => Number(localStorage.getItem(readKey) || 0))
   const [hover, setHover] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)

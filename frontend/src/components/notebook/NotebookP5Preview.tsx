@@ -1,3 +1,4 @@
+import { p5NeedsCamera } from './p5Camera'
 import { AlertCircle } from '@/components/icons'
 import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
 import { buildMlStub, type MlRuntimeModel } from '@/lib/mlRuntimeStub'
@@ -22,11 +23,41 @@ interface Props {
   mlLoading?: boolean
   /** how many attached models could not be loaded (deleted, or not trained yet) */
   mlMissing?: number
+  /** full-screen play: no header, the sketch fills the whole element */
+  fullscreen?: boolean
 }
 
 const P5_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js'
 
+// Runs first in the preview. getUserMedia is made by the PARENT page (kept alive across sketch restarts) and the
+// sketch gets a clone: restarting or going full screen never asks for the camera again, and the permission
+// the user granted to the app is reused. Needs the same-origin sandbox that camera sketches already use.
+const CAMERA_SHIM = `<script>
+(function () {
+  try {
+    var md = navigator.mediaDevices, host = window.parent;
+    if (!md || !md.getUserMedia || !host || !host.navigator || !host.navigator.mediaDevices) return;
+    var orig = md.getUserMedia.bind(md);
+    md.getUserMedia = function (constraints) {
+      try {
+        var cache = host.__golinelliCamCache || (host.__golinelliCamCache = {});
+        var key = JSON.stringify(constraints || {});
+        var cached = cache[key];
+        if (cached && cached.getTracks().length && cached.getTracks().every(function (t) { return t.readyState === 'live'; })) {
+          return Promise.resolve(cached.clone());
+        }
+        return host.navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+          cache[key] = stream;
+          return stream.clone();
+        });
+      } catch (e) { return orig(constraints); }
+    };
+  } catch (e) {}
+})();
+</script>`
+
 function buildPreviewDoc(files: P5File[], activeLibraries: string[], mlModels: MlRuntimeModel[] = []) {
+  const cameraShim = p5NeedsCamera(files, activeLibraries, mlModels) ? CAMERA_SHIM : ''
   // Defined before any sketch code runs; it lazy-loads the ML runtime from the platform (same origin as this app).
   const mlStub = mlModels.length ? `<script>${buildMlStub(mlModels, window.location.origin).replace(/<\/script/gi, '<\\/script')}</script>` : ''
   const isEmpty = files.every((f) => !f.source.trim())
@@ -53,6 +84,7 @@ ${escaped}
   return `<!doctype html>
 <html lang="it">
   <head>
+    ${cameraShim}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
@@ -156,21 +188,18 @@ export default function NotebookP5Preview({
   mlModels = [],
   mlLoading = false,
   mlMissing = 0,
+  fullscreen = false,
 }: Props) {
   // Libraries (and ML Lab models) that need the camera get a relaxed sandbox + the allow attribute
-  const usesCameraInCode = files.some((file) => /createCapture|getUserMedia|GolinelliML|GolinelliAI\.media|mediaDevices/.test(file.source))
-  const needsCamera = mlModels.length > 0 || usesCameraInCode || activeLibraries.some((id) => {
-    const lib = NOTEBOOK_LIBRARIES.find((l) => l.id === id)
-    return lib?.requiresCamera ?? false
-  })
+  const needsCamera = p5NeedsCamera(files, activeLibraries, mlModels)
 
   const activeLibNames = activeLibraries
     .map((id) => NOTEBOOK_LIBRARIES.find((l) => l.id === id)?.name)
     .filter(Boolean)
 
   return (
-    <div className="h-full min-h-[360px] overflow-hidden rounded-none border-0 bg-white">
-      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2">
+    <div className={`h-full overflow-hidden rounded-none border-0 bg-white ${fullscreen ? '' : 'min-h-[360px]'}`}>
+      {!fullscreen && <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2">
         <div>
           <p className="text-sm font-semibold text-slate-700">Preview p5.js</p>
           <p className="text-[11px] text-slate-400">
@@ -181,8 +210,8 @@ export default function NotebookP5Preview({
             {mlModels.length > 0 && <span className="ml-2 text-violet-500">· {mlModels.map((model) => model.name).join(', ')}</span>}
           </p>
         </div>
-      </div>
-      <div className="relative h-[calc(100%-49px)]">
+      </div>}
+      <div className={`relative ${fullscreen ? 'h-full' : 'h-[calc(100%-49px)]'}`}>
         {mlLoading ? (
           <div className="flex h-full w-full items-center justify-center bg-white text-sm text-slate-500">{tl("Carico i modelli ML…")}</div>
         ) : (

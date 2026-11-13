@@ -823,7 +823,7 @@ def _derive(fmt: _Fmt, tag: Tag) -> _Fmt:
 
 
 def _looks_like_html(value: str) -> bool:
-    return bool(re.search(r"<\s*(p|span|strong|em|u|s|br|ul|ol|li|b|i)\b", value, re.IGNORECASE))
+    return bool(re.search(r"<\s*(p|h[1-6]|div|blockquote|span|strong|em|u|s|br|ul|ol|li|b|i)\b", value, re.IGNORECASE))
 
 
 def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to_pt: float) -> None:
@@ -887,10 +887,10 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
         for node in soup.children:
             if isinstance(node, Tag) and node.name in {"ul", "ol"}:
                 walk_list(node, 0)
-            elif isinstance(node, Tag) and node.name == "p":
+            elif isinstance(node, Tag) and node.name in {"p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "blockquote"}:
                 runs: list[tuple[str, _Fmt]] = []
                 for child in node.children:
-                    inline_runs(child, base, runs)
+                    inline_runs(child, _derive(base, node), runs)
                 paragraphs.append((runs, None, 0, _css(node).get("text-align"), _css(node)))
             else:
                 runs = []
@@ -903,9 +903,12 @@ def fill_text_frame(frame: Any, content: str, block_style: dict[str, Any], px_to
     frame.clear()
     for index, (runs, list_tag, level, align, css) in enumerate(paragraphs):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+        # Layout placeholders inherit theme paragraph spacing unless explicitly cleared.
+        paragraph.space_before = Pt(0)
+        paragraph.space_after = Pt(0)
         paragraph.alignment = CSS_TO_ALIGN.get(align or "", block_align)
         if isinstance(line_height, (int, float)) and line_height > 0:
-            paragraph.line_spacing = float(line_height)
+            paragraph.line_spacing = Pt(max((fmt.size_px or base.size_px or 18) for _, fmt in runs or [("", base)]) * px_to_pt * float(line_height))
         paragraph_line = css.get("line-height", "")
         if re.fullmatch(r"[\d.]+", paragraph_line):
             paragraph.line_spacing = float(paragraph_line) / 1.2  # CSS 1.2 is PowerPoint's single spacing

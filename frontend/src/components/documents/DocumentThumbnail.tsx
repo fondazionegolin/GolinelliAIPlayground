@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { SlideBlock } from '@/components/SlideEditor'
+import { SlideVideo } from '@/components/SlideVideo'
 import { sanitizeSlideHtml } from '@/lib/sanitizeSlideHtml'
 import { textBoxPadding, verticalAlignCss } from '@/lib/slideBlocks'
 import { ensureSlideFonts } from '@/lib/slideFonts'
@@ -36,7 +37,7 @@ const DIMENSIONS = {
 }
 
 /** Exact read-only render of a deck's first slide, scaled to fit its container (also used full screen by the presenter). */
-export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { content: ParsedContent; title: string; backdrop?: string }) {
+export function SlidePreview({ content, title, backdrop = 'bg-slate-100', interactive = false }: { content: ParsedContent; title: string; backdrop?: string; interactive?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [hostSize, setHostSize] = useState({ width: 0, height: 0 })
   const format = content.format && DIMENSIONS[content.format] ? content.format : '16:9'
@@ -137,9 +138,11 @@ export function SlidePreview({ content, title, backdrop = 'bg-slate-100' }: { co
                   dangerouslySetInnerHTML={{ __html: sanitizeSlideHtml(block.content) }}
                 />
               ) : block.type === 'image' ? (
-                <img src={block.content} alt="" className="h-full w-full object-cover" />
+                <img src={block.content} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+              ) : block.type === 'video' ? (
+                <SlideVideo url={block.content} interactive={interactive} />
               ) : block.type === 'line' ? (
-                <svg className="h-full w-full overflow-visible">
+                <svg className="overflow-visible" style={{ width: Math.max(1, block.width), height: Math.max(1, block.height) }}>
                   <line x1={0} y1={0} x2={block.width} y2={block.height} stroke={block.style.stroke || '#262626'} strokeWidth={block.style.strokeWidth ?? 2} />
                 </svg>
               ) : null}
@@ -203,11 +206,29 @@ function SheetPreview({ data }: { data: string[][] }) {
   )
 }
 
+/** True once the element has come near the viewport; catalogues hold dozens of previews, paint only what is seen. */
+function useNearViewport<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    const node = ref.current
+    if (near || !node) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setNear(true); observer.disconnect() }
+    }, { rootMargin: '300px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [near])
+  return [ref, near] as const
+}
+
 function DocumentThumbnail({ contentJson, type, title, className = '', showTypeBadge = true }: DocumentThumbnailProps) {
+  const [frameRef, near] = useNearViewport<HTMLDivElement>()
   const content = useMemo<ParsedContent>(() => {
+    if (!near) return {}
     try { return JSON.parse(contentJson || '{}') }
     catch { return {} }
-  }, [contentJson])
+  }, [contentJson, near])
 
   const html = content.htmlContent || content.content || ''
   const isFullHtml = /^\s*(?:<!doctype\s+html|<html)/i.test(html)
@@ -217,7 +238,7 @@ function DocumentThumbnail({ contentJson, type, title, className = '', showTypeB
   const useLightweightPreview = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   return (
-    <div className={`pointer-events-none relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={tl("Anteprima di {0}", title)}>
+    <div ref={frameRef} className={`pointer-events-none relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={tl("Anteprima di {0}", title)}>
       {content.previewImage ? <img src={content.previewImage} alt="" className="h-full w-full object-contain bg-slate-100" />
         : actualType === 'presentation' ? <SlidePreview content={content} title={title} />
         : (actualType === 'document' || (actualType === 'pdf' && !content.url)) && html && !isFullHtml ? <DocumentPagePreview html={html} />

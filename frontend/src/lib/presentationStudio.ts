@@ -12,6 +12,7 @@ import { followJobStream, notifyJobsChanged, readEventStream } from '@/lib/backg
 export type StudioLayout =
   | 'cover' | 'section' | 'title_bullets' | 'two_column' | 'cards' | 'image_split'
   | 'big_stat' | 'timeline' | 'quote' | 'summary'
+  | 'icon_cards' | 'image_full' | 'editorial'
 
 export type StudioDensity = 'essenziale' | 'bilanciata' | 'dettagliata'
 
@@ -39,6 +40,7 @@ export interface OutlineSlide {
   quote: string
   attribution: string
   image_prompt: string
+  icons?: string[]
   notes: string
 }
 
@@ -109,6 +111,9 @@ export const LAYOUT_LABELS: Record<StudioLayout, string> = {
   section: tl("Divisore di sezione"),
   title_bullets: tl("Titolo ed elenco"),
   cards: tl("Schede (2–4 concetti)"),
+  icon_cards: tl("Schede con icone"),
+  image_full: tl("Immagine a piena pagina"),
+  editorial: tl("Editoriale su carta"),
   two_column: tl("Due colonne / confronto"),
   timeline: tl("Sequenza / processo"),
   big_stat: tl("Dato in evidenza"),
@@ -123,6 +128,9 @@ export const LAYOUT_FIELDS: Record<StudioLayout, (keyof OutlineSlide)[]> = {
   section: ['title', 'subtitle'],
   title_bullets: ['title', 'subtitle', 'points'],
   cards: ['title', 'points'],
+  icon_cards: ['title', 'points', 'icons'],
+  image_full: ['title', 'subtitle', 'image_prompt'],
+  editorial: ['title', 'subtitle', 'points'],
   two_column: ['title', 'left_label', 'points', 'right_label', 'points_right'],
   timeline: ['title', 'points'],
   big_stat: ['stat_value', 'stat_label', 'subtitle'],
@@ -137,7 +145,7 @@ export const DEFAULT_THEME_OPTIONS: ThemeOptions = {
 
 export const emptyOutlineSlide = (layout: StudioLayout = 'title_bullets'): OutlineSlide => ({
   id: crypto.randomUUID(), layout, title: '', subtitle: '', points: [], points_right: [], left_label: '', right_label: '',
-  stat_value: '', stat_label: '', quote: '', attribution: '', image_prompt: '', notes: '',
+  stat_value: '', stat_label: '', quote: '', attribution: '', image_prompt: '', icons: [], notes: '',
 })
 
 type Dims = { width: number; height: number }
@@ -228,6 +236,53 @@ export const presentationStudioApi = {
     api.post<{ url: string }>('/presentation-studio/images', data, { signal, timeout: 180000 }),
   quality: (data: { slides: StudioSlide[]; theme?: DeckTheme | null; dims: Dims; fix: boolean }) =>
     api.post<{ issues: QualityIssue[]; slides: StudioSlide[] | null }>('/presentation-studio/quality', data),
+  newSlide: (data: { description: string; deck_title: string; theme: DeckTheme; index: number; dims: Dims; context: { title: string; text: string }[] }) =>
+    api.post<{ slide: StudioSlide }>('/presentation-studio/new-slide', data, { timeout: 120000 }),
+}
+
+
+/**
+ * A new slide at `index`, in the deck's own look. Studio decks (they carry a theme) get a slide rendered in that
+ * theme (written by the model from `description` when given) and the later slides are re-rendered so their
+ * numbers stay right. Decks without a theme (imported/hand-made) get an empty slide that repeats the
+ * neighbour's background so it doesn't stand out.
+ */
+export async function createSlideAt(
+  deck: { title: string; theme?: DeckTheme | null; slides: StudioSlide[] },
+  index: number,
+  description: string,
+  dims: Dims,
+): Promise<{ slides: StudioSlide[]; themed: boolean }> {
+  const at = Math.max(0, Math.min(index, deck.slides.length))
+  let fresh: StudioSlide
+  let themed = false
+  if (deck.theme?.id) {
+    const near = deck.slides.slice(Math.max(0, at - 3), at + 3).map(slide => ({
+      title: slide.title,
+      text: plainText(slide.blocks.filter(block => block.type === 'text').map(block => block.content).join(' ')).slice(0, 400),
+    }))
+    const { data } = await presentationStudioApi.newSlide({ description, deck_title: deck.title, theme: deck.theme, index: at, dims, context: near })
+    fresh = data.slide
+    themed = true
+  } else {
+    const model = deck.slides[Math.max(0, at - 1)] ?? deck.slides[0]
+    const background = (model?.blocks || []).filter(block => block.locked && block.width >= dims.width * 0.9 && block.height >= dims.height * 0.85)
+    fresh = {
+      id: crypto.randomUUID(),
+      title: `Slide ${at + 1}`,
+      blocks: background.map(block => ({ ...block, id: crypto.randomUUID() })),
+      ...((model as StudioSlide & { backgroundColor?: string })?.backgroundColor ? { backgroundColor: (model as StudioSlide & { backgroundColor?: string }).backgroundColor } : {}),
+    } as StudioSlide
+  }
+  let slides = [...deck.slides.slice(0, at), fresh, ...deck.slides.slice(at)]
+  if (themed && at < slides.length - 1) {
+    try {
+      const { data } = await presentationStudioApi.retheme({ slides, theme_id: deck.theme!.id, options: deck.theme!.options ?? {}, dims })
+      const later = new Map(data.slides.map(slide => [slide.id, slide]))
+      slides = slides.map((slide, position) => position > at && later.has(slide.id) ? later.get(slide.id)! : slide)
+    } catch { /* numbering of later slides stays as it was */ }
+  }
+  return { slides, themed }
 }
 
 // ── Style questions → template ranking (deterministic, client-side) ──────────

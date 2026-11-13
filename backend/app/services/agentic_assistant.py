@@ -9,12 +9,14 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextvars import ContextVar
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.services import platform_actions
-from app.services.agentic_runtime import FOR_EACH_NODE, NODE_REGISTRY, _edge_port, _forward_graph, _is_flow_type, _loop_groups, validate_graph
+from app.services.dataflow_forecast import TIME_NAME
+from app.services.agentic_runtime import FOR_EACH_NODE, NODE_REGISTRY, student_node_allowed, _edge_port, _forward_graph, _is_flow_type, _loop_groups, validate_graph
 
 MAX_NODES = 40
 NODE_GAP = 110
@@ -72,8 +74,12 @@ def parse_blueprint(raw: Any) -> Blueprint:
 
 # ── spec helpers ──────────────────────────────────────────────────────────────
 
+# Set while the assistant works for a student: teacher-only nodes (platform drive, chatbot, saved datasets) are invisible.
+student_catalog: ContextVar[bool] = ContextVar("dataflow_student_catalog", default=False)
+
+
 def _spec(node_id: str) -> dict[str, Any]:
-    if node_id not in NODE_REGISTRY or NODE_REGISTRY[node_id].get("hidden"):
+    if node_id not in NODE_REGISTRY or NODE_REGISTRY[node_id].get("hidden") or (student_catalog.get() and not student_node_allowed(node_id)):
         raise BlueprintError(f"Nodo «{node_id}» non esiste nel catalogo")
     return NODE_REGISTRY[node_id]
 
@@ -338,13 +344,15 @@ def describe_graph(graph: dict[str, Any], selected: str | None = None) -> str:
             continue
         config = node.get("config") or {}
         defaults = {item["name"]: ("" if item.get("default") is None else item["default"]) for item in spec["params"]}
-        changed = {key: _short(value) for key, value in config.items() if key == "function" or value != defaults.get(key)}
+        changed = {key: _short(value) for key, value in config.items() if not key.startswith("_") and (key == "function" or value != defaults.get(key))}
         outputs = []
         for item in effective_ports(node["id"], config, "outputs"):
             if item["type"] == "TABLE":
                 columns = infer_columns(graph, node["instanceId"], item["name"])
                 if columns:
-                    outputs.append(f"{item['name']}[colonne: {', '.join(columns)}]")
+                    temporal = (config.get("_dataset") or {}).get("time_columns") if node["id"] == "data.saved_dataset" else [name for name in columns if TIME_NAME.search(name)]
+                    hint = f"; SERIE TEMPORALE, tempo: {', '.join(temporal)}" if temporal else ""
+                    outputs.append(f"{item['name']}[colonne: {', '.join(columns)}{hint}]")
         title = node.get("label") or spec["label"]
         lines.append(f"- {node['instanceId']} · {node['id']} «{title}»{' (SELEZIONATO)' if node['instanceId'] == selected else ''}"
                      f" · config: {json.dumps(changed, ensure_ascii=False)}" + (f" · uscite: {'; '.join(outputs)}" if outputs else ""))
@@ -795,6 +803,13 @@ def infer_columns(graph: dict[str, Any], node_id: str, port: str, _seen: frozens
     if kind == "ml.kmeans_clustering":
         columns = upstream()
         return None if columns is None else columns + ["cluster"]
+    if kind == "ml.forecast" and port == "forecast":
+        columns = upstream()
+        time_name = str(config.get("time_column") or "").strip() or next((name for name in columns or [] if TIME_NAME.search(name)), "periodo")
+        value_name = str(config.get("value_column") or "").strip() or next((name for name in columns or [] if name != time_name), "valore")
+        return [time_name, value_name, "previsione", "minimo", "massimo", "tipo"]
+    if kind == "data.saved_dataset":
+        return list((config.get("_dataset") or {}).get("columns") or []) or None
     if kind in {"ml.regression", "ml.classification", "ml.predict"}:
         columns = upstream("train" if kind != "ml.predict" else "data")
         return None if columns is None else columns + ["prediction"]
@@ -907,7 +922,7 @@ def catalog_for_llm() -> dict[str, Any]:
     """Compact, always-in-sync view of ``NODE_REGISTRY`` for the architect prompt."""
     nodes: list[dict[str, Any]] = []
     for spec in NODE_REGISTRY.values():
-        if spec.get("hidden"):
+        if spec.get("hidden") or (student_catalog.get() and not student_node_allowed(spec["id"])):
             continue
         entry: dict[str, Any] = {
             "id": spec["id"], "label": spec["label"], "category": spec["category"],

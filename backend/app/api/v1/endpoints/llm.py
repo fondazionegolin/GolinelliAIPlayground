@@ -131,6 +131,7 @@ def _parse_submission_score(value) -> tuple[Optional[float], bool]:
 _THEME_COLOR_ROLES = {
     "background", "surface", "primary", "accent", "text", "muted", "border", "primary_text", "accent_text",
     "on_primary", "on_primary_muted", "on_accent", "inverse", "on_inverse", "accent_on_inverse",
+    "paper", "paper_ink", "paper_muted", "paper_rule", "photo_panel", "photo_ink",
 }
 
 
@@ -138,7 +139,7 @@ def _clean_theme_role(raw) -> Optional[dict]:
     if not isinstance(raw, dict):
         return None
     clean = {key: raw[key] for key in ("fill", "stroke", "color") if raw.get(key) in _THEME_COLOR_ROLES}
-    if raw.get("font") in {"heading", "body"}:
+    if raw.get("font") in {"heading", "body", "editorial"}:
         clean["font"] = raw["font"]
     return clean or None
 
@@ -146,7 +147,7 @@ def _clean_theme_role(raw) -> Optional[dict]:
 def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
     width = float(dims.get("width") or 960)
     height = float(dims.get("height") or 540)
-    allowed_types = {"text", "image", "rectangle", "ellipse", "line"}
+    allowed_types = {"text", "image", "video", "rectangle", "ellipse", "line"}
     allowed_align = {"left", "center", "right", "justify"}
 
     title = str(payload.get("title") or "Presentazione").strip()[:120]
@@ -207,6 +208,11 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                     "padding": padding,
                     "borderRadius": int(_bounded_number(style.get("borderRadius"), 0, 0, 48)),
                 }
+            elif block_type == "video":
+                content = str(block.get("content") or "").strip()[:2000]
+                if not content.startswith(("http://", "https://")):
+                    content = ""
+                clean_style = {"borderRadius": int(_bounded_number(style.get("borderRadius"), 8, 0, 48))}
             elif block_type == "image":
                 content = str(block.get("content") or "").strip()
                 if not (content.startswith("http://") or content.startswith("https://") or content.startswith("/") or content.startswith("data:image/")):
@@ -245,6 +251,10 @@ def _sanitize_slide_agent_payload(payload: dict, dims: dict) -> dict:
                 clean_block["themeRole"] = theme_role
             if block_type == "image" and block.get("imagePrompt"):
                 clean_block["imagePrompt"] = str(block.get("imagePrompt"))[:600]
+            if block_type == "image" and block.get("assetRole") in {"icon", "paper"}:
+                clean_block["assetRole"] = block["assetRole"]
+                if block.get("assetRole") == "icon":
+                    clean_block["iconName"] = str(block.get("iconName") or "")[:24]
             clean_blocks.append(clean_block)
 
         if clean_blocks:
@@ -2558,11 +2568,11 @@ def _keep_existing_slide_images(rendered: dict, original: Optional[dict]) -> Non
         return
     old_prompt = str((original.get("content") or {}).get("image_prompt") or "").strip() if isinstance(original.get("content"), dict) else ""
     old_images = [b for b in original.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "image"
-                  and "placehold.co" not in str(b.get("content") or "")]
-    new_images = [b for b in rendered.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "image"]
+                  and not b.get("assetRole") and "placehold.co" not in str(b.get("content") or "")]
+    new_images = [b for b in rendered.get("blocks") or [] if isinstance(b, dict) and b.get("type") == "image" and not b.get("assetRole")]
     for new, old in zip(new_images, old_images):
         new_prompt = str(new.get("imagePrompt") or "").strip()
-        if not new_prompt or new_prompt == old_prompt or new_prompt == str(original.get("title") or "").strip():
+        if not new_prompt or new_prompt == old_prompt or new_prompt == str(old.get("imagePrompt") or "").strip() or new_prompt == str(original.get("title") or "").strip():
             new["content"] = old["content"]
 
 
@@ -2590,7 +2600,7 @@ def _image_placeholder_url(width: float, height: float) -> str:
 
 def _has_real_image(slide: dict) -> bool:
     return any(isinstance(b, dict) and b.get("type") == "image" and not b.get("hidden")
-               and "placehold.co" not in str(b.get("content") or "") for b in slide.get("blocks") or [])
+               and not b.get("assetRole") and "placehold.co" not in str(b.get("content") or "") for b in slide.get("blocks") or [])
 
 
 def _slide_text(slide: dict, limit: int = 900) -> str:
@@ -2603,7 +2613,7 @@ def _place_image_placeholder(slide: dict, prompt: str, width: int, height: int, 
     """Reuse the slide's image slot, or make room on the right (text squeezed into the left ~55%) and add one.
     A real picture is only turned back into a placeholder when the user asked to replace pictures."""
     blocks = [b for b in slide.get("blocks") or [] if isinstance(b, dict)]
-    slots = [b for b in blocks if b.get("type") == "image" and not b.get("hidden")]
+    slots = [b for b in blocks if b.get("type") == "image" and not b.get("hidden") and not b.get("assetRole")]
     if slots and not replace and _has_real_image(slide):
         return False
     if slots:
@@ -2672,8 +2682,50 @@ async def _image_placeholder_edit(*, prompt: str, deck_title: str, slides: list[
     return work, placed, [response]
 
 
+# «Aggiungi…» must never rewrite what is already there: the model sometimes answers an add request by
+# replacing a text. Additive requests get a prompt rule AND a deterministic guard on what comes back.
+_ADDITIVE_RE = re.compile(r"\b(aggiung\w*|inserisc\w*|inseri\w*|append\w*|add|insert\w*|accod\w*|integra\w*|in più)\b", re.IGNORECASE)
+_REWRITE_RE = re.compile(r"\b(sostitu\w*|cambia\w*|riscriv\w*|rifai|replace\w*|rewrite|change|riformul\w*|correggi\w*|traduc\w*|"
+                         r"accorcia\w*|riassum\w*|semplific\w*|espand\w*|migliora\w*|modific\w*|elimin\w*|togli\w*|rimuov\w*|remove|delete)\b", re.IGNORECASE)
+_ADDITIVE_RULE = (
+    "\nVINCOLO IMPORTANTE: la richiesta è di AGGIUNGERE. Conserva ogni testo, elenco e immagine già presenti IDENTICI "
+    "(stesse parole, stesso ordine) e aggiungi soltanto il contenuto nuovo (nuovo punto, nuovo blocco, nuova slide). "
+    "Non riscrivere, accorciare, unire o sostituire nulla di esistente."
+)
+
+
+def _is_additive_request(prompt: str) -> bool:
+    return bool(_ADDITIVE_RE.search(prompt or "") and not _REWRITE_RE.search(prompt or ""))
+
+
+def _norm_text(value: object) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(value or ""))).strip().lower()
+
+
+_CONTENT_LISTS = ("points", "points_right")
+_CONTENT_SCALARS = ("title", "subtitle", "left_label", "right_label", "stat_value", "stat_label", "quote", "attribution")
+
+
+def _keep_original_content(edited: dict, original_content: Optional[dict]) -> None:
+    """Additive request on a structured slide: texts that were there stay (in place); only new ones may appear."""
+    if not isinstance(original_content, dict):
+        return
+    for key in _CONTENT_LISTS:
+        old_items = [str(i) for i in original_content.get(key) or [] if str(i).strip()]
+        items = [str(i) for i in edited.get(key) or []]
+        for position, old in enumerate(old_items):
+            if not any(_norm_text(old) in _norm_text(item) for item in items):
+                items.insert(min(position, len(items)), old)
+        if items != (edited.get(key) or []):
+            edited[key] = items
+    for key in _CONTENT_SCALARS:
+        old = str(original_content.get(key) or "").strip()
+        if old and _norm_text(old) not in _norm_text(edited.get(key)):
+            edited[key] = old
+
+
 def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int, theme: Optional[dict],
-                      *, allow_structure: bool) -> list[dict]:
+                      *, allow_structure: bool, preserve_text: bool = False) -> list[dict]:
     """Apply an LLM patch (only what changes) onto the original slides. Anything the patch does not
     mention stays byte-identical: backgrounds, theme roles, images, locked shapes, slide fields."""
     work = json.loads(json.dumps([s for s in original if isinstance(s, dict)]))
@@ -2707,7 +2759,7 @@ def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int
             changed = True
         blocks = [b for b in slide.get("blocks") or [] if isinstance(b, dict)]
         block_by_id = {str(b.get("id")): b for b in blocks}
-        delete_ids = {str(i) for i in item.get("delete_block_ids") or []}
+        delete_ids = {str(i) for i in item.get("delete_block_ids") or []} if not preserve_text else set()
         if delete_ids:
             blocks = [b for b in blocks if str(b.get("id")) not in delete_ids]
             changed = True
@@ -2731,7 +2783,9 @@ def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int
             if "content" in raw and isinstance(raw["content"], str):
                 if block.get("type") == "text":
                     clean = sanitize_slide_text_html(raw["content"].strip())[:6000]
-                    if clean and clean != block.get("content"):
+                    if preserve_text and _norm_text(block.get("content")) and _norm_text(block.get("content")) not in _norm_text(clean):
+                        pass  # an add request may extend a text, never replace it
+                    elif clean and clean != block.get("content"):
                         block["content"] = clean
                         changed = True
                 elif block.get("type") == "image" and raw["content"].startswith(("http://", "https://", "/")) and not image_prompt:
@@ -2770,7 +2824,7 @@ def _merge_deck_patch(original: list[dict], patch: dict, width: int, height: int
             slide["customized"] = True  # structured content is stale now: keep the manual-style edits on retheme
 
     if allow_structure:
-        deleted = {str(i) for i in patch.get("delete_slide_ids") or []}
+        deleted = {str(i) for i in patch.get("delete_slide_ids") or []} if not preserve_text else set()
         if len(deleted & set(order)) < len(order):
             order = [i for i in order if i not in deleted]
         requested = [str(i) for i in patch.get("order") or [] if str(i) in order]
@@ -3239,7 +3293,11 @@ async def document_context_assist(
             "gli oggetti nuovi hanno id vuoto. Conserva tipo, contenuto e stile quando la richiesta non li riguarda. "
             "Resta dentro la slide e, se possibile, nell'area occupata ora dal gruppo, evitando di sovrapporti a other_blocks. "
             "Per una linea, x/y è il punto iniziale e x+width/y+height il punto finale: una linea verticale ha width 0. "
-            "Per immagini non inventare URL: conserva content."
+            "IMMAGINI: non inventare URL. Se l'utente chiede di generare/creare/sostituire le immagini del gruppo (anche se ora sono "
+            "segnaposto grigi), per OGNI immagine interessata restituisci il blocco con il suo id e un campo image_prompt: descrizione "
+            "visiva concreta del soggetto, ricavata dal testo della slide (slide_context) e dal testo accanto a quell'immagine, senza testo "
+            "nell'immagine; l'immagine viene generata subito dal server. Senza image_prompt l'immagine resta com'è. "
+            "Per le immagini senza richiesta di cambio conserva content."
         )
     elif target_kind == "slide" and content_mode_slides:
         response_schema = '{"summary":"breve descrizione della modifica","slide":' + studio_service.SLIDE_SCHEMA + '}'
@@ -3281,6 +3339,9 @@ async def document_context_assist(
         "Rispondi esclusivamente con JSON valido, compatto e senza Markdown. "
         "Evita ripetizioni e mantieni la risposta entro i limiti strettamente necessari."
     )
+    additive_request = target_kind in {"slide", "presentation", "slide_blocks", "slide_block"} and _is_additive_request(prompt)
+    if additive_request:
+        target_rules += _ADDITIVE_RULE
     user_prompt = (
         f"Lingua interfaccia: {language}\nCanvas slide: {canvas_width}x{canvas_height}\n"
         f"Istruzione utente:\n{prompt}\n\nBersaglio selezionato:\n{target_payload}\n\n"
@@ -3384,6 +3445,8 @@ async def document_context_assist(
                 raise ValueError("No replacement blocks returned")
             known_ids = {block.get("id") for block in target.get("blocks") or [] if isinstance(block, dict)}
             replacement_blocks = []
+            image_jobs: list[tuple[dict, str]] = []
+            generated_pictures = 0
             # Sanitized one by one: the sanitizer drops unrenderable blocks and mints fresh ids, so this
             # is the only way to carry each surviving block's original id back to the client.
             for raw in raw_blocks[:40]:
@@ -3398,14 +3461,44 @@ async def document_context_assist(
                     continue
                 block = blocks[0]
                 block["id"] = raw.get("id") if raw.get("id") in known_ids else ""
+                if block.get("type") == "image":
+                    pic_prompt = str(raw.get("image_prompt") or raw.get("imagePrompt") or "").strip()[:600]
+                    if pic_prompt and len(image_jobs) < 8:
+                        image_jobs.append((block, pic_prompt))
                 replacement_blocks.append(block)
             if not replacement_blocks:
                 raise ValueError("Replacement blocks are not renderable")
-            proposal = {"kind": target_kind, "replacement_blocks": replacement_blocks}
+            if image_jobs:
+                slide_context = str(target.get("slide_context") or "")[:600]
+                async def _make_picture(subject: str) -> Optional[str]:
+                    try:
+                        return await _generate_slide_picture(
+                            db, (tenant_id, teacher_id, class_id, session_id, student_id),
+                            subject=f"{subject}. Contesto slide: {slide_context}" if slide_context else subject,
+                            deck_title=str(target.get("deck_title") or ""), slide_title=str(target.get("slide_title") or ""),
+                            theme=theme_from_deck(target.get("theme")),
+                        )
+                    except HTTPException as image_error:
+                        if image_error.status_code == 402:
+                            raise
+                        return None
+                pictures = []
+                for _, subject in image_jobs:  # sequential: the DB session is shared and billing is per picture
+                    pictures.append(await _make_picture(subject))
+                for (block, subject), url in zip(image_jobs, pictures):
+                    if url:
+                        block["content"] = url
+                        block["imagePrompt"] = subject[:200]
+                        generated_pictures += 1
+                    else:
+                        block["imagePrompt"] = subject[:200]  # placeholder keeps the prompt: "Genera immagine" works on it
+            proposal = {"kind": target_kind, "replacement_blocks": replacement_blocks, "generated_images": generated_pictures}
         elif target_kind == "slide" and content_mode_slides:
             original = target.get("slide") or {}
             slide_index = target.get("slide_index") if isinstance(target.get("slide_index"), int) else 1
             edited = studio_service.normalize_slide(payload.get("slide"), "dettagliata", keep_id=original.get("id"))
+            if additive_request:
+                _keep_original_content(edited, original.get("content"))
             rendered = render_outline_slide(edited, slide_index, canvas_width, canvas_height, deck_theme)
             _keep_existing_slide_images(rendered, original)
             check_and_fix_slides([rendered], canvas_width, canvas_height, deck_theme)
@@ -3420,6 +3513,8 @@ async def document_context_assist(
                 if not isinstance(item, dict):
                     continue
                 edited = studio_service.normalize_slide(item, "dettagliata", keep_id=item.get("id") if item.get("id") in known_ids else None)
+                if additive_request and isinstance(originals_by_id.get(item.get("id")), dict):
+                    _keep_original_content(edited, originals_by_id[item.get("id")].get("content"))
                 index = indexes[position] if indexes and position < len(indexes) and isinstance(indexes[position], int) else position
                 rendered = render_outline_slide(edited, index, canvas_width, canvas_height, deck_theme)
                 _keep_existing_slide_images(rendered, originals_by_id.get(item.get("id")))
@@ -3439,13 +3534,13 @@ async def document_context_assist(
                 if isinstance(item, dict):
                     item["slide_id"] = patch_source_slides[0].get("id")
             merged = _merge_deck_patch(patch_source_slides, {"slides": payload["slides"][:1]}, canvas_width, canvas_height,
-                                       deck_theme, allow_structure=False)
+                                       deck_theme, allow_structure=False, preserve_text=additive_request)
             proposal = {"kind": target_kind, "replacement_slide": merged[0]}
         else:
             if not isinstance(payload.get("slides"), list) and not payload.get("order") and not payload.get("delete_slide_ids"):
                 raise ValueError("No presentation patch returned")
             merged = _merge_deck_patch(patch_source_slides, payload, canvas_width, canvas_height, deck_theme,
-                                       allow_structure=not subset_selection)
+                                       allow_structure=not subset_selection, preserve_text=additive_request)
             proposal = {"kind": target_kind, "replacement_presentation": {
                 "title": (str(payload.get("title")).strip()[:140] if isinstance(payload.get("title"), str) and payload["title"].strip()
                           and not subset_selection else str(target.get("title") or "Presentazione")[:140]),
@@ -3481,6 +3576,8 @@ async def document_context_assist(
             agent_steps = [
                 {"agent": "Context Analyst", "summary": "Ha isolato il contenuto selezionato."},
                 {"agent": "Document Builder", "summary": summary},
+                *([{"agent": "Image Generator", "summary": f"Ho generato {proposal['generated_images']} immagini dal contesto della slide."}]
+                  if proposal.get("generated_images") else []),
                 {"agent": "Reviewer", "summary": "La proposta è pronta per la conferma."},
             ]
         return {"summary": summary, "proposal": proposal, "agent_steps": agent_steps}

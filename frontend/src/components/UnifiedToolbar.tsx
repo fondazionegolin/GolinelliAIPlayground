@@ -4,7 +4,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
+  Heading1, Heading2, Pilcrow, Type, Plus, Minus, Video, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
   Square, Circle, RotateCw, Magnet, Grid3x3, Layers, Paintbrush, ListTree, Eraser, Highlighter
 } from '@/components/icons'
 import { Button } from './ui/button'
@@ -24,6 +24,8 @@ import { tl } from '@/i18n/tl'
 
 interface UnifiedToolbarProps {
   mode: 'document' | 'slides'
+  allowAI?: boolean
+  onInsertImage?: () => void
   /** Slide-deck history (document mode uses the editor's own). */
   slideHistory?: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }
   // Document Mode Props
@@ -57,6 +59,8 @@ interface UnifiedToolbarProps {
 export function UnifiedToolbar({
   slideHistory,
   mode,
+  allowAI = true,
+  onInsertImage,
   editor,
   scale = 1,
   setScale,
@@ -419,13 +423,13 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}>
               <LinkIcon className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title={tl("Inserisci immagine")}>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onInsertImage ? onInsertImage() : setShowImageModal(true)} title={tl("Inserisci immagine")}>
               <ImageIcon className="h-4 w-4" />
             </Button>
             <DocumentTableMenu editor={editor} />
               </>
             )}
-            <Button
+            {allowAI && <Button
               ref={aiAssistButtonRef}
               density="icon"
               tone="warning"
@@ -443,7 +447,7 @@ export function UnifiedToolbar({
               title={hasTextSelection ? tl("Espandi o trasforma il testo selezionato con AI") : tl("Seleziona del testo per attivare l’assistente AI")}
             >
               <Sparkles className="h-4 w-4" />
-            </Button>
+            </Button>}
             {isCompactLayout && (
               <div className="relative" ref={overflowMenuRef}>
                 <Button
@@ -511,7 +515,7 @@ export function UnifiedToolbar({
                     </div>
                     <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}><LinkIcon className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title={tl("Inserisci immagine")}><ImageIcon className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onInsertImage ? onInsertImage() : setShowImageModal(true)} title={tl("Inserisci immagine")}><ImageIcon className="h-4 w-4" /></Button>
                       <DocumentTableMenu editor={editor} />
                       <Button
                         size="icon"
@@ -600,8 +604,11 @@ export function UnifiedToolbar({
             <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('text')} className="h-8 w-8 rounded-lg" title={tl("Testo")}>
               <Type className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setShowImageModal(true)} className="h-8 w-8 rounded-lg" title={tl("Immagine")}>
+            <Button variant="ghost" size="icon" onClick={() => onInsertImage ? onInsertImage() : setShowImageModal(true)} className="h-8 w-8 rounded-lg" title={tl("Immagine")}>
               <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('video')} className="h-8 w-8 rounded-lg" title={tl("Video da link")}>
+              <Video className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 w-8 rounded-lg" title={tl("Rettangolo")}>
               <Square className="h-4 w-4" />

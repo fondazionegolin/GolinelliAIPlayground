@@ -1,13 +1,16 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
 import BackgroundJobsIndicator from '@/components/BackgroundJobsIndicator'
 import { NavbarCalendarClock } from '@/components/NavbarCalendarClock'
+import { ShellFullscreenCorner } from '@/components/ShellFullscreen'
+import { FloatingWindow } from '@/components/FloatingWindow'
+import { SessionStudentsPanel } from '@/components/teacher/SessionStudentsPanel'
 import { MobileSessionsSheet } from '@/components/teacher/MobileSessionsSheet'
 import { endSession } from '@/lib/session'
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ComponentType, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronDown, MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Search, Loader2, Snowflake, Sun, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen, Mic } from '@/components/icons'
+import { ChevronDown, MessageSquare, MessageSquarePlus, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare, Menu, X, LogOut, ChevronRight, FileText, Bot, Brain, Network, Zap, GitBranch, FolderOpen, Mic } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { LogoMark } from '@/components/LogoMark'
 // Heavy pages loaded lazily — only parsed when first visited
@@ -69,7 +72,6 @@ import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { ThemeToggleMenuItem } from '@/components/ThemeToggleMenuItem'
-import { useToast } from '@/components/ui/use-toast'
 import { tl } from '@/i18n/tl'
 
 type SessionStudentSummary = { id: string; nickname: string; is_frozen: boolean }
@@ -80,7 +82,6 @@ export default function TeacherDashboard() {
   const navigate = useNavigate()
   const { isMobile } = useMobile()
   const authStore = useAuthStore()
-  const { toast } = useToast()
 
   const { data: teacherProfileData } = useTeacherProfile()
   useUiThemeScope(teacherProfileData?.uiTheme)
@@ -93,9 +94,8 @@ export default function TeacherDashboard() {
   }, [])
   const [showSidebar, setShowSidebar] = useClassChatSidebar('teacher', authStore.user?.id)
   const [teacherChatSidebarOpen, setTeacherChatSidebarOpen] = useState(false)
-  const [subjectiveStudentId, setSubjectiveStudentId] = useState<string | null>(null)
   const [sessionStudents, setSessionStudents] = useState<SessionStudentSummary[]>([])
-  const [updatingStudentId, setUpdatingStudentId] = useState<string | null>(null)
+  const [studentsWindowOpen, setStudentsWindowOpen] = useState(false)
   const [classChatOpen, setClassChatOpen] = useState(false)
   const [classChatUnread, setClassChatUnread] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -187,54 +187,6 @@ export default function TeacherDashboard() {
     setTeacherChatSidebarOpen(true)
   }
 
-  const enterSubjectiveView = async (student: { student_id: string; nickname?: string }) => {
-    if (!activeSessionId || subjectiveStudentId) return
-    setSubjectiveStudentId(student.student_id)
-    try {
-      const response = await teacherApi.createStudentSubjectiveView(activeSessionId, student.student_id)
-      const { token, student_id, session_id, session_title, nickname } = response.data
-      if (authStore.accessToken && authStore.user) {
-        localStorage.setItem('_teacher_token_backup', authStore.accessToken)
-        localStorage.setItem('_teacher_user_backup', JSON.stringify(authStore.user))
-      }
-      localStorage.setItem('_subjective_mode', JSON.stringify({
-        studentId: student_id,
-        nickname,
-        returnPath: `${location.pathname}${location.search}`,
-      }))
-      authStore.setObservedStudentSession({ student_id, session_id, session_title, nickname }, token)
-      navigate('/student')
-    } catch (error: any) {
-      localStorage.removeItem('_subjective_mode')
-      localStorage.removeItem('student_token')
-      toast({
-        variant: 'destructive',
-        title: tl("Vista soggettiva non disponibile"),
-        description: error?.response?.data?.detail || tl("Non è stato possibile accedere all’interfaccia dello studente."),
-      })
-    } finally {
-      setSubjectiveStudentId(null)
-    }
-  }
-
-  const toggleStudentFrozen = async (student: SessionStudentSummary) => {
-    if (!activeSessionId || updatingStudentId) return
-    setUpdatingStudentId(student.id)
-    try {
-      if (student.is_frozen) await teacherApi.unfreezeStudent(activeSessionId, student.id)
-      else await teacherApi.freezeStudent(activeSessionId, student.id)
-      setSessionStudents(current => current.map(item => item.id === student.id ? { ...item, is_frozen: !student.is_frozen } : item))
-      toast({ title: student.is_frozen ? tl("Studente sbloccato") : tl("Studente bloccato") })
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: tl("Operazione non riuscita"),
-        description: error?.response?.data?.detail || tl("Impossibile aggiornare lo studente."),
-      })
-    } finally {
-      setUpdatingStudentId(null)
-    }
-  }
   const railButtonStyle = { '--btn-tone': teacherTheme.accent } as CSSProperties
   const mobileNav = [
     { path: '/teacher', label: 'Home', icon: AcademicAiIcon, exact: true },
@@ -262,6 +214,8 @@ export default function TeacherDashboard() {
 
   return (
     <AppBackground className={`h-[100dvh] flex flex-col overflow-hidden ${isMobile ? 'teacher-mobile-shell' : ''}`} gradient={bgGradient}>
+
+      <ShellFullscreenCorner />
 
       {/* ── Desktop Navbar ── */}
       {!isMobile && (
@@ -296,7 +250,7 @@ export default function TeacherDashboard() {
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : 'pt-16 md:pl-16 xl:pl-0'}`}>
+      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : 'pt-[var(--shell-nav-h)] md:pl-16 xl:pl-0'}`}>
 
         {/* ── Session rail (left, desktop only): hover = preview, click = open ── */}
         {!isMobile && currentSession && (
@@ -337,7 +291,8 @@ export default function TeacherDashboard() {
                 },
                 {
                   key: 'students', icon: UserRound, title: tl("Studenti connessi"),
-                  onClick: () => navigate(`/teacher/sessions/${currentSession.id}`),
+                  onClick: () => setStudentsWindowOpen((open) => !open),
+                  active: studentsWindowOpen,
                   badge: (
                     <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white">
                       {onlineStudents.length}
@@ -345,65 +300,16 @@ export default function TeacherDashboard() {
                   ),
                   preview: (
                     <div className="w-full">
-                  <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-pill-lavender)] text-[var(--brand-pill-violet)]">
-                      <UserRound className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-800">{tl("Studenti della sessione")}</p>
-                      <p className="text-[11px] text-slate-400">{onlineStudents.length} online · {visibleSessionStudents.length} {tl("iscritti")}</p>
-                    </div>
-                  </div>
-                  <div className="max-h-[min(60vh,30rem)] overflow-y-auto p-2">
-                    {visibleSessionStudents.length === 0 ? (
-                      <p className="px-3 py-8 text-center text-xs text-slate-400">{tl("Nessuno studente nella sessione")}</p>
-                    ) : (
-                      visibleSessionStudents.map((student) => {
-                        const isOnline = onlineStudentIds.has(student.id)
-                        return (
-                        <div key={student.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2.5 hover:bg-slate-50">
-                          <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-700">{student.nickname || tl("Studente")}</p>
-                            <p className="text-[10px] text-slate-400">{isOnline ? 'Online' : tl("Disconnesso")}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => window.dispatchEvent(new CustomEvent('openPrivateChat', { detail: { id: student.id, nickname: student.nickname } }))}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
-                            title={tl("Chat diretta con {0}", student.nickname)}
-                            aria-label={tl("Chat diretta con {0}", student.nickname)}
-                          >
-                            <MessageSquare className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void toggleStudentFrozen(student)}
-                            disabled={updatingStudentId !== null}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40"
-                            title={student.is_frozen ? tl("Sblocca {0}", student.nickname) : tl("Blocca {0}", student.nickname)}
-                            aria-label={student.is_frozen ? tl("Sblocca {0}", student.nickname) : tl("Blocca {0}", student.nickname)}
-                          >
-                            {updatingStudentId === student.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : student.is_frozen ? <Sun className="h-3.5 w-3.5" /> : <Snowflake className="h-3.5 w-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void enterSubjectiveView({ student_id: student.id, nickname: student.nickname })}
-                            disabled={!isOnline || subjectiveStudentId !== null}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-50"
-                            title={isOnline ? tl("Entra nella vista soggettiva di {0}", student.nickname || 'Studente') : tl("Vista soggettiva disponibile solo quando lo studente è online")}
-                            aria-label={tl("Entra nella vista soggettiva di {0}", student.nickname || 'Studente')}
-                          >
-                            {subjectiveStudentId === student.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Search className="h-3.5 w-3.5" />}
-                          </button>
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-pill-lavender)] text-[var(--brand-pill-violet)]">
+                          <UserRound className="h-4 w-4" />
                         </div>
-                      )})
-                    )}
-                  </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-800">{tl("Studenti della sessione")}</p>
+                          <p className="text-[11px] text-slate-400">{onlineStudents.length} online · {visibleSessionStudents.length} {tl("iscritti")}</p>
+                        </div>
+                      </div>
+                      <p className="px-4 pb-3 text-[10px] text-slate-400">{tl("Clic per aprire la finestra di gestione")}</p>
                     </div>
                   ),
                 },
@@ -411,6 +317,17 @@ export default function TeacherDashboard() {
             />
           </div>
           </div>
+        )}
+
+        {studentsWindowOpen && currentSession && !isMobile && (
+          <FloatingWindow
+            title={tl("Studenti della sessione")}
+            subtitle={`${onlineStudents.length} online · ${visibleSessionStudents.length} ${tl("iscritti")}`}
+            onClose={() => setStudentsWindowOpen(false)}
+            initial={{ x: 96, y: 120 }}
+          >
+            <SessionStudentsPanel sessionId={currentSession.id} onlineUsers={onlineUsers} />
+          </FloatingWindow>
         )}
 
         <main className={`teacher-ui relative min-w-0 w-full overscroll-contain ${isTeacherAssistantRoute && !showMobileHome ? 'hidden' : `flex-1 ${isMobile ? '' : `max-w-[calc(1800px+2*var(--ds-frame-gutter))] ${currentSession ? '' : 'ml-auto'}`}`} ${isMobile ? (selfScrollingRoute ? 'overflow-hidden flex flex-col' : 'overflow-y-auto') : 'overflow-hidden flex flex-col'}`}>
