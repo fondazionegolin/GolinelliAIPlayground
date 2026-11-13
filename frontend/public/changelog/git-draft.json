@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-11T20:13:08.791493+00:00",
-  "version_label": "2026.11.11-838e8fd7",
+  "generated_at": "2026-11-13T20:29:50.467998+00:00",
+  "version_label": "2026.11.13-2292b072",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 22 commit dall'ultima release pubblicata.",
-  "git_ref": "838e8fd7671f092b795226b0a4798812994c2739",
+  "summary": "Bozza generata automaticamente da 23 commit dall'ultima release pubblicata.",
+  "git_ref": "2292b072b5d8bc60cfe3217c6edf418734e9367b",
   "items": [
     {
       "category": "new",
@@ -114,6 +114,11 @@
       "category": "new",
       "title": "Dataflow: English UI for node catalogue, undo/redo, selectable and re-wirable links",
       "description": "Dataflow: English UI for node catalogue, undo/redo, selectable and re-wirable links"
+    },
+    {
+      "category": "new",
+      "title": "Notebook: p5.js tutor image reference, fullscreen play, console and sidebar redesign",
+      "description": "Notebook: p5.js tutor image reference, fullscreen play, console and sidebar redesign"
     }
   ]
 }
