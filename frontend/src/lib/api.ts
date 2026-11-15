@@ -257,6 +257,7 @@ export const codingApi = {
     brief_id?: string
     template_key?: string
     initial_prompt?: string
+    kb_files?: { path: string; content: string }[]
   }) => api.post('/coding/projects', data),
   getProject: (projectId: string) =>
     api.get(`/coding/projects/${projectId}`),
@@ -273,10 +274,11 @@ export const codingApi = {
   aiVision: (data: { image: string; prompt?: string }) => api.post('/coding/ai/vision', data),
   interview: (data: { title?: string; prompt?: string }) =>
     api.post('/coding/ai/interview', data),
-  interviewChat: (data: { title?: string; prompt: string; messages: { role: 'user' | 'assistant'; content: string }[] }) =>
+  interviewChat: (data: { title?: string; prompt: string; force_confirm?: boolean; messages: { role: 'user' | 'assistant'; content: string; kind?: string }[] }) =>
     api.post('/coding/ai/interview-chat', data),
   spec: (data: { title?: string; prompt: string; messages?: { role: 'user' | 'assistant'; content: string }[] }) =>
     api.post('/coding/ai/spec', data, { timeout: 180000 }),
+  specStreamUrl: () => '/api/v1/coding/ai/spec-stream',
   uiReview: (projectId: string, data: { files?: { path: string; content: string; language?: string }[] }) =>
     api.post(`/coding/projects/${projectId}/ui-review`, data),
   createVersion: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
@@ -1326,6 +1328,12 @@ export const llmApi = {
       tool: string; action: 'chat' | 'create' | 'edit' | 'ask_about'; confidence: number; top: string
       alternatives: { tool: string; probability: number }[]; action_alternatives: { tool: string; probability: number }[]; routed: boolean
     }>('/llm/decide-tool', { text, allowed, artifacts, recent }, { signal }),
+  /** Hand a chat request over to a platform section (checks the student's enabled modules server-side). */
+  handoff: (target: string, prompt: string, options: { conversationId?: string | null; recent?: { role: string; content: string }[]; signal?: AbortSignal } = {}) =>
+    api.post<import('./platformHandoff').HandoffPlan & {
+      user_message?: { id: string; content: string; created_at: string }
+      assistant_message?: { id: string; content: string; created_at: string; handoff?: import('./platformHandoff').PlatformHandoff }
+    }>('/llm/handoff', { target, prompt, conversation_id: options.conversationId ?? null, recent: options.recent ?? [] }, { signal: options.signal }),
   generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>

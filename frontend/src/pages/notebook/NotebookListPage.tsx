@@ -1,6 +1,6 @@
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
-import { useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -14,6 +14,7 @@ import type { NotebookProjectType } from '@/components/notebook/types'
 import { useAuthStore } from '@/stores/auth'
 import ProjectPreview, { colorOf } from '@/components/notebook/ProjectPreview'
 import { tl } from '@/i18n/tl'
+import { NOTEBOOK_TARGETS, takeHandoff } from '@/lib/platformHandoff'
 
 interface NotebookMeta {
   id: string
@@ -260,13 +261,28 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   })
 
   const createMutation = useMutation({
-    mutationFn: ({ title, projectType, templateKey }: { title: string; projectType: NotebookProjectType; templateKey?: string }) =>
+    mutationFn: ({ title, projectType, templateKey }: { title: string; projectType: NotebookProjectType; templateKey?: string; firstBrief?: string }) =>
       notebooksApi.create(title, projectType, templateKey),
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       queryClient.invalidateQueries({ queryKey: ['notebooks'] })
+      // Agentic hand-off: the project's agent starts from the brief the user gave the chat.
+      if (variables.firstBrief) {
+        try { sessionStorage.setItem(`notebook-first-brief:${res.data.id}`, variables.firstBrief) } catch { /* storage unavailable */ }
+      }
       openNotebook(res.data.id)
     },
   })
+
+  const handoffTakenRef = useRef(false)
+  useEffect(() => {
+    if (handoffTakenRef.current) return
+    const handoff = takeHandoff([...NOTEBOOK_TARGETS])
+    if (!handoff) return
+    handoffTakenRef.current = true
+    const projectType: NotebookProjectType = handoff.target === 'python_notebook' ? 'python' : handoff.target === 'microbit_project' ? 'microbit' : 'p5js'
+    createMutation.mutate({ title: handoff.title || handoff.brief.slice(0, 60), projectType, firstBrief: handoff.brief })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => notebooksApi.delete(id),

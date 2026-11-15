@@ -1,5 +1,5 @@
 import re
-from app.services import model_roles, model_selection, vibe_contract, vibe_gate
+from app.services import model_roles, model_selection, vibe_brief, vibe_contract, vibe_gate, vibe_verify
 import io
 import asyncio
 import time
@@ -1824,6 +1824,53 @@ async def _gate_repair(
     return list(by_path.values()), [item["path"] for item in fixed], est["prompt_tokens"], est["completion_tokens"]
 
 
+async def _verify_conformance(files: list[dict], reqs: list[tuple[str, str]]) -> tuple[list[dict], int, int]:
+    """Ask a verifier which brief features the code does not really implement. Never raises: [] on any failure."""
+    listing = "\n".join(f"- {rid}: {text}" for rid, text in reqs)
+    user = f"REQUISITI DEL BRIEF:\n{listing}\n\nCODICE DELL'APP:\n{vibe_verify.code_bundle(files)}"
+    try:
+        response = await asyncio.wait_for(
+            _coding_generate(messages=[{"role": "user", "content": user}], system_prompt=vibe_verify.VERIFY_SYSTEM_PROMPT, temperature=0.0, max_tokens=3000),
+            timeout=90,
+        )
+    except Exception as exc:
+        logger.warning("brief conformance verify failed (%s)", exc)
+        return [], 0, 0
+    est = build_estimated_token_usage([{"role": "user", "content": user}], response.content or "")
+    return vibe_verify.parse_gaps(response.content or "", reqs), est["prompt_tokens"], est["completion_tokens"]
+
+
+async def _conformance_repair(
+    files: list[dict], gaps: list[dict], provider: str, model: str, brief: str,
+) -> tuple[list[dict], list[str], int, int]:
+    """One repair call that implements the missing/partial features. Never raises: unchanged files on failure."""
+    by_path = {str(f.get("path") or ""): f for f in files}
+    allowed = ", ".join(f"{name}@{version}" for name, version in sorted(ALLOWED_NPM_PACKAGES.items()))
+    user = (
+        f"FUNZIONI DA IMPLEMENTARE (mancanti o incomplete):\n{vibe_verify.describe_gaps(gaps)}\n\n"
+        f"PACCHETTI CONSENTITI (con versione): {allowed}\n\n{brief}\n\nPROGETTO ATTUALE:\n{vibe_verify.code_bundle(files)}"
+    )
+    try:
+        response = await asyncio.wait_for(
+            llm_service.generate(
+                messages=[{"role": "user", "content": user}],
+                system_prompt=vibe_verify.CONFORMANCE_REPAIR_SYSTEM + vibe_contract.contract_for(model),
+                provider=provider, model=model, temperature=0.2, max_tokens=16000, allow_web_search=False,
+            ),
+            timeout=240,
+        )
+    except Exception as exc:
+        logger.warning("brief conformance repair failed (%s)", exc)
+        return files, [], 0, 0
+    fixed = [f for f in _parse_delimited_files(response.content or "") if not _platform_owned_path(f["path"])]
+    est = build_estimated_token_usage([{"role": "user", "content": user}], response.content or "")
+    if not fixed:
+        return files, [], est["prompt_tokens"], est["completion_tokens"]
+    for item in fixed:
+        by_path[item["path"]] = item
+    return list(by_path.values()), [item["path"] for item in fixed], est["prompt_tokens"], est["completion_tokens"]
+
+
 # --- Parallel multi-agent build -------------------------------------------------------------
 # A fresh project is NOT written by one serial LLM call. An architect first fixes the contract
 # (file plan with exact exports, shared types, global styles, package.json); then 2-4 workers write
@@ -3542,22 +3589,46 @@ async def coding_ai_interview(
         return {"questions": []}
 
 
-INTERVIEW_CHAT_SYSTEM_PROMPT = """Sei un product analyst che intervista l'utente (studente o docente) per definire
-nel dettaglio un progetto web prima che venga costruito. Parli in italiano, tono diretto e collaborativo.
+INTERVIEW_MAX_QUESTIONS = 5
 
-Regole:
-- Ricevi l'idea iniziale (puo` essere una riga o una specifica lunghissima, magari prodotta da un altro bot)
-  e la conversazione finora. Non ripetere mai domande gia` risposte o gia` coperte dall'idea iniziale.
-- Se l'idea e` gia` dettagliata: riassumila in 2-3 righe come l'hai capita e chiedi SOLO cio` che manca davvero.
-- Fai al massimo 2 domande per turno, concrete. Per ciascuna offri 2-4 risposte rapide (suggestions).
-- Aree da coprire (solo se mancanti): scopo e pubblico; tipo di prodotto (pagina singola, app multi-pagina,
-  piattaforma con area admin e dati); funzioni chiave e priorita` (MVP vs dopo); contenuti e dati; ruoli
-  (visitatore / utente / admin) e cosa cambia per ciascuno; stile e tono; vincoli.
-- Chiudi appena hai abbastanza per costruire senza indovinare (di solito 2-5 turni): metti "ready": true e in
-  "reply" scrivi un breve riepilogo + invito a premere "Genera specifiche".
-- Mai codice. Mai piu` di 120 parole nel reply.
+INTERVIEW_CHAT_SYSTEM_PROMPT = """Sei un product analyst che intervista l'utente (studente o docente) prima che un
+progetto web venga costruito. Italiano, tono diretto e cordiale.
+
+REGOLE FERREE
+1. UNA SOLA domanda per turno, breve (max 25 parole), concreta, su UN solo aspetto.
+2. Massimo 5 domande in tutto. Chiedi SOLO cio' che manca davvero e che cambia il risultato: scopo/pubblico,
+   funzione principale e priorita', contenuti o dati, ruoli (se servono), stile. Mai domande generiche.
+3. NON ripetere ne' riformulare una domanda gia' posta (ti viene dato l'elenco). NON chiedere cio' che l'idea
+   iniziale o le risposte precedenti dicono gia'. Se l'utente ha risposto "non so"/"come vuoi", scegli tu un
+   default ragionevole e passa oltre.
+4. Le opzioni ("options") sono 2-4 RISPOSTE DIRETTE E CONCRETE alla domanda appena posta (max 8 parole
+   ciascuna), alternative reali tra loro, utilizzabili cosi' come sono. Mai opzioni su altri temi, mai
+   "Altro", mai "Non so". Se la domanda e' aperta e non ha opzioni sensate, lascia options vuoto.
+5. Quando hai abbastanza per costruire senza indovinare (spesso dopo 2-3 domande, e se l'idea e' gia'
+   dettagliata anche subito), oppure quando il campo STATO te lo impone, passa alla CONFERMA: phase "confirm".
+6. In phase "confirm" scrivi in "text" cosa STAI PER COSTRUIRE: 1 frase di sintesi + 4-7 punti elenco
+   ("- ...") con le funzioni/pagine/stile principali, usando le parole dell'utente. Chiudi con "Ti va bene cosi'?".
+   Se l'utente ha chiesto modifiche, aggiorna il piano e conferma di nuovo (phase "confirm"). options vuoto.
+7. Mai codice.
+
 Rispondi SOLO con JSON valido:
-{"reply": "testo per l'utente", "suggestions": ["..."], "ready": false}"""
+{"phase": "question" | "confirm", "text": "la domanda oppure il piano", "options": ["..."]}"""
+
+
+def _interview_clean(payload: Any, raw: str) -> tuple[str, str, list[str]]:
+    """Normalise a model reply into (phase, text, options)."""
+    if not isinstance(payload, dict):
+        payload = {}
+    phase = "confirm" if str(payload.get("phase") or "").lower() == "confirm" else "question"
+    text = str(payload.get("text") or payload.get("reply") or payload.get("question") or "").strip()
+    if not text:
+        text = (raw or "").strip()[:900]
+    options: list[str] = []
+    for item in (payload.get("options") or payload.get("suggestions") or []):
+        opt = str(item).strip()
+        if opt and len(opt) <= 90 and opt.lower() not in {"altro", "non so", "boh"} and opt not in options:
+            options.append(opt)
+    return phase, text[:1800], ([] if phase == "confirm" else options[:4])
 
 
 SPEC_ARCHITECT_SYSTEM_PROMPT = """Sei un software architect e product lead. Trasformi un'idea di progetto web
@@ -3619,62 +3690,93 @@ async def coding_ai_interview_chat(
     db: Annotated[AsyncSession, Depends(get_db)],
     actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
-    """One turn of the conversational project interview. Errors are surfaced (never silently skipped)
-    so the client can retry instead of falling through to a blind generation."""
+    """One turn of the project interview: ONE question (max 5), then a plan confirmation ("sto per fare questo").
+    Repeated questions are detected server-side; if the model cannot produce a fresh one, or fails, the interview
+    moves to the confirmation instead of looping or blocking."""
     title = str(body.get("title") or "").strip()
     idea = str(body.get("prompt") or "").strip()[:20000]
     if not idea:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
-    turns = []
-    for item in (body.get("messages") or [])[-24:]:
+    force_confirm = bool(body.get("force_confirm"))
+    turns: list[dict] = []
+    for item in (body.get("messages") or [])[-30:]:
         if isinstance(item, dict) and item.get("role") in {"user", "assistant"}:
             text = str(item.get("content") or "").strip()[:4000]
             if text:
-                turns.append({"role": item["role"], "content": text})
-    # The idea is anchored in the first user turn; the dialogue is replayed after it.
+                turns.append({"role": item["role"], "content": text, "kind": str(item.get("kind") or "")})
+    asked = [t["content"] for t in turns if t["role"] == "assistant" and t["kind"] != "confirm"]
+    n_asked = len(asked)
+    must_confirm = force_confirm or n_asked >= INTERVIEW_MAX_QUESTIONS
+
     opening = f"Titolo: {title or '(senza titolo)'}\n\nIdea iniziale dell'utente:\n{idea}\n\nInizia l'intervista."
     messages = [{"role": "user", "content": opening}]
     for turn in turns:
-        if messages[-1]["role"] == turn["role"]:
-            messages[-1]["content"] += "\n\n" + turn["content"]
+        entry = {"role": turn["role"], "content": turn["content"]}
+        if messages[-1]["role"] == entry["role"]:
+            messages[-1]["content"] += "\n\n" + entry["content"]
         else:
-            messages.append(turn)
+            messages.append(entry)
     if messages[-1]["role"] != "user":
         messages.append({"role": "user", "content": "Continua."})
+
+    def _state(extra: str = "") -> str:
+        asked_block = ("\nDomande GIA' poste (non ripeterle ne' riformularle):\n" + "\n".join(f"- {q[:200]}" for q in asked)) if asked else ""
+        if must_confirm:
+            rule = "STATO: l'intervista e' FINITA. Rispondi ORA con phase \"confirm\" (piano di cosa stai per costruire)."
+        else:
+            rule = f"STATO: domande poste {n_asked} su {INTERVIEW_MAX_QUESTIONS}. Fai UNA sola domanda nuova, oppure phase \"confirm\" se hai gia' abbastanza."
+        return f"\n\n[{rule}{asked_block}{extra}]"
+
+    async def call(extra: str = "") -> tuple[str, str, list[str]]:
+        convo = [dict(m) for m in messages]
+        convo[-1]["content"] += _state(extra)
+        response = await _coding_generate(messages=convo, system_prompt=INTERVIEW_CHAT_SYSTEM_PROMPT, temperature=0.4, max_tokens=900)
+        await _record_coding_cost(
+            db, provider=response.provider, model=response.model,
+            prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
+            context="coding_ai_interview_chat", **_actor_cost_kwargs(actor),
+        )
+        try:
+            payload = _extract_json_object(response.content)
+        except Exception:
+            payload = {}
+        return _interview_clean(payload, response.content)
+
+    phase, text, options = "confirm", "", []
     try:
-        response = await _coding_generate(messages=messages, system_prompt=INTERVIEW_CHAT_SYSTEM_PROMPT, temperature=0.5, max_tokens=900)
+        phase, text, options = await call()
+        if phase == "question" and (not text or vibe_brief.question_repeats(text, asked)):
+            phase, text, options = await call("\nLa domanda precedente era un duplicato: scegli un aspetto DIVERSO oppure passa a phase \"confirm\".")
+            if phase == "question" and (not text or vibe_brief.question_repeats(text, asked)):
+                phase, text, options = "confirm", "", []
+        if phase == "question" and must_confirm:
+            phase, text, options = await call("\nOBBLIGATORIO: phase \"confirm\".")
+            if phase == "question":
+                phase, text, options = "confirm", "", []
     except Exception as exc:
         logger.warning("coding interview-chat failed (%s)", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
-    await _record_coding_cost(
-        db, provider=response.provider, model=response.model,
-        prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
-        context="coding_ai_interview_chat", **_actor_cost_kwargs(actor),
-    )
-    try:
-        payload = _extract_json_object(response.content)
-    except Exception:
-        payload = {}
-    if not isinstance(payload, dict):
-        payload = {}
-    reply = str(payload.get("reply") or "").strip() or (response.content or "").strip()[:800]
-    if not reply:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
-    suggestions = [str(s).strip()[:160] for s in (payload.get("suggestions") or []) if str(s).strip()][:4]
-    return {"reply": reply, "suggestions": suggestions, "ready": bool(payload.get("ready"))}
+        if not turns and not asked:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Intervista non disponibile, riprova.")
+        phase, text, options = "confirm", "", []
+
+    if phase == "confirm" and len(text) < 40:
+        text = vibe_brief.confirm_fallback(title, idea, turns)
+    number = min(n_asked + 1, INTERVIEW_MAX_QUESTIONS)
+    return {
+        "phase": phase, "text": text, "options": options, "question_number": number, "max_questions": INTERVIEW_MAX_QUESTIONS,
+        # legacy fields (older clients)
+        "reply": text, "suggestions": options, "ready": phase == "confirm",
+    }
 
 
-@router.post("/ai/spec")
-async def coding_ai_spec(
-    body: dict,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
-):
-    """Turn the idea (+ interview transcript) into spec.md and a milestone plan. Handles very long input."""
+SPEC_TIMEOUT_SECONDS = 150
+
+
+async def _run_spec(db: AsyncSession, actor: StudentOrTeacher, body: dict) -> dict:
+    """Idea (+ interview) -> spec.md + milestones. NEVER raises for LLM trouble: on failure/timeout/empty output a
+    deterministic spec carrying every word the user wrote is returned, so the build always starts."""
     title = str(body.get("title") or "").strip()
     idea = str(body.get("prompt") or "").strip()[:20000]
-    if not idea:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
     transcript_lines = []
     for item in (body.get("messages") or [])[-40:]:
         if isinstance(item, dict) and item.get("role") in {"user", "assistant"}:
@@ -3684,24 +3786,28 @@ async def coding_ai_spec(
     content = f"Titolo: {title or '(senza titolo)'}\n\nIDEA / SPECIFICA DELL'UTENTE:\n{idea}"
     if transcript_lines:
         content += "\n\nINTERVISTA:\n" + "\n".join(transcript_lines)
+    spec_md, milestones, degraded = "", [], False
     try:
-        response = await _coding_generate(
-            messages=[{"role": "user", "content": content}],
-            system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT,
-            temperature=0.3,
-            max_tokens=9000,
+        response = await asyncio.wait_for(
+            _coding_generate(
+                messages=[{"role": "user", "content": content}],
+                system_prompt=SPEC_ARCHITECT_SYSTEM_PROMPT,
+                temperature=0.3,
+                max_tokens=7000,
+            ),
+            timeout=SPEC_TIMEOUT_SECONDS,
         )
+        await _record_coding_cost(
+            db, provider=response.provider, model=response.model,
+            prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
+            context="coding_ai_spec", **_actor_cost_kwargs(actor),
+        )
+        spec_md, milestones = _parse_spec_output(response.content)
     except Exception as exc:
-        logger.warning("coding spec failed (%s)", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Non sono riuscito a scrivere le specifiche, riprova.")
-    await _record_coding_cost(
-        db, provider=response.provider, model=response.model,
-        prompt_tokens=response.prompt_tokens, completion_tokens=response.completion_tokens,
-        context="coding_ai_spec", **_actor_cost_kwargs(actor),
-    )
-    spec_md, milestones = _parse_spec_output(response.content)
-    if not spec_md:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Specifiche vuote, riprova.")
+        logger.warning("coding spec failed (%s: %s); using deterministic spec", type(exc).__name__, exc)
+    if len(spec_md) < 200:
+        degraded = True
+        spec_md, milestones = vibe_brief.fallback_spec(title, idea, transcript_lines)
     if not milestones:
         milestones = [{"title": "Progetto completo", "goal": "Implementa tutta la specifica.", "features": []}]
     # Keep the user's own words next to the architect's rewrite: the rewrite can lose nuance, and every
@@ -3709,7 +3815,43 @@ async def coding_ai_spec(
     appendix = "\n\n## Brief originale (verbatim)\n" + idea[:6000]
     if transcript_lines:
         appendix += "\n\n## Intervista (verbatim)\n" + "\n".join(f"- {line}" for line in transcript_lines)[:7000]
-    return {"spec_md": spec_md + appendix, "milestones": milestones}
+    return {"spec_md": spec_md + appendix, "milestones": milestones, "degraded": degraded}
+
+
+@router.post("/ai/spec")
+async def coding_ai_spec(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if not str(body.get("prompt") or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+    return await _run_spec(db, actor, body)
+
+
+@router.post("/ai/spec-stream")
+async def coding_ai_spec_stream(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """SSE variant: heartbeats keep the connection alive past the ~100s proxy timeout while the architect writes."""
+    if not str(body.get("prompt") or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
+
+    async def event_stream():
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Scrivo le specifiche del progetto...'})}\n\n"
+        try:
+            async for kind, value in _heartbeat_await(_run_spec(db, actor, body)):
+                if kind == "ping":
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'done', **value})}\n\n"
+        except Exception as exc:  # _run_spec itself degrades; this only guards infrastructure errors
+            logger.warning("coding spec-stream failed (%s)", exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Specifiche non disponibili.'})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/projects", response_model=CodingProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -3762,11 +3904,22 @@ async def create_project(
         db.add(prompt_message)
         await db.flush()
 
+    # The brief is persisted with the project itself (version 1), so it can never be lost if the first
+    # generation fails, is interrupted, or the page is reloaded: description.md always exists and carries
+    # the user's own words; spec.md (from the interview/architect) rides along when provided.
+    initial_kb = [
+        {"path": f.path, "language": "markdown", "content": f.content}
+        for f in (body.kb_files or [])
+        if f.path in {"description.md", "spec.md"} and f.content.strip()
+    ]
+    initial_kb, _brief_notes = vibe_brief.ensure_brief_files(
+        initial_kb, title=body.title, original_prompt=body.initial_prompt or "",
+    )
     version = CodingVersion(
         project_id=project.id,
         version_number=1,
         prompt_message_id=prompt_message.id if prompt_message else None,
-        source_manifest_json={},
+        source_manifest_json={"files": initial_kb} if initial_kb else {},
         artifact_manifest_json={},
         build_status="pending",
         review_status="pending",
@@ -4423,9 +4576,34 @@ async def generate_project_code_stream(
         ]
 
     kb_files = _kb_files(previous_files)
-    if not any(str(f.get("path") or "") == "description.md" for f in kb_files):
-        seeded = {"path": "description.md", "language": "markdown", "content": _seed_description_md(project_title, user_prompt)}
-        kb_files.insert(0, seeded)
+    # BRIEF GUARANTEE: description.md and spec.md are recovered from the project's history and the original
+    # prompt whenever the client/version lacks them or description.md is still empty/placeholder — a generation
+    # never runs without the user's instructions.
+    history_manifests: list[list[dict]] = []
+    original_prompt = ""
+    try:
+        hist = await db.execute(
+            select(CodingVersion.source_manifest_json)
+            .where(CodingVersion.project_id == project_pk)
+            .order_by(CodingVersion.version_number.desc())
+            .limit(12)
+        )
+        history_manifests = [(row[0] or {}).get("files") or [] for row in hist.all()]
+        first_msg = await db.execute(
+            select(CodingMessage.content)
+            .where(CodingMessage.project_id == project_pk, CodingMessage.role == "user")
+            .order_by(CodingMessage.created_at.asc())
+            .limit(1)
+        )
+        original_prompt = first_msg.scalar_one_or_none() or ""
+    except Exception as exc:
+        logger.warning("brief history lookup failed (%s)", exc)
+    kb_files, brief_notes = vibe_brief.ensure_brief_files(
+        kb_files, title=project_title, original_prompt=original_prompt,
+        history_files=history_manifests, fallback_prompt=user_prompt if not is_fix else "",
+    )
+    if brief_notes:
+        logger.info("vibe brief repaired for %s: %s", project_pk, "; ".join(brief_notes))
 
     # The brief (spec.md from the interview + description.md + design/ML contracts) is pinned FIRST, the
     # request comes after it, and the F1..Fn requirement list is restated LAST: weaker models follow the
@@ -4866,6 +5044,57 @@ async def generate_project_code_stream(
                         yield _sse({"type": "status", "message": f"Import corretti ({len(import_fixed)} file)."})
                     broken_imports_unresolved = _check_broken_imports(files)
 
+            # BRIEF CONFORMANCE: compare the generated code with the brief's F1..Fn. Missing/stubbed features get one
+            # focused repair (then a build re-check; if the repair breaks the build it is discarded), so a project
+            # can no longer silently ship without functions the user asked for. Fresh builds and milestone builds only.
+            conformance: dict = {"checked": 0, "gaps": [], "repaired": []}
+            spec_text = next((str(f.get("content") or "") for f in kb_files if str(f.get("path") or "").lower() == "spec.md"), "")
+            if _is_react_files(files) and not is_fix and not broken_imports_unresolved and (not is_edit or vibe_verify.is_scoped_request(user_prompt)):
+                conf_reqs = vibe_verify.scoped_requirements(spec_text, user_prompt)
+                if conf_reqs:
+                    conformance["checked"] = len(conf_reqs)
+                    yield _sse({"type": "status", "message": f"Verifico che tutte le {len(conf_reqs)} funzioni del brief siano presenti..."})
+                    conf_gaps: list[dict] = []
+                    async for kind, value in _heartbeat_await(_verify_conformance(files, conf_reqs)):
+                        if kind == "ping":
+                            yield _sse({"type": "ping"})
+                        else:
+                            conf_gaps, vp, vc = value
+                            usage_prompt += vp
+                            usage_completion += vc
+                    if conf_gaps:
+                        gap_ids = ", ".join(g["id"] for g in conf_gaps)
+                        yield _sse({"type": "status", "message": f"Mancano o sono incomplete {len(conf_gaps)} funzioni ({gap_ids}): le completo..."})
+                        yield _sse({"type": "conformance", "gaps": conf_gaps})
+                        before_files = files
+                        repaired: list[str] = []
+                        async for kind, value in _heartbeat_await(_conformance_repair(files, conf_gaps, gen_provider, gen_model, brief_reminder)):
+                            if kind == "ping":
+                                yield _sse({"type": "ping"})
+                            else:
+                                files, repaired, rp, rc = value
+                                usage_prompt += rp
+                                usage_completion += rc
+                        if repaired:
+                            files, _ = _sanitize_package_json(files)
+                            files, _ = _autodeclare_packages(files)
+                            post_issues: list = []
+                            async for kind, value in _heartbeat_await(vibe_gate.check_project(files, set(ALLOWED_NPM_PACKAGES))):
+                                if kind == "ping":
+                                    yield _sse({"type": "ping"})
+                                else:
+                                    post_issues, _ran = value
+                            if vibe_gate.blocking(post_issues) or _check_broken_imports(files):
+                                files = before_files
+                                repaired = []
+                                yield _sse({"type": "status", "message": "Il completamento rompeva la build: lo scarto e segnalo le funzioni mancanti."})
+                            else:
+                                yield _sse({"type": "status", "message": f"Funzioni completate ({len(repaired)} file aggiornati)."})
+                        conformance["repaired"] = repaired
+                        conformance["gaps"] = conf_gaps if not repaired else []
+                        if repaired:
+                            conformance["completed"] = [g["id"] for g in conf_gaps]
+
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
             summary = f"Progetto aggiornato: {len(files)} file, {file_summary_json['total_lines']} righe."
 
@@ -4923,6 +5152,29 @@ async def generate_project_code_stream(
                     role="assistant",
                     content=f"Il controllo di build segnala ancora problemi che potrebbero rompere l'anteprima: {gate_summary}. Se l'anteprima non parte, chiedi una correzione.",
                     metadata_json={"kind": "build_warning", "version_id": str(new_version_id), "issues": [i.to_dict() for i in gate_remaining[:10]]},
+                ))
+
+            if conformance["gaps"]:
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Controllo brief",
+                    role="assistant",
+                    content=(
+                        "Dal confronto con il brief queste funzioni risultano ancora mancanti o incomplete:\n"
+                        + vibe_verify.describe_gaps(conformance["gaps"])
+                        + "\nChiedimi di completarle (es. «completa le funzioni mancanti») e le aggiungo."
+                    ),
+                    metadata_json={"kind": "brief_warning", "version_id": str(new_version_id), "gaps": conformance["gaps"][:20]},
+                ))
+            elif conformance.get("completed"):
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Controllo brief",
+                    role="assistant",
+                    content="Il confronto con il brief ha trovato funzioni mancanti o incomplete (" + ", ".join(conformance["completed"]) + ") e le ho completate prima di consegnarti la versione.",
+                    metadata_json={"kind": "brief_repaired", "version_id": str(new_version_id)},
                 ))
 
             if reasoning_text:
@@ -4997,6 +5249,7 @@ async def generate_project_code_stream(
                 "needs_review": bool(broken_imports_unresolved or gate_remaining),
                 "gate": {"ran": gate_ran, "repaired": sorted(set(gate_repairs)), "remaining": [i.to_dict() for i in gate_remaining[:10]]},
                 "heavy_deps": heavy_deps,
+                "conformance": conformance,
                 "fix": is_fix,
                 "dropped_packages": dropped_packages,
                 "patches": {"applied": patch_report["applied"], "repaired": patch_report["repaired"], "failed": patch_report["failed"]},

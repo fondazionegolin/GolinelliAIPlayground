@@ -142,13 +142,13 @@ const ClassCard = memo(function ClassCard(props: ClassCardProps) {
   )
 })
 
-export default function MLLabEditor({ projectId, newMode, sessionId, onBack }: { projectId: string | null; newMode?: Mode; sessionId?: string; onBack: () => void }) {
+export default function MLLabEditor({ projectId, newMode, seed, sessionId, onBack }: { projectId: string | null; newMode?: Mode; /** Name and class names proposed by the chat (agentic hand-off). */ seed?: { name?: string; classes?: string[] }; sessionId?: string; onBack: () => void }) {
   const { toast } = useToast()
   const qc = useQueryClient()
   const [mode, setMode] = useState<Mode>(newMode ?? 'image')
   const [id, setId] = useState<string | null>(projectId)
-  const [name, setName] = useState(tl("Nuovo progetto"))
-  const [classes, setClasses] = useState<ClassState[]>(() => (newMode === 'face' ? [emptyClass(0, tl("Neutro")), emptyClass(1, tl("Felice"))] : [emptyClass(0, tl("Classe 1")), emptyClass(1, tl("Classe 2"))]))
+  const [name, setName] = useState(seed?.name || tl("Nuovo progetto"))
+  const [classes, setClasses] = useState<ClassState[]>(() => (seed?.classes && seed.classes.length >= 2 ? seed.classes.map((className, index) => emptyClass(index, className)) : newMode === 'face' ? [emptyClass(0, tl("Neutro")), emptyClass(1, tl("Felice"))] : [emptyClass(0, tl("Classe 1")), emptyClass(1, tl("Classe 2"))]))
   const [loading, setLoading] = useState(Boolean(projectId))
   const [engineReady, setEngineReady] = useState(false)
   const [engineError, setEngineError] = useState(false)

@@ -75,6 +75,9 @@ type Props = {
   currentSlides?: StudioSlide[]
   /** Slide the user is on: the proposal's default target when the request names none. */
   currentSlideIndex?: number
+  /** First request handed over by the chat (agentic hand-off): sent once, as soon as the document is ready. */
+  initialPrompt?: string
+  onInitialPromptSent?: () => void
   onClose: () => void
 }
 
@@ -132,7 +135,7 @@ const CURSOR_SUGGESTIONS: Array<[string, string]> = [
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, currentSlideIndex, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, variant = 'slides', getDocumentStats, onApplyOperations, getWritingContext, onApply, onPatchImage, deckTheme, currentSlides, currentSlideIndex, initialPrompt, onInitialPromptSent, onClose }: Props) {
   const [input, setInput] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(composerRef, input)
@@ -415,6 +418,15 @@ export default function DocumentAgentChat({ context, selectionContext, presentat
     if (isDocument && (activeContext.kind === 'document' || activeContext.kind === 'selected_text')) await interpret(prompt, activeContext)
     else await generate(prompt, activeContext)
   }
+
+  const initialSentRef = useRef(false)
+  useEffect(() => {
+    if (!initialPrompt || initialSentRef.current || !activeContext || loading) return
+    initialSentRef.current = true
+    onInitialPromptSent?.()
+    void send(initialPrompt)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })
 
   const confirmPlan = async (message: ChatMessage) => {
     const { plan, planPrompt, planTarget } = message

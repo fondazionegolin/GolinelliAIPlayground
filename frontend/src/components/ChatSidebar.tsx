@@ -1314,14 +1314,14 @@ export default function ChatSidebar({
       </div>
 
       {/* Header with connection status */}
-      <div className={`${embedded ? 'hidden' : 'flex'} items-center justify-between bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]`}>
-        <div className="flex items-center gap-2">
+      <div className={`${embedded ? 'hidden' : 'grid'} grid-cols-[1fr_auto_1fr] items-center gap-2 bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)]`}>
+        <div className="flex min-w-0 items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
           <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
             {userType === 'student' ? sidebarLabels.studentHeader : sidebarLabels.teacherHeader}
           </h3>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-center">
           {userType === 'teacher' && !isMobileView && (
             <TuringTestPanel
               sessionId={sessionId}
@@ -1330,6 +1330,8 @@ export default function ChatSidebar({
               onlineStudentCount={onlineUsers.filter(user => user.role !== 'teacher').length}
             />
           )}
+        </div>
+        <div className="flex items-center justify-end gap-1">
           {onPinToggle && (
             <Button
               variant="ghost"

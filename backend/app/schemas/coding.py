@@ -10,12 +10,19 @@ class CodingMessageCreate(BaseModel):
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
+class CodingKbFile(BaseModel):
+    path: str = Field(max_length=64)
+    content: str = Field(default="", max_length=60000)
+
+
 class CodingProjectCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     session_id: Optional[UUID] = None
     brief_id: Optional[UUID] = None
     template_key: str = Field(default="vite-react", max_length=64)
-    initial_prompt: Optional[str] = Field(default=None, max_length=20000)
+    initial_prompt: Optional[str] = Field(default=None, max_length=30000)
+    # Brief files (description.md, spec.md) persisted with the project at creation.
+    kb_files: Optional[list[CodingKbFile]] = Field(default=None, max_length=4)
 
 
 class CodingBriefCreate(BaseModel):

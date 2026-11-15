@@ -1,3 +1,8 @@
+import { motion, useReducedMotion } from 'framer-motion'
+import { useSlideRailDrag } from '@/hooks/useSlideRailDrag'
+import { rememberSlide, recalledSlideIndex } from '@/lib/slideNavigation'
+import { useAuthStore } from '@/stores/auth'
+import DuplicateDocumentButton from '@/components/documents/DuplicateDocumentButton'
 import { InteractiveHtmlFrame } from '@/components/documents/InteractiveHtmlFrame'
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { Calendar } from '@/components/icons'
@@ -37,6 +42,7 @@ import { withImage, withSlideBlocks, type DeckTheme, type RenderedDeck, type Stu
 import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
 import { isNativeUndoTarget, useUndoHistory } from '@/hooks/useUndoHistory'
 import { tl } from '@/i18n/tl'
+import { DOCUMENT_TARGETS, takeHandoff } from '@/lib/platformHandoff'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -189,6 +195,8 @@ interface StudentDocumentsModuleProps {
 
 export default function StudentDocumentsModule({ sessionId, openLessonTaskId, readOnlyCatalog = false }: StudentDocumentsModuleProps) {
   const { toast } = useToast()
+  const viewerId = useAuthStore(state => `student:${state.studentSession?.student_id || 'anonymous'}`)
+  const reducedMotion = useReducedMotion()
   const { t, i18n } = useTranslation()
   const isEnglishUi = i18n.resolvedLanguage?.startsWith('en') ?? false
   const dateLocale = isEnglishUi ? 'en-GB' : 'it-IT'
@@ -307,6 +315,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
   const [showPresentationStudio, setShowPresentationStudio] = useState(false)
+  // Brief handed over by the chatbot (agentic hand-off).
+  const [studioTopic, setStudioTopic] = useState<string | undefined>()
+  const [agentInitialPrompt, setAgentInitialPrompt] = useState<string | undefined>()
   const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit?: () => void | Promise<void>; editLabel?: string } | null>(null)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
@@ -418,6 +429,26 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     },
     beforePreview: `${selectedSlides.length} ${isEnglishUi ? 'selected slides' : 'slide selezionate'}`,
   } : null)
+
+  useEffect(() => { if (!showPresentationStudio) setStudioTopic(undefined) }, [showPresentationStudio])
+
+  // Agentic hand-off from the chatbot: open the right editor with the first brief already in.
+  useEffect(() => {
+    const handoff = takeHandoff([...DOCUMENT_TARGETS])
+    if (!handoff) return
+    if (handoff.target === 'presentation') {
+      setStudioTopic(handoff.brief)
+      setShowPresentationStudio(true)
+    } else if (handoff.target === 'document') {
+      createNewDocument()
+      setAgentInitialPrompt(handoff.brief)
+      setPresentationChatOpen(true)
+    } else {
+      createNewSheet()
+      toast({ title: handoff.title || tl("Nuova tabella"), description: handoff.brief })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!editor) return
@@ -1006,7 +1037,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           webUrl: '',
           source: content.source,
         })
-        setCurrentSlideIndex(0)
+        setCurrentSlideIndex(recalledSlideIndex(viewerId, doc.id, safeSlides))
         setSelectedBlockId(null)
       } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
         setMode('sheet')
@@ -1101,7 +1132,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     )
   }
 
-  const editAsCopy = async (doc: { title: string; type: string; contentJson: string }) => {
+  const editAsCopy = async (doc: { title: string; type: string; contentJson: string }, openCopy = true) => {
     try {
       const response = await studentApi.createDocumentDraft({
         title: uniqueDocumentTitle(`${doc.title} - ${isEnglishUi ? 'copy' : 'copia'}`),
@@ -1116,7 +1147,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         contentJson: response.data.content_json,
       }
       setDraftDocuments(previous => [draft, ...previous.filter(item => item.id !== draft.id)])
-      loadDraft(draft)
+      if (openCopy) loadDraft(draft)
+      else toast({ title: isEnglishUi ? 'Copy created in your drafts' : 'Copia creata nelle tue bozze' })
     } catch (error) {
       console.error('Unable to create editable copy', error)
       toast({ title: isEnglishUi ? 'Unable to create a copy' : 'Impossibile creare una copia', variant: 'destructive' })
@@ -1257,14 +1289,29 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
   const slideListRef = useRef<HTMLDivElement>(null)
+  const slideDrag = useSlideRailDrag(slideListRef, document.slides, slides => {
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+  })
+  useEffect(() => {
+    if (viewMode !== 'editor' || mode !== 'slides') return
+    const slide = document.slides[currentSlideIndex]
+    if (!slide) return
+    rememberSlide(viewerId, document.id, slide.id, currentSlideIndex)
+    // Newly created documents receive their database id on the first autosave.
+    if (draftId && draftId !== document.id) rememberSlide(viewerId, draftId, slide.id, currentSlideIndex)
+  }, [viewerId, viewMode, mode, document.id, document.slides, currentSlideIndex, draftId])
+
   // Keep the current slide centred in the left rail, however it changed (arrows, click, editor navigation).
   useEffect(() => {
+    if (viewMode !== 'editor' || mode !== 'slides' || slideDrag.draggedIds.length) return
     const list = slideListRef.current
     const item = list?.querySelector<HTMLElement>(`[data-slide-index="${currentSlideIndex}"]`)
     if (!list || !item) return
     const delta = item.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - item.offsetHeight) / 2
-    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: 'smooth' })
-  }, [currentSlideIndex, document.slides.length])
+    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: reducedMotion ? 'auto' : 'smooth' })
+  }, [currentSlideIndex, document.slides.length, document.id, viewMode, mode, reducedMotion])
 
   const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
@@ -1550,6 +1597,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         >
           {showPresentationStudio && (
             <PresentationStudio
+              initialTopic={studioTopic}
               onClose={() => setShowPresentationStudio(false)}
               onCreate={createPresentationFromStudio}
               onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
@@ -1666,6 +1714,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
                         {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
+                          className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                         {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                         {!isCatalogGrid && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
                         <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
@@ -1700,6 +1750,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                           className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
                           {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
+                          className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                           {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                           <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
                             {hasCorrection ? (isEnglishUi ? 'Corrections' : 'Correzioni') : docLabel(doc.type)}
@@ -1725,6 +1777,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                   >
                     {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
+                          className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />}
                     {!isCatalogGrid && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
                     <span className={`${isCatalogGrid ? 'absolute right-3 top-3 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
                     <p className={`${isCatalogGrid ? 'mt-2 px-1.5' : 'col-start-2 row-start-1 self-end'} truncate text-[13px] font-black text-slate-950`}>{doc.title}</p>
@@ -2154,22 +2208,29 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    </Button>
                  </div>
                  <div
-                   className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide outline-none"
+                   className="relative flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide outline-none"
                    tabIndex={0}
                    role="listbox"
                    ref={slideListRef}
+                   {...slideDrag.listProps}
                    aria-label={isEnglishUi ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
                    onKeyDown={handleSlideListKeyDown}
                  >
                    {document.slides.map((slide, idx) => (
-                     <div
+                     <motion.div
+                       layout="position"
+                       transition={{ layout: { duration: reducedMotion ? 0 : 0.2, ease: "easeOut" } }}
                        key={slide.id}
                        data-slide-index={idx}
                        role="option"
                        aria-selected={idx === currentSlideIndex}
+                       draggable
+                       onDragStartCapture={event => slideDrag.start(event, selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id])}
+                       onDragEndCapture={slideDrag.stop}
+                       style={{ opacity: slideDrag.draggedIds.includes(slide.id) ? 0.35 : 1 }}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
-                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${idx === currentSlideIndex
+                       className={`p-3 rounded-lg border transition-colors group relative ${idx === currentSlideIndex
                          ? 'bg-indigo-100 text-indigo-950 border-indigo-500 shadow-md ring-2 ring-indigo-400'
                          : selectedSlideIds.includes(slide.id)
                          ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
@@ -2191,8 +2252,18 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                        >
                          <Copy className="h-3.5 w-3.5" />
                        </button>
-                     </div>
+                     </motion.div>
                    ))}
+                   {slideDrag.markerTop !== null && (
+                     <motion.div
+                       aria-hidden="true"
+                       className="pointer-events-none absolute inset-x-2 z-20 h-1 rounded-full"
+                       style={{ backgroundColor: 'var(--logo-violet)', margin: 0 }}
+                       initial={false}
+                       animate={{ top: slideDrag.markerTop - 2 }}
+                       transition={{ duration: reducedMotion ? 0 : 0.1, ease: 'easeOut' }}
+                     />
+                   )}
                  </div>
               </div>
             )}
@@ -2697,6 +2768,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               deckTheme={document.theme}
               currentSlides={document.slides}
               currentSlideIndex={currentSlideIndex}
+              initialPrompt={agentInitialPrompt}
+              onInitialPromptSent={() => setAgentInitialPrompt(undefined)}
               onClose={() => setPresentationChatOpen(false)}
             />
           )}

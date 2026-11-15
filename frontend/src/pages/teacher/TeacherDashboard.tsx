@@ -430,7 +430,7 @@ export default function TeacherDashboard() {
         {!isMobile && (
           <div
             ref={chatColumnRef}
-            className={`h-full flex-shrink-0 mr-auto bg-transparent box-border relative ${showSidebar ? "overflow-hidden" : "overflow-visible"} ${
+            className={`h-full flex-shrink-0 mr-auto bg-transparent box-border shell-chat-column relative ${showSidebar ? "overflow-hidden" : "overflow-visible"} ${
               isResizingChat ? '' : 'transition-[width] duration-200'
             } ${showSidebar ? 'py-4 pl-3 pr-4' : 'py-4 pr-4'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : CHAT_DOCK_WIDTH }}

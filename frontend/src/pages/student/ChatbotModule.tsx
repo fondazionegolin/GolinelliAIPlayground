@@ -29,6 +29,8 @@ import {
   FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Youtube, Globe, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
+import { PlatformHandoffCard } from '@/components/chat/PlatformHandoffCard'
+import { HANDOFF_TARGETS, isHandoffTarget, stashHandoff, type PlatformHandoff } from '@/lib/platformHandoff'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -81,6 +83,7 @@ interface Message {
   model?: string
   token_usage_json?: TokenUsageJson | null
   routing?: ToolRouting
+  handoff?: PlatformHandoff
   // Collaboration: present on messages coming from a shared room
   senderStudentId?: string | null
   senderNickname?: string | null
@@ -143,6 +146,8 @@ interface ChatbotModuleProps {
   onExpand?: () => void
   sidebarMode?: boolean
   dockArmed?: boolean
+  /** Opens a student dashboard module (agentic hand-off from the chat to Vibe Lab, ML Lab, ...). */
+  onOpenModule?: (module: string) => void
 }
 
 // Semantic colour is kept on the small affordances; the card itself uses the
@@ -547,7 +552,7 @@ function TeacherbotAvatarIcon({ bot, uiLanguage, className }: { bot: Teacherbot;
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false, onOpenModule }: ChatbotModuleProps) {
   const { t, i18n } = useTranslation()
   const { active: dropActive, dropHighlightProps } = useFileDropHighlight()
   // True once "Apri in sidebar" has been clicked but the panel is still full-page — the dock only
@@ -1927,6 +1932,29 @@ REGOLE IMPORTANTI:
     activeSharedRoom,
   ])
 
+  // Agentic hand-off: the request belongs to a platform section. The server checks the teacher has not switched the
+  // module off for this session; if it did, the chat says so instead of opening anything.
+  const openHandoff = useCallback((handoff: PlatformHandoff) => {
+    if (!handoff.module || !onOpenModule) return
+    stashHandoff(handoff)
+    onOpenModule(handoff.module)
+  }, [onOpenModule])
+
+  const startHandoff = useCallback(async (target: string, text: string) => {
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: text, timestamp: new Date(), routing: pendingRoutingRef.current }
+    pendingRoutingRef.current = undefined
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    try {
+      const { data } = await llmApi.handoff(target, text, { recent: messages.slice(-4).map(m => ({ role: m.role, content: m.content })) })
+      const reply: Message = { id: `handoff-${Date.now()}`, role: 'assistant', content: data.content, handoff: data.handoff, timestamp: new Date() }
+      setMessages(prev => [...prev, reply])
+    } catch (err) {
+      console.warn('Handoff failed', err)
+      setMessages(prev => [...prev, { id: `handoff-${Date.now()}`, role: 'assistant', content: tl("Non sono riuscito ad aprire quella sezione. Riprova tra poco."), timestamp: new Date() }])
+    }
+  }, [messages])
+
   // Transparent tool routing: in plain Chat mode, OpenAI Decisions picks image / quiz / dataset for the student.
   const handleSend = useCallback(async (content?: string, files?: globalThis.File[]) => {
     const text = (content ?? input).trim()
@@ -1946,7 +1974,7 @@ REGOLE IMPORTANTI:
           artifacts.push({ type, detail: tl("{0} messaggi fa", messages.length - idx) })
         })
         const { data } = await llmApi.decideTool(
-          text, ['image', 'quiz', 'dataset'], artifacts,
+          text, ['image', 'quiz', 'dataset', ...HANDOFF_TARGETS], artifacts,
           messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
         )
         const routing: ToolRouting = {
@@ -1956,6 +1984,9 @@ REGOLE IMPORTANTI:
         pendingRoutingRef.current = routing
         // Creating an image/quiz/dataset switches tool; editing or asking about the previous picture stays in chat
         // (the previous image is re-attached for img2img / vision). Editing a quiz or dataset is plain chat with history.
+        if (data.action === 'create' && isHandoffTarget(data.tool)) {
+          return await startHandoff(data.tool, text)
+        }
         if (data.action === 'create' && (data.tool === 'image' || data.tool === 'quiz' || data.tool === 'dataset')) {
           return await runSend(content, files, data.tool)
         }
@@ -1964,7 +1995,7 @@ REGOLE IMPORTANTI:
       }
     }
     return runSend(content, files, chatMode)
-  }, [input, chatMode, attachedFiles, activeSharedRoom, profileInterview.active, selectedTeacherbot, isGeneratingResponse, rememberPrompt, runSend])
+  }, [input, chatMode, attachedFiles, activeSharedRoom, profileInterview.active, selectedTeacherbot, isGeneratingResponse, rememberPrompt, runSend, startHandoff])
 
   const handleNewChat = useCallback(async () => {
     triggerHaptic('light')
@@ -4496,6 +4527,9 @@ REGOLE IMPORTANTI:
                         <MessageLinkPreviews content={message.content} />
                         {messageTextWithoutPreviewLinks(message.content) && <p className="whitespace-pre-wrap text-[16px] leading-7">{messageTextWithoutPreviewLinks(message.content)}</p>}
                       </>
+                    )}
+                    {message.role === 'assistant' && message.handoff && (
+                      <PlatformHandoffCard handoff={message.handoff} onOpen={openHandoff} />
                     )}
                     {message.role === 'assistant' && (
                       <EnvironmentalImpactPill

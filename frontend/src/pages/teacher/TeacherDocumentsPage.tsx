@@ -1,3 +1,7 @@
+import { motion, useReducedMotion } from 'framer-motion'
+import { useSlideRailDrag } from '@/hooks/useSlideRailDrag'
+import { rememberSlide, recalledSlideIndex } from '@/lib/slideNavigation'
+import { useAuthStore } from '@/stores/auth'
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { SectionHeading } from '@/design/primitives/SectionHeading'
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -17,6 +21,7 @@ import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { DocumentEditorHeader, HeaderExportMenu, HeaderIconButton, HeaderPageSetupMenu, HeaderToolDivider } from '@/components/documents/DocumentEditorHeader'
 import { DEFAULT_PAGE_SETUP, pageDimensions, readDocumentAgentPreference, readPageSetup, saveDocumentAgentPreference, withPageBreaks, type PageSetup } from '@/lib/documentPage'
+import { DOCUMENT_TARGETS, takeHandoff } from '@/lib/platformHandoff'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentPageWidget from '@/components/documents/DocumentPageWidget'
 import { DocumentRuler } from '@/components/documents/DocumentRuler'
@@ -204,6 +209,8 @@ function CollapsibleSection({ title, count, collapsed, onToggle, children }: {
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
+  const viewerId = useAuthStore(state => `teacher:${state.user?.id || 'anonymous'}`)
+  const reducedMotion = useReducedMotion()
   const { i18n } = useTranslation()
   const [searchParams] = useSearchParams()
   const location = useLocation()
@@ -312,6 +319,9 @@ export default function TeacherDocumentsPage() {
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
   const [showPresentationStudio, setShowPresentationStudio] = useState(false)
+  // Brief handed over by the chat (agentic hand-off): topic for the Presentation Studio, first request for the document assistant.
+  const [studioTopic, setStudioTopic] = useState<string | undefined>()
+  const [agentInitialPrompt, setAgentInitialPrompt] = useState<string | undefined>()
   const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit: () => void; editLabel?: string } | null>(null)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
@@ -343,7 +353,6 @@ export default function TeacherDocumentsPage() {
   }, [])
   const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
-  const [draggedSlideIds, setDraggedSlideIds] = useState<string[]>([])
   const [showVersionPanel, setShowVersionPanel] = useState(false)
   const [documentVersions, setDocumentVersions] = useState<DocumentDraftVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(false)
@@ -1159,7 +1168,7 @@ export default function TeacherDocumentsPage() {
           webUrl: '',
           source: content.source,
         })
-        setCurrentSlideIndex(0)
+        setCurrentSlideIndex(recalledSlideIndex(viewerId, doc.id, safeSlides))
         setSelectedBlockId(null)
       } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
         setMode('sheet')
@@ -1228,6 +1237,26 @@ export default function TeacherDocumentsPage() {
       toast({ title: isEnglish ? 'Loading error' : 'Errore caricamento', description: isEnglish ? 'Unable to open this document.' : 'Impossibile aprire questo documento.', variant: 'destructive' })
     }
   }
+
+  useEffect(() => { if (!showPresentationStudio) setStudioTopic(undefined) }, [showPresentationStudio])
+
+  // Agentic hand-off from the chat: open the right editor with the first brief already in.
+  useEffect(() => {
+    const handoff = takeHandoff([...DOCUMENT_TARGETS])
+    if (!handoff) return
+    if (handoff.target === 'presentation') {
+      setStudioTopic(handoff.brief)
+      setShowPresentationStudio(true)
+    } else if (handoff.target === 'document') {
+      createNewDocument()
+      setAgentInitialPrompt(handoff.brief)
+      setDocumentAgentOpen(true)
+    } else {
+      createNewSheet()
+      toast({ title: handoff.title || tl("Nuova tabella"), description: handoff.brief })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const openDocumentId = searchParams.get('open')
@@ -1307,7 +1336,7 @@ export default function TeacherDocumentsPage() {
           webUrl: '',
           source: content.source,
         })
-        setCurrentSlideIndex(0)
+        setCurrentSlideIndex(recalledSlideIndex(viewerId, doc.id, safeSlides))
         setSelectedBlockId(null)
       } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
         setMode('sheet')
@@ -1373,6 +1402,30 @@ export default function TeacherDocumentsPage() {
     } catch (e) {
       console.error(e)
       toast({ title: isEnglish ? 'Loading error' : 'Errore caricamento', description: isEnglish ? 'Unable to open this document.' : 'Impossibile aprire questo documento.', variant: 'destructive' })
+    }
+  }
+
+  const duplicateDocument = async (doc: DraftDocument | StoredDocument) => {
+    try {
+      // Catalog drafts may contain only thumbnail data; always copy their full payload.
+      const contentJson = 'lite' in doc && doc.lite
+        ? (await teacherApi.getDocumentDraft(doc.id)).data.content_json
+        : doc.contentJson
+      const response = await teacherApi.createDocumentDraft({
+        title: uniqueDocumentTitle(`${doc.title} - ${isEnglish ? 'copy' : 'copia'}`),
+        doc_type: doc.type,
+        content_json: contentJson,
+      })
+      const draft: DraftDocument = {
+        id: response.data.id, title: response.data.title, type: response.data.doc_type,
+        contentJson: response.data.content_json, updatedAt: response.data.updated_at,
+      }
+      setDraftDocuments(previous => [draft, ...previous])
+      setCollapsedSections(previous => ({ ...previous, drafts: false }))
+      toast({ title: isEnglish ? 'Copy created in your drafts' : 'Copia creata nelle tue bozze' })
+    } catch (error) {
+      console.error('Document duplication failed', error)
+      toast({ title: isEnglish ? 'Unable to duplicate document' : 'Impossibile duplicare il documento', variant: 'destructive' })
     }
   }
 
@@ -1577,14 +1630,29 @@ export default function TeacherDocumentsPage() {
 
   // Up/Down in the slide list opens the previous/next slide; Shift+Up/Down extends the selection.
   const slideListRef = useRef<HTMLDivElement>(null)
+  const slideDrag = useSlideRailDrag(slideListRef, document.slides, slides => {
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+  })
+  useEffect(() => {
+    if (viewMode !== 'editor' || mode !== 'slides') return
+    const slide = document.slides[currentSlideIndex]
+    if (!slide) return
+    rememberSlide(viewerId, document.id, slide.id, currentSlideIndex)
+    // Newly created documents receive their database id on the first autosave.
+    if (draftId && draftId !== document.id) rememberSlide(viewerId, draftId, slide.id, currentSlideIndex)
+  }, [viewerId, viewMode, mode, document.id, document.slides, currentSlideIndex, draftId])
+
   // Keep the current slide centred in the left rail, however it changed (arrows, click, editor navigation).
   useEffect(() => {
+    if (viewMode !== 'editor' || mode !== 'slides' || slideDrag.draggedIds.length) return
     const list = slideListRef.current
     const item = list?.querySelector<HTMLElement>(`[data-slide-index="${currentSlideIndex}"]`)
     if (!list || !item) return
     const delta = item.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - item.offsetHeight) / 2
-    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: 'smooth' })
-  }, [currentSlideIndex, document.slides.length])
+    list.scrollTo({ top: Math.max(0, list.scrollTop + delta), behavior: reducedMotion ? 'auto' : 'smooth' })
+  }, [currentSlideIndex, document.slides.length, document.id, viewMode, mode, reducedMotion])
 
   const handleSlideListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'Home' && event.key !== 'End') return
@@ -1644,20 +1712,6 @@ export default function TeacherDocumentsPage() {
     const currentId = currentSlide.id
     setDocument(previous => ({ ...previous, slides }))
     setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
-  }
-
-  const dropSelectedSlidesAt = (targetIndex: number) => {
-    if (draggedSlideIds.length === 0) return
-    const draggedSet = new Set(draggedSlideIds)
-    const moving = document.slides.filter(slide => draggedSet.has(slide.id))
-    const remaining = document.slides.filter(slide => !draggedSet.has(slide.id))
-    const targetId = document.slides[targetIndex]?.id
-    const insertionIndex = targetId ? Math.max(0, remaining.findIndex(slide => slide.id === targetId)) : remaining.length
-    const slides = [...remaining.slice(0, insertionIndex), ...moving, ...remaining.slice(insertionIndex)]
-    const currentId = currentSlide.id
-    setDocument(previous => ({ ...previous, slides }))
-    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
-    setDraggedSlideIds([])
   }
 
   const updateSlideBlocks = (blocks: Block[]) => {
@@ -1954,6 +2008,7 @@ export default function TeacherDocumentsPage() {
         >
           {showPresentationStudio && (
             <PresentationStudio
+              initialTopic={studioTopic}
               onClose={() => setShowPresentationStudio(false)}
               onCreate={createPresentationFromStudio}
               onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
@@ -2017,6 +2072,7 @@ export default function TeacherDocumentsPage() {
                         title={doc.title}
                         type={doc.type}
                         contentJson={doc.contentJson}
+                        onDuplicate={() => duplicateDocument(doc)}
                         onOpen={() => shared ? void loadDocument(doc as StoredDocument) : void loadDraft(doc as DraftDocument)}
                         onDelete={() => shared ? void handleDeletePublished(doc as StoredDocument) : void handleDeleteDraft(doc as DraftDocument)}
                         deleteLabel={shared ? (isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione') : (isEnglish ? 'Delete draft' : 'Elimina bozza')}
@@ -2045,6 +2101,7 @@ export default function TeacherDocumentsPage() {
                         title={doc.title}
                         type={doc.type}
                         contentJson={doc.contentJson}
+                        onDuplicate={() => duplicateDocument(doc)}
                         onOpen={() => void loadDraft(doc)}
                         onDelete={() => void handleDeleteDraft(doc)}
                         deleteLabel={isEnglish ? 'Delete draft' : 'Elimina bozza'}
@@ -2106,6 +2163,7 @@ export default function TeacherDocumentsPage() {
                           title={doc.title}
                           type={doc.type}
                           contentJson={doc.contentJson}
+                          onDuplicate={() => duplicateDocument(doc)}
                           onOpen={() => void loadDocument(doc)}
                           onDelete={() => void handleDeletePublished(doc)}
                           deleteLabel={isEnglish ? 'Remove submission' : 'Rimuovi invio'}
@@ -2139,6 +2197,7 @@ export default function TeacherDocumentsPage() {
                         title={doc.title}
                         type={doc.type}
                         contentJson={doc.contentJson}
+                        onDuplicate={() => duplicateDocument(doc)}
                         onOpen={() => void loadDocument(doc)}
                         onDelete={() => void handleDeletePublished(doc)}
                         deleteLabel={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
@@ -2174,6 +2233,7 @@ export default function TeacherDocumentsPage() {
       <div className="relative h-full flex flex-col bg-slate-100 overflow-hidden">
           {showPresentationStudio && (
             <PresentationStudio
+              initialTopic={studioTopic}
               onClose={() => setShowPresentationStudio(false)}
               onCreate={createPresentationFromStudio}
               onBlank={() => { setShowPresentationStudio(false); createNewPresentation() }}
@@ -2356,32 +2416,32 @@ export default function TeacherDocumentsPage() {
                    </div>
                  </div>
                  <div
-                   className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide outline-none"
+                   className="relative flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide outline-none"
                    tabIndex={0}
                    role="listbox"
                    ref={slideListRef}
+                   {...slideDrag.listProps}
                    aria-label={isEnglish ? 'Slides (use Up/Down arrows to change slide)' : 'Slide (usa le frecce Su/Giù per cambiare slide)'}
                    onKeyDown={handleSlideListKeyDown}
                    onContextMenu={(event) => { event.preventDefault(); setSlideMenu({ x: event.clientX, y: event.clientY, index: document.slides.length }) }}
                  >
                    {document.slides.map((slide, idx) => (
-                     <div 
+                     <motion.div
+                       layout="position"
+                       transition={{ layout: { duration: reducedMotion ? 0 : 0.2, ease: "easeOut" } }}
                        key={slide.id}
                        data-slide-index={idx}
                        role="option"
                        aria-selected={idx === currentSlideIndex}
                        draggable
-                       onDragStart={() => {
-                         const ids = selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id]
-                         setDraggedSlideIds(ids)
-                       }}
-                       onDragOver={(event) => event.preventDefault()}
-                       onDrop={(event) => { event.preventDefault(); dropSelectedSlidesAt(idx) }}
+                       onDragStartCapture={event => slideDrag.start(event, selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id])}
+                       onDragEndCapture={slideDrag.stop}
+                       style={{ opacity: slideDrag.draggedIds.includes(slide.id) ? 0.35 : 1 }}
                        onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
                        onClick={(event) => selectSlide(idx, event)}
                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSlideMenu({ x: event.clientX, y: event.clientY, index: idx }) }}
                        title={isEnglish ? 'Ctrl/⌘+click or Shift+click to select several slides' : 'Ctrl/⌘+clic o Shift+clic per selezionare più slide'}
-                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${idx === currentSlideIndex
+                       className={`group relative cursor-pointer rounded-xl border p-2 transition-colors ${idx === currentSlideIndex
                          ? 'border-indigo-500 bg-indigo-100 shadow-md ring-2 ring-indigo-400'
                          : selectedSlideIds.includes(slide.id)
                          ? 'border-indigo-300 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-100'
@@ -2414,8 +2474,18 @@ export default function TeacherDocumentsPage() {
                            />
                          </div>
                        </div>
-                     </div>
+                     </motion.div>
                    ))}
+                   {slideDrag.markerTop !== null && (
+                     <motion.div
+                       aria-hidden="true"
+                       className="pointer-events-none absolute inset-x-2 z-20 h-1 rounded-full"
+                       style={{ backgroundColor: 'var(--logo-violet)', margin: 0 }}
+                       initial={false}
+                       animate={{ top: slideDrag.markerTop - 2 }}
+                       transition={{ duration: reducedMotion ? 0 : 0.1, ease: 'easeOut' }}
+                     />
+                   )}
                  </div>
                  {slideMenu && (
                    <div
@@ -2728,6 +2798,8 @@ export default function TeacherDocumentsPage() {
                 currentSlides={document.slides}
                 currentSlideIndex={currentSlideIndex}
                 onClose={() => setDocumentAgentOpen(false)}
+                initialPrompt={agentInitialPrompt}
+                onInitialPromptSent={() => setAgentInitialPrompt(undefined)}
               />
             </>
           )}

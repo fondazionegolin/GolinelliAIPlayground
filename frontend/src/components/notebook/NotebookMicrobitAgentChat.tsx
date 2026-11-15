@@ -498,9 +498,25 @@ export default function NotebookMicrobitAgentChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebookId, useStreaming])
 
-  const send = async () => {
+  // Agentic hand-off: the brief the user gave the chat is sent to the agent as soon as the new notebook opens.
+  const firstBriefSentRef = useRef(false)
+  useEffect(() => {
+    if (firstBriefSentRef.current) return
+    let brief: string | null = null
+    try {
+      const key = `notebook-first-brief:${notebookId}`
+      brief = sessionStorage.getItem(key)
+      if (brief) sessionStorage.removeItem(key)
+    } catch { /* storage unavailable */ }
+    if (!brief) return
+    firstBriefSentRef.current = true
+    void send(brief)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notebookId])
+
+  const send = async (forcedText?: string) => {
     const image = useStreaming ? attachedImage : null
-    const text = input.trim() || (image ? tl("Analizza questa immagine e replica l'effetto che mostra.") : '')
+    const text = forcedText?.trim() || input.trim() || (image ? tl("Analizza questa immagine e replica l'effetto che mostra.") : '')
     if (!text || loading) return
 
     setInput('')

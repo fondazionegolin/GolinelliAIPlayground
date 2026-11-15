@@ -838,6 +838,7 @@ export default function StudentDashboard() {
                 onClose={() => setStudentChatSidebarOpen(false)}
                 sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
                 dockArmed={studentChatSidebarOpen}
+                onOpenModule={setActiveModule}
               />
             </Suspense>
           </motion.div>
@@ -845,7 +846,7 @@ export default function StudentDashboard() {
         {sessionInfo ? (
           <div
             ref={chatColumnRef}
-            className={`hidden h-full flex-shrink-0 mr-auto bg-transparent box-border lg:block ${showSidebar ? 'overflow-hidden' : 'overflow-visible'} ${
+            className={`hidden h-full flex-shrink-0 mr-auto bg-transparent box-border shell-chat-column lg:block ${showSidebar ? 'overflow-hidden' : 'overflow-visible'} ${
               isResizingChat ? '' : 'transition-[width] duration-200'
             } ${showSidebar ? 'relative py-4 pl-3 pr-4' : 'relative py-4 pr-4'}`}
             style={{ width: showSidebar ? `${sidebarWidth + CHAT_SIDEBAR_GUTTER}px` : CHAT_DOCK_WIDTH, height: '100%' }}
@@ -1252,6 +1253,7 @@ function StudentMobileShell({
             onExpand={expandStudentChat}
             onClose={() => setStudentChatSidebarOpen(false)}
             sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
+            onOpenModule={onNavigate}
           />
         </Suspense>
       </div>

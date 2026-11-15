@@ -3,6 +3,7 @@ import { Trash2 } from '@/components/icons'
 import DocumentThumbnail from './DocumentThumbnail'
 import type { DocumentKind } from './DocumentTypeBadge'
 import { tl } from '@/i18n/tl'
+import DuplicateDocumentButton from './DuplicateDocumentButton'
 
 interface DocumentCardProps {
   title: string
@@ -13,6 +14,7 @@ interface DocumentCardProps {
   /** Small status chip next to the title (e.g. "Bozza", "Correzione"). */
   status?: ReactNode
   onOpen: () => void
+  onDuplicate?: () => Promise<void>
   onDelete?: () => void
   deleteLabel?: string
   className?: string
@@ -22,7 +24,7 @@ interface DocumentCardProps {
  * Catalog tile: square preview that always states the file type, then title + meta.
  * The whole tile is one keyboard-reachable control; delete is a separate button.
  */
-export default function DocumentCard({ title, type, contentJson, meta, status, onOpen, onDelete, deleteLabel = tl("Elimina"), className = '' }: DocumentCardProps) {
+export default function DocumentCard({ title, type, contentJson, meta, status, onOpen, onDuplicate, onDelete, deleteLabel = tl("Elimina"), className = '' }: DocumentCardProps) {
   return (
     <div
       role="button"
@@ -43,6 +45,10 @@ export default function DocumentCard({ title, type, contentJson, meta, status, o
         </div>
         {meta && <div className="mt-0.5 space-y-0.5 text-[11px] leading-4 text-slate-500">{meta}</div>}
       </div>
+      {onDuplicate && (
+        <DuplicateDocumentButton title={title} onDuplicate={onDuplicate}
+          className="absolute left-3 top-3 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" />
+      )}
       {onDelete && (
         <button
           type="button"

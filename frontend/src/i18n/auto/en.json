@@ -7135,5 +7135,11 @@
  "Workflow": "Workflow",
  "Condividi con classi, sessioni o con un link / QR": "Share with classes, sessions or via a link / QR code",
  "Salva il workflow per condividerlo": "Save the workflow to share it",
- "Condiviso dal docente": "Shared by the teacher"
+ "Condiviso dal docente": "Shared by the teacher",
+ "Si apre in {0} con questa richiesta già pronta.": "Opens in {0} with this request already filled in.",
+ "Seleziona prima una sessione dalla barra in alto, poi riapri.": "First select a session from the top bar, then reopen.",
+ "Preparo il passaggio alla sezione giusta…": "Getting ready to open the right section…",
+ "Apertura sezione": "Opening section",
+ "Non sono riuscito a preparare il passaggio. Riprova.": "I couldn't prepare the hand-off. Please try again.",
+ "Non sono riuscito ad aprire quella sezione. Riprova tra poco.": "I couldn't open that section. Please try again shortly."
 }

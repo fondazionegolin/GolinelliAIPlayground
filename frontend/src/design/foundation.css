@@ -766,6 +766,8 @@ body[data-shell-fullscreen] .shell-nav { transform: translateY(-110%); pointer-e
 body[data-shell-fullscreen][data-shell-peek] .shell-nav { transform: none; pointer-events: auto; z-index: 90; }
 /* The student navbar reserves its height with a spacer; collapse it with the navbar. */
 body[data-shell-fullscreen] .shell-nav-spacer { height: 0 !important; }
+/* The fullscreen toggle floats top-right: keep the class-chat column's frame clear of it. */
+body[data-shell-fullscreen] .shell-chat-column { padding-top: 3.25rem; }
 /* Room for the always-visible fullscreen button at the right edge of the navbar. */
 nav.shell-nav > div { padding-right: 3rem; }
 /* Gentle upward hop that invites the user to go fullscreen. */

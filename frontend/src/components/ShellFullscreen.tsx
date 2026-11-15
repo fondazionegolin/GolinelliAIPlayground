@@ -44,18 +44,23 @@ export function ShellFullscreenButton({ className = '' }: { className?: string }
       className={`flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-slate-500 transition-colors hover:text-slate-900 ${className}`}
     >
       <span className={hint ? 'shell-arrow-bounce' : ''}>
+        {/* Flat glyph: the navbar strip stays on top; the chevron under it points up to hide it, down to bring it back. */}
         <svg
-          viewBox="0 0 24 24"
-          className="h-6 w-6 transition-transform duration-300 ease-out"
-          style={{ transform: active ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          viewBox="0 0 16 16"
+          className="h-4 w-4"
           fill="none"
           stroke="currentColor"
-          strokeWidth={4}
+          strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <path d="M5 15l7-7 7 7" />
+          <path d="M3 2.5h10" />
+          <path
+            d="M5 12l3-3 3 3"
+            className="transition-transform duration-200 ease-out"
+            style={{ transformOrigin: '8px 10.5px', transform: active ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
         </svg>
       </span>
     </button>

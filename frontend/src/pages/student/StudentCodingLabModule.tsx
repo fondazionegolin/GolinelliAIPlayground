@@ -66,6 +66,7 @@ import { TEACHER_PROFILE_KEY, type TeacherProfileData } from '@/hooks/useTeacher
 import { useQueryClient } from '@tanstack/react-query'
 import { SidebarCollapseButton, SidebarRail, useSidebarCollapsed } from '@/components/SidebarRail'
 import { tl } from '@/i18n/tl'
+import { takeHandoff } from '@/lib/platformHandoff'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -173,7 +174,8 @@ type PreviewApiRequest = {
   payload?: Record<string, unknown>
 }
 
-type InterviewTurn = { role: 'user' | 'assistant'; content: string; suggestions?: string[] }
+type InterviewTurn = { role: 'user' | 'assistant'; content: string; suggestions?: string[]; kind?: 'question' | 'confirm' }
+const BUILD_PLAN_DATA_KEY = '_golinelli_build_plan'
 type BuildMilestone = { title: string; goal: string; features: string[] }
 type BuildPlan = { projectId: string; milestones: BuildMilestone[]; next: number }
 // Ideas longer than this are always analysed into spec.md + milestones instead of fed raw to codegen.
@@ -291,6 +293,13 @@ const MOBILE_PAGE_CONSTRAINT = `VINCOLI MOBILE OBBLIGATORI:
 - la pagina deve crescere in altezza e consentire sempre lo scroll verticale;
 - non creare varianti desktop, sidebar desktop o layout a larghezza fissa.`
 
+function interviewAnswersText(turns: InterviewTurn[]) {
+  return turns
+    .filter((turn) => turn.content.trim())
+    .map((turn) => `- **${turn.role === 'assistant' ? (turn.kind === 'confirm' ? 'Piano concordato' : 'Domanda') : 'Risposta'}:** ${turn.content.replace(/\s+/g, ' ').trim().slice(0, 700)}`)
+    .join('\n')
+}
+
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
   return `# ${title || 'Progetto'}\n\n## Istruzioni di progetto\n${prompt || 'Descrivi qui obiettivo e regole del progetto.'}\n${spec}\n## Richieste\n`
@@ -388,11 +397,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const detailLoadSeq = useRef(0)
   const [chatTurns, setChatTurns] = useState<InterviewTurn[] | null>(null)
   const [chatInput, setChatInput] = useState('')
-  const [chatReady, setChatReady] = useState(false)
+  const [chatStep, setChatStep] = useState({ n: 1, max: 5 })
   const [specBusy, setSpecBusy] = useState(false)
   const [buildPlan, setBuildPlan] = useState<BuildPlan | null>(null)
   const [interviewing, setInterviewing] = useState(false)
   const applyingSubjectiveStateRef = useRef(false)
+
+  // Agentic hand-off from the chat: the new-project form opens with the brief already written.
+  useEffect(() => {
+    const handoff = takeHandoff(['vibe_lab'])
+    if (!handoff) return
+    setPrompt(handoff.brief)
+    if (handoff.title) setTitle(handoff.title)
+    setPromptPanelOpen(true)
+    setMobilePane('prompt')
+    setSelectedProjectId(null)
+  }, [])
 
   useEffect(() => {
     const applySyncedDraft = (state: { module_key?: string | null; context?: Record<string, unknown> } | null | undefined) => {
@@ -659,7 +679,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setUpstreamStatus(null)
     setChatTurns(null)
     setChatInput('')
-    setChatReady(false)
     setBuildPlan(null)
     setDraftDirty(false)
     setDraftSaving(false)
@@ -742,14 +761,21 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewingCommitId(null)
     setPreviewingVersionId(null)
     try {
-      const [response, savedModelResponse] = await Promise.all([
+      const [response, savedModelResponse, planResponse] = await Promise.all([
         codingApi.getProject(projectId),
         codingApi.getProjectData(projectId, PROJECT_MODEL_DATA_KEY).catch((err: any) => {
           if (err?.response?.status !== 404) console.warn('Impossibile caricare il modello del progetto:', err)
           return null
         }),
+        codingApi.getProjectData(projectId, BUILD_PLAN_DATA_KEY).catch(() => null),
       ])
       if (seq !== detailLoadSeq.current) return
+      const savedPlan = planResponse?.data?.value ?? planResponse?.data
+      if (savedPlan && Array.isArray(savedPlan.milestones) && savedPlan.milestones.length && Number(savedPlan.next) < savedPlan.milestones.length) {
+        setBuildPlan({ projectId, milestones: savedPlan.milestones as BuildMilestone[], next: Number(savedPlan.next) || 0 })
+      } else if (!generationAbortRef.current) {
+        setBuildPlan((prev) => (prev && prev.projectId === projectId ? null : prev))
+      }
       const detail = response.data as CodingProjectDetail
       // The model picker always keeps the user's last explicit choice (persisted in localStorage): a project's
       // stored model is only a record and must not override it when the project is opened.
@@ -1196,7 +1222,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   // Step 1: conversational interview. A failure is surfaced (retry / explicit "generate anyway"),
   // never silently turned into a blind generation.
-  const askInterviewer = async (turns: InterviewTurn[]) => {
+  const askInterviewer = async (turns: InterviewTurn[], forceConfirm = false) => {
     const projectTitle = title.trim() || prompt.trim().slice(0, 56)
     setInterviewing(true)
     setError(null)
@@ -1205,11 +1231,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       const response = await codingApi.interviewChat({
         title: projectTitle,
         prompt: prompt.trim(),
-        messages: turns.map(({ role, content }) => ({ role, content })),
+        force_confirm: forceConfirm || undefined,
+        messages: turns.map(({ role, content, kind }) => ({ role, content, kind })),
       })
       const data = response.data || {}
-      setChatTurns([...turns, { role: 'assistant', content: String(data.reply || ''), suggestions: data.suggestions || [] }])
-      setChatReady(Boolean(data.ready))
+      const phase: 'question' | 'confirm' = data.phase === 'confirm' ? 'confirm' : 'question'
+      setChatTurns([...turns, { role: 'assistant', content: String(data.text || data.reply || ''), suggestions: phase === 'question' ? (data.options || data.suggestions || []) : [], kind: phase }])
+      setChatStep({ n: Number(data.question_number) || 1, max: Number(data.max_questions) || 5 })
     } catch (err: any) {
       setError(err?.response?.data?.detail || tl("Intervista non disponibile, riprova."))
     } finally {
@@ -1220,8 +1248,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const handleStartInterview = async () => {
     if (!prompt.trim()) return
     if (!title.trim()) setTitle(prompt.trim().slice(0, 56))
-    setChatReady(false)
     setChatInput('')
+    setChatStep({ n: 1, max: 5 })
     await askInterviewer([])
   }
 
@@ -1230,6 +1258,47 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     if (!value || interviewing || !chatTurns) return
     setChatInput('')
     await askInterviewer([...chatTurns, { role: 'user', content: value }])
+  }
+
+  // Streamed spec (heartbeats survive the proxy timeout). Never throws: any failure returns null and the caller
+  // builds the project from the idea + interview verbatim, so an approved plan always starts.
+  const fetchSpec = async (projectTitle: string, idea: string, turns: InterviewTurn[]) => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 170000)
+    try {
+      const response = await fetch(codingApi.specStreamUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getApiAuthHeaders() },
+        credentials: 'include',
+        signal: controller.signal,
+        body: JSON.stringify({ title: projectTitle, prompt: idea, messages: turns.map(({ role, content }) => ({ role, content })) }),
+      })
+      if (!response.ok || !response.body) return null
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return null
+        buffer += decoder.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const frame = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          const line = frame.split('\n').find((l) => l.startsWith('data: '))
+          if (!line) continue
+          try {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'done' && event.spec_md) return { specMd: String(event.spec_md), milestones: (event.milestones || []) as BuildMilestone[] }
+            if (event.type === 'error') return null
+          } catch { /* ignore malformed frame */ }
+        }
+      }
+    } catch {
+      return null
+    } finally {
+      window.clearTimeout(timer)
+    }
   }
 
   const milestonePrompt = (plan: BuildMilestone[], index: number, hasSpec: boolean) => {
@@ -1248,10 +1317,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const runMilestones = async (projectId: string, milestones: BuildMilestone[], startIndex: number, firstFiles?: GeneratedFile[]) => {
     for (let i = startIndex; i < milestones.length; i += 1) {
       setBuildPlan({ projectId, milestones, next: i })
+      // Persisted so an interrupted build (reload, network) can be resumed from the same milestone.
+      void codingApi.putProjectData(projectId, BUILD_PLAN_DATA_KEY, { milestones, next: i }).catch(() => undefined)
       const ok = await generateCode(projectId, milestonePrompt(milestones, i, true), i === startIndex ? firstFiles : undefined)
       if (!ok) return false
     }
     setBuildPlan(null)
+    void codingApi.deleteProjectData(projectId, BUILD_PLAN_DATA_KEY).catch(() => undefined)
     return true
   }
 
@@ -1270,22 +1342,26 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       if (needsSpec) {
         setSpecBusy(true)
         try {
-          const specResponse = await codingApi.spec({
-            title: projectTitle,
-            prompt: idea,
-            messages: turns.map(({ role, content }) => ({ role, content })),
-          })
-          specMd = String(specResponse.data?.spec_md || '')
-          milestones = (specResponse.data?.milestones || []) as BuildMilestone[]
+          const result = await fetchSpec(projectTitle, idea, turns)
+          if (result) { specMd = result.specMd; milestones = result.milestones }
         } finally {
           setSpecBusy(false)
         }
       }
+      // The brief is built here and persisted WITH the project: description.md always carries the user's own
+      // words plus the interview answers (even if the architect failed), spec.md when available.
+      const shortIdea = specMd && idea.length > 1500 ? `${idea.slice(0, 1500)}…\n\n(Brief completo analizzato in spec.md)` : idea
+      const description = composeDescription(projectTitle, constrainGenerationPrompt(shortIdea), specMd ? '' : interviewAnswersText(turns))
+      const kbFiles = [
+        { path: 'description.md', content: description },
+        ...(specMd ? [{ path: 'spec.md', content: specMd }] : []),
+      ]
       const response = await codingApi.createProject({
         title: projectTitle,
         session_id: sessionId,
         template_key: 'vite-react',
         initial_prompt: constrainGenerationPrompt(idea),
+        kb_files: kbFiles,
       })
       const project = response.data as CodingProject
       void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
@@ -1295,8 +1371,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
       setChatTurns(null)
-      const shortIdea = specMd && idea.length > 1500 ? `${idea.slice(0, 1500)}…\n\n(Brief completo analizzato in spec.md)` : idea
-      const description = composeDescription(projectTitle, constrainGenerationPrompt(shortIdea), '')
       // Keep any context files the student added with "+ File"; refresh description.md and spec.md.
       const initialFiles: GeneratedFile[] = [
         { path: 'description.md', content: description, language: 'markdown' },
@@ -2310,84 +2384,120 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   </div>
                 ) : (
                   <div className="mt-4 space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
-                    <p className="text-xs font-bold text-indigo-900">{tl("Intervista sul progetto")}</p>
-                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-                      {chatTurns.map((turn, index) => (
-                        <div key={index} className={turn.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-                          <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                            turn.role === 'user' ? 'bg-indigo-600 text-white' : 'border border-indigo-100 bg-white text-slate-800'
-                          }`}>
-                            {turn.content}
+                    {(() => {
+                      const last = chatTurns[chatTurns.length - 1]
+                      const confirming = last?.role === 'assistant' && last.kind === 'confirm'
+                      const history = chatTurns.slice(0, confirming || last?.role === 'assistant' ? -1 : undefined)
+                      const options = !interviewing && last?.role === 'assistant' && last.kind !== 'confirm' ? (last.suggestions || []) : []
+                      return (
+                        <>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-indigo-900">
+                              {confirming ? tl("Ecco cosa sto per fare") : tl("Domanda {0} di {1}", Math.min(chatStep.n, chatStep.max), chatStep.max)}
+                            </p>
+                            {!confirming && !interviewing && chatTurns.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => void askInterviewer(chatTurns, true)}
+                                className="text-[11px] font-semibold text-indigo-700 underline-offset-2 hover:underline"
+                              >
+                                {tl("Salta e vedi il piano")}
+                              </button>
+                            )}
                           </div>
-                        </div>
-                      ))}
-                      {interviewing && (
-                        <div className="flex items-center gap-2 text-xs text-indigo-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tl("L'intervistatore sta pensando…")}</div>
-                      )}
-                    </div>
-                    {!interviewing && chatTurns[chatTurns.length - 1]?.role === 'user' && (
-                      <button
-                        type="button"
-                        onClick={() => askInterviewer(chatTurns)}
-                        className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700"
-                      >
-                        {tl("Riprova")}
-                      </button>
-                    )}
-                    {!interviewing && chatTurns.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => askInterviewer([])}
-                        className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700"
-                      >
-                        {tl("Riprova")}
-                      </button>
-                    )}
-                    {!interviewing && (chatTurns[chatTurns.length - 1]?.suggestions?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {chatTurns[chatTurns.length - 1].suggestions!.map((suggestion) => (
-                          <button
-                            key={suggestion}
-                            type="button"
-                            onClick={() => void sendChatAnswer(suggestion)}
-                            className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:border-indigo-400"
-                          >
-                            {suggestion}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <input
-                        value={chatInput}
-                        onChange={(event) => setChatInput(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatAnswer(chatInput) } }}
-                        disabled={interviewing || creating}
-                        placeholder={tl("Rispondi o aggiungi dettagli…")}
-                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void sendChatAnswer(chatInput)}
-                        disabled={interviewing || creating || !chatInput.trim()}
-                        className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
-                      >
-                        {tl("Invia")}
-                      </button>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => createAndGenerate(chatTurns)}
-                        disabled={creating || generating || interviewing}
-                        className={`inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-full border border-transparent px-3 text-xs font-bold transition disabled:opacity-40 ${
-                          chatReady ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'border-slate-300 bg-white text-slate-700'
-                        }`}
-                      >
-                        {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                        {specBusy ? tl("Scrivo le specifiche…") : chatReady ? tl("Genera specifiche e crea") : tl("Basta così, genera")}
-                      </button>
-                    </div>
+                          {history.length > 0 && (
+                            <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
+                              {history.filter((turn) => turn.role === 'user').map((turn, index) => (
+                                <p key={index} className="truncate rounded-lg bg-white/70 px-2 py-1 text-[11px] text-slate-600">✓ {turn.content}</p>
+                              ))}
+                            </div>
+                          )}
+                          {last?.role === 'assistant' && (
+                            <div className="whitespace-pre-wrap rounded-2xl border border-indigo-100 bg-white px-3 py-2.5 text-xs leading-relaxed text-slate-800">
+                              {last.content}
+                            </div>
+                          )}
+                          {interviewing && (
+                            <div className="flex items-center gap-2 text-xs text-indigo-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tl("Sto pensando…")}</div>
+                          )}
+                          {!interviewing && (chatTurns.length === 0 || last?.role === 'user') && (
+                            <button
+                              type="button"
+                              onClick={() => void askInterviewer(chatTurns)}
+                              className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700"
+                            >
+                              {tl("Riprova")}
+                            </button>
+                          )}
+                          {options.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {options.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() => void sendChatAnswer(option)}
+                                  className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:border-indigo-400"
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {confirming ? (
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => createAndGenerate(chatTurns)}
+                                  disabled={creating || generating || interviewing}
+                                  className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-transparent bg-[image:var(--selection-active-bg)] px-3 text-xs font-bold text-[var(--selection-active-text)] transition disabled:opacity-40"
+                                >
+                                  {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                                  {specBusy ? tl("Scrivo le specifiche…") : tl("Sì, parti")}
+                                </button>
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  value={chatInput}
+                                  onChange={(event) => setChatInput(event.target.value)}
+                                  onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatAnswer(chatInput) } }}
+                                  disabled={interviewing || creating}
+                                  placeholder={tl("Vuoi cambiare qualcosa? Scrivilo qui…")}
+                                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void sendChatAnswer(chatInput)}
+                                  disabled={interviewing || creating || !chatInput.trim()}
+                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
+                                >
+                                  {tl("Modifica")}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <input
+                                value={chatInput}
+                                onChange={(event) => setChatInput(event.target.value)}
+                                onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendChatAnswer(chatInput) } }}
+                                disabled={interviewing || creating}
+                                placeholder={tl("Rispondi con parole tue…")}
+                                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void sendChatAnswer(chatInput)}
+                                disabled={interviewing || creating || !chatInput.trim()}
+                                className="inline-flex h-9 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40"
+                              >
+                                {tl("Invia")}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

@@ -8,6 +8,9 @@ import { PodcastPanel } from '@/components/chat/PodcastPanel'
 import { TeachingProtocolPanel } from '@/components/chat/TeachingProtocolPanel'
 import { isProtocolRequest, protocolApi, type ProtocolMessage, type ProtocolState } from '@/lib/teachingProtocol'
 import { CalendarAgentCard } from '@/components/calendar/CalendarAgentCard'
+import { PlatformHandoffCard } from '@/components/chat/PlatformHandoffCard'
+import { HANDOFF_TARGETS, TEACHER_ONLY_TARGETS, isHandoffTarget, stashHandoff, type PlatformHandoff } from '@/lib/platformHandoff'
+import { useNavigate } from 'react-router-dom'
 import { calendarApi, type CalendarAgentState } from '@/lib/api'
 import { openCalendarAt } from '@/components/calendar/calendarUtils'
 import { publishRealtimeEvent } from '@/lib/realtimeEvents'
@@ -163,6 +166,7 @@ interface Message {
   podcast?: PodcastState
   protocol?: ProtocolState
   calendar?: CalendarAgentState
+  handoff?: PlatformHandoff
   timestamp: Date
   provider?: string
   model?: string
@@ -464,6 +468,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const navigate = useNavigate()
   const { isMobile } = useMobile()
   // True once "Apri in sidebar" has been clicked but the panel is still full-page (route hasn't
   // changed yet) — the dock only takes effect on the next navigation, so the button pulses green
@@ -483,7 +488,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   const [pendingUserMessage, setPendingUserMessage] = useState<Message | null>(null)
   const submissionRef = useRef<ChatSubmission | null>(null)
   const isBusy = isLoading || isSubmitting
-  const visibleMessages = messages.filter(message => message.role !== 'assistant' || message.content.trim() || message.attachments?.length || message.podcast || message.protocol || message.calendar)
+  const visibleMessages = messages.filter(message => message.role !== 'assistant' || message.content.trim() || message.attachments?.length || message.podcast || message.protocol || message.calendar || message.handoff)
   const displayedMessages = pendingUserMessage ? [...visibleMessages, pendingUserMessage] : visibleMessages
   const activeGenerationAbortRef = useRef<AbortController | null>(null)
   const lastEscapeKeyAtRef = useRef(0)
@@ -1004,6 +1009,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
             podcast: m.podcast,
             protocol: m.protocol,
             calendar: m.calendar || undefined,
+            handoff: m.handoff || undefined,
             attachments: attachmentsFromContentJson(m.attachments_json),
           }))
           const localMessageCount = cachedMessages?.length || 0
@@ -1080,6 +1086,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           podcast: m.podcast,
           protocol: m.protocol,
           calendar: m.calendar || undefined,
+          handoff: m.handoff || undefined,
           attachments: attachmentsFromContentJson(m.attachments_json),
         }))
         setMessages(prev => [...older, ...prev])
@@ -2255,6 +2262,50 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     } finally { if (submissionRef.current === request) { setIsLoading(false); setStreamingStatus(null) } }
   }
 
+  // Agentic hand-off: the request belongs to a platform section (Presentation Studio, Vibe Lab, ML Lab, notebooks...).
+  // The chat shows a first reading of it with an "open" card instead of improvising the artifact in the conversation.
+  const activeTeacherSessionId = () => {
+    try { return JSON.parse(localStorage.getItem('teacher_selected_session') || 'null')?.id ?? null } catch { return null }
+  }
+  const handoffBlocker = (handoff: PlatformHandoff) =>
+    handoff.needs_session && !activeTeacherSessionId() ? tl("Seleziona prima una sessione dalla barra in alto, poi riapri.") : undefined
+  const openHandoff = (handoff: PlatformHandoff) => {
+    if (!handoff.route) return
+    stashHandoff(handoff)
+    navigate(handoff.route)
+  }
+  const startHandoff = async (target: string, prompt: string, request: ChatSubmission) => {
+    request.controller.signal.throwIfAborted()
+    setIsLoading(true)
+    setStreamingStatus(tl('Preparo il passaggio alla sezione giusta…'))
+    try {
+      const convId = await ensureConversation(prompt, request.controller.signal)
+      if (!convId) throw new Error(tl('Non riesco ad aprire la conversazione. Riprova.'))
+      const { data } = await llmApi.handoff(target, prompt, {
+        conversationId: convId, recent: messages.slice(-4).map(m => ({ role: m.role, content: m.content })), signal: request.controller.signal,
+      })
+      request.controller.signal.throwIfAborted()
+      const now = new Date()
+      const newMessages: Message[] = [
+        data.user_message
+          ? { id: data.user_message.id, role: 'user', content: data.user_message.content, timestamp: new Date(data.user_message.created_at) }
+          : { id: request.message.id, role: 'user', content: prompt, timestamp: request.message.timestamp },
+        data.assistant_message
+          ? { id: data.assistant_message.id, role: 'assistant', content: data.assistant_message.content, handoff: data.assistant_message.handoff, timestamp: new Date(data.assistant_message.created_at) }
+          : { id: `handoff-a-${now.getTime()}`, role: 'assistant', content: data.content, handoff: data.handoff, timestamp: now },
+      ]
+      request.committed = true
+      setPendingUserMessage(null)
+      if (currentConversationId_ref.current === convId) setMessages(prev => [...prev, ...newMessages])
+      conversationCacheRef.current = { ...conversationCacheRef.current, [convId]: [...(conversationCacheRef.current[convId] || []), ...newMessages] }
+      setConversationCache(conversationCacheRef.current)
+    } catch (error: any) {
+      if (request.controller.signal.aborted) return
+      const detail = error?.response?.data?.detail
+      toast({ title: tl('Apertura sezione'), description: typeof detail === 'string' ? detail : tl('Non sono riuscito a preparare il passaggio. Riprova.'), variant: 'destructive' })
+    } finally { if (submissionRef.current === request) { setIsLoading(false); setStreamingStatus(null) } }
+  }
+
   // Transparent intent routing: in plain Chat mode, OpenAI Decisions picks the action (create / edit / ask / chat)
   // and the artifact it targets (image, slides, page, ...), using what already exists in the conversation.
   const handleSend = async (overrideInput?: string) => {
@@ -2310,7 +2361,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
         try {
           const response = await llmApi.decideTool(
             attachedFiles.length ? `${text}\nDocumenti allegati: ${attachedFiles.map(f => f.file.name).join(', ')}` : text,
-            ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol', 'calendar'],
+            ['image', 'presentation', 'brochure', 'dispensa', 'html_page', 'quiz', 'dataset', 'podcast', 'deep_research', 'teaching_protocol', 'calendar', ...HANDOFF_TARGETS, ...TEACHER_ONLY_TARGETS],
             collectRoutingArtifacts(),
             messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
             request.controller.signal,
@@ -2329,6 +2380,10 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
           }
           setStreamingStatus(tl('Preparo la risposta…'))
           if (data.tool === 'calendar') return await startCalendarAgent(text, request)
+          // New deck/document/lab project -> the section that does it. A deck built from attached files stays in the chat.
+          if (isHandoffTarget(data.tool) && data.action === 'create' && !(data.tool === 'presentation' && attachedFiles.length > 0)) {
+            return await startHandoff(data.tool, text, request)
+          }
           if (data.tool === 'podcast' && data.action === 'create') return await startPodcast(text, request)
           if (data.tool === 'teaching_protocol' && data.action === 'create') return await startProtocol(text, request)
           const intent = data.action === 'create' || data.action === 'edit' || data.action === 'ask_about' ? data.action : undefined
@@ -3954,6 +4009,7 @@ REGOLE IMPORTANTI:
                               )}
                               {msg.podcast && <PodcastPanel messageId={msg.id} state={msg.podcast} onUpdate={message => updatePodcastMessage(message)} />}
                               {msg.calendar && <CalendarAgentCard state={msg.calendar} />}
+                              {msg.handoff && <PlatformHandoffCard handoff={msg.handoff} onOpen={openHandoff} disabledReason={handoffBlocker(msg.handoff)} />}
                               {msg.protocol && <TeachingProtocolPanel messageId={msg.id} state={msg.protocol}
                                 onUpdate={message => updateProtocolMessage(message)}
                                 onPublishQuiz={data => { setPublishMode('draft'); setPublishModal({ isOpen: true, type: 'quiz', data }) }} />}

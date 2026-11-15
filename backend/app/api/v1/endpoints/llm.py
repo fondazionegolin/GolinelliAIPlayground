@@ -3618,6 +3618,29 @@ async def decide_chat_tool(
     return await decide_tool(request.text, request.allowed, request.artifacts[-8:], request.recent[-4:])
 
 
+class HandoffRequest(BaseModel):
+    target: str
+    prompt: str = Field(min_length=1, max_length=20000)
+    conversation_id: Optional[UUID] = None  # teacher chat conversation: the card is stored in it
+    recent: List[dict] = Field(default_factory=list)  # [{"role", "content"}]
+
+
+@router.post("/handoff")
+async def plan_platform_handoff(
+    request: HandoffRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Hand a chat request over to the platform section that does the job (editor, lab, studio).
+
+    Checks the destination is enabled for the caller (students: modules the teacher switched off are refused),
+    interprets the request and returns the card the chat shows with its "open" button.
+    """
+    from app.services.platform_handoff import plan_handoff
+    return await plan_handoff(db, auth, target=request.target, prompt=request.prompt,
+                              conversation_id=request.conversation_id, history=request.recent[-4:])
+
+
 @router.post("/generate-image")
 async def generate_image(
     request: dict,

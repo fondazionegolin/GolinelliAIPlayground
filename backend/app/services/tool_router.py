@@ -17,6 +17,7 @@ from typing import Optional, TypedDict
 import httpx
 
 from app.core.config import settings
+from app.services.platform_handoff import DESTINATIONS, router_choices
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,15 @@ ARTIFACTS = [
     {"value": "presentation", "description": "A slide deck / PowerPoint-style presentation."},
     {"value": "brochure", "description": "A brochure, flyer, leaflet or printable informational layout."},
     {"value": "dispensa", "description": "A structured handout / study-notes pack / course booklet (dispensa)."},
-    {"value": "html_page", "description": "An interactive web page, simulation, mini-app, game or interactive visualization."},
+    {"value": "html_page", "description": "A single self-contained interactive HTML page generated inside the chat: simulation, small mini-app, game or interactive visualization. Simple and quick; NOT a multi-part website or software project (that is vibe_lab)."},
     {"value": "quiz", "description": "A quiz or test with questions."},
     {"value": "dataset", "description": "A tabular dataset."},
 ]
 
+# Platform sections the chat hands the request over to (Presentation Studio, Vibe Lab, ML Lab, notebooks, ...).
+_handoff_choices = {c["value"]: c for c in [*router_choices("teacher"), *router_choices("student")]}
+ARTIFACTS.extend(c for c in _handoff_choices.values() if c["value"] not in {a["value"] for a in ARTIFACTS})
+HANDOFF_IDS = set(DESTINATIONS)  # includes "presentation": a new deck is handed to the Presentation Studio
 ARTIFACT_VALUES = {a["value"] for a in ARTIFACTS}
 ACTION_INSTRUCTIONS = (
     "What does the LAST user message want to do? Decide using the artifacts already present in the chat. "
@@ -61,7 +66,10 @@ ARTIFACT_INSTRUCTIONS = (
     "create a teacherbot, or produce multiple coordinated kinds of materials (such as quiz AND slides AND teacherbot). "
     "Writing a protocol document or discussing agentic behavior without asking to execute it is plain conversation. "
     "Choose calendar whenever the user wants events added, moved, repeated or removed in the calendar, a free slot found, "
-    "or the dates of an attached document put in the calendar. Use none for plain conversation."
+    "or the dates of an attached document put in the calendar. Use none for plain conversation. "
+    "When the user wants to START a project that is made in a dedicated platform section (a software project or website with several parts = vibe_lab; "
+    "a p5.js / python / micro:bit project; a machine-learning classifier of images, poses, gestures or facial expressions = ml_lab; a text document; a spreadsheet; "
+    "a 3D model; a dataflow; a whiteboard; a video; music; a live poll), choose that section with action create. A single simple interactive page, simulation or game is html_page."
 )
 
 
@@ -101,9 +109,16 @@ def fallback_tool_decision(text: str, allowed: Optional[list[str]], artifacts: l
         "image": r"\b(?:immagin[ei]|illustrazion[ei]|foto|image|picture)\b",
         "quiz": r"\b(?:quiz|verifica|questionario)\b",
         "dataset": r"\b(?:dataset|csv)\b",
+        "p5js_project": r"\bp5(?:\.?js)?\b",
+        "spreadsheet": r"\b(?:excel|fogli[oa]\s+di\s+calcolo|spreadsheet|tabella\s+excel)\b",
+        "document": r"\b(?:documento\s+(?:di\s+testo|word)|relazione|verbale|word\s+document)\b",
+        "vibe_lab": r"\b(?:sito\s+web|web\s*app|app\s+web|applicazione\s+web|website)\b",
+        "ml_lab": r"\b(?:classificatore|classifier|riconosc\w+\s+(?:de\w+\s+)?(?:immagin\w+|espression\w+|gest\w+|postur\w+))\b",
     }
     available = set(allowed) if allowed is not None else ARTIFACT_VALUES
     named = [kind for kind, pattern in patterns.items() if re.search(pattern, text, re.I)]
+    if "ml_lab" in named:
+        named = [kind for kind in named if kind != "image"]  # "classificatore di immagini" names the lab, not a picture to draw
     # Multiple materials and disallowed tools require the semantic router; don't guess.
     if len(named) > 1 or named and named[0] not in available:
         return _chat()
@@ -220,6 +235,9 @@ async def decide_tool(
             return fallback
         return _chat(action="chat", **info)
 
+    if artifact in HANDOFF_IDS and artifact != "presentation" and action != "create":
+        # Platform sections live outside the chat: there is no artifact here to edit or to ask about.
+        return _chat(action="chat", **info)
     if action in ("edit", "ask_about"):
         if artifact not in existing:
             # The named artifact does not exist: fall back to the most recent one, else treat as a fresh request.
