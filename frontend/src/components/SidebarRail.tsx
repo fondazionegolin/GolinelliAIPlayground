@@ -17,7 +17,7 @@ export function useSidebarCollapsed(storageKey: string): [boolean, (collapsed: b
 }
 
 const railButtonClass =
-  'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-[var(--ds-control-hover)] hover:text-slate-800'
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-[var(--ds-control-hover)] hover:text-slate-800'
 
 /** Header button that collapses an expanded sidebar into its rail. */
 export function SidebarCollapseButton({ onClick, label = tl("Comprimi pannello"), side = 'left' }: {
@@ -101,7 +101,7 @@ export function SidebarRail({
               title={item.title}
               aria-label={item.title}
               aria-current={item.selected ? 'true' : undefined}
-              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${item.selected
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${item.selected
                 ? 'bg-[image:var(--ds-choice-bg)] text-[var(--ds-choice-ink)] shadow-[var(--ds-shadow-1)]'
                 : 'text-slate-500 hover:bg-[var(--ds-control-hover)] hover:text-slate-800'}`}
             >

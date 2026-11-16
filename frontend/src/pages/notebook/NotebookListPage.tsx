@@ -436,6 +436,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
         ) : (
           <>
             <ReadyTemplateGallery templates={READY_TEMPLATES} isEnglish={isEnglish} onCreate={handleCreateFromTemplate} isPending={createMutation.isPending} open={templatesOpen} onToggle={() => setTemplatesOpen(value => !value)} className="mb-8" />
+            <div className={visibleCount > 0 ? 'ds-well [&>section:last-child]:mb-0' : ''}>
             {PROJECT_ORDER.map((type) => filtered[type as 'p5js' | 'python' | 'microbit'].length > 0 && (
               <Section
                 key={type}
@@ -448,6 +449,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
                 isDeleting={deleteMutation.isPending}
               />
             ))}
+            </div>
             {search && visibleCount === 0 && (
               <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-10 text-center">
                 <p className="text-sm font-semibold text-slate-700">{isEnglish ? `No project matches "${search}"` : `Nessun progetto corrisponde a "${search}"`}</p>

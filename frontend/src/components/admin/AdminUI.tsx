@@ -21,11 +21,11 @@ export function AdminPageHeader({
   actions?: ReactNode
 }) {
   return (
-    <header className="admin-page-header flex flex-col gap-5 pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header className="admin-page-header flex flex-col gap-3 pb-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && <p className="admin-eyebrow mb-1">{eyebrow}</p>}
-        <h1 className="text-[1.375rem] font-semibold leading-tight tracking-tight text-[var(--admin-ink)]">{title}</h1>
-        {description && <p className="mt-2 text-sm leading-6 text-[var(--admin-ink-2)]">{description}</p>}
+        <h1 className="text-lg font-semibold leading-tight tracking-tight text-[var(--admin-ink)]">{title}</h1>
+        {description && <p className="mt-1 text-[13px] leading-5 text-[var(--admin-ink-2)]">{description}</p>}
       </div>
       {actions && <div className="flex flex-shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
@@ -57,8 +57,8 @@ export function AdminStat({
       </div>
       <div
         className={cn(
-          'mt-2 text-2xl font-semibold tracking-tight',
-          tone === 'warning' ? 'text-amber-700' : tone === 'danger' ? 'text-red-700' : 'text-[var(--admin-ink)]',
+          'mt-1 text-xl font-semibold tracking-tight',
+          tone === 'warning' ? 'text-amber-700 dark:text-amber-300' : tone === 'danger' ? 'text-red-700 dark:text-red-300' : 'text-[var(--admin-ink)]',
         )}
       >
         {value}
@@ -97,7 +97,7 @@ export function AdminSection({
           {actions && <div className="flex flex-shrink-0 items-center gap-2">{actions}</div>}
         </div>
       )}
-      <div className={cn(flush ? '' : 'p-4', bodyClassName)}>{children}</div>
+      <div className={cn(flush ? '' : 'p-3', bodyClassName)}>{children}</div>
     </section>
   )
 }

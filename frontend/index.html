@@ -11,7 +11,7 @@
       // the server profile preference is re-applied by useUiThemeScope once loaded).
       (function () {
         try {
-          if (/^\/(teacher|student)(\/|$)/.test(location.pathname) && localStorage.getItem('ui_theme') === 'dark') {
+          if (/^\/(teacher|student|admin)(\/|$)/.test(location.pathname) && localStorage.getItem('ui_theme') === 'dark') {
             document.documentElement.classList.add('dark');
             document.documentElement.style.colorScheme = 'dark';
           }

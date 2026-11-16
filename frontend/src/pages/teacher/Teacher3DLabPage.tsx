@@ -770,7 +770,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="ds-well grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {assets.map(a => {
                   const as = S[a.mode] ?? S.txt23d
                   const isViewing = viewingAsset?.id === a.id
@@ -778,7 +778,7 @@ export function MeshyLab({ sessionId, student = false }: Props) {
                     <motion.div
                       key={a.id}
                       whileHover={{ y: -2 }}
-                      className={`mobile-card-standard group relative flex flex-col overflow-hidden rounded-[24px] border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
+                      className={`ds-well-tile mobile-card-standard group relative flex flex-col overflow-hidden rounded-[24px] border-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
                         isViewing
                           ? `${as.selCard}`
                           : `${as.card}`

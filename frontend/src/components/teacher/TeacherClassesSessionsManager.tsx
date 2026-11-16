@@ -232,7 +232,7 @@ export default function TeacherClassesSessionsManager({
   })
   const allClassSessionsLoaded = classSessionQueries.every((query) => !query.isLoading)
 
-  // First open: expand the class from the URL plus every class with a live session (fallback: the first class).
+  // First open: expand only the class of the session the teacher is currently in (plus the one from the URL); all others start closed.
   useEffect(() => {
     if (expandedClassIds || isMobile || !classes.length || !allClassSessionsLoaded) return
     const initial = new Set<string>()
@@ -241,10 +241,6 @@ export default function TeacherClassesSessionsManager({
     classes.forEach((cls) => {
       if (currentSession?.id && sessionsByClass.get(cls.id)?.data.some((session) => session.id === currentSession.id)) initial.add(cls.id)
     })
-    classes.forEach((cls) => {
-      if (sessionsByClass.get(cls.id)?.data.some((session) => session.status === 'active' && !session.deleted_at)) initial.add(cls.id)
-    })
-    if (!initial.size) initial.add(classes[0].id)
     setExpandedClassIds(initial)
   }, [allClassSessionsLoaded, classes, currentSession?.id, expandedClassIds, isMobile, searchParams, sessionsByClass])
 
@@ -537,7 +533,7 @@ export default function TeacherClassesSessionsManager({
                 <p className="mt-1 text-sm text-slate-500">{classes.length ? (isEnglish ? 'Try another search.' : 'Prova con un’altra ricerca.') : t('classes.empty_body')}</p>
               </div>
             ) : (
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="ds-well mt-3 grid grid-cols-2 gap-3">
                 {filteredClasses.map((cls, index) => (
                   <button
                     key={cls.id}
@@ -631,7 +627,7 @@ export default function TeacherClassesSessionsManager({
                 <p className="mt-1 text-sm text-slate-500">{isEnglish ? 'Create a session or change your search.' : 'Crea una sessione o modifica la ricerca.'}</p>
               </div>
             ) : (
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="ds-well mt-3 grid grid-cols-2 gap-3">
                 {filteredOrderedSessions.map((session) => {
                   const isActive = session.status === 'active'
                   const isPaused = session.status === 'paused'

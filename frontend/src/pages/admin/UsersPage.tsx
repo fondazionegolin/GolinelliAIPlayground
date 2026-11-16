@@ -690,13 +690,13 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows.map((r) => ({ ...r, teacher_cost: toCredits(r.teacher_cost), student_cost: toCredits(r.student_cost) }))}>
-                  <CartesianGrid stroke="#eceef1" vertical={false} />
+                  <CartesianGrid stroke="var(--admin-line)" vertical={false} />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value: number) => `${formatCreditAmount(Number(value || 0))} cr.`} />
                   <Legend />
-                  <Line type="monotone" dataKey="teacher_cost" stroke="#17151b" strokeWidth={2} dot={false} name="Docenti (crediti)" />
-                  <Line type="monotone" dataKey="student_cost" stroke="#7b69c9" strokeWidth={2} dot={false} name="Studenti (crediti)" />
+                  <Line type="monotone" dataKey="teacher_cost" stroke="var(--admin-ink)" strokeWidth={2} dot={false} name="Docenti (crediti)" />
+                  <Line type="monotone" dataKey="student_cost" stroke="var(--admin-accent)" strokeWidth={2} dot={false} name="Studenti (crediti)" />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -728,14 +728,14 @@ export default function CostsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows}>
-                  <CartesianGrid stroke="#eceef1" vertical={false} />
+                  <CartesianGrid stroke="var(--admin-line)" vertical={false} />
                   <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value: number) => numberFormatter.format(Number(value || 0))} />
                   <Legend />
-                  <Line yAxisId="left" type="monotone" dataKey="active_users" stroke="#17151b" strokeWidth={2} dot={false} name="Utenti" />
-                  <Line yAxisId="left" type="monotone" dataKey="active_students" stroke="#7b69c9" strokeWidth={2} dot={false} name="Studenti" />
+                  <Line yAxisId="left" type="monotone" dataKey="active_users" stroke="var(--admin-ink)" strokeWidth={2} dot={false} name="Utenti" />
+                  <Line yAxisId="left" type="monotone" dataKey="active_students" stroke="var(--admin-accent)" strokeWidth={2} dot={false} name="Studenti" />
                   <Line yAxisId="right" type="monotone" dataKey="total_tokens" stroke="#9aa0aa" strokeDasharray="4 3" strokeWidth={2} dot={false} name="Token" />
                   <Line yAxisId="right" type="monotone" dataKey="api_calls" stroke="#c4b9ef" strokeWidth={2} dot={false} name="Chiamate" />
                 </LineChart>

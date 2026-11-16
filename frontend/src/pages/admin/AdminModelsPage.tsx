@@ -496,7 +496,7 @@ export default function AdminModelsPage() {
                 <div key={m.id} className="grid grid-cols-[1.25rem_minmax(0,14rem)_1fr_auto] items-center gap-2 text-xs">
                   <span className="font-semibold tabular-nums text-slate-400">{index + 1}</span>
                   <span className="truncate font-semibold text-slate-800" title={m.model_id}>{m.display_name}</span>
-                  <span className="h-1.5 overflow-hidden rounded-full bg-[#eceef1]"><span className="block h-full rounded-full bg-[var(--admin-accent)]" style={{ width: `${Math.max(4, (m.value_score! / bestValue) * 100)}%` }} /></span>
+                  <span className="h-1.5 overflow-hidden rounded-full bg-[var(--admin-track)]"><span className="block h-full rounded-full bg-[var(--admin-accent)]" style={{ width: `${Math.max(4, (m.value_score! / bestValue) * 100)}%` }} /></span>
                   <span className="whitespace-nowrap text-[11px] text-slate-500">Q{m.quality_score} · {cr(m.blended_usd)}/1M · <b className="text-slate-900">{m.value_score}</b></span>
                 </div>
               ))}

@@ -1627,11 +1627,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 {!readOnlyCatalog && (
                 <div className={headerCollapsed ? 'hidden' : 'grid grid-rows-[1fr]'}>
                   <div className="overflow-hidden">
-                  <div className="mx-auto mt-5 grid w-full max-w-4xl grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  <div className="mx-auto mt-5 grid w-full max-w-4xl grid-cols-2 gap-2.5 sm:grid-cols-4">
                     <button
                       type="button"
                       onClick={createNewDocument}
-                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
+                      className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm"><FileText className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
@@ -1642,7 +1642,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     <button
                       type="button"
                       onClick={() => setShowPresentationStudio(true)}
-                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-violet-200/80 bg-violet-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
+                      className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-violet-200/80 bg-violet-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5">
@@ -1650,7 +1650,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Create slides.' : 'Crea slide.'}</span>
                       </span>
                     </button>
-                    <button type="button" onClick={createNewSheet} className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
+                    <button type="button" onClick={createNewSheet} className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
                       <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">{isEnglishUi ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
                     </button>
@@ -1658,7 +1658,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       type="button"
                       disabled={documentImporting}
                       onClick={() => documentFileInputRef.current?.click()}
-                      className="mobile-card-standard group flex flex-col justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60 md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
+                      className="group flex min-h-[7.5rem] flex-col justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60 md:min-h-[76px] md:flex-row md:justify-start md:rounded-xl"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
                       <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 hidden text-[11px] leading-4 text-slate-500 md:block">PDF · PPT · DOC · XLS · CSV</span></span>
@@ -1700,6 +1700,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 </div>
               )}
 
+              <div className={(filteredDrafts.length > 0 || filteredSubmitted.length > 0 || filteredLessons.length > 0) ? 'ds-well space-y-7' : ''}>
               {filteredDrafts.length > 0 && (
                 <section>
                   <div className="mb-3 flex items-center justify-between">
@@ -1711,7 +1712,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <div
                         key={doc.id}
                         onClick={() => void loadDraft(doc)}
-                        className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                        className={`ds-well-tile group relative cursor-pointer overflow-hidden !border-0 transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                       >
                         {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
@@ -1747,7 +1748,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                          className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
+                          className={`ds-well-tile group relative cursor-pointer overflow-hidden !border-0 transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? `flex flex-col rounded-2xl bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] ${hasCorrection ? 'border-amber-300' : 'border-slate-200/80 hover:border-slate-300'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
                           {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
@@ -1774,7 +1775,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div
                     key={doc.id}
                     onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
-                    className={`group relative cursor-pointer overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
+                    className={`ds-well-tile group relative cursor-pointer overflow-hidden !border-0 transition-all hover:-translate-y-0.5 hover:shadow-md ${isCatalogGrid ? 'flex flex-col rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(23,23,23,0.55)] hover:border-slate-300' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 shadow-sm ${docCardStyle(doc.type)}`}`}
                   >
                     {isCatalogGrid && <DocumentThumbnail className="w-full shrink-0" contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {!readOnlyCatalog && <DuplicateDocumentButton title={doc.title} onDuplicate={() => editAsCopy(doc, false)}
@@ -1798,6 +1799,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   </section>
                 )
               })()}
+              </div>
             </div>
           </div>
           {documentDragActive && !readOnlyCatalog && (

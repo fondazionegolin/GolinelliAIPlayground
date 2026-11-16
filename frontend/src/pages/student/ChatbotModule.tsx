@@ -25,7 +25,7 @@ import {
   Send, Bot, User, GraduationCap, BookOpen, Plus,
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
-  Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
+  Trash2, ChevronLeft, ChevronRight, Wand2, Home, Palette, ChevronDown, Check, ImageIcon,
   FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Youtube, Globe, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, LayoutGrid, List, Settings, type LucideIcon
 } from '@/components/icons'
 import ReactMarkdown from 'react-markdown'
@@ -147,7 +147,9 @@ interface ChatbotModuleProps {
   sidebarMode?: boolean
   dockArmed?: boolean
   /** Opens a student dashboard module (agentic hand-off from the chat to Vibe Lab, ML Lab, ...). */
-  onOpenModule?: (module: string) => void
+  onOpenModule?: (module: string | null) => void
+  /** Student mobile only: which of the three chat menus is open (clean tutor chat, studentbots, teacherbots). */
+  mobileSection?: 'tutor' | 'studentbots' | 'teacherbots'
 }
 
 // Semantic colour is kept on the small affordances; the card itself uses the
@@ -552,7 +554,7 @@ function TeacherbotAvatarIcon({ bot, uiLanguage, className }: { bot: Teacherbot;
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false, onOpenModule }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false, onOpenModule, mobileSection }: ChatbotModuleProps) {
   const { t, i18n } = useTranslation()
   const { active: dropActive, dropHighlightProps } = useFileDropHighlight()
   // True once "Apri in sidebar" has been clicked but the panel is still full-page — the dock only
@@ -2545,6 +2547,74 @@ REGOLE IMPORTANTI:
     void handleSelectProfile(entry.key)
   }, [sidebarMode, isMobile, isTeacherPreview, initialTeacherbotId, oggiImparoContext, selectedProfile, selectedTeacherbot, activeSharedRoom, learningMode, mainTab, profilesData, conversationsData, profiles, handleSelectProfile])
 
+  // Student mobile: each of the three menus (Tutor AI / Studentbot / Teacherbot) opens its own clean screen.
+  // Tutor AI lands directly in a new tutor chat; the bot menus show only their own list.
+  const mobileSectionAppliedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isMobile || sidebarMode || isTeacherPreview || !mobileSection) return
+    if (mobileSectionAppliedRef.current === mobileSection) return
+    // Notification / "Oggi imparo" deep links keep their own flow.
+    if (initialTeacherbotId || oggiImparoContext) {
+      mobileSectionAppliedRef.current = mobileSection
+      if (mobileSection !== 'tutor') setMainTab('teacherbots')
+      return
+    }
+    if (mobileSection === 'tutor') {
+      if (!profilesData) return
+      const entry = profiles.find((p) => p.key === 'tutor') ?? profiles[0]
+      if (!entry) return
+      mobileSectionAppliedRef.current = mobileSection
+      void handleSelectProfile(entry.key).then(() => handleStartNewConversation())
+      return
+    }
+    mobileSectionAppliedRef.current = mobileSection
+    void handleNewChat().then(() => setMainTab(mobileSection === 'studentbots' ? 'studentbots' : 'teacherbots'))
+  }, [isMobile, sidebarMode, isTeacherPreview, mobileSection, initialTeacherbotId, oggiImparoContext, profilesData, profiles, handleSelectProfile, handleStartNewConversation, handleNewChat])
+
+  // Left drawer of the mobile tutor chat: new chat, history, assistants and the other two menus.
+  const renderMobileTutorDrawer = (close: () => void) => {
+    const currentKey = selectedTeacherbot ? `teacherbot-${selectedTeacherbot.id}` : (selectedProfile || 'tutor')
+    const history = conversations.filter((c) => c.profile_key === currentKey)
+    const itemClass = (active: boolean) => `flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left text-sm font-bold transition active:scale-[0.98] ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'bg-[var(--ds-field-bg)] text-slate-700'}`
+    return (
+      <>
+        <div className="flex items-center justify-between px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
+          <span className="text-base font-black text-slate-900">{tl("Tutor AI")}</span>
+          <button type="button" onClick={close} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ds-field-bg)] text-slate-700" aria-label={tl("Chiudi menu")}><X className="h-5 w-5" /></button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+          <button type="button" className={itemClass(false)} onClick={() => { close(); handleStartNewConversation() }}><Plus className="h-5 w-5 shrink-0" />{tl("Nuova chat")}</button>
+          <section className="space-y-1.5">
+            <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Assistenti")}</p>
+            {profiles.map((profile) => (
+              <button key={profile.key} type="button" className={itemClass(!selectedTeacherbot && selectedProfile === profile.key)} onClick={() => { close(); void handleSelectProfile(profile.key).then(() => handleStartNewConversation()) }}>
+                <span className="shrink-0">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</span><span className="truncate">{profile.name}</span>
+              </button>
+            ))}
+          </section>
+          <section className="space-y-1.5">
+            <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Altri bot")}</p>
+            <button type="button" className={itemClass(false)} onClick={() => { close(); onOpenModule?.('chatbot_studentbots') }}><Sparkles className="h-5 w-5 shrink-0" />Studentbot</button>
+            <button type="button" className={itemClass(false)} onClick={() => { close(); onOpenModule?.('chatbot_teacherbots') }}><Wand2 className="h-5 w-5 shrink-0" />Teacherbot</button>
+          </section>
+          {history.length > 0 && (
+            <section className="space-y-1.5">
+              <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-400">{tl("Conversazioni")}</p>
+              {history.map((conv) => (
+                <button key={conv.id} type="button" className={itemClass(conv.id === conversationId || conv.id === teacherbotConversationId)} onClick={() => { close(); void loadConversation(conv.id, conv.profile_key.startsWith('teacherbot-')) }}>
+                  <MessageSquare className="h-4 w-4 shrink-0 opacity-60" /><span className="truncate">{conv.title || tl("Nuova chat")}</span>
+                </button>
+              ))}
+            </section>
+          )}
+        </div>
+        <div className="border-t border-slate-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <button type="button" className={itemClass(false)} onClick={() => { close(); onOpenModule?.(null) }}><Home className="h-5 w-5 shrink-0" />Home</button>
+        </div>
+      </>
+    )
+  }
+
   // Mobile: Profile selection screen
   if (isMobile && mobileView === 'profiles') {
     const BOT_SURFACES_MOB: Record<string, { bg: string; icon: string; text: string }> = {
@@ -2583,12 +2653,17 @@ REGOLE IMPORTANTI:
     return (
       <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-neutral-50))' }}>
         {/* Tab nav */}
+        {mobileSection ? (
+          <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+            {mobileSection === 'studentbots' ? <Sparkles className="h-5 w-5 text-slate-700" /> : <Wand2 className="h-5 w-5 text-slate-700" />}
+            <h2 className="text-base font-black text-slate-900">{mobileSection === 'studentbots' ? 'Studentbot' : 'Teacherbot'}</h2>
+          </div>
+        ) : (
         <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 scrollbar-none" aria-label={tl("Sezioni Tutor AI")}>
           {([
             { key: 'assistants' as const, label: tl("Assistenti AI"), icon: <Bot className="h-3.5 w-3.5" /> },
             { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3.5 w-3.5" />, badge: availableTeacherbots.length },
             { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3.5 w-3.5" />, badge: studentbotsData.length },
-            { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3.5 w-3.5" /> },
           ]).map(({ key, label, icon, badge }) => (
             <button key={key} type="button" onClick={() => setMainTab(key)}
               className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-black transition-colors ${
@@ -2604,8 +2679,9 @@ REGOLE IMPORTANTI:
             </button>
           ))}
         </nav>
+        )}
 
-        <div className="flex-1 overflow-y-auto px-3 pb-20">
+        <div className="flex-1 overflow-y-auto px-3 pb-20 pt-3">
           {/* Mobile: Assistenti AI — square tiles, same shape as Home/Documents cards */}
           {mainTab === 'assistants' && (
             <div className="grid grid-cols-2 gap-3">
@@ -2878,6 +2954,7 @@ REGOLE IMPORTANTI:
         isLoading={isGeneratingResponse}
         suggestedPrompts={currentProfile?.suggested_prompts}
         onMinimize={(onMinimize || onClose) ? handleDockOrClose : undefined}
+        leftDrawer={mobileSection === 'tutor' ? renderMobileTutorDrawer : undefined}
       />
     )
   }
@@ -3994,6 +4071,7 @@ REGOLE IMPORTANTI:
                       <button type="button" onClick={() => setLibraryViewMode('list')} aria-pressed={libraryViewMode === 'list'} title={tl("Vista elenco")} className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${libraryViewMode === 'list' ? 'ui-segment-active' : 'text-slate-400 hover:text-slate-600'}`}><List className="h-4 w-4" /></button>
                     </div>
                   </div>
+                  <div className="ds-well">
                   {librarySection === 'favorites' && (
                   <section className="mb-7">
                     <div className="mb-3 flex items-center justify-between gap-3">
@@ -4023,7 +4101,7 @@ REGOLE IMPORTANTI:
                                   handleSelectProfile(item.profileKey)
                                 }
                               }}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {item.icon}
@@ -4063,7 +4141,7 @@ REGOLE IMPORTANTI:
                               key={profile.key}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectProfile(profile.key)}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
@@ -4104,7 +4182,7 @@ REGOLE IMPORTANTI:
                               key={bot.id}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectTeacherbot(bot)}
-                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
+                              className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
@@ -4134,7 +4212,7 @@ REGOLE IMPORTANTI:
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setStudentbotEditorTarget('create')}
-                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Plus className="h-5 w-5" /></div>
                         <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>{tl("Nuovo")}</span>
@@ -4145,7 +4223,7 @@ REGOLE IMPORTANTI:
                       {filteredStudentbots.map((bot) => {
                         const available = availableStudentbots.find((item) => item.id === bot.id)
                         return (
-                          <div key={bot.id} className={`group relative overflow-hidden border text-left shadow-sm ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
+                          <div key={bot.id} className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
                             <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={tl("Apri {0}", bot.name)} />
                             <div className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm pointer-events-none ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Sparkles className="h-5 w-5" /></div>
                             <span className={`${libraryViewMode === 'grid' ? 'absolute right-3 top-3' : 'col-start-3 row-span-2 row-start-1 self-center'} z-20 flex gap-1`}>
@@ -4175,7 +4253,7 @@ REGOLE IMPORTANTI:
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={createAndOpenRagSession}
-                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
                         <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                           <Plus className="h-5 w-5" />
@@ -4188,7 +4266,7 @@ REGOLE IMPORTANTI:
                           key={ragSession.id}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => openRagSession(ragSession)}
-                          className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                          className={`ds-well-tile group relative overflow-hidden border-0 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'aspect-square rounded-[18px] p-3 md:aspect-auto md:min-h-[112px]' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                         >
                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                             <Database className="h-5 w-5" />
@@ -4205,6 +4283,7 @@ REGOLE IMPORTANTI:
                     </div>
                   </section>
                   )}
+                  </div>
                 </div>
               </div>
             </div>

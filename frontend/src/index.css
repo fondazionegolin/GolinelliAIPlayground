@@ -1238,3 +1238,14 @@ input[type='range']:not([data-field-appearance='plain']):disabled { opacity: 0.4
   .ds-media-button { transition: none; }
   .ds-media-button:hover, .ds-media-button:active { transform: none; }
 }
+
+/* Mobile browsers: 100vh includes the collapsing address bar and pushes bottom controls (composer, send,
+   action bars) out of view. Use the dynamic viewport height wherever the browser supports it. */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh; }
+  .min-h-screen { min-height: 100dvh; }
+  .max-h-screen { max-height: 100dvh; }
+}
+
+/* Never let a stray wide element create a horizontal page scroll on phones and narrow windows. */
+html, body { overflow-x: clip; }

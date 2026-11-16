@@ -12,7 +12,7 @@ import { useVoiceLabQuote } from './useVoiceLabQuote'
 import { AudioCover } from './AudioCover'
 
 /** Closing the popup only stops polling: the server job continues and is recovered on reopening. */
-export function NavbarMusicComposer({ onPlay }: { onPlay: (item: LabItem) => void }) {
+export function NavbarMusicComposer({ onPlay, onGenerated }: { onPlay: (item: LabItem) => void; onGenerated?: (item: LabItem) => void }) {
   const [prompt, setPrompt] = useState(''), [seconds, setSeconds] = useState(30)
   const [aiCover, setAiCover] = useState(true)
   const [pending, setPending] = useState(true), [job, setJob] = useState<BackgroundJob | null>(null)
@@ -37,6 +37,7 @@ export function NavbarMusicComposer({ onPlay }: { onPlay: (item: LabItem) => voi
     const item = finished.result?.item as LabItem | undefined
     if (finished.status !== 'succeeded' || !item) throw new Error(finished.error || tl('La generazione non è stata completata.'))
     setResult(item)
+    onGenerated?.(item)
     for (const key of ['voice-lab-items', 'audio-files', 'drive', 'credit-balance']) void qc.invalidateQueries({ queryKey: [key] })
     void jobsApi.markSeen([id])
     toast({ title: tl('Brano salvato nella libreria e nei Files') })

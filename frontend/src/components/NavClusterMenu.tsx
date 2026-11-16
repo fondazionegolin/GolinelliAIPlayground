@@ -131,24 +131,24 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
       ref={panelRef}
       role="menu"
       aria-label={cluster.label}
-      className={`ds-popover rounded-[var(--ds-radius-panel)] p-1.5 ${wide ? 'max-h-[calc(100dvh-5.5rem)] overflow-y-auto ' : ''}${wide ? 'w-[min(860px,calc(100vw-2rem))]' : 'w-80'} ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
+      className={`ds-popover ds-nav-menu rounded-[var(--ds-radius-panel)] p-3 ${wide ? 'max-h-[calc(100dvh-5.5rem)] overflow-y-auto ' : ''}${wide ? 'w-[min(860px,calc(100vw-2rem))]' : 'w-80'} ${side ? 'nav-cluster-unroll-side' : 'nav-cluster-unroll'}`}
     >
       {wide ? (
-        <div className="flex flex-col divide-y divide-slate-200/60">
+        <div className="flex flex-col gap-3">
           {cluster.items.map((item, index) => {
             const active = isNavPathActive(pathname, item.path)
             const spec = item.recents
             const entries = spec?.entries ?? results[index]?.data ?? []
             return (
-              <div key={item.path} style={{ animationDelay: `${60 + index * 35}ms` }} className="nav-cluster-item grid min-h-[5.5rem] grid-cols-[minmax(0,1fr)_15rem] items-center gap-x-6 px-2 py-2">
+              <div key={item.path} style={{ animationDelay: `${60 + index * 35}ms` }} className="nav-cluster-item ds-nav-menu-row grid min-h-[6.5rem] grid-cols-[minmax(0,1fr)_15rem] items-center gap-x-6 p-3">
                 <Link
                   to={item.path}
                   role="menuitem"
                   onClick={onPick}
-                  className={`group/item -mx-2 -my-1 block rounded-[var(--ds-radius-control)] px-2 py-1 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)] focus-visible:bg-[var(--ds-control-hover)]'}`}
+                  className={`group/item flex h-full min-w-0 items-center rounded-[var(--ds-radius-control)] px-2 py-1 outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)] focus-visible:bg-[var(--ds-control-hover)]'}`}
                 >
-                  <span className="flex items-center gap-3">
-                    <NavSectionArt path={item.path} className="h-[68px] w-[68px] shrink-0" />
+                  <span className="flex w-full items-center gap-4">
+                    <NavSectionArt path={item.path} variant="menu" className="h-[68px] w-[68px]" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-emphasis text-[16px] font-extrabold leading-tight tracking-tight">{item.label}</span>
@@ -169,7 +169,7 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
       ) : (
         <>
           <p className="px-3 pb-1.5 pt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{cluster.label}</p>
-          <div className="flex max-h-[calc(100dvh-6rem)] flex-col gap-0.5 overflow-y-auto">
+          <div className="flex max-h-[calc(100dvh-6rem)] flex-col gap-3 overflow-y-auto">
             {cluster.items.map((item, index) => {
               const Icon = item.icon
               const active = isNavPathActive(pathname, item.path)
@@ -180,12 +180,12 @@ function ClusterPanel({ cluster, pathname, onPick, side = false, panelRef }: {
                   role="menuitem"
                   onClick={onPick}
                   style={{ animationDelay: `${60 + index * 35}ms` }}
-                  className={`nav-cluster-item group/item flex items-center gap-2.5 rounded-[var(--ds-radius-control)] px-2 py-1 text-left outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active
+                  className={`nav-cluster-item ds-nav-menu-row group/item flex items-center gap-4 px-3 py-3 text-left outline-none transition-colors focus-visible:shadow-[var(--ds-shadow-focus)] ${active
                     ? 'ds-selected'
                     : 'text-slate-700 hover:bg-[var(--ds-control-hover)] hover:text-[var(--selection-text)] focus-visible:bg-[var(--ds-control-hover)]'}`}
                 >
                   {hasSectionArt(item.path) ? (
-                    <NavSectionArt path={item.path} className="h-[52px] w-[52px]" />
+                    <NavSectionArt path={item.path} variant="menu" className="h-[52px] w-[52px]" />
                   ) : (
                     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-white/80 shadow-[var(--ds-shadow-1)]' : 'ds-control'}`}>
                       <Icon className="h-4 w-4" />
@@ -309,7 +309,7 @@ export function NavClusterRail({ clusters }: { clusters: NavCluster[] }) {
         const active = clusterIsActive(pathname, cluster)
         const single = cluster.items.length === 1 ? cluster.items[0] : null
         const open = openId === cluster.id
-        const buttonClass = `relative flex w-full flex-col items-center gap-1 rounded-[var(--ds-radius-control)] px-1 py-2 transition-[background-color,box-shadow,color] duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${active
+        const buttonClass = `relative flex w-full flex-col items-center gap-1 rounded-[1.5rem] px-1 py-2.5 transition-[background-color,box-shadow,color] duration-150 focus-visible:outline-none focus-visible:shadow-[var(--ds-shadow-focus)] ${active
           ? 'ds-selected'
           : open
             ? 'bg-[var(--ds-control-hover)] text-[var(--selection-text)] shadow-[var(--ds-shadow-1)]'

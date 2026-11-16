@@ -425,13 +425,13 @@ function TaskSection({ title, subtitle, tasks, viewMode, draftTaskIds, accentCol
           {emptyMessage}
         </div>
       ) : viewMode === 'list' ? (
-        <div className="space-y-2">
+        <div className="ds-well space-y-2">
           {tasks.map(task => (
             <TaskRow key={task.id} task={task} hasDraft={draftTaskIds.has(task.id)} onClick={() => openTask(task)} />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="ds-well grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {tasks.map(task => (
             <TaskCard
               key={task.id}

@@ -603,23 +603,39 @@ function TeacherMobileNavigation({
       {open && (
         <div className="fixed inset-0 z-[80]">
           <button className="absolute inset-0 bg-slate-950/45" onClick={() => setOpen(false)} aria-label={tl("Chiudi menu")} />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-              <div className="flex items-center gap-3"><LogoMark className="h-11 w-11 shrink-0" /><div><span className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: accentColor }}>Golinelli.ai</span><p className="mt-1 text-lg font-black text-slate-950">{teacherName || t('teacher_dashboard.mobile_teacher_default')}</p><p className="text-xs font-medium text-slate-400">{tl("Area docente")}</p></div></div>
-              <button type="button" onClick={() => setOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700" aria-label={tl("Chiudi menu")}><X className="h-5 w-5" /></button>
+          <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] shadow-2xl">
+            {/* Same drawer look as the student app: logo header, big tile buttons, feedback / logout at the bottom. */}
+            <div className="mb-6 flex items-center gap-3 px-1">
+              <LogoMark className="h-11 w-11" />
+              <div className="min-w-0 flex-1">
+                <div className="brand-wordmark text-lg">Golinelli<span className="brand-wordmark-ai">.ai</span></div>
+                <p className="truncate text-xs font-semibold text-slate-500">{teacherName || t('teacher_dashboard.mobile_teacher_default')}</p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700" aria-label={tl("Chiudi menu")}><X className="h-5 w-5" /></button>
             </div>
-            <nav className="flex-1 overflow-y-auto p-3">
+            <nav className="flex-1 space-y-2 overflow-y-auto" aria-label={tl("Area docente")}>
               {items.map(({ path, label, icon: Icon, exact }) => {
                 const active = exact ? isHome : currentPath.startsWith(path)
-                return <Link key={path} to={path} onClick={() => setOpen(false)} className={`mb-1 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)]' : 'text-slate-600 active:bg-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span><ChevronRight className="h-4 w-4 opacity-50" /></Link>
+                return (
+                  <Link
+                    key={path}
+                    to={path}
+                    onClick={() => setOpen(false)}
+                    className={`flex min-h-[64px] w-full items-center gap-4 rounded-[20px] px-4 py-3 text-left transition active:scale-[0.98] ${active ? 'border border-transparent bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-lg' : 'bg-slate-50 text-slate-800'}`}
+                  >
+                    <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${active ? 'bg-white/15' : 'bg-white text-sky-700 shadow-sm'}`}><Icon className="h-5 w-5" /></span>
+                    <span className="min-w-0 flex-1 truncate text-[15px] font-extrabold">{label}</span>
+                    <ChevronRight className="h-5 w-5 opacity-40" />
+                  </Link>
+                )
               })}
             </nav>
-            <div className="border-t border-slate-100 py-1">
+            <div className="py-1">
               <ThemeToggleMenuItem persist={(ui_theme) => teacherApi.updateProfile({ ui_theme })} />
             </div>
-            <div className="flex items-center gap-2 border-t border-slate-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-50 px-4 py-3.5 text-sm font-black text-orange-600"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
-              <button type="button" onClick={onLogout} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-black text-red-600"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
+            <div className="mt-2 flex items-center gap-2">
+              <button type="button" onClick={() => { setOpen(false); onOpenFeedback() }} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-orange-50 font-bold text-orange-600 active:scale-[0.98]"><MessageSquarePlus className="h-5 w-5" />Feedback</button>
+              <button type="button" onClick={onLogout} className="flex min-h-[56px] flex-1 items-center justify-center gap-2 rounded-[20px] bg-rose-50 font-bold text-rose-700 active:scale-[0.98]"><LogOut className="h-5 w-5" />{t('navbar.logout')}</button>
             </div>
           </aside>
         </div>

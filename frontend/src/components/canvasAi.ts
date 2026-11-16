@@ -4,7 +4,8 @@
  * a change log between two states and a pixel rendering of the whole board.
  */
 import type { CanvasDoc, CanvasItem } from './CollaborativeCanvas'
-import { parseEquation, samples } from './visual-comprehension/mathExpr'
+import { calloutTarget, layoutCallouts, leaderStart } from './canvasCallouts'
+import { fitWindow, plotGeometry, type PlotArea, type PlotExtra, type PlotRiemann, type PlotSpec, type PlotVLine } from './canvasPlot'
 import { explicitFunction, graphWindow } from './canvasMath'
 import type { Scene } from './motion/spec'
 import { canvasLabelColor, shapeStrokeFor } from './canvasColors'
@@ -15,7 +16,7 @@ type Anchor = 'top' | 'right' | 'bottom' | 'left'
 /** Mirror of the backend `CanvasOp` (snake_case on the wire). */
 export type AiOp = {
   kind: 'shape' | 'text' | 'note' | 'frame' | 'arrow' | 'line' | 'plot' | 'curve' | 'formula' | 'animation' | 'cluster' | 'illustration'
-    | 'quiz' | 'flashcard' | 'check' | 'connect' | 'update' | 'delete'
+    | 'quiz' | 'flashcard' | 'check' | 'label_image' | 'callout' | 'connect' | 'update' | 'delete'
   /** quiz: `text` = question, `options`, `correct` (indices), `explanation`; flashcard: `text` = front, `back`;
    *  check: `text` = open question, `expected` = answer key, `hint`. */
   options?: string[]; correct?: number[]; explanation?: string; back?: string; expected?: string; hint?: string
@@ -25,6 +26,8 @@ export type AiOp = {
   aspect?: 'landscape' | 'square' | 'portrait'; src?: string; bold?: boolean
   expr?: string; x_min?: number; x_max?: number; y_min?: number; y_max?: number
   marks?: Array<{ x: number; y: number; label?: string }>; points?: number[][]
+  /** plot: shaded regions, extra curves, drop lines and Riemann rectangles (all drawn exactly from the expressions). */
+  areas?: PlotArea[]; extra_curves?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann
   id?: string; target?: string; shape?: ShapeKind
   /** With `on`, x/y/w/h are % (0-100) of that item's box instead of world pixels: annotations on a pasted image. */
   on?: string; opacity?: number
@@ -148,16 +151,6 @@ function buildItem(op: AiOp): CanvasItem | null {
   }
 }
 
-/** A tick step giving about 4–10 labels across the span, on 1/2/5 × 10ⁿ. */
-function niceStep(span: number): number {
-  const raw = span / 7
-  const pow = 10 ** Math.floor(Math.log10(raw))
-  const unit = raw / pow
-  return (unit < 1.5 ? 1 : unit < 3.5 ? 2 : unit < 7.5 ? 5 : 10) * pow
-}
-
-const fmt = (v: number) => String(Math.round(v * 1e6) / 1e6)
-
 /** Catmull-Rom through the points, densified so the stroke reads as a smooth curve. */
 export function smoothCurve(points: Array<{ x: number; y: number }>, steps = 12): Array<{ x: number; y: number }> {
   const out: Array<{ x: number; y: number }> = []
@@ -173,56 +166,14 @@ export function smoothCurve(points: Array<{ x: number; y: number }>, steps = 12)
   return out
 }
 
-export type PlotSpec = { w: number; h: number; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; title?: string; marks?: Array<{ x: number; y: number; label?: string }> }
-export type PlotGeometry = {
-  grid: Array<[number, number, number, number]>
-  axes: Array<[number, number, number, number]>
-  ticks: Array<{ x: number; y: number; text: string; align: 'middle' | 'end' }>
-  curves: Array<Array<{ x: number; y: number }>>
-  marks: Array<{ x: number; y: number; label: string }>
-  titleY: number
-  ok: boolean
-}
-
-/** Everything a plot draws, in the item's own pixels (0..w, 0..h): shared by the SVG renderer and the PNG snapshot. */
-export function plotGeometry(spec: PlotSpec): PlotGeometry {
-  const { w, h, xMin: xa, xMax: xb, yMin: ya, yMax: yb } = spec
-  const top = spec.title ? 34 : 14, pad = 30, left = 40
-  const gx = left, gy = top, gw = Math.max(w - left - pad, 10), gh = Math.max(h - top - pad, 10)
-  const px = (X: number) => gx + ((X - xa) / (xb - xa)) * gw
-  const py = (Y: number) => gy + gh - ((Y - ya) / (yb - ya)) * gh
-  const out: PlotGeometry = { grid: [], axes: [], ticks: [], curves: [], marks: [], titleY: 22, ok: false }
-  if (!(xb > xa) || !(yb > ya)) return out
-  const axisY = Math.min(Math.max(py(0), gy), gy + gh), axisX = Math.min(Math.max(px(0), gx), gx + gw)
-  const sx = niceStep(xb - xa), sy = niceStep(yb - ya)
-  for (let X = Math.ceil(xa / sx) * sx; X <= xb + 1e-9; X += sx) {
-    out.grid.push([px(X), gy, px(X), gy + gh])
-    if (Math.abs(X) > 1e-9) out.ticks.push({ x: px(X), y: Math.min(axisY + 16, gy + gh + 16), text: fmt(X), align: 'middle' })
-  }
-  for (let Y = Math.ceil(ya / sy) * sy; Y <= yb + 1e-9; Y += sy) {
-    out.grid.push([gx, py(Y), gx + gw, py(Y)])
-    if (Math.abs(Y) > 1e-9) out.ticks.push({ x: axisX - 6, y: py(Y) + 4, text: fmt(Y), align: 'end' })
-  }
-  out.axes.push([gx, axisY, gx + gw + 8, axisY], [axisX, gy + gh, axisX, gy - 8])
-  try {
-    const eq = parseEquation(spec.expr.includes('=') ? spec.expr : `y = ${spec.expr}`)
-    if (eq.explicit) {
-      for (const run of samples(eq.explicit, {}, { x0: xa, x1: xb, y0: ya, y1: yb }, 320)) {
-        const inside = run.filter(([, Y]) => Y >= ya && Y <= yb)
-        if (inside.length > 1) out.curves.push(inside.map(([X, Y]) => ({ x: px(X), y: py(Y) })))
-      }
-      out.ok = true
-    }
-  } catch { /* an unreadable expression draws axes only */ }
-  for (const m of spec.marks || []) {
-    if (m.x >= xa && m.x <= xb && m.y >= ya && m.y <= yb) out.marks.push({ x: px(m.x), y: py(m.y), label: m.label || '' })
-  }
-  return out
-}
+export { plotGeometry, fitWindow, compileFn, integrate, formatValue, type PlotSpec, type PlotGeometry, type PlotArea, type PlotExtra, type PlotVLine, type PlotRiemann } from './canvasPlot'
 
 function buildPlot(op: AiOp, id: string): CanvasItem | null {
   const item: CanvasItem = { id, ai: true, type: 'plot', x: op.x ?? 0, y: op.y ?? 0, w: Math.max(op.w ?? 520, 200), h: Math.max(op.h ?? 420, 160),
-    expr: op.expr || '', xMin: op.x_min ?? -5, xMax: op.x_max ?? 5, yMin: op.y_min ?? -5, yMax: op.y_max ?? 5, color: op.stroke || '#dc2626', title: op.text || `y = ${op.expr}`, marks: op.marks }
+    expr: op.expr || '', xMin: op.x_min ?? -5, xMax: op.x_max ?? 5, yMin: op.y_min ?? -5, yMax: op.y_max ?? 5, color: op.stroke || '#dc2626', title: op.text || `y = ${op.expr}`, marks: op.marks,
+    areas: op.areas, extra: op.extra_curves, vlines: op.vlines, riemann: op.riemann }
+  // The window always shows the whole shaded region, its limits and the curves over it, whatever the model picked.
+  Object.assign(item, fitWindow(item as unknown as PlotSpec))
   return plotGeometry(item as unknown as PlotSpec).ok ? item : null
 }
 
@@ -261,6 +212,11 @@ function patchItem(item: CanvasItem, op: AiOp): CanvasItem {
     if (op.marks !== undefined) next.marks = op.marks
     if (op.text !== undefined) next.title = op.text
     if (op.stroke !== undefined) next.color = op.stroke
+    if (op.areas !== undefined) next.areas = op.areas
+    if (op.extra_curves !== undefined) next.extra = op.extra_curves
+    if (op.vlines !== undefined) next.vlines = op.vlines
+    if (op.riemann !== undefined) next.riemann = op.riemann
+    Object.assign(next, fitWindow(next as unknown as PlotSpec))
   }
   if (op.flip_x !== undefined && item.type === 'line') next.flipX = op.flip_x
   if (op.flip_y !== undefined && item.type === 'line') next.flipY = op.flip_y
@@ -439,8 +395,14 @@ export function applyAiOps(doc: CanvasDoc, ops: AiOp[], newId: () => string = ()
     created.push(...clustered.created)
     Object.assign(idMap, clustered.idMap)
   }
+  if (ops.some((op) => op.kind === 'callout')) {
+    const flagged = layoutCallouts(items, ops, newId)
+    items = flagged.items
+    created.push(...flagged.created)
+    Object.assign(idMap, flagged.idMap)
+  }
   for (const op of ops) {
-    if (op.kind === 'cluster') continue
+    if (op.kind === 'cluster' || op.kind === 'callout' || op.kind === 'label_image') continue
     if (op.kind === 'illustration') {
       if (!op.id || !op.src) continue
       const [w, h] = ILLUSTRATION_SIZE[op.aspect || 'landscape'] || ILLUSTRATION_SIZE.landscape
@@ -529,7 +491,8 @@ export function describeDoc(doc: CanvasDoc): { items: SceneItem[]; toAlias: Reco
       case 'quiz': return { ...base, text: CLEAN(item.question, 400), detail: CLEAN(`quiz: ${item.options.map((o, i) => `${String.fromCharCode(65 + i)}) ${o}${item.correct.includes(i) ? ' [giusta]' : ''}`).join(' ')}${answersNote(item.answers)}`, 380) }
       case 'flashcard': return { ...base, text: CLEAN(item.front, 300), detail: CLEAN(`flashcard, retro: ${item.back}${answersNote(item.answers)}`, 380) }
       case 'check': return { ...base, text: CLEAN(item.question, 400), detail: CLEAN(`domanda aperta con verifica, soluzione: ${item.expected}${answersNote(item.answers)}`, 380) }
-      case 'plot': return { ...base, text: CLEAN(item.title || '', 600), detail: CLEAN(`grafico y=${item.expr}, x ${item.xMin}..${item.xMax}, y ${item.yMin}..${item.yMax}`, 380) }
+      case 'callout': return { ...base, text: CLEAN(item.text, 120), detail: `etichetta che indica un punto dell'immagine ${item.imageId || ''}` }
+      case 'plot': return { ...base, text: CLEAN(item.title || '', 600), detail: CLEAN(`grafico y=${item.expr}, x ${item.xMin}..${item.xMax}, y ${item.yMin}..${item.yMax}${item.areas?.length ? `, area evidenziata ${item.areas.map((a) => `[${a.from}, ${a.to}]`).join(' ')}` : ''}${item.extra?.length ? `, altre curve: ${item.extra.map((e) => e.expr).join('; ')}` : ''}${item.riemann ? `, somma di Riemann n=${item.riemann.n}` : ''}`, 380) }
       default: return { ...base, text: '', detail: '' }
     }
   })
@@ -545,7 +508,7 @@ export function unaliasOps(ops: AiOp[], fromAlias: Record<string, string>): AiOp
 
 const label = (item: CanvasItem) => {
   const text = item.type === 'formula' ? CLEAN(item.src || item.latex, 40) : item.type === 'quiz' || item.type === 'check' ? CLEAN(item.question, 40) : item.type === 'flashcard' ? CLEAN(item.front, 40) : 'text' in item ? CLEAN(item.text, 40) : ''
-  const names: Record<string, string> = { postit: 'post-it', frame: 'sezione', text: 'testo', shape: 'forma', image: 'immagine', table: 'tabella', path: 'disegno', line: 'linea', connector: 'freccia', plot: 'grafico', formula: 'formula', animation: 'animazione', quiz: 'quiz', flashcard: 'flashcard', check: 'domanda di verifica' }
+  const names: Record<string, string> = { postit: 'post-it', frame: 'sezione', text: 'testo', shape: 'forma', image: 'immagine', table: 'tabella', path: 'disegno', line: 'linea', connector: 'freccia', plot: 'grafico', callout: 'etichetta', formula: 'formula', animation: 'animazione', quiz: 'quiz', flashcard: 'flashcard', check: 'domanda di verifica' }
   return `${names[item.type] || item.type}${text ? ` «${text}»` : ''}`
 }
 
@@ -709,14 +672,32 @@ export async function renderDocToPng(doc: CanvasDoc, aliases: Record<string, str
       ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.strokeRect(0, 0, item.w, item.h)
       ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1
       for (const [a, b, c, d] of geo.grid) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke() }
+      for (const area of geo.areas) { ctx.globalAlpha = 0.3; ctx.fillStyle = area.color; ctx.fill(new Path2D(area.d)); ctx.globalAlpha = 1 }
+      for (const r of geo.rects) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#3b82f6'; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.globalAlpha = 1; ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 1; ctx.strokeRect(r.x, r.y, r.w, r.h) }
+      ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4])
+      for (const v of geo.vlines) { ctx.beginPath(); ctx.moveTo(v.x1, v.y1); ctx.lineTo(v.x2, v.y2); ctx.stroke() }
+      ctx.setLineDash([])
       ctx.strokeStyle = '#1e293b'; ctx.fillStyle = '#1e293b'; ctx.lineWidth = 2
       for (const [a, b, c, d] of geo.axes) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); arrowHead(ctx, a, b, c, d, 9) }
       ctx.font = '11px Inter, system-ui, sans-serif'; ctx.fillStyle = '#475569'; ctx.textBaseline = 'alphabetic'
       for (const t of geo.ticks) { ctx.textAlign = t.align === 'end' ? 'right' : 'center'; ctx.fillText(t.text, t.x, t.y) }
       ctx.strokeStyle = item.color; ctx.lineWidth = 3
       for (const curve of geo.curves) { ctx.beginPath(); curve.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke() }
+      for (const extra of geo.extraCurves) { ctx.strokeStyle = extra.color; for (const run of extra.points) { ctx.beginPath(); run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke() } }
+      ctx.font = '600 12px Inter, system-ui, sans-serif'; ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'
+      for (const area of geo.areas) if (area.label) ctx.fillText(area.label, area.lx, area.ly)
+      ctx.font = '11px Inter, system-ui, sans-serif'; ctx.fillStyle = '#475569'
+      for (const v of geo.vlines) ctx.fillText(v.label, v.lx, v.ly)
       for (const m of geo.marks) { ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#171717'; ctx.textAlign = 'left'; ctx.fillText(m.label, m.x + 7, m.y - 7) }
       if (item.title) { ctx.fillStyle = '#334155'; ctx.font = '600 13px Inter, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(item.title, 10, 22) }
+    } else if (item.type === 'callout') {
+      const t = calloutTarget(item, doc.items)
+      const st = leaderStart(item.w, item.h, { x: t.x - item.x, y: t.y - item.y })
+      ctx.strokeStyle = item.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(item.x + st.x, item.y + st.y); ctx.lineTo(t.x, t.y); ctx.stroke()
+      ctx.fillStyle = item.color; ctx.beginPath(); ctx.arc(t.x, t.y, 5, 0, Math.PI * 2); ctx.fill()
+      const pill = new Path2D(); pill.roundRect(item.x, item.y, item.w, item.h, item.h / 2)
+      ctx.fillStyle = '#ffffff'; ctx.fill(pill); ctx.strokeStyle = item.color; ctx.lineWidth = 2; ctx.stroke(pill)
+      drawText(ctx, item.text, item.x, item.y, item.w, item.h, 13, '#0f172a', true)
     } else if (item.type === 'line') {
       const x1 = item.flipX ? item.x + item.w : item.x, x2 = item.flipX ? item.x : item.x + item.w
       const y1 = item.flipY ? item.y + item.h : item.y, y2 = item.flipY ? item.y : item.y + item.h
@@ -798,6 +779,20 @@ export async function collectImages(doc: CanvasDoc, selectedIds: string[], toAli
     try { out.push({ src: canvas.toDataURL('image/jpeg', 0.88), meta: { id: toAlias[item.id], width: image.naturalWidth, height: image.naturalHeight } }) } catch { /* cross-origin image: the overview still shows it */ }
   }
   return out
+}
+
+/** The image of an item as a plain JPEG data URL (no grid), downscaled: the input of the component recognizer. */
+export async function imageToDataUrl(src: string, maxSide = 1568): Promise<string | null> {
+  const image = await loadImage(src)
+  if (!image) return null
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(Math.round(image.naturalWidth * scale), 1)
+  canvas.height = Math.max(Math.round(image.naturalHeight * scale), 1)
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+  try { return canvas.toDataURL('image/jpeg', 0.9) } catch { return null }
 }
 
 /** A zoomed crop (box in % of the original) with its own 10% grid, for a second, more precise look. */

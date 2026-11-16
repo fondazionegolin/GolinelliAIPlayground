@@ -30,6 +30,10 @@
   --ds-field-radius: 1.125rem;
   /* Calendar grids: days are separate tiles on a darker gutter; today and "now" are marked. */
   --ds-cal-gutter: #dfe3e9;
+  /* Library wells (Live Interaction): a darker backdrop that frames a set of tiles. */
+  --ds-well: #e4e8ed;
+  --ds-well-tile: #ffffff;
+  --ds-well-tile-hover: #f5f6f8;
   --ds-cal-today: #e5484d;
   /* Session join code pill in the navbar: yellow with black ink in both themes. */
   /* Session join code: yellow outline + bold yellow digits on a transparent tag (no fill: less distracting). */
@@ -129,6 +133,9 @@
   --ds-field-placeholder: #bdbdbd;
   --ds-field-focus-ink: #c5c5c5;
   --ds-cal-gutter: #0b0c0e;
+  --ds-well: #14161a;
+  --ds-well-tile: #24272d;
+  --ds-well-tile-hover: #2b2f36;
   --ds-cal-day: #22252a;
   --ds-cal-day-muted: #1a1c20;
   --ds-cal-hour-line: rgba(255, 255, 255, 0.07);
@@ -258,6 +265,32 @@
   .ds-divider {
     border: 0;
     background: rgba(120, 120, 124, 0.12);
+  }
+
+  /* Navigation entries are separate rounded tiles; artwork can extend past its smaller bubble. */
+  .ds-nav-menu {
+    background-color: var(--ds-well);
+    background-image: none;
+  }
+
+  .ds-nav-menu-row {
+    border-radius: var(--ds-radius-card);
+    background-color: var(--ds-popover-solid);
+  }
+
+  .ds-nav-illustration {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+  }
+
+  .ds-nav-illustration::before {
+    content: '';
+    position: absolute;
+    inset: 10%;
+    z-index: -1;
+    border-radius: 50%;
+    background-color: var(--ds-well);
   }
 
   .ui-card {
@@ -778,3 +811,22 @@ nav.shell-nav > div { padding-right: 3rem; }
   70% { transform: translateY(-4px); }
 }
 .shell-arrow-bounce { display: inline-flex; animation: shell-arrow-bounce 1.2s ease-in-out; }
+
+/* Project wells: every list of projects/documents/bots sits on one darker backdrop, items are lighter tiles.
+   Unlayered on purpose: must beat Tailwind utilities (bg-white/95 ...) on legacy cards. */
+.ds-well {
+  border-radius: 2rem;
+  background: var(--ds-well);
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+}
+.ds-well .ui-card,
+.ds-well .ds-well-tile {
+  background-color: var(--ds-well-tile);
+  background-image: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.ds-well .ui-card-interactive:hover,
+.dark .ds-well .ui-card-interactive:hover,
+.ds-well .ds-well-tile:hover {
+  background-color: var(--ds-well-tile-hover);
+}

@@ -197,7 +197,7 @@ export default function TasksPanel({ sessionId, tasks, studentCount }: TasksPane
         ) : visible.length === 0 ? (
           <p className={`py-8 text-center text-sm ${MUTED}`}>{tl("Nessun compito corrisponde a")} <strong>"{search}"</strong></p>
         ) : (
-          <div className="space-y-2">
+          <div className="ds-well space-y-2">
             <div className={`hidden grid-cols-[minmax(0,1fr)_120px_150px_90px_96px] gap-3 px-4 md:grid ${META_LABEL}`}>
               <span>{tl("Compito")}</span><span>{tl("Scadenza")}</span><span>{tl("Consegne")}</span><span>{tl("Esito")}</span><span />
             </div>

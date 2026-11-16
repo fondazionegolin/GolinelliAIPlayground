@@ -129,11 +129,11 @@ export default function UDAListPage() {
             </Button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="ds-well space-y-3">
             {udas.map(uda => (
               <div
                 key={uda.id}
-                className="bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                className="ds-well-tile rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => navigate(`/teacher/classes/${classId}/uda/${uda.id}`)}
               >
                 <div className="p-5 flex items-center gap-4">

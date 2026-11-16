@@ -138,7 +138,7 @@ export default function AdminSessionsPage() {
                       </td>
                       <td className="min-w-[11rem] px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eceef1]"><span className={`block h-full rounded-full ${s.full ? 'bg-red-600' : s.near_full ? 'bg-amber-500' : 'bg-[var(--admin-accent)]'}`} style={{ width: `${pct}%` }} /></span>
+                          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--admin-track)]"><span className={`block h-full rounded-full ${s.full ? 'bg-red-600' : s.near_full ? 'bg-amber-500' : 'bg-[var(--admin-accent)]'}`} style={{ width: `${pct}%` }} /></span>
                           <span className={`whitespace-nowrap font-bold tabular-nums ${s.full ? 'text-red-600' : 'text-slate-700'}`}>{s.online} / {s.limit}</span>
                         </div>
                         {s.full && <p className="mt-1 flex items-center gap-1 text-[10px] font-bold text-red-600"><AlertTriangle className="h-3 w-3" /> {tl("Piena: i nuovi studenti vengono rifiutati finché qualcuno esce")}</p>}

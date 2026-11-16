@@ -1,4 +1,6 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
+import BackgroundJobsIndicator from '@/components/BackgroundJobsIndicator'
+import { NavbarCalendarClock } from '@/components/NavbarCalendarClock'
 import { useEffect, useState, useCallback, useRef, lazy, memo, Suspense, type ComponentType, type SVGProps } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -9,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiThemeScope } from '@/stores/uiTheme'
 import { agenticSharingApi, boardsApi, solidModelerApi, studentApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
-import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen, GitBranch } from '@/components/icons'
+import { Bot, Brain, Award, MessageSquare, MessageSquarePlus, FileEdit, Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard, Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi, FolderOpen, GitBranch, Wand2 } from '@/components/icons'
 import { MushroomIcon, Cube3DIcon, CanvasEaselIcon } from '@/components/icons/CustomIcons'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
@@ -234,6 +236,8 @@ const pageVariants = {
 const MOBILE_MODULE_ORDER: Array<string | null> = [
   null,
   'chatbot',
+  'chatbot_studentbots',
+  'chatbot_teacherbots',
   'live',
   'classe',
   'self_assessment',
@@ -951,12 +955,20 @@ function StudentMobileShell({
   const [classChatOpen, setClassChatOpen] = useState(false)
   const [classChatUnread, setClassChatUnread] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  // A teacherbot opened from a notification keeps its dedicated flow until the student picks a menu entry.
+  const [botDeepLink, setBotDeepLink] = useState(false)
+  useEffect(() => { if (selectedTeacherbotId) setBotDeepLink(true) }, [selectedTeacherbotId])
+  const isChatModule = activeModule === 'chatbot' || activeModule === 'chatbot_studentbots' || activeModule === 'chatbot_teacherbots'
+  const chatMobileSection: 'tutor' | 'studentbots' | 'teacherbots' | undefined =
+    activeModule === 'chatbot_studentbots' ? 'studentbots' : activeModule === 'chatbot_teacherbots' ? 'teacherbots' : activeModule === 'chatbot' ? (botDeepLink ? 'teacherbots' : 'tutor') : undefined
   const studentTheme = getStudentAccentTheme(studentAccent)
   const bgGradient = getAppBackgroundGradient(studentTheme)
   const moduleConfig = getModuleConfig(t)
   const topNav = [
     { key: null as string | null, label: 'Home', detail: sessionInfo.session.title, icon: Home },
     { key: 'chatbot', label: tl("Tutor AI"), detail: tl("Il tuo chatbot personale"), icon: AcademicAiIcon },
+    { key: 'chatbot_studentbots', label: 'Studentbot', detail: tl("I bot che crei tu"), icon: Sparkles },
+    { key: 'chatbot_teacherbots', label: 'Teacherbot', detail: tl("Gli assistenti dei docenti"), icon: Wand2 },
     { key: 'live', label: tl("Sessione live"), detail: tl("Attività in tempo reale"), icon: Radio },
     { key: 'classe', label: tl("Classe"), detail: tl("Chat e videocall"), icon: Video },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : tl("Tutto in ordine"), icon: ClipboardList },
@@ -969,7 +981,7 @@ function StudentMobileShell({
     { key: 'models3d_ai', label: tl("AI 3D"), detail: tl("Genera modelli con l’AI"), icon: MushroomIcon },
     { key: 'smart_canvas', label: tl("Lavagne intelligenti"), detail: tl("Disegna e ragiona insieme"), icon: CanvasEaselIcon },
     { key: 'dataflow', label: tl("Dataflow Studio"), detail: tl("Collega nodi per analizzare i dati"), icon: GitBranch },
-  ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
+  ].filter((item) => item.key === null || item.key === 'live' || ['chatbot', 'chatbot_studentbots', 'chatbot_teacherbots', 'classe', 'documents', 'files'].includes(item.key) || enabledModules.includes(item.key))
   const activeItem = topNav.find((item) => item.key === activeModule)
   const activeTitle = activeItem?.label || moduleConfig[activeModule || '']?.label || 'Home'
   const isImmersiveModule = !!activeModule && activeModule !== 'live'
@@ -994,6 +1006,7 @@ function StudentMobileShell({
   }, [menuOpen])
 
   const handleNavigate = useCallback((module: string | null) => {
+    setBotDeepLink(false)
     onNavigate(module)
     setMenuOpen(false)
   }, [onNavigate])
@@ -1001,7 +1014,7 @@ function StudentMobileShell({
 
   const dockStudentChat = () => {
     setStudentChatSidebarOpen(true)
-    if (activeModule === 'chatbot') {
+    if (isChatModule) {
       onNavigate(null)
     }
   }
@@ -1022,22 +1035,24 @@ function StudentMobileShell({
       )}
 
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 pt-[env(safe-area-inset-top)]">
-        <div className="relative mx-auto flex h-14 max-w-screen-sm items-center gap-2 px-3">
-            <button
-              onClick={() => setMenuOpen((value) => !value)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700 active:scale-95"
-              aria-label={t('student_dashboard.explore')}
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            <div className="hidden min-w-0 flex-1 sm:block">
-              <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-sky-700">{tl("Area studente")}</p>
-              <h1 className="truncate text-base font-extrabold tracking-tight text-slate-950">{activeTitle}</h1>
-            </div>
+        {/* Same layout as the teacher header: one flex row, nothing absolutely positioned: menu · session · tools · user */}
+        <div className="mx-auto flex h-14 max-w-screen-sm items-center gap-1 px-2">
+          <button
+            onClick={() => setMenuOpen((value) => !value)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-700 active:scale-95"
+            aria-label={t('student_dashboard.explore')}
+          >
+            <Menu className="h-6 w-6" strokeWidth={2.5} />
+          </button>
+          <button type="button" onClick={() => handleNavigate(null)} className="hidden min-w-0 flex-1 text-left sm:block">
+            <span className="block truncate text-[9px] font-black uppercase tracking-[0.18em] text-sky-700">{tl("Area studente")}</span>
+            <span className="block truncate text-base font-black leading-tight text-slate-950">{activeTitle}</span>
+          </button>
+          <div className="min-w-0 flex-1 sm:flex-none">
             <button
               type="button"
               onClick={() => handleNavigate(null)}
-              className="absolute left-1/2 flex h-10 max-w-[8.5rem] -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200"
+              className="flex h-10 max-w-full items-center gap-2 rounded-full bg-emerald-50 px-3 text-left text-emerald-800 ring-1 ring-emerald-200 sm:max-w-[14rem]"
               title={sessionInfo.session.title}
             >
               <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]" />
@@ -1046,11 +1061,15 @@ function StudentMobileShell({
                 <span className="mt-0.5 block truncate text-[11px] font-black leading-tight">{sessionInfo.session.title}</span>
               </span>
             </button>
-            <div className="ml-auto"><NavbarMusicButton sessionId={sessionInfo.session.id} /></div>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center">
+            <BackgroundJobsIndicator accentColor={studentTheme.accent} student />
+            <NavbarMusicButton sessionId={sessionInfo.session.id} />
+            <NavbarCalendarClock compact sessionId={sessionInfo.session.id} accentColor={studentTheme.accent} role="student" />
             <button
               type="button"
               onClick={() => setClassChatOpen(true)}
-              className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-sky-800 active:scale-95"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-sky-800 active:scale-95"
               title={sessionInfo.student.nickname}
               aria-label={tl("Apri chat di classe · {0}", sessionInfo.student.nickname)}
             >
@@ -1062,6 +1081,7 @@ function StudentMobileShell({
                 </span>
               )}
             </button>
+          </div>
         </div>
       </header>
 
@@ -1232,19 +1252,20 @@ function StudentMobileShell({
 
       <div
         className={
-          activeModule === 'chatbot'
+          isChatModule
             ? 'fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+3.6rem)] z-40 overflow-hidden bg-white'
             : studentChatSidebarOpen
               ? 'fixed inset-y-0 right-0 z-40 w-[min(92vw,420px)] overflow-hidden border-l border-slate-200 bg-white shadow-2xl'
               : 'pointer-events-none fixed bottom-0 right-0 h-px w-px overflow-hidden opacity-0'
         }
-        aria-hidden={activeModule !== 'chatbot' && !studentChatSidebarOpen}
+        aria-hidden={!isChatModule && !studentChatSidebarOpen}
       >
         <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
           <ChatbotModule
             sessionId={sessionInfo.session.id}
             studentId={sessionInfo.student.id}
-            initialTeacherbotId={selectedTeacherbotId}
+            mobileSection={chatMobileSection}
+            initialTeacherbotId={botDeepLink ? selectedTeacherbotId : null}
             oggiImparoContext={oggiImparoLesson ?? undefined}
             onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
             studentAccent={studentAccent}
@@ -1252,8 +1273,8 @@ function StudentMobileShell({
             onMinimize={dockStudentChat}
             onExpand={expandStudentChat}
             onClose={() => setStudentChatSidebarOpen(false)}
-            sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
-            onOpenModule={onNavigate}
+            sidebarMode={!isChatModule && studentChatSidebarOpen}
+            onOpenModule={handleNavigate}
           />
         </Suspense>
       </div>
@@ -1499,7 +1520,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     )
   }
 
-  if (moduleKey === 'chatbot') {
+  if (moduleKey === 'chatbot' || moduleKey.startsWith('chatbot_')) {
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden bg-neutral-100">
         <div className="flex h-full items-center justify-center text-sm text-slate-400">

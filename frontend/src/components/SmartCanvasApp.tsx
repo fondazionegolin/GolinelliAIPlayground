@@ -16,7 +16,7 @@ import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, 
 import api from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { CollaborativeCanvas, type CanvasHandle } from '@/components/CollaborativeCanvas'
-import { changedIds, cropWithGrid, diffDocs, renderPreview, unaliasOps, type AiOp } from '@/components/canvasAi'
+import { changedIds, cropWithGrid, diffDocs, imageToDataUrl, renderPreview, unaliasOps, type AiOp } from '@/components/canvasAi'
 import type { CanvasDoc } from '@/components/CollaborativeCanvas'
 import { TUTORIAL_TITLE } from '@/components/canvasTutorial'
 import { tl } from '@/i18n/tl'
@@ -97,6 +97,18 @@ async function illustrate(boardId: string, ops: AiOp[]): Promise<{ ops: Array<Ai
     } catch (err) { failed.push(errorMessage(err, tl("illustrazione non riuscita"))); return null }
   }))
   return { ops: done, failed }
+}
+
+type Recognized = { subject: string; ops: AiOp[] }
+
+/** Names and pinpoints the parts of an image on the board; the result is `callout` ops (point in % of the image + name). */
+async function recognizeParts(boardId: string, doc: CanvasDoc, imageId: string, hint: string): Promise<Recognized> {
+  const image = doc.items.find(i => i.id === imageId)
+  if (!image || image.type !== 'image') throw new Error(tl("Seleziona un’immagine da etichettare."))
+  const dataUrl = await imageToDataUrl(image.src)
+  if (!dataUrl) throw new Error(tl("Non riesco a leggere questa immagine."))
+  const { data } = await api.post<{ subject: string; labels: Array<{ name: string; x: number; y: number }> }>(`${BASE}/${boardId}/label-image`, { image: dataUrl, hint }, { timeout: 170000 })
+  return { subject: data.subject, ops: data.labels.map((l, i) => ({ kind: 'callout' as const, id: `cl-${i}`, on: imageId, x: l.x, y: l.y, text: l.name })) }
 }
 
 function errorMessage(err: unknown, fallback: string) {
@@ -219,7 +231,7 @@ export default function SmartCanvasApp({ role }: { role: Role }) {
     </article>
   )
 
-  const grid = (items: Board[]) => <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{items.map(renderCard)}</div>
+  const grid = (items: Board[]) => <div className="ds-well grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{items.map(renderCard)}</div>
 
   return <div className="h-full overflow-y-auto bg-transparent">
     <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8">
@@ -317,6 +329,8 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   const [phase, setPhase] = useState('')
   const [liveCanWrite, setLiveCanWrite] = useState<boolean | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
+  const [labeling, setLabeling] = useState('')
+  const [autoLabel, setAutoLabel] = useState(() => { try { return localStorage.getItem('smart_canvas_auto_label') !== '0' } catch { return true } })
   const handle = useRef<CanvasHandle>(null)
   const history = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
@@ -421,6 +435,14 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       let ops = unaliasOps(data.message.ops || [], snap.fromAlias)
       if (ops.some(o => o.on && o.kind === 'shape')) { setPhase(tl("Preciso le posizioni sull’immagine…")); ops = await refineOps(boardId, ops, snap.doc, text, data.message.content) }
       let note = ''
+      if (ops.some(o => o.kind === 'label_image')) {
+        setPhase(tl("Riconosco i componenti dell’immagine…"))
+        const expanded = await Promise.all(ops.map(async (op): Promise<AiOp[]> => {
+          if (op.kind !== 'label_image') return [op]
+          try { return (await recognizeParts(boardId, snap.doc, op.on || '', op.text || '')).ops } catch (err) { note = `\n\n⚠️ ${errorMessage(err, tl("Non sono riuscito a etichettare l’immagine."))}`; return [] }
+        }))
+        ops = expanded.flat()
+      }
       const pictures = ops.filter(o => o.kind === 'illustration').length
       const animated = ops.some(o => o.brief && o.kind !== 'illustration')
       if (pictures || animated) {
@@ -445,6 +467,28 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
       setDraft(text)
       setMessages(m => m.filter(x => x.id !== userMessage.id))
     } finally { setBusy(false); setPhase('') }
+  }
+
+  async function runLabel(imageId: string, hint = '') {
+    const canvas = handle.current
+    if (!canvas || !assistantAllowed || labeling) return
+    setLabeling(tl("Riconosco i componenti dell’immagine…")); setError('')
+    try {
+      const { subject, ops } = await recognizeParts(boardId, canvas.getDoc(), imageId, hint)
+      if (!ops.length) {
+        setMessages(m => [...m, { id: uuid(), role: 'assistant', content: subject ? tl("Non ho trovato componenti da etichettare: {0}", subject) : tl("Non ho trovato componenti da etichettare in questa immagine.") }])
+        return
+      }
+      const { created } = canvas.applyOps(ops)
+      window.setTimeout(() => canvas.focusItems([imageId, ...created]), 60)
+      lastSeen.current = JSON.stringify(canvas.getDoc())
+      setMessages(m => [...m, { id: uuid(), role: 'assistant', content: `${subject ? `**${subject}**\n\n` : ''}${tl("Ho messo {0} etichette sull’immagine: {1}. Puoi trascinarle o rinominarle con un doppio clic.", String(ops.length), ops.map(o => o.text).join(', '))}`, applied: created.length, focus: created }])
+    } catch (err) { setError(errorMessage(err, tl("Non sono riuscito a etichettare l’immagine."))); setPanelOpen(true) } finally { setLabeling('') }
+  }
+
+  function toggleAutoLabel(value: boolean) {
+    setAutoLabel(value)
+    try { localStorage.setItem('smart_canvas_auto_label', value ? '1' : '0') } catch { /* the choice just is not remembered */ }
   }
 
   function assist(prompt: string, ids: string[]) {
@@ -517,9 +561,11 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
         onTitleChange={board.mine ? t => void rename(t) : undefined} readOnly={!shared && !board.mine} ownerCanWrite={board.mine}
         {...(shared ? { sessionId: board.session_id!, canvasName: board.canvas_key! } : { initialContent: board.content_json })}
         onContentChange={onContentChange} chrome={chrome} leading={<>{leading}<SectionIllustration section="/teacher/smart-canvas" compact /></>} tutorial
-        onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onPermissionChange={setLiveCanWrite}
+        onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onLabelImage={assistantAllowed ? id => void runLabel(id) : undefined}
+        onImageAdded={assistantAllowed && autoLabel ? id => window.setTimeout(() => void runLabel(id), 500) : undefined} onPermissionChange={setLiveCanWrite}
         author={board.viewer_name} onValidateAnswer={validateAnswer} />
     </div>
+    {labeling && <div className="pointer-events-none fixed bottom-6 left-1/2 z-[10000] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#1a1a2e] px-4 py-2 text-xs font-semibold text-white shadow-lg" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />{labeling}</div>}
     {reportOpen && <ReportDialog boardId={boardId} title={board.title} beforeOpen={flush} onClose={() => setReportOpen(false)} />}
     {panelOpen && assistantAllowed && <aside className="flex w-[380px] max-w-[45vw] shrink-0 flex-col border-l border-slate-200 bg-slate-50" aria-label={tl("Assistente della lavagna")}>
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
@@ -552,6 +598,8 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
           <div className="flex flex-wrap gap-1">{BRAINSTORM_ACTIONS.map(a => <Button key={a.key} type="button" tone="accent" surface="soft" density="compact" disabled={busy}
             className="text-[11px]" onClick={() => void send(a.prompt)}>{a.label}</Button>)}</div>
         </div>}
+        {assistantAllowed && <label className="mb-2 flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+          <input type="checkbox" checked={autoLabel} onChange={e => toggleAutoLabel(e.target.checked)} />{tl("Etichetta automaticamente le immagini incollate")}</label>}
         <CanvasModelMenu />
         <div className="flex items-end gap-2">
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={4000} disabled={busy || !assistantAllowed}

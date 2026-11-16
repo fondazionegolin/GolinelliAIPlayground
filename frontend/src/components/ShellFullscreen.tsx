@@ -20,10 +20,19 @@ function useIdleHint(enabled: boolean): boolean {
       setHint(false)
       idleTimer = window.setTimeout(() => { pulse(); repeatTimer = window.setInterval(pulse, HINT_REPEAT_MS) }, IDLE_BEFORE_HINT_MS)
     }
-    const events = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'] as const
+    // Browsers fire synthetic pointermove events (no real movement) when layout/animations change under a
+    // still cursor; those must not count as activity or the hint never shows.
+    let lastX = NaN, lastY = NaN
+    const onMove = (event: PointerEvent) => {
+      if (event.screenX === lastX && event.screenY === lastY) return
+      lastX = event.screenX; lastY = event.screenY
+      arm()
+    }
+    window.addEventListener('pointermove', onMove, { passive: true })
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
     events.forEach((name) => window.addEventListener(name, arm, { passive: true }))
     arm()
-    return () => { clearAll(); events.forEach((name) => window.removeEventListener(name, arm)) }
+    return () => { clearAll(); window.removeEventListener('pointermove', onMove); events.forEach((name) => window.removeEventListener(name, arm)) }
   }, [enabled])
   return hint
 }

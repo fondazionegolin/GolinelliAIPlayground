@@ -1195,7 +1195,7 @@ export default function TeachersPage() {
                                 {formatCurrency(teacher.monthly_usage)} <span className="text-slate-400">/</span> {formatCurrency(teacher.monthly_cap)}
                                 <Pencil className="h-3 w-3 text-slate-300 group-hover:text-slate-600" />
                               </span>
-                              <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-[#eceef1]">
+                              <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-[var(--admin-track)]">
                                 <span className={`block h-full rounded-full ${ratio > 0.85 ? 'bg-red-600' : ratio > 0.6 ? 'bg-amber-500' : 'bg-[var(--admin-accent)]'}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
                               </span>
                             </button>

@@ -37,7 +37,7 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Headphones, Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
-  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
+  FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
   Video, ScanText, Youtube, PanelRightClose, Square, History, Brain, Globe
 } from '@/components/icons'
 import TeacherMemoryModal from '@/components/teacher/TeacherMemoryModal'
@@ -531,9 +531,7 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   // Analysis mode: session/task picker
   const [analysisSessionId, setAnalysisSessionId] = useState<string>('')
   const [analysisTaskId, setAnalysisTaskId] = useState<string>('')
-  const [chatBg, setChatBg] = useState<string>('')
-  const [chatBgDefault, setChatBgDefault] = useState<string>('')
-  const [showBgPalette, setShowBgPalette] = useState(false)
+  const chatBg = ''
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
   const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
   const [showCanvas, setShowCanvas] = useState(false)
@@ -676,24 +674,6 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const paletteGroups = useMemo(() => ([
-    {
-      label: tl("Toni luminosi"),
-      colors: ['#ffffff', '#fbfdff', '#f7fbff', '#fffaf4', '#f8f5ff'],
-    },
-    {
-      label: tl("Toni di azzurro"),
-      colors: ['#eff6ff', '#dbeafe', '#bfdbfe', '#93c5fd', '#60a5fa'],
-    },
-    {
-      label: tl("Toni di verde"),
-      colors: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#34d399'],
-    },
-    {
-      label: tl("Toni di viola"),
-      colors: ['#f5f3ff', '#ede9fe', '#ddd6fe', '#c4b5fd', '#a78bfa'],
-    },
-  ]), [])
 
   const isDarkColor = (color: string) => {
     if (!color) return false
@@ -723,32 +703,10 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
   // Dark theme: a user-picked (usually pastel) chat colour becomes a faint tint of the dark surface.
   const chatSurface = chatBg && uiDark ? `color-mix(in srgb, ${chatBg} 12%, #202327)` : chatBg
 
+  // The chat colour picker was removed: drop any colour stored by older versions.
   useEffect(() => {
-    try {
-      const storedDefault = localStorage.getItem('teacherChatBgDefault')
-      if (storedDefault) setChatBgDefault(storedDefault)
-      const stored = localStorage.getItem('teacherChatBg')
-      if (stored) {
-        setChatBg(stored)
-      } else if (storedDefault) {
-        setChatBg(storedDefault)
-      }
-    } catch (e) {
-      console.error('Failed to load chat background', e)
-    }
+    try { localStorage.removeItem('teacherChatBg'); localStorage.removeItem('teacherChatBgDefault') } catch { /* ignore */ }
   }, [])
-
-  useEffect(() => {
-    try {
-      if (chatBg) {
-        localStorage.setItem('teacherChatBg', chatBg)
-      } else {
-        localStorage.removeItem('teacherChatBg')
-      }
-    } catch (e) {
-      console.error('Failed to save chat background', e)
-    }
-  }, [chatBg])
 
   useEffect(() => {
     const handleResize = () => {
@@ -762,14 +720,6 @@ function TeacherSupportChatBase({ onMinimize, onClose, sidebarMode = false, dock
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const handleSetDefaultChatBg = (color: string) => {
-    try {
-      localStorage.setItem('teacherChatBgDefault', color)
-      setChatBgDefault(color)
-    } catch (e) {
-      console.error('Failed to save default chat background', e)
-    }
-  }
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stopActiveGeneration = () => {
@@ -3814,74 +3764,6 @@ REGOLE IMPORTANTI:
                         >
                           <Brain className="h-4 w-4" />
                         </Button>
-                        <div className="relative">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowBgPalette((v) => !v)}
-                            className="text-slate-500 hover:text-slate-700"
-                            title={tl("Scegli colore")}
-                          >
-                            <Palette className="h-4 w-4" />
-                          </Button>
-                          {showBgPalette && (
-                            <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-[var(--shadow-lg)]">
-                              <div className="space-y-3">
-                                {paletteGroups.map((group) => (
-                                  <div key={group.label}>
-                                    <div className="text-[10px] text-slate-400 mb-1">{group.label}</div>
-                                    <div className="grid grid-cols-5 gap-1">
-                                      {group.colors.map((color) => (
-                                        <button
-                                          key={`${group.label}-${color}`}
-                                          onClick={() => {
-                                            setChatBg(color)
-                                            setShowBgPalette(false)
-                                          }}
-                                          className={`h-6 w-6 rounded-md border transition-transform hover:scale-105 ${chatBg === color ? 'ring-2 ring-offset-1' : ''}`}
-                                          style={chatBg === color ? { backgroundColor: color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: color }}
-                                          title={color}
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                                <span>{tl("Palette ridotta")}</span>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
-                                    className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
-                                    disabled={!chatBg}
-                                  >
-                                    {tl("Imposta default")}
-                                  </button>
-                                  {chatBgDefault && (
-                                    <button
-                                      onClick={() => {
-                                        setChatBg(chatBgDefault)
-                                        setShowBgPalette(false)
-                                      }}
-                                      className="text-slate-500 hover:text-slate-700"
-                                    >
-                                      {tl("Usa default")}
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      setChatBg('')
-                                      setShowBgPalette(false)
-                                    }}
-                                    className="text-slate-500 hover:text-slate-700"
-                                  >
-                                    Reset
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
                       </div>}
                     </div>
                       </>

@@ -197,8 +197,8 @@ export default function MLLabLibrary({ onOpen, onNew, onImported }: { onOpen: (i
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <button type="button" onClick={startNew} className="group flex min-h-[15rem] flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-slate-300 text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] dark:border-white/20">
+      <div className="ds-well grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <button type="button" onClick={startNew} className="group flex min-h-[15rem] flex-col items-center justify-center gap-3 rounded-3xl ds-well-tile text-slate-500 transition hover:border-[var(--app-accent,#7c3aed)] hover:text-[var(--app-accent,#7c3aed)] dark:border-white/20">
           <span className="ds-squircle flex h-14 w-14 items-center justify-center bg-slate-100 transition group-hover:bg-[var(--app-accent,#7c3aed)] group-hover:text-white dark:bg-white/10"><Plus className="h-6 w-6" /></span>
           <span className="text-sm font-bold">{tl("Nuovo progetto")}</span>
         </button>

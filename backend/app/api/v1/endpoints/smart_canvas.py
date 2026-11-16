@@ -415,6 +415,29 @@ async def refine_annotations(canvas_id: uuid.UUID, body: RefineBody, actor: Acto
     return {"boxes": [b.model_dump() for b in boxes]}
 
 
+class LabelBody(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    image: str = Field(min_length=30, max_length=11_200_000, description="L'immagine da etichettare (data URL), senza griglia")
+    hint: str = Field(default="", max_length=400, description="Su cosa concentrarsi (facoltativo)")
+
+
+@router.post("/{canvas_id}/label-image")
+async def label_image(canvas_id: uuid.UUID, body: LabelBody, actor: Actor, db: Db):
+    """Names and pinpoints the parts of a pasted image; the client turns them into flags laid out around it."""
+    row = await load(db, canvas_id, actor)
+    live = await session_canvas(db, row)
+    if not assistant_allowed(row, live, actor):
+        raise HTTPException(status_code=403, detail=ASSISTANT_DENIED)
+    track = await tracker(actor)
+    try:
+        return await ai.label_image(body.image, body.hint, track)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Smart canvas label-image failed")
+        raise HTTPException(status_code=502, detail="Non sono riuscito a riconoscere i componenti, riprova.")
+
+
 class AnimateBody(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     brief: str = Field(min_length=3, max_length=3000, description="Cosa deve mostrare l'animazione, fase per fase")
@@ -508,7 +531,7 @@ async def chat(canvas_id: uuid.UUID, body: ChatBody, actor: Actor, db: Db):
     user_message = {"id": str(uuid.uuid4()), "request_id": str(body.request_id), "role": "user", "content": body.content,
                     "author": author, "created_at": now}
     assistant = {"id": str(uuid.uuid4()), "request_id": str(body.request_id), "role": "assistant", "content": reply.message,
-                 "ops": [op.model_dump(exclude_none=True) for op in reply.ops], "focus": reply.focus, "created_at": now}
+                 "ops": [op.model_dump(exclude_none=True, by_alias=True) for op in reply.ops], "focus": reply.focus, "created_at": now}
     async with AsyncSessionLocal() as db2:
         stored = (await db2.execute(select(SmartCanvas).where(SmartCanvas.id == canvas_id).with_for_update())).scalar_one()
         stored.messages = [*(stored.messages or []), user_message, assistant][-200:]

@@ -44,9 +44,9 @@ function syncDocumentTheme({ theme, scoped }: UiThemeState) {
 
 useUiThemeStore.subscribe(syncDocumentTheme)
 
-const AUTH_AREA_PATH = /^\/(teacher|student)(\/|$)/
+const AUTH_AREA_PATH = /^\/(teacher|student|admin)(\/|$)/
 
-/** Route-level guard: outside the authenticated areas (landing, admin, public links) drop any
+/** Route-level guard: outside the authenticated areas (landing, public links) drop any
  *  dark class painted early by index.html, e.g. after a /teacher → /login redirect. */
 export function useUiThemeRouteGuard(pathname: string) {
   useLayoutEffect(() => {

@@ -619,7 +619,7 @@ export function StudentNavbar({
                   key={item.key}
                   onClick={() => handleNavigate(item.key)}
                   aria-label={item.label}
-                  className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
                   style={isActiveItem
                     ? {
                         backgroundColor: accentTheme.accent,

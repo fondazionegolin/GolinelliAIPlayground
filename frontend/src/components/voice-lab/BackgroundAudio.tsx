@@ -53,7 +53,7 @@ interface AudioContextValue {
   broadcast: (playlist: LabPlaylist, sessionId: string) => Promise<void>
   stopClass: () => Promise<void>
   addFiles: (files: File[]) => Promise<LabPlaylist | undefined>
-  addIds: (ids: string[]) => Promise<LabPlaylist | undefined>
+  addIds: (ids: string[], first?: boolean) => Promise<LabPlaylist | undefined>
   drop: (event: DragEvent) => void
 }
 const AudioContext = createContext<AudioContextValue | null>(null)
@@ -239,21 +239,22 @@ export function BackgroundAudioProvider({ children }: { children: ReactNode }) {
     else if (classActive) setMuted(!muted)
     else { setMuted(false); setPersonalPlaying(!personalPlaying); if (!personalPlaying) attemptPlay() }
   }
-  const append = async (ids: string[]) => {
+  const append = async (ids: string[], first = false) => {
     const current = personalLoader.current ? null : personalRef.current
-    const trackIds = [...new Set([...(current?.tracks.map(v => v.source_item_id) || []), ...ids])]
+    const existing = current?.tracks.map(v => v.source_item_id) || []
+    const trackIds = [...new Set(first ? [...ids, ...existing] : [...existing, ...ids])]
     const own = qc.getQueryData<LabPlaylist[]>(['voice-lab-playlists', identity])?.some(v => v.id === current?.id)
-    const selectedIds = current && !own ? [...new Set([...current.tracks.map(v => v.id), ...ids])] : trackIds
+    const selectedIds = current && !own ? [...new Set(first ? [...ids, ...current.tracks.map(v => v.id)] : [...current.tracks.map(v => v.id), ...ids])] : trackIds
     const { data } = current && own ? await voiceLabApi.updatePlaylist(current.id, current.title, selectedIds) : await voiceLabApi.createPlaylist(tl('Playlist rapida'), selectedIds)
     personalLoader.current = null; setPersonal(data); personalRef.current = data
-    if (!active || !playing) { setFollowing(false); setPersonalPlaying(true); setPersonalIndex(0); setMuted(false) }
+    if (first || !active || !playing) { setFollowing(false); setPersonalPlaying(true); setPersonalIndex(0); setMuted(false) }
     void qc.invalidateQueries({ queryKey: ['voice-lab-playlists'] }); void qc.invalidateQueries({ queryKey: ['drive'] })
     return data
   }
-  const addIds = async (ids: string[]) => {
+  const addIds = async (ids: string[], first = false) => {
     if (busyRef.current) return
     busyRef.current = true; setBusy(true); setPanelOpen(true)
-    try { return await append(ids) } catch (e) { fail(e) } finally { busyRef.current = false; setBusy(false) }
+    try { return await append(ids, first) } catch (e) { fail(e) } finally { busyRef.current = false; setBusy(false) }
   }
   const addFiles = async (files: File[]) => {
     if (busyRef.current) return
@@ -372,7 +373,7 @@ function NavbarAudioPanel() {
       {!studentSession && <Button tone="neutral" surface="ghost" density="compact" aria-expanded={creatingMusic} onClick={() => setCreatingMusic(v => !v)}><Music className="h-4 w-4" />{tl('Crea musica')}</Button>}
       {player.playback && !player.following && <Button tone="neutral" surface="ghost" density="compact" onClick={player.follow}>{tl('Ascolta la playlist di classe')}</Button>}
     </div>
-    {creatingMusic && !studentSession && <Suspense fallback={<p role="status" className="text-xs">{tl('Caricamento…')}</p>}><NavbarMusicComposer onPlay={item => player.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], async (track, signal) => (await voiceLabApi.content(track.id, signal)).data)} /></Suspense>}
+    {creatingMusic && !studentSession && <Suspense fallback={<p role="status" className="text-xs">{tl('Caricamento…')}</p>}><NavbarMusicComposer onGenerated={item => { void player.addIds([item.id], true) }} onPlay={item => player.playTracks([{ id: item.id, title: item.title, artist_name: item.artist_name, mime_type: item.mime_type, cover_url: item.cover_url }], async (track, signal) => (await voiceLabApi.content(track.id, signal)).data)} /></Suspense>}
     {player.busy && <p role="status" className="text-xs">{tl('Caricamento audio…')}</p>}
   </div>
 }

@@ -1,6 +1,9 @@
 import { SearchPill } from '@/design/primitives/SearchPill'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark, Languages, Leaf, Lightbulb, ListChecks, Lock, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Share2, Shield, Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown, type LucideIcon } from '@/components/icons'
+import { createPortal } from 'react-dom'
+import { Button } from '@/design'
+import LiveSlidePreview, { KIND_META, slideKind, slideText, type PreviewSlide, type SlideKind } from '@/components/live/LiveSlidePreview'
+import { Atom, BarChart3, BookOpen, Brain, Building2, Calculator, Code2, Compass, Copy, Cpu, Dna, Droplets, FileBarChart2, FlaskConical, Globe, Heart, KeyRound, Landmark, Languages, Leaf, Lightbulb, ListChecks, MoreHorizontal, Mountain, Music, Palette, Pencil, Play, Puzzle, Pyramid, Radio, Rocket, Scale, Share2, Shield, Sparkles, Square, Trash2, Trophy, Microscope, Zap, ChevronDown, ChevronLeft, ChevronRight, Eye, Plus, X, type LucideIcon } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 export interface LiveSessionItem {
@@ -87,17 +90,6 @@ export function sessionEmblem(item: LiveSessionItem): { Icon: IconType; color: s
     : { Icon: hash(title) % 2 ? ListChecks : BarChart3, color, label: tl("Quiz") }
 }
 
-function Emblem({ item, size }: { item: LiveSessionItem; size: 'large' | 'tile' }) {
-  const { Icon, color: background } = sessionEmblem(item)
-  // Solid platform colour on a squircle: the shape and the flat colour carry the identity, the icon stays quiet.
-  const large = size === 'large'
-  return (
-    <span className={`ds-squircle flex shrink-0 items-center justify-center text-white ${large ? 'h-16 w-16' : 'h-11 w-11'}`} style={{ background }} aria-hidden>
-      <Icon className={large ? 'h-7 w-7' : 'h-5 w-5'} strokeWidth={1.7} />
-    </span>
-  )
-}
-
 interface Actions {
   onOpen: (item: LiveSessionItem) => void
   onShare: (item: LiveSessionItem) => void
@@ -131,14 +123,14 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((value) => !value)} aria-label={tl("Altre azioni")} aria-expanded={open}
-        className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
+        className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)] transition hover:bg-black/5 hover:text-[var(--text-primary)]">
         <MoreHorizontal className="h-5 w-5" />
       </button>
       {open && (
         <div className="ds-popover absolute right-0 top-full z-30 mt-1 w-48 rounded-2xl p-1.5 shadow-xl" role="menu">
           {entries.filter((entry) => !entry.hidden).map((entry) => (
             <button key={entry.label} type="button" role="menuitem" onClick={() => { setOpen(false); entry.run() }}
-              className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 ${entry.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700'}`}>
+              className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-black/5 ${entry.danger ? 'text-red-600' : 'text-[var(--text-primary)]'}`}>
               <entry.icon className="h-4 w-4" />{entry.label}
             </button>
           ))}
@@ -150,54 +142,170 @@ function ItemMenu({ item, actions }: { item: LiveSessionItem; actions: Actions }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
 const unit = (item: LiveSessionItem) => `${item.slides_count} ${item.interaction_type === 'escape_room' ? 'indizi' : 'slide'}`
+const slidesOf = (item: LiveSessionItem) => (item.slides_json || []) as PreviewSlide[]
+const isEscape = (item: LiveSessionItem) => item.interaction_type === 'escape_room'
 
-function Card({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
+/** Per-kind counts of an item's slides, e.g. 4 × risposta multipla, 1 × word wall. */
+function kindCounts(item: LiveSessionItem) {
+  const counts = new Map<SlideKind, number>()
+  for (const slide of slidesOf(item)) {
+    const kind = slideKind(slide, isEscape(item))
+    counts.set(kind, (counts.get(kind) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+}
+
+function StatusBadge({ item }: { item: LiveSessionItem }) {
   const active = item.status === 'ACTIVE'
   const lobby = isOpenLobby(item)
-  const escape = item.interaction_type === 'escape_room'
-  const TypeIcon = escape ? Lock : BarChart3
+  const closed = item.status === 'CLOSED'
+  const label = active ? tl("In corso") : lobby ? tl("Lobby aperta") : closed ? tl("Conclusa") : tl("Bozza")
+  const style = active ? 'bg-emerald-500 text-white' : lobby ? 'bg-amber-500 text-white' : closed ? 'bg-[var(--ds-field-bg)] text-[var(--text-secondary)]' : 'bg-amber-400/20 text-amber-600'
   return (
-    <article className={`ui-card flex flex-col gap-4 p-4 transition hover:-translate-y-0.5 hover:shadow-lg ${active ? 'ring-2 ring-emerald-500/60' : lobby ? 'ring-2 ring-amber-500/70' : ''}`}>
-      <div className="flex items-start gap-3.5">
-        <Emblem item={item} size="large" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600"><TypeIcon className="h-3 w-3" />{escape ? 'Escape Room' : tl("Quiz")}</span>
-            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${active ? 'bg-emerald-500 text-white' : lobby ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{active ? tl("In corso") : lobby ? tl("Lobby aperta") : tl("Bozza")}
-            </span>
-          </div>
-          {item.status === 'DRAFT'
-            ? <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900"><button type="button" onClick={() => actions.onEdit(item)} title={tl("Modifica prima di avviare")} className="text-left underline-offset-2 hover:text-[var(--app-accent,#7c3aed)] hover:underline">{item.title}</button></h3>
-            : <h3 className="mt-1.5 line-clamp-2 break-words text-base font-bold leading-snug text-slate-900" title={item.title}>{item.title}</h3>}
-          <p className="mt-0.5 text-xs text-slate-500">{unit(item)} <span className="px-1 text-slate-300">·</span> {date(item.created_at)}</p>
+    <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${style}`}>
+      {(active || lobby) && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}{label}
+    </span>
+  )
+}
+
+function KindChips({ item }: { item: LiveSessionItem }) {
+  const counts = kindCounts(item)
+  if (!counts.length) return null
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {counts.map(([kind, count]) => {
+        const { icon: KindIcon, color, label } = KIND_META[kind]
+        return (
+          <span key={kind} title={label} className="flex items-center gap-1 rounded-full bg-[var(--ds-field-bg)] py-0.5 pl-1 pr-2 text-[11px] font-semibold text-[var(--text-secondary)]">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full text-white" style={{ background: color }}><KindIcon className="h-2.5 w-2.5" /></span>
+            {count} {label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function Tile({ item, actions, onPreview }: { item: LiveSessionItem; actions: Actions; onPreview: (item: LiveSessionItem) => void }) {
+  const active = item.status === 'ACTIVE'
+  const closed = item.status === 'CLOSED'
+  const first = slidesOf(item)[0]
+  const { Icon, color } = sessionEmblem(item)
+  return (
+    <article className="flex flex-col gap-3 rounded-3xl bg-[var(--ds-well-tile)] p-3 shadow-sm transition hover:bg-[var(--ds-well-tile-hover)]">
+      <button type="button" onClick={() => onPreview(item)} aria-label={tl("Anteprima di {0}", item.title)} className="group relative block overflow-hidden rounded-2xl text-left">
+        <div className="pointer-events-none h-44">
+          {first
+            ? <LiveSlidePreview slide={first} escape={isEscape(item)} compact />
+            : <div className="flex h-full items-center justify-center rounded-2xl bg-[var(--ds-field-bg)] text-sm text-[var(--text-secondary)]">{tl("Nessuna slide")}</div>}
         </div>
+        <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-bold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+          <Eye className="mr-1.5 h-4 w-4" />{tl("Anteprima")}
+        </span>
+      </button>
+
+      <div className="flex items-start gap-3 px-1">
+        <span className="ds-squircle flex h-10 w-10 shrink-0 items-center justify-center text-white" style={{ background: color }} aria-hidden><Icon className="h-5 w-5" strokeWidth={1.7} /></span>
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 break-words text-sm font-bold leading-snug text-[var(--text-primary)]" title={item.title}>{item.title}</h3>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{isEscape(item) ? 'Escape Room' : tl("Quiz")} · {unit(item)} · {date(item.created_at)}</p>
+        </div>
+        <StatusBadge item={item} />
       </div>
+
+      <div className="px-1"><KindChips item={item} /></div>
+
       <div className="mt-auto flex items-center gap-2">
-        <button type="button" onClick={() => actions.onOpen(item)}
-          className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${active ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-[var(--app-accent,#7c3aed)] text-white hover:opacity-90'}`}>
-          {active ? <><Radio className="h-4 w-4" /> {tl("Pannello live")}</> : <><Play className="h-4 w-4" /> {tl("Avvia")}</>}
-        </button>
+        {closed ? (
+          <Button tone="neutral" surface="solid" className="h-10 flex-1 justify-center" onClick={() => actions.onOpen(item)}><FileBarChart2 className="h-4 w-4" /> Report</Button>
+        ) : (
+          <Button tone="accent" surface="solid" className="h-10 flex-1 justify-center" onClick={() => actions.onOpen(item)}>
+            {active ? <><Radio className="h-4 w-4" /> {tl("Pannello live")}</> : <><Play className="h-4 w-4" /> {tl("Avvia")}</>}
+          </Button>
+        )}
         <ItemMenu item={item} actions={actions} />
       </div>
     </article>
   )
 }
 
-function ArchiveRow({ item, actions }: { item: LiveSessionItem; actions: Actions }) {
-  const { label } = sessionEmblem(item)
+function NewTile({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-slate-100/70">
-      <Emblem item={item} size="tile" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-slate-900" title={item.title}>{item.title}</p>
-        <p className="truncate text-xs text-slate-500">{item.interaction_type === 'escape_room' ? 'Escape Room' : tl("Quiz")} · {label} · {unit(item)} · {date(item.created_at)}</p>
+    <button type="button" onClick={onNew} className="flex min-h-[18rem] flex-col items-center justify-center gap-3 rounded-3xl bg-[var(--ds-well-tile)]/60 p-6 text-center text-[var(--text-secondary)] transition hover:bg-[var(--ds-well-tile)] hover:text-[var(--text-primary)]">
+      <span className="ds-squircle flex h-14 w-14 items-center justify-center bg-[var(--ds-field-bg)]"><Plus className="h-6 w-6" /></span>
+      <span className="text-sm font-bold">{tl("Nuova sessione")}</span>
+      <span className="max-w-[14rem] text-xs leading-5">{tl("Scegli il tipo e guarda l’anteprima prima di iniziare")}</span>
+    </button>
+  )
+}
+
+/** Full-size preview of every slide of a session, with the main actions at hand. */
+function PreviewDialog({ item, actions, onClose }: { item: LiveSessionItem; actions: Actions; onClose: () => void }) {
+  const slides = slidesOf(item)
+  const [index, setIndex] = useState(0)
+  const safe = Math.min(index, Math.max(0, slides.length - 1))
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+      else if (event.key === 'ArrowRight') setIndex((value) => Math.min(slides.length - 1, value + 1))
+      else if (event.key === 'ArrowLeft') setIndex((value) => Math.max(0, value - 1))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, slides.length])
+  const closed = item.status === 'CLOSED'
+  const current = slides[safe]
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={item.title} className="ds-popover flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[var(--ds-radius-panel)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 px-6 pb-3 pt-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2"><StatusBadge item={item} /><span className="text-xs text-[var(--text-secondary)]">{isEscape(item) ? 'Escape Room' : tl("Quiz")} · {unit(item)} · {date(item.created_at)}</span></div>
+            <h2 className="mt-1.5 break-words text-xl font-bold text-[var(--text-primary)]">{item.title}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label={tl("Chiudi")} className="rounded-xl p-2 text-[var(--text-secondary)] hover:bg-black/5"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 pb-4 md:grid-cols-[16rem_1fr]">
+          <ol className="max-h-[50vh] space-y-1.5 overflow-y-auto rounded-3xl bg-[var(--ds-well)] p-2.5 md:max-h-none">
+            {slides.map((slide, position) => {
+              const { icon: KindIcon, color } = KIND_META[slideKind(slide, isEscape(item))]
+              return (
+                <li key={position}>
+                  <button type="button" onClick={() => setIndex(position)} aria-current={safe === position}
+                    className={`flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-xs transition ${safe === position ? 'bg-[var(--ds-well-tile)] shadow-sm' : 'hover:bg-[var(--ds-well-tile)]/50'}`}>
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: color }}><KindIcon className="h-3.5 w-3.5" /></span>
+                    <span className="min-w-0 flex-1"><span className="block font-bold text-[var(--text-secondary)]">{position + 1}</span><span className="line-clamp-2 font-semibold text-[var(--text-primary)]">{slideText(slide) || '…'}</span></span>
+                  </button>
+                </li>
+              )
+            })}
+            {!slides.length && <li className="p-3 text-xs text-[var(--text-secondary)]">{tl("Nessuna slide")}</li>}
+          </ol>
+
+          <div className="flex min-w-0 flex-col gap-3 rounded-3xl bg-[var(--ds-well)] p-4">
+            <div className="min-h-[18rem] flex-1 [&>div]:min-h-[18rem]">{current && <LiveSlidePreview slide={current} escape={isEscape(item)} />}</div>
+            {slides.length > 1 && (
+              <div className="flex items-center justify-center gap-3 text-xs font-bold text-[var(--text-secondary)]">
+                <button type="button" disabled={safe === 0} onClick={() => setIndex(safe - 1)} aria-label={tl("Slide precedente")} className="rounded-full p-1.5 hover:bg-black/5 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+                {safe + 1} / {slides.length}
+                <button type="button" disabled={safe === slides.length - 1} onClick={() => setIndex(safe + 1)} aria-label={tl("Slide successiva")} className="rounded-full p-1.5 hover:bg-black/5 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3 px-6 pb-6 pt-2">
+          {item.status === 'DRAFT' && <Button tone="neutral" surface="ghost" onClick={() => { onClose(); actions.onEdit(item) }}><Pencil className="h-4 w-4" /> {tl("Modifica")}</Button>}
+          <Button tone="neutral" surface="ghost" onClick={() => { onClose(); actions.onDuplicate(item) }}><Copy className="h-4 w-4" /> {tl("Duplica")}</Button>
+          <Button tone="accent" surface="solid" onClick={() => { onClose(); actions.onOpen(item) }}>
+            {closed ? <><FileBarChart2 className="h-4 w-4" /> Report</> : item.status === 'ACTIVE' ? <><Radio className="h-4 w-4" /> {tl("Pannello live")}</> : <><Play className="h-4 w-4" /> {tl("Avvia")}</>}
+          </Button>
+        </div>
       </div>
-      <button type="button" onClick={() => actions.onOpen(item)} className="hidden h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-200/70 sm:flex">
-        <FileBarChart2 className="h-3.5 w-3.5" /> Report
-      </button>
-      <ItemMenu item={item} actions={actions} />
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -205,13 +313,15 @@ type StatusFilter = 'all' | 'ACTIVE' | 'DRAFT' | 'CLOSED'
 type TypeFilter = 'all' | 'slides' | 'escape_room'
 type SortKey = 'recent' | 'oldest' | 'name'
 
-/** Live activities of a session: grouped by state, searchable, each one recognisable by its emblem. */
-export default function LiveSessionList({ items, ...actions }: { items: LiveSessionItem[] } & Actions) {
+/** Live activities of a session: centred search, tiles with a real preview of the content, all framed on a darker well. */
+export default function LiveSessionList({ items, onNew, ...actions }: { items: LiveSessionItem[]; onNew?: () => void } & Actions) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [type, setType] = useState<TypeFilter>('all')
   const [sort, setSort] = useState<SortKey>('recent')
   const [showAllArchive, setShowAllArchive] = useState(false)
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const previewItem = items.find((item) => item.id === previewId) ?? null
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -225,7 +335,7 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
     const list = items.filter((item) =>
       (status === 'all' || item.status === status) &&
       (type === 'all' || (item.interaction_type ?? 'slides') === type) &&
-      (!needle || item.title.toLowerCase().includes(needle) || sessionEmblem(item).label.toLowerCase().includes(needle)))
+      (!needle || item.title.toLowerCase().includes(needle) || sessionEmblem(item).label.toLowerCase().includes(needle) || contentText(item).toLowerCase().includes(needle)))
     const time = (i: LiveSessionItem) => new Date(i.created_at).getTime()
     return list.sort((a, b) => sort === 'name' ? a.title.localeCompare(b.title, 'it') : sort === 'oldest' ? time(a) - time(b) : time(b) - time(a))
   }, [items, query, status, type, sort])
@@ -234,38 +344,40 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
   const pending = items.filter(isPending)
   const drafts = visible.filter((i) => i.status === 'DRAFT')
   const archive = visible.filter((i) => i.status === 'CLOSED')
-  const archiveShown = showAllArchive || archive.length <= 8 ? archive : archive.slice(0, 8)
+  const archiveShown = showAllArchive || archive.length <= 6 ? archive : archive.slice(0, 6)
+  const newTile = onNew && !query ? <NewTile onNew={onNew} /> : null
 
   const chips: Array<[StatusFilter, string]> = [['all', tl("Tutte")], ['ACTIVE', tl("In corso")], ['DRAFT', tl("Bozze")], ['CLOSED', tl("Archivio")]]
+  const selectClass = 'h-9 rounded-xl border-0 bg-[var(--ds-field-bg)] px-3 text-xs font-semibold text-[var(--ds-field-ink)]'
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchPill value={query} placeholder={tl("Cerca per titolo o argomento")} aria-label={tl("Cerca sessioni")} onValueChange={setQuery} className="min-w-[12rem] flex-1 sm:max-w-xs" />
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tl("Filtra per stato")}>
-          {chips.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${status === id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              {label} <span className={status === id ? 'text-white/60' : 'text-slate-400'}>{counts[id]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-          <select value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label={tl("Filtra per tipo")} className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
+    <div className="space-y-6">
+      <div className="mx-auto flex max-w-3xl flex-col items-center gap-3">
+        <SearchPill value={query} placeholder={tl("Cerca per titolo, argomento o domanda")} aria-label={tl("Cerca sessioni")} onValueChange={setQuery} className="w-full" />
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-1.5" role="group" aria-label={tl("Filtra per stato")}>
+            {chips.map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${status === id ? 'ds-selected text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-black/5'}`}>
+                {label} <span className="opacity-60">{counts[id]}</span>
+              </button>
+            ))}
+          </div>
+          <select value={type} onChange={(event) => setType(event.target.value as TypeFilter)} aria-label={tl("Filtra per tipo")} className={selectClass}>
             <option value="all">{tl("Tutti i tipi")}</option><option value="slides">{tl("Quiz e sondaggi")}</option><option value="escape_room">Escape Room</option>
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label={tl("Ordina")} className="h-9 rounded-xl border-0 bg-slate-100 px-3 text-xs font-semibold text-slate-700">
+          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label={tl("Ordina")} className={selectClass}>
             <option value="recent">{tl("Più recenti")}</option><option value="oldest">{tl("Più vecchie")}</option><option value="name">{tl("Nome A–Z")}</option>
           </select>
         </div>
       </div>
 
       {pending.length > 0 && (
-        <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center">
+        <div role="alert" className="flex flex-col gap-3 rounded-2xl bg-amber-500/15 p-4 sm:flex-row sm:items-center">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white"><Radio className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-amber-900">{pending.length === 1 ? tl("1 sessione è ancora attiva") : tl("{0} sessioni sono ancora attive", pending.length)}{tl(": gli studenti della classe la vedono.")}</p>
-            <p className="truncate text-xs text-amber-800/80">{pending.map(i => i.title).join(' · ')}</p>
+            <p className="text-sm font-bold text-[var(--text-primary)]">{pending.length === 1 ? tl("1 sessione è ancora attiva") : tl("{0} sessioni sono ancora attive", pending.length)}{tl(": gli studenti della classe la vedono.")}</p>
+            <p className="truncate text-xs text-[var(--text-secondary)]">{pending.map(i => i.title).join(' · ')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {pending.map(item => (
@@ -276,47 +388,49 @@ export default function LiveSessionList({ items, ...actions }: { items: LiveSess
           </div>
         </div>
       )}
-      {active.length > 0 && (
-        <Section title={tl("In corso")} hint={tl("Sessioni live attive adesso")} count={active.length} tone="emerald">
-          <Grid>{active.map((item) => <Card key={item.id} item={item} actions={actions} />)}</Grid>
-        </Section>
-      )}
-      {drafts.length > 0 && (
-        <Section title={tl("Da preparare")} hint={tl("Controlla i contenuti e avvia quando sei pronto")} count={drafts.length} tone="violet">
-          <Grid>{drafts.map((item) => <Card key={item.id} item={item} actions={actions} />)}</Grid>
-        </Section>
-      )}
-      {archive.length > 0 && (
-        <Section title={tl("Archivio")} hint={tl("Sessioni concluse: report e riutilizzo")} count={archive.length} tone="slate">
-          <div className="ui-card divide-y divide-slate-100/60 p-1.5">
-            {archiveShown.map((item) => <ArchiveRow key={item.id} item={item} actions={actions} />)}
+
+      <div className="space-y-8 rounded-[2rem] bg-[var(--ds-well)] p-4 sm:p-6">
+        {active.length > 0 && (
+          <Section title={tl("In corso")} hint={tl("Sessioni live attive adesso")} count={active.length}>
+            <Grid>{active.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
+          </Section>
+        )}
+        {(drafts.length > 0 || (active.length === 0 && newTile)) && (
+          <Section title={tl("Da preparare")} hint={tl("Controlla i contenuti e avvia quando sei pronto")} count={drafts.length}>
+            <Grid>{newTile}{drafts.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
+          </Section>
+        )}
+        {archive.length > 0 && (
+          <Section title={tl("Archivio")} hint={tl("Sessioni concluse: report e riutilizzo")} count={archive.length}>
+            <Grid>{archiveShown.map((item) => <Tile key={item.id} item={item} actions={actions} onPreview={(i) => setPreviewId(i.id)} />)}</Grid>
+            {archive.length > 6 && (
+              <button type="button" onClick={() => setShowAllArchive((value) => !value)} className="mx-auto mt-4 flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold text-[var(--text-secondary)] transition hover:bg-black/5">
+                {showAllArchive ? tl("Mostra meno") : tl("Mostra tutte ({0})", archive.length)}<ChevronDown className={`h-3.5 w-3.5 transition ${showAllArchive ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </Section>
+        )}
+        {visible.length === 0 && (
+          <div className="py-14 text-center text-[var(--text-secondary)]">
+            <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
+            <p className="text-sm font-medium text-[var(--text-primary)]">{tl("Nessuna sessione corrisponde ai filtri")}</p>
+            <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
           </div>
-          {archive.length > 8 && (
-            <button type="button" onClick={() => setShowAllArchive((value) => !value)} className="mx-auto mt-3 flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold text-slate-500 transition hover:bg-slate-100">
-              {showAllArchive ? tl("Mostra meno") : tl("Mostra tutte ({0})", archive.length)}<ChevronDown className={`h-3.5 w-3.5 transition ${showAllArchive ? 'rotate-180' : ''}`} />
-            </button>
-          )}
-        </Section>
-      )}
-      {visible.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 py-14 text-center text-slate-400">
-          <Zap className="mx-auto mb-2 h-8 w-8 opacity-40" />
-          <p className="text-sm font-medium text-slate-600">{tl("Nessuna sessione corrisponde ai filtri")}</p>
-          <button type="button" onClick={() => { setQuery(''); setStatus('all'); setType('all') }} className="mt-2 text-xs font-bold text-[var(--app-accent,#7c3aed)] underline">{tl("Azzera i filtri")}</button>
-        </div>
-      )}
+        )}
+      </div>
+
+      {previewItem && <PreviewDialog item={previewItem} actions={actions} onClose={() => setPreviewId(null)} />}
     </div>
   )
 }
 
-function Section({ title, hint, count, tone, children }: { title: string; hint: string; count: number; tone: 'emerald' | 'violet' | 'slate'; children: React.ReactNode }) {
-  const badge = tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' : tone === 'violet' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'
+function Section({ title, hint, count, children }: { title: string; hint: string; count: number; children: React.ReactNode }) {
   return (
     <section>
       <div className="mb-3 flex items-baseline gap-3 px-1">
-        <h2 className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{title}</h2>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${badge}`}>{count}</span>
-        <p className="hidden text-xs text-slate-400 sm:block">{hint}</p>
+        <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--text-primary)]">{title}</h2>
+        <span className="rounded-full bg-[var(--ds-well-tile)] px-2.5 py-0.5 text-xs font-bold text-[var(--text-secondary)]">{count}</span>
+        <p className="hidden text-xs text-[var(--text-secondary)] sm:block">{hint}</p>
       </div>
       {children}
     </section>

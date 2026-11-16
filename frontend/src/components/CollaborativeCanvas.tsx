@@ -23,6 +23,8 @@ import { buildTutorial, TUTORIAL_SIZE } from './canvasTutorial'
 import type { Scene } from './motion/spec'
 import { CanvasMinimap, type MinimapItem } from './CanvasMinimap'
 import { plainToLatex } from './canvasMath'
+import { calloutTarget, leaderStart } from './canvasCallouts'
+import type { PlotArea, PlotExtra, PlotRiemann, PlotVLine } from './canvasPlot'
 import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, describeDoc, renderDocToPng, collectImages, plotGeometry, type AiOp, type SceneItem } from './canvasAi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,8 +65,10 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'line'; color: string; width: number; arrow?: boolean; flipX?: boolean; flipY?: boolean })
   | (CanvasPositionedItemBase & { type: 'animation'; scene: Scene })
   | (CanvasPositionedItemBase & { type: 'formula'; latex: string; src?: string; fontSize: number; color: string })
-  | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }> })
+  | (CanvasPositionedItemBase & { type: 'plot'; expr: string; xMin: number; xMax: number; yMin: number; yMax: number; color: string; title?: string; marks?: Array<{ x: number; y: number; label?: string }>; areas?: PlotArea[]; extra?: PlotExtra[]; vlines?: PlotVLine[]; riemann?: PlotRiemann })
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
+  /** A flag naming a point of an image: `rx/ry` = the point in 0..1 of the image box (so it follows the image), `tx/ty` = last known world point. */
+  | (CanvasPositionedItemBase & { type: 'callout'; text: string; color: string; imageId?: string; rx: number; ry: number; tx: number; ty: number; edited?: boolean })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
   | (CanvasPositionedItemBase & { type: 'path'; points: Point[]; ow: number; oh: number; color: string; width: number })
   | (CanvasPositionedItemBase & { type: 'quiz'; question: string; options: string[]; correct: number[]; explanation?: string; color: string; answers?: Record<string, CanvasAnswer> })
@@ -102,6 +106,10 @@ interface CollaborativeCanvasProps {
   fill?: boolean
   /** Lets formula actions (solve, explain…) hand a request to the AI assistant. */
   onAssist?: (prompt: string, itemIds: string[]) => void
+  /** Called when an image lands on the board (paste, drop): the page may label its components automatically. */
+  onImageAdded?: (imageId: string) => void
+  /** Context-menu action «Etichetta i componenti» on an image. */
+  onLabelImage?: (imageId: string) => void
   /** Controls at the far left of the top bar (e.g. back to the list). */
   leading?: React.ReactNode
   /** Shows the «Guida» button, which lays the tutorial out on the board. */
@@ -502,6 +510,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   chrome,
   fill = false,
   onAssist,
+  onImageAdded,
+  onLabelImage,
   onPermissionChange,
   leading,
   tutorial = false,
@@ -1760,6 +1770,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           movingIds.add(id)
           const selected = itemById.get(id)
           if (selected && isFrame(selected)) collectFrameDescendants(canvasDoc.items, id).forEach((childId) => movingIds.add(childId))
+          if (selected?.type === 'image') canvasDoc.items.forEach((c) => { if (c.type === 'callout' && c.imageId === id) movingIds.add(c.id) })
         })
         const origins: Record<string, Point> = {}
         movingIds.forEach((id) => {
@@ -1780,6 +1791,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       const isLine = resizingType === 'line' || resizingType === 'path'
       resize.pendingW = Math.max(isLine ? 4 : 80, resize.startW + (e.clientX - resize.startX) / zoomRef.current)
       resize.pendingH = Math.max(isLine ? 2 : 60, resize.startH + (e.clientY - resize.startY) / zoomRef.current)
+      // An image keeps its proportions: a cropped picture would no longer line up with the flags pointing at it.
+      if (resizingType === 'image') { resize.pendingW = Math.max(80, resize.pendingW); resize.pendingH = resize.pendingW * (resize.startH / Math.max(resize.startW, 1)) }
       if (!resizeRafRef.current) {
         resizeRafRef.current = window.requestAnimationFrame(() => {
           resizeRafRef.current = null
@@ -2084,6 +2097,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   }, [applyZoom, paintViewport])
 
   // Pasting an image (screenshot, copied picture) drops it at the centre of the view.
+  const onImageAddedRef = useRef(onImageAdded)
+  onImageAddedRef.current = onImageAdded
   const pasteImagesRef = useRef<(files: File[]) => void>(() => {})
   pasteImagesRef.current = (files) => {
     if (!canEdit) return
@@ -2102,6 +2117,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           const img: CanvasItem = { id: mkId(), type: 'image', x: centre.x - w / 2 + offset, y: centre.y - h / 2 + offset, w, h, src }
           setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
           setSelectedId(img.id); setSelectedIds([img.id])
+          onImageAddedRef.current?.(img.id)
           offset += 30
         } catch (err) { console.error(err) }
       }
@@ -2621,7 +2637,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   }}
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={() => { if (item.type === 'formula' && canEdit) { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } }}
+                  onDoubleClick={() => { if ((item.type === 'formula' || item.type === 'callout') && canEdit) { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } }}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
                 >
                   {item.type === 'postit' && (
@@ -2773,10 +2789,18 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                     return (
                       <svg className="h-full w-full overflow-visible rounded-md bg-white shadow-sm" viewBox={`0 0 ${item.w} ${item.h}`} style={{ border: '1.5px solid #64748b' }}>
                         {geo.grid.map(([x1, y1, x2, y2], i) => <line key={`g${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#e2e8f0" />)}
+                        {geo.areas.map((a, i) => <path key={`ar${i}`} d={a.d} fill={a.color} fillOpacity={0.3} stroke={a.color} strokeOpacity={0.55} strokeWidth={1} />)}
+                        {geo.rects.map((r, i) => <rect key={`rr${i}`} x={r.x} y={r.y} width={r.w} height={r.h} fill="#3b82f6" fillOpacity={0.28} stroke="#2563eb" strokeWidth={1} />)}
+                        {geo.vlines.map((v, i) => <line key={`vl${i}`} x1={v.x1} y1={v.y1} x2={v.x2} y2={v.y2} stroke="#475569" strokeWidth={1.2} strokeDasharray="5 4" />)}
                         {geo.axes.map(([x1, y1, x2, y2], i) => <line key={`a${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1e293b" strokeWidth={2} markerEnd="url(#canvas-arrow)" />)}
                         {geo.ticks.map((t, i) => <text key={`t${i}`} x={t.x} y={t.y} fontSize={11} fill="#475569" textAnchor={t.align} fontFamily="Inter, system-ui, sans-serif">{t.text}</text>)}
+                        {geo.vlines.map((v, i) => <text key={`vt${i}`} x={v.lx} y={v.ly} fontSize={12} fontWeight={700} fill="#0f172a" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif">{v.label}</text>)}
                         {geo.curves.map((c, i) => <path key={`c${i}`} d={c.map((p, k) => `${k ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('')} fill="none" stroke={item.color} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />)}
+                        {geo.extraCurves.map((e, i) => e.points.map((run, k) => <path key={`ec${i}-${k}`} d={run.map((p, j) => `${j ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('')} fill="none" stroke={e.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />))}
                         {geo.marks.map((m, i) => <g key={`m${i}`}><circle cx={m.x} cy={m.y} r={4} fill={item.color} /><text x={m.x + 7} y={m.y - 7} fontSize={12} fill="#171717" fontFamily="Inter, system-ui, sans-serif">{m.label}</text></g>)}
+                        {geo.areas.map((a, i) => a.label ? <text key={`al${i}`} x={a.lx} y={a.ly} fontSize={12} fontWeight={700} fill="#0f172a" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" stroke="#ffffff" strokeWidth={3} paintOrder="stroke">{a.label}</text> : null)}
+                        {geo.riemannLabel && <text x={geo.riemannLabel.x} y={geo.riemannLabel.y} fontSize={12} fontWeight={700} fill="#1d4ed8" fontFamily="Inter, system-ui, sans-serif" stroke="#ffffff" strokeWidth={3} paintOrder="stroke">{geo.riemannLabel.text}</text>}
+                        {geo.extraCurves.map((e, i) => e.label ? <text key={`el${i}`} x={item.w - 36} y={item.title ? 46 + i * 16 : 24 + i * 16} fontSize={12} fontWeight={600} fill={e.color} textAnchor="end" fontFamily="Inter, system-ui, sans-serif">{e.label}</text> : null)}
                         {item.title && <text x={10} y={geo.titleY} fontSize={13} fontWeight={600} fill="#334155" fontFamily="Inter, system-ui, sans-serif">{item.title}</text>}
                       </svg>
                     )
@@ -2787,6 +2811,41 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                       <line x1={item.flipX ? item.w : 0} y1={item.flipY ? item.h : 0} x2={item.flipX ? 0 : item.w} y2={item.flipY ? 0 : item.h} stroke={item.color} strokeWidth={item.width} strokeLinecap="round" markerEnd={item.arrow ? 'url(#canvas-arrow)' : undefined} vectorEffect="non-scaling-stroke" />
                     </svg>
                   )}
+
+                  {item.type === 'callout' && (() => {
+                    const target = calloutTarget(item, canvasDoc.items)
+                    const local = { x: target.x - item.x, y: target.y - item.y }
+                    const start = leaderStart(item.w, item.h, local)
+                    return (
+                      <>
+                        <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={item.w} height={item.h} aria-hidden="true">
+                          <line x1={start.x} y1={start.y} x2={local.x} y2={local.y} stroke="#ffffff" strokeWidth={4.5} strokeLinecap="round" opacity={0.9} />
+                          <line x1={start.x} y1={start.y} x2={local.x} y2={local.y} stroke={item.color} strokeWidth={2} strokeLinecap="round" />
+                          <circle cx={local.x} cy={local.y} r={6.5} fill="#ffffff" />
+                          <circle cx={local.x} cy={local.y} r={4.5} fill={item.color} />
+                        </svg>
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            value={item.text}
+                            onChange={(e) => updateItem(item.id, { text: e.target.value, edited: true })}
+                            onBlur={() => setEditingId((prev) => (prev === item.id ? null : prev))}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingId(null) }}
+                            className="relative h-full w-full rounded-full bg-white px-3 text-center text-[13px] font-semibold text-slate-900 outline-none"
+                            style={{ boxShadow: `0 0 0 2px ${item.color}, 0 4px 10px -4px rgba(15,23,42,0.35)` }}
+                          />
+                        ) : (
+                          <div
+                            className="relative flex h-full w-full cursor-grab items-center justify-center truncate rounded-full bg-white px-3 text-[13px] font-semibold text-slate-900 active:cursor-grabbing"
+                            style={{ boxShadow: `0 0 0 2px ${item.color}, 0 4px 10px -4px rgba(15,23,42,0.35)`, fontFamily: 'Inter, system-ui, sans-serif' }}
+                            title={item.text}
+                          >
+                            {item.text}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
 
                   {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
 
@@ -2935,6 +2994,11 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
               </button>
               <div className="mx-2 my-1 h-px bg-slate-100" />
             </>
+          )}
+          {contextMenu.itemId && onLabelImage && canvasDoc.items.find((i) => i.id === contextMenu.itemId)?.type === 'image' && (
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#e85c8d] hover:bg-pink-50" onClick={() => { onLabelImage(contextMenu.itemId!); closeContextMenu() }}>
+              {tl("Etichetta i componenti")}
+            </button>
           )}
           {contextMenu.itemId && onAssist && (
             <>

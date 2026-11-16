@@ -16,9 +16,10 @@ import {
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical,
   HelpCircle, X, SkipForward, BarChart2, Smartphone,
   ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText, Bot, LockKeyhole,
-  Copy, LayoutTemplate, UsersRound, ChevronRight,
+  Copy, UsersRound,
 } from '@/components/icons'
 import LiveSessionList, { isOpenLobby } from '@/components/live/LiveSessionList'
+import NewSessionDialog from '@/components/live/NewSessionDialog'
 import EndSessionDialog from '@/components/live/EndSessionDialog'
 import { tl } from '@/i18n/tl'
 
@@ -1203,63 +1204,6 @@ function StructureAssistModal({
   )
 }
 
-function NewSessionModal({
-  onClose, onManual, onAi, onEscape,
-}: {
-  onClose: () => void
-  onManual: () => void
-  onAi: () => void
-  onEscape: () => void
-}) {
-  const choices = [
-    {
-      title: tl("Crea manualmente"),
-      description: tl("Componi il quiz slide per slide e scegli ogni interazione."),
-      icon: LayoutTemplate,
-      tone: 'bg-sky-50 text-sky-700 ring-sky-100',
-      action: onManual,
-    },
-    {
-      title: tl("Suggerisci struttura AI"),
-      description: tl("Parti da un argomento o da un PDF e modifica la proposta."),
-      icon: Sparkles,
-      tone: 'bg-violet-50 text-violet-700 ring-violet-100',
-      action: onAi,
-    },
-    {
-      title: 'Escape Room',
-      description: tl("Trasforma un Teacherbot in una sfida narrativa a indizi."),
-      icon: LockKeyhole,
-      tone: 'bg-amber-50 text-amber-700 ring-amber-100',
-      action: onEscape,
-    },
-  ]
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 text-center">
-          <div className="flex-1 pl-8">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">{tl("Nuova sessione")}</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">{tl("Come vuoi iniziare?")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{tl("Ogni percorso crea una bozza modificabile prima della pubblicazione.")}</p>
-          </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={tl("Chiudi")}><X className="h-5 w-5" /></button>
-        </div>
-        <div className="mt-6 space-y-3">
-          {choices.map(({ title, description, icon: Icon, tone, action }) => (
-            <button key={title} type="button" onClick={action} className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/30 hover:shadow-md">
-              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${tone}`}><Icon className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block font-bold text-slate-900">{title}</span><span className="mt-0.5 block text-sm leading-5 text-slate-500">{description}</span></span>
-              <ChevronRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-500" />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 interface AudienceOption {
   id: string
   title: string
@@ -1703,7 +1647,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       </div>
 
       {showNewSessionModal && (
-        <NewSessionModal
+        <NewSessionDialog
           onClose={() => setShowNewSessionModal(false)}
           onManual={() => { setShowNewSessionModal(false); setCreating(true) }}
           onAi={() => { setShowNewSessionModal(false); setShowStructureModal(true) }}
@@ -1813,6 +1757,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {activeSessionId && !isLoading && Boolean(interactions?.length) && (
         <LiveSessionList
           items={interactions || []}
+          onNew={() => setShowNewSessionModal(true)}
           onOpen={item => navigate(`/teacher/live-interaction/${item.id}/control`)}
           onShare={item => setShareTarget(item as LiveInteractionItem)}
           onEdit={item => item.interaction_type === 'escape_room' ? setEditingEscapeId(item.id) : setEditingId(item.id)}

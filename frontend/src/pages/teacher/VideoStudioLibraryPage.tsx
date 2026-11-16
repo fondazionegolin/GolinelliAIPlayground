@@ -65,7 +65,7 @@ export default function VideoStudioLibraryPage() {
             <span className="max-w-md text-sm text-[var(--text-secondary)]">{tl("Incolla una lezione di biologia, chimica o fisica e trasformala in un mini-documentario.")}</span>
           </button>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="ds-well grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {projects.map((p) => (
               <article key={p.id} className="ui-card ui-card-interactive group overflow-hidden">
                 <button onClick={() => navigate(`/teacher/video-studio/${p.id}`)} className="block w-full text-left">

@@ -82,9 +82,9 @@ function SharedModelsGallery({ onBack }: { onBack?: () => void }) {
         <p className="mt-1 text-sm text-slate-500">{tl("Modelli condivisi dal docente: ruotali, osservali da ogni lato e scarica l'STL per la stampa 3D.")}</p>
         {list.isLoading && <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
         {list.data?.length === 0 && <p className="mt-10 text-center text-sm text-slate-400">{tl("Nessun modello condiviso per ora.")}</p>}
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div className="ds-well mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {list.data?.map(m => (
-            <button key={m.id} type="button" onClick={() => setOpenId(m.id)} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <button key={m.id} type="button" onClick={() => setOpenId(m.id)} className="ds-well-tile group overflow-hidden rounded-2xl !border-0 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="aspect-[16/10] bg-slate-100">
                 {m.thumbnail ? <img src={m.thumbnail} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Box className="h-8 w-8 text-slate-300" /></div>}
               </div>

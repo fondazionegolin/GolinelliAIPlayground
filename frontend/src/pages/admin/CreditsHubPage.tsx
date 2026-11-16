@@ -430,7 +430,7 @@ function BudgetTableRow({
           <span className="text-xs text-slate-400">{formatCreditAmount(row.used_credits)} usati</span>
         ) : (
           <div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-[#eceef1]">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--admin-track)]">
               <div className={`h-full ${style.bar}`} style={{ width: `${pct}%` }} />
             </div>
             <p className="mt-1 text-[11px] tabular-nums text-slate-500">

@@ -20,6 +20,8 @@ import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
 import StudentsPage from './StudentsPage'
 import CreditsHubPage from './CreditsHubPage'
+import { useUiThemeScope, useUiThemeStore } from '@/stores/uiTheme'
+import { Moon, Sun } from '@/components/icons'
 import { useSocket } from '@/hooks/useSocket'
 import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 import './admin.css'
@@ -83,12 +85,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm overflow-hidden rounded-[0.625rem] border border-[#e2e5ea] bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-[#e2e5ea] bg-[#f8f9fb] px-5 py-3.5">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-sm overflow-hidden rounded-[0.625rem] border border-[var(--admin-line)] bg-[var(--admin-surface)] shadow-xl">
+        <div className="flex items-center justify-between border-b border-[var(--admin-line)] bg-[var(--admin-surface-2)] px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <KeyRound className="h-4 w-4 text-slate-500" />
-            <h2 className="text-sm font-semibold text-slate-900">{tl("Cambia password admin")}</h2>
+            <h2 className="text-sm font-semibold text-[var(--admin-ink)]">{tl("Cambia password admin")}</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 transition-colors hover:text-slate-700">
             <X className="h-4 w-4" />
@@ -101,13 +103,13 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             { label: tl("Conferma nuova password"), value: confirm, set: setConfirm, placeholder: '••••••••' },
           ].map(({ label, value, set, placeholder }) => (
             <div key={label}>
-              <label className="mb-1 block text-xs font-medium text-slate-700">{label}</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--admin-ink-2)]">{label}</label>
               <input
                 type="password"
                 value={value}
                 onChange={e => set(e.target.value)}
                 placeholder={placeholder}
-                className="w-full rounded-md border border-[#cfd4dc] px-3 py-2 text-sm focus:border-[var(--logo-violet-strong)] focus:outline-none focus:ring-2 focus:ring-[rgba(123,105,201,0.18)]"
+                className="w-full rounded-md px-3 py-1.5 text-sm focus:border-[var(--logo-violet-strong)] focus:outline-none focus:ring-2 focus:ring-[rgba(123,105,201,0.18)]"
               />
             </div>
           ))}
@@ -133,6 +135,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 export default function AdminDashboard() {
   const queryClient = useQueryClient()
   useSocket('')
+  useUiThemeScope()
   usePlatformRealtimeSync(queryClient)
   const logout = () => { void endSession() }
   const location = useLocation()
@@ -184,7 +187,7 @@ export default function AdminDashboard() {
         )}
 
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--admin-line)] bg-white px-4 lg:hidden">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 admin-topbar px-4 lg:hidden">
             <IconButton
               tone="neutral"
               surface="outline"
@@ -196,7 +199,7 @@ export default function AdminDashboard() {
             </IconButton>
             <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-auto" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-950">{tl("Pannello admin")}</p>
+              <p className="truncate text-sm font-semibold text-[var(--admin-ink)]">{tl("Pannello admin")}</p>
               <p className="text-[11px] text-[var(--admin-ink-3)]">Golinelli.ai</p>
             </div>
           </header>
@@ -270,7 +273,7 @@ function AdminSidebar({
         type="button"
         onClick={() => onNavigate(item.path)}
         aria-current={isActive ? 'page' : undefined}
-        className={`admin-nav-item relative flex h-9 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'}`}
+        className={`admin-nav-item relative flex h-8 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'}`}
         title={item.label}
       >
         <item.icon className="h-4 w-4 shrink-0" />
@@ -340,10 +343,24 @@ function AdminSidebar({
 
       <div className="space-y-0.5 border-t border-[var(--admin-line)] p-3">
         <SidebarAction expanded={expanded} icon={BookOpen} label={tl("Pannello docente")} onClick={() => onNavigate('/teacher')} />
+        <ThemeAction expanded={expanded} />
         <SidebarAction expanded={expanded} icon={KeyRound} label={tl("Cambia password")} onClick={onShowChangePassword} />
         <SidebarAction expanded={expanded} icon={LogOut} label={tl("Esci")} onClick={onLogout} danger />
       </div>
     </aside>
+  )
+}
+
+function ThemeAction({ expanded }: { expanded: boolean }) {
+  const dark = useUiThemeStore((s) => s.theme === 'dark')
+  const setTheme = useUiThemeStore((s) => s.setTheme)
+  return (
+    <SidebarAction
+      expanded={expanded}
+      icon={dark ? Sun : Moon}
+      label={dark ? tl("Tema chiaro") : tl("Tema scuro")}
+      onClick={() => setTheme(dark ? 'light' : 'dark')}
+    />
   )
 }
 
@@ -365,7 +382,7 @@ function SidebarAction({
       type="button"
       onClick={onClick}
       title={label}
-      className={`admin-nav-item flex h-9 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '!text-[var(--logo-pink)]' : ''}`}
+      className={`admin-nav-item flex h-8 w-full items-center gap-2.5 px-2.5 text-[13px] font-medium transition-colors ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '!text-[var(--logo-pink)]' : ''}`}
     >
       <Icon className="h-4 w-4 shrink-0" />
       {expanded && <span className="truncate">{label}</span>}

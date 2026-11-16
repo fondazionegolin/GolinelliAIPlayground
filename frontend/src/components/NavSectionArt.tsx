@@ -30,12 +30,12 @@ export function hasSectionArt(path: string) {
   return Object.prototype.hasOwnProperty.call(ART, path)
 }
 
-export function NavSectionArt({ path, className = '', variant = 'navigation' }: { path: string; className?: string; variant?: 'navigation' | 'heading' }) {
+export function NavSectionArt({ path, className = '', variant = 'navigation' }: { path: string; className?: string; variant?: 'navigation' | 'heading' | 'menu' }) {
   const art = ART[path]
   if (!art) return null
   return (
     <span
-      className={`flex shrink-0 items-center justify-center ${className}`}
+      className={`flex shrink-0 items-center justify-center ${variant === 'menu' ? 'ds-nav-illustration' : ''} ${className}`}
       aria-hidden="true"
       data-section-illustration={variant === 'heading' ? path : undefined}
     >
@@ -46,7 +46,7 @@ export function NavSectionArt({ path, className = '', variant = 'navigation' }: 
         height={320}
         decoding="async"
         draggable={false}
-        className={`h-full w-full object-contain ${variant === 'navigation' ? 'scale-[0.8]' : ''}`}
+        className={`h-full w-full object-contain ${variant === 'navigation' ? 'scale-[0.8]' : variant === 'menu' ? 'scale-[1.05]' : ''}`}
       />
     </span>
   )

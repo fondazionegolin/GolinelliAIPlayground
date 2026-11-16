@@ -397,11 +397,11 @@ export default function TeacherbotsPage() {
               <p className="text-sm font-semibold text-slate-700">{tl("Nessun teacherbot corrisponde a \"")}{search}&quot;</p>
             </div>
           ) : (
-            <>
+            <div className="ds-well [&>section:last-child]:mb-0">
               {renderSection(tl("Pubblicati"), <Globe className="h-4 w-4 text-emerald-600" />, filtered.published)}
               {renderSection(tl("Bozze e in lavorazione"), <PencilLine className="h-4 w-4 text-slate-500" />, filtered.other)}
               {renderSection(tl("Condivisi con me dai colleghi"), <Users className="h-4 w-4 text-sky-600" />, filtered.shared, true)}
-            </>
+            </div>
           )}
         </div>
       </div>

@@ -6,7 +6,7 @@ import { usePromptHistory } from '@/hooks/usePromptHistory'
 import { useAutoGrow } from '@/hooks/useAutoGrow'
 import { confirmAttachments } from '@/components/privacy/AttachmentPrivacyGuard'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from '@/components/icons'
+import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2, PanelLeftOpen } from '@/components/icons'
 import { Button, SectionIllustration } from '@/design'
 import { ChatWelcome } from '@/components/student/ChatWelcome'
 import { triggerHaptic } from '@/lib/haptics'
@@ -53,6 +53,8 @@ interface ChatConversationViewProps {
   headerContent?: ReactNode
   footerContent?: ReactNode
   hideComposer?: boolean
+  /** When set, the leading header button opens this left drawer instead of going back. */
+  leftDrawer?: (close: () => void) => ReactNode
 }
 
 export function ChatConversationView({
@@ -72,7 +74,9 @@ export function ChatConversationView({
   headerContent,
   footerContent,
   hideComposer = false,
+  leftDrawer,
 }: ChatConversationViewProps) {
+  const [drawerOpen, setDrawerOpen] = useState(false)
   // Get the appropriate color class for avatars
   const avatarColorClass = profileColor.startsWith('bg-')
     ? profileColor
@@ -183,6 +187,14 @@ export function ChatConversationView({
       className="fixed inset-x-0 top-0 z-[80] flex min-h-0 flex-col overflow-hidden bg-[var(--ds-canvas)]"
       style={{ height: `${viewport.height}px`, transform: `translateY(${viewport.offsetTop}px)` }}
     >
+      {leftDrawer && drawerOpen && (
+        <div className="absolute inset-0 z-50">
+          <button type="button" className="absolute inset-0 bg-slate-950/45" onClick={() => setDrawerOpen(false)} aria-label={tl("Chiudi menu")} />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-[var(--ds-surface-raised)] shadow-2xl">
+            {leftDrawer(() => setDrawerOpen(false))}
+          </aside>
+        </div>
+      )}
       {/* Mobile Header */}
       <div className="flex h-16 flex-shrink-0 items-center gap-2.5 bg-[var(--ds-surface-raised)] px-3">
         <Button
@@ -190,11 +202,13 @@ export function ChatConversationView({
           size="sm"
           onClick={() => {
             triggerHaptic('light')
-            onBack()
+            if (leftDrawer) setDrawerOpen(true)
+            else onBack()
           }}
           className="h-8 w-8 p-0 rounded-xl"
+          aria-label={leftDrawer ? tl("Apri menu chat") : tl("Indietro")}
         >
-          <ArrowLeft className="h-4 w-4 text-slate-700" />
+          {leftDrawer ? <PanelLeftOpen className="h-4 w-4 text-slate-700" /> : <ArrowLeft className="h-4 w-4 text-slate-700" />}
         </Button>
         <SectionIllustration section="/teacher/teacherbots" compact />
         <div className="flex-1 min-w-0">

@@ -122,13 +122,13 @@ export default function AdminOverviewPage() {
         <AdminSection title={tl("Chiamate e costi giornalieri")} className="xl:col-span-2" bodyClassName="h-72 p-4">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={dailyHistory}>
-              <CartesianGrid stroke="#eceef1" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={{ stroke: '#cfd4dc' }} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={false} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#5f6470' }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e5ea', fontSize: 12 }} />
+              <CartesianGrid stroke="var(--admin-line)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--admin-ink-3)' }} tickLine={false} axisLine={{ stroke: 'var(--admin-line-strong)' }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: 'var(--admin-ink-3)' }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--admin-ink-3)' }} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--admin-line)', background: 'var(--admin-surface)', color: 'var(--admin-ink)', fontSize: 12 }} />
               <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} />
-              <Line yAxisId="left" type="monotone" dataKey="calls" stroke="#55449c" strokeWidth={2} dot={false} name="Chiamate" />
+              <Line yAxisId="left" type="monotone" dataKey="calls" stroke="var(--admin-accent)" strokeWidth={2} dot={false} name="Chiamate" />
               <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#9aa0aa" strokeWidth={2} dot={false} name="Crediti consumati" />
             </LineChart>
           </ResponsiveContainer>

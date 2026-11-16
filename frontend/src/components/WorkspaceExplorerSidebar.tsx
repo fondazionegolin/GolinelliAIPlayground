@@ -6,7 +6,7 @@ import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type Pastel
 
 export function WorkspaceExplorerSidebar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <aside className={`ds-frame-sidebar flex max-h-[260px] w-full shrink-0 flex-col lg:max-h-none lg:w-[19rem] ${className}`}>
+    <aside className={`ds-frame-sidebar flex max-h-[min(42vh,340px)] w-full shrink-0 flex-col lg:max-h-none lg:w-[19rem] ${className}`}>
       {children}
     </aside>
   )
@@ -36,26 +36,26 @@ export function WorkspaceExplorerHeader({
   const showSearch = searchValue !== undefined && onSearchChange
 
   return (
-    <div className="bg-[var(--ds-surface)] px-5 py-4 shadow-[var(--ds-shadow-1)]">
+    <div className="shrink-0 bg-[var(--ds-surface)] px-4 py-3 shadow-[var(--ds-shadow-1)] lg:px-5 lg:py-4">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 max-w-[14rem]">
+        <div className="min-w-0 max-w-[14rem] max-lg:max-w-none max-lg:flex-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{eyebrow}</p>
-          {section ? <SectionHeading section={section} compact className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950" subtitle={description} subtitleClassName="mt-1 text-xs leading-5 text-slate-500">{title}</SectionHeading>
+          {section ? <SectionHeading section={section} compact className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950" subtitle={description} subtitleClassName="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{title}</SectionHeading>
             : <h1 className="mt-1 truncate text-[17px] font-semibold tracking-tight text-slate-950">{title}</h1>}
-          {!section && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
+          {!section && <p className="mt-1 hidden text-xs leading-5 text-slate-500 lg:block">{description}</p>}
         </div>
         {action}
       </div>
 
       {showSearch && (
-        <SearchPill value={searchValue ?? ""} placeholder={searchPlaceholder} onValueChange={onSearchChange} className="mt-4" clearLabel={clearSearchLabel} />
+        <SearchPill value={searchValue ?? ""} placeholder={searchPlaceholder} onValueChange={onSearchChange} className="mt-3 lg:mt-4" clearLabel={clearSearchLabel} />
       )}
     </div>
   )
 }
 
 export function WorkspaceExplorerList({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`min-h-0 flex-1 overflow-y-auto px-4 py-4 ${className}`}>{children}</div>
+  return <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 lg:px-4 lg:py-4 ${className}`}>{children}</div>
 }
 
 export function WorkspaceExplorerItem({

@@ -2058,6 +2058,7 @@ export default function TeacherDocumentsPage() {
                 </div>
               )}
 
+              <div className={(draftDocuments.length > 0 || storedDocuments.length > 0) ? 'ds-well space-y-7' : ''}>
               {recentDocuments.length > 0 && (
                 <section>
                   <div className="mb-3 flex items-center gap-2">
@@ -2213,6 +2214,7 @@ export default function TeacherDocumentsPage() {
                   </div>
                 </CollapsibleSection>
               )}
+              </div>
             </div>
           </div>
           {documentDragActive && (
