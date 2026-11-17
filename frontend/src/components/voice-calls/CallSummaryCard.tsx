@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ChevronDown, FileText } from '@/components/icons'
+import { ChevronDown, FileText, Languages } from '@/components/icons'
 import { tl } from '@/i18n/tl'
 
 /** Class-chat card for a call summary/synthesis a teacher shared: title, the first lines, «Leggi tutto». */
@@ -11,13 +11,16 @@ export function CallSummaryCard({ data }: { data: Record<string, any> }) {
   return (
     <div className="ds-semantic-surface mx-2 rounded-xl bg-[rgba(123,105,201,0.065)] p-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#181b1e] text-white"><FileText className="h-4 w-4" /></div>
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#181b1e] text-white">{data.language ? <Languages className="h-4 w-4" /> : <FileText className="h-4 w-4" />}</div>
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-bold uppercase text-neutral-900">{tl("Dalla videochiamata")}</div>
           <p className="truncate text-xs font-semibold text-slate-800">{String(data.title || tl("Riassunto"))}</p>
           {data.recording_title && <p className="truncate text-[11px] text-slate-500">{String(data.recording_title)}</p>}
         </div>
       </div>
+      {typeof data.audio_url === 'string' && data.audio_url && (
+        <audio controls preload="none" src={data.audio_url} className="mt-3 h-10 w-full" aria-label={tl("Ascolta")} />
+      )}
       <div className={`prose prose-sm mt-3 max-w-none text-[13px] text-slate-700 prose-headings:text-sm prose-strong:text-violet-700 ${open ? '' : 'max-h-24 overflow-hidden [mask-image:linear-gradient(#000_55%,transparent)]'}`}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>

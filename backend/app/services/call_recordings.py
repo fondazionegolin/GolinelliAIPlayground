@@ -97,7 +97,7 @@ def transcript_text(recording: VoiceCallRecording) -> str:
 def participants_text(recording: VoiceCallRecording) -> str:
     rows = recording.participants or []
     return "\n".join(
-        f"- {p['name']} ({'docente' if p.get('role') == 'teacher' else 'studente'}): {fmt_clock(p.get('seconds', 0))} "
+        f"- {p['name']} ({'docente' if p.get('role') == 'teacher' else 'audio registrato' if p.get('role') == 'audio' else 'studente'}): {fmt_clock(p.get('seconds', 0))} "
         f"di parlato, {p.get('turns', 0)} interventi, {p.get('words', 0)} parole"
         for p in rows
     ) or "- nessun intervento rilevato"
@@ -220,7 +220,7 @@ def merge_timeline(segments: list[VoiceCallRecordingSegment]) -> tuple[list[dict
     for segment in segments:
         stats.setdefault(segment.identity, {
             "identity": segment.identity, "name": segment.speaker_name,
-            "role": "teacher" if segment.identity.startswith("teacher:") else "student",
+            "role": "teacher" if segment.identity.startswith("teacher:") else "audio" if segment.identity.startswith("system:") else "student",
             "seconds": 0.0, "turns": 0, "words": 0,
         })
     for line in merged:
@@ -275,6 +275,9 @@ async def run_tool(
     if not tool:
         raise ValueError("Strumento non disponibile")
     instruction = (prompt or "").strip() if kind == "custom" else tool["prompt"]
+    personal = not recording.call_id and not recording.session_id
+    if personal and kind != "custom":
+        instruction = instruction.replace("videochiamata", "registrazione").replace("chiamata", "registrazione")
     if not instruction:
         raise ValueError("Scrivi la domanda da fare sulla chiamata")
     text = transcript_text(recording)
@@ -283,7 +286,7 @@ async def run_tool(
     if len(text) > MAX_TRANSCRIPT_CHARS:
         text = text[: MAX_TRANSCRIPT_CHARS // 2] + "\n[…]\n" + text[-MAX_TRANSCRIPT_CHARS // 2:]
     when = recording.started_at.astimezone().strftime("%d/%m/%Y %H:%M") if recording.started_at else ""
-    system = ("Sei un assistente didattico. Lavori sulla trascrizione di una videochiamata di classe; ogni riga ha "
+    system = ("Sei un assistente didattico. Lavori sulla trascrizione di " + ("una registrazione audio fatta dal docente (lezione, riunione o incontro)" if personal else "una videochiamata di classe") + "; ogni riga ha "
               "l'orario e il nome di chi parla. Rispondi in italiano, in Markdown, basandoti solo sulla trascrizione.")
     user = (f"Videochiamata: {recording.title} ({when})\n\nPartecipazione:\n{participants_text(recording)}\n\n"
             f"Trascrizione:\n{text}\n\nCompito:\n{instruction}")
@@ -316,23 +319,49 @@ async def run_tool(
     return analysis
 
 
-async def share_to_session(db: AsyncSession, recording: VoiceCallRecording, analysis: VoiceCallAnalysis, teacher: User) -> None:
-    """Post a result (summary, synthesis…) in the class chat of the recording's session as a readable card."""
-    from app.models.chat import ChatMessage
-    from app.models.enums import SenderType
-    from app.models.session import Session
+async def share_to_session(
+    db: AsyncSession, recording: VoiceCallRecording, analysis: VoiceCallAnalysis, teacher: User, *,
+    session_id: Optional[uuid.UUID] = None, student_id: Optional[uuid.UUID] = None, include_audio: bool = False,
+) -> None:
+    """Post a result (summary, synthesis, translation…) as a readable card in the class chat of a session, or privately
+    to one student of it. A spoken version travels with the card as a playable audio file."""
+    from app.models.chat import ChatMessage, ChatRoom
+    from app.models.enums import ChatRoomType, SenderType
+    from app.models.session import Session, SessionStudent
     from app.realtime.gateway import sio
     from app.services.calendar_reminders import _public_room
     from app.services.calendar_service import teacher_name
 
-    session = await db.get(Session, recording.session_id) if recording.session_id else None
+    session = await db.get(Session, session_id or recording.session_id) if (session_id or recording.session_id) else None
     if not session:
-        raise ValueError("La chiamata non è collegata a una sessione")
-    room = await _public_room(db, session)
+        raise ValueError("Scegli la sessione con cui condividere")
+    student = None
+    if student_id:
+        student = await db.get(SessionStudent, student_id)
+        if not student or student.session_id != session.id:
+            raise ValueError("Studente non trovato in questa sessione")
+        room = (await db.execute(select(ChatRoom).where(
+            ChatRoom.session_id == session.id, ChatRoom.room_type == ChatRoomType.DM,
+            ChatRoom.student_id == student.id, ChatRoom.teacher_id == teacher.id))).scalar_one_or_none()
+        if room is None:
+            room = ChatRoom(tenant_id=session.tenant_id, session_id=session.id, room_type=ChatRoomType.DM,
+                            student_id=student.id, teacher_id=teacher.id)
+            db.add(room)
+            await db.flush()
+    else:
+        room = await _public_room(db, session)
     data = {
         "title": analysis.title, "recording_title": recording.title, "recording_id": str(recording.id),
-        "content": analysis.content[:8000],
+        "content": analysis.content[:12000], "language": analysis.language, "source_kind": analysis.source_kind,
     }
+    if include_audio and analysis.audio_key and (Path("uploads") / analysis.audio_key).exists():
+        # Chat files are served by URL: a copy outside the private recordings folder, under an unguessable name.
+        folder = Path("uploads/chat_audio")
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{uuid.uuid4().hex}.mp3"
+        shutil.copyfile(Path("uploads") / analysis.audio_key, folder / name)
+        data["audio_url"] = f"/uploads/chat_audio/{name}"
+        data["audio_seconds"] = analysis.audio_seconds
     text = f"📝 {analysis.title} · {recording.title}"
     message = ChatMessage(
         tenant_id=session.tenant_id, session_id=session.id, room_id=room.id,
@@ -341,14 +370,18 @@ async def share_to_session(db: AsyncSession, recording: VoiceCallRecording, anal
     )
     db.add(message)
     await db.commit()
-    await sio.emit("chat_message", {
-        "room_type": "PUBLIC", "session_id": str(session.id),
-        "message": {
-            "id": str(message.id), "sender_type": "TEACHER", "sender_id": str(teacher.id), "sender_name": teacher_name(teacher),
-            "text": text[:300], "attachments": [], "created_at": datetime.now(timezone.utc).isoformat(),
-            "is_notification": True, "notification_type": "call_summary", "notification_data": data,
-        },
-    }, room=f"session:{session.id}")
+    payload = {
+        "id": str(message.id), "sender_type": "TEACHER", "sender_id": str(teacher.id), "sender_name": teacher_name(teacher),
+        "text": text[:300], "attachments": [], "created_at": datetime.now(timezone.utc).isoformat(),
+        "is_notification": True, "notification_type": "call_summary", "notification_data": data,
+    }
+    if student:
+        message_out = {**payload, "is_private": True}
+        for target in (str(student.id), str(teacher.id)):
+            await sio.emit("chat_message", {"room_type": "DM", "target_id": str(student.id), "session_id": str(session.id),
+                                            "message": message_out}, room=f"user:{target}")
+        return
+    await sio.emit("chat_message", {"room_type": "PUBLIC", "session_id": str(session.id), "message": payload}, room=f"session:{session.id}")
 
 
 async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
@@ -406,6 +439,7 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
 
             recording.transcript, recording.participants = merge_timeline(segments)
             await db.commit()
+            pipeline_notes: list[str] = []
             when = recording.started_at.astimezone().strftime("%d/%m/%Y %H:%M") if recording.started_at else ""
             if recording.transcript:
                 if ctx is not None:
@@ -431,8 +465,18 @@ async def process_recording(recording_id: uuid.UUID, ctx=None) -> dict:
                     await run_tool(db, recording, teacher, "summary")
                 except Exception:
                     logger.exception("automatic summary failed for recording %s", recording.id)
+                if recording.pipeline and recording.pipeline.get("languages"):
+                    from app.services import call_translation
+                    async def pipeline_progress(fraction: float, label: str) -> None:
+                        if ctx is not None:
+                            await ctx.progress(fraction, label, force=True)
+                    try:
+                        pipeline_notes = await call_translation.run_pipeline(db, recording, teacher, pipeline_progress)
+                    except Exception as exc:  # the transcript is safe: report and let the teacher retry from the detail
+                        logger.exception("translation pipeline failed for recording %s", recording.id)
+                        pipeline_notes = [f"Traduzione automatica non riuscita: {exc}"]
             recording.status = "ready"
-            notes = []
+            notes = list(pipeline_notes)
             if failed:
                 notes.append(f"{len(failed)} segmenti non trascritti ({', '.join(failed[:5])}{'…' if len(failed) > 5 else ''}): usa «Riprova» per ritentarli")
             if not recording.transcript:
@@ -491,11 +535,14 @@ def serialize_recording(recording: VoiceCallRecording, *, call: Optional[VoiceCa
         "in_knowledge": bool(recording.knowledge_document_id),
         "error_message": recording.error_message,
         "transcription_model": recording.transcription_model,
+        "pipeline": recording.pipeline,
     }
     if analyses is not None:
         out["analyses"] = [{
             "id": str(a.id), "kind": a.kind, "title": a.title, "prompt": a.prompt, "content": a.content,
             "in_knowledge": bool(a.knowledge_document_id), "created_at": a.created_at.isoformat() if a.created_at else None,
+            "language": a.language, "source_kind": a.source_kind, "has_audio": bool(a.audio_key),
+            "audio_provider": a.audio_provider, "audio_voice": a.audio_voice, "audio_seconds": a.audio_seconds,
         } for a in analyses]
     if full:
         out["transcript"] = recording.transcript or []

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -55,6 +55,8 @@ class VoiceCallRecording(Base):
     knowledge_document_id = Column(UUID(as_uuid=True), nullable=True)
     error_message = Column(Text, nullable=True)
     transcription_model = Column(String(80), nullable=True)  # "local:large-v3-turbo" | "openai:whisper-1"
+    # What to do automatically once transcribed: {"languages": ["en"], "speech": bool, "voice_id", "provider", "fallback_model"}
+    pipeline = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -85,4 +87,12 @@ class VoiceCallAnalysis(Base):
     content = Column(Text, nullable=False)
     created_by_teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     knowledge_document_id = Column(UUID(as_uuid=True), nullable=True)
+    # Translations (kind="translation"): target language, what was translated ("summary" | "transcript"), and the
+    # spoken version (MP3 under uploads/call_recordings) once generated.
+    language = Column(String(16), nullable=True)
+    source_kind = Column(String(16), nullable=True)
+    audio_key = Column(String(500), nullable=True)
+    audio_provider = Column(String(40), nullable=True)
+    audio_voice = Column(String(120), nullable=True)
+    audio_seconds = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

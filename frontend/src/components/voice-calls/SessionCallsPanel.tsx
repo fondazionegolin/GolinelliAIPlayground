@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   BookOpen, Brain, ChevronDown, ChevronRight, Clock, Copy, Download, ExternalLink, FileText, Loader2,
-  Highlighter, MessageSquare, Mic, RefreshCw, Search, Settings2, Share2, Sparkles, Trash2, Video, X,
+  Highlighter, Languages, MessageSquare, Mic, RefreshCw, Search, Settings2, Share2, Sparkles, Trash2, Video, X,
 } from '@/components/icons'
 import {
   Button, Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, IconButton, Input, Select,
@@ -18,6 +18,7 @@ import { SearchPill } from '@/design/primitives/SearchPill'
 import { clock, safeFileName, transcriptToMarkdown, transcriptToText } from '@/lib/transcriptFormat'
 import { highlightChildren, useHighlighter, type Highlighter as HighlighterT } from './HighlightedText'
 import { TranscriptView } from './TranscriptView'
+import { TranslationsPanel } from './TranslationsPanel'
 import { openVoiceCall, voiceCallsQueryKey } from './VoiceCallLinkCard'
 
 const TOOLS: { kind: Exclude<CallToolKind, 'custom' | 'summary'>; label: string; hint: string; icon: typeof Brain }[] = [
@@ -257,10 +258,10 @@ function download(filename: string, content: string, mime = 'text/plain;charset=
   URL.revokeObjectURL(url)
 }
 
-function RecordingDetail({ recording, onClose }: { recording: CallRecording; onClose: () => void }) {
+export function RecordingDetail({ recording, onClose }: { recording: CallRecording; onClose: () => void }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<'summary' | 'transcript' | 'tools'>('summary')
+  const [tab, setTab] = useState<'summary' | 'transcript' | 'translate' | 'tools'>('summary')
   const [question, setQuestion] = useState('')
   const [lastCreated, setLastCreated] = useState<string | null>(null)
   const [openResults, setOpenResults] = useState<Set<string>>(new Set())
@@ -300,7 +301,7 @@ function RecordingDetail({ recording, onClose }: { recording: CallRecording; onC
   const total = recording.participants.reduce((sum, p) => sum + p.seconds, 0) || 1
   const analyses = data?.analyses ?? []
   const summary = [...analyses].reverse().find((a) => a.kind === 'summary')
-  const results = [...analyses].reverse().filter((a) => a !== summary)
+  const results = [...analyses].reverse().filter((a) => a !== summary && a.kind !== 'translation')
   const model = recording.transcription_model?.replace('local:', '').replace('openai:', 'OpenAI ')
   const started = recording.started_at ? new Date(recording.started_at) : null
   const sessionBound = !!recording.session_id
@@ -415,10 +416,11 @@ function RecordingDetail({ recording, onClose }: { recording: CallRecording; onC
             <Segmented value={tab} onChange={setTab} options={[
               { value: 'summary', label: tl("Riassunto"), icon: FileText },
               { value: 'transcript', label: tl("Trascrizione"), icon: MessageSquare },
+              { value: 'translate', label: tl("Traduzioni"), icon: Languages },
               { value: 'tools', label: tl("Strumenti AI"), icon: Sparkles },
             ]} />
             {tab === 'transcript' && <SearchPill value={filter} placeholder={tl("Cerca nel testo o per nome")} onValueChange={setFilter} className="min-w-[10rem] flex-1" />}
-            {tab !== 'tools' && (
+            {(tab === 'summary' || tab === 'transcript') && (
               <div className="ml-auto flex items-center rounded-[var(--selection-radius)] p-1" style={buildAccentNavClusterStyle()}>
                 <Button type="button" tone="neutral" surface="ghost" density="compact" aria-pressed={highlight} className={highlight ? 'ds-selected' : ''}
                   title={tl("Colora parole chiave (sottolineate), numeri, nomi propri e domande")} onClick={() => setHighlight((v) => !v)}>
@@ -437,7 +439,9 @@ function RecordingDetail({ recording, onClose }: { recording: CallRecording; onC
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto pr-2 max-lg:max-h-[60dvh]">
-              {tab === 'summary' ? (
+              {tab === 'translate' ? (
+                <TranslationsPanel recording={recording} analyses={analyses} hasSummary={!!summary} />
+              ) : tab === 'summary' ? (
                 summary ? (
                   <Block icon={FileText} title={summary.title} color="#6366f1" actions={<ResultActions analysis={summary} recordingId={recording.id} sessionBound={sessionBound} />}>
                     <Markdown text={summary.content.replace(/^#+\s*Riassunto\s*\n/i, '')} highlighter={highlighter} highlight={highlight} />
@@ -513,7 +517,7 @@ function SpeakerStack({ participants, max = 3 }: { participants: CallRecording['
   )
 }
 
-function CallRow({ recording, onOpen, compact, selected }: { recording: CallRecording; onOpen: () => void; compact: boolean; selected: boolean }) {
+export function CallRow({ recording, onOpen, compact, selected }: { recording: CallRecording; onOpen: () => void; compact: boolean; selected: boolean }) {
   const started = recording.started_at ? new Date(recording.started_at) : null
   const status = STATUS[recording.status]
   if (compact) {
@@ -528,7 +532,7 @@ function CallRow({ recording, onOpen, compact, selected }: { recording: CallReco
         <button type="button" onClick={onOpen} aria-current={selected ? 'true' : undefined}
           className={`flex w-full items-center gap-2 rounded-[var(--selection-radius)] px-3 py-2 text-left transition-colors ${selected ? 'ds-selected' : 'hover:bg-[var(--ds-control-hover)]'}`}>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">{recording.call_title || tl("Chiamata di classe")}</span>
+            <span className="block truncate text-sm font-semibold">{recording.call_title || (recording.session_id ? tl("Chiamata di classe") : recording.title)}</span>
             <span className="block truncate text-xs text-[var(--text-secondary)]">{when}</span>
           </span>
           {recording.status !== 'ready' && <span className={`h-2 w-2 flex-shrink-0 rounded-full ${status.dot}`} title={status.label} aria-label={status.label} />}
@@ -547,7 +551,7 @@ function CallRow({ recording, onOpen, compact, selected }: { recording: CallReco
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold">{recording.call_title || tl("Chiamata di classe")}</span>
+          <span className="block truncate text-sm font-bold">{recording.call_title || (recording.session_id ? tl("Chiamata di classe") : recording.title)}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--text-secondary)]">
             {started && <span>{started.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
             {recording.duration_seconds ? <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{humanDuration(recording.duration_seconds)}</span> : null}
@@ -585,18 +589,19 @@ function useViewport() {
  * Session configuration › «Chiamate». At first only the list of recorded calls, full width. Opening one slides the
  * list into a sidebar on the left and shows the call in the rest of the panel (fixed height, the text scrolls inside).
  */
-export function SessionCallsPanel({ sessionId }: { sessionId: string }) {
+export function SessionCallsPanel({ sessionId, personal = false }: { sessionId?: string; personal?: boolean }) {
   // `?recording=<id>` (link from the «registrazione terminata» notice) opens that call straight away.
   const [openId, setOpenId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('recording'))
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { data: calls = [] } = useQuery({
     queryKey: [...voiceCallsQueryKey, 'session', sessionId],
-    queryFn: async () => (await voiceCallsApi.list(sessionId)).data,
+    queryFn: async () => (await voiceCallsApi.list(sessionId!)).data,
+    enabled: !personal && !!sessionId,
     refetchInterval: 30_000,
   })
   const { data: recordings = [], isLoading } = useQuery({
-    queryKey: [...voiceCallsQueryKey, 'recordings', sessionId],
-    queryFn: async () => (await voiceCallsApi.listRecordings(sessionId)).data,
+    queryKey: [...voiceCallsQueryKey, 'recordings', personal ? 'mine' : sessionId],
+    queryFn: async () => (await (personal ? voiceCallsApi.listMyRecordings() : voiceCallsApi.listRecordings(sessionId!))).data,
     refetchInterval: (query) => (query.state.data ?? []).some((r) => r.status === 'processing' || r.status === 'recording') ? 5000 : 60_000,
   })
   const opened = recordings.find((r) => r.id === openId) ?? null
@@ -624,11 +629,11 @@ export function SessionCallsPanel({ sessionId }: { sessionId: string }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 shadow-[inset_0_-1px_0_var(--ds-frame-divider)] sm:px-6">
           <Video className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-black text-slate-900">{tl("Chiamate registrate")}</h2>
-            <p className="text-xs text-slate-500">{tl("Trascrizione con i nomi, riassunto e strumenti AI di ogni chiamata.")}</p>
+            <h2 className="text-base font-black text-slate-900">{personal ? tl("Le tue registrazioni") : tl("Chiamate registrate")}</h2>
+            <p className="text-xs text-slate-500">{personal ? tl("Trascrizione, riassunto e strumenti AI di ogni registrazione.") : tl("Trascrizione con i nomi, riassunto e strumenti AI di ogni chiamata.")}</p>
           </div>
           <span className="rounded-full bg-[color-mix(in_srgb,var(--logo-violet)_10%,var(--mix-base))] px-2.5 py-1 text-[11px] font-bold text-[var(--logo-violet)]">
-            {recordings.length} {recordings.length === 1 ? tl("chiamata") : tl("chiamate")}
+            {recordings.length} {personal ? (recordings.length === 1 ? tl("registrazione") : tl("registrazioni")) : recordings.length === 1 ? tl("chiamata") : tl("chiamate")}
           </span>
           <IconButton tone="neutral" surface="ghost" size="sm" title={tl("Modello di trascrizione")} aria-label={tl("Modello di trascrizione")} onClick={() => setSettingsOpen(true)}>
             <Settings2 className="h-4 w-4" />
@@ -646,14 +651,14 @@ export function SessionCallsPanel({ sessionId }: { sessionId: string }) {
         {isLoading ? <Loader2 className="mx-auto my-10 h-5 w-5 animate-spin text-[var(--text-secondary)]" /> : recordings.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
             <Mic className="h-7 w-7 text-[var(--text-secondary)]" />
-            <p className="text-sm font-bold">{tl("Nessuna chiamata registrata")}</p>
-            <p className="max-w-sm text-xs text-[var(--text-secondary)]">{tl("Durante una chiamata premi «Registra»: la trascrizione arriva qui.")}</p>
+            <p className="text-sm font-bold">{personal ? tl("Nessuna registrazione") : tl("Nessuna chiamata registrata")}</p>
+            <p className="max-w-sm text-xs text-[var(--text-secondary)]">{personal ? tl("Premi l'icona rossa nella barra in alto per registrare: la trascrizione arriva qui.") : tl("Durante una chiamata premi «Registra»: la trascrizione arriva qui.")}</p>
           </div>
         ) : (
           <motion.div initial={false} animate={{ height: fixedHeight ?? 'auto' }} transition={{ type: 'spring', stiffness: 260, damping: 32 }} className="flex gap-0 overflow-hidden">
             {/* List: full width until a call is open, then a 19rem sidebar (width animates) */}
             <motion.nav
-              aria-label={tl("Chiamate registrate")}
+              aria-label={personal ? tl("Le tue registrazioni") : tl("Chiamate registrate")}
               initial={false}
               animate={{ width: opened ? 272 : '100%' }}
               transition={{ type: 'spring', stiffness: 260, damping: 32 }}

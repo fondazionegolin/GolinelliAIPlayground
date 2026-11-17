@@ -1,4 +1,5 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
+import { NavbarRecordButton } from '@/components/voice-calls/PersonalRecordings'
 import BackgroundJobsIndicator from '@/components/BackgroundJobsIndicator'
 import { NavbarCalendarClock } from '@/components/NavbarCalendarClock'
 import { ShellFullscreenCorner } from '@/components/ShellFullscreen'
@@ -23,6 +24,7 @@ const SmartCanvasPage = lazy(() => import('./SmartCanvasPage'))
 const SchoolOwnerPanelPage = lazy(() => import('./SchoolOwnerPanelPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
+const RecordingsPage     = lazy(() => import('./RecordingsPage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
 const TeacherbotsPage     = lazy(() => import('./TeacherbotsPage'))
 const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
@@ -356,6 +358,7 @@ export default function TeacherDashboard() {
               <Route path="school" element={<SchoolOwnerPanelPage />} />
               <Route path="classes" element={<ClassesPage currentSession={currentSession} />} />
               <Route path="sessions" element={<SessionsPage currentSession={currentSession} />} />
+              <Route path="recordings" element={<RecordingsPage />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />
               <Route path="classes/:classId/uda" element={<UDAListPage />} />
               <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
@@ -574,6 +577,7 @@ function TeacherMobileNavigation({
           <div className="ml-auto flex shrink-0 items-center">
             <BackgroundJobsIndicator accentColor={accentColor} />
             <NavbarMusicButton sessionId={currentSession?.id} />
+            <NavbarRecordButton />
             <NavbarCalendarClock compact sessionId={currentSession?.id} accentColor={accentColor} />
             <button type="button" onClick={onOpenChat} className="relative flex h-10 w-10 shrink-0 items-center justify-center text-[10px] font-black text-slate-800" title={teacherName || tl("Docente")} aria-label={tl("Apri chat di classe · {0}", teacherName || 'Docente')}>
               <MessageSquare className="absolute inset-0 h-10 w-10 fill-white stroke-slate-700" strokeWidth={1.8} />
@@ -666,7 +670,7 @@ function MobileTeacherHome({
 
   return (
     <div className="min-h-full w-full overflow-y-auto bg-neutral-100 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
-      <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 pb-6 pt-7 text-white shadow-2xl shadow-slate-300">
+      <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 px-6 pb-6 pt-7 text-white">
         <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-30 blur-3xl" style={{ backgroundColor: accentColor }} />
         <div className="relative">
           <div className="flex items-center gap-2 text-sm font-bold text-emerald-400">

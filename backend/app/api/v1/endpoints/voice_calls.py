@@ -305,7 +305,8 @@ async def _recording_for_teacher(db: AsyncSession, actor: StudentOrTeacher, reco
         raise HTTPException(status_code=404, detail="Registrazione non trovata")
     call = await db.get(VoiceCall, recording.call_id) if recording.call_id else None
     allowed = (
-        (recording.session_id and await teacher_can_access_session(db, teacher, recording.session_id))
+        recording.started_by_teacher_id == teacher.id  # own recordings, including the personal ones (no call, no session)
+        or (recording.session_id and await teacher_can_access_session(db, teacher, recording.session_id))
         or (call is not None and await vc.call_role(db, call, teacher=teacher) == "moderator")
     )
     if not allowed:
@@ -313,12 +314,17 @@ async def _recording_for_teacher(db: AsyncSession, actor: StudentOrTeacher, reco
     return recording, call
 
 
-def _room_key(recording: VoiceCallRecording) -> str:
-    """Voice room of a recording: the invite-link call's room, or the session's class voice room."""
-    return vc.call_key(recording.call_id) if recording.call_id else str(recording.session_id)
+def _room_key(recording: VoiceCallRecording) -> Optional[str]:
+    """Voice room of a recording: the invite-link call's room, or the session's class voice room.
+    None for a personal recording (microphone/system audio of the teacher, no room)."""
+    if recording.call_id:
+        return vc.call_key(recording.call_id)
+    return str(recording.session_id) if recording.session_id else None
 
 
-async def _set_room_recording(key: str, value: Optional[dict]) -> None:
+async def _set_room_recording(key: Optional[str], value: Optional[dict]) -> None:
+    if not key:
+        return
     try:
         from app.realtime.gateway import _broadcast_voice_state, voice_rooms
         state = voice_rooms.get(key)
@@ -392,6 +398,61 @@ async def start_session_recording(
     return rec.serialize_recording(recording)
 
 
+class PersonalStart(RecordingStart):
+    # Automatic work once transcribed: translate summary + transcript, optionally read them aloud.
+    languages: list[str] = Field(default_factory=list, max_length=4)
+    speech: bool = False
+    voice_id: Optional[str] = Field(default=None, max_length=120)
+    provider: str = Field(default="auto", pattern="^(auto|elevenlabs|openrouter)$")
+    fallback_model: Optional[str] = Field(default=None, max_length=120)
+
+
+@router.post("/personal-recordings", status_code=201)
+async def start_personal_recording(
+    body: PersonalStart,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Record from the teacher's own device (microphone, optionally system audio), outside any call or session.
+    Same pipeline afterwards: transcription, summary and AI tools. Nothing goes to a session's knowledge."""
+    teacher = _teacher(actor)
+    if not body.consent_confirmed:
+        raise HTTPException(status_code=400, detail="Conferma di aver informato le persone registrate")
+    from app.services import call_languages
+    languages = [c for c in dict.fromkeys(body.languages) if c in call_languages.BY_CODE]
+    if body.voice_id:
+        from app.api.v1.endpoints.voice_lab import require_voices
+        await require_voices(db, teacher, {body.voice_id})
+    pipeline = ({"languages": languages, "speech": body.speech, "voice_id": body.voice_id, "provider": body.provider,
+                 "fallback_model": body.fallback_model} if languages else None)
+    started = rec.now_utc()
+    recording = VoiceCallRecording(
+        tenant_id=teacher.tenant_id, call_id=None, session_id=None, started_by_teacher_id=teacher.id,
+        title=f"Registrazione · {started.astimezone().strftime('%d/%m %H:%M')}", status="recording", started_at=started,
+        pipeline=pipeline,
+    )
+    db.add(recording)
+    await db.commit()
+    await db.refresh(recording)
+    return rec.serialize_recording(recording)
+
+
+@router.get("/my-recordings")
+async def list_my_recordings(
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """The teacher's personal recordings (made outside calls)."""
+    teacher = _teacher(actor)
+    recordings = (await db.execute(
+        select(VoiceCallRecording).where(
+            VoiceCallRecording.started_by_teacher_id == teacher.id,
+            VoiceCallRecording.call_id.is_(None), VoiceCallRecording.session_id.is_(None))
+        .order_by(VoiceCallRecording.started_at.desc()).limit(200)
+    )).scalars().all()
+    return [rec.serialize_recording(r) for r in recordings]
+
+
 @router.post("/recordings/{recording_id}/segments", status_code=201)
 async def upload_segment(
     recording_id: uuid.UUID,
@@ -408,7 +469,10 @@ async def upload_segment(
         raise HTTPException(status_code=404, detail="Registrazione non trovata")
     if recording.call_id:
         await _moderated_call(db, actor, recording.call_id)
-    elif not recording.session_id or not await teacher_can_access_session(db, _teacher(actor), recording.session_id):
+    elif recording.session_id:
+        if not await teacher_can_access_session(db, _teacher(actor), recording.session_id):
+            raise HTTPException(status_code=403, detail="Registrazione non accessibile")
+    elif recording.started_by_teacher_id != _teacher(actor).id:  # personal recording: only its owner
         raise HTTPException(status_code=403, detail="Registrazione non accessibile")
     if recording.status not in ("recording", "processing"):
         raise HTTPException(status_code=409, detail="La registrazione è già stata elaborata")
@@ -444,7 +508,8 @@ async def stop_recording(
     await background_jobs.start_task_job(
         background_jobs.JobOwner.from_actor(actor), kind="call_recording", title=f"Trascrizione · {recording.title}",
         work=lambda ctx, rid=recording.id: rec.process_recording(rid, ctx),
-        route=f"/teacher/sessions/{recording.session_id}?tab=calls" if recording.session_id else None,
+        route=(f"/teacher/sessions/{recording.session_id}?tab=calls" if recording.session_id
+               else f"/teacher/recordings?recording={recording.id}" if not recording.call_id else None),
         resource_id=str(recording.id), expected_seconds=max(30, (recording.duration_seconds or 60) // 4),
     )
     return rec.serialize_recording(recording, call=call)
@@ -528,19 +593,31 @@ async def add_analysis_to_knowledge(
     return {"in_knowledge": True}
 
 
+class ShareBody(BaseModel):
+    session_id: Optional[uuid.UUID] = None
+    student_id: Optional[uuid.UUID] = None  # a single student (private message); otherwise the whole class chat
+    include_audio: bool = False
+
+
 @router.post("/recordings/analyses/{analysis_id}/share")
 async def share_analysis(
     analysis_id: uuid.UUID,
     actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: Optional[ShareBody] = None,
 ):
-    """Publish a result in the class chat of the session, where students read it."""
+    """Publish a result in the class chat of a session (or privately to one student), where students read it."""
+    body = body or ShareBody()
     analysis = await db.get(VoiceCallAnalysis, analysis_id)
     if not analysis:
         raise HTTPException(status_code=404, detail="Risultato non trovato")
     recording, _call = await _recording_for_teacher(db, actor, analysis.recording_id)
+    target_session = body.session_id or recording.session_id
+    if target_session and not await teacher_can_access_session(db, actor.teacher, target_session):
+        raise HTTPException(status_code=403, detail="Sessione non accessibile")
     try:
-        await rec.share_to_session(db, recording, analysis, actor.teacher)
+        await rec.share_to_session(db, recording, analysis, actor.teacher, session_id=target_session,
+                                   student_id=body.student_id, include_audio=body.include_audio)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"shared": True}
@@ -556,9 +633,8 @@ async def delete_analysis(
     if not analysis:
         raise HTTPException(status_code=404, detail="Analisi non trovata")
     await _recording_for_teacher(db, actor, analysis.recording_id)
-    if analysis.knowledge_document_id:
-        await rec.delete_knowledge_document(db, analysis.knowledge_document_id)
-    await db.delete(analysis)
+    from app.services import call_translation
+    await call_translation.delete_translation(db, analysis)  # also removes the spoken file and the knowledge copy
     await db.commit()
 
 
@@ -622,3 +698,153 @@ async def update_transcription_settings(
     if body.preload and body.engine == "local":
         asyncio.get_running_loop().create_task(local_stt.preload(body.model))  # download in background
     return {"current": current, **local_stt.status()}
+
+
+# ── Translation and speech ────────────────────────────────────────────────────
+
+@router.get("/languages")
+async def translation_languages(actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)]):
+    """Languages for translating recordings, and the speech services available (ElevenLabs + OpenRouter fallbacks)."""
+    from app.services import call_languages, call_tts
+    _teacher(actor)
+    return {
+        "source": call_languages.SOURCE, "languages": call_languages.LANGUAGES,
+        "speech": {"elevenlabs": bool(settings.ELEVENLABS_API_KEY), "fallbacks": await call_tts.fallback_options(),
+                   "default_fallback": call_tts.DEFAULT_FALLBACK},
+    }
+
+
+class TranslateBody(BaseModel):
+    language: str = Field(min_length=2, max_length=8)
+    source: str = Field(pattern="^(summary|transcript)$")
+
+
+@router.post("/recordings/{recording_id}/translate", status_code=202)
+async def translate_recording_endpoint(
+    recording_id: uuid.UUID,
+    body: TranslateBody,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Translate the summary or the full transcript. Runs as a background job: it survives page changes."""
+    from app.core.database import AsyncSessionLocal
+    from app.services import background_jobs, call_languages, call_translation
+    from app.services.credit_service import credit_service
+    recording, _call = await _recording_for_teacher(db, actor, recording_id)
+    if recording.status != "ready":
+        raise HTTPException(status_code=409, detail="La trascrizione non è ancora pronta")
+    if body.language not in call_languages.BY_CODE:
+        raise HTTPException(status_code=422, detail="Lingua non disponibile")
+    teacher = actor.teacher
+    if teacher.tenant_id and not await credit_service.check_availability(db, teacher.tenant_id, teacher_id=teacher.id):
+        raise HTTPException(status_code=402, detail="Crediti esauriti")
+    teacher_id, rid = teacher.id, recording.id
+    label = f"{call_translation.SOURCE_LABEL[body.source]} in {call_languages.language_name(body.language)}"
+
+    async def work(ctx):
+        async with AsyncSessionLocal() as session:
+            fresh_teacher, fresh = await session.get(User, teacher_id), await session.get(VoiceCallRecording, rid)
+            await ctx.progress(0.1, f"Traduzione · {label}", force=True)
+            analysis = await call_translation.translate_recording(session, fresh, fresh_teacher, body.language, body.source)
+            return {"analysis_id": str(analysis.id)}
+
+    await background_jobs.start_task_job(
+        background_jobs.JobOwner.from_actor(actor), kind="call_translation", title=f"Traduzione · {label}", work=work,
+        route=_recording_route(recording), resource_id=str(recording.id), expected_seconds=40,
+    )
+    return {"started": True}
+
+
+def _recording_route(recording: VoiceCallRecording) -> Optional[str]:
+    if recording.session_id:
+        return f"/teacher/sessions/{recording.session_id}?tab=calls&recording={recording.id}"
+    return f"/teacher/recordings?recording={recording.id}" if not recording.call_id else None
+
+
+class SpeechBody(BaseModel):
+    voice_id: Optional[str] = Field(default=None, max_length=120)
+    provider: str = Field(default="auto", pattern="^(auto|elevenlabs|openrouter)$")
+    fallback_model: Optional[str] = Field(default=None, max_length=120)
+
+
+@router.post("/recordings/analyses/{analysis_id}/speech", status_code=202)
+async def speak_analysis_endpoint(
+    analysis_id: uuid.UUID,
+    body: SpeechBody,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Read a translation (or the summary) aloud. ElevenLabs first, an OpenRouter speech model as fallback."""
+    from app.core.database import AsyncSessionLocal
+    from app.services import background_jobs, call_translation
+    analysis = await db.get(VoiceCallAnalysis, analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Risultato non trovato")
+    recording, _call = await _recording_for_teacher(db, actor, analysis.recording_id)
+    if analysis.kind not in ("translation", "summary", "synthesis"):
+        raise HTTPException(status_code=422, detail="Solo traduzioni, riassunti e sintesi si possono leggere ad alta voce")
+    if body.voice_id:
+        from app.api.v1.endpoints.voice_lab import require_voices
+        await require_voices(db, actor.teacher, {body.voice_id})
+    teacher_id, rid, aid, title = actor.teacher.id, recording.id, analysis.id, analysis.title
+
+    async def work(ctx):
+        async with AsyncSessionLocal() as session:
+            fresh_teacher, fresh = await session.get(User, teacher_id), await session.get(VoiceCallRecording, rid)
+            fresh_analysis = await session.get(VoiceCallAnalysis, aid)
+            await call_translation.speak_analysis(session, fresh, fresh_teacher, fresh_analysis, voice_id=body.voice_id,
+                                                  provider=body.provider, fallback_model=body.fallback_model,
+                                                  progress=lambda f, label: ctx.progress(f, label, force=True))
+            return {"analysis_id": str(aid), "provider": fresh_analysis.audio_provider}
+
+    await background_jobs.start_task_job(
+        background_jobs.JobOwner.from_actor(actor), kind="call_speech", title=f"Voce · {title}", work=work,
+        route=_recording_route(recording), resource_id=str(recording.id),
+        expected_seconds=max(20, len(analysis.content) / 120),
+    )
+    return {"started": True}
+
+
+@router.get("/recordings/analyses/{analysis_id}/audio")
+async def analysis_audio(
+    analysis_id: uuid.UUID,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    download: bool = False,
+):
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    analysis = await db.get(VoiceCallAnalysis, analysis_id)
+    if not analysis or not analysis.audio_key:
+        raise HTTPException(status_code=404, detail="Audio non disponibile")
+    await _recording_for_teacher(db, actor, analysis.recording_id)
+    path = Path("uploads") / analysis.audio_key
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio non disponibile")
+    name = f"{analysis.title}.mp3".replace("/", "-")
+    return FileResponse(path, media_type="audio/mpeg", filename=name if download else None)
+
+
+@router.get("/share-targets")
+async def share_targets(
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Sessions the teacher can share a result with."""
+    from app.api.v1.endpoints.smart_canvas import teacher_sessions
+    return [{"id": str(s.id), "title": s.title, "class_name": class_name}
+            for s, class_name in await teacher_sessions(db, _teacher(actor))]
+
+
+@router.get("/share-targets/{session_id}/students")
+async def share_target_students(
+    session_id: uuid.UUID,
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.session import SessionStudent
+    if not await teacher_can_access_session(db, _teacher(actor), session_id):
+        raise HTTPException(status_code=403, detail="Sessione non accessibile")
+    rows = (await db.execute(select(SessionStudent).where(SessionStudent.session_id == session_id)
+                             .order_by(SessionStudent.nickname))).scalars().all()
+    return [{"id": str(r.id), "nickname": r.nickname} for r in rows]

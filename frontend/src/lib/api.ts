@@ -836,6 +836,20 @@ export const voiceCallsApi = {
   /** Record the class voice room of a session (call started in the chat sidebar, no invite link). */
   startSessionRecording: (sessionId: string) =>
     api.post<CallRecording>('/voice-calls/session-recordings', { session_id: sessionId, consent_confirmed: true }),
+  /** Personal recording from the teacher's own device (mic / system audio), outside calls and sessions. */
+  startPersonalRecording: (pipeline?: RecordingPipeline) =>
+    api.post<CallRecording>('/voice-calls/personal-recordings', { consent_confirmed: true, ...(pipeline ?? {}) }),
+  languages: () => api.get<CallLanguages>('/voice-calls/languages'),
+  translate: (recordingId: string, data: { language: string; source: 'summary' | 'transcript' }) =>
+    api.post(`/voice-calls/recordings/${recordingId}/translate`, data),
+  speak: (analysisId: string, data: { voice_id?: string | null; provider?: SpeechProvider; fallback_model?: string | null }) =>
+    api.post(`/voice-calls/recordings/analyses/${analysisId}/speech`, data),
+  analysisAudio: (analysisId: string) =>
+    api.get<Blob>(`/voice-calls/recordings/analyses/${analysisId}/audio`, { responseType: 'blob' }),
+  shareTargets: () => api.get<ShareTarget[]>('/voice-calls/share-targets'),
+  shareTargetStudents: (sessionId: string) =>
+    api.get<{ id: string; nickname: string }[]>(`/voice-calls/share-targets/${sessionId}/students`),
+  listMyRecordings: () => api.get<CallRecording[]>('/voice-calls/my-recordings'),
   uploadSegment: (recordingId: string, blob: Blob, meta: { identity: string; name: string; offsetMs: number; durationMs: number }) => {
     const form = new FormData()
     form.append('file', blob, blob.type.includes('ogg') ? 'segment.ogg' : 'segment.webm')
@@ -850,7 +864,8 @@ export const voiceCallsApi = {
   getRecording: (recordingId: string) => api.get<CallRecording>(`/voice-calls/recordings/${recordingId}`),
   runTool: (recordingId: string, data: { kind: CallToolKind; prompt?: string; add_to_knowledge?: boolean }) =>
     api.post<CallAnalysis>(`/voice-calls/recordings/${recordingId}/tools`, data, { timeout: 180_000 }),
-  shareAnalysis: (analysisId: string) => api.post(`/voice-calls/recordings/analyses/${analysisId}/share`),
+  shareAnalysis: (analysisId: string, data?: { session_id?: string; student_id?: string; include_audio?: boolean }) =>
+    api.post(`/voice-calls/recordings/analyses/${analysisId}/share`, data ?? {}),
   analysisToKnowledge: (analysisId: string) => api.post(`/voice-calls/recordings/analyses/${analysisId}/knowledge`),
   deleteAnalysis: (analysisId: string) => api.delete(`/voice-calls/recordings/analyses/${analysisId}`),
   deleteRecording: (recordingId: string) => api.delete(`/voice-calls/recordings/${recordingId}`),
@@ -870,7 +885,7 @@ export interface TranscriptionSettings {
   downloaded: string[]
 }
 
-export type CallToolKind = 'summary' | 'synthesis' | 'analysis' | 'questions' | 'custom'
+export type CallToolKind = 'summary' | 'synthesis' | 'analysis' | 'questions' | 'custom' | 'translation'
 
 export interface CallAnalysis {
   id: string
@@ -880,7 +895,34 @@ export interface CallAnalysis {
   content: string
   in_knowledge: boolean
   created_at: string | null
+  /** Translations: target language code, what was translated, and the spoken version. */
+  language?: string | null
+  source_kind?: 'summary' | 'transcript' | null
+  has_audio?: boolean
+  audio_provider?: string | null
+  audio_voice?: string | null
+  audio_seconds?: number | null
 }
+
+export type SpeechProvider = 'auto' | 'elevenlabs' | 'openrouter'
+export interface CallLanguage { code: string; name: string; native: string }
+export interface CallLanguages {
+  source: CallLanguage
+  languages: CallLanguage[]
+  speech: {
+    elevenlabs: boolean
+    fallbacks: { model: string; label: string; note: string; voice: string; usd_per_1000_characters: number }[]
+    default_fallback: string
+  }
+}
+export interface RecordingPipeline {
+  languages: string[]
+  speech: boolean
+  voice_id?: string | null
+  provider?: SpeechProvider
+  fallback_model?: string | null
+}
+export interface ShareTarget { id: string; title: string; class_name: string }
 
 export interface CallRecording {
   id: string
@@ -899,6 +941,7 @@ export interface CallRecording {
   error_message: string | null
   /** "local:large-v3-turbo" | "openai:whisper-1" */
   transcription_model?: string | null
+  pipeline?: RecordingPipeline | null
   analyses?: CallAnalysis[]
   transcript?: { speaker: string; identity: string; start: number; end: number; text: string }[]
 }

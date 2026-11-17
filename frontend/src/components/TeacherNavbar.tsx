@@ -1,4 +1,5 @@
 import { NavbarMusicButton } from '@/components/voice-lab/BackgroundAudio'
+import { NavbarRecordButton } from '@/components/voice-calls/PersonalRecordings'
 import { voiceLabApi } from '@/lib/voiceLab'
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
@@ -563,6 +564,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
                 <NavbarMusicButton sessionId={currentSession?.id} />
+                <NavbarRecordButton />
                 <BackgroundJobsIndicator accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
                 <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />

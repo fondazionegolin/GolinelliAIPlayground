@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-15T11:33:22.793422+00:00",
-  "version_label": "2026.11.15-eb4bbe69",
+  "generated_at": "2026-11-17T13:36:50.162894+00:00",
+  "version_label": "2026.11.17-b8f2eb8d",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 24 commit dall'ultima release pubblicata.",
-  "git_ref": "eb4bbe696e4195b216baa3dffad47ac1beca9717",
+  "summary": "Bozza generata automaticamente da 27 commit dall'ultima release pubblicata.",
+  "git_ref": "b8f2eb8d0ecf5bf672fb119b25a9e6f4de1df47e",
   "items": [
     {
       "category": "new",
@@ -124,6 +124,21 @@
       "category": "new",
       "title": "Vibe-lab: brief guarantee, guided interview, conformance check; class chat dock and fullscreen arrow polish",
       "description": "Vibe-lab: brief guarantee, guided interview, conformance check; class chat dock and fullscreen arrow polish"
+    },
+    {
+      "category": "new",
+      "title": "Ui: smart canvas callouts/plots, live session dialogs, design polish across admin/teacher/student",
+      "description": "Ui: smart canvas callouts/plots, live session dialogs, design polish across admin/teacher/student"
+    },
+    {
+      "category": "new",
+      "title": "Live-interaction: fast PDF reference extraction with vision OCR",
+      "description": "Live-interaction: fast PDF reference extraction with vision OCR"
+    },
+    {
+      "category": "new",
+      "title": "Support-chat: random starter hints promoting agentic mode and platform tools",
+      "description": "Support-chat: random starter hints promoting agentic mode and platform tools"
     }
   ]
 }
