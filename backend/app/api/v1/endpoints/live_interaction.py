@@ -24,7 +24,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.realtime.gateway import sio
 from app.services.credit_service import credit_service
-from app.services.document_processor import document_processor
+from app.services import reference_pdf
 from app.services.json_extract import extract_json
 from app.services.llm_service import llm_service
 from app.services.teacherbot_escape_room import ESCAPE_PROMPT, answers_match, generate_plan, judge_semantic_answer, validate_plan
@@ -43,7 +43,7 @@ SLIDE_TYPE_DESCRIPTIONS = """- mcq: domanda a risposta multipla. Campi: question
 - opinion: opinione libera in una frase. Campi: prompt (string).
 - feedback: feedback rapido (sentiment positivo/neutro/negativo). Campi: prompt (string, es. "Come hai trovato questa attività?")."""
 
-REFERENCE_MAX_CHARS = 12000
+REFERENCE_MAX_CHARS = 60000
 PUBLIC_LIVE_CODE_LENGTH = 6
 
 
@@ -1000,18 +1000,31 @@ async def extract_reference_document(
         raise HTTPException(422, "Sono supportati solo file PDF")
 
     file_bytes = await file.read()
-    if len(file_bytes) > 15 * 1024 * 1024:
-        raise HTTPException(413, "File troppo grande (max 15 MB)")
+    if len(file_bytes) > 40 * 1024 * 1024:
+        raise HTTPException(413, "File troppo grande (max 40 MB)")
 
-    analysis = await document_processor.process(
-        file_bytes=file_bytes,
-        filename=filename,
-        mime_type="application/pdf",
-        llm_service=None,
-        analyze_visuals=False,
-    )
+    # OCR of scanned pages costs credits: only attempt it when the teacher can pay.
+    allow_ocr = await credit_service.check_availability(db, teacher.tenant_id, 0.01, teacher_id=teacher.id)
 
-    raw_text = (analysis.raw_text or "").strip()
+    try:
+        extraction = await reference_pdf.extract_reference(file_bytes, allow_ocr=allow_ocr)
+    except Exception:
+        logger.exception("extract-reference failed")
+        raise HTTPException(422, "PDF non leggibile o danneggiato")
+
+    for r in extraction.usage:
+        cost = credit_service.calculate_cost_for_model(r.provider, r.model, r.prompt_tokens, r.completion_tokens)
+        await credit_service.track_usage(
+            db, teacher.tenant_id, r.provider, r.model, cost,
+            {
+                "type": "live_interaction_reference_ocr",
+                "prompt_tokens": r.prompt_tokens,
+                "completion_tokens": r.completion_tokens,
+            },
+            teacher_id=teacher.id, session_id=UUID(session_id),
+        )
+
+    raw_text = extraction.text.strip()
     if not raw_text:
         raise HTTPException(422, "Nessun testo leggibile trovato nel PDF")
 
@@ -1020,9 +1033,11 @@ async def extract_reference_document(
 
     return {
         "filename": filename,
-        "page_count": analysis.page_count,
+        "page_count": extraction.page_count,
         "char_count": len(reference_text),
         "truncated": truncated,
+        "ocr_pages": extraction.ocr_pages,
+        "ocr_skipped": extraction.ocr_skipped,
         "reference_text": reference_text,
     }
 

@@ -2245,7 +2245,7 @@ export const liveInteractionApi = {
     const fd = new FormData()
     fd.append('session_id', sessionId)
     fd.append('file', file)
-    return api.post('/teacher/live-interactions/extract-reference', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post('/teacher/live-interactions/extract-reference', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000 })
   },
   // Student
   currentStudent: (interactionId?: string) =>

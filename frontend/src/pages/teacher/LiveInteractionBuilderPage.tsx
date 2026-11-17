@@ -194,8 +194,19 @@ function ReferenceDocUploader({
         truncated: res.data.truncated,
         pageCount: res.data.page_count,
       })
-    } catch {
-      toast({ title: tl("Errore nel caricamento del PDF"), variant: 'destructive' })
+      if (res.data.ocr_pages > 0) {
+        toast({ title: `${tl("Pagine scansionate trascritte con OCR")}: ${res.data.ocr_pages}` })
+      }
+      if (res.data.ocr_skipped > 0) {
+        toast({ title: `${tl("Pagine non trascritte")}: ${res.data.ocr_skipped}`, variant: 'destructive' })
+      }
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      toast({
+        title: tl("Errore nel caricamento del PDF"),
+        description: typeof detail === 'string' ? detail : undefined,
+        variant: 'destructive',
+      })
     } finally {
       setUploading(false)
     }
