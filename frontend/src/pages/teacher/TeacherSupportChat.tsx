@@ -5,6 +5,7 @@ import { clipboardFiles } from '@/lib/clipboardFiles'
 import { normalizeMathMarkdown } from '@/lib/mathMarkdown'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { PodcastPanel } from '@/components/chat/PodcastPanel'
+import { SupportStarterHints } from '@/components/chat/SupportStarterHints'
 import { TeachingProtocolPanel } from '@/components/chat/TeachingProtocolPanel'
 import { isProtocolRequest, protocolApi, type ProtocolMessage, type ProtocolState } from '@/lib/teachingProtocol'
 import { CalendarAgentCard } from '@/components/calendar/CalendarAgentCard'
@@ -3842,10 +3843,11 @@ REGOLE IMPORTANTI:
                             <AcademicAiIcon className="h-7 w-7" style={{ color: accentTheme.accent }} />
                           </span>
                           <p className="text-sm font-semibold text-slate-500">{tl("Cosa prepariamo?")}</p>
-                          <button type="button" onClick={() => handleChangeAgentMode('podcast')} className="ds-control flex max-w-sm items-center gap-3 rounded-xl p-4 text-left text-slate-800">
-                            <Headphones className="h-5 w-5 shrink-0" />
-                            <span><strong className="block text-sm">Podcast</strong><span className="mt-1 block text-xs text-slate-500">{tl("Trasforma argomenti e documenti in audio: scegli la voce e rivedi il copione.")}</span></span>
-                          </button>
+                          <SupportStarterHints onPick={(hint) => {
+                            if (hint.mode) handleChangeAgentMode(hint.mode)
+                            setInputText(hint.prompt)
+                            requestAnimationFrame(() => composerRef.current?.focus())
+                          }} />
                         </div>
                       )
                     ) : (
