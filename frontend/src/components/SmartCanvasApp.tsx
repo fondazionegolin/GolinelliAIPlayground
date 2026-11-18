@@ -330,7 +330,6 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
   const [liveCanWrite, setLiveCanWrite] = useState<boolean | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
   const [labeling, setLabeling] = useState('')
-  const [autoLabel, setAutoLabel] = useState(() => { try { return localStorage.getItem('smart_canvas_auto_label') !== '0' } catch { return true } })
   const handle = useRef<CanvasHandle>(null)
   const history = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
@@ -486,11 +485,6 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
     } catch (err) { setError(errorMessage(err, tl("Non sono riuscito a etichettare l’immagine."))); setPanelOpen(true) } finally { setLabeling('') }
   }
 
-  function toggleAutoLabel(value: boolean) {
-    setAutoLabel(value)
-    try { localStorage.setItem('smart_canvas_auto_label', value ? '1' : '0') } catch { /* the choice just is not remembered */ }
-  }
-
   function assist(prompt: string, ids: string[]) {
     if (!assistantAllowed) return
     setPanelOpen(true)
@@ -562,7 +556,7 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
         {...(shared ? { sessionId: board.session_id!, canvasName: board.canvas_key! } : { initialContent: board.content_json })}
         onContentChange={onContentChange} chrome={chrome} leading={<>{leading}<SectionIllustration section="/teacher/smart-canvas" compact /></>} tutorial
         onHydrated={() => { if (autoTutorial && !tutorialShown.current) { tutorialShown.current = true; handle.current?.insertTutorial() } }} onAssist={assistantAllowed ? assist : undefined} onLabelImage={assistantAllowed ? id => void runLabel(id) : undefined}
-        onImageAdded={assistantAllowed && autoLabel ? id => window.setTimeout(() => void runLabel(id), 500) : undefined} onPermissionChange={setLiveCanWrite}
+        onPermissionChange={setLiveCanWrite}
         author={board.viewer_name} onValidateAnswer={validateAnswer} />
     </div>
     {labeling && <div className="pointer-events-none fixed bottom-6 left-1/2 z-[10000] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#1a1a2e] px-4 py-2 text-xs font-semibold text-white shadow-lg" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />{labeling}</div>}
@@ -598,8 +592,6 @@ function Workspace({ role, boardId, sessions, autoTutorial, onBack, onGone }: { 
           <div className="flex flex-wrap gap-1">{BRAINSTORM_ACTIONS.map(a => <Button key={a.key} type="button" tone="accent" surface="soft" density="compact" disabled={busy}
             className="text-[11px]" onClick={() => void send(a.prompt)}>{a.label}</Button>)}</div>
         </div>}
-        {assistantAllowed && <label className="mb-2 flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-          <input type="checkbox" checked={autoLabel} onChange={e => toggleAutoLabel(e.target.checked)} />{tl("Etichetta automaticamente le immagini incollate")}</label>}
         <CanvasModelMenu />
         <div className="flex items-end gap-2">
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={4000} disabled={busy || !assistantAllowed}

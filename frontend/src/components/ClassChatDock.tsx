@@ -77,8 +77,8 @@ export function ClassChatDock({
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
-        className={`ds-control absolute right-0 top-1/2 -translate-y-1/2 cursor-pointer overflow-hidden text-left transition-[width,height,border-radius,box-shadow] duration-150 ease-out focus-visible:outline-none ${hover ? 'z-50 shadow-[var(--ds-shadow-3)]' : 'z-10'}`}
-        style={{ width: hover ? 296 : 36, height: hover ? 300 : 160, borderRadius: hover ? 'var(--ds-radius-panel)' : 9999 }}
+        className={`ds-control absolute right-0 top-1/2 cursor-pointer overflow-hidden text-left transition-[width,height,margin-top,border-radius,box-shadow] duration-150 ease-out focus-visible:outline-none ${hover ? 'z-50 shadow-[var(--ds-shadow-3)]' : 'z-10'}`}
+        style={{ width: hover ? 296 : 36, height: hover ? 300 : 160, marginTop: hover ? -150 : -80, transform: 'none', borderRadius: hover ? 'var(--ds-radius-panel)' : 9999 }}
         aria-label={tl("Apri chat di classe")}
         title={hover ? undefined : tl("Chat di classe")}
       >

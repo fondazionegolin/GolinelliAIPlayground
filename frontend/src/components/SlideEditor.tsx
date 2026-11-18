@@ -39,6 +39,26 @@ async function imageFileToDataUrl(file: File, maxSide = 1920): Promise<string> {
 }
 
 /** An image slot that has its prompt but not yet a real picture. */
+
+/** Writes an image to the system clipboard as PNG (the only type browsers accept), so Ctrl+V works in any editor. */
+async function copyImageToClipboard(src: string): Promise<void> {
+  try {
+    const blob = await (await fetch(src)).blob()
+    let png = blob
+    if (blob.type !== 'image/png') {
+      const url = URL.createObjectURL(blob)
+      try {
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => { const el = new Image(); el.onload = () => resolve(el); el.onerror = reject; el.src = url })
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth; canvas.height = image.naturalHeight
+        canvas.getContext('2d')!.drawImage(image, 0, 0)
+        png = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error('png')), 'image/png'))
+      } finally { URL.revokeObjectURL(url) }
+    }
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+  } catch (err) { console.error(err) }
+}
+
 export const isPendingImage = (block: SlideBlock): boolean =>
   block.type === 'image' && Boolean(block.imagePrompt) && (!block.content || block.content.includes('placehold.co'))
 
@@ -405,6 +425,15 @@ export function SlideEditor({
       }
       const editable = blocks.filter(b => selection.includes(b.id) && !b.locked)
       if (event.key === 'Escape') { select([]); return }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c' && selection.length === 1) {
+        // Copy a picture as a real image so it can be pasted elsewhere (Smart canvas, Documents…).
+        const picked = blocks.find(b => b.id === selection[0])
+        if (picked?.type === 'image' && picked.content && !picked.content.includes('placehold.co')) {
+          event.preventDefault()
+          void copyImageToClipboard(picked.content)
+          return
+        }
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd' && editable.length) {
         // Duplicate, repeating the offset of the last Alt-drag / Ctrl+D (Figma's "duplicate again").
         event.preventDefault()

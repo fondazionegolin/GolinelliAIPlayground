@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
-  RectangleHorizontal, Triangle, Circle, Square, Minus, ArrowRight, Undo2, Redo2, Maximize, Minimize,
+  RectangleHorizontal, Circle, Undo2, Redo2, Maximize, Minimize,
   LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move, Sparkles,
 } from '@/components/icons'
 import { tl } from '@/i18n/tl'
@@ -31,7 +31,7 @@ import { findFreeRect, graphFromFormula, makePath, normalizePath, applyAiOps, de
 
 type CanvasRole = 'teacher' | 'student'
 type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector' | 'rect' | 'ellipse' | 'diamond' | 'star' | 'hexagon' | 'line' | 'arrow' | 'formula' | 'move'
-const SHAPE_TOOLS: Tool[] = ['roundedRect', 'triangle', 'rect', 'ellipse']
+const SHAPE_TOOLS: Tool[] = ['roundedRect', 'ellipse']
 
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
@@ -61,7 +61,7 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; backgroundColor?: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rect' | 'rounded-rect' | 'ellipse' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'parallelogram'; fill: string; fillOpacity?: number; stroke: string; borderWidth?: number; borderStyle?: CanvasBorderStyle; text?: string; textColor?: string; textStyle?: CanvasTextStyle })
-  | (CanvasItemBase & { type: 'connector'; fromId: string; fromAnchor: Anchor; toId: string; toAnchor: Anchor; color: string; width: number })
+  | (CanvasItemBase & { type: 'connector'; fromId: string; fromAnchor: Anchor; toId: string; toAnchor: Anchor; color: string; width: number; /** Free ends (no item): the connector then starts/ends at this board point. */ fromPoint?: Point; toPoint?: Point })
   | (CanvasPositionedItemBase & { type: 'line'; color: string; width: number; arrow?: boolean; flipX?: boolean; flipY?: boolean })
   | (CanvasPositionedItemBase & { type: 'animation'; scene: Scene })
   | (CanvasPositionedItemBase & { type: 'formula'; latex: string; src?: string; fontSize: number; color: string })
@@ -408,6 +408,20 @@ const toCsvTable = (rows: Array<Array<string | number | boolean | null>>): strin
   rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell))))
 
 const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' }> => item.type === 'frame'
+const GRID_SIZE = 24
+/** In-app clipboard for board elements (the system clipboard only carries a marker so foreign text never pastes them). */
+const CANVAS_CLIP_MARKER = 'golinelli-canvas-items'
+let canvasClipboard: { items: CanvasItem[]; pastes: number } | null = null
+/** One smooth cubic curve between two ends; an end without a facing direction bends along the dominant axis. */
+const connectorCurve = (p1: Point, d1: Point | null, p2: Point, d2: Point | null): string => {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y
+  const horizontal = Math.abs(dx) >= Math.abs(dy)
+  const auto1 = horizontal ? { x: dx >= 0 ? 1 : -1, y: 0 } : { x: 0, y: dy >= 0 ? 1 : -1 }
+  const out1 = d1 ?? auto1
+  const out2 = d2 ?? { x: -auto1.x, y: -auto1.y }
+  const curve = Math.max(24, Math.min(180, Math.hypot(dx, dy) * 0.35))
+  return `M ${p1.x} ${p1.y} C ${p1.x + out1.x * curve} ${p1.y + out1.y * curve}, ${p2.x + out2.x * curve} ${p2.y + out2.y * curve}, ${p2.x} ${p2.y}`
+}
 const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
 const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
 const isTextEditable = (item: CanvasItem): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' | 'shape' }> =>
@@ -468,6 +482,11 @@ const SigmaIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 2
 const AnimationIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M10 8.5v5l4-2.5z" /><path d="M8 21h8" /></svg>
 const MapIcon = ({ className }: { className?: string }) => <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" /></svg>
 
+const TOOL_COLORS: Partial<Record<Tool, string>> = {
+  select: '#334155', hand: '#0ea5e9', move: '#8b5cf6', postit: '#f59e0b', frame: '#14b8a6', text: '#6366f1',
+  roundedRect: '#3b82f6', ellipse: '#ec4899', formula: '#10b981', connector: '#f97316', pen: '#e11d48',
+}
+
 function ToolButton({
   activeTool,
   t,
@@ -481,16 +500,19 @@ function ToolButton({
   label: string
   onSetTool: (t: Tool) => void
 }) {
+  const color = TOOL_COLORS[t] || '#475569'
+  const active = activeTool === t
   return (
     <button
       type="button"
       title={label}
+      aria-label={label}
+      aria-pressed={active}
       onClick={() => onSetTool(t)}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm transition-colors ${
-        activeTool === t ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-      }`}
+      className="group flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-[color-mix(in_srgb,var(--tool-color)_14%,white)] [&_svg]:![stroke-width:2.4]"
+      style={{ ['--tool-color' as string]: color, color: active ? '#ffffff' : color, background: active ? color : undefined, boxShadow: active ? `0 2px 8px -2px ${color}99` : undefined }}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-5 w-5" />
     </button>
   )
 }
@@ -588,7 +610,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [connectorDrag, setConnectorDrag] = useState<{
-    fromId: string; fromAnchor: Anchor; toPoint: Point; hoverTarget?: { id: string; anchor: Anchor }
+    fromId: string; fromAnchor: Anchor; fromPoint?: Point; toPoint: Point; hoverTarget?: { id: string; anchor: Anchor }
   } | null>(null)
   const [isDropActive, setIsDropActive] = useState(false)
   const [version, setVersion] = useState(0)
@@ -604,7 +626,24 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const [isPanning, setIsPanning] = useState(false)
   const [studentsCanWrite, setStudentsCanWrite] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  // Real browser fullscreen (whole page, no app chrome); the fixed overlay stays as a fallback.
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    if (isFullscreen && !document.fullscreenElement) el.requestFullscreen?.().catch(() => { /* overlay fallback */ })
+    if (!isFullscreen && document.fullscreenElement === el) document.exitFullscreen?.().catch(() => {})
+  }, [isFullscreen])
+  useEffect(() => {
+    const onChange = () => { if (!document.fullscreenElement) setIsFullscreen(false) }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
   const [showMinimap, setShowMinimap] = useState(true)
+  const [snapToGrid, setSnapToGrid] = useState(() => { try { return localStorage.getItem('smart_canvas_snap') !== '0' } catch { return true } })
+  const snapRef = useRef(snapToGrid)
+  snapRef.current = snapToGrid
+  useEffect(() => { try { localStorage.setItem('smart_canvas_snap', snapToGrid ? '1' : '0') } catch { /* not remembered */ } }, [snapToGrid])
   const [liveSocket, setLiveSocket] = useState<any>(() => (window as any).socket || null)
   const [online, setOnline] = useState<Collaborator[]>([])
   const [summon, setSummon] = useState<{ x: number; y: number; label: string; at: number } | null>(null)
@@ -625,6 +664,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   const canEdit = !readOnly && (role === 'teacher' || !sessionId || studentsCanWrite || ownerCanWrite)
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
   const itemById = useMemo(() => new Map(canvasDoc.items.map((item) => [item.id, item])), [canvasDoc.items])
+  const labeledImageIds = useMemo(() => new Set(canvasDoc.items.flatMap((c) => (c.type === 'callout' && c.imageId ? [c.imageId] : []))), [canvasDoc.items])
   const connectorItems = useMemo(() => canvasDoc.items.filter(isConnector) as Array<Extract<CanvasItem, { type: 'connector' }>>, [canvasDoc.items])
   const positionedItems = useMemo(() => canvasDoc.items.filter(isPositioned), [canvasDoc.items])
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -1205,6 +1245,11 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       const isTyping = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable
       if (e.key === ' ' && !isTyping) { e.preventDefault(); spaceHeldRef.current = true }
       if (isTyping) return
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'c' || e.key === 'x')) {
+        if (e.key === 'x' && !canEdit) return
+        if (copySelectionRef.current(e.key === 'x')) e.preventDefault()
+        return
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
       if (tool === 'move' && canEdit && selectedIds.length && e.key.startsWith('Arrow')) {
@@ -1238,8 +1283,6 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           if (e.key === 'g' || e.key === 'G') setTool('move')
           if (e.key === 'o' || e.key === 'O') setTool('ellipse')
           if (e.key === 'm' || e.key === 'M') setTool('formula')
-          if (e.key === 'l' || e.key === 'L') setTool('line')
-          if (e.key === 'a' || e.key === 'A') setTool('arrow')
           if (e.key === 'c' || e.key === 'C') setTool('connector')
           if (e.key === 'd' || e.key === 'D') setTool('pen')
         }
@@ -1504,6 +1547,47 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit])
 
+  const snapValue = (value: number) => (snapRef.current ? Math.round(value / GRID_SIZE) * GRID_SIZE : value)
+
+  // ─── Copy / cut / paste of board elements ────────────────────────────────
+  const copySelection = (cut: boolean) => {
+    const ids = selectedIds.length ? selectedIds : selectedId ? [selectedId] : []
+    if (!ids.length) return false
+    const picked = new Set(ids)
+    ids.forEach((id) => { const it = itemById.get(id); if (it && isFrame(it)) collectFrameDescendants(canvasDoc.items, id).forEach((child) => picked.add(child)) })
+    canvasDoc.items.forEach((c) => { if (c.type === 'callout' && c.imageId && picked.has(c.imageId)) picked.add(c.id) })
+    const items = canvasDoc.items.filter((i) => picked.has(i.id) || (isConnector(i) && picked.has(i.fromId) && picked.has(i.toId)))
+    if (!items.length) return false
+    canvasClipboard = { items: JSON.parse(JSON.stringify(items)), pastes: 0 }
+    try { void navigator.clipboard?.writeText(CANVAS_CLIP_MARKER) } catch { /* the in-app copy still works */ }
+    if (cut && canEdit) deleteItems(Array.from(picked))
+    return true
+  }
+  const pasteSelection = () => {
+    if (!canEdit || !canvasClipboard?.items.length) return false
+    canvasClipboard.pastes += 1
+    const shift = GRID_SIZE * canvasClipboard.pastes
+    const idMap = new Map(canvasClipboard.items.map((i) => [i.id, mkId()]))
+    const copies = canvasClipboard.items.map((i) => {
+      const copy: any = { ...JSON.parse(JSON.stringify(i)), id: idMap.get(i.id)! }
+      if (isPositioned(i)) { copy.x = (i as any).x + shift; copy.y = (i as any).y + shift }
+      if (copy.type === 'connector') { copy.fromId = idMap.get(copy.fromId) ?? copy.fromId; copy.toId = idMap.get(copy.toId) ?? copy.toId }
+      if (copy.type === 'callout') { if (copy.imageId) copy.imageId = idMap.get(copy.imageId) ?? copy.imageId; if (typeof copy.tx === 'number') { copy.tx += shift; copy.ty += shift } }
+      if (copy.parentFrameId) copy.parentFrameId = idMap.get(copy.parentFrameId)
+      return copy as CanvasItem
+    })
+    beginInteraction()
+    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, ...copies] }))
+    endInteraction()
+    const positionedIds = copies.filter(isPositioned).map((i) => i.id)
+    setSelectedIds(positionedIds); setSelectedId(positionedIds[0] ?? null)
+    return true
+  }
+  const copySelectionRef = useRef(copySelection)
+  copySelectionRef.current = copySelection
+  const pasteSelectionRef = useRef(pasteSelection)
+  pasteSelectionRef.current = pasteSelection
+
   const duplicateItem = useCallback((id: string) => {
     if (!canEdit) return
     beginInteraction()
@@ -1550,11 +1634,27 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
   // ─── Mouse / touch handlers ───────────────────────────────────────────────
 
+  const nearestAnchor = (item: Exclude<CanvasItem, { type: 'connector' }>, point: Point): Anchor =>
+    ANCHORS.reduce((best, anchor) => {
+      const a = getAnchorPoint(item, anchor), b = getAnchorPoint(item, best)
+      return Math.hypot(a.x - point.x, a.y - point.y) < Math.hypot(b.x - point.x, b.y - point.y) ? anchor : best
+    }, ANCHORS[0])
+
   const onPointerDownItem = (e: ReactPointerEvent, item: CanvasItem) => {
     e.stopPropagation()
     if (pinchRef.current) return
     if (e.button !== 0 && e.pointerType !== 'touch') return
     activePointerIdRef.current = e.pointerId
+
+    // Connector tool: pressing on an element starts the arrow from its nearest connection point.
+    if (canEdit && tool === 'connector' && isPositioned(item)) {
+      e.preventDefault()
+      containerRef.current?.setPointerCapture(e.pointerId)
+      const wp = toWorld(e.clientX, e.clientY)
+      const anchor = nearestAnchor(item, wp)
+      setConnectorDrag({ fromId: item.id, fromAnchor: anchor, toPoint: wp })
+      return
+    }
 
     // A frame is also a creation surface. Previously it swallowed the event,
     // forcing users to create on the empty canvas and move the item afterward.
@@ -1636,8 +1736,13 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       setPreviewPoints([wp])
       return
     }
+    if (tool === 'connector') {
+      const wp = toWorld(e.clientX, e.clientY)
+      setConnectorDrag({ fromId: '', fromAnchor: 'right', fromPoint: wp, toPoint: wp })
+      return
+    }
     // Drag-to-create for shape/content tools
-    if (tool !== 'connector') {
+    {
       const wp = toWorld(e.clientX, e.clientY)
       dragCreateRef.current = { tool, startX: wp.x, startY: wp.y, currentX: wp.x, currentY: wp.y }
       setPreviewCreate({ x: wp.x, y: wp.y, w: 20, h: 20 })
@@ -1699,14 +1804,9 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     if (connectorDrag) {
       if (connectorPreviewRef.current) {
         const from = itemById.get(connectorDrag.fromId)
-        if (from && isPositioned(from)) {
-          const p1 = getAnchorPoint(from, connectorDrag.fromAnchor)
-          const d1 = anchorDirection(connectorDrag.fromAnchor)
-          const curve = Math.max(36, Math.min(180, Math.hypot(wp.x - p1.x, wp.y - p1.y) * 0.35))
-          const targetAnchor: Anchor = Math.abs(wp.x - p1.x) > Math.abs(wp.y - p1.y) ? (wp.x >= p1.x ? 'left' : 'right') : wp.y >= p1.y ? 'top' : 'bottom'
-          const d2 = anchorDirection(targetAnchor)
-          connectorPreviewRef.current.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + d1.x * curve} ${p1.y + d1.y * curve}, ${wp.x + d2.x * curve} ${wp.y + d2.y * curve}, ${wp.x} ${wp.y}`)
-        }
+        const fromItem = from && isPositioned(from) ? from : null
+        const p1 = fromItem ? getAnchorPoint(fromItem, connectorDrag.fromAnchor) : connectorDrag.fromPoint
+        if (p1) connectorPreviewRef.current.setAttribute('d', connectorCurve(p1, fromItem ? anchorDirection(connectorDrag.fromAnchor) : null, wp, null))
       }
       connectorDrag.toPoint = wp
       return
@@ -1792,6 +1892,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       resize.pendingW = Math.max(isLine ? 4 : 80, resize.startW + (e.clientX - resize.startX) / zoomRef.current)
       resize.pendingH = Math.max(isLine ? 2 : 60, resize.startH + (e.clientY - resize.startY) / zoomRef.current)
       // An image keeps its proportions: a cropped picture would no longer line up with the flags pointing at it.
+      if (snapRef.current && resizingType !== 'image' && !isLine) { resize.pendingW = Math.max(GRID_SIZE * 2, snapValue(resize.pendingW)); resize.pendingH = Math.max(GRID_SIZE * 2, snapValue(resize.pendingH)) }
       if (resizingType === 'image') { resize.pendingW = Math.max(80, resize.pendingW); resize.pendingH = resize.pendingW * (resize.startH / Math.max(resize.startW, 1)) }
       if (!resizeRafRef.current) {
         resizeRafRef.current = window.requestAnimationFrame(() => {
@@ -1819,8 +1920,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           dragRafRef.current = null
           const drag = draggingRef.current
           if (!drag || drag.pendingX === undefined || drag.pendingY === undefined) return
-          const nx = drag.pendingX - drag.offsetX
-          const ny = drag.pendingY - drag.offsetY
+          const nx = snapValue(drag.pendingX - drag.offsetX)
+          const ny = snapValue(drag.pendingY - drag.offsetY)
           const dx = nx - drag.originX
           const dy = ny - drag.originY
           ;[drag.id, ...drag.childIds].forEach((id) => {
@@ -1888,26 +1989,26 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
     if (connectorDrag) {
       let target = connectorDrag.hoverTarget
-      if (!target && e) {
-        const releasePoint = toWorld(e.clientX, e.clientY)
-        let nearest: { id: string; anchor: Anchor; distance: number } | null = null
-        for (const item of positionedItems) {
-          if (item.id === connectorDrag.fromId) continue
-          for (const anchor of ANCHORS) {
-            const point = getAnchorPoint(item, anchor)
-            const distance = Math.hypot(point.x - releasePoint.x, point.y - releasePoint.y)
-            if (distance <= 32 / zoomRef.current && (!nearest || distance < nearest.distance)) nearest = { id: item.id, anchor, distance }
-          }
-        }
-        const nearestTarget = nearest as { id: string; anchor: Anchor; distance: number } | null
-        if (nearestTarget) target = { id: nearestTarget.id, anchor: nearestTarget.anchor }
+      const releasePoint = e ? toWorld(e.clientX, e.clientY) : connectorDrag.toPoint
+      if (!target) {
+        // Released over an element (or near one of its connection points): attach to its closest anchor.
+        const candidates = positionedItems.filter((item) => item.id !== connectorDrag.fromId)
+        const inside = candidates.filter((item) => releasePoint.x >= item.x && releasePoint.x <= item.x + item.w && releasePoint.y >= item.y && releasePoint.y <= item.y + item.h)
+        const hit = [...inside].reverse().find((item) => !isFrame(item)) ?? inside.at(-1)
+        if (hit) target = { id: hit.id, anchor: nearestAnchor(hit, releasePoint) }
       }
-      if (target && target.id !== connectorDrag.fromId) {
+      const startPoint = connectorDrag.fromId ? undefined : connectorDrag.fromPoint
+      const fromItem = connectorDrag.fromId ? itemById.get(connectorDrag.fromId) : undefined
+      const origin = fromItem && isPositioned(fromItem) ? getAnchorPoint(fromItem, connectorDrag.fromAnchor) : startPoint
+      const endFar = !!origin && Math.hypot(releasePoint.x - origin.x, releasePoint.y - origin.y) > 16 / zoomRef.current
+      if ((target && target.id !== connectorDrag.fromId) || (!target && endFar)) {
         beginInteraction()
         const connector: CanvasItem = {
           id: mkId(), type: 'connector',
           fromId: connectorDrag.fromId, fromAnchor: connectorDrag.fromAnchor,
-          toId: target.id, toAnchor: target.anchor,
+          toId: target?.id ?? '', toAnchor: target?.anchor ?? 'left',
+          ...(startPoint ? { fromPoint: startPoint } : {}),
+          ...(target ? {} : { toPoint: releasePoint }),
           color: '#404040', width: 2,
         }
         setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
@@ -2002,8 +2103,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     if (dragId && completedDrag?.pendingX !== undefined && completedDrag.pendingY !== undefined) {
       ;[dragId, ...completedDrag.childIds].forEach(emitUnlock)
       didMutate = true
-      const nx = completedDrag.pendingX - completedDrag.offsetX
-      const ny = completedDrag.pendingY - completedDrag.offsetY
+      const nx = snapValue(completedDrag.pendingX - completedDrag.offsetX)
+      const ny = snapValue(completedDrag.pendingY - completedDrag.offsetY)
       const dx = nx - completedDrag.originX
       const dy = ny - completedDrag.originY
       const movedIds = new Set(Object.keys(completedDrag.origins))
@@ -2027,9 +2128,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
     }
     if (didMutate) endInteraction()
     if (clickedItemId) {
-      const clickedItem = itemById.get(clickedItemId)
-      if (clickedItem && isTextEditable(clickedItem)) startTextEditingRef.current(clickedItemId)
-      else setEditingId(null)
+      // A single click only selects (and the element can be dragged straight away); double click writes inside it.
+      if (!itemById.get(clickedItemId)) setEditingId(null)
     }
   }
 
@@ -2128,7 +2228,20 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       const target = event.target as HTMLElement | null
       if (target && (target.closest('input, textarea, [contenteditable="true"]'))) return
       const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith('image/'))
-      if (!files.length) return
+      if (!files.length) {
+        const text = event.clipboardData?.getData('text/plain') || ''
+        // Board elements copied inside the app (marker only, or nothing readable on the clipboard).
+        if (canvasClipboard && (!text || text.startsWith(CANVAS_CLIP_MARKER))) { if (pasteSelectionRef.current()) event.preventDefault(); return }
+        // A picture copied from a web page / slide may travel as HTML only: fetch it.
+        const html = event.clipboardData?.getData('text/html') || ''
+        const src = html ? extractImageUrlsFromHtml(html)[0] : ''
+        if (!src) return
+        event.preventDefault()
+        void fetch(src).then((r) => r.blob()).then((blob) => {
+          if (blob.type.startsWith('image/')) pasteImagesRef.current([new File([blob], 'pasted-image', { type: blob.type })])
+        }).catch((err) => console.error(err))
+        return
+      }
       event.preventDefault()
       pasteImagesRef.current(files)
     }
@@ -2213,41 +2326,34 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
   // ─── SVG renderers ────────────────────────────────────────────────────────
 
   const renderConnector = (item: Extract<CanvasItem, { type: 'connector' }>) => {
-    const from = itemById.get(item.fromId)
-    const to = itemById.get(item.toId)
-    if (!from || !to || !isPositioned(from) || !isPositioned(to)) return null
-    const p1 = getAnchorPoint(from, item.fromAnchor)
-    const p2 = getAnchorPoint(to, item.toAnchor)
-    const d1 = anchorDirection(item.fromAnchor)
-    const d2 = anchorDirection(item.toAnchor)
-    const curve = Math.max(36, Math.min(180, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.35))
-    const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
-    const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
+    const from = item.fromId ? itemById.get(item.fromId) : undefined
+    const to = item.toId ? itemById.get(item.toId) : undefined
+    const fromItem = from && isPositioned(from) ? from : null
+    const toItem = to && isPositioned(to) ? to : null
+    const p1 = fromItem ? getAnchorPoint(fromItem, item.fromAnchor) : item.fromPoint
+    const p2 = toItem ? getAnchorPoint(toItem, item.toAnchor) : item.toPoint
+    if (!p1 || !p2) return null
+    const d = connectorCurve(p1, fromItem ? anchorDirection(item.fromAnchor) : null, p2, toItem ? anchorDirection(item.toAnchor) : null)
+    const selected = selectedIdSet.has(item.id)
     return (
-      <path
-        key={item.id}
-        d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`}
-        stroke={item.color} strokeWidth={item.width} fill="none" strokeLinecap="round" strokeLinejoin="round"
-        markerEnd="url(#canvas-arrow)"
-      />
+      <g key={item.id}>
+        {selected && <path d={d} stroke="#3ea9f4" strokeOpacity={0.35} strokeWidth={item.width + 6} fill="none" strokeLinecap="round" />}
+        <path d={d} stroke={item.color} strokeWidth={item.width} fill="none" strokeLinecap="round" strokeLinejoin="round" markerEnd="url(#canvas-arrow)" />
+        <path d={d} stroke="transparent" strokeWidth={Math.max(item.width + 12, 16)} fill="none" style={{ pointerEvents: 'stroke', cursor: 'pointer' }} onPointerDown={(e) => onPointerDownItem(e, item)} />
+      </g>
     )
   }
 
   const renderConnectorPreview = () => {
     if (!connectorDrag) return null
     const from = itemById.get(connectorDrag.fromId)
-    if (!from || !isPositioned(from)) return null
-    const p1 = getAnchorPoint(from, connectorDrag.fromAnchor)
-    const p2 = connectorDrag.hoverTarget
-      ? (() => { const t = itemById.get(connectorDrag.hoverTarget?.id || ''); return t && isPositioned(t) ? getAnchorPoint(t, connectorDrag.hoverTarget!.anchor) : connectorDrag.toPoint })()
-      : connectorDrag.toPoint
-    const d1 = anchorDirection(connectorDrag.fromAnchor)
-    const tAnchor: Anchor = connectorDrag.hoverTarget?.anchor || (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y) ? (p2.x >= p1.x ? 'left' : 'right') : p2.y >= p1.y ? 'top' : 'bottom')
-    const d2 = anchorDirection(tAnchor)
-    const curve = Math.max(36, Math.min(180, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.35))
-    const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
-    const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
-    return <path ref={connectorPreviewRef} d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`} stroke="#3ea9f4" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
+    const fromItem = from && isPositioned(from) ? from : null
+    const p1 = fromItem ? getAnchorPoint(fromItem, connectorDrag.fromAnchor) : connectorDrag.fromPoint
+    if (!p1) return null
+    const hover = connectorDrag.hoverTarget ? itemById.get(connectorDrag.hoverTarget.id) : undefined
+    const hoverItem = hover && isPositioned(hover) ? hover : null
+    const p2 = hoverItem ? getAnchorPoint(hoverItem, connectorDrag.hoverTarget!.anchor) : connectorDrag.toPoint
+    return <path ref={connectorPreviewRef} d={connectorCurve(p1, fromItem ? anchorDirection(connectorDrag.fromAnchor) : null, p2, hoverItem ? anchorDirection(connectorDrag.hoverTarget!.anchor) : null)} stroke="#3ea9f4" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
   }
 
   // ─── Cursor ──────────────────────────────────────────────────────────────
@@ -2264,6 +2370,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
 
   return (
     <div
+      ref={rootRef}
       className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-sm ${
         isFullscreen ? 'fixed inset-0 z-[9999] rounded-none' : fill ? 'h-full rounded-none border-0' : 'h-[calc(100vh-170px)] rounded-xl'
       }`}
@@ -2350,6 +2457,11 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
           <button type="button" onClick={zoomIn} aria-label={tl("Ingrandisci")} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">+</button>
         </div>
 
+        <button type="button" onClick={() => setIsFullscreen((v) => !v)} title={isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")} aria-label={isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero")}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${isFullscreen ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+        </button>
+
         {/* Everything else lives in one menu */}
         <div className="relative shrink-0">
           <button type="button" title={tl("Altro")} aria-label={tl("Altro")} aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}
@@ -2362,6 +2474,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   ...(tutorial && canEdit ? [{ icon: <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#e85c8d] text-[10px] font-bold text-white">?</span>, label: tl("Guida: come funziona"), run: () => insertTutorialRef.current() }] : []),
                   ...(canEdit ? [{ icon: <AnimationIcon className="h-4 w-4" />, label: tl("Animazioni scientifiche"), run: () => setShowAnimations(true) }] : []),
                   ...(role === 'teacher' ? [{ icon: <LayoutTemplate className="h-4 w-4" />, label: tl("Template"), run: () => setShowTemplates(true) }] : []),
+                  ...(canEdit ? [{ icon: <span className="text-sm leading-none">#</span>, label: snapToGrid ? tl("Disattiva l’allineamento alla griglia") : tl("Allinea alla griglia"), run: () => setSnapToGrid((v) => !v) }] : []),
                   { icon: <MapIcon className="h-4 w-4" />, label: showMinimap ? tl("Nascondi la mappa") : tl("Mostra la mappa"), run: () => setShowMinimap((v) => !v) },
                   { icon: <Maximize2 className="h-4 w-4" />, label: tl("Adatta alla schermata"), run: fitToScreen },
                   { icon: isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />, label: isFullscreen ? tl("Esci da schermo intero") : tl("Schermo intero"), run: () => setIsFullscreen((v) => !v) },
@@ -2467,38 +2580,34 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
       </div>
 
       {/* ── Main area ────────────────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1">
-        {/* Left tool panel */}
+      <div className="relative flex min-h-0 flex-1">
+        {/* Floating tool pill */}
         {canEdit && (
-          <div className="flex w-11 shrink-0 flex-col items-center gap-0.5 border-r border-slate-200 bg-white py-2">
+          <div className="theme-keep absolute left-3 top-1/2 z-20 flex max-h-[calc(100%-1.5rem)] -translate-y-1/2 w-[52px] flex-col items-center gap-0.5 overflow-y-auto rounded-[26px] px-1 py-1.5 backdrop-blur-xl [scrollbar-width:none]" style={{ colorScheme: 'light', background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 30px rgba(15,23,42,0.14), 0 0 0 1px rgba(15,23,42,0.05)' }}>
             <ToolButton activeTool={tool} t="select" icon={MousePointer} label={tl("Seleziona (V)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="hand" icon={Move} label={tl("Sposta la vista (H)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="move" icon={GrabHandIcon} label={tl("Sposta gli elementi: trascina quelli selezionati (G)")} onSetTool={setTool} />
-            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="postit" icon={StickyNote} label={tl("Post-it — trascina per dimensionare (P)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="frame" icon={Frame} label={tl("Frame — trascina per dimensionare (F)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="text" icon={Type} label={tl("Testo (T)")} onSetTool={setTool} />
-            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label={tl("Rettangolo — trascina per dimensionare (R)")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="rect" icon={Square} label={tl("Rettangolo a spigoli vivi")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="ellipse" icon={Circle} label={tl("Ellisse — trascina per dimensionare (O)")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label={tl("Triangolo — trascina per dimensionare")} onSetTool={setTool} />
-            <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="line" icon={Minus} label={tl("Linea — trascina (L)")} onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="arrow" icon={ArrowRight} label={tl("Freccia libera — trascina (A)")} onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
             <ToolButton activeTool={tool} t="formula" icon={SigmaIcon} label={tl("Formula matematica — trascina (M)")} onSetTool={setTool} />
-            <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label={tl("Connettore — trascina da un punto di ancoraggio (C)")} onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
+            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label={tl("Freccia — clicca l’inizio e trascina: la curva segue il punto di arrivo (C)")} onSetTool={setTool} />
             <ToolButton activeTool={tool} t="pen" icon={Pencil} label={tl("Penna libera (D)")} onSetTool={setTool} />
-            <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <button type="button" title={tl("Elimina selezionato (Del)")} onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
-              <Eraser className="h-4 w-4" />
+            <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
+            <button type="button" title={tl("Elimina selezionato (Del)")} onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-xl text-red-500 transition-colors hover:bg-red-50 disabled:opacity-30 [&_svg]:![stroke-width:2.4]">
+              <Eraser className="h-5 w-5" />
             </button>
 
             {/* Pen color/width (only when pen tool active) */}
             {tool === 'pen' && (
               <>
-                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
                 <ColorPicker value={strokeColor} onChange={(color) => setStrokeColor(color)} title={tl("Colore penna")} />
                 <Input type="number" min={1} max={14} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value || 3))} className="h-7 w-9 border-slate-200 px-1 text-center text-xs" title={tl("Spessore")} />
               </>
@@ -2507,7 +2616,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             {/* Post-it color (when postit tool active) */}
             {tool === 'postit' && (
               <>
-                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
                 {POSTIT_PALETTE.slice(0, 4).map((c) => (
                   <button key={c} type="button" onClick={() => setNewPostitColor(c)} className={`mb-0.5 h-6 w-6 rounded border-2 ${newPostitColor === c ? 'border-slate-700' : 'border-transparent'}`} style={{ background: c }} />
                 ))}
@@ -2515,9 +2624,9 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             )}
 
             {/* Shape color (when shape tool active) */}
-            {(SHAPE_TOOLS.includes(tool) || tool === 'line' || tool === 'arrow') && (
+            {SHAPE_TOOLS.includes(tool) && (
               <>
-                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                <div className="my-0.5 h-px w-7 shrink-0 bg-slate-300/70" />
                 <ColorPicker value={newShapeFill} onChange={(color) => { setNewShapeFill(color); setNewShapeStroke(null) }} title={tl("Riempimento")} />
                 <ColorPicker value={newShapeStroke} onChange={(color) => setNewShapeStroke(color)} title={tl("Bordo")} />
               </>
@@ -2534,8 +2643,8 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
             touchAction: 'none',
             overscrollBehavior: 'none',
             backgroundColor: '#ffffff',
-            backgroundImage: 'radial-gradient(circle at 1px 1px, #d6d6d6 1px, transparent 0)',
-            backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
+            backgroundImage: `radial-gradient(circle at 1px 1px, ${snapToGrid ? '#b8b8b8' : '#d6d6d6'} 1px, transparent 0)`,
+            backgroundSize: `${GRID_SIZE * zoom}px ${GRID_SIZE * zoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`,
           }}
           onPointerDownCapture={onPointerDownCapture}
@@ -2637,7 +2746,7 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   }}
                   onPointerDown={(e) => onPointerDownItem(e, item)}
                   onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={() => { if ((item.type === 'formula' || item.type === 'callout') && canEdit) { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } }}
+                  onDoubleClick={() => { if (!canEdit) return; if (item.type === 'formula' || item.type === 'callout') { setSelectedId(item.id); setSelectedIds([item.id]); setEditingId(item.id) } else if (isTextEditable(item)) startTextEditingRef.current(item.id) }}
                   onContextMenu={(e) => openContextMenu(e, item.id)}
                 >
                   {item.type === 'postit' && (
@@ -2848,6 +2957,18 @@ export const CollaborativeCanvas = forwardRef<CanvasHandle, CollaborativeCanvasP
                   })()}
 
                   {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
+                  {item.type === 'image' && onLabelImage && canEdit && selectedIdSet.has(item.id) && !labeledImageIds.has(item.id) && !draggingRef.current && (
+                    <div className="absolute left-1/2 top-full z-10 pt-2" style={{ transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'top center' }}>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onLabelImage(item.id) }}
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#e85c8d] px-3 py-1.5 text-xs font-bold text-white shadow-lg hover:brightness-95"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />{tl("Auto-etichettatura")}
+                      </button>
+                    </div>
+                  )}
 
                   {item.type === 'table' && (
                     <div className="h-full w-full overflow-auto rounded-md border border-slate-200 bg-white text-slate-900 shadow-sm">
